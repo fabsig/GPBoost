@@ -9,12 +9,13 @@ fitGPModel(likelihood = "gaussian", group_data = NULL,
   drop_intercept_group_rand_effect = NULL, gp_coords = NULL,
   gp_rand_coef_data = NULL, cov_function = "matern", cov_fct_shape = 1.5,
   gp_approx = "none", num_parallel_threads = NULL,
-  cov_fct_taper_range = 1, cov_fct_taper_shape = 1, num_neighbors = NULL,
+  matrix_inversion_method = "cholesky", weights = NULL,
+  likelihood_learning_rate = 1, cov_fct_taper_range = 1,
+  cov_fct_taper_shape = 1, num_neighbors = NULL,
   vecchia_ordering = "random", ind_points_selection = "kmeans++",
-  num_ind_points = NULL, cover_tree_radius = 1,
-  matrix_inversion_method = "cholesky", seed = 0L, cluster_ids = NULL,
-  free_raw_data = FALSE, y, X = NULL, params = list(),
-  vecchia_approx = NULL, vecchia_pred_type = NULL,
+  num_ind_points = NULL, cover_tree_radius = 1, seed = 0L,
+  cluster_ids = NULL, free_raw_data = FALSE, y, X = NULL,
+  params = list(), vecchia_approx = NULL, vecchia_pred_type = NULL,
   num_neighbors_pred = NULL, offset = NULL, fixed_effects = NULL,
   likelihood_additional_param = NULL)
 }
@@ -108,6 +109,26 @@ for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecch
 \item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP. 
 If num_parallel_threads = NULL, all available threads are used}
 
+\item{matrix_inversion_method}{A \code{string} specifying the method used for inverting covariance matrices. 
+Available options:
+\itemize{
+\item{"cholesky": Cholesky factorization }
+\item{"iterative": iterative methods. A combination of the conjugate gradient, the Lanczos algorithm, and other methods. 
+
+This is currently only supported for the following cases: 
+\itemize{
+\item{ grouped random effects with more than one level }
+\item{likelihood != "gaussian" and gp_approx == "vecchia" (non-Gaussian likelihoods with a Vecchia-Laplace approximation) }
+\item{likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIFapproximation) }
+\item{likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation) }
+}
+}
+}}
+
+\item{weights}{A \code{vector} with sample weights}
+
+\item{likelihood_learning_rate}{A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)}
+
 \item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter 
 of the Wendland covariance function and Wendland correlation taper function. 
 We follow the notation of Bevilacqua et al. (2019, AOS)}
@@ -155,22 +176,6 @@ points / knots for FITC, full_scale_tapering, and VIF approximations. Internal d
 
 \item{cover_tree_radius}{A \code{numeric} specifying the radius (= "spatial resolution") 
 for the cover tree algorithm}
-
-\item{matrix_inversion_method}{A \code{string} specifying the method used for inverting covariance matrices. 
-Available options:
-\itemize{
-\item{"cholesky": Cholesky factorization }
-\item{"iterative": iterative methods. A combination of the conjugate gradient, the Lanczos algorithm, and other methods. 
-
-This is currently only supported for the following cases: 
-\itemize{
-\item{ grouped random effects with more than one level }
-\item{likelihood != "gaussian" and gp_approx == "vecchia" (non-Gaussian likelihoods with a Vecchia-Laplace approximation) }
-\item{likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIFapproximation) }
-\item{likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation) }
-}
-}
-}}
 
 \item{seed}{An \code{integer} specifying the seed used for model creation 
 (e.g., random ordering in Vecchia approximation)}

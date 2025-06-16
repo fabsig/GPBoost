@@ -184,6 +184,8 @@
 #' @param cluster_ids A \code{vector} with elements indicating independent realizations of 
 #' random effects / Gaussian processes (same values = same process realization).
 #' The elements of 'cluster_ids' can be integer, double, or character.
+#' @param weights A \code{vector} with sample weights
+#' @param likelihood_learning_rate A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)
 #' @param free_raw_data A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 #' is freed in R after initialization
 #' @param y A \code{vector} with response variable data
@@ -370,6 +372,9 @@ gpb.GPModel <- R6::R6Class(
                           cov_fct_shape = 1.5,
                           gp_approx = "none",
                           num_parallel_threads = NULL,
+                          matrix_inversion_method = "cholesky",
+                          weights = NULL,
+                          likelihood_learning_rate = 1.,
                           cov_fct_taper_range = 1.,
                           cov_fct_taper_shape = 1.,
                           num_neighbors = NULL,
@@ -377,7 +382,6 @@ gpb.GPModel <- R6::R6Class(
                           ind_points_selection = "kmeans++",
                           num_ind_points = NULL,
                           cover_tree_radius = 1.,
-                          matrix_inversion_method = "cholesky",
                           seed = 0L,
                           cluster_ids = NULL,
                           likelihood_additional_param = NULL,
@@ -415,10 +419,10 @@ gpb.GPModel <- R6::R6Class(
           }
         }
         # Make sure that data in correct format
-        MAYBE_CONVERT_TO_MATRIX <- c("cov_pars","group_data", "group_rand_coef_data",
-                                     "gp_coords", "gp_rand_coef_data",
+        MAYBE_CONVERT_TO_MATRIX <- c("cov_pars", "group_data", "group_rand_coef_data", 
+                                     "gp_coords", "gp_rand_coef_data", 
                                      "ind_effect_group_rand_coef",
-                                     "cluster_ids","coefs","X")
+                                     "cluster_ids", "coefs", "X", "weights")
         for (feature in MAYBE_CONVERT_TO_MATRIX) {
           if (!is.null(model_list[[feature]])) {
             if (is.list(model_list[[feature]])) {
@@ -442,6 +446,9 @@ gpb.GPModel <- R6::R6Class(
         cov_function = model_list[["cov_function"]]
         cov_fct_shape = model_list[["cov_fct_shape"]]
         gp_approx = model_list[["gp_approx"]]
+        matrix_inversion_method = model_list[["matrix_inversion_method"]]
+        weights = model_list[["weights"]]
+        likelihood_learning_rate = model_list[["likelihood_learning_rate"]]
         cov_fct_taper_range = model_list[["cov_fct_taper_range"]]
         cov_fct_taper_shape = model_list[["cov_fct_taper_shape"]]
         num_neighbors = model_list[["num_neighbors"]]
@@ -454,7 +461,6 @@ gpb.GPModel <- R6::R6Class(
         cluster_ids = model_list[["cluster_ids"]]
         likelihood = model_list[["likelihood"]]
         likelihood_additional_param = model_list[["likelihood_additional_param"]]
-        matrix_inversion_method = model_list[["matrix_inversion_method"]]
         # Set additionally required data
         private$model_has_been_loaded_from_saved_file = TRUE
         private$cov_pars_loaded_from_file = model_list[["cov_pars"]]
@@ -822,6 +828,22 @@ gpb.GPModel <- R6::R6Class(
         }
         cluster_ids <- as.vector(cluster_ids)
       } # End set IDs for independent processes (cluster_ids)
+      # Set up weights
+      if (!is.null(weights)) {
+        if (is.vector(weights)) {
+          if (length(weights) != private$num_data) {
+            stop("GPModel: Length of ", sQuote("weights"), " does not match number of data points")
+          }
+          if (storage.mode(weights) != "double") {
+            storage.mode(weights) <- "double"
+          }
+          private$weights = weights
+          private$has_weights = TRUE
+        } else {
+          stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("weights"))
+        }
+      }
+      private$likelihood_learning_rate <- as.numeric(likelihood_learning_rate)
       private$determine_num_cov_pars(likelihood)
       if (is.null(private$likelihood_additional_param)) {
         likelihood_additional_param_c <- -999 # internal default values are used
@@ -862,6 +884,9 @@ gpb.GPModel <- R6::R6Class(
         , private$matrix_inversion_method
         , private$seed
         , private$num_parallel_threads
+        , private$has_weights
+        , private$weights
+        , private$likelihood_learning_rate
       )
       # Check whether the handle was created properly if it was not stopped earlier by a stop call
       if (gpb.is.null.handle(handle)) {
@@ -879,6 +904,7 @@ gpb.GPModel <- R6::R6Class(
         private$gp_coords <- NULL
         private$gp_rand_coef_data <- NULL
         private$cluster_ids <- NULL
+        private$weights <- NULL
       }
       if (private$model_has_been_loaded_from_saved_file) {
         self$set_optim_params(params = model_list[["params"]])
@@ -1365,7 +1391,7 @@ gpb.GPModel <- R6::R6Class(
         }
         X_pred <- as.vector(matrix(X_pred))
       } # End set data linear fixed-effects
-      # Set cluster_ids for independent processes
+      # Set cluster_ids_pred for independent processes
       if (!is.null(cluster_ids_pred)) {
         if (is.vector(cluster_ids_pred)) {
           if (is.null(private$cluster_ids_map_to_int) & storage.mode(cluster_ids_pred) != "integer") {
@@ -1398,7 +1424,7 @@ gpb.GPModel <- R6::R6Class(
           stop("set_prediction_data: Length of ", sQuote("cluster_ids_pred"), " does not match number of predicted data points")
         }
         cluster_ids_pred <- as.vector(cluster_ids_pred)
-      } # End set cluster_ids for independent processes
+      } # End set cluster_ids_pred for independent processes
       private$num_data_pred <- num_data_pred
       if (!is.null(vecchia_pred_type)) {
         private$vecchia_pred_type <- vecchia_pred_type
@@ -1671,7 +1697,7 @@ gpb.GPModel <- R6::R6Class(
             X_pred <- as.vector(matrix(X_pred))
           }
         } # End set data for linear fixed-effects
-        # Set cluster_ids for independent processes
+        # Set cluster_ids_pred for independent processes
         if (!is.null(cluster_ids_pred)) {
           if (is.vector(cluster_ids_pred)) {
             if (is.null(private$cluster_ids_map_to_int) & storage.mode(cluster_ids_pred) != "integer") {
@@ -1705,7 +1731,7 @@ gpb.GPModel <- R6::R6Class(
                  " does not match number of predicted data points")
           }
           cluster_ids_pred <- as.vector(cluster_ids_pred)
-        } # End set cluster_ids for independent processes
+        } # End set cluster_ids_pred for independent processes
       } else { # use_saved_data
         cluster_ids_pred <- NULL
         group_data_pred_c_str <- NULL
@@ -1874,6 +1900,14 @@ gpb.GPModel <- R6::R6Class(
       return(private$cluster_ids)
     },
     
+    get_weights = function() {
+      if(isTRUE(private$free_raw_data)){
+        stop("GPModel: cannot return ", sQuote("weights"), ",
+             please set ", sQuote("free_raw_data = FALSE"), " when you create the ", sQuote("GPModel"))
+      }
+      return(private$weights)
+    },
+    
     get_response_data = function() {
       response_data <- numeric(private$num_data)
       .Call(
@@ -1990,12 +2024,14 @@ gpb.GPModel <- R6::R6Class(
       model_list[["cov_function"]] <- private$cov_function
       model_list[["cov_fct_shape"]] <- private$cov_fct_shape
       model_list[["gp_approx"]] <- private$gp_approx
+      model_list[["matrix_inversion_method"]] <- private$matrix_inversion_method
+      model_list[["weights"]] <- private$weights
+      model_list[["likelihood_learning_rate"]] <- private$likelihood_learning_rate
       model_list[["cov_fct_taper_range"]] <- private$cov_fct_taper_range
       model_list[["cov_fct_taper_shape"]] <- private$cov_fct_taper_shape
       model_list[["num_ind_points"]] <- private$num_ind_points
       model_list[["cover_tree_radius"]] <- private$cover_tree_radius
       model_list[["ind_points_selection"]] <- private$ind_points_selection
-      model_list[["matrix_inversion_method"]] <- private$matrix_inversion_method
       model_list[["seed"]] <- private$seed
       model_list[["num_parallel_threads"]] <- private$num_parallel_threads
       model_list[["num_sets_re"]] <- private$num_sets_re
@@ -2015,11 +2051,11 @@ gpb.GPModel <- R6::R6Class(
         model_list[["current_neg_log_likelihood"]] <- self$get_current_neg_log_likelihood()
       }
       # Make sure that data is saved in correct format by RJSONIO::toJSON
-      MAYBE_CONVERT_TO_VECTOR <- c("cov_pars","group_data", "group_rand_coef_data",
+      MAYBE_CONVERT_TO_VECTOR <- c("cov_pars", "group_data", "group_rand_coef_data",
                                    "gp_coords", "gp_rand_coef_data",
                                    "ind_effect_group_rand_coef",
                                    "drop_intercept_group_rand_effect",
-                                   "cluster_ids","coefs","X","nb_groups", "aux_pars")
+                                   "cluster_ids", "coefs", "X", "nb_groups", "aux_pars", "weights")
       for (feature in MAYBE_CONVERT_TO_VECTOR) {
         if (!is.null(model_list[[feature]])) {
           if (is.vector(model_list[[feature]])) {
@@ -2140,6 +2176,10 @@ gpb.GPModel <- R6::R6Class(
     cov_function = "matern",
     cov_fct_shape = 1.5,
     gp_approx = "none",
+    matrix_inversion_method = "cholesky",
+    has_weights = FALSE,
+    weights = NULL,
+    likelihood_learning_rate = 1.,
     num_parallel_threads = -1L,
     cov_fct_taper_range = 1.,
     cov_fct_taper_shape = 1.,
@@ -2153,7 +2193,6 @@ gpb.GPModel <- R6::R6Class(
     num_ind_points = -1L, # default is set in C++
     cover_tree_radius = 1.,
     ind_points_selection = "kmeans++",
-    matrix_inversion_method = "cholesky",
     seed = 0L,
     cluster_ids = NULL,
     cluster_ids_map_to_int = NULL,
@@ -2395,6 +2434,9 @@ GPModel <- function(likelihood = "gaussian",
                     cov_fct_shape = 1.5,
                     gp_approx = "none",
                     num_parallel_threads = NULL,
+                    matrix_inversion_method = "cholesky",
+                    weights = NULL,
+                    likelihood_learning_rate = 1.,
                     cov_fct_taper_range = 1.,
                     cov_fct_taper_shape = 1.,
                     num_neighbors = NULL,
@@ -2402,7 +2444,6 @@ GPModel <- function(likelihood = "gaussian",
                     ind_points_selection = "kmeans++",
                     num_ind_points = NULL,
                     cover_tree_radius = 1.,
-                    matrix_inversion_method = "cholesky",
                     seed = 0L,
                     cluster_ids = NULL,
                     likelihood_additional_param = NULL,
@@ -2423,6 +2464,9 @@ GPModel <- function(likelihood = "gaussian",
                             , cov_fct_shape = cov_fct_shape
                             , gp_approx = gp_approx
                             , num_parallel_threads = num_parallel_threads
+                            , matrix_inversion_method = matrix_inversion_method
+                            , weights = weights
+                            , likelihood_learning_rate = likelihood_learning_rate
                             , cov_fct_taper_range = cov_fct_taper_range
                             , cov_fct_taper_shape = cov_fct_taper_shape
                             , num_neighbors = num_neighbors
@@ -2430,7 +2474,6 @@ GPModel <- function(likelihood = "gaussian",
                             , ind_points_selection = ind_points_selection
                             , num_ind_points = num_ind_points
                             , cover_tree_radius = cover_tree_radius
-                            , matrix_inversion_method = matrix_inversion_method
                             , seed = seed
                             , cluster_ids = cluster_ids
                             , free_raw_data = free_raw_data
@@ -2603,6 +2646,9 @@ fitGPModel <- function(likelihood = "gaussian",
                        cov_fct_shape = 1.5,
                        gp_approx = "none",
                        num_parallel_threads = NULL,
+                       matrix_inversion_method = "cholesky",
+                       weights = NULL,
+                       likelihood_learning_rate = 1.,
                        cov_fct_taper_range = 1.,
                        cov_fct_taper_shape = 1.,
                        num_neighbors = NULL,
@@ -2610,7 +2656,6 @@ fitGPModel <- function(likelihood = "gaussian",
                        ind_points_selection = "kmeans++",
                        num_ind_points = NULL,
                        cover_tree_radius = 1.,
-                       matrix_inversion_method = "cholesky",
                        seed = 0L,
                        cluster_ids = NULL,
                        free_raw_data = FALSE,
@@ -2635,6 +2680,9 @@ fitGPModel <- function(likelihood = "gaussian",
                              , cov_fct_shape = cov_fct_shape
                              , gp_approx = gp_approx
                              , num_parallel_threads = num_parallel_threads
+                             , matrix_inversion_method = matrix_inversion_method
+                             , weights = weights
+                             , likelihood_learning_rate = likelihood_learning_rate
                              , cov_fct_taper_range = cov_fct_taper_range
                              , cov_fct_taper_shape = cov_fct_taper_shape
                              , num_neighbors = num_neighbors
@@ -2642,7 +2690,6 @@ fitGPModel <- function(likelihood = "gaussian",
                              , ind_points_selection = ind_points_selection
                              , num_ind_points = num_ind_points
                              , cover_tree_radius = cover_tree_radius
-                             , matrix_inversion_method = matrix_inversion_method
                              , seed = seed
                              , cluster_ids = cluster_ids
                              , free_raw_data = free_raw_data

@@ -839,7 +839,10 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	SEXP likelihood_additional_param,
 	SEXP matrix_inversion_method,
 	SEXP seed,
-	SEXP num_parallel_threads) {
+	SEXP num_parallel_threads,
+	SEXP has_weights,
+	SEXP weights,
+	SEXP likelihood_learning_rate) {
 	SEXP ret;
 	REModelHandle handle = nullptr;
 	int32_t num_data = static_cast<int32_t>(Rf_asInteger(ndata));
@@ -890,6 +893,9 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 		matrix_inversion_method_ptr,
 		Rf_asInteger(seed),
 		Rf_asInteger(num_parallel_threads),
+		Rf_asLogical(has_weights),
+		R_REAL_PTR(weights),
+		Rf_asReal(likelihood_learning_rate),
 		&handle));
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
@@ -1329,7 +1335,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterSaveModel_R"          , (DL_FUNC)&LGBM_BoosterSaveModel_R          , 4},
   {"LGBM_BoosterSaveModelToString_R"  , (DL_FUNC)&LGBM_BoosterSaveModelToString_R  , 4},
   {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 3},
-  {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 28},
+  {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 31},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
   {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 29},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},

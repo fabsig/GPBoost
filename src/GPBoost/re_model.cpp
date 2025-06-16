@@ -45,7 +45,10 @@ namespace GPBoost {
 		double likelihood_additional_param,
 		const char* matrix_inversion_method,
 		int seed,
-		int num_parallel_threads) {
+		int num_parallel_threads,
+		bool has_weights,
+		const double* weights,
+		double likelihood_learning_rate) {
 		string_t cov_fct_str = "none";
 		if (cov_fct != nullptr) {
 			cov_fct_str = std::string(cov_fct);
@@ -74,100 +77,34 @@ namespace GPBoost {
 		}
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_ = std::unique_ptr<REModelTemplate<sp_mat_t, chol_sp_mat_t>>(new REModelTemplate<sp_mat_t, chol_sp_mat_t>(
-				num_data,
-				cluster_ids_data,
-				re_group_data,
-				num_re_group,
-				re_group_rand_coef_data,
-				ind_effect_group_rand_coef,
-				num_re_group_rand_coef,
-				drop_intercept_group_rand_effect,
-				num_gp,
-				gp_coords_data,
-				dim_gp_coords,
-				gp_rand_coef_data,
-				num_gp_rand_coef,
-				cov_fct,
-				cov_fct_shape,
-				gp_approx,
-				cov_fct_taper_range,
-				cov_fct_taper_shape,
-				num_neighbors, 
-				vecchia_ordering,
-				num_ind_points,
-				cover_tree_radius,
-				ind_points_selection,
-				likelihood,
-				likelihood_additional_param,
-				matrix_inversion_method,
-				seed,
-				num_parallel_threads));
+				num_data, cluster_ids_data, re_group_data, num_re_group, re_group_rand_coef_data, 
+				ind_effect_group_rand_coef, num_re_group_rand_coef, drop_intercept_group_rand_effect,
+				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, gp_approx,
+				cov_fct_taper_range, cov_fct_taper_shape, num_neighbors, vecchia_ordering, num_ind_points, cover_tree_radius, ind_points_selection,
+				likelihood, likelihood_additional_param, matrix_inversion_method, seed, num_parallel_threads,
+				has_weights, weights, likelihood_learning_rate));
 			num_cov_pars_ = re_model_sp_->num_cov_par_;
 			num_sets_re_ = re_model_sp_->num_sets_re_;
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_ = std::unique_ptr<REModelTemplate<sp_mat_rm_t, chol_sp_mat_rm_t>>(new REModelTemplate<sp_mat_rm_t, chol_sp_mat_rm_t>(
-				num_data,
-				cluster_ids_data,
-				re_group_data,
-				num_re_group,
-				re_group_rand_coef_data,
-				ind_effect_group_rand_coef,
-				num_re_group_rand_coef,
-				drop_intercept_group_rand_effect,
-				num_gp,
-				gp_coords_data,
-				dim_gp_coords,
-				gp_rand_coef_data,
-				num_gp_rand_coef,
-				cov_fct,
-				cov_fct_shape,
-				gp_approx,
-				cov_fct_taper_range,
-				cov_fct_taper_shape,
-				num_neighbors,
-				vecchia_ordering,
-				num_ind_points,
-				cover_tree_radius,
-				ind_points_selection,
-				likelihood,
-				likelihood_additional_param,
-				matrix_inversion_method,
-				seed,
-				num_parallel_threads));
+				num_data, cluster_ids_data, re_group_data, num_re_group, re_group_rand_coef_data,
+				ind_effect_group_rand_coef, num_re_group_rand_coef, drop_intercept_group_rand_effect,
+				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, gp_approx,
+				cov_fct_taper_range, cov_fct_taper_shape, num_neighbors, vecchia_ordering, num_ind_points, cover_tree_radius, ind_points_selection,
+				likelihood, likelihood_additional_param, matrix_inversion_method, seed, num_parallel_threads,
+				has_weights, weights, likelihood_learning_rate));
 			num_cov_pars_ = re_model_sp_rm_->num_cov_par_;
 			num_sets_re_ = re_model_sp_rm_->num_sets_re_;
 		}
 		else {
 			re_model_den_ = std::unique_ptr <REModelTemplate< den_mat_t, chol_den_mat_t>>(new REModelTemplate<den_mat_t, chol_den_mat_t>(
-				num_data,
-				cluster_ids_data,
-				re_group_data,
-				num_re_group,
-				re_group_rand_coef_data,
-				ind_effect_group_rand_coef,
-				num_re_group_rand_coef,
-				drop_intercept_group_rand_effect,
-				num_gp,
-				gp_coords_data,
-				dim_gp_coords,
-				gp_rand_coef_data,
-				num_gp_rand_coef,
-				cov_fct,
-				cov_fct_shape,
-				gp_approx,
-				cov_fct_taper_range,
-				cov_fct_taper_shape,
-				num_neighbors,
-				vecchia_ordering,
-				num_ind_points,
-				cover_tree_radius,
-				ind_points_selection,
-				likelihood,
-				likelihood_additional_param,
-				matrix_inversion_method,
-				seed,
-				num_parallel_threads));
+				num_data, cluster_ids_data, re_group_data, num_re_group, re_group_rand_coef_data,
+				ind_effect_group_rand_coef, num_re_group_rand_coef, drop_intercept_group_rand_effect,
+				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, gp_approx,
+				cov_fct_taper_range, cov_fct_taper_shape, num_neighbors, vecchia_ordering, num_ind_points, cover_tree_radius, ind_points_selection,
+				likelihood, likelihood_additional_param, matrix_inversion_method, seed, num_parallel_threads,
+				has_weights, weights, likelihood_learning_rate));
 			num_cov_pars_ = re_model_den_->num_cov_par_;
 			num_sets_re_ = re_model_den_->num_sets_re_;
 		}

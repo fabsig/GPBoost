@@ -259,6 +259,57 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_other)),TOLERANCE_MEDIUM)
     expect_equal(gp_model$get_num_optim_iter(), num_it_other)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_STRICT)
+    
+    # Use of weights
+    nws <- 50
+    gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5, likelihood = "bernoulli_probit")
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.5,0.1),y=y) + 0.
+    params = OPTIM_PARAMS_BFGS_STD
+    params$init_cov_pars <- c(1,mean(dist(coords))/3)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
+                                           cov_fct_shape = 1.5, y = y, params = params, likelihood = "bernoulli_probit") , file='NUL')
+    deltas <- c(0,0,1e-5,1e-1)
+    for (i in 1:length(deltas)) {
+      delta <- deltas[i]
+      if (i==1) {
+        weights = rep(0.13,n)
+      } else {
+        weights = c(rep(1+delta,nws),rep(1-delta,n-nws))
+      }
+      gp_model_weights <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5, 
+                                  weights = weights, likelihood = "bernoulli_probit")
+      nll_weighted <- gp_model_weights$neg_log_likelihood(cov_pars=c(0.5,0.1),y=y)
+      capture.output( gp_model_weights <- fitGPModel(gp_coords = coords, cov_function = "matern",
+                                                     cov_fct_shape = 1.5, y = y, weights = weights, 
+                                                     params = params, likelihood = "bernoulli_probit") , file='NUL')
+      if (delta == 0) {
+        expect_lt(abs(nll-nll_weighted), 1e-12)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-gp_model_weights$get_cov_pars())),1e-12)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-gp_model_weights$get_current_neg_log_likelihood()), 1e-8)
+      } else if (delta <= 1e-5) {
+        expect_lt(abs(nll-nll_weighted), 3e-5)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-gp_model_weights$get_cov_pars())),1e-5)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-gp_model_weights$get_current_neg_log_likelihood()), 3e-5)
+      } else if (delta <= 1e-1) {
+        expect_lt(abs(nll-nll_weighted), 0.3)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-gp_model_weights$get_cov_pars())),0.1)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-gp_model_weights$get_current_neg_log_likelihood()), 0.4)
+      }
+    }
+    
+    ## likelihood_learning_rate parameter
+    deltas <- c(1e-9,1e-4)
+    for (i in 1:length(deltas)) {
+      if (delta <= 1e-9) {
+        expect_lt(abs(nll-nll_weighted), 1e-7)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-gp_model_weights$get_cov_pars())),1e-8)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-gp_model_weights$get_current_neg_log_likelihood()), 1e-7)
+      } else if (delta <= 1e-5) {
+        expect_lt(abs(nll-nll_weighted), 1e-2)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-gp_model_weights$get_cov_pars())),1e-3)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-gp_model_weights$get_current_neg_log_likelihood()), 1e-2)
+      }
+    }
   })
   
   test_that("Binary classification with Gaussian process model with multiple observations at the same location", {
@@ -454,6 +505,41 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars <- c(0.40255)
     expect_lt(sum(abs(opt$par-cov_pars)),TOLERANCE_MEDIUM)
     expect_lt(abs(opt$value-(65.2599674)),TOLERANCE_MEDIUM)
+    
+    # Use of weights
+    nws <- 50
+    gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.5),y=y) + 0.
+    params = OPTIM_PARAMS_BFGS_STD
+    params$init_cov_pars <- c(1.)
+    capture.output( gp_model <- fitGPModel(group_data = group, y = y, params = params, likelihood = "bernoulli_probit") , file='NUL')
+    
+    deltas <- c(0,0,1e-5,1e-1)
+    for (i in 1:length(deltas)) {
+      delta <- deltas[i]
+      if (i==1) {
+        weights = rep(0.13,n)
+      } else {
+        weights = c(rep(1+delta,nws),rep(1-delta,n-nws))
+      }
+      gp_model_weights <- GPModel(group_data = group, weights = weights, likelihood = "bernoulli_probit")
+      nll_weighted <- gp_model_weights$neg_log_likelihood(cov_pars=c(0.5),y=y)
+      capture.output( gp_model_weights <- fitGPModel(group_data = group, y = y, weights = weights, 
+                                                     params = params, likelihood = "bernoulli_probit") , file='NUL')
+      if (delta == 0) {
+        expect_lt(abs(nll-nll_weighted), 1e-99)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-gp_model_weights$get_cov_pars())),1e-12)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-gp_model_weights$get_current_neg_log_likelihood()), 1e-12)
+      } else if (delta <= 1e-5) {
+        expect_lt(abs(nll-nll_weighted), 1e-4)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-gp_model_weights$get_cov_pars())),1e-5)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-gp_model_weights$get_current_neg_log_likelihood()), 9e-5)
+      } else if (delta <= 1e-1) {
+        expect_lt(abs(nll-nll_weighted), 1)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-gp_model_weights$get_cov_pars())),0.05)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-gp_model_weights$get_current_neg_log_likelihood()), 1)
+      }
+    }
   })
   
   test_that("GLMM with an offset", {

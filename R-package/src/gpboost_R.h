@@ -648,6 +648,9 @@ GPBOOST_C_EXPORT SEXP LGBM_BoosterDumpModel_R(
 * \param matrix_inversion_method Method which is used for matrix inversion
 * \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
 * \param num_parallel_threads Number of parallel threads for OMP
+* \param has_weights True, if sample weights should be used
+* \param weights Sample weights
+* \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
 * \return REModel handle
 */
 GPBOOST_C_EXPORT SEXP GPB_CreateREModel_R(
@@ -678,7 +681,10 @@ GPBOOST_C_EXPORT SEXP GPB_CreateREModel_R(
 	SEXP likelihood_additional_param,
 	SEXP matrix_inversion_method,
 	SEXP seed,
-	SEXP num_parallel_threads
+	SEXP num_parallel_threads,
+	SEXP has_weights,
+	SEXP weights,
+	SEXP likelihood_learning_rate
 );
 
 /*!

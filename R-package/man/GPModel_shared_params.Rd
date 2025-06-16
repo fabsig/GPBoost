@@ -210,6 +210,10 @@ Default value if NULL: 1000}
 random effects / Gaussian processes (same values = same process realization).
 The elements of 'cluster_ids' can be integer, double, or character.}
 
+\item{weights}{A \code{vector} with sample weights}
+
+\item{likelihood_learning_rate}{A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)}
+
 \item{free_raw_data}{A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 is freed in R after initialization}
 

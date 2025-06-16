@@ -446,6 +446,7 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
             gp_rand_coef_data_pred = None
             cluster_ids = None
             cluster_ids_pred = None
+            weights = None
             if gp_model.group_data is not None:
                 group_data = gp_model.group_data[train_idx]
                 group_data_pred = gp_model.group_data[test_idx]
@@ -461,6 +462,8 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
             if gp_model.cluster_ids is not None:
                 cluster_ids = gp_model.cluster_ids[train_idx]
                 cluster_ids_pred = gp_model.cluster_ids[test_idx]
+            if gp_model.weights is not None:
+                weights = gp_model.weights[train_idx]
             gp_model_train = GPModel(likelihood=gp_model._get_likelihood_name(),
                                      group_data=group_data,
                                      group_rand_coef_data=group_rand_coef_data,
@@ -472,6 +475,9 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                      cov_fct_shape=gp_model.cov_fct_shape,
                                      gp_approx=gp_model.gp_approx,
                                      num_parallel_threads=gp_model.num_parallel_threads,
+                                     matrix_inversion_method=gp_model.matrix_inversion_method,
+                                     weights=weights,
+                                     likelihood_learning_rate=gp_model.likelihood_learning_rate,
                                      cov_fct_taper_range=gp_model.cov_fct_taper_range,
                                      cov_fct_taper_shape=gp_model.cov_fct_taper_shape,
                                      num_neighbors=gp_model.num_neighbors,
@@ -479,11 +485,11 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                      ind_points_selection=gp_model.ind_points_selection,
                                      num_ind_points=gp_model.num_ind_points,
                                      cover_tree_radius=gp_model.cover_tree_radius,
-                                     matrix_inversion_method=gp_model.matrix_inversion_method,
                                      seed=gp_model.seed,
                                      cluster_ids=cluster_ids,
                                      likelihood_additional_param=gp_model.likelihood_additional_param,
                                      free_raw_data=True)
+            
             if use_gp_model_for_validation:
                 gp_model_train.set_prediction_data(group_data_pred=group_data_pred,
                                                    group_rand_coef_data_pred=group_rand_coef_data_pred,

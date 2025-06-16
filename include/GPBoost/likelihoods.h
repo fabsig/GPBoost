@@ -80,6 +80,9 @@ namespace GPBoost {
 		* \param use_Z_for_duplicates If true, an incidendce matrix Z is used for duplicate locations and calculations are done on the random effects scale with the unique locations (only for Gaussian processes)
 		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
 		* \param additional_param Additional parameter for the likelihood which cannot be estimated (e.g., degrees of freedom for likelihood = "t")
+		* \param has_weights True, if sample weights should be used
+		* \param weights Sample weights
+		* \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
 		*/
 		Likelihood(string_t type,
 			data_size_t num_data,
@@ -87,7 +90,10 @@ namespace GPBoost {
 			bool has_a_vec,
 			bool use_Z_for_duplicates,
 			const data_size_t* random_effects_indices_of_data,
-			double additional_param) {
+			double additional_param,
+			bool has_weights,
+			const double* weights,
+			double likelihood_learning_rate) {
 			num_data_ = num_data;
 			num_re_ = num_re;
 			string_t likelihood = type;
@@ -212,7 +218,27 @@ namespace GPBoost {
 			if (SUPPORTED_APPROX_TYPE_.find(approximation_type_) == SUPPORTED_APPROX_TYPE_.end()) {
 				Log::REFatal("'approximation_type' = '%s' is not supported ", approximation_type_.c_str());
 			}
-		}
+			if (has_weights) {
+				has_weights_ = true;
+				weights_ = weights;
+			}
+			else {
+				has_weights_ = false;
+			}
+			CHECK(likelihood_learning_rate > 0.);
+			likelihood_learning_rate_ = likelihood_learning_rate;
+			if (!TwoNumbersAreEqual<double>(likelihood_learning_rate_, 1.)) {
+				if (has_weights_) {
+					weights_learning_rate_ = Eigen::Map<const vec_t>(weights_, num_data_);
+					weights_learning_rate_ *= likelihood_learning_rate_;
+				}
+				else {
+					weights_learning_rate_ = vec_t::Constant(num_data_, likelihood_learning_rate_);
+					has_weights_ = true;
+				}
+				weights_ = weights_learning_rate_.data();
+			}//end likelihood_learning_rate_ != 1.
+		}//end constructor
 
 		/*!
 		* \brief Determine cap_change_mode_newton_
@@ -417,7 +443,8 @@ namespace GPBoost {
 				double pavg = 0.;
 #pragma omp parallel for schedule(static) reduction(+:pavg)
 				for (data_size_t i = 0; i < num_data; ++i) {
-					pavg += bool(y_data[i] > 0);
+					double w = has_weights_ ? weights_[i] : 1.0;
+					pavg += w * bool(y_data[i] > 0);
 				}
 				pavg /= num_data;
 				pavg = std::min(pavg, 1.0 - 1e-15);
@@ -441,13 +468,15 @@ namespace GPBoost {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:avg)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						avg += y_data[i];
+						double w = has_weights_ ? weights_[i] : 1.0;
+						avg += w * y_data[i];
 					}
 				}
 				else {
 #pragma omp parallel for schedule(static) reduction(+:avg)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						avg += y_data[i] / std::exp(fixed_effects[i]);
+						double w = has_weights_ ? weights_[i] : 1.0;
+						avg += w * y_data[i] / std::exp(fixed_effects[i]);
 					}
 				}
 				avg /= num_data;
@@ -472,13 +501,15 @@ namespace GPBoost {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:init_intercept)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						init_intercept += y_data[i];
+						double w = has_weights_ ? weights_[i] : 1.0;
+						init_intercept += w * y_data[i];
 					}
 				}
 				else {
 #pragma omp parallel for schedule(static) reduction(+:init_intercept)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						init_intercept += y_data[i] - fixed_effects[i];
+						double w = has_weights_ ? weights_[i] : 1.0;
+						init_intercept += w * (y_data[i] - fixed_effects[i]);
 					}
 				}
 				init_intercept /= num_data;
@@ -488,16 +519,18 @@ namespace GPBoost {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:avg, sum_sq)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						avg += y_data[i];
-						sum_sq += y_data[i] * y_data[i];
+						double w = has_weights_ ? weights_[i] : 1.0;
+						avg += w * y_data[i];
+						sum_sq += w * y_data[i] * y_data[i];
 					}
 				}
 				else {
 #pragma omp parallel for schedule(static) reduction(+:avg, sum_sq)
 					for (data_size_t i = 0; i < num_data; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
 						double y_min_FE = y_data[i] - fixed_effects[i];
-						avg += y_min_FE;
-						sum_sq += y_min_FE * y_min_FE;
+						avg += w * y_min_FE;
+						sum_sq += w * y_min_FE * y_min_FE;
 					}
 				}
 				avg /= num_data;
@@ -557,15 +590,17 @@ namespace GPBoost {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:log_avg, avg_log)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						log_avg += y_data[i];
-						avg_log += std::log(y_data[i]);
+						double w = has_weights_ ? weights_[i] : 1.0;
+						log_avg += w * y_data[i];
+						avg_log += w * std::log(y_data[i]);
 					}
 				}
 				else {
 #pragma omp parallel for schedule(static) reduction(+:log_avg, avg_log)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						log_avg += y_data[i] / std::exp(fixed_effects[i]);
-						avg_log += std::log(y_data[i]) - fixed_effects[i];
+						double w = has_weights_ ? weights_[i] : 1.0;
+						log_avg += w * y_data[i] / std::exp(fixed_effects[i]);
+						avg_log += w * (std::log(y_data[i]) - fixed_effects[i]);
 					}
 				}
 				log_avg /= num_data;
@@ -580,16 +615,18 @@ namespace GPBoost {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:avg, sum_sq)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						avg += y_data[i];
-						sum_sq += y_data[i] * y_data[i];
+						double w = has_weights_ ? weights_[i] : 1.0;
+						avg += w * y_data[i];
+						sum_sq += w * y_data[i] * y_data[i];
 					}
 				}
 				else {
 #pragma omp parallel for schedule(static) reduction(+:avg, sum_sq)
 					for (data_size_t i = 0; i < num_data; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
 						double y_min_FE = y_data[i] / std::exp(fixed_effects[i]);
-						avg += y_min_FE;
-						sum_sq += y_min_FE * y_min_FE;
+						avg += w * y_min_FE;
+						sum_sq += w * y_min_FE * y_min_FE;
 					}
 				}
 				avg /= num_data;
@@ -647,16 +684,18 @@ namespace GPBoost {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:avg, sum_sq)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						avg += y_data[i];
-						sum_sq += y_data[i] * y_data[i];
+						double w = has_weights_ ? weights_[i] : 1.0;
+						avg += w * y_data[i];
+						sum_sq += w * y_data[i] * y_data[i];
 					}
 				}
 				else {
 #pragma omp parallel for schedule(static) reduction(+:avg, sum_sq)
 					for (data_size_t i = 0; i < num_data; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
 						double y_min_FE = y_data[i] - fixed_effects[i];
-						avg += y_min_FE;
-						sum_sq += y_min_FE * y_min_FE;
+						avg += w * y_min_FE;
+						sum_sq += w * y_min_FE * y_min_FE;
 					}
 				}
 				avg /= num_data;
@@ -693,8 +732,9 @@ namespace GPBoost {
 				double mean = 0., sec_mom = 0;
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom)
 				for (data_size_t i = 0; i < num_data; ++i) {
-					mean += y_data[i];
-					sec_mom += y_data[i] * y_data[i];
+					double w = has_weights_ ? weights_[i] : 1.0;
+					mean += w * y_data[i];
+					sec_mom += w * y_data[i] * y_data[i];
 				}
 				mean /= num_data;
 				sec_mom /= num_data;
@@ -747,15 +787,17 @@ namespace GPBoost {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						mean += y_data[i];
-						sec_mom += y_data[i] * y_data[i];
+						double w = has_weights_ ? weights_[i] : 1.0;
+						mean += w * y_data[i];
+						sec_mom += w * y_data[i] * y_data[i];
 					}
 				}
 				else {
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						mean += y_data[i] - fixed_effects[i];
-						sec_mom += (y_data[i] - fixed_effects[i]) * (y_data[i] - fixed_effects[i]);
+						double w = has_weights_ ? weights_[i] : 1.0;
+						mean += w * y_data[i] - fixed_effects[i];
+						sec_mom += w * (y_data[i] - fixed_effects[i]) * (y_data[i] - fixed_effects[i]);
 					}
 				}
 				mean /= num_data;
@@ -834,1438 +876,6 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate the part of the logarithmic normalizing constant of the likelihood that does not depend on aux_pars_ and location_par
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param num_data Number of data points
-		*/
-		void CalculateAuxQuantLogNormalizingConstant(const double* y_data,
-			const int* y_data_int,
-			const data_size_t num_data) {
-			if (!aux_normalizing_constant_has_been_calculated_) {
-				if (likelihood_type_ == "gamma") {
-					double log_aux_normalizing_constant = 0.;
-#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
-					for (data_size_t i = 0; i < num_data; ++i) {
-						log_aux_normalizing_constant += AuxQuantLogNormalizingConstantGammaOneSample(y_data[i]);
-					}
-					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
-				}
-				else if (likelihood_type_ == "negative_binomial") {
-					double log_aux_normalizing_constant = 0.;
-#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
-					for (data_size_t i = 0; i < num_data; ++i) {
-						log_aux_normalizing_constant += AuxQuantLogNormalizingConstantNegBinOneSample(y_data_int[i]);
-					}
-					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
-				}
-				else if (likelihood_type_ != "gaussian" && likelihood_type_ != "gaussian_heteroscedastic" &&
-					likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
-					likelihood_type_ != "poisson" && likelihood_type_ != "t") {
-					Log::REFatal("CalculateAuxQuantLogNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
-				}
-				aux_normalizing_constant_has_been_calculated_ = true;
-			}
-		}//end CalculateAuxQuantLogNormalizingConstant
-
-		inline double AuxQuantLogNormalizingConstantGammaOneSample(const double y) const {
-			return(std::log(y));
-		}
-
-		inline double AuxQuantLogNormalizingConstantNegBinOneSample(const int y) const {
-			return(-std::lgamma(y + 1));
-		}
-
-		/*!
-		* \brief Calculate the logarithmic normalizing constant of the likelihood (not depending on location_par)
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param num_data Number of data points
-		*/
-		void CalculateLogNormalizingConstant(const double* y_data,
-			const int* y_data_int,
-			const data_size_t num_data) {
-			if (!normalizing_constant_has_been_calculated_) {
-				if (likelihood_type_ == "poisson") {
-					double aux_const = 0.;
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:aux_const)
-					for (data_size_t i = 0; i < num_data; ++i) {
-						aux_const += LogNormalizingConstantPoissonOneSample(y_data_int[i]);
-					}
-					log_normalizing_constant_ = aux_const;
-				}
-				else if (likelihood_type_ == "gamma") {
-					log_normalizing_constant_ = LogNormalizingConstantGamma(y_data, y_data_int, num_data);
-				}
-				else if (likelihood_type_ == "negative_binomial") {
-					log_normalizing_constant_ = LogNormalizingConstantNegBin(y_data, y_data_int, num_data);
-				}
-				else if (likelihood_type_ == "t") {
-					log_normalizing_constant_ = num_data * (-std::log(aux_pars_[0]) +
-						std::lgamma((aux_pars_[1] + 1.) / 2.) - 0.5 * std::log(aux_pars_[1]) -
-						std::lgamma(aux_pars_[1] / 2.) - 0.5 * std::log(M_PI));
-				}
-				else if (likelihood_type_ == "gaussian") {
-					log_normalizing_constant_ = -num_data * (M_LOGSQRT2PI + 0.5 * std::log(aux_pars_[0]));
-				}
-				else if (likelihood_type_ == "gaussian_heteroscedastic") {
-					log_normalizing_constant_ = -num_data * M_LOGSQRT2PI;
-				}
-				else if (likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit") {
-					Log::REFatal("CalculateLogNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
-				}
-				normalizing_constant_has_been_calculated_ = true;
-			}
-		}//end CalculateLogNormalizingConstant
-
-		inline double LogNormalizingConstantPoissonOneSample(const int y) const {
-			if (y > 1) {
-				double log_factorial = 0.;
-				for (int k = 2; k <= y; ++k) {
-					log_factorial += std::log(k);
-				}
-				return(-log_factorial);
-			}
-			else {
-				return(0.);
-			}
-		}
-
-		inline double LogNormalizingConstantGamma(const double* y_data, const int* y_data_int, const data_size_t num_data) {
-			CalculateAuxQuantLogNormalizingConstant(y_data, y_data_int, num_data);//note: the second argument is not used
-			if (TwoNumbersAreEqual<double>(aux_pars_[0], 1.)) {
-				return(0.);
-			}
-			else {
-				return((aux_pars_[0] - 1.) * aux_log_normalizing_constant_ +
-					num_data * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0])));
-			}
-		}
-
-		inline double LogNormalizingConstantGammaOneSample(const double y) const {
-			if (TwoNumbersAreEqual<double>(aux_pars_[0], 1.)) {
-				return(0.);
-			}
-			else {
-				return((aux_pars_[0] - 1.) * AuxQuantLogNormalizingConstantGammaOneSample(y) +
-					aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]));
-			}
-		}
-
-		inline double LogNormalizingConstantNegBin(const double* y_data, const int* y_data_int, const data_size_t num_data) {
-			CalculateAuxQuantLogNormalizingConstant(y_data, y_data_int, num_data);//note: the first argument is not used
-			double aux_const = 0.;
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:aux_const)
-			for (data_size_t i = 0; i < num_data; ++i) {
-				aux_const += std::lgamma(y_data_int[i] + aux_pars_[0]);
-			}
-			double norm_const = aux_const + aux_log_normalizing_constant_ +
-				num_data * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]));
-			return(norm_const);
-		}
-
-		inline double LogNormalizingConstantNegBinOneSample(const int y) const {
-			double norm_const = std::lgamma(y + aux_pars_[0]) + AuxQuantLogNormalizingConstantNegBinOneSample(y) +
-				aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]);
-			return(norm_const);
-		}
-
-		/*!
-		* \brief Evaluate the log-likelihood conditional on the latent variable (=location_par)
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param location_par Location parameter (random plus fixed effects)
-		* \param num_data Number of data points
-		*/
-		double LogLikelihood(const double* y_data,
-			const int* y_data_int,
-			const double* location_par,
-			const data_size_t num_data) {
-			CalculateLogNormalizingConstant(y_data, y_data_int, num_data);
-			double ll = 0.;
-			if (likelihood_type_ == "bernoulli_probit") {
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					ll += LogLikBernoulliProbit(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "bernoulli_logit") {
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					ll += LogLikBernoulliLogit(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "poisson") {
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					ll += LogLikPoisson(y_data_int[i], location_par[i], false);
-				}
-				ll += log_normalizing_constant_;
-			}
-			else if (likelihood_type_ == "gamma") {
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					ll += LogLikGamma(y_data[i], location_par[i], false);
-				}
-				ll += log_normalizing_constant_;
-			}
-			else if (likelihood_type_ == "negative_binomial") {
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					ll += LogLikNegBin(y_data_int[i], location_par[i], false);
-				}
-				ll += log_normalizing_constant_;
-			}
-			else if (likelihood_type_ == "t") {
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					ll += LogLikT(y_data[i], location_par[i], false);
-				}
-				ll += log_normalizing_constant_;
-			}
-			else if (likelihood_type_ == "gaussian") {
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					ll += LogLikGaussian(y_data[i], location_par[i], false);
-				}
-				ll += log_normalizing_constant_;
-			}
-			else if (likelihood_type_ == "gaussian_heteroscedastic") {
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					ll += LogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data], false);
-				}
-				ll += log_normalizing_constant_;
-			}
-			else {
-				Log::REFatal("LogLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-			}
-			return(ll);
-		}//end LogLikelihood
-
-		/*!
-		* \brief Evaluate the log-likelihood conditional on the latent variable (=location_par) for one sample
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param location_par Location parameter (random plus fixed effects)
-		*/
-		inline double LogLikelihoodOneSample(const double y_data,
-			const int y_data_int,
-			const double location_par) const {
-			if (likelihood_type_ == "bernoulli_probit") {
-				return(LogLikBernoulliProbit(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "bernoulli_logit") {
-				return(LogLikBernoulliLogit(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "poisson") {
-				return(LogLikPoisson(y_data_int, location_par, true));
-			}
-			else if (likelihood_type_ == "gamma") {
-				return(LogLikGamma(y_data, location_par, true));
-			}
-			else if (likelihood_type_ == "negative_binomial") {
-				return(LogLikNegBin(y_data_int, location_par, true));
-			}
-			else if (likelihood_type_ == "t") {
-				return(LogLikT(y_data, location_par, true));
-			}
-			else if (likelihood_type_ == "gaussian") {
-				return(LogLikGaussian(y_data, location_par, true));
-			}
-			else {
-				Log::REFatal("LogLikelihoodOneSample: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-				return(-1e99);
-			}
-		}//end LogLikelihood
-
-		inline double LogLikBernoulliProbit(const int y, const double location_par) const {
-			if (y == 0) {
-				return std::log(1 - GPBoost::normalCDF(location_par));
-			}
-			else {
-				return std::log(GPBoost::normalCDF(location_par));
-			}
-		}
-
-		inline double LogLikBernoulliLogit(const int y, const double location_par) const {
-			return (y * location_par - std::log(1 + std::exp(location_par)));
-			//Alternative version:
-			//if (y == 0) {
-			//  ll += std::log(1 - CondMeanLikelihood(location_par));//CondMeanLikelihood = logistic function
-			//}
-			//else {
-			//  ll += std::log(CondMeanLikelihood(location_par));
-			//}
-		}
-
-		inline double LogLikPoisson(const int y, const double location_par, bool incl_norm_const) const {
-			double ll = y * location_par - std::exp(location_par);
-			if (incl_norm_const) {
-				return (ll + LogNormalizingConstantPoissonOneSample(y));
-			}
-			else {
-				return (ll);
-			}
-		}
-
-		inline double LogLikGamma(const double y, const double location_par, bool incl_norm_const) const {
-			double ll = -aux_pars_[0] * (location_par + y * std::exp(-location_par));
-			if (incl_norm_const) {
-				return (ll + LogNormalizingConstantGammaOneSample(y));
-			}
-			else {
-				return (ll);
-			}
-		}
-
-		inline double LogLikNegBin(const int y, const double location_par, bool incl_norm_const) const {
-			double ll = y * location_par - (y + aux_pars_[0]) * std::log(std::exp(location_par) + aux_pars_[0]);
-			if (incl_norm_const) {
-				return (ll + LogNormalizingConstantNegBinOneSample(y));
-			}
-			else {
-				return (ll);
-			}
-		}
-
-		inline double LogLikT(const double y, const double location_par, bool incl_norm_const) const {
-			double ll = -(aux_pars_[1] + 1.) / 2. * std::log(1. + (y - location_par) * (y - location_par) / (aux_pars_[1] * aux_pars_[0] * aux_pars_[0]));
-			if (incl_norm_const) {
-				return (ll - std::log(aux_pars_[0]) +
-					std::lgamma((aux_pars_[1] + 1.) / 2.) - 0.5 * std::log(aux_pars_[1]) -
-					0.5 * std::lgamma(aux_pars_[1] / 2.) - 0.5 * std::log(M_PI));
-			}
-			else {
-				return (ll);
-			}
-		}
-
-		inline double LogLikGaussian(const double y, const double location_par, bool incl_norm_const) const {
-			double resid = y - location_par;
-			double ll = -resid * resid / 2. / aux_pars_[0];
-			if (incl_norm_const) {
-				return (ll - M_LOGSQRT2PI - 0.5 * std::log(aux_pars_[0]));
-			}
-			else {
-				return (ll);
-			}
-		}
-
-		inline double LogLikGaussianHeteroscedastic(const double y, const double location_par,
-			const double location_par2, bool incl_norm_const) const {
-			double resid = y - location_par;
-			double ll = -resid * resid * std::exp(-location_par2) / 2. - location_par2 / 2.;
-			if (incl_norm_const) {
-				return (ll - M_LOGSQRT2PI);
-			}
-			else {
-				return (ll);
-			}
-		}
-
-		/*!
-		* \brief Calculate the first derivative of the log-likelihood with respect to the location parameter
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param location_par Location parameter (random plus fixed effects)
-		*/
-		void CalcFirstDerivLogLik(const double* y_data,
-			const int* y_data_int,
-			const double* location_par) {
-			if (!use_Z_for_duplicates_) {
-				CalcFirstDerivLogLik_DataScale(y_data, y_data_int, location_par, first_deriv_ll_);
-			}
-			else {
-				CalcFirstDerivLogLik_DataScale(y_data, y_data_int, location_par, first_deriv_ll_data_scale_);
-				for (int igp = 0; igp < num_sets_re_; ++igp) {
-					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_,
-						first_deriv_ll_data_scale_.data() + num_data_ * igp, first_deriv_ll_.data() + dim_mode_per_set_re_ * igp, true);
-				}
-			}
-		}//end CalcFirstDerivLogLik
-
-		/*!
-		* \brief Calculate the first derivative of the log-likelihood with respect to the location parameter on the likelihood / "data-scale"
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param location_par Location parameter (random plus fixed effects)
-		* \param[out] first_deriv_ll First derivative
-		*/
-		void CalcFirstDerivLogLik_DataScale(const double* y_data,
-			const int* y_data_int,
-			const double* location_par,
-			vec_t& first_deriv_ll) {
-			if (likelihood_type_ == "bernoulli_probit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					first_deriv_ll[i] = FirstDerivLogLikBernoulliProbit(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "bernoulli_logit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					first_deriv_ll[i] = FirstDerivLogLikBernoulliLogit(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					first_deriv_ll[i] = FirstDerivLogLikPoisson(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					first_deriv_ll[i] = FirstDerivLogLikGamma(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "negative_binomial") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					first_deriv_ll[i] = FirstDerivLogLikNegBin(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "t") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					first_deriv_ll[i] = FirstDerivLogLikT(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "gaussian") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					first_deriv_ll[i] = FirstDerivLogLikGaussian(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "gaussian_heteroscedastic") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_],
-						first_deriv_ll[i], first_deriv_ll[i + num_data_]);
-				}
-			}
-			else {
-				Log::REFatal("CalcFirstDerivLogLik_DataScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-			}
-		}//end CalcFirstDerivLogLik_DataScale
-
-		/*!
-		* \brief Calculate the first derivative of the log-likelihood with respect to the location parameter
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param location_par Location parameter (random plus fixed effects)
-		*/
-		inline double CalcFirstDerivLogLikOneSample(const double y_data,
-			const int y_data_int,
-			const double location_par) const {
-			if (likelihood_type_ == "bernoulli_probit") {
-				return(FirstDerivLogLikBernoulliProbit(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "bernoulli_logit") {
-				return(FirstDerivLogLikBernoulliLogit(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "poisson") {
-				return(FirstDerivLogLikPoisson(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "gamma") {
-				return(FirstDerivLogLikGamma(y_data, location_par));
-			}
-			else if (likelihood_type_ == "negative_binomial") {
-				return(FirstDerivLogLikNegBin(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "t") {
-				return(FirstDerivLogLikT(y_data, location_par));
-			}
-			else if (likelihood_type_ == "gaussian") {
-				return(FirstDerivLogLikGaussian(y_data, location_par));
-			}
-			else {
-				Log::REFatal("CalcFirstDerivLogLikOneSample: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-				return(0.);
-			}
-		}//end CalcFirstDerivLogLikOneSample
-
-		inline double FirstDerivLogLikBernoulliProbit(const int y, const double location_par) const {
-			if (y == 0) {
-				return (-GPBoost::normalPDF(location_par) / (1 - GPBoost::normalCDF(location_par)));
-			}
-			else {
-				return (GPBoost::normalPDF(location_par) / GPBoost::normalCDF(location_par));
-			}
-		}
-
-		inline double FirstDerivLogLikBernoulliLogit(const int y, const double location_par) const {
-			return (y - 1. / (1. + std::exp(-location_par)));
-		}
-
-		inline double FirstDerivLogLikPoisson(const int y, const double location_par) const {
-			return (y - std::exp(location_par));
-		}
-
-		inline double FirstDerivLogLikGamma(const double y, const double location_par) const {
-			return (aux_pars_[0] * (y * std::exp(-location_par) - 1.));
-		}
-
-		inline double FirstDerivLogLikNegBin(const int y, const double location_par) const {
-			double mu = std::exp(location_par);
-			return (y - (y + aux_pars_[0]) / (mu + aux_pars_[0]) * mu);
-		}
-
-		inline double FirstDerivLogLikT(const double y, const double location_par) const {
-			double res = (y - location_par);
-			return (aux_pars_[1] + 1.) * res / (aux_pars_[1] * aux_pars_[0] * aux_pars_[0] + res * res);
-		}
-
-		inline double FirstDerivLogLikGaussian(const double y, const double location_par) const {
-			return ((y - location_par) / aux_pars_[0]);
-		}
-
-		inline void FirstDerivLogLikGaussianHeteroscedastic(const double y, const double location_par, const double location_par2,
-			double& first_deriv, double& first_deriv2) const {
-			double sigma2_inv = std::exp(-location_par2);
-			double resid = y - location_par;
-			first_deriv = resid * sigma2_inv;
-			first_deriv2 = (first_deriv * resid - 1.) / 2.;
-		}
-
-
-		/*!
-		* \brief Calculate (usually only the diagonal) the Fisher information (=usually the second derivative of the negative (!) log-likelihood with respect to the location parameter, i.e., the observed FI)
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param location_par Location parameter (random plus fixed effects)
-		* \param called_during_mode_finding Indicates whether this function is called during the mode finding algorithm or after the mode is found for the final approximation
-		*/
-		void CalcInformationLogLik(const double* y_data,
-			const int* y_data_int,
-			const double* location_par,
-			bool called_during_mode_finding) {
-			if (!use_Z_for_duplicates_) {
-				CalcInformationLogLik_DataScale(y_data, y_data_int, location_par, called_during_mode_finding, information_ll_, off_diag_information_ll_);
-			}
-			else {
-				CalcInformationLogLik_DataScale(y_data, y_data_int, location_par, called_during_mode_finding, information_ll_data_scale_, off_diag_information_ll_data_scale_);
-				for (int igp = 0; igp < num_sets_re_; ++igp) {
-					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_,
-						information_ll_data_scale_.data() + num_data_ * igp, information_ll_.data() + dim_mode_per_set_re_ * igp, true);
-				}
-				if (information_has_off_diagonal_) {
-					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, off_diag_information_ll_data_scale_.data(), off_diag_information_ll_.data(), true);
-				}
-			}
-			if (HasNegativeValueInformationLogLik()) {
-				Log::REDebug("Negative values found in the (diagonal) Hessian / Fisher information for the Laplace approximation. "
-					"This is not necessarily a problem, but it could lead to non-positive definite matrices ");
-			}
-			if (information_has_off_diagonal_) {
-				CHECK(num_sets_re_ == 2);
-				information_ll_mat_ = sp_mat_t(dim_mode_, dim_mode_);
-				std::vector<Triplet_t> triplets(dim_mode_per_set_re_ * 4);
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < dim_mode_; ++i) {
-					triplets[i] = Triplet_t(i, i, information_ll_[i]);
-				}
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < dim_mode_per_set_re_; ++i) {
-					triplets[dim_mode_ + i] = Triplet_t(i, i + dim_mode_per_set_re_, off_diag_information_ll_[i]);
-					triplets[dim_mode_ + dim_mode_per_set_re_ + i] = Triplet_t(i + dim_mode_per_set_re_, i, off_diag_information_ll_[i]);
-				}
-				information_ll_mat_.setFromTriplets(triplets.begin(), triplets.end());
-			}
-		}//end CalcInformationLogLik
-
-		/*!
-		* \brief Calculate (usually only the diagonal) the Fisher information (=usually the second derivative of the negative (!) log-likelihood with respect to the location parameter, i.e., the observed FI) on the likelihood / "data-scale"
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param location_par Location parameter (random plus fixed effects)
-		* \param called_during_mode_finding Indicates whether this function is called during the mode finding algorithm or after the mode is found for the final approximation
-		* \param[out] information_ll Diagonal of information
-		* \param[out] off_diag_information_ll Off-diagonal of information (if applicable)
-		*/
-		void CalcInformationLogLik_DataScale(const double* y_data,
-			const int* y_data_int,
-			const double* location_par,
-			bool called_during_mode_finding,
-			vec_t& information_ll,
-			vec_t& off_diag_information_ll) {
-			string_t approximation_type_local;
-			if (use_fisher_for_mode_finding_ && called_during_mode_finding) {
-				approximation_type_local = "fisher_laplace";
-			}
-			else {
-				approximation_type_local = approximation_type_;
-			}
-			if (approximation_type_local == "laplace") {
-				if (likelihood_type_ == "bernoulli_probit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						information_ll[i] = SecondDerivNegLogLikBernoulliProbit(y_data_int[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "bernoulli_logit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						information_ll[i] = SecondDerivNegLogLikBernoulliLogit(location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						information_ll[i] = SecondDerivNegLogLikPoisson(location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						information_ll[i] = SecondDerivNegLogLikGamma(y_data[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "negative_binomial") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						information_ll[i] = SecondDerivNegLogLikNegBin(y_data_int[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "t") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						information_ll[i] = SecondDerivNegLogLikT(y_data[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "gaussian") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						information_ll[i] = SecondDerivNegLogLikGaussian();
-					}
-				}
-				else if (likelihood_type_ == "gaussian_heteroscedastic") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						SecondDerivNegLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_],
-							information_ll[i], information_ll[i + num_data_], off_diag_information_ll[i]);
-					}
-				}
-				else {
-					Log::REFatal("CalcInformationLogLik_DataScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-				}
-			}//end approximation_type_local == "laplace"
-			else if (approximation_type_local == "fisher_laplace") {
-				if (likelihood_type_ == "bernoulli_logit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						information_ll[i] = SecondDerivNegLogLikBernoulliLogit(location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						information_ll[i] = SecondDerivNegLogLikPoisson(location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "t") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						information_ll[i] = FisherInformationT();
-					}
-				}
-				else if (likelihood_type_ == "gaussian") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						information_ll[i] = SecondDerivNegLogLikGaussian();
-					}
-				}
-				else if (likelihood_type_ == "gaussian_heteroscedastic") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						FisherInformationGaussianHeteroscedastic(location_par[i + num_data_], information_ll[i], information_ll[i + num_data_]);
-					}
-				}
-				else {
-					Log::REFatal("CalcInformationLogLik_DataScale: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_local.c_str());
-				}
-			}//end approximation_type_local == "fisher_laplace"
-			else if (approximation_type_local == "lss_laplace") {
-				if (!use_Z_for_duplicates_) {
-					Log::REFatal("CalcInformationLogLik_DataScale: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_local.c_str());
-				}//end !use_Z_for_duplicates_
-				else {//use_Z_for_duplicates_
-					Log::REFatal("CalcInformationLogLik_DataScale: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_local.c_str());
-				}//end use_Z_for_duplicates_
-			}//end approximation_type_local == "lss_laplace"
-			else {
-				Log::REFatal("CalcInformationLogLik_DataScale: approximation_type '%s' is not supported ", approximation_type_local.c_str());
-			}
-		}// end CalcInformationLogLik_DataScale
-
-		/*!
-		* \brief Calculate the diagonal of the Fisher information (=usually the second derivative of the negative (!) log-likelihood with respect to the location parameter, i.e., the observed FI)
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param location_par Location parameter (random plus fixed effects)
-		*/
-		inline double CalcDiagInformationLogLikOneSample(const double y_data,
-			const int y_data_int,
-			const double location_par) const {
-			if (approximation_type_ == "laplace") {
-				if (likelihood_type_ == "bernoulli_probit") {
-					return(SecondDerivNegLogLikBernoulliProbit(y_data_int, location_par));
-				}
-				else if (likelihood_type_ == "bernoulli_logit") {
-					return(SecondDerivNegLogLikBernoulliLogit(location_par));
-				}
-				else if (likelihood_type_ == "poisson") {
-					return(SecondDerivNegLogLikPoisson(location_par));
-				}
-				else if (likelihood_type_ == "gamma") {
-					return(SecondDerivNegLogLikGamma(y_data, location_par));
-				}
-				else if (likelihood_type_ == "negative_binomial") {
-					return(SecondDerivNegLogLikNegBin(y_data_int, location_par));
-				}
-				else if (likelihood_type_ == "gaussian") {
-					return(SecondDerivNegLogLikGaussian());
-				}
-				else {
-					Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-					return(1.);
-				}
-			}//end approximation_type_ == "laplace"
-			else if (approximation_type_ == "fisher_laplace") {
-				if (likelihood_type_ == "bernoulli_logit") {
-					return(SecondDerivNegLogLikBernoulliLogit(location_par));
-				}
-				else if (likelihood_type_ == "poisson") {
-					return(SecondDerivNegLogLikPoisson(location_par));
-				}
-				else if (likelihood_type_ == "t") {
-					return(FisherInformationT());
-				}
-				else if (likelihood_type_ == "gaussian") {
-					return(SecondDerivNegLogLikGaussian());
-				}
-				else {
-					Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
-					return(1.);
-				}
-			}//end approximation_type_ == "fisher_laplace"
-			else {
-				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type '%s' is not supported ", approximation_type_.c_str());
-				return(1.);
-			}
-		}// end CalcDiagInformationLogLikOneSample
-
-		inline double SecondDerivNegLogLikBernoulliProbit(const int y, const double location_par) const {
-			double dnorm = GPBoost::normalPDF(location_par);
-			double pnorm = GPBoost::normalCDF(location_par);
-			if (y == 0) {
-				double dnorm_frac_one_min_pnorm = dnorm / (1. - pnorm);
-				return (-dnorm_frac_one_min_pnorm * (location_par - dnorm_frac_one_min_pnorm));
-			}
-			else {
-				double dnorm_frac_pnorm = dnorm / pnorm;
-				return (dnorm_frac_pnorm * (location_par + dnorm_frac_pnorm));
-			}
-		}
-
-		inline double SecondDerivNegLogLikBernoulliLogit(const double location_par) const {
-			double exp_loc_i = std::exp(location_par);
-			return (exp_loc_i / ((1. + exp_loc_i) * (1. + exp_loc_i)));
-		}
-
-		inline double SecondDerivNegLogLikPoisson(const double location_par) const {
-			return std::exp(location_par);
-		}
-
-		inline double SecondDerivNegLogLikGamma(const double y, const double location_par) const {
-			return (aux_pars_[0] * y * std::exp(-location_par));
-		}
-
-		inline double SecondDerivNegLogLikNegBin(const int y, const double location_par) const {
-			double mu = std::exp(location_par);
-			double mu_plus_r = mu + aux_pars_[0];
-			return ((y + aux_pars_[0]) * mu * aux_pars_[0] / (mu_plus_r * mu_plus_r));
-		}
-
-		inline double SecondDerivNegLogLikGaussian() const {
-			return (1 / aux_pars_[0]);
-		}
-
-		inline double SecondDerivNegLogLikT(const double y, const double location_par) const {
-			double res_sq = (y - location_par) * (y - location_par);
-			double nu_sigma2 = aux_pars_[1] * aux_pars_[0] * aux_pars_[0];
-			return (-(aux_pars_[1] + 1.) * (res_sq - nu_sigma2) / ((nu_sigma2 + res_sq) * (nu_sigma2 + res_sq)));
-		}
-
-		inline double FisherInformationT() const {
-			return ((aux_pars_[1] + 1.) / (aux_pars_[1] + 3.) / (aux_pars_[0] * aux_pars_[0]));
-		}
-
-		inline void SecondDerivNegLogLikGaussianHeteroscedastic(const double y, const double location_par, const double location_par2,
-			double& second_deriv, double& second_deriv2, double& off_diag_second_deriv) const {
-			double sigma2_inv = std::exp(-location_par2);
-			double resid = y - location_par;
-			second_deriv = sigma2_inv;
-			second_deriv2 = resid * resid * sigma2_inv / 2.;
-			off_diag_second_deriv = resid * sigma2_inv;
-		}
-
-		inline void FisherInformationGaussianHeteroscedastic(const double location_par_var, double& second_deriv, double& second_deriv2) const {
-			second_deriv = std::exp(-location_par_var);
-			second_deriv2 = 1 / 2.;
-		}
-
-		/*!
-		* \brief Calculate the first derivative of the diagonal of the Fisher information wrt the location parameter. This is usually the negative third derivative of the log-likelihood wrt the location parameter.
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param location_par Location parameter (random plus fixed effects)
-		* \param[out] deriv_information_diag_loc_par First derivative of the diagonal of the Fisher information wrt the location parameter
-		* \param[out] deriv_information_diag_loc_par_data_scale First derivative of the diagonal of the Fisher information wrt the location parameter on the data-scale (only used if use_Z_for_duplicates_)
-		*/
-		void CalcFirstDerivInformationLocPar(const double* y_data,
-			const int* y_data_int,
-			const double* location_par,
-			vec_t& deriv_information_diag_loc_par,
-			vec_t& deriv_information_diag_loc_par_data_scale) {
-			CHECK(grad_information_wrt_mode_non_zero_);
-			deriv_information_diag_loc_par = vec_t(dim_mode_per_set_re_);
-			if (use_Z_for_duplicates_) {
-				deriv_information_diag_loc_par_data_scale = vec_t(num_data_);
-				CalcFirstDerivInformationLocPar_DataScale(y_data, y_data_int, location_par, deriv_information_diag_loc_par_data_scale);
-				CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_, deriv_information_diag_loc_par_data_scale.data(), deriv_information_diag_loc_par.data(), true);
-			}
-			else {
-				CalcFirstDerivInformationLocPar_DataScale(y_data, y_data_int, location_par, deriv_information_diag_loc_par);
-			}
-		}//end CalcFirstDerivInformationLocPar
-
-		/*!
-		* \brief Calculate the first derivative of the diagonal of the Fisher information wrt the location parameter on the likelihood / "data-scale". This is usually the negative third derivative of the log-likelihood wrt the location parameter.
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param location_par Location parameter (random plus fixed effects)
-		* \param[out] deriv_information_diag_loc_par First derivative of the diagonal of the Fisher information wrt the location parameter
-		*/
-		void CalcFirstDerivInformationLocPar_DataScale(const double* y_data,
-			const int* y_data_int,
-			const double* location_par,
-			vec_t& deriv_information_diag_loc_par) {
-			if (approximation_type_ == "laplace") {
-				if (likelihood_type_ == "bernoulli_probit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						double dnorm = GPBoost::normalPDF(location_par[i]);
-						double pnorm = GPBoost::normalCDF(location_par[i]);
-						if (y_data_int[i] == 0) {
-							double dnorm_frac_one_min_pnorm = dnorm / (1. - pnorm);
-							deriv_information_diag_loc_par[i] = -dnorm_frac_one_min_pnorm * (1 - location_par[i] * location_par[i] +
-								dnorm_frac_one_min_pnorm * (3 * location_par[i] - 2 * dnorm_frac_one_min_pnorm));
-						}
-						else {
-							double dnorm_frac_pnorm = dnorm / pnorm;
-							deriv_information_diag_loc_par[i] = -dnorm_frac_pnorm * (location_par[i] * location_par[i] - 1 +
-								dnorm_frac_pnorm * (3 * location_par[i] + 2 * dnorm_frac_pnorm));
-						}
-					}
-				}
-				else if (likelihood_type_ == "bernoulli_logit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						double exp_loc_i = std::exp(location_par[i]);
-						deriv_information_diag_loc_par[i] = exp_loc_i * (1. - exp_loc_i) / std::pow(1 + exp_loc_i, 3);
-					}
-				}
-				else if (likelihood_type_ == "poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						deriv_information_diag_loc_par[i] = std::exp(location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						deriv_information_diag_loc_par[i] = -aux_pars_[0] * y_data[i] * std::exp(-location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "negative_binomial") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						double mu = std::exp(location_par[i]);
-						double mu_plus_r = mu + aux_pars_[0];
-						deriv_information_diag_loc_par[i] = -(y_data_int[i] + aux_pars_[0]) * mu * aux_pars_[0] * (mu - aux_pars_[0]) / (mu_plus_r * mu_plus_r * mu_plus_r);
-					}
-				}
-				else if (likelihood_type_ == "t") {
-					double nu_sigma2 = aux_pars_[1] * aux_pars_[0] * aux_pars_[0];
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						double res = y_data[i] - location_par[i];
-						double res_sq = res * res;
-						double denom = nu_sigma2 + res_sq;
-						deriv_information_diag_loc_par[i] = -2. * (aux_pars_[1] + 1.) * (res_sq - 3. * nu_sigma2) * res / (denom * denom * denom);
-					}
-				}
-				else if (likelihood_type_ == "gaussian") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						deriv_information_diag_loc_par[i] = 0.;
-					}
-				}
-				else {
-					Log::REFatal("CalcFirstDerivInformationLocPar_DataScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-				}
-			}//end approximation_type_ == "laplace"
-			else if (approximation_type_ == "fisher_laplace") {
-				if (likelihood_type_ == "bernoulli_logit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						double exp_loc_i = std::exp(location_par[i]);
-						deriv_information_diag_loc_par[i] = exp_loc_i * (1. - exp_loc_i) / std::pow(1 + exp_loc_i, 3);
-					}
-				}
-				else if (likelihood_type_ == "poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						deriv_information_diag_loc_par[i] = std::exp(location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "t") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						deriv_information_diag_loc_par[i] = 0.;
-					}
-				}
-				else if (likelihood_type_ == "gaussian") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						deriv_information_diag_loc_par[i] = 0.;
-					}
-				}
-				else if (likelihood_type_ == "gaussian_heteroscedastic") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						deriv_information_diag_loc_par[i] = -std::exp(-location_par[i + num_data_]);
-					}
-				}
-				else {
-					Log::REFatal("CalcFirstDerivInformationLocPar_DataScale: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
-				}
-			}// end approximation_type_ == "fisher_laplace"
-			else if (approximation_type_ == "lss_laplace") {
-				Log::REFatal("CalcFirstDerivInformationLocPar_DataScale: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-					likelihood_type_.c_str(), approximation_type_.c_str());
-			}//end approximation_type_ == "lss_laplace"
-			else {
-				Log::REFatal("CalcFirstDerivInformationLocPar_DataScale: approximation_type '%s' is not supported ", approximation_type_.c_str());
-			}
-			first_deriv_information_loc_par_caluclated_ = true;
-		}//end CalcFirstDerivInformationLocPar_DataScale
-
-		/*!
-		* \brief Calculates the gradient of the negative log-likelihood with respect to the
-		*       additional parameters of the likelihood (e.g., shape for gamma). The gradient is usually calculated on the log-scale.
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param location_par Location parameter (random plus fixed effects)
-		* \param num_data Number of data points
-		* \param[out] grad Gradient
-		*/
-		void CalcGradNegLogLikAuxPars(const double* y_data,
-			const int* y_data_int,
-			const double* location_par,
-			const data_size_t num_data,
-			double* grad) const {
-			if (likelihood_type_ == "gamma") {
-				CHECK(aux_normalizing_constant_has_been_calculated_);
-				double neg_log_grad = 0.;//gradient for shape parameter is calculated on the log-scale
-#pragma omp parallel for schedule(static) reduction(+:neg_log_grad)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					neg_log_grad += location_par[i] + y_data[i] * std::exp(-location_par[i]);
-				}
-				neg_log_grad -= num_data * (std::log(aux_pars_[0]) + 1. - GPBoost::digamma(aux_pars_[0]));
-				neg_log_grad -= aux_log_normalizing_constant_;
-				neg_log_grad *= aux_pars_[0];
-				grad[0] = neg_log_grad;
-			}
-			else if (likelihood_type_ == "negative_binomial") {
-				//gradient for shape parameter is calculated on the log-scale
-				double neg_log_grad = 0.;
-#pragma omp parallel for schedule(static) reduction(+:neg_log_grad)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					double mu_plus_r = std::exp(location_par[i]) + aux_pars_[0];
-					double y_plus_r = y_data_int[i] + aux_pars_[0];
-					neg_log_grad += aux_pars_[0] * (-GPBoost::digamma(y_plus_r) + std::log(mu_plus_r) + y_plus_r / mu_plus_r);
-				}
-				neg_log_grad += num_data * aux_pars_[0] * (GPBoost::digamma(aux_pars_[0]) - std::log(aux_pars_[0]) - 1);
-				grad[0] = neg_log_grad;
-			}
-			else if (likelihood_type_ == "t") {
-				//gradients are calculated on the log-scale
-				double nu_sigma2 = aux_pars_[1] * aux_pars_[0] * aux_pars_[0];
-				double neg_log_grad_scale = 0., neg_log_grad_df = 0.;
-#pragma omp parallel for schedule(static) reduction(+:neg_log_grad_scale, neg_log_grad_df)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					double res_sq = (y_data[i] - location_par[i]) * (y_data[i] - location_par[i]);
-					neg_log_grad_scale -= (aux_pars_[1] + 1.) / (nu_sigma2 / res_sq + 1.);
-					if (estimate_df_t_) {
-						neg_log_grad_df += -aux_pars_[1] * std::log(1 + res_sq / nu_sigma2) + (aux_pars_[1] + 1.) / (1. + nu_sigma2 / res_sq);
-					}
-				}
-				neg_log_grad_scale += num_data;
-				grad[0] = neg_log_grad_scale;
-				if (estimate_df_t_) {
-					neg_log_grad_df += num_data * (-1. + aux_pars_[1] * (GPBoost::digamma((aux_pars_[1] + 1) / 2.) - GPBoost::digamma(aux_pars_[1] / 2.)));
-					neg_log_grad_df /= -2.;
-					grad[1] = neg_log_grad_df;
-				}
-			}//end "t"
-			else if (likelihood_type_ == "gaussian") {
-				//gradient for variance parameter is calculated on the log-scale
-				double neg_log_grad = 0.;
-#pragma omp parallel for schedule(static) reduction(+:neg_log_grad)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					double resid = y_data[i] - location_par[i];
-					neg_log_grad += resid * resid;
-				}
-				neg_log_grad *= -0.5 / aux_pars_[0];
-				neg_log_grad += 0.5 * num_data;
-				grad[0] = neg_log_grad;
-			}//end "gaussian"
-			else if (num_aux_pars_estim_ > 0) {
-				Log::REFatal("CalcGradNegLogLikAuxPars: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-			}
-		}//end CalcGradNegLogLikAuxPars
-
-		/*!
-		* \brief Calculates (i) the second derivative of the log-likelihood wrt the location parameter and an additional parameter of the likelihood
-		* and (ii) the first derivative of the diagonal of the Fisher information of the likelihood wrt an additional parameter of the likelihood.
-		* The latter (ii) is ususally negative third derivative of the log-likelihood wrt twice the location parameter and an additional parameter of the likelihood.
-		* The gradient wrt to the additional parameter is usually calculated on the log-scale.
-		* \param y_data Response variable data if response variable is continuous
-		* \param y_data_int Response variable data if response variable is integer-valued
-		* \param location_par Location parameter (random plus fixed effects)
-		* \param num_data Number of data points
-		* \param ind_aux_par Index of aux_pars_ wrt which the gradient is calculated (currently no used as there is only one)
-		* \param[out] second_deriv_loc_aux_par Second derivative of the log-likelihood wrt the location parameter and an additional parameter of the likelihood
-		* \param[out] deriv_information_aux_par First derivative of the diagonal of the Fisher information of the likelihood wrt an additional parameter of the likelihood
-		*/
-		void CalcSecondDerivLogLikFirstDerivInformationAuxPar(const double* y_data,
-			const int* y_data_int,
-			const double* location_par,
-			const data_size_t num_data,
-			int ind_aux_par,
-			double* second_deriv_loc_aux_par,
-			double* deriv_information_aux_par) const {
-			if (approximation_type_ == "laplace") {
-				if (likelihood_type_ == "gamma") {
-					//note: gradient wrt to aux_pars_[0] on the log-scale
-					CHECK(ind_aux_par == 0);
-#pragma omp parallel for schedule(static)
-					for (data_size_t i = 0; i < num_data; ++i) {
-						second_deriv_loc_aux_par[i] = aux_pars_[0] * (y_data[i] * std::exp(-location_par[i]) - 1.);
-						deriv_information_aux_par[i] = second_deriv_loc_aux_par[i] + aux_pars_[0];
-					}
-				}
-				else if (likelihood_type_ == "negative_binomial") {
-					//gradient for shape parameter is calculated on the log-scale
-					CHECK(ind_aux_par == 0);
-#pragma omp parallel for schedule(static)
-					for (data_size_t i = 0; i < num_data; ++i) {
-						double mu = std::exp(location_par[i]);
-						double mu_plus_r = mu + aux_pars_[0];
-						double y_plus_r = y_data_int[i] + aux_pars_[0];
-						double mu_r_div_mu_plus_r_sqr = mu * aux_pars_[0] / (mu_plus_r * mu_plus_r);
-						second_deriv_loc_aux_par[i] = mu_r_div_mu_plus_r_sqr * (y_data_int[i] - mu);
-						deriv_information_aux_par[i] = -mu_r_div_mu_plus_r_sqr * (y_data_int[i] * (aux_pars_[0] - mu) - 2 * aux_pars_[0] * mu) / y_plus_r;
-					}
-				}
-				else if (likelihood_type_ == "t") {
-					CHECK(ind_aux_par == 0 || ind_aux_par == 1);
-					if (ind_aux_par == 0) {
-						//gradient for scale parameter is calculated on the log-scale
-						double sigma2 = aux_pars_[0] * aux_pars_[0];
-						double nu_sigma2 = aux_pars_[1] * sigma2;
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data; ++i) {
-							double res = y_data[i] - location_par[i];
-							double res_sq = res * res;
-							double denom = nu_sigma2 + res_sq;
-							double denom_sq = denom * denom;
-							second_deriv_loc_aux_par[i] = -2. * (aux_pars_[1] + 1.) * aux_pars_[1] * res * sigma2 / denom_sq;
-							deriv_information_aux_par[i] = 2. * (aux_pars_[1] + 1.) * aux_pars_[1] * sigma2 * (3. * res_sq - nu_sigma2) / (denom_sq * denom);
-						}
-					}
-					else if (ind_aux_par == 1) {
-						CHECK(estimate_df_t_);
-						//gradient for df parameter is calculated on the log-scale
-						double sigma2 = aux_pars_[0] * aux_pars_[0];
-						double nu_sigma2 = aux_pars_[1] * sigma2;
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data; ++i) {
-							double res = y_data[i] - location_par[i];
-							double res_sq = res * res;
-							double denom = nu_sigma2 + res_sq;
-							double denom_sq = denom * denom;
-							second_deriv_loc_aux_par[i] = aux_pars_[1] * res * (res_sq - sigma2) / denom_sq;
-							deriv_information_aux_par[i] = -aux_pars_[1] * (res_sq * res_sq + nu_sigma2 * sigma2 -
-								3. * res_sq * sigma2 * (aux_pars_[1] + 1)) / (denom_sq * denom);
-						}
-					}
-				}//end "t"
-				else if (likelihood_type_ == "gaussian") {
-					//gradient for variance parameter is calculated on the log-scale
-					CHECK(ind_aux_par == 0);
-#pragma omp parallel for schedule(static)
-					for (data_size_t i = 0; i < num_data; ++i) {
-						second_deriv_loc_aux_par[i] = (location_par[i] - y_data[i]) / aux_pars_[0];
-						deriv_information_aux_par[i] = -1. / aux_pars_[0];
-					}
-				}//end "gaussian"
-				else if (num_aux_pars_estim_ > 0) {
-					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
-				}
-			}//end approximation_type_ == "laplace"
-			else if (approximation_type_ == "fisher_laplace") {
-				if (likelihood_type_ == "t") {
-					CHECK(ind_aux_par == 0 || ind_aux_par == 1);
-					if (ind_aux_par == 0) {
-						//gradient for scale parameter is calculated on the log-scale
-						double sigma2 = aux_pars_[0] * aux_pars_[0];
-						double nu_sigma2 = aux_pars_[1] * sigma2;
-						double deriv_FI = -2. * (aux_pars_[1] + 1.) / (aux_pars_[1] + 3.) / sigma2;
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data; ++i) {
-							double res = y_data[i] - location_par[i];
-							double denom = nu_sigma2 + res * res;
-							double denom_sq = denom * denom;
-							second_deriv_loc_aux_par[i] = -2. * (aux_pars_[1] + 1.) * aux_pars_[1] * res * sigma2 / denom_sq;
-							deriv_information_aux_par[i] = deriv_FI;
-						}
-					}
-					else if (ind_aux_par == 1) {
-						CHECK(estimate_df_t_);
-						//gradient for df parameter is calculated on the log-scale
-						double sigma2 = aux_pars_[0] * aux_pars_[0];
-						double nu_sigma2 = aux_pars_[1] * sigma2;
-						double deriv_FI = aux_pars_[1] * 2. / sigma2 / (aux_pars_[1] + 3.) / (aux_pars_[1] + 3.);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data; ++i) {
-							double res = y_data[i] - location_par[i];
-							double res_sq = res * res;
-							double denom = nu_sigma2 + res_sq;
-							double denom_sq = denom * denom;
-							second_deriv_loc_aux_par[i] = aux_pars_[1] * res * (res_sq - sigma2) / denom_sq;
-							deriv_information_aux_par[i] = deriv_FI;
-						}
-					}
-				}//end "t"
-				else if (num_aux_pars_estim_ > 0) {
-					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
-				}
-			}// end approximation_type_ == "fisher_laplace"
-			else if (approximation_type_ == "lss_laplace") {
-				if (num_aux_pars_estim_ > 0) {
-					Log::REFatal("CalcSecondDerivLogLikFirstDerivInformationAuxPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
-				}
-			}//end approximation_type_ == "lss_laplace"
-			else {
-				Log::REFatal("CalcSecondDerivLogLikFirstDerivInformationAuxPar: approximation_type '%s' is not supported ", approximation_type_.c_str());
-			}
-		}//end CalcSecondDerivLogLikFirstDerivInformationAuxPar
-
-		/*!
-		* \brief Calculate the mean of the likelihood conditional on the (predicted) latent variable
-		*           Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
-		*/
-		inline double CondMeanLikelihood(const double value) const {
-			if (likelihood_type_ == "gaussian" || likelihood_type_ == "t") {
-				return value;
-			}
-			else if (likelihood_type_ == "bernoulli_probit") {
-				return GPBoost::normalCDF(value);
-			}
-			else if (likelihood_type_ == "bernoulli_logit") {
-				return 1. / (1. + std::exp(-value));
-			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial") {
-				return std::exp(value);
-			}
-			else {
-				Log::REFatal("CondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-				return 0.;
-			}
-		}
-
-		/*!
-		* \brief Calculate the first derivative of the logarithm of the mean of the likelihood conditional on the (predicted) latent variable
-		*           Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
-		*/
-		inline double FirstDerivLogCondMeanLikelihood(const double value) const {
-			if (likelihood_type_ == "bernoulli_logit") {
-				return 1. / (1. + std::exp(value));
-			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial") {
-				return 1.;
-			}
-			else if (likelihood_type_ == "t" || likelihood_type_ == "gaussian") {
-				return (1. / value);
-			}
-			else {
-				Log::REFatal("FirstDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-				return 0.;
-			}
-		}
-
-		/*!
-		* \brief Calculate the second derivative of the logarithm of the mean of the likelihood conditional on the (predicted) latent variable
-		*           Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
-		*/
-		inline double SecondDerivLogCondMeanLikelihood(const double value) const {
-			if (likelihood_type_ == "bernoulli_logit") {
-				double exp_x = std::exp(value);
-				return -exp_x / ((1. + exp_x) * (1. + exp_x));
-			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial") {
-				return 0.;
-			}
-			else if (likelihood_type_ == "t" || likelihood_type_ == "gaussian") {
-				return (-1. / (value * value));
-			}
-			else {
-				Log::REFatal("SecondDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-				return 0.;
-			}
-		}
-
-		/*!
-		* \brief Do Cholesky decomposition
-		* \param[out] chol_fact Cholesky factor
-		* \param psi Matrix for which the Cholesky decomposition should be done
-		*/
-		template <class T_mat_1, typename std::enable_if <std::is_same<sp_mat_t, T_mat_1>::value ||
-			std::is_same<sp_mat_rm_t, T_mat_1>::value>::type* = nullptr >
-        void CalcChol(T_chol& chol_fact, const T_mat_1& psi) {
-			if (!chol_fact_pattern_analyzed_) {
-				chol_fact.analyzePattern(psi);
-				chol_fact_pattern_analyzed_ = true;
-			}
-			chol_fact.factorize(psi);
-		}
-		template <class T_mat_1, typename std::enable_if <std::is_same<den_mat_t, T_mat_1>::value>::type* = nullptr  >
-		void CalcChol(T_chol& chol_fact, const T_mat_1& psi) {
-			chol_fact.compute(psi);
-		}
-
-		// Initialize location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-		/*!
-		* \brief Auxiliary function for initializinh the location parameter = mode of random effects + fixed effects
-		* \param fixed_effects Fixed effects component of location parameter
-		* \param[out] location_par Locatioon parameter (used only if use_Z_for_duplicates_)
-		* \param[out] location_par_ptr Pointer to location parameter
-		*/
-		void InitializeLocationPar(const double* fixed_effects,
-			vec_t& location_par,
-			double** location_par_ptr) {
-			if (use_Z_for_duplicates_ || fixed_effects != nullptr) {
-				location_par = vec_t(dim_location_par_);// if !use_Z_for_duplicates_ && fixed_effects == nullptr, then location_par is not used and *location_par_ptr = mode_.data()
-			}
-			UpdateLocationPar(mode_, fixed_effects, location_par, location_par_ptr);
-		}// end InitializeLocationPar
-
-		/*!
-		* \brief Auxiliary function for updating the location parameter = mode of random effects + fixed effects
-		* \param mode Mode
-		* \param fixed_effects Fixed effects component of location parameter
-		* \param[out] location_par Location parameter
-		* \param[out] location_par_ptr Pointer to location parameter
-		*/
-		void UpdateLocationPar(vec_t& mode,
-			const double* fixed_effects,
-			vec_t& location_par,
-			double** location_par_ptr) {
-			if (use_Z_for_duplicates_) {
-				for (int igp = 0; igp < num_sets_re_; ++igp) {
-					if (fixed_effects == nullptr) {
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							location_par[i + igp * num_data_] = mode[random_effects_indices_of_data_[i] + igp * dim_mode_per_set_re_];
-						}
-					}
-					else {
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							location_par[i + igp * num_data_] = mode[random_effects_indices_of_data_[i] + igp * dim_mode_per_set_re_] + fixed_effects[i + igp * num_data_];
-						}
-					}
-				}
-				*location_par_ptr = location_par.data();
-			}//end use_Z_for_duplicates_
-			else {
-				CHECK(dim_location_par_ == dim_mode_);
-				if (fixed_effects == nullptr) {
-					*location_par_ptr = mode.data();
-				}
-				else {
-#pragma omp parallel for schedule(static)
-					for (data_size_t i = 0; i < dim_location_par_; ++i) {
-						location_par[i] = mode[i] + fixed_effects[i];
-					}
-					*location_par_ptr = location_par.data();
-				}
-			}//end !use_Z_for_duplicates_
-		}//end UpdateLocationPar
-
-		/*!
-		* \brief Auxiliary function for updating the location parameter = mode of random effects + fixed effects
-		* \param mode Mode
-		* \param fixed_effects Fixed effects component of location parameter
-		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
-		* \param[out] location_par Location parameter
-		*/
-		void UpdateLocationParOnlyOneGroupedRE(const vec_t& mode,
-			const double* fixed_effects,
-			const data_size_t* const random_effects_indices_of_data,
-			vec_t& location_par) {
-			CHECK(num_sets_re_ == 1);// not yet implemented otherwise
-			if (fixed_effects == nullptr) {
-#pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					location_par[i] = mode[random_effects_indices_of_data[i]];
-				}
-			}
-			else {
-#pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					location_par[i] = mode[random_effects_indices_of_data[i]] + fixed_effects[i];
-				}
-			}
-		}//end UpdateLocationParOnlyOneGroupedRE
-
-		/*!
-		* \brief Make sure that the mode can only change by 'MAX_CHANGE_MODE_NEWTON_' in Newton's method (cap_change_mode_newton_)
-		* \param mode_new New mode after Newton update
-		*/
-		void CapChangeModeUpdateNewton(vec_t& mode_new) const {
-			if (cap_change_mode_newton_) {
-#pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < dim_mode_; ++i) {
-					double abs_change = std::abs(mode_new[i] - mode_[i]);
-					if (abs_change > MAX_CHANGE_MODE_NEWTON_) {
-						mode_new[i] = mode_[i] + (mode_new[i] - mode_[i]) / abs_change * MAX_CHANGE_MODE_NEWTON_;
-					}
-				}
-			}
-		}//end CapChangeModeUpdateNewton
-
-		/*!
-		* \brief Checks whether the mode finding algorithm has converged
-		* \param it Iteration number
-		* \param approx_marginal_ll_new New value of covergence criterion
-		* \param[out] approx_marginal_ll Current value of covergence criterion
-		* \param[out] terminate_optim If true, the mode finding algorithm is stopped
-		* \param[out] has_NA_or_Inf True if approx_marginal_ll_new is NA or Inf
-		*/
-		void CheckConvergenceModeFinding(int it,
-			double approx_marginal_ll_new,
-			double& approx_marginal_ll,
-			bool& terminate_optim,
-			bool& has_NA_or_Inf) {
-			if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-				has_NA_or_Inf = true;
-				Log::REDebug(NA_OR_INF_WARNING_);
-				approx_marginal_ll = approx_marginal_ll_new;
-				na_or_inf_during_last_call_to_find_mode_ = true;
-				return;
-			}
-			if (it == 0) {
-				if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
-					terminate_optim = true;
-				}
-			}
-			else {
-				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
-					terminate_optim = true;
-				}
-			}
-			if (terminate_optim && continue_mode_finding_after_fisher_) {
-				if (!mode_finding_fisher_has_been_continued_) {
-					terminate_optim = false;
-					use_fisher_for_mode_finding_ = false;
-					mode_finding_fisher_has_been_continued_ = true;
-				}
-				else {
-					use_fisher_for_mode_finding_ = true;//reset to initial values for next call
-					mode_finding_fisher_has_been_continued_ = false;
-				}
-			}
-			if (terminate_optim) {
-				if (approx_marginal_ll_new < approx_marginal_ll) {
-					Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
-				}
-				approx_marginal_ll = approx_marginal_ll_new;
-				return;
-			}
-			else {
-				if ((it + 1) == maxit_mode_newton_ && maxit_mode_newton_ > 1) {
-					Log::REDebug(NO_CONVERGENCE_WARNING_);
-					if (continue_mode_finding_after_fisher_ && mode_finding_fisher_has_been_continued_) {
-						use_fisher_for_mode_finding_ = true;//reset to initial values for next call
-						mode_finding_fisher_has_been_continued_ = false;
-					}
-				}
-				approx_marginal_ll = approx_marginal_ll_new;
-			}
-		}//end CheckConvergenceModeFinding
-
-		bool HasNegativeValueInformationLogLik() const {
-			bool has_negative = false;
-			if (information_ll_can_be_negative_) {
-#pragma omp parallel for schedule(static) shared(has_negative)
-				for (int i = 0; i < (int)information_ll_.size(); ++i) {
-					if (has_negative) {
-						continue;
-					}
-					if (information_ll_[i] < 0.) {
-#pragma omp critical
-						{
-							has_negative = true;
-						}
-					}
-				}
-			}
-			return has_negative;
-		}//end HasNegativeValueInformationLogLik
-
-		/*!
-		* \brief Set the gradient wrt to additional likelihood parameters that are not estimated to some default values (usually 0.)
-		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
-		*/
-		void SetGradAuxParsNotEstimated(double* aux_par_grad) const {
-			if (likelihood_type_ == "t" && !estimate_df_t_) {
-				aux_par_grad[1] = 0.;
-			}
-		}//end SetGradAuxParsNotEstimated
-
-		void ChecksBeforeModeFinding() const {
-			if (continue_mode_finding_after_fisher_) {
-				CHECK(use_fisher_for_mode_finding_ && !mode_finding_fisher_has_been_continued_);
-			}
-		}//end ChecksBeforeModeFinding
-
-		/*!
 		* \brief Find the mode of the posterior of the latent random effects using Newton's method and calculate the approximative marginal log-likelihood..
 		*       Calculations are done using a numerically stable variant based on factorizing ("inverting") B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
 		*       In the notation of the paper: "Sigma = Z*Sigma*Z^T" and "Z = Id".
@@ -2306,7 +916,7 @@ namespace GPBoost {
 			double* location_par_ptr;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
-			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t rhs(dim_mode_), rhs2(dim_mode_), mode_new, a_vec_new, mode_update, a_vec_update;//auxiliary variables for updating mode
 			vec_t diag_Wsqrt(dim_mode_);//diagonal of matrix sqrt(ZtWZ) if use_Z_for_duplicates_ or sqrt(W) if !use_Z_for_duplicates_ with square root of negative second derivatives of log-likelihood
@@ -2351,7 +961,7 @@ namespace GPBoost {
 						mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
 					}
 					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-					approx_marginal_ll_new = -0.5 * (a_vec_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);// Calculate new objective function
+					approx_marginal_ll_new = -0.5 * (a_vec_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr);// Calculate new objective function
 					if (approx_marginal_ll_new < approx_marginal_ll ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 						lr_mode *= 0.5;
@@ -2363,6 +973,7 @@ namespace GPBoost {
 				mode_ = mode_new;
 				a_vec_ = a_vec_new;
 				CheckConvergenceModeFinding(it, approx_marginal_ll_new, approx_marginal_ll, terminate_optim, has_NA_or_Inf);
+				//Log::REInfo("it = %d, mode_[0:2] = %g, %g, %g, LogLikelihood = %g", it, mode_[0], mode_[1], mode_[2], LogLikelihood(y_data, y_data_int, location_par_ptr));//for debugging
 				if (terminate_optim || has_NA_or_Inf) {
 					break;
 				}
@@ -2386,7 +997,7 @@ namespace GPBoost {
 			}
 			mode_is_zero_ = false;
 			//Log::REInfo("FindModePostRandEffCalcMLLStable: finished after %d iterations ", it);//for debugging
-			//Log::REInfo("mode_[0:2] = %g, %g, %g, LogLikelihood = %g", mode_[0], mode_[1], mode_[2], LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_));//for debugging
+			//Log::REInfo("mode_[0:2] = %g, %g, %g, LogLikelihood = %g", mode_[0], mode_[1], mode_[2], LogLikelihood(y_data, y_data_int, location_par_ptr));//for debugging
 		}//end FindModePostRandEffCalcMLLStable
 
 		/*!
@@ -2431,7 +1042,7 @@ namespace GPBoost {
 				}
 			}
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
-			approx_marginal_ll = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+			approx_marginal_ll = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data());
 			double approx_marginal_ll_new = approx_marginal_ll;
 			sp_mat_t SigmaI_plus_ZtWZ;
             vec_t rhs, mode_update(num_re_), mode_new;
@@ -2503,7 +1114,7 @@ namespace GPBoost {
 							location_par[i] += fixed_effects[i];
 						}
 					}
-					approx_marginal_ll_new = -0.5 * (mode_new.dot(SigmaI * mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);// Calculate new objective function
+					approx_marginal_ll_new = -0.5 * (mode_new.dot(SigmaI * mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
 					if (approx_marginal_ll_new < approx_marginal_ll ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 						lr_mode *= 0.5;
@@ -2658,7 +1269,7 @@ namespace GPBoost {
 			vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
 			UpdateLocationParOnlyOneGroupedRE(mode_, fixed_effects, random_effects_indices_of_data, location_par);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
-			approx_marginal_ll = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);
+			approx_marginal_ll = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data());
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t rhs, mode_update, mode_new;
 			diag_SigmaI_plus_ZtWZ_ = vec_t(num_re_);
@@ -2683,7 +1294,7 @@ namespace GPBoost {
 				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 					mode_new = mode_ + lr_mode * mode_update;
 					UpdateLocationParOnlyOneGroupedRE(mode_new, fixed_effects, random_effects_indices_of_data, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-					approx_marginal_ll_new = -0.5 / sigma2 * (mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data(), num_data);// Calculate new objective function
+					approx_marginal_ll_new = -0.5 / sigma2 * (mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
 					if (approx_marginal_ll_new < approx_marginal_ll ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 						lr_mode *= 0.5;
@@ -2694,6 +1305,7 @@ namespace GPBoost {
 				}// end loop over learnig rate halving procedure
 				mode_ = mode_new;
 				CheckConvergenceModeFinding(it, approx_marginal_ll_new, approx_marginal_ll, terminate_optim, has_NA_or_Inf);
+				//Log::REInfo("it = %d, mode_[0:2] = %g, %g, %g, LogLikelihood = %g", it, mode_[0], mode_[1], mode_[2], LogLikelihood(y_data, y_data_int, location_par.data()));//for debugging
 				if (terminate_optim || has_NA_or_Inf) {
 					break;
 				}
@@ -2710,6 +1322,8 @@ namespace GPBoost {
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 			mode_is_zero_ = false;
+			//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale: finished after %d iterations ", it);//for debugging
+			//Log::REInfo("mode_[0:2] = %g, %g, %g, LogLikelihood = %g", mode_[0], mode_[1], mode_[2], LogLikelihood(y_data, y_data_int, location_par.data()));//for debugging
 		}//end FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale
 
 		/*!
@@ -2798,7 +1412,7 @@ namespace GPBoost {
 			D_inv_B_mode = D_inv_rm_.diagonal().asDiagonal() * B_mode;
 			cross_cov_B_t_D_inv_B_mode = Bt_D_inv_B_cross_cov.transpose() * mode_;
 			wood_inv_cross_cov_B_t_D_inv_B_mode = chol_fact_sigma_woodbury.solve(cross_cov_B_t_D_inv_B_mode);
-			approx_marginal_ll = -0.5 * ((B_mode.dot(D_inv_B_mode)) - cross_cov_B_t_D_inv_B_mode.dot(wood_inv_cross_cov_B_t_D_inv_B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+			approx_marginal_ll = -0.5 * ((B_mode.dot(D_inv_B_mode)) - cross_cov_B_t_D_inv_B_mode.dot(wood_inv_cross_cov_B_t_D_inv_B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t W_D_inv, W_D_inv_inv, W_D_inv_sqrt;
 			if (matrix_inversion_method_ == "iterative") {
@@ -2909,7 +1523,7 @@ namespace GPBoost {
 						cross_cov_B_t_D_inv_B_mode = Bt_D_inv_B_cross_cov.transpose() * mode_new;
 						wood_inv_cross_cov_B_t_D_inv_B_mode = chol_fact_sigma_woodbury.solve(cross_cov_B_t_D_inv_B_mode);
 						UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-						approx_marginal_ll_new = -0.5 * ((B_mode.dot(D_inv_B_mode)) - cross_cov_B_t_D_inv_B_mode.dot(wood_inv_cross_cov_B_t_D_inv_B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+						approx_marginal_ll_new = -0.5 * ((B_mode.dot(D_inv_B_mode)) - cross_cov_B_t_D_inv_B_mode.dot(wood_inv_cross_cov_B_t_D_inv_B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
 						if (approx_marginal_ll_new < approx_marginal_ll ||
 							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 							lr_GD *= 0.5;
@@ -3005,7 +1619,7 @@ namespace GPBoost {
 						B_mode = B * mode_new;
 						cross_cov_B_t_D_inv_B_mode = Bt_D_inv_B_cross_cov.transpose() * mode_new;
 						wood_inv_cross_cov_B_t_D_inv_B_mode = chol_fact_sigma_woodbury.solve(cross_cov_B_t_D_inv_B_mode);
-						approx_marginal_ll_new = -0.5 * ((B_mode.dot(D_inv * B_mode)) - cross_cov_B_t_D_inv_B_mode.dot(wood_inv_cross_cov_B_t_D_inv_B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+						approx_marginal_ll_new = -0.5 * ((B_mode.dot(D_inv * B_mode)) - cross_cov_B_t_D_inv_B_mode.dot(wood_inv_cross_cov_B_t_D_inv_B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
 						if (approx_marginal_ll_new < approx_marginal_ll ||
 							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 							lr_mode *= 0.5;
@@ -3197,7 +1811,7 @@ namespace GPBoost {
 			den_mat_t I_k_plus_Sigma_L_kt_W_Sigma_L_k;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
-			approx_marginal_ll = LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+			approx_marginal_ll = LogLikelihood(y_data, y_data_int, location_par_ptr);
 			if (num_sets_re_ == 1) {
 				B_mode = B[0] * mode_;
 				approx_marginal_ll += -0.5 * (B_mode.dot(D_inv[0] * B_mode));
@@ -3297,7 +1911,7 @@ namespace GPBoost {
 						CapChangeModeUpdateNewton(mode_new);
 						B_mode = B[0] * mode_new;
 						UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-						approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv[0] * B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+						approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv[0] * B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
 						if (approx_marginal_ll_new < approx_marginal_ll ||
 							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 							lr_mode *= 0.5;
@@ -3414,7 +2028,7 @@ namespace GPBoost {
 						}
 						CapChangeModeUpdateNewton(mode_new);
 						UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-						approx_marginal_ll_new = LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+						approx_marginal_ll_new = LogLikelihood(y_data, y_data_int, location_par_ptr);
 						if (num_sets_re_ == 1) {
 							B_mode = B[0] * mode_new;
 							approx_marginal_ll_new += -0.5 * (B_mode.dot(D_inv[0] * B_mode));
@@ -3515,7 +2129,7 @@ namespace GPBoost {
 			}
 			mode_is_zero_ = false;
 			//Log::REInfo("FindModePostRandEffCalcMLLVecchia: finished after %d iterations ", it);//for debugging
-			//Log::REInfo("mode_[0:1,(last-1):last] = %g, %g, %g, %g, LogLikelihood = %g", mode_[0], mode_[1], mode_[dim_mode_ - 2], mode_[dim_mode_-1], LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_));//for debugging
+			//Log::REInfo("mode_[0:1,(last-1):last] = %g, %g, %g, %g, LogLikelihood = %g", mode_[0], mode_[1], mode_[dim_mode_ - 2], mode_[dim_mode_-1], LogLikelihood(y_data, y_data_int, location_par_ptr));//for debugging
 		}//end FindModePostRandEffCalcMLLVecchia
 
 		/*!
@@ -3560,7 +2174,7 @@ namespace GPBoost {
 			double* location_par_ptr;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
-			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);
+			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t Wsqrt_diag(dim_mode_), sigma_ip_inv_cross_cov_T_rhs(num_ip), rhs(dim_mode_), Wsqrt_Sigma_rhs(dim_mode_), vaux(num_ip), vaux2(num_ip), vaux3(dim_mode_),
 				mode_new(dim_mode_), a_vec_new, DW_plus_I_inv_diag(dim_mode_), a_vec_update, mode_update, W_times_DW_plus_I_inv_diag;//auxiliary variables for updating mode
@@ -3615,7 +2229,7 @@ namespace GPBoost {
 					}
 					//CapChangeModeUpdateNewton(mode_new);//not done since a_vec would also have to be modified accordingly. TODO: implement this?
 					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-					approx_marginal_ll_new = -0.5 * (a_vec_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr, num_data_);// Calculate new objective function
+					approx_marginal_ll_new = -0.5 * (a_vec_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr);// Calculate new objective function
 					if (approx_marginal_ll_new < approx_marginal_ll ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 						lr_mode *= 0.5;
@@ -3802,9 +2416,9 @@ namespace GPBoost {
 				vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 				vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 				vec_t d_mode_d_aux_par;
-				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, num_data_, neg_likelihood_deriv.data());
+				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
 				for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, num_data_, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 					double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 					if (use_Z_for_duplicates_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
@@ -4030,9 +2644,9 @@ namespace GPBoost {
                     vec_t second_deriv_loc_aux_par(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
                     vec_t deriv_information_aux_par(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
                     vec_t d_mode_d_aux_par;
-                    CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), num_data, neg_likelihood_deriv.data());
+                    CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), neg_likelihood_deriv.data());
                     for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-                        CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), num_data, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+                        CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
                         //stochastic tr((Sigma^(-1) + Z^T W Z)^(-1) Z^T dW/daux Z)
                         vec_t RVt_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_aux_Z_PI_RV = ((Z_SigmaI_plus_ZtWZ_inv_RV.cwiseProduct(deriv_information_aux_par.asDiagonal() * Z_PI_RV)).colwise().sum()).transpose();
                         double tr_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_aux_Z = RVt_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_aux_Z_PI_RV.mean();
@@ -4151,9 +2765,9 @@ namespace GPBoost {
 				vec_t second_deriv_loc_aux_par(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 				vec_t deriv_information_aux_par(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 				vec_t d_mode_d_aux_par;
-				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), num_data, neg_likelihood_deriv.data());
+				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), neg_likelihood_deriv.data());
 				for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), num_data, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 					sp_mat_t ZtdWZ = Zt * deriv_information_aux_par.asDiagonal() * Z;
 					SigmaI_plus_ZtWZ_inv = ZtdWZ;
 					CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv, false);
@@ -4263,9 +2877,9 @@ namespace GPBoost {
 				vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
 				vec_t second_deriv_loc_aux_par(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 				vec_t deriv_information_aux_par(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
-				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), num_data, neg_likelihood_deriv.data());
+				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), neg_likelihood_deriv.data());
 				for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), num_data, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 					double d_detmll_d_aux_par = 0.;
 					double implicit_derivative = 0.;// = implicit derivative = d_mll_d_mode * d_mode_d_aux_par
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
@@ -4572,7 +3186,7 @@ namespace GPBoost {
 						vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 						vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 						vec_t d_mode_d_aux_par;
-						CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, num_data_, neg_likelihood_deriv.data());
+						CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
 						den_mat_t Preconditioner_PP_inv;
 						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_woodbury_preconditioner_,
 							(diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner)).transpose(), Preconditioner_PP_inv, false);
@@ -4584,7 +3198,7 @@ namespace GPBoost {
 							}
 						}
 						for (int ind_ap = 0; ind_ap < num_aux_pars_; ++ind_ap) {
-							CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, num_data_, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+							CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 							double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 							if (grad_information_wrt_mode_non_zero_) {
 								if (use_Z_for_duplicates_) {
@@ -4889,9 +3503,9 @@ namespace GPBoost {
 						vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 						vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 						vec_t d_mode_d_aux_par;
-						CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, num_data_, neg_likelihood_deriv.data());
+						CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
 						for (int ind_ap = 0; ind_ap < num_aux_pars_; ++ind_ap) {
-							CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, num_data_, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+							CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 							double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 							if (grad_information_wrt_mode_non_zero_) {
 								if (use_Z_for_duplicates_) {
@@ -5143,9 +3757,9 @@ namespace GPBoost {
 					vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 					vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 					vec_t d_mode_d_aux_par;
-					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, num_data_, neg_likelihood_deriv.data());
+					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
 					for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, num_data_, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 						double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 						if (use_Z_for_duplicates_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
@@ -5398,9 +4012,9 @@ namespace GPBoost {
 					vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 					vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 					vec_t d_mode_d_aux_par;
-					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, num_data_, neg_likelihood_deriv.data());
+					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
 					for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, num_data_, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 						double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 						if (grad_information_wrt_mode_non_zero_) {
 							bool deriv_information_loc_par_has_zero = false;
@@ -5564,9 +4178,9 @@ namespace GPBoost {
 					vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 					vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 					vec_t d_mode_d_aux_par;
-					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, num_data_, neg_likelihood_deriv.data());
+					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
 					for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, num_data_, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 						double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 						if (use_Z_for_duplicates_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
@@ -5816,9 +4430,9 @@ namespace GPBoost {
 				vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 				vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 				vec_t d_mode_d_aux_par;
-				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, num_data_, neg_likelihood_deriv.data());
+				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
 				for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, num_data_, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 					double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 					if (use_Z_for_duplicates_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
@@ -7659,552 +6273,6 @@ namespace GPBoost {
 			nsim_var_pred_ = nsim_var_pred;
 		}//end SetMatrixInversionProperties
 
-		/*!
-		* \brief Calculate log|Sigma W + I| using stochastic trace estimation and variance reduction.
-		* \param num_data Number of data points
-		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
-		* \param chol_fact_sigma_woodbury Cholesky factor of 'sigma_ip + sigma_cross_cov_T * sigma_residual^-1 * sigma_cross_cov'
-		* \param chol_fact_sigma_ip Cholesky factor of 'sigma_ip'
-		* \param cross_cov Cross-covariance matrix between inducing points and all data points
-		* \param chol_fact_sigma_woodbury_woodbury Cholesky factor of 'sigma_ip - sigma_cross_cov_T * B_t * D_inv * B * (W + D_inv)^-1 * B * D_inv * B * sigma_cross_cov'
-		* \param W_D_inv Vector (W + D^-1)
-		* \param[out] has_NA_or_Inf Is set to TRUE if NA or Inf occured in the conjugate gradient algorithm
-		* \param[out] log_det_Sigma_W_plus_I Solution for log|Sigma W + I|
-		*/
-		void CalcLogDetStochFSVA(const data_size_t& num_data,
-			const int& cg_max_num_it_tridiag,
-			const chol_den_mat_t& chol_fact_sigma_woodbury,
-			const den_mat_t& chol_ip_cross_cov,
-			const chol_den_mat_t& chol_fact_sigma_ip,
-			const chol_den_mat_t& chol_fact_sigma_ip_preconditioner,
-			const den_mat_t* cross_cov,
-			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_preconditioner_cluster_i,
-			const vec_t& W_D_inv_inv,
-			const chol_den_mat_t& chol_fact_sigma_woodbury_woodbury,
-			const vec_t& W_D_inv,
-			bool& has_NA_or_Inf,
-			double& log_det_Sigma_W_plus_I) {
-			log_det_Sigma_W_plus_I = 0.;
-			CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
-			std::vector<vec_t> Tdiags_W_SigmaI(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
-			std::vector<vec_t> Tsubdiags_W_SigmaI(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
-			if (cg_preconditioner_type_ == "fitc") {
-				const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
-				CGTridiagVIFLaplaceSigmaPlusWinv(information_ll_.cwiseInverse(), D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
-					chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rand_vec_trace_I_, Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, SigmaI_plus_W_inv_Z_,
-					has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_);
-			}
-			else {
-				CGTridiagVIFLaplace(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv, chol_fact_sigma_woodbury_woodbury,
-					rand_vec_trace_I_, Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_,
-					cg_preconditioner_type_);
-			}
-			LogDetStochTridiag(Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, log_det_Sigma_W_plus_I, num_data, num_rand_vec_trace_);
-			if (cg_preconditioner_type_ == "fitc") {
-				log_det_Sigma_W_plus_I -= 2. * (((den_mat_t)chol_fact_sigma_ip_preconditioner.matrixL()).diagonal().array().log().sum());
-				log_det_Sigma_W_plus_I += information_ll_.array().log().sum();
-				log_det_Sigma_W_plus_I += 2. * ((den_mat_t)chol_fact_woodbury_preconditioner_.matrixL()).diagonal().array().log().sum();
-				log_det_Sigma_W_plus_I += diagonal_approx_preconditioner_.array().log().sum();
-			}
-			else {
-				log_det_Sigma_W_plus_I -= 2. * (((den_mat_t)chol_fact_sigma_ip.matrixL()).diagonal().array().log().sum()) + D_inv_rm_.diagonal().array().log().sum();
-				if (cg_preconditioner_type_ == "vifdu") {
-					log_det_Sigma_W_plus_I += W_D_inv.array().log().sum() + 2. * ((den_mat_t)chol_fact_sigma_woodbury_woodbury.matrixL()).diagonal().array().log().sum();
-				}
-				else {
-					log_det_Sigma_W_plus_I += 2. * ((den_mat_t)chol_fact_sigma_woodbury.matrixL()).diagonal().array().log().sum();
-				}
-			}
-		}//end CalcLogDetStochFSVA
-
-		/*!
-		* \brief Calculate log|Sigma W + I| using stochastic trace estimation and variance reduction.
-		* \param num_data Number of data points
-		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
-		* \param I_k_plus_Sigma_L_kt_W_Sigma_L_k Preconditioner "piv_chol_on_Sigma": I_k + Sigma_L_k^T W Sigma_L_k
-		* \param SigmaI Preconditioner "zero_infill_incomplete_cholesky": Column-major matrix containing B^T D^(-1) B
-		* \param SigmaI_plus_W Preconditioner "zero_infill_incomplete_cholesky": Column-major matrix containing B^T D^(-1) B + W (W not yet updated)
-		* \param B Preconditioner "zero_infill_incomplete_cholesky": Column-major matrix B in Vecchia approximation
-		* \param[out] has_NA_or_Inf Is set to TRUE if NA or Inf occured in the conjugate gradient algorithm
-		* \param[out] log_det_Sigma_W_plus_I Solution for log|Sigma W + I|
-		* \param cluster_i Cluster index for which this is run
-		* \param REModelTemplate REModelTemplate object for calling functions from it
-		*/
-		void CalcLogDetStochVecchia(const data_size_t& num_data,
-			const int& cg_max_num_it_tridiag,
-			den_mat_t& I_k_plus_Sigma_L_kt_W_Sigma_L_k,
-			const sp_mat_t& SigmaI,
-			sp_mat_t& SigmaI_plus_W,
-			const sp_mat_t& B,
-			bool& has_NA_or_Inf,
-			double& log_det_Sigma_W_plus_I,
-			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
-			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
-			data_size_t cluster_i,
-			REModelTemplate<T_mat, T_chol>* re_model) {
-			CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
-			CHECK(rand_vec_trace_P_.cols() == num_rand_vec_trace_);
-			if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
-				const den_mat_t* cross_cov = nullptr;
-				std::vector<vec_t> Tdiags_PI_WI_plus_Sigma(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
-				std::vector<vec_t> Tsubdiags_PI_WI_plus_Sigma(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
-				if (cg_preconditioner_type_ == "pivoted_cholesky") {
-					CHECK(rand_vec_trace_I2_.cols() == num_rand_vec_trace_);
-					CHECK(rand_vec_trace_I2_.rows() == Sigma_L_k_.cols());
-					//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
-					//For P = W^(-1) + Sigma_L_k Sigma_L_k^T: z_i = W^(-1/2) r_j + Sigma_L_k r_i, where r_i, r_j ~ N(0,I)
-#pragma omp parallel for schedule(static)   
-					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						rand_vec_trace_P_.col(i) = Sigma_L_k_ * rand_vec_trace_I2_.col(i) + ((information_ll_.cwiseInverse().cwiseSqrt()).array() * rand_vec_trace_I_.col(i).array()).matrix();
-					}
-					if (information_changes_after_mode_finding_) {
-						I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
-						I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * information_ll_.asDiagonal() * Sigma_L_k_;
-						chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
-					}
-				}
-				else if (cg_preconditioner_type_ == "fitc") {
-					CHECK(rand_vec_trace_I2_.cols() == num_rand_vec_trace_);
-					CHECK(rand_vec_trace_I2_.rows() == chol_ip_cross_cov_.rows());
-					cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
-					//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
-					//For P = W^(-1) + chol_ip_cross_cov^T chol_ip_cross_cov: z_i = W^(-1/2) r_j + chol_ip_cross_cov^T r_i, where r_i, r_j ~ N(0,I)
-					if (information_changes_after_mode_finding_) {
-						den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
-						sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
-						diagonal_approx_preconditioner_ = information_ll_.cwiseInverse();
-						diagonal_approx_preconditioner_.array() += sigma_ip_stable.coeffRef(0, 0);
-#pragma omp parallel for schedule(static)
-						for (int ii = 0; ii < diagonal_approx_preconditioner_.size(); ++ii) {
-							diagonal_approx_preconditioner_[ii] -= chol_ip_cross_cov_.col(ii).array().square().sum();
-						}
-						diagonal_approx_inv_preconditioner_ = diagonal_approx_preconditioner_.cwiseInverse();
-						den_mat_t sigma_woodbury;
-						sigma_woodbury = (*cross_cov).transpose() * (diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov));
-						sigma_woodbury += sigma_ip_stable;
-						chol_fact_woodbury_preconditioner_.compute(sigma_woodbury);
-					}
-					rand_vec_trace_P_ = chol_ip_cross_cov_.transpose() * rand_vec_trace_I2_ + diagonal_approx_preconditioner_.cwiseSqrt().asDiagonal() * rand_vec_trace_I_;
-				}
-				else if (cg_preconditioner_type_ == "vecchia_response") {
-					//For P = B^T D^(-1) B: z_i = B^T D^(-0.5) r_i, where r_i ~ N(0,I)					
-					if (information_changes_after_mode_finding_) {
-						sp_mat_t B_vecchia;
-						vec_t pseudo_nugget = information_ll_.cwiseInverse();
-						re_model->CalcVecchiaApproxLatentAddDiagonal(cluster_i, B_vecchia, D_inv_vecchia_pc_, pseudo_nugget.data());
-						B_vecchia_pc_rm_ = sp_mat_rm_t(B_vecchia);
-					}
-					vec_t D_sqrt_vecchia_pc = D_inv_vecchia_pc_.diagonal().cwiseInverse().cwiseSqrt();					
-#pragma omp parallel for schedule(static)   
-					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						rand_vec_trace_P_.col(i) = (B_vecchia_pc_rm_.template triangularView<Eigen::UpLoType::UnitLower>()).solve(D_sqrt_vecchia_pc.asDiagonal() * (rand_vec_trace_I_.col(i)));
-					}
-				}
-				CGTridiagVecchiaLaplaceSigmaPlusWinv(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_trace_P_, Tdiags_PI_WI_plus_Sigma, Tsubdiags_PI_WI_plus_Sigma,
-					WI_plus_Sigma_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
-					chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_, chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_);
-				if (!has_NA_or_Inf) {
-					double ldet_PI_WI_plus_Sigma;
-					LogDetStochTridiag(Tdiags_PI_WI_plus_Sigma, Tsubdiags_PI_WI_plus_Sigma, ldet_PI_WI_plus_Sigma, num_data, num_rand_vec_trace_);
-					//log|Sigma W + I| = log|P^(-1) (W^(-1) + Sigma)| + log|W| + log|P|
-					log_det_Sigma_W_plus_I = ldet_PI_WI_plus_Sigma + information_ll_.array().log().sum();
-					if (cg_preconditioner_type_ == "pivoted_cholesky") {
-						// log|P| = log|I_k + Sigma_L_k^T W Sigma_L_k| + log|W^(-1)| + log|I_k|, log|I_k| = 0
-						log_det_Sigma_W_plus_I += 2 * ((den_mat_t)chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.matrixL()).diagonal().array().log().sum() - information_ll_.array().log().sum();
-					}
-					else if (cg_preconditioner_type_ == "fitc") {
-						// log|P| = log|Woodburry| - log|Sigma_m| - log|D^-1|
-						log_det_Sigma_W_plus_I += 2. * ((den_mat_t)chol_fact_woodbury_preconditioner_.matrixL()).diagonal().array().log().sum() -
-							2. * (((den_mat_t)chol_fact_sigma_ip_.matrixL()).diagonal().array().log().sum()) -
-							diagonal_approx_inv_preconditioner_.array().log().sum();
-					}
-					else if (cg_preconditioner_type_ == "vecchia_response") {
-						log_det_Sigma_W_plus_I -= D_inv_vecchia_pc_.diagonal().array().log().sum();
-					}
-				}
-			}//end cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response"
-			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
-				vec_t D_inv_plus_W_diag;
-				std::vector<vec_t> Tdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
-				std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
-				//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
-				if (cg_preconditioner_type_ == "vadu") {
-					//For P = B^T (D^(-1) + W) B: z_i = B^T (D^(-1) + W)^0.5 r_i, where r_i ~ N(0,I)
-					D_inv_plus_W_diag = D_inv_rm_.diagonal() + information_ll_;
-					sp_mat_rm_t B_t_D_inv_plus_W_sqrt_rm = B_rm_.transpose() * (D_inv_plus_W_diag).cwiseSqrt().asDiagonal();
-#pragma omp parallel for schedule(static)   
-					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						rand_vec_trace_P_.col(i) = B_t_D_inv_plus_W_sqrt_rm * rand_vec_trace_I_.col(i);
-					}
-					//rand_vec_trace_P_ = B_rm_.transpose() * ((D_inv_rm_.diagonal() + information_ll_).cwiseSqrt().asDiagonal() * rand_vec_trace_I_);
-					D_inv_plus_W_B_rm_ = (D_inv_plus_W_diag).asDiagonal() * B_rm_;
-				}
-				else if (cg_preconditioner_type_ == "incomplete_cholesky") {
-					//Update P with latest W
-					if (information_changes_after_mode_finding_) {
-						SigmaI_plus_W = SigmaI;
-						SigmaI_plus_W.diagonal().array() += information_ll_.array();
-						ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
-					}
-					//For P = L^T L: z_i = L^T r_i, where r_i ~ N(0,I)
-#pragma omp parallel for schedule(static)   
-					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						rand_vec_trace_P_.col(i) = L_SigmaI_plus_W_rm_.transpose() * rand_vec_trace_I_.col(i);
-					}
-				}
-				CGTridiagVecchiaLaplace(information_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_trace_P_, Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W,
-					SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
-				if (!has_NA_or_Inf) {
-					double ldet_PI_SigmaI_plus_W;
-					LogDetStochTridiag(Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W, ldet_PI_SigmaI_plus_W, num_data, num_rand_vec_trace_);
-					//log|Sigma W + I| = log|P^(-1) (Sigma^(-1) + W)| + log|P| + log|Sigma|
-					log_det_Sigma_W_plus_I = ldet_PI_SigmaI_plus_W - D_inv_rm_.diagonal().array().log().sum();
-					if (cg_preconditioner_type_ == "vadu") {
-						//log|P| = log|B^T (D^(-1) + W) B| = log|(D^(-1) + W)|
-						log_det_Sigma_W_plus_I += D_inv_plus_W_diag.array().log().sum();
-					}
-					else if (cg_preconditioner_type_ == "incomplete_cholesky") {
-						//log|P| = log|L^T L|
-						log_det_Sigma_W_plus_I += 2 * (L_SigmaI_plus_W_rm_.diagonal().array().log().sum());
-					}
-				}
-			}
-			else {
-				Log::REFatal("CalcLogDetStochVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
-			}
-		}//end CalcLogDetStochVecchia
-
-		/*!
-		* \brief Calculate dlog|Sigma W + I|/db_i for all i in 1, ..., n using stochastic trace estimation and variance reduction.
-		* \param deriv_information_diag_loc_par Derivative of the diagonal of the Fisher information of the likelihood (= usually negative third derivative of the log-likelihood with respect to the mode)
-		* \param num_data Number of data points
-		* \param d_log_det_Sigma_W_plus_I_d_mode[out] Solution for dlog|Sigma W + I|/db_i for all i in n
-		* \param D_inv_plus_W_inv_diag[out] Preconditioner "Sigma_inv_plus_BtWB": diagonal of (D^(-1) + W)^(-1)
-		* \param diag_WI[out] Preconditioner "piv_chol_on_Sigma": diagonal of W^(-1)
-		* \param PI_Z[out] Preconditioner "Sigma_inv_plus_BtWB": P^(-1) Z
-		* \param WI_PI_Z[out] Preconditioner "piv_chol_on_Sigma": W^(-1) P^(-1) Z
-		* \param[out] WI_WI_plus_Sigma_inv_Z Preconditioner "piv_chol_on_Sigma": W^(-1) (W^(-1) + Sigma)^(-1) Z
-		*/
-		void CalcLogDetStochDerivModeVecchia(const vec_t& deriv_information_diag_loc_par,
-			const data_size_t& num_data,
-			vec_t& d_log_det_Sigma_W_plus_I_d_mode,
-			vec_t& D_inv_plus_W_inv_diag,
-			vec_t& diag_WI,
-			den_mat_t& PI_Z,
-			den_mat_t& WI_PI_Z,
-			den_mat_t& WI_WI_plus_Sigma_inv_Z,
-			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) const {
-			den_mat_t Z_PI_P_deriv_PI_Z;
-			vec_t tr_PI_P_deriv_vec, c_opt;
-			den_mat_t W_deriv_rep;
-			if (grad_information_wrt_mode_non_zero_) {
-				W_deriv_rep = deriv_information_diag_loc_par.replicate(1, num_rand_vec_trace_);
-			}
-			if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
-				const den_mat_t* cross_cov = nullptr;
-				den_mat_t Z_WI_plus_Sigma_inv_WI_deriv_PI_Z;
-				vec_t tr_WI_plus_Sigma_inv_WI_deriv;
-				diag_WI = information_ll_.cwiseInverse();
-				WI_WI_plus_Sigma_inv_Z = diag_WI.asDiagonal() * WI_plus_Sigma_inv_Z_;
-				if (cg_preconditioner_type_ == "pivoted_cholesky") {
-					//P^(-1) = (W^(-1) + Sigma_L_k Sigma_L_k^T)^(-1)
-					//W^(-1) P^(-1) Z = Z - Sigma_L_k (I_k + Sigma_L_k^T W Sigma_L_k)^(-1) Sigma_L_k^T W Z
-					den_mat_t Sigma_Lkt_W_Z;
-					if (Sigma_L_k_.cols() < num_rand_vec_trace_) {
-						Sigma_Lkt_W_Z = (Sigma_L_k_.transpose() * information_ll_.asDiagonal()) * rand_vec_trace_P_;
-					}
-					else {
-						Sigma_Lkt_W_Z = Sigma_L_k_.transpose() * (information_ll_.asDiagonal() * rand_vec_trace_P_);
-					}
-					WI_PI_Z = rand_vec_trace_P_ - Sigma_L_k_ * chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.solve(Sigma_Lkt_W_Z);
-				}
-				else if (cg_preconditioner_type_ == "fitc") {
-					//P^(-1) = (D + Sigma_nm Sigma_m^-1 Sigma_mn)^(-1)
-					//W^(-1) P^(-1) Z
-					cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
-					den_mat_t D_rand_vec = diagonal_approx_inv_preconditioner_.asDiagonal() * rand_vec_trace_P_;
-					WI_PI_Z = diag_WI.asDiagonal() * D_rand_vec -
-						diag_WI.asDiagonal() * (diagonal_approx_inv_preconditioner_.asDiagonal() * ((*cross_cov) *
-							chol_fact_woodbury_preconditioner_.solve((*cross_cov).transpose() * D_rand_vec)));
-				}
-				else if (cg_preconditioner_type_ == "vecchia_response") {
-					WI_PI_Z = diag_WI.asDiagonal() * (B_vecchia_pc_rm_.transpose() * (D_inv_vecchia_pc_ * (B_vecchia_pc_rm_ * rand_vec_trace_P_)));
-					//variance reduction currently not implemented
-				}
-				if (grad_information_wrt_mode_non_zero_) {
-					CHECK(first_deriv_information_loc_par_caluclated_);
-					Z_WI_plus_Sigma_inv_WI_deriv_PI_Z = -1 * (WI_WI_plus_Sigma_inv_Z.array() * W_deriv_rep.array() * WI_PI_Z.array()).matrix();
-					tr_WI_plus_Sigma_inv_WI_deriv = Z_WI_plus_Sigma_inv_WI_deriv_PI_Z.rowwise().mean();
-					d_log_det_Sigma_W_plus_I_d_mode = tr_WI_plus_Sigma_inv_WI_deriv;
-				}
-				//variance reduction
-				if (cg_preconditioner_type_ == "pivoted_cholesky") {
-					if (grad_information_wrt_mode_non_zero_) {
-						//tr(W^(-1) dW/db_i) - do not cancel with deterministic part of variance reduction when using optimal c
-						vec_t tr_WI_W_deriv = diag_WI.cwiseProduct(deriv_information_diag_loc_par);
-						d_log_det_Sigma_W_plus_I_d_mode += tr_WI_W_deriv;
-						//deterministic tr(Sigma_Lk (I_k + Sigma_Lk^T W Sigma_Lk)^(-1) Sigma_Lk^T dW/db_i) + tr(W dW^(-1)/db_i) (= - tr(W^(-1) dW/db_i))
-						den_mat_t L_inv_Sigma_L_kt(Sigma_L_k_.cols(), num_data);
-						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_.transpose(), L_inv_Sigma_L_kt, false);
-						den_mat_t L_inv_Sigma_L_kt_sqr = L_inv_Sigma_L_kt.cwiseProduct(L_inv_Sigma_L_kt);
-						vec_t Sigma_Lk_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_Lkt_diag = L_inv_Sigma_L_kt_sqr.transpose() * vec_t::Ones(L_inv_Sigma_L_kt_sqr.rows()); //diagonal of Sigma_Lk (I_k + Sigma_Lk^T W Sigma_Lk)^(-1) Sigma_Lk^T
-						vec_t tr_Sigma_Lk_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_Lkt_W_deriv = Sigma_Lk_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_Lkt_diag.array() * deriv_information_diag_loc_par.array();
-						//stochastic tr(P^(-1) dP/db_i), where dP/db_i = - W^(-1) dW/db_i W^(-1)
-						Z_PI_P_deriv_PI_Z = -1 * (WI_PI_Z.array() * W_deriv_rep.array() * WI_PI_Z.array()).matrix();
-						tr_PI_P_deriv_vec = Z_PI_P_deriv_PI_Z.rowwise().mean();
-						//optimal c
-						CalcOptimalCVectorized(Z_WI_plus_Sigma_inv_WI_deriv_PI_Z, Z_PI_P_deriv_PI_Z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv_vec, c_opt);
-						d_log_det_Sigma_W_plus_I_d_mode += c_opt.cwiseProduct(tr_Sigma_Lk_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_Lkt_W_deriv - tr_WI_W_deriv) - c_opt.cwiseProduct(tr_PI_P_deriv_vec);
-					}
-				}
-				else if (cg_preconditioner_type_ == "fitc") {
-					if (grad_information_wrt_mode_non_zero_) {
-						//tr(W^(-1) dW/db_i) - do not cancel with deterministic part of variance reduction when using optimal c
-						vec_t tr_WI_W_deriv = diag_WI.cwiseProduct(deriv_information_diag_loc_par);
-						d_log_det_Sigma_W_plus_I_d_mode += tr_WI_W_deriv;
-						//-tr(W^-1P^-1W^(-1) dW/db_i)
-						vec_t tr_WI_DI_WI_W_deriv = diag_WI.cwiseProduct(tr_WI_W_deriv.cwiseProduct(diagonal_approx_inv_preconditioner_));
-						vec_t tr_WI_DI_WI_DI_W_deriv = diagonal_approx_inv_preconditioner_.cwiseProduct(tr_WI_DI_WI_W_deriv);
-						den_mat_t chol_wood_cross_cov((*cross_cov).cols(), num_data);
-						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_woodbury_preconditioner_, (*cross_cov).transpose(), chol_wood_cross_cov, false);
-						vec_t tr_WI_PI_WI_W_deriv(num_data);
-#pragma omp parallel for schedule(static)  
-						for (int i = 0; i < num_data; ++i) {
-							tr_WI_PI_WI_W_deriv[i] = chol_wood_cross_cov.col(i).array().square().sum() * tr_WI_DI_WI_DI_W_deriv[i];
-						}
-						//stochastic tr(P^(-1) dP/db_i), where dP/db_i = - W^(-1) dW/db_i W^(-1)
-						Z_PI_P_deriv_PI_Z = -1 * (WI_PI_Z.array() * W_deriv_rep.array() * WI_PI_Z.array()).matrix();
-						tr_PI_P_deriv_vec = Z_PI_P_deriv_PI_Z.rowwise().mean();
-						//optimal c
-						CalcOptimalCVectorized(Z_WI_plus_Sigma_inv_WI_deriv_PI_Z, Z_PI_P_deriv_PI_Z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv_vec, c_opt);
-						d_log_det_Sigma_W_plus_I_d_mode += c_opt.cwiseProduct(tr_WI_PI_WI_W_deriv - tr_WI_DI_WI_W_deriv) - c_opt.cwiseProduct(tr_PI_P_deriv_vec);
-					}
-				}
-			}
-			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
-				//P^(-1) Z
-				if (cg_preconditioner_type_ == "vadu") {
-					//P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
-					PI_Z.resize(num_data, num_rand_vec_trace_);
-#pragma omp parallel for schedule(static)  
-					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						vec_t B_invt_Z = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rand_vec_trace_P_.col(i));
-						PI_Z.col(i) = D_inv_plus_W_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_Z);
-					}
-					//den_mat_t B_invt_Z(num_data, num_rand_vec_trace_);
-					//TriangularSolve<sp_mat_rm_t, den_mat_t, den_mat_t>(B_rm_, rand_vec_trace_P_, B_invt_Z, true);//it seems that this is not faster (21.11.2024)
-					//TriangularSolve<sp_mat_rm_t, den_mat_t, den_mat_t>(D_inv_plus_W_B_rm_, B_invt_Z, PI_Z, false);
-				}
-				else if (cg_preconditioner_type_ == "incomplete_cholesky") {
-					//P^(-1) = L^(-1) L^(-T)
-					PI_Z.resize(num_data, num_rand_vec_trace_);
-#pragma omp parallel for schedule(static)   
-					for (int i = 0; i < num_rand_vec_trace_; ++i) {
-						vec_t L_invt_Z = (L_SigmaI_plus_W_rm_.transpose().template triangularView<Eigen::UpLoType::Upper>()).solve(rand_vec_trace_P_.col(i));
-						PI_Z.col(i) = L_SigmaI_plus_W_rm_.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_Z);
-					}
-				}
-				den_mat_t Z_SigmaI_plus_W_inv_W_deriv_PI_Z;
-				vec_t tr_SigmaI_plus_W_inv_W_deriv;
-				if (grad_information_wrt_mode_non_zero_) {
-					CHECK(first_deriv_information_loc_par_caluclated_);
-					//stochastic tr((Sigma^(-1) + W)^(-1) dW/db_i)
-					Z_SigmaI_plus_W_inv_W_deriv_PI_Z = (SigmaI_plus_W_inv_Z_.array() * W_deriv_rep.array() * PI_Z.array()).matrix();
-					tr_SigmaI_plus_W_inv_W_deriv = Z_SigmaI_plus_W_inv_W_deriv_PI_Z.rowwise().mean();
-					d_log_det_Sigma_W_plus_I_d_mode = tr_SigmaI_plus_W_inv_W_deriv;
-				}
-				if (cg_preconditioner_type_ == "vadu") {
-					//variance reduction
-					//deterministic tr((D^(-1) + W)^(-1) dW/db_i)
-					D_inv_plus_W_inv_diag = (D_inv_rm_.diagonal() + information_ll_).cwiseInverse();
-					if (grad_information_wrt_mode_non_zero_) {
-						vec_t tr_D_inv_plus_W_inv_W_deriv = D_inv_plus_W_inv_diag.array() * deriv_information_diag_loc_par.array();
-						//stochastic tr(P^(-1) dP/db_i), where dP/db_i = B^T dW/db_i B
-						den_mat_t B_PI_Z = B_rm_ * PI_Z;
-						Z_PI_P_deriv_PI_Z = (B_PI_Z.array() * W_deriv_rep.array() * B_PI_Z.array()).matrix();
-						tr_PI_P_deriv_vec = Z_PI_P_deriv_PI_Z.rowwise().mean();
-						//optimal c
-						CalcOptimalCVectorized(Z_SigmaI_plus_W_inv_W_deriv_PI_Z, Z_PI_P_deriv_PI_Z, tr_SigmaI_plus_W_inv_W_deriv, tr_PI_P_deriv_vec, c_opt);
-						d_log_det_Sigma_W_plus_I_d_mode += c_opt.cwiseProduct(tr_D_inv_plus_W_inv_W_deriv) - c_opt.cwiseProduct(tr_PI_P_deriv_vec);
-					}
-				}
-			}
-			else {
-				Log::REFatal("CalcLogDetStochDerivMode: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
-			}
-		} //end CalcLogDetStochDerivModeVecchia
-
-		/*!
-		* \brief Calculate dlog|Sigma W + I|/dtheta_j, using stochastic trace estimation and variance reduction.
-		* \param num_data Number of data points
-		* \param num_comps_total Total number of random effect components (= number of GPs)
-		* \param j Index of current covariance parameter in vector theta
-		* \param SigmaI_deriv_rm Derivative of Sigma^(-1) wrt. theta_j
-		* \param B_grad_j Derivatives of matrices B ( = derivative of matrix -A) for Vecchia approximation wrt. theta_j
-		* \param D_grad_j Derivatives of matrices D for Vecchia approximation wrt. theta_j
-		* \param D_inv_plus_W_inv_diag Preconditioner "Sigma_inv_plus_BtWB": diagonal of (D^(-1) + W)^(-1)
-		* \param PI_Z Preconditioner "Sigma_inv_plus_BtWB": P^(-1) Z
-		* \param WI_PI_Z Preconditioner "piv_chol_on_Sigma": W^(-1) P^(-1) Z
-		* \param[out] d_log_det_Sigma_W_plus_I_d_cov_pars Solution for dlog|Sigma W + I|/dtheta_j
-		*/
-		void CalcLogDetStochDerivCovParVecchia(const data_size_t& num_data,
-			const int& num_comps_total,
-			const int& j,
-			const sp_mat_rm_t& SigmaI_deriv_rm,
-			const sp_mat_t& B_grad_j,
-			const sp_mat_t& D_grad_j,
-			const vec_t& D_inv_plus_W_inv_diag,
-			const den_mat_t& PI_Z,
-			const den_mat_t& WI_PI_Z,
-			double& d_log_det_Sigma_W_plus_I_d_cov_pars) const {
-			if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
-				den_mat_t Sigma_WI_plus_Sigma_inv_Z(num_data, num_rand_vec_trace_);
-				den_mat_t B_invt_PI_Z(num_data, num_rand_vec_trace_), Sigma_PI_Z(num_data, num_rand_vec_trace_);
-				//Stochastic Trace: Calculate tr((Sigma + W^(-1))^(-1) dSigma/dtheta_j)
-#pragma omp parallel for schedule(static)   
-				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					vec_t B_invt_WI_plus_Sigma_inv_Z = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(WI_plus_Sigma_inv_Z_.col(i));
-					Sigma_WI_plus_Sigma_inv_Z.col(i) = (B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>()).solve(B_invt_WI_plus_Sigma_inv_Z);
-				}
-				den_mat_t PI_Z_local = information_ll_.asDiagonal() * WI_PI_Z;
-#pragma omp parallel for schedule(static)   
-				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					B_invt_PI_Z.col(i) = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(PI_Z_local.col(i));
-				}
-#pragma omp parallel for schedule(static)   
-				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					Sigma_PI_Z.col(i) = (B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>()).solve(B_invt_PI_Z.col(i));
-				}
-				d_log_det_Sigma_W_plus_I_d_cov_pars = -1 * ((Sigma_WI_plus_Sigma_inv_Z.cwiseProduct(SigmaI_deriv_rm * Sigma_PI_Z)).colwise().sum()).mean();
-			}			
-			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
-				//Stochastic Trace: Calculate tr((Sigma^(-1) + W)^(-1) dSigma^(-1)/dtheta_j)
-				vec_t zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z = ((SigmaI_plus_W_inv_Z_.cwiseProduct(SigmaI_deriv_rm * PI_Z)).colwise().sum()).transpose();
-				double tr_SigmaI_plus_W_inv_SigmaI_deriv = zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z.mean();
-				d_log_det_Sigma_W_plus_I_d_cov_pars = tr_SigmaI_plus_W_inv_SigmaI_deriv;
-				//tr(Sigma^(-1) dSigma/dtheta_j)
-				if (num_comps_total == 1 && j == 0) {
-					d_log_det_Sigma_W_plus_I_d_cov_pars += num_data;
-				}
-				else {
-					d_log_det_Sigma_W_plus_I_d_cov_pars += (D_inv_rm_.diagonal().array() * D_grad_j.diagonal().array()).sum();
-				}
-				if (cg_preconditioner_type_ == "vadu") {
-					//variance reduction
-					double tr_D_inv_plus_W_inv_D_inv_deriv = 0., tr_PI_P_deriv = 0.;
-					vec_t zt_PI_P_deriv_PI_z;
-					if (num_comps_total == 1 && j == 0) {
-						//dD/dsigma2 = D and dB/dsigma2 = 0
-						//deterministic tr((D^(-1) + W)^(-1) dD^(-1)/dsigma2), where dD^(-1)/dsigma2 = -D^(-1)
-						tr_D_inv_plus_W_inv_D_inv_deriv = -1 * (D_inv_plus_W_inv_diag.array() * D_inv_rm_.diagonal().array()).sum();
-						//stochastic tr(P^(-1) dP/dsigma2), where dP/dsigma2 = -Sigma^(-1)
-						zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(SigmaI_deriv_rm * PI_Z)).colwise().sum()).transpose();
-						tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
-					}
-					else {
-						//deterministic tr((D^(-1) + W)^(-1) dD^(-1)/dtheta_j)
-						tr_D_inv_plus_W_inv_D_inv_deriv = -1 * (D_inv_plus_W_inv_diag.array() * D_inv_rm_.diagonal().array() * D_grad_j.diagonal().array() * D_inv_rm_.diagonal().array()).sum();
-						//stochastic tr(P^(-1) dP/dtheta_j)
-						sp_mat_rm_t Bt_W_Bgrad_rm = B_rm_.transpose() * information_ll_.asDiagonal() * B_grad_j;
-						sp_mat_rm_t P_deriv_rm = SigmaI_deriv_rm + sp_mat_rm_t(Bt_W_Bgrad_rm.transpose()) + Bt_W_Bgrad_rm;
-						zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(P_deriv_rm * PI_Z)).colwise().sum()).transpose();
-						tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
-					}
-					//optimal c
-					double c_opt;
-					CalcOptimalC(zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_SigmaI_plus_W_inv_SigmaI_deriv, tr_PI_P_deriv, c_opt);
-					d_log_det_Sigma_W_plus_I_d_cov_pars += c_opt * tr_D_inv_plus_W_inv_D_inv_deriv - c_opt * tr_PI_P_deriv;
-				}
-			}
-			else {
-				Log::REFatal("CalcLogDetStochDerivCovPar: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
-			}
-		} //end CalcLogDetStochDerivCovParVecchia
-
-		/*!
-		* \brief Calculate dlog|Sigma W + I|/daux, using stochastic trace estimation and variance reduction.
-		* \param deriv_information_aux_par Negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
-		* \param D_inv_plus_W_inv_diag Preconditioner "Sigma_inv_plus_BtWB": diagonal of (D^(-1) + W)^(-1)
-		* \param diag_WI Preconditioner "piv_chol_on_Sigma": diagonal of W^(-1)
-		* \param PI_Z Preconditioner "Sigma_inv_plus_BtWB": P^(-1) Z
-		* \param WI_PI_Z Preconditioner "piv_chol_on_Sigma": W^(-1) P^(-1) Z
-		* \param WI_WI_plus_Sigma_inv_Z Preconditioner "piv_chol_on_Sigma": W^(-1) (W^(-1) + Sigma)^(-1) Z
-		* \param[out] d_detmll_d_aux_par Solution for dlog|Sigma W + I|/daux
-		*/
-		void CalcLogDetStochDerivAuxParVecchia(const vec_t& deriv_information_aux_par,
-			const vec_t& D_inv_plus_W_inv_diag,
-			const vec_t& diag_WI,
-			const den_mat_t& PI_Z,
-			const den_mat_t& WI_PI_Z,
-			const den_mat_t& WI_WI_plus_Sigma_inv_Z,
-			double& d_detmll_d_aux_par,
-			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) const {
-			double tr_PI_P_deriv, c_opt;
-			vec_t zt_PI_P_deriv_PI_z;
-			if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
-				//Stochastic Trace: Calculate tr((Sigma + W^(-1))^(-1) dW^(-1)/daux)
-				vec_t zt_WI_plus_Sigma_inv_WI_deriv_PI_z = -1 * ((WI_WI_plus_Sigma_inv_Z.cwiseProduct(deriv_information_aux_par.asDiagonal() * WI_PI_Z)).colwise().sum()).transpose();
-				double tr_WI_plus_Sigma_inv_WI_deriv = zt_WI_plus_Sigma_inv_WI_deriv_PI_z.mean();
-				d_detmll_d_aux_par = tr_WI_plus_Sigma_inv_WI_deriv;
-				//variance reduction
-				if (cg_preconditioner_type_ == "pivoted_cholesky") {
-					//tr(W^(-1) dW/daux) - do not cancel with deterministic part of variance reduction when using optimal c
-					double tr_WI_W_deriv = (diag_WI.cwiseProduct(deriv_information_aux_par)).sum();
-					d_detmll_d_aux_par += tr_WI_W_deriv;
-					//variance reduction
-					//deterministic tr((I_k + Sigma_Lk^T W Sigma_Lk)^(-1) Sigma_Lk^T dW/daux Sigma_Lk) + tr(W dW^(-1)/daux) (= - tr(W^(-1) dW/daux))
-					den_mat_t Sigma_L_kt_W_deriv_Sigma_L_k = Sigma_L_k_.transpose() * deriv_information_aux_par.asDiagonal() * Sigma_L_k_;
-					double tr_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_L_kt_W_deriv_Sigma_L_k = (chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.solve(Sigma_L_kt_W_deriv_Sigma_L_k)).diagonal().sum();
-					//stochastic tr(P^(-1) dP/daux), where dP/daux = - W^(-1) dW/daux W^(-1)
-					zt_PI_P_deriv_PI_z = -1 * ((WI_PI_Z.cwiseProduct(deriv_information_aux_par.asDiagonal() * WI_PI_Z)).colwise().sum()).transpose();
-					tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
-					//optimal c
-					CalcOptimalC(zt_WI_plus_Sigma_inv_WI_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv, c_opt);
-					d_detmll_d_aux_par += c_opt * (tr_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_L_kt_W_deriv_Sigma_L_k - tr_WI_W_deriv) - c_opt * tr_PI_P_deriv;
-				}
-				else if (cg_preconditioner_type_ == "fitc") {
-					const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
-					//tr(W^(-1) dW/daux) - do not cancel with deterministic part of variance reduction when using optimal c
-					vec_t tr_WI_W_deriv_vec = diag_WI.cwiseProduct(deriv_information_aux_par);
-					double tr_WI_W_deriv = tr_WI_W_deriv_vec.sum();
-					d_detmll_d_aux_par += tr_WI_W_deriv;
-					//-tr(W^-1P^-1W^(-1) dW/daux)
-					vec_t tr_WI_DI_WI_W_deriv_vec = diag_WI.cwiseProduct(tr_WI_W_deriv_vec.cwiseProduct(diagonal_approx_inv_preconditioner_));
-					double tr_WI_DI_WI_W_deriv = tr_WI_DI_WI_W_deriv_vec.sum();
-					vec_t tr_WI_DI_WI_DI_W_deriv_vec = diagonal_approx_inv_preconditioner_.cwiseProduct(tr_WI_DI_WI_W_deriv_vec);
-					den_mat_t woodI_cross_covT_WI_DI_WI_DI_W_deri_cross_cov = chol_fact_woodbury_preconditioner_.solve((*cross_cov).transpose() * (tr_WI_DI_WI_DI_W_deriv_vec.asDiagonal() * (*cross_cov)));
-					double tr_WI_PI_WI_W_deriv = woodI_cross_covT_WI_DI_WI_DI_W_deri_cross_cov.diagonal().sum();
-					//stochastic tr(P^(-1) dP/db_i), where dP/db_i = - W^(-1) dW/db_i W^(-1)
-					zt_PI_P_deriv_PI_z = -1 * ((WI_PI_Z.cwiseProduct(deriv_information_aux_par.asDiagonal() * WI_PI_Z)).colwise().sum()).transpose();
-					tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
-					//optimal c
-					CalcOptimalC(zt_WI_plus_Sigma_inv_WI_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv, c_opt);
-					d_detmll_d_aux_par += c_opt * (tr_WI_PI_WI_W_deriv - tr_WI_DI_WI_W_deriv) - c_opt * tr_PI_P_deriv;
-				}
-			}
-			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
-				//Stochastic Trace: Calculate tr((Sigma^(-1) + W)^(-1) dW/daux)
-				vec_t zt_SigmaI_plus_W_inv_W_deriv_PI_z = ((SigmaI_plus_W_inv_Z_.cwiseProduct(deriv_information_aux_par.asDiagonal() * PI_Z)).colwise().sum()).transpose();
-				double tr_SigmaI_plus_W_inv_W_deriv = zt_SigmaI_plus_W_inv_W_deriv_PI_z.mean();
-				d_detmll_d_aux_par = tr_SigmaI_plus_W_inv_W_deriv;
-				if (cg_preconditioner_type_ == "vadu") {
-					//variance reduction
-					//deterministic tr((D^(-1) + W)^(-1) dW/daux)
-					double tr_D_inv_plus_W_inv_W_deriv = (D_inv_plus_W_inv_diag.array() * deriv_information_aux_par.array()).sum();
-					//stochastic tr(P^(-1) dP/daux), where dP/daux = B^T dW/daux B
-					sp_mat_rm_t P_deriv_rm = B_rm_.transpose() * deriv_information_aux_par.asDiagonal() * B_rm_;
-					zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(P_deriv_rm * PI_Z)).colwise().sum()).transpose();
-					tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
-					//optimal c
-					CalcOptimalC(zt_SigmaI_plus_W_inv_W_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_SigmaI_plus_W_inv_W_deriv, tr_PI_P_deriv, c_opt);
-					d_detmll_d_aux_par += c_opt * tr_D_inv_plus_W_inv_W_deriv - c_opt * tr_PI_P_deriv;
-				}
-			}
-			else {
-				Log::REFatal("CalcLogDetStochDerivAuxPar: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
-			}
-		} //end CalcLogDetStochDerivAuxParVecchia
-
 		static string_t ParseLikelihoodAlias(const string_t& likelihood) {
 			if (likelihood == string_t("binary") || likelihood == string_t("binary_probit")) {
 				return "bernoulli_probit";
@@ -8370,6 +6438,14 @@ namespace GPBoost {
 		bool use_Z_for_duplicates_ = false;
 		/*! \brief Indices that indicate to which random effect every data point is related */
 		const data_size_t* random_effects_indices_of_data_;
+		/*! \brief True if there are weights */
+		bool has_weights_ = false;
+		/*! \brief Sample weights */
+		const double* weights_;
+		/*! \brief A learning rate for the likelihood for generalized Bayesian inference */
+		double likelihood_learning_rate_ = 1.;
+		/*! \brief Auxiliary weights for likelihood_learning_rate_ */
+		vec_t weights_learning_rate_;
 
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";
@@ -8657,6 +6733,2039 @@ namespace GPBoost {
 		const char* NO_CONVERGENCE_WARNING_ = "Algorithm for finding mode for Laplace approximation has not "
 			"converged after the maximal number of iterations ";
 		const char* CG_NA_OR_INF_WARNING_ = "NA or Inf occured in the Conjugate Gradient Algorithm when calculating the gradients ";
+
+		/*!
+		* \brief Calculate the part of the logarithmic normalizing constant of the likelihood that does not depend on aux_pars_ and location_par
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		*/
+		void CalculateAuxQuantLogNormalizingConstant(const double* y_data,
+			const int* y_data_int) {
+			if (!aux_normalizing_constant_has_been_calculated_) {
+				if (likelihood_type_ == "gamma") {
+					double log_aux_normalizing_constant = 0.;
+#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						log_aux_normalizing_constant += w * AuxQuantLogNormalizingConstantGammaOneSample(y_data[i]);
+					}
+					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
+				}
+				else if (likelihood_type_ == "negative_binomial") {
+					double log_aux_normalizing_constant = 0.;
+#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						log_aux_normalizing_constant += w * AuxQuantLogNormalizingConstantNegBinOneSample(y_data_int[i]);
+					}
+					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
+				}
+				else if (likelihood_type_ != "gaussian" && likelihood_type_ != "gaussian_heteroscedastic" &&
+					likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
+					likelihood_type_ != "poisson" && likelihood_type_ != "t") {
+					Log::REFatal("CalculateAuxQuantLogNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
+				}
+				aux_normalizing_constant_has_been_calculated_ = true;
+			}
+		}//end CalculateAuxQuantLogNormalizingConstant
+
+		inline double AuxQuantLogNormalizingConstantGammaOneSample(const double y) const {
+			return(std::log(y));
+		}
+
+		inline double AuxQuantLogNormalizingConstantNegBinOneSample(const int y) const {
+			return(-std::lgamma(y + 1));
+		}
+
+		/*!
+		* \brief Calculate the logarithmic normalizing constant of the likelihood (not depending on location_par)
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		*/
+		void CalculateLogNormalizingConstant(const double* y_data,
+			const int* y_data_int) {
+			if (!normalizing_constant_has_been_calculated_) {
+				if (likelihood_type_ == "poisson") {
+					double aux_const = 0.;
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:aux_const)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						aux_const += w * LogNormalizingConstantPoissonOneSample(y_data_int[i]);
+					}
+					log_normalizing_constant_ = aux_const;
+				}
+				else if (likelihood_type_ == "gamma") {
+					log_normalizing_constant_ = LogNormalizingConstantGamma(y_data, y_data_int);
+				}
+				else if (likelihood_type_ == "negative_binomial") {
+					log_normalizing_constant_ = LogNormalizingConstantNegBin(y_data, y_data_int);
+				}
+				else if (likelihood_type_ == "t") {
+					log_normalizing_constant_ = num_data_ * (-std::log(aux_pars_[0]) +
+						std::lgamma((aux_pars_[1] + 1.) / 2.) - 0.5 * std::log(aux_pars_[1]) -
+						std::lgamma(aux_pars_[1] / 2.) - 0.5 * std::log(M_PI));
+				}
+				else if (likelihood_type_ == "gaussian") {
+					log_normalizing_constant_ = -num_data_ * (M_LOGSQRT2PI + 0.5 * std::log(aux_pars_[0]));
+				}
+				else if (likelihood_type_ == "gaussian_heteroscedastic") {
+					log_normalizing_constant_ = -num_data_ * M_LOGSQRT2PI;
+				}
+				else if (likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit") {
+					Log::REFatal("CalculateLogNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
+				}
+				normalizing_constant_has_been_calculated_ = true;
+			}
+		}//end CalculateLogNormalizingConstant
+
+		inline double LogNormalizingConstantPoissonOneSample(const int y) const {
+			if (y > 1) {
+				double log_factorial = 0.;
+				for (int k = 2; k <= y; ++k) {
+					log_factorial += std::log(k);
+				}
+				return(-log_factorial);
+			}
+			else {
+				return(0.);
+			}
+		}
+
+		inline double LogNormalizingConstantGamma(const double* y_data, const int* y_data_int) {
+			CalculateAuxQuantLogNormalizingConstant(y_data, y_data_int);//note: the second argument is not used
+			if (TwoNumbersAreEqual<double>(aux_pars_[0], 1.)) {
+				return(0.);
+			}
+			else {
+				return((aux_pars_[0] - 1.) * aux_log_normalizing_constant_ +
+					num_data_ * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0])));
+			}
+		}
+
+		inline double LogNormalizingConstantGammaOneSample(const double y) const {
+			if (TwoNumbersAreEqual<double>(aux_pars_[0], 1.)) {
+				return(0.);
+			}
+			else {
+				return((aux_pars_[0] - 1.) * AuxQuantLogNormalizingConstantGammaOneSample(y) +
+					aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]));
+			}
+		}
+
+		inline double LogNormalizingConstantNegBin(const double* y_data, const int* y_data_int) {
+			CalculateAuxQuantLogNormalizingConstant(y_data, y_data_int);//note: the first argument is not used
+			double aux_const = 0.;
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:aux_const)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				double w = has_weights_ ? weights_[i] : 1.0;
+				aux_const += w * std::lgamma(y_data_int[i] + aux_pars_[0]);
+			}
+			double norm_const = aux_const + aux_log_normalizing_constant_ +
+				num_data_ * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]));
+			return(norm_const);
+		}
+
+		inline double LogNormalizingConstantNegBinOneSample(const int y) const {
+			double norm_const = std::lgamma(y + aux_pars_[0]) + AuxQuantLogNormalizingConstantNegBinOneSample(y) +
+				aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]);
+			return(norm_const);
+		}
+
+		/*!
+		* \brief Evaluate the log-likelihood conditional on the latent variable (=location_par)
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		*/
+		double LogLikelihood(const double* y_data,
+			const int* y_data_int,
+			const double* location_par) {
+			CalculateLogNormalizingConstant(y_data, y_data_int);
+			double ll = 0.;
+			if (likelihood_type_ == "bernoulli_probit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					ll += w * LogLikBernoulliProbit(y_data_int[i], location_par[i]);
+				}
+			}
+			else if (likelihood_type_ == "bernoulli_logit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					ll += w * LogLikBernoulliLogit(y_data_int[i], location_par[i]);
+				}
+			}
+			else if (likelihood_type_ == "poisson") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					ll += w * LogLikPoisson(y_data_int[i], location_par[i], false);
+				}
+				ll += log_normalizing_constant_;
+			}
+			else if (likelihood_type_ == "gamma") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					ll += w * LogLikGamma(y_data[i], location_par[i], false);
+				}
+				ll += log_normalizing_constant_;
+			}
+			else if (likelihood_type_ == "negative_binomial") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					ll += w * LogLikNegBin(y_data_int[i], location_par[i], false);
+				}
+				ll += log_normalizing_constant_;
+			}
+			else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					ll += w * LogLikT(y_data[i], location_par[i], false);
+				}
+				ll += log_normalizing_constant_;
+			}
+			else if (likelihood_type_ == "gaussian") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					ll += w * LogLikGaussian(y_data[i], location_par[i], false);
+				}
+				ll += log_normalizing_constant_;
+			}
+			else if (likelihood_type_ == "gaussian_heteroscedastic") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					ll += w * LogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_], false);
+				}
+				ll += log_normalizing_constant_;
+			}
+			else {
+				Log::REFatal("LogLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+			}
+			return(ll);
+		}//end LogLikelihood
+
+		/*!
+		* \brief Evaluate the log-likelihood conditional on the latent variable (=location_par) for one sample
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		*/
+		inline double LogLikelihoodOneSample(const double y_data,
+			const int y_data_int,
+			const double location_par) const {
+			if (likelihood_type_ == "bernoulli_probit") {
+				return(LogLikBernoulliProbit(y_data_int, location_par));
+			}
+			else if (likelihood_type_ == "bernoulli_logit") {
+				return(LogLikBernoulliLogit(y_data_int, location_par));
+			}
+			else if (likelihood_type_ == "poisson") {
+				return(LogLikPoisson(y_data_int, location_par, true));
+			}
+			else if (likelihood_type_ == "gamma") {
+				return(LogLikGamma(y_data, location_par, true));
+			}
+			else if (likelihood_type_ == "negative_binomial") {
+				return(LogLikNegBin(y_data_int, location_par, true));
+			}
+			else if (likelihood_type_ == "t") {
+				return(LogLikT(y_data, location_par, true));
+			}
+			else if (likelihood_type_ == "gaussian") {
+				return(LogLikGaussian(y_data, location_par, true));
+			}
+			else {
+				Log::REFatal("LogLikelihoodOneSample: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				return(-1e99);
+			}
+		}//end LogLikelihood
+
+		inline double LogLikBernoulliProbit(const int y, const double location_par) const {
+			if (y == 0) {
+				return std::log(1 - GPBoost::normalCDF(location_par));
+			}
+			else {
+				return std::log(GPBoost::normalCDF(location_par));
+			}
+		}
+
+		inline double LogLikBernoulliLogit(const int y, const double location_par) const {
+			return (y * location_par - std::log(1 + std::exp(location_par)));
+			//Alternative version:
+			//if (y == 0) {
+			//  ll += std::log(1 - CondMeanLikelihood(location_par));//CondMeanLikelihood = logistic function
+			//}
+			//else {
+			//  ll += std::log(CondMeanLikelihood(location_par));
+			//}
+		}
+
+		inline double LogLikPoisson(const int y, const double location_par, bool incl_norm_const) const {
+			double ll = y * location_par - std::exp(location_par);
+			if (incl_norm_const) {
+				return (ll + LogNormalizingConstantPoissonOneSample(y));
+			}
+			else {
+				return (ll);
+			}
+		}
+
+		inline double LogLikGamma(const double y, const double location_par, bool incl_norm_const) const {
+			double ll = -aux_pars_[0] * (location_par + y * std::exp(-location_par));
+			if (incl_norm_const) {
+				return (ll + LogNormalizingConstantGammaOneSample(y));
+			}
+			else {
+				return (ll);
+			}
+		}
+
+		inline double LogLikNegBin(const int y, const double location_par, bool incl_norm_const) const {
+			double ll = y * location_par - (y + aux_pars_[0]) * std::log(std::exp(location_par) + aux_pars_[0]);
+			if (incl_norm_const) {
+				return (ll + LogNormalizingConstantNegBinOneSample(y));
+			}
+			else {
+				return (ll);
+			}
+		}
+
+		inline double LogLikT(const double y, const double location_par, bool incl_norm_const) const {
+			double ll = -(aux_pars_[1] + 1.) / 2. * std::log(1. + (y - location_par) * (y - location_par) / (aux_pars_[1] * aux_pars_[0] * aux_pars_[0]));
+			if (incl_norm_const) {
+				return (ll - std::log(aux_pars_[0]) +
+					std::lgamma((aux_pars_[1] + 1.) / 2.) - 0.5 * std::log(aux_pars_[1]) -
+					0.5 * std::lgamma(aux_pars_[1] / 2.) - 0.5 * std::log(M_PI));
+			}
+			else {
+				return (ll);
+			}
+		}
+
+		inline double LogLikGaussian(const double y, const double location_par, bool incl_norm_const) const {
+			double resid = y - location_par;
+			double ll = -resid * resid / 2. / aux_pars_[0];
+			if (incl_norm_const) {
+				return (ll - M_LOGSQRT2PI - 0.5 * std::log(aux_pars_[0]));
+			}
+			else {
+				return (ll);
+			}
+		}
+
+		inline double LogLikGaussianHeteroscedastic(const double y, const double location_par,
+			const double location_par2, bool incl_norm_const) const {
+			double resid = y - location_par;
+			double ll = -resid * resid * std::exp(-location_par2) / 2. - location_par2 / 2.;
+			if (incl_norm_const) {
+				return (ll - M_LOGSQRT2PI);
+			}
+			else {
+				return (ll);
+			}
+		}
+
+		/*!
+		* \brief Calculate the first derivative of the log-likelihood with respect to the location parameter
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		*/
+		void CalcFirstDerivLogLik(const double* y_data,
+			const int* y_data_int,
+			const double* location_par) {
+			if (!use_Z_for_duplicates_) {
+				CalcFirstDerivLogLik_DataScale(y_data, y_data_int, location_par, first_deriv_ll_);
+			}
+			else {
+				CalcFirstDerivLogLik_DataScale(y_data, y_data_int, location_par, first_deriv_ll_data_scale_);
+				for (int igp = 0; igp < num_sets_re_; ++igp) {
+					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_,
+						first_deriv_ll_data_scale_.data() + num_data_ * igp, first_deriv_ll_.data() + dim_mode_per_set_re_ * igp, true);
+				}
+			}
+		}//end CalcFirstDerivLogLik
+
+		/*!
+		* \brief Calculate the first derivative of the log-likelihood with respect to the location parameter on the likelihood / "data-scale"
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		* \param[out] first_deriv_ll First derivative
+		*/
+		void CalcFirstDerivLogLik_DataScale(const double* y_data,
+			const int* y_data_int,
+			const double* location_par,
+			vec_t& first_deriv_ll) {
+			if (likelihood_type_ == "bernoulli_probit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					first_deriv_ll[i] = w * FirstDerivLogLikBernoulliProbit(y_data_int[i], location_par[i]);
+				}
+			}
+			else if (likelihood_type_ == "bernoulli_logit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					first_deriv_ll[i] = w * FirstDerivLogLikBernoulliLogit(y_data_int[i], location_par[i]);
+				}
+			}
+			else if (likelihood_type_ == "poisson") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					first_deriv_ll[i] = w * FirstDerivLogLikPoisson(y_data_int[i], location_par[i]);
+				}
+			}
+			else if (likelihood_type_ == "gamma") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					first_deriv_ll[i] = w * FirstDerivLogLikGamma(y_data[i], location_par[i]);
+				}
+			}
+			else if (likelihood_type_ == "negative_binomial") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					first_deriv_ll[i] = w * FirstDerivLogLikNegBin(y_data_int[i], location_par[i]);
+				}
+			}
+			else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					first_deriv_ll[i] = w * FirstDerivLogLikT(y_data[i], location_par[i]);
+				}
+			}
+			else if (likelihood_type_ == "gaussian") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					first_deriv_ll[i] = w * FirstDerivLogLikGaussian(y_data[i], location_par[i]);
+				}
+			}
+			else if (likelihood_type_ == "gaussian_heteroscedastic") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_],
+						first_deriv_ll[i], first_deriv_ll[i + num_data_]);
+					if (has_weights_) {
+						first_deriv_ll[i] *= weights_[i];
+						first_deriv_ll[i + num_data_] *= weights_[i];
+					}
+				}
+			}
+			else {
+				Log::REFatal("CalcFirstDerivLogLik_DataScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+			}
+		}//end CalcFirstDerivLogLik_DataScale
+
+		/*!
+		* \brief Calculate the first derivative of the log-likelihood with respect to the location parameter
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		*/
+		inline double CalcFirstDerivLogLikOneSample(const double y_data,
+			const int y_data_int,
+			const double location_par) const {
+			if (likelihood_type_ == "bernoulli_probit") {
+				return(FirstDerivLogLikBernoulliProbit(y_data_int, location_par));
+			}
+			else if (likelihood_type_ == "bernoulli_logit") {
+				return(FirstDerivLogLikBernoulliLogit(y_data_int, location_par));
+			}
+			else if (likelihood_type_ == "poisson") {
+				return(FirstDerivLogLikPoisson(y_data_int, location_par));
+			}
+			else if (likelihood_type_ == "gamma") {
+				return(FirstDerivLogLikGamma(y_data, location_par));
+			}
+			else if (likelihood_type_ == "negative_binomial") {
+				return(FirstDerivLogLikNegBin(y_data_int, location_par));
+			}
+			else if (likelihood_type_ == "t") {
+				return(FirstDerivLogLikT(y_data, location_par));
+			}
+			else if (likelihood_type_ == "gaussian") {
+				return(FirstDerivLogLikGaussian(y_data, location_par));
+			}
+			else {
+				Log::REFatal("CalcFirstDerivLogLikOneSample: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				return(0.);
+			}
+		}//end CalcFirstDerivLogLikOneSample
+
+		inline double FirstDerivLogLikBernoulliProbit(const int y, const double location_par) const {
+			if (y == 0) {
+				return (-GPBoost::normalPDF(location_par) / (1 - GPBoost::normalCDF(location_par)));
+			}
+			else {
+				return (GPBoost::normalPDF(location_par) / GPBoost::normalCDF(location_par));
+			}
+		}
+
+		inline double FirstDerivLogLikBernoulliLogit(const int y, const double location_par) const {
+			return (y - 1. / (1. + std::exp(-location_par)));
+		}
+
+		inline double FirstDerivLogLikPoisson(const int y, const double location_par) const {
+			return (y - std::exp(location_par));
+		}
+
+		inline double FirstDerivLogLikGamma(const double y, const double location_par) const {
+			return (aux_pars_[0] * (y * std::exp(-location_par) - 1.));
+		}
+
+		inline double FirstDerivLogLikNegBin(const int y, const double location_par) const {
+			double mu = std::exp(location_par);
+			return (y - (y + aux_pars_[0]) / (mu + aux_pars_[0]) * mu);
+		}
+
+		inline double FirstDerivLogLikT(const double y, const double location_par) const {
+			double res = (y - location_par);
+			return (aux_pars_[1] + 1.) * res / (aux_pars_[1] * aux_pars_[0] * aux_pars_[0] + res * res);
+		}
+
+		inline double FirstDerivLogLikGaussian(const double y, const double location_par) const {
+			return ((y - location_par) / aux_pars_[0]);
+		}
+
+		inline void FirstDerivLogLikGaussianHeteroscedastic(const double y, const double location_par, const double location_par2,
+			double& first_deriv, double& first_deriv2) const {
+			double sigma2_inv = std::exp(-location_par2);
+			double resid = y - location_par;
+			first_deriv = resid * sigma2_inv;
+			first_deriv2 = (first_deriv * resid - 1.) / 2.;
+		}
+
+
+		/*!
+		* \brief Calculate (usually only the diagonal) the Fisher information (=usually the second derivative of the negative (!) log-likelihood with respect to the location parameter, i.e., the observed FI)
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		* \param called_during_mode_finding Indicates whether this function is called during the mode finding algorithm or after the mode is found for the final approximation
+		*/
+		void CalcInformationLogLik(const double* y_data,
+			const int* y_data_int,
+			const double* location_par,
+			bool called_during_mode_finding) {
+			if (!use_Z_for_duplicates_) {
+				CalcInformationLogLik_DataScale(y_data, y_data_int, location_par, called_during_mode_finding, information_ll_, off_diag_information_ll_);
+			}
+			else {
+				CalcInformationLogLik_DataScale(y_data, y_data_int, location_par, called_during_mode_finding, information_ll_data_scale_, off_diag_information_ll_data_scale_);
+				for (int igp = 0; igp < num_sets_re_; ++igp) {
+					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_,
+						information_ll_data_scale_.data() + num_data_ * igp, information_ll_.data() + dim_mode_per_set_re_ * igp, true);
+				}
+				if (information_has_off_diagonal_) {
+					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, off_diag_information_ll_data_scale_.data(), off_diag_information_ll_.data(), true);
+				}
+			}
+			if (HasNegativeValueInformationLogLik()) {
+				Log::REDebug("Negative values found in the (diagonal) Hessian / Fisher information for the Laplace approximation. "
+					"This is not necessarily a problem, but it could lead to non-positive definite matrices ");
+			}
+			if (information_has_off_diagonal_) {
+				CHECK(num_sets_re_ == 2);
+				information_ll_mat_ = sp_mat_t(dim_mode_, dim_mode_);
+				std::vector<Triplet_t> triplets(dim_mode_per_set_re_ * 4);
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < dim_mode_; ++i) {
+					triplets[i] = Triplet_t(i, i, information_ll_[i]);
+				}
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < dim_mode_per_set_re_; ++i) {
+					triplets[dim_mode_ + i] = Triplet_t(i, i + dim_mode_per_set_re_, off_diag_information_ll_[i]);
+					triplets[dim_mode_ + dim_mode_per_set_re_ + i] = Triplet_t(i + dim_mode_per_set_re_, i, off_diag_information_ll_[i]);
+				}
+				information_ll_mat_.setFromTriplets(triplets.begin(), triplets.end());
+			}
+		}//end CalcInformationLogLik
+
+		/*!
+		* \brief Calculate (usually only the diagonal) the Fisher information (=usually the second derivative of the negative (!) log-likelihood with respect to the location parameter, i.e., the observed FI) on the likelihood / "data-scale"
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		* \param called_during_mode_finding Indicates whether this function is called during the mode finding algorithm or after the mode is found for the final approximation
+		* \param[out] information_ll Diagonal of information
+		* \param[out] off_diag_information_ll Off-diagonal of information (if applicable)
+		*/
+		void CalcInformationLogLik_DataScale(const double* y_data,
+			const int* y_data_int,
+			const double* location_par,
+			bool called_during_mode_finding,
+			vec_t& information_ll,
+			vec_t& off_diag_information_ll) {
+			string_t approximation_type_local;
+			if (use_fisher_for_mode_finding_ && called_during_mode_finding) {
+				approximation_type_local = "fisher_laplace";
+			}
+			else {
+				approximation_type_local = approximation_type_;
+			}
+			if (approximation_type_local == "laplace") {
+				if (likelihood_type_ == "bernoulli_probit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikBernoulliProbit(y_data_int[i], location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "bernoulli_logit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikBernoulliLogit(location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "poisson") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikPoisson(location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "gamma") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikGamma(y_data[i], location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "negative_binomial") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikNegBin(y_data_int[i], location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikT(y_data[i], location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "gaussian") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikGaussian();
+					}
+				}
+				else if (likelihood_type_ == "gaussian_heteroscedastic") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						SecondDerivNegLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_],
+							information_ll[i], information_ll[i + num_data_], off_diag_information_ll[i]);
+						if (has_weights_) {
+							information_ll[i] *= weights_[i];
+							information_ll[i + num_data_] *= weights_[i];
+							off_diag_information_ll[i] *= weights_[i];
+						}
+					}
+				}
+				else {
+					Log::REFatal("CalcInformationLogLik_DataScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				}
+			}//end approximation_type_local == "laplace"
+			else if (approximation_type_local == "fisher_laplace") {
+				if (likelihood_type_ == "bernoulli_logit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikBernoulliLogit(location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "poisson") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikPoisson(location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * FisherInformationT();
+					}
+				}
+				else if (likelihood_type_ == "gaussian") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikGaussian();
+					}
+				}
+				else if (likelihood_type_ == "gaussian_heteroscedastic") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						FisherInformationGaussianHeteroscedastic(location_par[i + num_data_], information_ll[i], information_ll[i + num_data_]);
+						if (has_weights_) {
+							information_ll[i] *= weights_[i];
+							information_ll[i + num_data_] *= weights_[i];
+						}
+					}
+				}
+				else {
+					Log::REFatal("CalcInformationLogLik_DataScale: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_local.c_str());
+				}
+			}//end approximation_type_local == "fisher_laplace"
+			else if (approximation_type_local == "lss_laplace") {
+				if (!use_Z_for_duplicates_) {
+					Log::REFatal("CalcInformationLogLik_DataScale: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_local.c_str());
+				}//end !use_Z_for_duplicates_
+				else {//use_Z_for_duplicates_
+					Log::REFatal("CalcInformationLogLik_DataScale: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_local.c_str());
+				}//end use_Z_for_duplicates_
+			}//end approximation_type_local == "lss_laplace"
+			else {
+				Log::REFatal("CalcInformationLogLik_DataScale: approximation_type '%s' is not supported ", approximation_type_local.c_str());
+			}
+		}// end CalcInformationLogLik_DataScale
+
+		/*!
+		* \brief Calculate the diagonal of the Fisher information (=usually the second derivative of the negative (!) log-likelihood with respect to the location parameter, i.e., the observed FI)
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		*/
+		inline double CalcDiagInformationLogLikOneSample(const double y_data,
+			const int y_data_int,
+			const double location_par) const {
+			if (approximation_type_ == "laplace") {
+				if (likelihood_type_ == "bernoulli_probit") {
+					return(SecondDerivNegLogLikBernoulliProbit(y_data_int, location_par));
+				}
+				else if (likelihood_type_ == "bernoulli_logit") {
+					return(SecondDerivNegLogLikBernoulliLogit(location_par));
+				}
+				else if (likelihood_type_ == "poisson") {
+					return(SecondDerivNegLogLikPoisson(location_par));
+				}
+				else if (likelihood_type_ == "gamma") {
+					return(SecondDerivNegLogLikGamma(y_data, location_par));
+				}
+				else if (likelihood_type_ == "negative_binomial") {
+					return(SecondDerivNegLogLikNegBin(y_data_int, location_par));
+				}
+				else if (likelihood_type_ == "gaussian") {
+					return(SecondDerivNegLogLikGaussian());
+				}
+				else {
+					Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+					return(1.);
+				}
+			}//end approximation_type_ == "laplace"
+			else if (approximation_type_ == "fisher_laplace") {
+				if (likelihood_type_ == "bernoulli_logit") {
+					return(SecondDerivNegLogLikBernoulliLogit(location_par));
+				}
+				else if (likelihood_type_ == "poisson") {
+					return(SecondDerivNegLogLikPoisson(location_par));
+				}
+				else if (likelihood_type_ == "t") {
+					return(FisherInformationT());
+				}
+				else if (likelihood_type_ == "gaussian") {
+					return(SecondDerivNegLogLikGaussian());
+				}
+				else {
+					Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
+					return(1.);
+				}
+			}//end approximation_type_ == "fisher_laplace"
+			else {
+				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type '%s' is not supported ", approximation_type_.c_str());
+				return(1.);
+			}
+		}// end CalcDiagInformationLogLikOneSample
+
+		inline double SecondDerivNegLogLikBernoulliProbit(const int y, const double location_par) const {
+			double dnorm = GPBoost::normalPDF(location_par);
+			double pnorm = GPBoost::normalCDF(location_par);
+			if (y == 0) {
+				double dnorm_frac_one_min_pnorm = dnorm / (1. - pnorm);
+				return (-dnorm_frac_one_min_pnorm * (location_par - dnorm_frac_one_min_pnorm));
+			}
+			else {
+				double dnorm_frac_pnorm = dnorm / pnorm;
+				return (dnorm_frac_pnorm * (location_par + dnorm_frac_pnorm));
+			}
+		}
+
+		inline double SecondDerivNegLogLikBernoulliLogit(const double location_par) const {
+			double exp_loc_i = std::exp(location_par);
+			return (exp_loc_i / ((1. + exp_loc_i) * (1. + exp_loc_i)));
+		}
+
+		inline double SecondDerivNegLogLikPoisson(const double location_par) const {
+			return std::exp(location_par);
+		}
+
+		inline double SecondDerivNegLogLikGamma(const double y, const double location_par) const {
+			return (aux_pars_[0] * y * std::exp(-location_par));
+		}
+
+		inline double SecondDerivNegLogLikNegBin(const int y, const double location_par) const {
+			double mu = std::exp(location_par);
+			double mu_plus_r = mu + aux_pars_[0];
+			return ((y + aux_pars_[0]) * mu * aux_pars_[0] / (mu_plus_r * mu_plus_r));
+		}
+
+		inline double SecondDerivNegLogLikGaussian() const {
+			return (1 / aux_pars_[0]);
+		}
+
+		inline double SecondDerivNegLogLikT(const double y, const double location_par) const {
+			double res_sq = (y - location_par) * (y - location_par);
+			double nu_sigma2 = aux_pars_[1] * aux_pars_[0] * aux_pars_[0];
+			return (-(aux_pars_[1] + 1.) * (res_sq - nu_sigma2) / ((nu_sigma2 + res_sq) * (nu_sigma2 + res_sq)));
+		}
+
+		inline double FisherInformationT() const {
+			return ((aux_pars_[1] + 1.) / (aux_pars_[1] + 3.) / (aux_pars_[0] * aux_pars_[0]));
+		}
+
+		inline void SecondDerivNegLogLikGaussianHeteroscedastic(const double y, const double location_par, const double location_par2,
+			double& second_deriv, double& second_deriv2, double& off_diag_second_deriv) const {
+			double sigma2_inv = std::exp(-location_par2);
+			double resid = y - location_par;
+			second_deriv = sigma2_inv;
+			second_deriv2 = resid * resid * sigma2_inv / 2.;
+			off_diag_second_deriv = resid * sigma2_inv;
+		}
+
+		inline void FisherInformationGaussianHeteroscedastic(const double location_par_var, double& second_deriv, double& second_deriv2) const {
+			second_deriv = std::exp(-location_par_var);
+			second_deriv2 = 1 / 2.;
+		}
+
+		/*!
+		* \brief Calculate the first derivative of the diagonal of the Fisher information wrt the location parameter. This is usually the negative third derivative of the log-likelihood wrt the location parameter.
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		* \param[out] deriv_information_diag_loc_par First derivative of the diagonal of the Fisher information wrt the location parameter
+		* \param[out] deriv_information_diag_loc_par_data_scale First derivative of the diagonal of the Fisher information wrt the location parameter on the data-scale (only used if use_Z_for_duplicates_)
+		*/
+		void CalcFirstDerivInformationLocPar(const double* y_data,
+			const int* y_data_int,
+			const double* location_par,
+			vec_t& deriv_information_diag_loc_par,
+			vec_t& deriv_information_diag_loc_par_data_scale) {
+			CHECK(grad_information_wrt_mode_non_zero_);
+			deriv_information_diag_loc_par = vec_t(dim_mode_per_set_re_);
+			if (use_Z_for_duplicates_) {
+				deriv_information_diag_loc_par_data_scale = vec_t(num_data_);
+				CalcFirstDerivInformationLocPar_DataScale(y_data, y_data_int, location_par, deriv_information_diag_loc_par_data_scale);
+				CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_, deriv_information_diag_loc_par_data_scale.data(), deriv_information_diag_loc_par.data(), true);
+			}
+			else {
+				CalcFirstDerivInformationLocPar_DataScale(y_data, y_data_int, location_par, deriv_information_diag_loc_par);
+			}
+		}//end CalcFirstDerivInformationLocPar
+
+		/*!
+		* \brief Calculate the first derivative of the diagonal of the Fisher information wrt the location parameter on the likelihood / "data-scale". This is usually the negative third derivative of the log-likelihood wrt the location parameter.
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		* \param[out] deriv_information_diag_loc_par First derivative of the diagonal of the Fisher information wrt the location parameter
+		*/
+		void CalcFirstDerivInformationLocPar_DataScale(const double* y_data,
+			const int* y_data_int,
+			const double* location_par,
+			vec_t& deriv_information_diag_loc_par) {
+			if (approximation_type_ == "laplace") {
+				if (likelihood_type_ == "bernoulli_probit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double dnorm = GPBoost::normalPDF(location_par[i]);
+						double pnorm = GPBoost::normalCDF(location_par[i]);
+						double w = has_weights_ ? weights_[i] : 1.0;
+						if (y_data_int[i] == 0) {
+							double dnorm_frac_one_min_pnorm = dnorm / (1. - pnorm);
+							deriv_information_diag_loc_par[i] = w * (-dnorm_frac_one_min_pnorm * (1 - location_par[i] * location_par[i] +
+								dnorm_frac_one_min_pnorm * (3 * location_par[i] - 2 * dnorm_frac_one_min_pnorm)));
+						}
+						else {
+							double dnorm_frac_pnorm = dnorm / pnorm;
+							deriv_information_diag_loc_par[i] = w * (-dnorm_frac_pnorm * (location_par[i] * location_par[i] - 1 +
+								dnorm_frac_pnorm * (3 * location_par[i] + 2 * dnorm_frac_pnorm)));
+						}
+					}
+				}
+				else if (likelihood_type_ == "bernoulli_logit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						double exp_loc_i = std::exp(location_par[i]);
+						deriv_information_diag_loc_par[i] = w * exp_loc_i * (1. - exp_loc_i) / std::pow(1 + exp_loc_i, 3);
+					}
+				}
+				else if (likelihood_type_ == "poisson") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						deriv_information_diag_loc_par[i] = w * std::exp(location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "gamma") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						deriv_information_diag_loc_par[i] = w * -aux_pars_[0] * y_data[i] * std::exp(-location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "negative_binomial") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						double mu = std::exp(location_par[i]);
+						double mu_plus_r = mu + aux_pars_[0];
+						deriv_information_diag_loc_par[i] = w * -(y_data_int[i] + aux_pars_[0]) * mu * aux_pars_[0] * (mu - aux_pars_[0]) / (mu_plus_r * mu_plus_r * mu_plus_r);
+					}
+				}
+				else if (likelihood_type_ == "t") {
+					double nu_sigma2 = aux_pars_[1] * aux_pars_[0] * aux_pars_[0];
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						double res = y_data[i] - location_par[i];
+						double res_sq = res * res;
+						double denom = nu_sigma2 + res_sq;
+						deriv_information_diag_loc_par[i] = w * -2. * (aux_pars_[1] + 1.) * (res_sq - 3. * nu_sigma2) * res / (denom * denom * denom);
+					}
+				}
+				else if (likelihood_type_ == "gaussian") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						deriv_information_diag_loc_par[i] = 0.;
+					}
+				}
+				else {
+					Log::REFatal("CalcFirstDerivInformationLocPar_DataScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				}
+			}//end approximation_type_ == "laplace"
+			else if (approximation_type_ == "fisher_laplace") {
+				if (likelihood_type_ == "bernoulli_logit") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						double exp_loc_i = std::exp(location_par[i]);
+						deriv_information_diag_loc_par[i] = w * exp_loc_i * (1. - exp_loc_i) / std::pow(1 + exp_loc_i, 3);
+					}
+				}
+				else if (likelihood_type_ == "poisson") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						deriv_information_diag_loc_par[i] = w * std::exp(location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "t") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						deriv_information_diag_loc_par[i] = 0.;
+					}
+				}
+				else if (likelihood_type_ == "gaussian") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						deriv_information_diag_loc_par[i] = 0.;
+					}
+				}
+				else if (likelihood_type_ == "gaussian_heteroscedastic") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						deriv_information_diag_loc_par[i] = w * -std::exp(-location_par[i + num_data_]);
+					}
+				}
+				else {
+					Log::REFatal("CalcFirstDerivInformationLocPar_DataScale: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
+				}
+			}// end approximation_type_ == "fisher_laplace"
+			else if (approximation_type_ == "lss_laplace") {
+				Log::REFatal("CalcFirstDerivInformationLocPar_DataScale: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+					likelihood_type_.c_str(), approximation_type_.c_str());
+			}//end approximation_type_ == "lss_laplace"
+			else {
+				Log::REFatal("CalcFirstDerivInformationLocPar_DataScale: approximation_type '%s' is not supported ", approximation_type_.c_str());
+			}
+			first_deriv_information_loc_par_caluclated_ = true;
+		}//end CalcFirstDerivInformationLocPar_DataScale
+
+		/*!
+		* \brief Calculates the gradient of the negative log-likelihood with respect to the
+		*       additional parameters of the likelihood (e.g., shape for gamma). The gradient is usually calculated on the log-scale.
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		* \param[out] grad Gradient
+		*/
+		void CalcGradNegLogLikAuxPars(const double* y_data,
+			const int* y_data_int,
+			const double* location_par,
+			double* grad) const {
+			if (likelihood_type_ == "gamma") {
+				CHECK(aux_normalizing_constant_has_been_calculated_);
+				double neg_log_grad = 0.;//gradient for shape parameter is calculated on the log-scale
+#pragma omp parallel for schedule(static) reduction(+:neg_log_grad)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					neg_log_grad += w * (location_par[i] + y_data[i] * std::exp(-location_par[i]));
+				}
+				neg_log_grad -= num_data_ * (std::log(aux_pars_[0]) + 1. - GPBoost::digamma(aux_pars_[0]));
+				neg_log_grad -= aux_log_normalizing_constant_;
+				neg_log_grad *= aux_pars_[0];
+				grad[0] = neg_log_grad;
+			}
+			else if (likelihood_type_ == "negative_binomial") {
+				//gradient for shape parameter is calculated on the log-scale
+				double neg_log_grad = 0.;
+#pragma omp parallel for schedule(static) reduction(+:neg_log_grad)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					double mu_plus_r = std::exp(location_par[i]) + aux_pars_[0];
+					double y_plus_r = y_data_int[i] + aux_pars_[0];
+					neg_log_grad += w * aux_pars_[0] * (-GPBoost::digamma(y_plus_r) + std::log(mu_plus_r) + y_plus_r / mu_plus_r);
+				}
+				neg_log_grad += num_data_ * aux_pars_[0] * (GPBoost::digamma(aux_pars_[0]) - std::log(aux_pars_[0]) - 1);
+				grad[0] = neg_log_grad;
+			}
+			else if (likelihood_type_ == "t") {
+				//gradients are calculated on the log-scale
+				double nu_sigma2 = aux_pars_[1] * aux_pars_[0] * aux_pars_[0];
+				double neg_log_grad_scale = 0., neg_log_grad_df = 0.;
+#pragma omp parallel for schedule(static) reduction(+:neg_log_grad_scale, neg_log_grad_df)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					double res_sq = (y_data[i] - location_par[i]) * (y_data[i] - location_par[i]);
+					neg_log_grad_scale -= w * (aux_pars_[1] + 1.) / (nu_sigma2 / res_sq + 1.);
+					if (estimate_df_t_) {
+						neg_log_grad_df += w * (-aux_pars_[1] * std::log(1 + res_sq / nu_sigma2) + (aux_pars_[1] + 1.) / (1. + nu_sigma2 / res_sq));
+					}
+				}
+				neg_log_grad_scale += num_data_;
+				grad[0] = neg_log_grad_scale;
+				if (estimate_df_t_) {
+					neg_log_grad_df += num_data_ * (-1. + aux_pars_[1] * (GPBoost::digamma((aux_pars_[1] + 1) / 2.) - GPBoost::digamma(aux_pars_[1] / 2.)));
+					neg_log_grad_df /= -2.;
+					grad[1] = neg_log_grad_df;
+				}
+			}//end "t"
+			else if (likelihood_type_ == "gaussian") {
+				//gradient for variance parameter is calculated on the log-scale
+				double neg_log_grad = 0.;
+#pragma omp parallel for schedule(static) reduction(+:neg_log_grad)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double w = has_weights_ ? weights_[i] : 1.0;
+					double resid = y_data[i] - location_par[i];
+					neg_log_grad += w * resid * resid;
+				}
+				neg_log_grad *= -0.5 / aux_pars_[0];
+				neg_log_grad += 0.5 * num_data_;
+				grad[0] = neg_log_grad;
+			}//end "gaussian"
+			else if (num_aux_pars_estim_ > 0) {
+				Log::REFatal("CalcGradNegLogLikAuxPars: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+			}
+		}//end CalcGradNegLogLikAuxPars
+
+		/*!
+		* \brief Calculates (i) the second derivative of the log-likelihood wrt the location parameter and an additional parameter of the likelihood
+		* and (ii) the first derivative of the diagonal of the Fisher information of the likelihood wrt an additional parameter of the likelihood.
+		* The latter (ii) is ususally negative third derivative of the log-likelihood wrt twice the location parameter and an additional parameter of the likelihood.
+		* The gradient wrt to the additional parameter is usually calculated on the log-scale.
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		* \param ind_aux_par Index of aux_pars_ wrt which the gradient is calculated (currently no used as there is only one)
+		* \param[out] second_deriv_loc_aux_par Second derivative of the log-likelihood wrt the location parameter and an additional parameter of the likelihood
+		* \param[out] deriv_information_aux_par First derivative of the diagonal of the Fisher information of the likelihood wrt an additional parameter of the likelihood
+		*/
+		void CalcSecondDerivLogLikFirstDerivInformationAuxPar(const double* y_data,
+			const int* y_data_int,
+			const double* location_par,
+			int ind_aux_par,
+			double* second_deriv_loc_aux_par,
+			double* deriv_information_aux_par) const {
+			if (approximation_type_ == "laplace") {
+				if (likelihood_type_ == "gamma") {
+					//note: gradient wrt to aux_pars_[0] on the log-scale
+					CHECK(ind_aux_par == 0);
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						second_deriv_loc_aux_par[i] = w * aux_pars_[0] * (y_data[i] * std::exp(-location_par[i]) - 1.);
+						deriv_information_aux_par[i] = w * (second_deriv_loc_aux_par[i] + aux_pars_[0]);
+					}
+				}
+				else if (likelihood_type_ == "negative_binomial") {
+					//gradient for shape parameter is calculated on the log-scale
+					CHECK(ind_aux_par == 0);
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						double mu = std::exp(location_par[i]);
+						double mu_plus_r = mu + aux_pars_[0];
+						double y_plus_r = y_data_int[i] + aux_pars_[0];
+						double mu_r_div_mu_plus_r_sqr = mu * aux_pars_[0] / (mu_plus_r * mu_plus_r);
+						second_deriv_loc_aux_par[i] = w * mu_r_div_mu_plus_r_sqr * (y_data_int[i] - mu);
+						deriv_information_aux_par[i] = w * -mu_r_div_mu_plus_r_sqr * (y_data_int[i] * (aux_pars_[0] - mu) - 2 * aux_pars_[0] * mu) / y_plus_r;
+					}
+				}
+				else if (likelihood_type_ == "t") {
+					CHECK(ind_aux_par == 0 || ind_aux_par == 1);
+					if (ind_aux_par == 0) {
+						//gradient for scale parameter is calculated on the log-scale
+						double sigma2 = aux_pars_[0] * aux_pars_[0];
+						double nu_sigma2 = aux_pars_[1] * sigma2;
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							double w = has_weights_ ? weights_[i] : 1.0;
+							double res = y_data[i] - location_par[i];
+							double res_sq = res * res;
+							double denom = nu_sigma2 + res_sq;
+							double denom_sq = denom * denom;
+							second_deriv_loc_aux_par[i] = w * -2. * (aux_pars_[1] + 1.) * aux_pars_[1] * res * sigma2 / denom_sq;
+							deriv_information_aux_par[i] = w * 2. * (aux_pars_[1] + 1.) * aux_pars_[1] * sigma2 * (3. * res_sq - nu_sigma2) / (denom_sq * denom);
+						}
+					}
+					else if (ind_aux_par == 1) {
+						CHECK(estimate_df_t_);
+						//gradient for df parameter is calculated on the log-scale
+						double sigma2 = aux_pars_[0] * aux_pars_[0];
+						double nu_sigma2 = aux_pars_[1] * sigma2;
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							double w = has_weights_ ? weights_[i] : 1.0;
+							double res = y_data[i] - location_par[i];
+							double res_sq = res * res;
+							double denom = nu_sigma2 + res_sq;
+							double denom_sq = denom * denom;
+							second_deriv_loc_aux_par[i] = w * aux_pars_[1] * res * (res_sq - sigma2) / denom_sq;
+							deriv_information_aux_par[i] = w * -aux_pars_[1] * (res_sq * res_sq + nu_sigma2 * sigma2 -
+								3. * res_sq * sigma2 * (aux_pars_[1] + 1)) / (denom_sq * denom);
+						}
+					}
+				}//end "t"
+				else if (likelihood_type_ == "gaussian") {
+					//gradient for variance parameter is calculated on the log-scale
+					CHECK(ind_aux_par == 0);
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						double w = has_weights_ ? weights_[i] : 1.0;
+						second_deriv_loc_aux_par[i] = w * (location_par[i] - y_data[i]) / aux_pars_[0];
+						deriv_information_aux_par[i] = w * -1. / aux_pars_[0];
+					}
+				}//end "gaussian"
+				else if (num_aux_pars_estim_ > 0) {
+					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
+				}
+			}//end approximation_type_ == "laplace"
+			else if (approximation_type_ == "fisher_laplace") {
+				if (likelihood_type_ == "t") {
+					CHECK(ind_aux_par == 0 || ind_aux_par == 1);
+					if (ind_aux_par == 0) {
+						//gradient for scale parameter is calculated on the log-scale
+						double sigma2 = aux_pars_[0] * aux_pars_[0];
+						double nu_sigma2 = aux_pars_[1] * sigma2;
+						double deriv_FI = -2. * (aux_pars_[1] + 1.) / (aux_pars_[1] + 3.) / sigma2;
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							double w = has_weights_ ? weights_[i] : 1.0;
+							double res = y_data[i] - location_par[i];
+							double denom = nu_sigma2 + res * res;
+							double denom_sq = denom * denom;
+							second_deriv_loc_aux_par[i] = w * -2. * (aux_pars_[1] + 1.) * aux_pars_[1] * res * sigma2 / denom_sq;
+							deriv_information_aux_par[i] = w * deriv_FI;
+						}
+					}
+					else if (ind_aux_par == 1) {
+						CHECK(estimate_df_t_);
+						//gradient for df parameter is calculated on the log-scale
+						double sigma2 = aux_pars_[0] * aux_pars_[0];
+						double nu_sigma2 = aux_pars_[1] * sigma2;
+						double deriv_FI = aux_pars_[1] * 2. / sigma2 / (aux_pars_[1] + 3.) / (aux_pars_[1] + 3.);
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							double w = has_weights_ ? weights_[i] : 1.0;
+							double res = y_data[i] - location_par[i];
+							double res_sq = res * res;
+							double denom = nu_sigma2 + res_sq;
+							double denom_sq = denom * denom;
+							second_deriv_loc_aux_par[i] = w * aux_pars_[1] * res * (res_sq - sigma2) / denom_sq;
+							deriv_information_aux_par[i] = w * deriv_FI;
+						}
+					}
+				}//end "t"
+				else if (num_aux_pars_estim_ > 0) {
+					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
+				}
+			}// end approximation_type_ == "fisher_laplace"
+			else if (approximation_type_ == "lss_laplace") {
+				if (num_aux_pars_estim_ > 0) {
+					Log::REFatal("CalcSecondDerivLogLikFirstDerivInformationAuxPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
+				}
+			}//end approximation_type_ == "lss_laplace"
+			else {
+				Log::REFatal("CalcSecondDerivLogLikFirstDerivInformationAuxPar: approximation_type '%s' is not supported ", approximation_type_.c_str());
+			}
+		}//end CalcSecondDerivLogLikFirstDerivInformationAuxPar
+
+		/*!
+		* \brief Calculate the mean of the likelihood conditional on the (predicted) latent variable
+		*           Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
+		*/
+		inline double CondMeanLikelihood(const double value) const {
+			if (likelihood_type_ == "gaussian" || likelihood_type_ == "t") {
+				return value;
+			}
+			else if (likelihood_type_ == "bernoulli_probit") {
+				return GPBoost::normalCDF(value);
+			}
+			else if (likelihood_type_ == "bernoulli_logit") {
+				return 1. / (1. + std::exp(-value));
+			}
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+				likelihood_type_ == "negative_binomial") {
+				return std::exp(value);
+			}
+			else {
+				Log::REFatal("CondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				return 0.;
+			}
+		}
+
+		/*!
+		* \brief Calculate the first derivative of the logarithm of the mean of the likelihood conditional on the (predicted) latent variable
+		*           Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
+		*/
+		inline double FirstDerivLogCondMeanLikelihood(const double value) const {
+			if (likelihood_type_ == "bernoulli_logit") {
+				return 1. / (1. + std::exp(value));
+			}
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+				likelihood_type_ == "negative_binomial") {
+				return 1.;
+			}
+			else if (likelihood_type_ == "t" || likelihood_type_ == "gaussian") {
+				return (1. / value);
+			}
+			else {
+				Log::REFatal("FirstDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				return 0.;
+			}
+		}
+
+		/*!
+		* \brief Calculate the second derivative of the logarithm of the mean of the likelihood conditional on the (predicted) latent variable
+		*           Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
+		*/
+		inline double SecondDerivLogCondMeanLikelihood(const double value) const {
+			if (likelihood_type_ == "bernoulli_logit") {
+				double exp_x = std::exp(value);
+				return -exp_x / ((1. + exp_x) * (1. + exp_x));
+			}
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+				likelihood_type_ == "negative_binomial") {
+				return 0.;
+			}
+			else if (likelihood_type_ == "t" || likelihood_type_ == "gaussian") {
+				return (-1. / (value * value));
+			}
+			else {
+				Log::REFatal("SecondDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				return 0.;
+			}
+		}
+
+		/*!
+		* \brief Do Cholesky decomposition
+		* \param[out] chol_fact Cholesky factor
+		* \param psi Matrix for which the Cholesky decomposition should be done
+		*/
+		template <class T_mat_1, typename std::enable_if <std::is_same<sp_mat_t, T_mat_1>::value ||
+			std::is_same<sp_mat_rm_t, T_mat_1>::value>::type* = nullptr >
+		void CalcChol(T_chol& chol_fact, const T_mat_1& psi) {
+			if (!chol_fact_pattern_analyzed_) {
+				chol_fact.analyzePattern(psi);
+				chol_fact_pattern_analyzed_ = true;
+			}
+			chol_fact.factorize(psi);
+		}
+		template <class T_mat_1, typename std::enable_if <std::is_same<den_mat_t, T_mat_1>::value>::type* = nullptr  >
+		void CalcChol(T_chol& chol_fact, const T_mat_1& psi) {
+			chol_fact.compute(psi);
+		}
+
+		// Initialize location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+		/*!
+		* \brief Auxiliary function for initializinh the location parameter = mode of random effects + fixed effects
+		* \param fixed_effects Fixed effects component of location parameter
+		* \param[out] location_par Locatioon parameter (used only if use_Z_for_duplicates_)
+		* \param[out] location_par_ptr Pointer to location parameter
+		*/
+		void InitializeLocationPar(const double* fixed_effects,
+			vec_t& location_par,
+			double** location_par_ptr) {
+			if (use_Z_for_duplicates_ || fixed_effects != nullptr) {
+				location_par = vec_t(dim_location_par_);// if !use_Z_for_duplicates_ && fixed_effects == nullptr, then location_par is not used and *location_par_ptr = mode_.data()
+			}
+			UpdateLocationPar(mode_, fixed_effects, location_par, location_par_ptr);
+		}// end InitializeLocationPar
+
+		/*!
+		* \brief Auxiliary function for updating the location parameter = mode of random effects + fixed effects
+		* \param mode Mode
+		* \param fixed_effects Fixed effects component of location parameter
+		* \param[out] location_par Location parameter
+		* \param[out] location_par_ptr Pointer to location parameter
+		*/
+		void UpdateLocationPar(vec_t& mode,
+			const double* fixed_effects,
+			vec_t& location_par,
+			double** location_par_ptr) {
+			if (use_Z_for_duplicates_) {
+				for (int igp = 0; igp < num_sets_re_; ++igp) {
+					if (fixed_effects == nullptr) {
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							location_par[i + igp * num_data_] = mode[random_effects_indices_of_data_[i] + igp * dim_mode_per_set_re_];
+						}
+					}
+					else {
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							location_par[i + igp * num_data_] = mode[random_effects_indices_of_data_[i] + igp * dim_mode_per_set_re_] + fixed_effects[i + igp * num_data_];
+						}
+					}
+				}
+				*location_par_ptr = location_par.data();
+			}//end use_Z_for_duplicates_
+			else {
+				CHECK(dim_location_par_ == dim_mode_);
+				if (fixed_effects == nullptr) {
+					*location_par_ptr = mode.data();
+				}
+				else {
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < dim_location_par_; ++i) {
+						location_par[i] = mode[i] + fixed_effects[i];
+					}
+					*location_par_ptr = location_par.data();
+				}
+			}//end !use_Z_for_duplicates_
+		}//end UpdateLocationPar
+
+		/*!
+		* \brief Auxiliary function for updating the location parameter = mode of random effects + fixed effects
+		* \param mode Mode
+		* \param fixed_effects Fixed effects component of location parameter
+		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
+		* \param[out] location_par Location parameter
+		*/
+		void UpdateLocationParOnlyOneGroupedRE(const vec_t& mode,
+			const double* fixed_effects,
+			const data_size_t* const random_effects_indices_of_data,
+			vec_t& location_par) {
+			CHECK(num_sets_re_ == 1);// not yet implemented otherwise
+			if (fixed_effects == nullptr) {
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					location_par[i] = mode[random_effects_indices_of_data[i]];
+				}
+			}
+			else {
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					location_par[i] = mode[random_effects_indices_of_data[i]] + fixed_effects[i];
+				}
+			}
+		}//end UpdateLocationParOnlyOneGroupedRE
+
+		/*!
+		* \brief Make sure that the mode can only change by 'MAX_CHANGE_MODE_NEWTON_' in Newton's method (cap_change_mode_newton_)
+		* \param mode_new New mode after Newton update
+		*/
+		void CapChangeModeUpdateNewton(vec_t& mode_new) const {
+			if (cap_change_mode_newton_) {
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < dim_mode_; ++i) {
+					double abs_change = std::abs(mode_new[i] - mode_[i]);
+					if (abs_change > MAX_CHANGE_MODE_NEWTON_) {
+						mode_new[i] = mode_[i] + (mode_new[i] - mode_[i]) / abs_change * MAX_CHANGE_MODE_NEWTON_;
+					}
+				}
+			}
+		}//end CapChangeModeUpdateNewton
+
+		/*!
+		* \brief Checks whether the mode finding algorithm has converged
+		* \param it Iteration number
+		* \param approx_marginal_ll_new New value of covergence criterion
+		* \param[out] approx_marginal_ll Current value of covergence criterion
+		* \param[out] terminate_optim If true, the mode finding algorithm is stopped
+		* \param[out] has_NA_or_Inf True if approx_marginal_ll_new is NA or Inf
+		*/
+		void CheckConvergenceModeFinding(int it,
+			double approx_marginal_ll_new,
+			double& approx_marginal_ll,
+			bool& terminate_optim,
+			bool& has_NA_or_Inf) {
+			if (std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+				has_NA_or_Inf = true;
+				Log::REDebug(NA_OR_INF_WARNING_);
+				approx_marginal_ll = approx_marginal_ll_new;
+				na_or_inf_during_last_call_to_find_mode_ = true;
+				return;
+			}
+			if (it == 0) {
+				if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
+					terminate_optim = true;
+				}
+			}
+			else {
+				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+					terminate_optim = true;
+				}
+			}
+			if (terminate_optim && continue_mode_finding_after_fisher_) {
+				if (!mode_finding_fisher_has_been_continued_) {
+					terminate_optim = false;
+					use_fisher_for_mode_finding_ = false;
+					mode_finding_fisher_has_been_continued_ = true;
+				}
+				else {
+					use_fisher_for_mode_finding_ = true;//reset to initial values for next call
+					mode_finding_fisher_has_been_continued_ = false;
+				}
+			}
+			if (terminate_optim) {
+				if (approx_marginal_ll_new < approx_marginal_ll) {
+					Log::REDebug(NO_INCREASE_IN_MLL_WARNING_);
+				}
+				approx_marginal_ll = approx_marginal_ll_new;
+				return;
+			}
+			else {
+				if ((it + 1) == maxit_mode_newton_ && maxit_mode_newton_ > 1) {
+					Log::REDebug(NO_CONVERGENCE_WARNING_);
+					if (continue_mode_finding_after_fisher_ && mode_finding_fisher_has_been_continued_) {
+						use_fisher_for_mode_finding_ = true;//reset to initial values for next call
+						mode_finding_fisher_has_been_continued_ = false;
+					}
+				}
+				approx_marginal_ll = approx_marginal_ll_new;
+			}
+		}//end CheckConvergenceModeFinding
+
+		bool HasNegativeValueInformationLogLik() const {
+			bool has_negative = false;
+			if (information_ll_can_be_negative_) {
+#pragma omp parallel for schedule(static) shared(has_negative)
+				for (int i = 0; i < (int)information_ll_.size(); ++i) {
+					if (has_negative) {
+						continue;
+					}
+					if (information_ll_[i] < 0.) {
+#pragma omp critical
+						{
+							has_negative = true;
+						}
+					}
+				}
+			}
+			return has_negative;
+		}//end HasNegativeValueInformationLogLik
+
+		/*!
+		* \brief Set the gradient wrt to additional likelihood parameters that are not estimated to some default values (usually 0.)
+		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
+		*/
+		void SetGradAuxParsNotEstimated(double* aux_par_grad) const {
+			if (likelihood_type_ == "t" && !estimate_df_t_) {
+				aux_par_grad[1] = 0.;
+			}
+		}//end SetGradAuxParsNotEstimated
+
+		void ChecksBeforeModeFinding() const {
+			if (continue_mode_finding_after_fisher_) {
+				CHECK(use_fisher_for_mode_finding_ && !mode_finding_fisher_has_been_continued_);
+			}
+		}//end ChecksBeforeModeFinding
+
+
+
+		/*!
+		* \brief Calculate log|Sigma W + I| using stochastic trace estimation and variance reduction.
+		* \param num_data Number of data points
+		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
+		* \param chol_fact_sigma_woodbury Cholesky factor of 'sigma_ip + sigma_cross_cov_T * sigma_residual^-1 * sigma_cross_cov'
+		* \param chol_fact_sigma_ip Cholesky factor of 'sigma_ip'
+		* \param cross_cov Cross-covariance matrix between inducing points and all data points
+		* \param chol_fact_sigma_woodbury_woodbury Cholesky factor of 'sigma_ip - sigma_cross_cov_T * B_t * D_inv * B * (W + D_inv)^-1 * B * D_inv * B * sigma_cross_cov'
+		* \param W_D_inv Vector (W + D^-1)
+		* \param[out] has_NA_or_Inf Is set to TRUE if NA or Inf occured in the conjugate gradient algorithm
+		* \param[out] log_det_Sigma_W_plus_I Solution for log|Sigma W + I|
+		*/
+		void CalcLogDetStochFSVA(const data_size_t& num_data,
+			const int& cg_max_num_it_tridiag,
+			const chol_den_mat_t& chol_fact_sigma_woodbury,
+			const den_mat_t& chol_ip_cross_cov,
+			const chol_den_mat_t& chol_fact_sigma_ip,
+			const chol_den_mat_t& chol_fact_sigma_ip_preconditioner,
+			const den_mat_t* cross_cov,
+			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_preconditioner_cluster_i,
+			const vec_t& W_D_inv_inv,
+			const chol_den_mat_t& chol_fact_sigma_woodbury_woodbury,
+			const vec_t& W_D_inv,
+			bool& has_NA_or_Inf,
+			double& log_det_Sigma_W_plus_I) {
+			log_det_Sigma_W_plus_I = 0.;
+			CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
+			std::vector<vec_t> Tdiags_W_SigmaI(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
+			std::vector<vec_t> Tsubdiags_W_SigmaI(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
+			if (cg_preconditioner_type_ == "fitc") {
+				const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
+				CGTridiagVIFLaplaceSigmaPlusWinv(information_ll_.cwiseInverse(), D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
+					chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rand_vec_trace_I_, Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, SigmaI_plus_W_inv_Z_,
+					has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_);
+			}
+			else {
+				CGTridiagVIFLaplace(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv, chol_fact_sigma_woodbury_woodbury,
+					rand_vec_trace_I_, Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_,
+					cg_preconditioner_type_);
+			}
+			LogDetStochTridiag(Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, log_det_Sigma_W_plus_I, num_data, num_rand_vec_trace_);
+			if (cg_preconditioner_type_ == "fitc") {
+				log_det_Sigma_W_plus_I -= 2. * (((den_mat_t)chol_fact_sigma_ip_preconditioner.matrixL()).diagonal().array().log().sum());
+				log_det_Sigma_W_plus_I += information_ll_.array().log().sum();
+				log_det_Sigma_W_plus_I += 2. * ((den_mat_t)chol_fact_woodbury_preconditioner_.matrixL()).diagonal().array().log().sum();
+				log_det_Sigma_W_plus_I += diagonal_approx_preconditioner_.array().log().sum();
+			}
+			else {
+				log_det_Sigma_W_plus_I -= 2. * (((den_mat_t)chol_fact_sigma_ip.matrixL()).diagonal().array().log().sum()) + D_inv_rm_.diagonal().array().log().sum();
+				if (cg_preconditioner_type_ == "vifdu") {
+					log_det_Sigma_W_plus_I += W_D_inv.array().log().sum() + 2. * ((den_mat_t)chol_fact_sigma_woodbury_woodbury.matrixL()).diagonal().array().log().sum();
+				}
+				else {
+					log_det_Sigma_W_plus_I += 2. * ((den_mat_t)chol_fact_sigma_woodbury.matrixL()).diagonal().array().log().sum();
+				}
+			}
+		}//end CalcLogDetStochFSVA
+
+		/*!
+		* \brief Calculate log|Sigma W + I| using stochastic trace estimation and variance reduction.
+		* \param num_data Number of data points
+		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
+		* \param I_k_plus_Sigma_L_kt_W_Sigma_L_k Preconditioner "piv_chol_on_Sigma": I_k + Sigma_L_k^T W Sigma_L_k
+		* \param SigmaI Preconditioner "zero_infill_incomplete_cholesky": Column-major matrix containing B^T D^(-1) B
+		* \param SigmaI_plus_W Preconditioner "zero_infill_incomplete_cholesky": Column-major matrix containing B^T D^(-1) B + W (W not yet updated)
+		* \param B Preconditioner "zero_infill_incomplete_cholesky": Column-major matrix B in Vecchia approximation
+		* \param[out] has_NA_or_Inf Is set to TRUE if NA or Inf occured in the conjugate gradient algorithm
+		* \param[out] log_det_Sigma_W_plus_I Solution for log|Sigma W + I|
+		* \param cluster_i Cluster index for which this is run
+		* \param REModelTemplate REModelTemplate object for calling functions from it
+		*/
+		void CalcLogDetStochVecchia(const data_size_t& num_data,
+			const int& cg_max_num_it_tridiag,
+			den_mat_t& I_k_plus_Sigma_L_kt_W_Sigma_L_k,
+			const sp_mat_t& SigmaI,
+			sp_mat_t& SigmaI_plus_W,
+			const sp_mat_t& B,
+			bool& has_NA_or_Inf,
+			double& log_det_Sigma_W_plus_I,
+			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
+			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
+			data_size_t cluster_i,
+			REModelTemplate<T_mat, T_chol>* re_model) {
+			CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
+			CHECK(rand_vec_trace_P_.cols() == num_rand_vec_trace_);
+			if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
+				const den_mat_t* cross_cov = nullptr;
+				std::vector<vec_t> Tdiags_PI_WI_plus_Sigma(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
+				std::vector<vec_t> Tsubdiags_PI_WI_plus_Sigma(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
+				if (cg_preconditioner_type_ == "pivoted_cholesky") {
+					CHECK(rand_vec_trace_I2_.cols() == num_rand_vec_trace_);
+					CHECK(rand_vec_trace_I2_.rows() == Sigma_L_k_.cols());
+					//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
+					//For P = W^(-1) + Sigma_L_k Sigma_L_k^T: z_i = W^(-1/2) r_j + Sigma_L_k r_i, where r_i, r_j ~ N(0,I)
+#pragma omp parallel for schedule(static)   
+					for (int i = 0; i < num_rand_vec_trace_; ++i) {
+						rand_vec_trace_P_.col(i) = Sigma_L_k_ * rand_vec_trace_I2_.col(i) + ((information_ll_.cwiseInverse().cwiseSqrt()).array() * rand_vec_trace_I_.col(i).array()).matrix();
+					}
+					if (information_changes_after_mode_finding_) {
+						I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
+						I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * information_ll_.asDiagonal() * Sigma_L_k_;
+						chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
+					}
+				}
+				else if (cg_preconditioner_type_ == "fitc") {
+					CHECK(rand_vec_trace_I2_.cols() == num_rand_vec_trace_);
+					CHECK(rand_vec_trace_I2_.rows() == chol_ip_cross_cov_.rows());
+					cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
+					//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
+					//For P = W^(-1) + chol_ip_cross_cov^T chol_ip_cross_cov: z_i = W^(-1/2) r_j + chol_ip_cross_cov^T r_i, where r_i, r_j ~ N(0,I)
+					if (information_changes_after_mode_finding_) {
+						den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
+						sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+						diagonal_approx_preconditioner_ = information_ll_.cwiseInverse();
+						diagonal_approx_preconditioner_.array() += sigma_ip_stable.coeffRef(0, 0);
+#pragma omp parallel for schedule(static)
+						for (int ii = 0; ii < diagonal_approx_preconditioner_.size(); ++ii) {
+							diagonal_approx_preconditioner_[ii] -= chol_ip_cross_cov_.col(ii).array().square().sum();
+						}
+						diagonal_approx_inv_preconditioner_ = diagonal_approx_preconditioner_.cwiseInverse();
+						den_mat_t sigma_woodbury;
+						sigma_woodbury = (*cross_cov).transpose() * (diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov));
+						sigma_woodbury += sigma_ip_stable;
+						chol_fact_woodbury_preconditioner_.compute(sigma_woodbury);
+					}
+					rand_vec_trace_P_ = chol_ip_cross_cov_.transpose() * rand_vec_trace_I2_ + diagonal_approx_preconditioner_.cwiseSqrt().asDiagonal() * rand_vec_trace_I_;
+				}
+				else if (cg_preconditioner_type_ == "vecchia_response") {
+					//For P = B^T D^(-1) B: z_i = B^T D^(-0.5) r_i, where r_i ~ N(0,I)					
+					if (information_changes_after_mode_finding_) {
+						sp_mat_t B_vecchia;
+						vec_t pseudo_nugget = information_ll_.cwiseInverse();
+						re_model->CalcVecchiaApproxLatentAddDiagonal(cluster_i, B_vecchia, D_inv_vecchia_pc_, pseudo_nugget.data());
+						B_vecchia_pc_rm_ = sp_mat_rm_t(B_vecchia);
+					}
+					vec_t D_sqrt_vecchia_pc = D_inv_vecchia_pc_.diagonal().cwiseInverse().cwiseSqrt();
+#pragma omp parallel for schedule(static)   
+					for (int i = 0; i < num_rand_vec_trace_; ++i) {
+						rand_vec_trace_P_.col(i) = (B_vecchia_pc_rm_.template triangularView<Eigen::UpLoType::UnitLower>()).solve(D_sqrt_vecchia_pc.asDiagonal() * (rand_vec_trace_I_.col(i)));
+					}
+				}
+				CGTridiagVecchiaLaplaceSigmaPlusWinv(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_trace_P_, Tdiags_PI_WI_plus_Sigma, Tsubdiags_PI_WI_plus_Sigma,
+					WI_plus_Sigma_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
+					chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_, chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_);
+				if (!has_NA_or_Inf) {
+					double ldet_PI_WI_plus_Sigma;
+					LogDetStochTridiag(Tdiags_PI_WI_plus_Sigma, Tsubdiags_PI_WI_plus_Sigma, ldet_PI_WI_plus_Sigma, num_data, num_rand_vec_trace_);
+					//log|Sigma W + I| = log|P^(-1) (W^(-1) + Sigma)| + log|W| + log|P|
+					log_det_Sigma_W_plus_I = ldet_PI_WI_plus_Sigma + information_ll_.array().log().sum();
+					if (cg_preconditioner_type_ == "pivoted_cholesky") {
+						// log|P| = log|I_k + Sigma_L_k^T W Sigma_L_k| + log|W^(-1)| + log|I_k|, log|I_k| = 0
+						log_det_Sigma_W_plus_I += 2 * ((den_mat_t)chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.matrixL()).diagonal().array().log().sum() - information_ll_.array().log().sum();
+					}
+					else if (cg_preconditioner_type_ == "fitc") {
+						// log|P| = log|Woodburry| - log|Sigma_m| - log|D^-1|
+						log_det_Sigma_W_plus_I += 2. * ((den_mat_t)chol_fact_woodbury_preconditioner_.matrixL()).diagonal().array().log().sum() -
+							2. * (((den_mat_t)chol_fact_sigma_ip_.matrixL()).diagonal().array().log().sum()) -
+							diagonal_approx_inv_preconditioner_.array().log().sum();
+					}
+					else if (cg_preconditioner_type_ == "vecchia_response") {
+						log_det_Sigma_W_plus_I -= D_inv_vecchia_pc_.diagonal().array().log().sum();
+					}
+				}
+			}//end cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response"
+			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
+				vec_t D_inv_plus_W_diag;
+				std::vector<vec_t> Tdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
+				std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_W(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
+				//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
+				if (cg_preconditioner_type_ == "vadu") {
+					//For P = B^T (D^(-1) + W) B: z_i = B^T (D^(-1) + W)^0.5 r_i, where r_i ~ N(0,I)
+					D_inv_plus_W_diag = D_inv_rm_.diagonal() + information_ll_;
+					sp_mat_rm_t B_t_D_inv_plus_W_sqrt_rm = B_rm_.transpose() * (D_inv_plus_W_diag).cwiseSqrt().asDiagonal();
+#pragma omp parallel for schedule(static)   
+					for (int i = 0; i < num_rand_vec_trace_; ++i) {
+						rand_vec_trace_P_.col(i) = B_t_D_inv_plus_W_sqrt_rm * rand_vec_trace_I_.col(i);
+					}
+					//rand_vec_trace_P_ = B_rm_.transpose() * ((D_inv_rm_.diagonal() + information_ll_).cwiseSqrt().asDiagonal() * rand_vec_trace_I_);
+					D_inv_plus_W_B_rm_ = (D_inv_plus_W_diag).asDiagonal() * B_rm_;
+				}
+				else if (cg_preconditioner_type_ == "incomplete_cholesky") {
+					//Update P with latest W
+					if (information_changes_after_mode_finding_) {
+						SigmaI_plus_W = SigmaI;
+						SigmaI_plus_W.diagonal().array() += information_ll_.array();
+						ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
+					}
+					//For P = L^T L: z_i = L^T r_i, where r_i ~ N(0,I)
+#pragma omp parallel for schedule(static)   
+					for (int i = 0; i < num_rand_vec_trace_; ++i) {
+						rand_vec_trace_P_.col(i) = L_SigmaI_plus_W_rm_.transpose() * rand_vec_trace_I_.col(i);
+					}
+				}
+				CGTridiagVecchiaLaplace(information_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_trace_P_, Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W,
+					SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
+				if (!has_NA_or_Inf) {
+					double ldet_PI_SigmaI_plus_W;
+					LogDetStochTridiag(Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W, ldet_PI_SigmaI_plus_W, num_data, num_rand_vec_trace_);
+					//log|Sigma W + I| = log|P^(-1) (Sigma^(-1) + W)| + log|P| + log|Sigma|
+					log_det_Sigma_W_plus_I = ldet_PI_SigmaI_plus_W - D_inv_rm_.diagonal().array().log().sum();
+					if (cg_preconditioner_type_ == "vadu") {
+						//log|P| = log|B^T (D^(-1) + W) B| = log|(D^(-1) + W)|
+						log_det_Sigma_W_plus_I += D_inv_plus_W_diag.array().log().sum();
+					}
+					else if (cg_preconditioner_type_ == "incomplete_cholesky") {
+						//log|P| = log|L^T L|
+						log_det_Sigma_W_plus_I += 2 * (L_SigmaI_plus_W_rm_.diagonal().array().log().sum());
+					}
+				}
+			}
+			else {
+				Log::REFatal("CalcLogDetStochVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
+			}
+		}//end CalcLogDetStochVecchia
+
+		/*!
+		* \brief Calculate dlog|Sigma W + I|/db_i for all i in 1, ..., n using stochastic trace estimation and variance reduction.
+		* \param deriv_information_diag_loc_par Derivative of the diagonal of the Fisher information of the likelihood (= usually negative third derivative of the log-likelihood with respect to the mode)
+		* \param num_data Number of data points
+		* \param d_log_det_Sigma_W_plus_I_d_mode[out] Solution for dlog|Sigma W + I|/db_i for all i in n
+		* \param D_inv_plus_W_inv_diag[out] Preconditioner "Sigma_inv_plus_BtWB": diagonal of (D^(-1) + W)^(-1)
+		* \param diag_WI[out] Preconditioner "piv_chol_on_Sigma": diagonal of W^(-1)
+		* \param PI_Z[out] Preconditioner "Sigma_inv_plus_BtWB": P^(-1) Z
+		* \param WI_PI_Z[out] Preconditioner "piv_chol_on_Sigma": W^(-1) P^(-1) Z
+		* \param[out] WI_WI_plus_Sigma_inv_Z Preconditioner "piv_chol_on_Sigma": W^(-1) (W^(-1) + Sigma)^(-1) Z
+		*/
+		void CalcLogDetStochDerivModeVecchia(const vec_t& deriv_information_diag_loc_par,
+			const data_size_t& num_data,
+			vec_t& d_log_det_Sigma_W_plus_I_d_mode,
+			vec_t& D_inv_plus_W_inv_diag,
+			vec_t& diag_WI,
+			den_mat_t& PI_Z,
+			den_mat_t& WI_PI_Z,
+			den_mat_t& WI_WI_plus_Sigma_inv_Z,
+			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) const {
+			den_mat_t Z_PI_P_deriv_PI_Z;
+			vec_t tr_PI_P_deriv_vec, c_opt;
+			den_mat_t W_deriv_rep;
+			if (grad_information_wrt_mode_non_zero_) {
+				W_deriv_rep = deriv_information_diag_loc_par.replicate(1, num_rand_vec_trace_);
+			}
+			if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
+				const den_mat_t* cross_cov = nullptr;
+				den_mat_t Z_WI_plus_Sigma_inv_WI_deriv_PI_Z;
+				vec_t tr_WI_plus_Sigma_inv_WI_deriv;
+				diag_WI = information_ll_.cwiseInverse();
+				WI_WI_plus_Sigma_inv_Z = diag_WI.asDiagonal() * WI_plus_Sigma_inv_Z_;
+				if (cg_preconditioner_type_ == "pivoted_cholesky") {
+					//P^(-1) = (W^(-1) + Sigma_L_k Sigma_L_k^T)^(-1)
+					//W^(-1) P^(-1) Z = Z - Sigma_L_k (I_k + Sigma_L_k^T W Sigma_L_k)^(-1) Sigma_L_k^T W Z
+					den_mat_t Sigma_Lkt_W_Z;
+					if (Sigma_L_k_.cols() < num_rand_vec_trace_) {
+						Sigma_Lkt_W_Z = (Sigma_L_k_.transpose() * information_ll_.asDiagonal()) * rand_vec_trace_P_;
+					}
+					else {
+						Sigma_Lkt_W_Z = Sigma_L_k_.transpose() * (information_ll_.asDiagonal() * rand_vec_trace_P_);
+					}
+					WI_PI_Z = rand_vec_trace_P_ - Sigma_L_k_ * chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.solve(Sigma_Lkt_W_Z);
+				}
+				else if (cg_preconditioner_type_ == "fitc") {
+					//P^(-1) = (D + Sigma_nm Sigma_m^-1 Sigma_mn)^(-1)
+					//W^(-1) P^(-1) Z
+					cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
+					den_mat_t D_rand_vec = diagonal_approx_inv_preconditioner_.asDiagonal() * rand_vec_trace_P_;
+					WI_PI_Z = diag_WI.asDiagonal() * D_rand_vec -
+						diag_WI.asDiagonal() * (diagonal_approx_inv_preconditioner_.asDiagonal() * ((*cross_cov) *
+							chol_fact_woodbury_preconditioner_.solve((*cross_cov).transpose() * D_rand_vec)));
+				}
+				else if (cg_preconditioner_type_ == "vecchia_response") {
+					WI_PI_Z = diag_WI.asDiagonal() * (B_vecchia_pc_rm_.transpose() * (D_inv_vecchia_pc_ * (B_vecchia_pc_rm_ * rand_vec_trace_P_)));
+					//variance reduction currently not implemented
+				}
+				if (grad_information_wrt_mode_non_zero_) {
+					CHECK(first_deriv_information_loc_par_caluclated_);
+					Z_WI_plus_Sigma_inv_WI_deriv_PI_Z = -1 * (WI_WI_plus_Sigma_inv_Z.array() * W_deriv_rep.array() * WI_PI_Z.array()).matrix();
+					tr_WI_plus_Sigma_inv_WI_deriv = Z_WI_plus_Sigma_inv_WI_deriv_PI_Z.rowwise().mean();
+					d_log_det_Sigma_W_plus_I_d_mode = tr_WI_plus_Sigma_inv_WI_deriv;
+				}
+				//variance reduction
+				if (cg_preconditioner_type_ == "pivoted_cholesky") {
+					if (grad_information_wrt_mode_non_zero_) {
+						//tr(W^(-1) dW/db_i) - do not cancel with deterministic part of variance reduction when using optimal c
+						vec_t tr_WI_W_deriv = diag_WI.cwiseProduct(deriv_information_diag_loc_par);
+						d_log_det_Sigma_W_plus_I_d_mode += tr_WI_W_deriv;
+						//deterministic tr(Sigma_Lk (I_k + Sigma_Lk^T W Sigma_Lk)^(-1) Sigma_Lk^T dW/db_i) + tr(W dW^(-1)/db_i) (= - tr(W^(-1) dW/db_i))
+						den_mat_t L_inv_Sigma_L_kt(Sigma_L_k_.cols(), num_data);
+						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_.transpose(), L_inv_Sigma_L_kt, false);
+						den_mat_t L_inv_Sigma_L_kt_sqr = L_inv_Sigma_L_kt.cwiseProduct(L_inv_Sigma_L_kt);
+						vec_t Sigma_Lk_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_Lkt_diag = L_inv_Sigma_L_kt_sqr.transpose() * vec_t::Ones(L_inv_Sigma_L_kt_sqr.rows()); //diagonal of Sigma_Lk (I_k + Sigma_Lk^T W Sigma_Lk)^(-1) Sigma_Lk^T
+						vec_t tr_Sigma_Lk_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_Lkt_W_deriv = Sigma_Lk_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_Lkt_diag.array() * deriv_information_diag_loc_par.array();
+						//stochastic tr(P^(-1) dP/db_i), where dP/db_i = - W^(-1) dW/db_i W^(-1)
+						Z_PI_P_deriv_PI_Z = -1 * (WI_PI_Z.array() * W_deriv_rep.array() * WI_PI_Z.array()).matrix();
+						tr_PI_P_deriv_vec = Z_PI_P_deriv_PI_Z.rowwise().mean();
+						//optimal c
+						CalcOptimalCVectorized(Z_WI_plus_Sigma_inv_WI_deriv_PI_Z, Z_PI_P_deriv_PI_Z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv_vec, c_opt);
+						d_log_det_Sigma_W_plus_I_d_mode += c_opt.cwiseProduct(tr_Sigma_Lk_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_Lkt_W_deriv - tr_WI_W_deriv) - c_opt.cwiseProduct(tr_PI_P_deriv_vec);
+					}
+				}
+				else if (cg_preconditioner_type_ == "fitc") {
+					if (grad_information_wrt_mode_non_zero_) {
+						//tr(W^(-1) dW/db_i) - do not cancel with deterministic part of variance reduction when using optimal c
+						vec_t tr_WI_W_deriv = diag_WI.cwiseProduct(deriv_information_diag_loc_par);
+						d_log_det_Sigma_W_plus_I_d_mode += tr_WI_W_deriv;
+						//-tr(W^-1P^-1W^(-1) dW/db_i)
+						vec_t tr_WI_DI_WI_W_deriv = diag_WI.cwiseProduct(tr_WI_W_deriv.cwiseProduct(diagonal_approx_inv_preconditioner_));
+						vec_t tr_WI_DI_WI_DI_W_deriv = diagonal_approx_inv_preconditioner_.cwiseProduct(tr_WI_DI_WI_W_deriv);
+						den_mat_t chol_wood_cross_cov((*cross_cov).cols(), num_data);
+						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_woodbury_preconditioner_, (*cross_cov).transpose(), chol_wood_cross_cov, false);
+						vec_t tr_WI_PI_WI_W_deriv(num_data);
+#pragma omp parallel for schedule(static)  
+						for (int i = 0; i < num_data; ++i) {
+							tr_WI_PI_WI_W_deriv[i] = chol_wood_cross_cov.col(i).array().square().sum() * tr_WI_DI_WI_DI_W_deriv[i];
+						}
+						//stochastic tr(P^(-1) dP/db_i), where dP/db_i = - W^(-1) dW/db_i W^(-1)
+						Z_PI_P_deriv_PI_Z = -1 * (WI_PI_Z.array() * W_deriv_rep.array() * WI_PI_Z.array()).matrix();
+						tr_PI_P_deriv_vec = Z_PI_P_deriv_PI_Z.rowwise().mean();
+						//optimal c
+						CalcOptimalCVectorized(Z_WI_plus_Sigma_inv_WI_deriv_PI_Z, Z_PI_P_deriv_PI_Z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv_vec, c_opt);
+						d_log_det_Sigma_W_plus_I_d_mode += c_opt.cwiseProduct(tr_WI_PI_WI_W_deriv - tr_WI_DI_WI_W_deriv) - c_opt.cwiseProduct(tr_PI_P_deriv_vec);
+					}
+				}
+			}
+			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
+				//P^(-1) Z
+				if (cg_preconditioner_type_ == "vadu") {
+					//P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
+					PI_Z.resize(num_data, num_rand_vec_trace_);
+#pragma omp parallel for schedule(static)  
+					for (int i = 0; i < num_rand_vec_trace_; ++i) {
+						vec_t B_invt_Z = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rand_vec_trace_P_.col(i));
+						PI_Z.col(i) = D_inv_plus_W_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_Z);
+					}
+					//den_mat_t B_invt_Z(num_data, num_rand_vec_trace_);
+					//TriangularSolve<sp_mat_rm_t, den_mat_t, den_mat_t>(B_rm_, rand_vec_trace_P_, B_invt_Z, true);//it seems that this is not faster (21.11.2024)
+					//TriangularSolve<sp_mat_rm_t, den_mat_t, den_mat_t>(D_inv_plus_W_B_rm_, B_invt_Z, PI_Z, false);
+				}
+				else if (cg_preconditioner_type_ == "incomplete_cholesky") {
+					//P^(-1) = L^(-1) L^(-T)
+					PI_Z.resize(num_data, num_rand_vec_trace_);
+#pragma omp parallel for schedule(static)   
+					for (int i = 0; i < num_rand_vec_trace_; ++i) {
+						vec_t L_invt_Z = (L_SigmaI_plus_W_rm_.transpose().template triangularView<Eigen::UpLoType::Upper>()).solve(rand_vec_trace_P_.col(i));
+						PI_Z.col(i) = L_SigmaI_plus_W_rm_.triangularView<Eigen::UpLoType::Lower>().solve(L_invt_Z);
+					}
+				}
+				den_mat_t Z_SigmaI_plus_W_inv_W_deriv_PI_Z;
+				vec_t tr_SigmaI_plus_W_inv_W_deriv;
+				if (grad_information_wrt_mode_non_zero_) {
+					CHECK(first_deriv_information_loc_par_caluclated_);
+					//stochastic tr((Sigma^(-1) + W)^(-1) dW/db_i)
+					Z_SigmaI_plus_W_inv_W_deriv_PI_Z = (SigmaI_plus_W_inv_Z_.array() * W_deriv_rep.array() * PI_Z.array()).matrix();
+					tr_SigmaI_plus_W_inv_W_deriv = Z_SigmaI_plus_W_inv_W_deriv_PI_Z.rowwise().mean();
+					d_log_det_Sigma_W_plus_I_d_mode = tr_SigmaI_plus_W_inv_W_deriv;
+				}
+				if (cg_preconditioner_type_ == "vadu") {
+					//variance reduction
+					//deterministic tr((D^(-1) + W)^(-1) dW/db_i)
+					D_inv_plus_W_inv_diag = (D_inv_rm_.diagonal() + information_ll_).cwiseInverse();
+					if (grad_information_wrt_mode_non_zero_) {
+						vec_t tr_D_inv_plus_W_inv_W_deriv = D_inv_plus_W_inv_diag.array() * deriv_information_diag_loc_par.array();
+						//stochastic tr(P^(-1) dP/db_i), where dP/db_i = B^T dW/db_i B
+						den_mat_t B_PI_Z = B_rm_ * PI_Z;
+						Z_PI_P_deriv_PI_Z = (B_PI_Z.array() * W_deriv_rep.array() * B_PI_Z.array()).matrix();
+						tr_PI_P_deriv_vec = Z_PI_P_deriv_PI_Z.rowwise().mean();
+						//optimal c
+						CalcOptimalCVectorized(Z_SigmaI_plus_W_inv_W_deriv_PI_Z, Z_PI_P_deriv_PI_Z, tr_SigmaI_plus_W_inv_W_deriv, tr_PI_P_deriv_vec, c_opt);
+						d_log_det_Sigma_W_plus_I_d_mode += c_opt.cwiseProduct(tr_D_inv_plus_W_inv_W_deriv) - c_opt.cwiseProduct(tr_PI_P_deriv_vec);
+					}
+				}
+			}
+			else {
+				Log::REFatal("CalcLogDetStochDerivMode: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
+			}
+		} //end CalcLogDetStochDerivModeVecchia
+
+		/*!
+		* \brief Calculate dlog|Sigma W + I|/dtheta_j, using stochastic trace estimation and variance reduction.
+		* \param num_data Number of data points
+		* \param num_comps_total Total number of random effect components (= number of GPs)
+		* \param j Index of current covariance parameter in vector theta
+		* \param SigmaI_deriv_rm Derivative of Sigma^(-1) wrt. theta_j
+		* \param B_grad_j Derivatives of matrices B ( = derivative of matrix -A) for Vecchia approximation wrt. theta_j
+		* \param D_grad_j Derivatives of matrices D for Vecchia approximation wrt. theta_j
+		* \param D_inv_plus_W_inv_diag Preconditioner "Sigma_inv_plus_BtWB": diagonal of (D^(-1) + W)^(-1)
+		* \param PI_Z Preconditioner "Sigma_inv_plus_BtWB": P^(-1) Z
+		* \param WI_PI_Z Preconditioner "piv_chol_on_Sigma": W^(-1) P^(-1) Z
+		* \param[out] d_log_det_Sigma_W_plus_I_d_cov_pars Solution for dlog|Sigma W + I|/dtheta_j
+		*/
+		void CalcLogDetStochDerivCovParVecchia(const data_size_t& num_data,
+			const int& num_comps_total,
+			const int& j,
+			const sp_mat_rm_t& SigmaI_deriv_rm,
+			const sp_mat_t& B_grad_j,
+			const sp_mat_t& D_grad_j,
+			const vec_t& D_inv_plus_W_inv_diag,
+			const den_mat_t& PI_Z,
+			const den_mat_t& WI_PI_Z,
+			double& d_log_det_Sigma_W_plus_I_d_cov_pars) const {
+			if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
+				den_mat_t Sigma_WI_plus_Sigma_inv_Z(num_data, num_rand_vec_trace_);
+				den_mat_t B_invt_PI_Z(num_data, num_rand_vec_trace_), Sigma_PI_Z(num_data, num_rand_vec_trace_);
+				//Stochastic Trace: Calculate tr((Sigma + W^(-1))^(-1) dSigma/dtheta_j)
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < num_rand_vec_trace_; ++i) {
+					vec_t B_invt_WI_plus_Sigma_inv_Z = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(WI_plus_Sigma_inv_Z_.col(i));
+					Sigma_WI_plus_Sigma_inv_Z.col(i) = (B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>()).solve(B_invt_WI_plus_Sigma_inv_Z);
+				}
+				den_mat_t PI_Z_local = information_ll_.asDiagonal() * WI_PI_Z;
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < num_rand_vec_trace_; ++i) {
+					B_invt_PI_Z.col(i) = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(PI_Z_local.col(i));
+				}
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < num_rand_vec_trace_; ++i) {
+					Sigma_PI_Z.col(i) = (B_t_D_inv_rm_.transpose().template triangularView<Eigen::UpLoType::Lower>()).solve(B_invt_PI_Z.col(i));
+				}
+				d_log_det_Sigma_W_plus_I_d_cov_pars = -1 * ((Sigma_WI_plus_Sigma_inv_Z.cwiseProduct(SigmaI_deriv_rm * Sigma_PI_Z)).colwise().sum()).mean();
+			}
+			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
+				//Stochastic Trace: Calculate tr((Sigma^(-1) + W)^(-1) dSigma^(-1)/dtheta_j)
+				vec_t zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z = ((SigmaI_plus_W_inv_Z_.cwiseProduct(SigmaI_deriv_rm * PI_Z)).colwise().sum()).transpose();
+				double tr_SigmaI_plus_W_inv_SigmaI_deriv = zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z.mean();
+				d_log_det_Sigma_W_plus_I_d_cov_pars = tr_SigmaI_plus_W_inv_SigmaI_deriv;
+				//tr(Sigma^(-1) dSigma/dtheta_j)
+				if (num_comps_total == 1 && j == 0) {
+					d_log_det_Sigma_W_plus_I_d_cov_pars += num_data;
+				}
+				else {
+					d_log_det_Sigma_W_plus_I_d_cov_pars += (D_inv_rm_.diagonal().array() * D_grad_j.diagonal().array()).sum();
+				}
+				if (cg_preconditioner_type_ == "vadu") {
+					//variance reduction
+					double tr_D_inv_plus_W_inv_D_inv_deriv = 0., tr_PI_P_deriv = 0.;
+					vec_t zt_PI_P_deriv_PI_z;
+					if (num_comps_total == 1 && j == 0) {
+						//dD/dsigma2 = D and dB/dsigma2 = 0
+						//deterministic tr((D^(-1) + W)^(-1) dD^(-1)/dsigma2), where dD^(-1)/dsigma2 = -D^(-1)
+						tr_D_inv_plus_W_inv_D_inv_deriv = -1 * (D_inv_plus_W_inv_diag.array() * D_inv_rm_.diagonal().array()).sum();
+						//stochastic tr(P^(-1) dP/dsigma2), where dP/dsigma2 = -Sigma^(-1)
+						zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(SigmaI_deriv_rm * PI_Z)).colwise().sum()).transpose();
+						tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
+					}
+					else {
+						//deterministic tr((D^(-1) + W)^(-1) dD^(-1)/dtheta_j)
+						tr_D_inv_plus_W_inv_D_inv_deriv = -1 * (D_inv_plus_W_inv_diag.array() * D_inv_rm_.diagonal().array() * D_grad_j.diagonal().array() * D_inv_rm_.diagonal().array()).sum();
+						//stochastic tr(P^(-1) dP/dtheta_j)
+						sp_mat_rm_t Bt_W_Bgrad_rm = B_rm_.transpose() * information_ll_.asDiagonal() * B_grad_j;
+						sp_mat_rm_t P_deriv_rm = SigmaI_deriv_rm + sp_mat_rm_t(Bt_W_Bgrad_rm.transpose()) + Bt_W_Bgrad_rm;
+						zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(P_deriv_rm * PI_Z)).colwise().sum()).transpose();
+						tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
+					}
+					//optimal c
+					double c_opt;
+					CalcOptimalC(zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_SigmaI_plus_W_inv_SigmaI_deriv, tr_PI_P_deriv, c_opt);
+					d_log_det_Sigma_W_plus_I_d_cov_pars += c_opt * tr_D_inv_plus_W_inv_D_inv_deriv - c_opt * tr_PI_P_deriv;
+				}
+			}
+			else {
+				Log::REFatal("CalcLogDetStochDerivCovPar: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
+			}
+		} //end CalcLogDetStochDerivCovParVecchia
+
+		/*!
+		* \brief Calculate dlog|Sigma W + I|/daux, using stochastic trace estimation and variance reduction.
+		* \param deriv_information_aux_par Negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
+		* \param D_inv_plus_W_inv_diag Preconditioner "Sigma_inv_plus_BtWB": diagonal of (D^(-1) + W)^(-1)
+		* \param diag_WI Preconditioner "piv_chol_on_Sigma": diagonal of W^(-1)
+		* \param PI_Z Preconditioner "Sigma_inv_plus_BtWB": P^(-1) Z
+		* \param WI_PI_Z Preconditioner "piv_chol_on_Sigma": W^(-1) P^(-1) Z
+		* \param WI_WI_plus_Sigma_inv_Z Preconditioner "piv_chol_on_Sigma": W^(-1) (W^(-1) + Sigma)^(-1) Z
+		* \param[out] d_detmll_d_aux_par Solution for dlog|Sigma W + I|/daux
+		*/
+		void CalcLogDetStochDerivAuxParVecchia(const vec_t& deriv_information_aux_par,
+			const vec_t& D_inv_plus_W_inv_diag,
+			const vec_t& diag_WI,
+			const den_mat_t& PI_Z,
+			const den_mat_t& WI_PI_Z,
+			const den_mat_t& WI_WI_plus_Sigma_inv_Z,
+			double& d_detmll_d_aux_par,
+			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) const {
+			double tr_PI_P_deriv, c_opt;
+			vec_t zt_PI_P_deriv_PI_z;
+			if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
+				//Stochastic Trace: Calculate tr((Sigma + W^(-1))^(-1) dW^(-1)/daux)
+				vec_t zt_WI_plus_Sigma_inv_WI_deriv_PI_z = -1 * ((WI_WI_plus_Sigma_inv_Z.cwiseProduct(deriv_information_aux_par.asDiagonal() * WI_PI_Z)).colwise().sum()).transpose();
+				double tr_WI_plus_Sigma_inv_WI_deriv = zt_WI_plus_Sigma_inv_WI_deriv_PI_z.mean();
+				d_detmll_d_aux_par = tr_WI_plus_Sigma_inv_WI_deriv;
+				//variance reduction
+				if (cg_preconditioner_type_ == "pivoted_cholesky") {
+					//tr(W^(-1) dW/daux) - do not cancel with deterministic part of variance reduction when using optimal c
+					double tr_WI_W_deriv = (diag_WI.cwiseProduct(deriv_information_aux_par)).sum();
+					d_detmll_d_aux_par += tr_WI_W_deriv;
+					//variance reduction
+					//deterministic tr((I_k + Sigma_Lk^T W Sigma_Lk)^(-1) Sigma_Lk^T dW/daux Sigma_Lk) + tr(W dW^(-1)/daux) (= - tr(W^(-1) dW/daux))
+					den_mat_t Sigma_L_kt_W_deriv_Sigma_L_k = Sigma_L_k_.transpose() * deriv_information_aux_par.asDiagonal() * Sigma_L_k_;
+					double tr_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_L_kt_W_deriv_Sigma_L_k = (chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.solve(Sigma_L_kt_W_deriv_Sigma_L_k)).diagonal().sum();
+					//stochastic tr(P^(-1) dP/daux), where dP/daux = - W^(-1) dW/daux W^(-1)
+					zt_PI_P_deriv_PI_z = -1 * ((WI_PI_Z.cwiseProduct(deriv_information_aux_par.asDiagonal() * WI_PI_Z)).colwise().sum()).transpose();
+					tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
+					//optimal c
+					CalcOptimalC(zt_WI_plus_Sigma_inv_WI_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv, c_opt);
+					d_detmll_d_aux_par += c_opt * (tr_I_k_plus_Sigma_L_kt_W_Sigma_L_k_inv_Sigma_L_kt_W_deriv_Sigma_L_k - tr_WI_W_deriv) - c_opt * tr_PI_P_deriv;
+				}
+				else if (cg_preconditioner_type_ == "fitc") {
+					const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
+					//tr(W^(-1) dW/daux) - do not cancel with deterministic part of variance reduction when using optimal c
+					vec_t tr_WI_W_deriv_vec = diag_WI.cwiseProduct(deriv_information_aux_par);
+					double tr_WI_W_deriv = tr_WI_W_deriv_vec.sum();
+					d_detmll_d_aux_par += tr_WI_W_deriv;
+					//-tr(W^-1P^-1W^(-1) dW/daux)
+					vec_t tr_WI_DI_WI_W_deriv_vec = diag_WI.cwiseProduct(tr_WI_W_deriv_vec.cwiseProduct(diagonal_approx_inv_preconditioner_));
+					double tr_WI_DI_WI_W_deriv = tr_WI_DI_WI_W_deriv_vec.sum();
+					vec_t tr_WI_DI_WI_DI_W_deriv_vec = diagonal_approx_inv_preconditioner_.cwiseProduct(tr_WI_DI_WI_W_deriv_vec);
+					den_mat_t woodI_cross_covT_WI_DI_WI_DI_W_deri_cross_cov = chol_fact_woodbury_preconditioner_.solve((*cross_cov).transpose() * (tr_WI_DI_WI_DI_W_deriv_vec.asDiagonal() * (*cross_cov)));
+					double tr_WI_PI_WI_W_deriv = woodI_cross_covT_WI_DI_WI_DI_W_deri_cross_cov.diagonal().sum();
+					//stochastic tr(P^(-1) dP/db_i), where dP/db_i = - W^(-1) dW/db_i W^(-1)
+					zt_PI_P_deriv_PI_z = -1 * ((WI_PI_Z.cwiseProduct(deriv_information_aux_par.asDiagonal() * WI_PI_Z)).colwise().sum()).transpose();
+					tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
+					//optimal c
+					CalcOptimalC(zt_WI_plus_Sigma_inv_WI_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_WI_plus_Sigma_inv_WI_deriv, tr_PI_P_deriv, c_opt);
+					d_detmll_d_aux_par += c_opt * (tr_WI_PI_WI_W_deriv - tr_WI_DI_WI_W_deriv) - c_opt * tr_PI_P_deriv;
+				}
+			}
+			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
+				//Stochastic Trace: Calculate tr((Sigma^(-1) + W)^(-1) dW/daux)
+				vec_t zt_SigmaI_plus_W_inv_W_deriv_PI_z = ((SigmaI_plus_W_inv_Z_.cwiseProduct(deriv_information_aux_par.asDiagonal() * PI_Z)).colwise().sum()).transpose();
+				double tr_SigmaI_plus_W_inv_W_deriv = zt_SigmaI_plus_W_inv_W_deriv_PI_z.mean();
+				d_detmll_d_aux_par = tr_SigmaI_plus_W_inv_W_deriv;
+				if (cg_preconditioner_type_ == "vadu") {
+					//variance reduction
+					//deterministic tr((D^(-1) + W)^(-1) dW/daux)
+					double tr_D_inv_plus_W_inv_W_deriv = (D_inv_plus_W_inv_diag.array() * deriv_information_aux_par.array()).sum();
+					//stochastic tr(P^(-1) dP/daux), where dP/daux = B^T dW/daux B
+					sp_mat_rm_t P_deriv_rm = B_rm_.transpose() * deriv_information_aux_par.asDiagonal() * B_rm_;
+					zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(P_deriv_rm * PI_Z)).colwise().sum()).transpose();
+					tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
+					//optimal c
+					CalcOptimalC(zt_SigmaI_plus_W_inv_W_deriv_PI_z, zt_PI_P_deriv_PI_z, tr_SigmaI_plus_W_inv_W_deriv, tr_PI_P_deriv, c_opt);
+					d_detmll_d_aux_par += c_opt * tr_D_inv_plus_W_inv_W_deriv - c_opt * tr_PI_P_deriv;
+				}
+			}
+			else {
+				Log::REFatal("CalcLogDetStochDerivAuxPar: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
+			}
+		} //end CalcLogDetStochDerivAuxParVecchia
 
 	};//end class Likelihood
 

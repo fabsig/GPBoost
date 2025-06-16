@@ -4033,6 +4033,9 @@ class GPModel(object):
                  cov_fct_shape=1.5,
                  gp_approx="none",
                  num_parallel_threads=None,
+                 matrix_inversion_method="cholesky",
+                 weights=None,
+                 likelihood_learning_rate = 1.,
                  cov_fct_taper_range=1.,
                  cov_fct_taper_shape=1.,
                  num_neighbors=None,
@@ -4040,7 +4043,6 @@ class GPModel(object):
                  ind_points_selection="kmeans++",
                  num_ind_points=None,
                  cover_tree_radius=1.,
-                 matrix_inversion_method="cholesky",
                  seed=0,
                  cluster_ids=None,
                  likelihood_additional_param=None,
@@ -4203,6 +4205,31 @@ class GPModel(object):
 
             num_parallel_threads : integer, optional (default=None)
                 The number of parallel threads for OMP. If num_parallel_threads=None, all available threads are used
+            matrix_inversion_method : string, optional (default="cholesky")
+                Method used for inverting covariance matrices. Available options:
+
+                    - "cholesky":
+
+                        Cholesky factorization
+
+                    - "iterative":
+
+                        Iterative methods: A combination of the conjugate gradient, Lanczos algorithm, and other methods.
+
+                        This is currently only supported for the following cases:
+
+                        - grouped random effects with more than one level 
+                        
+                        - likelihood != "gaussian" and gp_approx == "vecchia" (non-Gaussian likelihoods with a Vecchia-Laplace approximation)
+
+                        - likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIF approximation)
+
+                        - likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation)
+
+            weights : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
+                Sample weights
+            likelihood_learning_rate : float, optional (default=1.)
+                A learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)
             cov_fct_taper_range : float, optional (default=1.)
                 Range parameter of the Wendland covariance function and Wendland correlation taper function.
                 We follow the notation of Bevilacqua et al. (2019, AOS)
@@ -4259,31 +4286,9 @@ class GPModel(object):
 
             cover_tree_radius : float, optional (default=1.)
                 The radius (= "spatial resolution") for the cover tree algorithm
-            matrix_inversion_method : string, optional (default="cholesky")
-                Method used for inverting covariance matrices. Available options:
-
-                    - "cholesky":
-
-                        Cholesky factorization
-
-                    - "iterative":
-
-                        Iterative methods: A combination of the conjugate gradient, Lanczos algorithm, and other methods.
-
-                        This is currently only supported for the following cases:
-
-                        - grouped random effects with more than one level 
-                        
-                        - likelihood != "gaussian" and gp_approx == "vecchia" (non-Gaussian likelihoods with a Vecchia-Laplace approximation)
-
-                        - likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIF approximation)
-
-                        - likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation)
-
             seed : integer, optional (default=0)
                 The seed used for model creation (e.g., random ordering in Vecchia approximation)
-            cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data
-            or None, optional (default=None)
+            cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data or None, optional (default=None)
                 The elements indicate independent realizations of  random effects / Gaussian processes
                 (same values = same process realization)
             likelihood_additional_param : float, optional (default=1.)
@@ -4366,6 +4371,9 @@ class GPModel(object):
         self.num_ind_points = -1
         self.cover_tree_radius = 1.
         self.matrix_inversion_method = "cholesky"
+        self.has_weights = False
+        self.weights = None
+        self.likelihood_learning_rate = 1.
         self.seed = 0
         self.cluster_ids = None
         self.cluster_ids_map_to_int = None
@@ -4443,6 +4451,9 @@ class GPModel(object):
             likelihood = model_dict.get("likelihood")
             likelihood_additional_param = model_dict.get("likelihood_additional_param")
             matrix_inversion_method = model_dict.get("matrix_inversion_method")
+            if model_dict.get("weights") is not None:
+                weights = np.array(model_dict.get("weights"))
+            likelihood_learning_rate = model_dict.get("likelihood_learning_rate")
             # Set additionally required data
             self.model_has_been_loaded_from_saved_file = True
             if model_dict.get("cov_pars") is not None:
@@ -4501,6 +4512,7 @@ class GPModel(object):
         gp_coords_c = ctypes.c_void_p()
         gp_rand_coef_data_c = ctypes.c_void_p()
         cluster_ids_c = ctypes.c_void_p()
+        weights_c = ctypes.c_void_p()
         # Set data for grouped random effects
         if group_data is not None:
             group_data, group_data_names = _format_check_data(data=group_data, get_variable_names=True,
@@ -4717,7 +4729,7 @@ class GPModel(object):
                                                 check_must_be_int=False, convert_to_type=None)
             self.cluster_ids = deepcopy(cluster_ids)
             if self.cluster_ids.shape[0] != self.num_data:
-                raise ValueError("Incorrect number of data points in cluster_ids")
+                raise ValueError("Incorrect number of data points in 'cluster_ids'")
             # Convert cluster_ids to int and save conversion map
             if not np.issubdtype(cluster_ids.dtype, np.integer):
                 create_map = True
@@ -4730,6 +4742,16 @@ class GPModel(object):
                     cluster_ids = np.array([self.cluster_ids_map_to_int[cl_name] for cl_name in cluster_ids])
             cluster_ids = cluster_ids.astype(np.int32)
             cluster_ids_c = cluster_ids.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+         # Set weights
+        if weights is not None:
+            weights = _format_check_1D_data(weights, data_name="weights", check_data_type=True, 
+                                            check_must_be_int=False, convert_to_type=np.float64)
+            if weights.shape[0] != self.num_data:
+                raise ValueError("Incorrect number of data points in 'weights'")
+            self.weights = deepcopy(weights)
+            self.has_weights = True
+            weights_c = self.weights.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        self.likelihood_learning_rate = likelihood_learning_rate
 
         self.__determine_num_cov_pars(likelihood=likelihood)
         if self.likelihood_additional_param is None:
@@ -4766,6 +4788,9 @@ class GPModel(object):
             c_str(self.matrix_inversion_method),
             ctypes.c_int(self.seed),
             ctypes.c_int(self.num_parallel_threads),
+            ctypes.c_bool(self.has_weights),
+            weights_c,
+            ctypes.c_double(self.likelihood_learning_rate),
             ctypes.byref(self.handle)))
 
         # Should we free raw data?
@@ -4776,6 +4801,7 @@ class GPModel(object):
             self.gp_coords = None
             self.gp_rand_coef_data = None
             self.cluster_ids = None
+            self.weights = None
 
         if self.model_has_been_loaded_from_saved_file:
             if model_dict["params"]['init_cov_pars'] is not None:
@@ -5784,21 +5810,21 @@ class GPModel(object):
                     if gp_rand_coef_data_pred.shape[1] != self.num_gp_rand_coef:
                         raise ValueError("Incorrect number of covariates in gp_rand_coef_data_pred")
                     gp_rand_coef_data_pred_c, _, _ = c_float_array(gp_rand_coef_data_pred.flatten(order='F'))
-            # Set IDs for independent processes (cluster_ids)
+            # Set IDs for independent processes (cluster_ids_pred)
             if cluster_ids_pred is not None:
                 cluster_ids_pred = _format_check_1D_data(cluster_ids_pred, data_name="cluster_ids_pred",
                                                          check_data_type=False, check_must_be_int=False,
                                                          convert_to_type=None)
                 if cluster_ids_pred.shape[0] != num_data_pred:
-                    raise ValueError("Incorrect number of data points in cluster_ids_pred")
+                    raise ValueError("Incorrect number of data points in 'cluster_ids_pred'")
                 if self.cluster_ids_map_to_int is None and not np.issubdtype(cluster_ids_pred.dtype, np.integer):
                     error_message = True
                     if np.issubdtype(cluster_ids_pred.dtype, np.double):
                         if (np.floor(cluster_ids_pred) == cluster_ids_pred).all():
                             error_message = False
                     if error_message:
-                        raise ValueError("cluster_ids_pred needs to be of type int as the data provided in cluster_ids "
-                                         "when initializing the model was also int (or cluster_ids was not provided)")
+                        raise ValueError("'cluster_ids_pred' needs to be of type int as the data provided in 'cluster_ids' "
+                                         "when initializing the model was also int (or 'cluster_ids' was not provided)")
                 if self.cluster_ids_map_to_int is not None:
                     # Convert cluster_ids_pred to int
                     cluster_ids_pred_map_to_int = dict(
@@ -6060,7 +6086,7 @@ class GPModel(object):
         if vecchia_pred_type is not None:
             self.vecchia_pred_type = vecchia_pred_type
             vecchia_pred_type_c = c_str(vecchia_pred_type)
-        # Set IDs for independent processes (cluster_ids)
+        # Set IDs for independent processes (cluster_ids_pred)
         if cluster_ids_pred is not None:
             cluster_ids_pred = _format_check_1D_data(cluster_ids_pred, data_name="cluster_ids_pred",
                                                      check_data_type=False, check_must_be_int=False,
@@ -6073,8 +6099,8 @@ class GPModel(object):
                     if (np.floor(cluster_ids_pred) == cluster_ids_pred).all():
                         error_message = False
                 if error_message:
-                    raise ValueError("cluster_ids_pred needs to be of type int as the data provided in cluster_ids "
-                                     "when initializing the model was also int (or cluster_ids was not provided)")
+                    raise ValueError("'cluster_ids_pred' needs to be of type int as the data provided in 'cluster_ids' "
+                                     "when initializing the model was also int (or 'cluster_ids' was not provided)")
             if self.cluster_ids_map_to_int is not None:
                 # Convert cluster_ids_pred to int
                 cluster_ids_pred_map_to_int = dict(
@@ -6251,12 +6277,14 @@ class GPModel(object):
         model_dict["cov_function"] = self.cov_function
         model_dict["cov_fct_shape"] = self.cov_fct_shape
         model_dict["gp_approx"] = self.gp_approx
+        model_dict["matrix_inversion_method"] = self.matrix_inversion_method
+        model_dict["weights"] = self.weights
+        model_dict["likelihood_learning_rate"] = self.likelihood_learning_rate
         model_dict["cov_fct_taper_range"] = self.cov_fct_taper_range
         model_dict["cov_fct_taper_shape"] = self.cov_fct_taper_shape
         model_dict["num_ind_points"] = self.num_ind_points
         model_dict["cover_tree_radius"] = self.cover_tree_radius
         model_dict["ind_points_selection"] = self.ind_points_selection
-        model_dict["matrix_inversion_method"] = self.matrix_inversion_method
         model_dict["seed"] = self.seed
         model_dict["num_parallel_threads"] = self.num_parallel_threads
         model_dict["num_sets_re"] = self.num_sets_re

@@ -83,6 +83,9 @@ namespace GPBoost {
 		* \param matrix_inversion_method Method which is used for matrix inversion
 		* \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
 		* \param num_parallel_threads Number of parallel threads for OMP
+		* \param has_weights True, if sample weights should be used
+		* \param weights Sample weights
+		* \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
 		*/
 		REModelTemplate(data_size_t num_data,
 			const data_size_t* cluster_ids_data,
@@ -111,7 +114,10 @@ namespace GPBoost {
 			double likelihood_additional_param,
 			const char* matrix_inversion_method,
 			int seed,
-			int num_parallel_threads) {
+			int num_parallel_threads,
+			bool has_weights,
+			const double* weights,
+			double likelihood_learning_rate) {
 			if (num_parallel_threads > 0) {
 				Eigen::setNbThreads(num_parallel_threads);
 				omp_set_num_threads(num_parallel_threads);
@@ -130,6 +136,11 @@ namespace GPBoost {
 				likelihood_strg = Likelihood<T_mat, T_chol>::ParseLikelihoodAlias(std::string(likelihood));
 			}
 			gauss_likelihood_ = likelihood_strg == "gaussian";
+			if (has_weights) {
+				if (gauss_likelihood_) {
+					Log::REFatal("'weights' are currently not supported for likelihood = 'gaussian' ");
+				}
+			}
 			likelihood_additional_param_ = likelihood_additional_param;
 			//Set up matrix inversion method
 			if (matrix_inversion_method != nullptr) {
@@ -346,6 +357,28 @@ namespace GPBoost {
 					re_comps_[cluster_i][0] = re_comps_cluster_i;
 				}
 			}//end loop over clusters
+			if (has_weights) {
+				has_weights_ = true;
+				double sum_weights = 0.;
+#pragma omp parallel for schedule(static) reduction(+:sum_weights)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					sum_weights += weights[i];
+				}
+				double corr_fact = num_data_ / sum_weights;
+				for (const auto& cluster_i : unique_clusters_) {
+					weights_[cluster_i] = vec_t(num_data_per_cluster_[cluster_i]);
+					for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+						weights_[cluster_i][j] = weights[data_indices_per_cluster_[cluster_i][j]] * corr_fact;
+					}
+				}
+			}
+			else {
+				for (const auto& cluster_i : unique_clusters_) {
+					weights_[cluster_i] = vec_t();
+				}
+			}//end has_weights
+			CHECK(likelihood_learning_rate > 0.);
+			likelihood_learning_rate_ = likelihood_learning_rate;
 			//Create matrices Z and ZtZ if Woodbury identity is used (used only if there are only grouped REs and no GPs)
 			if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 				InitializeMatricesForOnlyGroupedREsUseWoodburyIdentity();
@@ -798,7 +831,7 @@ namespace GPBoost {
 				for (int icol = 0; icol < num_covariates_; ++icol) {
 					bool var_is_constant = true;
 #pragma omp parallel for schedule(static)
-					for (int i = 1; i < num_data_; ++i) {
+					for (data_size_t i = 1; i < num_data_; ++i) {
 						if (var_is_constant) {
 							if (!(TwoNumbersAreEqual<double>(X_.coeff(i, icol), X_.coeff(0, icol)))) {
 #pragma omp critical
@@ -981,7 +1014,7 @@ namespace GPBoost {
 			if (!has_covariates_ && fixed_effects != nullptr && gauss_likelihood_) {
 				vec_t resid = y_vec_;
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_data_; ++i) {
+				for (data_size_t i = 0; i < num_data_; ++i) {
 					resid[i] -= fixed_effects[i];
 				}
 				SetY(resid.data());
@@ -2140,7 +2173,7 @@ namespace GPBoost {
 			if (fixed_effects != nullptr) {
 				vec_t resid = y_vec_;
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_data_; ++i) {
+				for (data_size_t i = 0; i < num_data_; ++i) {
 					resid[i] -= fixed_effects[i];
 				}
 				SetY(resid.data());
@@ -2314,7 +2347,7 @@ namespace GPBoost {
 				vec_t resid = y_vec_ - (X_ * beta);
 				if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
 #pragma omp parallel for schedule(static)
-					for (int i = 0; i < num_data_; ++i) {
+					for (data_size_t i = 0; i < num_data_; ++i) {
 						resid[i] -= fixed_effects[i];
 					}
 				}
@@ -2361,7 +2394,7 @@ namespace GPBoost {
 				}
 				vec_t y_minus_lp(num_data_);
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_data_; ++i) {
+				for (data_size_t i = 0; i < num_data_; ++i) {
 					y_minus_lp[i] = y_data[i] - fixed_effects[i];
 				}
 				SetY(y_minus_lp.data());
@@ -4759,6 +4792,12 @@ namespace GPBoost {
 		bool y_aux_has_been_calculated_ = false;
 		/*! \brief If true, the response variable data has been set (otherwise y_ is empty) */
 		bool y_has_been_set_ = false;
+		/*! \brief True if there are weights */
+		bool has_weights_ = false;
+		/*! \brief Key: labels of independent realizations of REs/GPs, value: weights */
+		std::map<data_size_t, vec_t> weights_;
+		/*! \brief A learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods) */
+		double likelihood_learning_rate_ = 1.;
 
 		// GROUPED RANDOM EFFECTS
 		/*! \brief Number of grouped (intercept) random effects components */
@@ -5444,7 +5483,7 @@ namespace GPBoost {
 			}
 			if (has_covariates_ && gauss_likelihood_) {
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_data_; ++i) {
+				for (data_size_t i = 0; i < num_data_; ++i) {
 					y[i] = y_vec_[i];
 				}
 			}
@@ -5939,7 +5978,8 @@ namespace GPBoost {
 						false,
 						only_one_GP_calculations_on_RE_scale_,
 						re_comps_vecchia_[cluster_i][0][ind_intercept_gp_]->random_effects_indices_of_data_.data(),
-						likelihood_additional_param_));
+						likelihood_additional_param_,
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
 				}
 				else if (gp_approx_ == "fitc") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -5948,7 +5988,8 @@ namespace GPBoost {
 						true,
 						only_one_GP_calculations_on_RE_scale_,
 						re_comps_cross_cov_[cluster_i][0][ind_intercept_gp_]->random_effects_indices_of_data_.data(),
-						likelihood_additional_param_));
+						likelihood_additional_param_,
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -5957,7 +5998,8 @@ namespace GPBoost {
 						false,
 						false,
 						nullptr,
-						likelihood_additional_param_));
+						likelihood_additional_param_,
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -5966,7 +6008,8 @@ namespace GPBoost {
 						false,
 						false,
 						nullptr,
-						likelihood_additional_param_));
+						likelihood_additional_param_,
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
 				}
 				else if (only_one_GP_calculations_on_RE_scale_ && gp_approx_ != "vecchia") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -5975,7 +6018,8 @@ namespace GPBoost {
 						true,
 						true,
 						re_comps_[cluster_i][0][0]->random_effects_indices_of_data_.data(),
-						likelihood_additional_param_));
+						likelihood_additional_param_,
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
 				}
 				else {//!only_one_GP_calculations_on_RE_scale_ && gp_approx_ == "none"
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -5984,7 +6028,8 @@ namespace GPBoost {
 						true,
 						false,
 						nullptr,
-						likelihood_additional_param_));
+						likelihood_additional_param_,
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
 				}
 				if (!gauss_likelihood_) {
 					likelihood_[cluster_i]->InitializeModeAvec();
@@ -9405,7 +9450,7 @@ namespace GPBoost {
 					//add external fixed effects to linear predictor
 					if (fixed_effects != nullptr) {
 #pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_data_; ++i) {
+						for (data_size_t i = 0; i < num_data_; ++i) {
 							resid[i] -= fixed_effects[i];
 						}
 					}
