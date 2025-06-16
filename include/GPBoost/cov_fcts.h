@@ -2233,47 +2233,27 @@ namespace GPBoost {
 			double d_aux = pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2.));// = c * |h| / ( (a*u^(2*alpha) + 1)^(beta/2) )
 			double d_aux2 = pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2.));// = sigma2 / ( (a*u^(2*alpha) + 1)^(delta + beta*d/2) )
 			double cm = transf_scale ? pars[ind_par] : nugget_var;// multiplicative constant to get gradient on log-scale or backtransform with nugget variance
-			if (ind_par == 0) {//sigma2 (usually not called)
-				cm = transf_scale ? 1 : nugget_var / pars[0];
-				d_aux2 *= cm;
-				if (TwoNumbersAreEqual<double>(pars[4], 0.5)) {
-					grad = d_aux2 * std::exp(-d_aux);
-				}
-				else if (TwoNumbersAreEqual<double>(pars[4], 1.5)) {
-					grad = d_aux2 * (1. + d_aux) * std::exp(-d_aux);
-				}
-				else if (TwoNumbersAreEqual<double>(pars[4], 2.5)) {
-					grad = d_aux2 * (1. + d_aux + d_aux * d_aux / 3.) * std::exp(-d_aux);
-				}
-				else {
-#if MSVC_OR_GCC_COMPILER
-					grad = d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux);
-#else
-					grad = 0.;
-#endif
-				}
-			}
-			else if (ind_par == 1 || ind_par == 2 || ind_par == 3 || ind_par == 5 || ind_par == 6) {//a, c, alpha, beta, delta
+			if (ind_par == 0 || ind_par == 1 || ind_par == 2 || ind_par == 4 || ind_par == 5) {//a, c, alpha, beta, delta
 				double d_aux_grad = 0., d_aux2_grad = 0.;
-				if (ind_par == 1) {//a
+				if (ind_par == 0) {//a
 					double c_aux = std::pow(dist_time, 2 * pars[3]);
 					d_aux_grad = -pars[5] / 2. * pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2. + 1.)) * c_aux;
 					d_aux2_grad = -(pars[6] + pars[5] * dim_space / 2.) * pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2. + 1.)) * c_aux;
 				}
-				else if (ind_par == 2) {//c
+				else if (ind_par == 1) {//c
 					d_aux_grad = dist_space / (std::pow(d_aux_time, pars[5] / 2.));
 					d_aux2_grad = 0.;
 				}
-				else if (ind_par == 3) {//alpha
+				else if (ind_par == 2) {//alpha
 					double c_aux = 2 * pars[1] * std::log(dist_time) * std::pow(dist_time, 2 * pars[3]);// d/dalpha (a u^(2 alpha) + 1), u = dist_time
 					d_aux_grad = -pars[5] / 2. * pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2. + 1.)) * c_aux;
 					d_aux2_grad = -(pars[6] + pars[5] * dim_space / 2.) * pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2. + 1.)) * c_aux;
 				}
-				else if (ind_par == 5) {//beta
+				else if (ind_par == 4) {//beta
 					d_aux_grad = -pars[2] * dist_space / 2. * std::log(d_aux_time) / (std::pow(d_aux_time, pars[5] / 2.));
 					d_aux2_grad = - pars[0] * dim_space / 2. * std::log(d_aux_time) / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2.));
 				}
-				else if (ind_par == 6) {//delta
+				else if (ind_par == 5) {//delta
 					d_aux_grad = 0.;
 					d_aux2_grad = -pars[0] * std::log(d_aux_time) / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2.));
 				}
@@ -2300,7 +2280,7 @@ namespace GPBoost {
 #endif
 				}
 			}//end a, c, alpha, beta, delta
-			else if (ind_par == 4) {//nu
+			else if (ind_par == 3) {//nu
 #if MSVC_OR_GCC_COMPILER
 				double nu_up, nu_down;
 				if (transf_scale) {
