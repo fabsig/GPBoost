@@ -11,7 +11,7 @@
 *
 * For a "gamma" likelihood, the following density is used:
 *   f(y) = lambda^gamma / Gamma(gamma) * y^(gamma - 1) * exp(-lambda * y)
-*       - lambda = gamma * exp(-location_par) (i.e., mean(y) = exp(location_par)
+*       - lambda = gamma * exp(-location_par) (i.e., mean(y) = exp(location_par))
 *       - lambda = rate parameter, gamma = shape parameter, location_par = random + fixed effects
 *
 * For a "negative_binomial" likelihood, the following density is used:
@@ -7772,7 +7772,8 @@ namespace GPBoost {
 					}
 				}
 				else {
-					Log::REFatal("CalcFirstDerivInformationLocPar_DataScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+					Log::REFatal("CalcFirstDerivInformationLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
+						likelihood_type_.c_str(), approximation_type_.c_str());
 				}
 			}//end approximation_type_ == "laplace"
 			else if (approximation_type_ == "fisher_laplace") {
