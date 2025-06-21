@@ -251,17 +251,6 @@ bst = gpb.train(params=params, train_set=data_train, num_boost_round=1000,
 gpb.plot_metric(evals_result, figsize=(10, 5))# plot validation scores
 plt.show(block=False)
 
-#--------------------Do Newton updates for tree leaves (only for Gaussian data)----------------
-if likelihood == "gaussian":
-    params_newton = params.copy()
-    params_newton['leaves_newton_update'] = True
-    params_newton['learning_rate'] = 0.1
-    evals_result = {}  # record eval results for plotting
-    bst = gpb.train(params=params_newton, train_set=data_train, num_boost_round=1000,
-                    gp_model=gp_model, valid_sets=data_eval, early_stopping_rounds=20,
-                    evals_result=evals_result)
-    gpb.plot_metric(evals_result, figsize=(10, 5))# plot validation scores
-
 #--------------------Model interpretation----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 data_train = gpb.Dataset(data=X, label=y)

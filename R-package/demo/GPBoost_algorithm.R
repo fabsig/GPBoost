@@ -234,25 +234,6 @@ val_error <- unlist(bst$record_evals$test[[1]]$eval)
 plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
      xlab="iteration", ylab="Validation error", main="Validation error vs. boosting iteration")
 
-#--------------------Do Newton updates for tree leaves (only for Gaussian data)----------------
-if (likelihood == "gaussian") {
-  gp_model <- GPModel(group_data = group[train_ind], likelihood = likelihood)
-  gp_model$set_prediction_data(group_data_pred = group[-train_ind])
-  params_newton <- params
-  params_newton$learning_rate <- 0.1
-  bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 1000,
-                   params = params_newton, verbose = 1, valids = valids,
-                   early_stopping_rounds = 20,
-                   leaves_newton_update = TRUE)
-  print(paste0("Optimal number of iterations: ", bst$best_iter,
-               ", best test error: ", bst$best_score))
-  # Plot validation error
-  val_error <- unlist(bst$record_evals$test[[1]]$eval)
-  plot(1:length(val_error), val_error, type="l", lwd=2, col="blue",
-       xlab="iteration", ylab="Validation error", 
-       main="Validation error vs. boosting iteration")
-}
-
 #--------------------Model interpretation----------------
 # Note: for the SHAPforxgboost package, the data matrix X needs to have column names
 # We add them first:
