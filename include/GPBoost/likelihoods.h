@@ -197,6 +197,7 @@ namespace GPBoost {
 				num_aux_pars_estim_ = 0;
 				num_sets_re_ = 2;
 				need_pred_latent_var_for_response_mean_ = false;
+				armijo_condition_ = false;
 			}
 			else {
 				if (approximation_type_ != "laplace") {
@@ -953,10 +954,15 @@ namespace GPBoost {
 				a_vec_update.array() += rhs.array();
 				mode_update = (*Sigma) * a_vec_update;
 				double lr_mode = 1.;
+				double grad_dot_direction = 0.;//for Armijo check
+				if (armijo_condition_) {
+					vec_t direction = mode_update - mode_;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
+					grad_dot_direction = direction.dot(a_vec_update - a_vec_ + information_ll_.asDiagonal() * direction);
+				}
 				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 					if (ih == 0) {
 						a_vec_new = a_vec_update;
-						mode_new = mode_update;
+						mode_new = mode_update;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
 					}
 					else {
 						a_vec_new = (1 - lr_mode) * a_vec_ + lr_mode * a_vec_update;
@@ -964,7 +970,7 @@ namespace GPBoost {
 					}
 					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 					approx_marginal_ll_new = -0.5 * (a_vec_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr);// Calculate new objective function
-					if (approx_marginal_ll_new < approx_marginal_ll ||
+					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 						lr_mode *= 0.5;
 					}
@@ -1105,6 +1111,11 @@ namespace GPBoost {
 					// Update mode and do backtracking line search
 					mode_update = chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(rhs);
 				} // end Cholesky
+				double grad_dot_direction = 0.;//for Armijo check
+				if (armijo_condition_) {
+					grad_dot_direction = mode_update.dot(rhs);//rhs = gradient of objective
+				}
+				// Backtracking line search
 				double lr_mode = 1.;
 				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 					mode_new = mode_ + lr_mode * mode_update;
@@ -1117,7 +1128,7 @@ namespace GPBoost {
 						}
 					}
 					approx_marginal_ll_new = -0.5 * (mode_new.dot(SigmaI * mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
-					if (approx_marginal_ll_new < approx_marginal_ll ||
+					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 						lr_mode *= 0.5;
 					}
@@ -1292,12 +1303,16 @@ namespace GPBoost {
 				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_.data(), rhs.data(), false);
 				// Update mode and do backtracking line search
 				mode_update = (rhs.array() / diag_SigmaI_plus_ZtWZ_.array()).matrix();
+				double grad_dot_direction = 0.;//for Armijo check
+				if (armijo_condition_) {
+					grad_dot_direction = mode_update.dot(rhs);//rhs = gradient of objective
+				}
 				double lr_mode = 1.;
 				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 					mode_new = mode_ + lr_mode * mode_update;
 					UpdateLocationParOnlyOneGroupedRE(mode_new, fixed_effects, random_effects_indices_of_data, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 					approx_marginal_ll_new = -0.5 / sigma2 * (mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
-					if (approx_marginal_ll_new < approx_marginal_ll ||
+					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 						lr_mode *= 0.5;
 					}
@@ -1608,10 +1623,21 @@ namespace GPBoost {
 						mode_update = Sigma_I_rhs + SigmaI_Bt_D_inv_B_cross_cov_woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs;
 					} // end Cholesky
 					// Backtracking line search
+					double grad_dot_direction = 0.;//for Armijo check
+					if (armijo_condition_) {
+						if (num_sets_re_ > 1) {
+							Log::REFatal("The Armijo condition check is currently not implemented when num_sets_re_ > 1 (=multiple parameters related to GPs) ");
+						}
+						vec_t direction = mode_update - mode_;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
+						vec_t gradient = B.transpose() * (D_inv * (B * direction)) - 
+							Bt_D_inv_B_cross_cov * (chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * direction)) + 
+							information_ll_.asDiagonal() * direction;//gradient = (Sigma^-1 + W) * direction (Sigma^-1 calculated with Woodbury), direction = (Sigma^-1 + W)^-1 * gradient
+						grad_dot_direction = direction.dot(gradient);
+					}
 					double lr_mode = 1.;
 					for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 						if (ih == 0) {
-							mode_new = mode_update;
+							mode_new = mode_update;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
 						}
 						else {
 							mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
@@ -1622,7 +1648,7 @@ namespace GPBoost {
 						cross_cov_B_t_D_inv_B_mode = Bt_D_inv_B_cross_cov.transpose() * mode_new;
 						wood_inv_cross_cov_B_t_D_inv_B_mode = chol_fact_sigma_woodbury.solve(cross_cov_B_t_D_inv_B_mode);
 						approx_marginal_ll_new = -0.5 * ((B_mode.dot(D_inv * B_mode)) - cross_cov_B_t_D_inv_B_mode.dot(wood_inv_cross_cov_B_t_D_inv_B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
-						if (approx_marginal_ll_new < approx_marginal_ll ||
+						if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 							lr_mode *= 0.5;
 						}
@@ -2020,10 +2046,19 @@ namespace GPBoost {
 						mode_update = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
 					} // end Cholesky
 					// Backtracking line search
+					double grad_dot_direction = 0.;//for Armijo check
+					if (armijo_condition_) {
+						if (num_sets_re_ > 1) {
+							Log::REFatal("The Armijo condition check is currently not implemented when num_sets_re_ > 1 (=multiple parameters related to GPs) ");
+						}
+						vec_t direction = mode_update - mode_;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
+						vec_t gradient = B[0].transpose() * (D_inv[0] * (B[0] * direction)) + information_ll_.asDiagonal() * direction;//gradient = (Sigma^-1 + W) * direction, direction = (Sigma^-1 + W)^-1 * gradient
+						grad_dot_direction = direction.dot(gradient);
+					}
 					double lr_mode = 1.;
 					for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 						if (ih == 0) {
-							mode_new = mode_update;
+							mode_new = mode_update;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
 						}
 						else {
 							mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
@@ -2041,7 +2076,7 @@ namespace GPBoost {
 								approx_marginal_ll_new += -0.5 * ((B_mode.segment(dim_mode_per_set_re_ * igp, dim_mode_per_set_re_)).dot(D_inv[igp] * (B_mode.segment(dim_mode_per_set_re_ * igp, dim_mode_per_set_re_))));
 							}
 						}
-						if (approx_marginal_ll_new < approx_marginal_ll ||
+						if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 							lr_mode *= 0.5;
 						}
@@ -2219,11 +2254,16 @@ namespace GPBoost {
 				a_vec_update.array() += rhs.array();//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
 				vaux3 = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_update);
 				mode_update = ((*cross_cov) * vaux3) + (fitc_resid_diag.asDiagonal() * a_vec_update);//mode_ = Sigma * a_vec_
+				double grad_dot_direction = 0.;//for Armijo check
+				if (armijo_condition_) {
+					vec_t direction = mode_update - mode_;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
+					grad_dot_direction = direction.dot(a_vec_update - a_vec_ + information_ll_.asDiagonal() * direction);
+				}
 				double lr_mode = 1.;
 				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 					if (ih == 0) {
 						a_vec_new = a_vec_update;
-						mode_new = mode_update;
+						mode_new = mode_update;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
 					}
 					else {
 						a_vec_new = (1 - lr_mode) * a_vec_ + lr_mode * a_vec_update;
@@ -6521,20 +6561,6 @@ namespace GPBoost {
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit",
 			"poisson", "gamma", "negative_binomial", "t", "gaussian_heteroscedastic" };
-		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
-		int maxit_mode_newton_ = 1000;
-		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
-		double DELTA_REL_CONV_ = 1e-8;
-		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the ewton method for mode finding in Laplace approximation */
-		int max_number_lr_shrinkage_steps_newton_ = 20;
-		/*! \brief If true, a quasi-Newton method instead of Newton's method is used for finding the maximal mode. Only supported for the Vecchia approximation */
-		bool quasi_newton_for_mode_finding_ = false;
-		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the quasi-Newton method for mode finding in Laplace approximation */
-		int MAX_NUMBER_LR_SHRINKAGE_STEPS_QUASI_NEWTON_ = 20;
-		/*! \brief If true, the mode can only change by 'MAX_CHANGE_MODE_NEWTON_' in Newton's method */
-		bool cap_change_mode_newton_ = false;
-		/*! \brief Maximally allowed change for mode in Newton's method for those likelihoods where a cap is enforced */
-		double MAX_CHANGE_MODE_NEWTON_ = std::log(100.);
 		/*! \brief Number of additional parameters for likelihoods */
 		int num_aux_pars_ = 0;
 		/*! \brief Number of additional parameters for likelihoods that are estimated */
@@ -6585,6 +6611,27 @@ namespace GPBoost {
 		bool use_variance_correction_for_prediction_ = false;
 		/*! \brief Type of predictive variance correction */
 		string_t var_cor_pred_version_ = "freq_asymptotic";
+
+
+		// MODE FINDING PROPERTIES
+		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
+		int maxit_mode_newton_ = 1000;
+		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
+		double DELTA_REL_CONV_ = 1e-8;
+		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the ewton method for mode finding in Laplace approximation */
+		int max_number_lr_shrinkage_steps_newton_ = 20;
+		/*! \brief If true, a quasi-Newton method instead of Newton's method is used for finding the maximal mode. Only supported for the Vecchia approximation */
+		bool quasi_newton_for_mode_finding_ = false;
+		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the quasi-Newton method for mode finding in Laplace approximation */
+		int MAX_NUMBER_LR_SHRINKAGE_STEPS_QUASI_NEWTON_ = 20;
+		/*! \brief If true, the mode can only change by 'MAX_CHANGE_MODE_NEWTON_' in Newton's method */
+		bool cap_change_mode_newton_ = false;
+		/*! \brief Maximally allowed change for mode in Newton's method for those likelihoods where a cap is enforced */
+		double MAX_CHANGE_MODE_NEWTON_ = std::log(100.);
+		/*! \brief If true, Armijo's condition is used to check whether there is sufficient increase during the mode finding */
+		bool armijo_condition_ = true;
+		/*! \brief Constant c for Armijo's condition. Needs to be in (0,1) */
+		double c_armijo_ = 1e-4;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
