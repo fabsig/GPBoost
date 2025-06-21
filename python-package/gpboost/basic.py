@@ -4908,9 +4908,37 @@ class GPModel(object):
         params : dict or None, optional (default=None)
             Parameters for the estimation / optimization
 
+                - trace : bool, optional (default = False)
+                    If True, information on the progress of the parameter optimization is printed.                
+                - std_dev : bool (default=False)
+                    If True, approximate standard deviations are calculated for the covariance parameters
+                    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
+                    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods).
+                - init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
+                    Initial values for covariance parameters of Gaussian process and random effects (can be None).
+                    The order is the same as the order of the parameters in the summary function: first is the error
+                    variance (only for "gaussian" likelihood), next follow the variances of the grouped random effects
+                    (if there are any, in the order provided in 'group_data'), and then follow the marginal variance
+                    and the range of the Gaussian process. If there are multiple Gaussian processes, then the variances
+                    and ranges follow alternatingly. If 'init_cov_pars = None', an internatl choice is used that depends
+                    on the likelihood and the random effects type and covariance function. If you select the option
+                    'trace = True' in the 'params' argument, you will see the first initial covariance parameters
+                    in iteration 0.
+                - init_coef : numpy array or pandas DataFrame, optional (default = None)
+                    Initial values for the regression coefficients (if there are any, can be None)
+                - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
+                    Initial values for additional parameters for non-Gaussian likelihoods
+                    (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
+                - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1)
+                    If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, 
+                    estimate_cov_par_index[i] is then bool and indicates which ones are estimated.
+                    For instance, "estimate_cov_par_index": [1,1,0] means that the first two covariance parameters are estimated and the last one not. 
+                - estimate_aux_pars : bool, (default = True)
+                    If True, any additional parameters for non-Gaussian likelihoods are also estimated
+                    (e.g., shape parameter of a gamma or negative binomial likelihood).
                 - optimizer_cov : string, optional (default = "lbfgs")
                     Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent", "lbfgs", "fisher_scoring", "newton" ,"nelder_mead".
+                    Options: "lbfgs", "gradient_descent", "fisher_scoring", "newton" ,"nelder_mead".
                     If there are additional auxiliary parameters for non-Gaussian likelihoods, 'optimizer_cov' is also used for those
                 - optimizer_coef : string, optional (default = "wls" for Gaussian data and "lbfgs" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
@@ -4927,56 +4955,6 @@ class GPModel(object):
                     log-likelihood or the parameters is below this value. 
                     If < 0, internal default values are used.
                     Default = 1e-6 except for "nelder_mead" for which the default is 1e-8.
-                - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
-                    The convergence criterion used for terminating the optimization algorithm.
-                    Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
-                - init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for covariance parameters of Gaussian process and random effects (can be None).
-                    The order it the same as the order of the parameters in the summary function: first is the error
-                    variance (only for "gaussian" likelihood), next follow the variances of the grouped random effects
-                    (if there are any, in the order provided in 'group_data'), and then follow the marginal variance
-                    and the range of the Gaussian process. If there are multiple Gaussian processes, then the variances
-                    and ranges follow alternatingly. If 'init_cov_pars = None', an internatl choice is used that depends
-                    on the likelihood and the random effects type and covariance function. If you select the option
-                    'trace = True' in the 'params' argument, you will see the first initial covariance parameters
-                    in iteration 0.
-                - init_coef : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for the regression coefficients (if there are any, can be None)
-                - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. otherwise)
-                    Initial learning rate for covariance parameters if a gradient-based optimization method is used.
-
-                        - If lr_cov < 0, internal default values are used (0.1 for "gradient_descent" and 1. otherwise).
-
-                        - If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those.
-
-                        - For "lbfgs", this is divided by the norm of the gradient in the first iteration.
-
-                - lr_coef : double, optional (default = 0.1)
-                    Learning rate for fixed effect regression coefficients.
-                - use_nesterov_acc : bool, optional (default = True)
-                    If True, Nesterov acceleration is used for gradient descent.
-                - acc_rate_cov : double, optional (default = 0.5)
-                    Acceleration rate for covariance parameters for Nesterov acceleration.
-                - acc_rate_coef : double, optional (default = 0.5)
-                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration.
-                - momentum_offset : integer, optional (default = 2)
-                    Number of iterations for which no momentum is applied in the beginning.
-                - trace : bool, optional (default = False)
-                    If True, information on the progress of the parameter optimization is printed.
-                - std_dev : bool (default=False)
-                    If True, approximate standard deviations are calculated for the covariance parameters
-                    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
-                    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods).
-                - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for additional parameters for non-Gaussian likelihoods
-                    (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
-                - estimate_aux_pars : bool, (default = True)
-                    If True, any additional parameters for non-Gaussian likelihoods are also estimated
-                    (e.g., shape parameter of a gamma or negative binomial likelihood).
-                - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1)
-                    If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, 
-                    estimate_cov_par_index[i] is then bool and indicates which ones are estimated.
-                    For instance, "estimate_cov_par_index": [1,1,0] means that the first two covariance parameters are estimated and the last one not. 
                 - cg_max_num_it: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithms.
                 - cg_max_num_it_tridiag: integer, optional (default = 1000)
@@ -5031,6 +5009,29 @@ class GPModel(object):
                     - 200 for the FITC preconditioner 
 
                     - 50 for the pivoted Cholesky decomposition preconditioner
+                
+                - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood", only relevant for "gradient_descent", "fisher_scoring", and "newton")
+                    The convergence criterion used for terminating the optimization algorithm.
+                    Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
+                - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. otherwise, only relevant for "gradient_descent", "fisher_scoring", and "newton")
+                    Initial learning rate for covariance parameters if a gradient-based optimization method is used.
+
+                        - If lr_cov < 0, internal default values are used (0.1 for "gradient_descent" and 1. otherwise).
+
+                        - If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those.
+
+                        - For "lbfgs", this is divided by the norm of the gradient in the first iteration.
+
+                - lr_coef : double, optional (default = 0.1, only relevant for "gradient_descent", "fisher_scoring", and "newton")
+                    Learning rate for fixed effect regression coefficients.
+                - use_nesterov_acc : bool, optional (default = True, only relevant for "gradient_descent")
+                    If True, Nesterov acceleration is used for gradient descent.
+                - acc_rate_cov : double, optional (default = 0.5, only relevant for "gradient_descent")
+                    Acceleration rate for covariance parameters for Nesterov acceleration.
+                - acc_rate_coef : double, optional (default = 0.5, only relevant for "gradient_descent")
+                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration.
+                - momentum_offset : integer, optional (default = 2, only relevant for "gradient_descent")
+                    Number of iterations for which no momentum is applied in the beginning.
 
         offset : numpy 1-D array or None, optional (default=None)
             Additional fixed effects contributions that are added to the linear predictor (= offset).
@@ -5182,12 +5183,40 @@ class GPModel(object):
 
         Parameters
         ----------
-        params : dict
+        params : dict or None, optional (default=None)
             Parameters for the estimation / optimization
 
+                - trace : bool, optional (default = False)
+                    If True, information on the progress of the parameter optimization is printed.                
+                - std_dev : bool (default=False)
+                    If True, approximate standard deviations are calculated for the covariance parameters
+                    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
+                    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods).
+                - init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
+                    Initial values for covariance parameters of Gaussian process and random effects (can be None).
+                    The order is the same as the order of the parameters in the summary function: first is the error
+                    variance (only for "gaussian" likelihood), next follow the variances of the grouped random effects
+                    (if there are any, in the order provided in 'group_data'), and then follow the marginal variance
+                    and the range of the Gaussian process. If there are multiple Gaussian processes, then the variances
+                    and ranges follow alternatingly. If 'init_cov_pars = None', an internatl choice is used that depends
+                    on the likelihood and the random effects type and covariance function. If you select the option
+                    'trace = True' in the 'params' argument, you will see the first initial covariance parameters
+                    in iteration 0.
+                - init_coef : numpy array or pandas DataFrame, optional (default = None)
+                    Initial values for the regression coefficients (if there are any, can be None)
+                - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
+                    Initial values for additional parameters for non-Gaussian likelihoods
+                    (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
+                - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1)
+                    If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, 
+                    estimate_cov_par_index[i] is then bool and indicates which ones are estimated.
+                    For instance, "estimate_cov_par_index": [1,1,0] means that the first two covariance parameters are estimated and the last one not. 
+                - estimate_aux_pars : bool, (default = True)
+                    If True, any additional parameters for non-Gaussian likelihoods are also estimated
+                    (e.g., shape parameter of a gamma or negative binomial likelihood).
                 - optimizer_cov : string, optional (default = "lbfgs")
                     Optimizer used for estimating covariance parameters.
-                    Options: "gradient_descent", "lbfgs", "fisher_scoring", "newton" ,"nelder_mead".
+                    Options: "lbfgs", "gradient_descent", "fisher_scoring", "newton" ,"nelder_mead".
                     If there are additional auxiliary parameters for non-Gaussian likelihoods, 'optimizer_cov' is also used for those
                 - optimizer_coef : string, optional (default = "wls" for Gaussian data and "lbfgs" for other likelihoods)
                     Optimizer used for estimating linear regression coefficients, if there are any
@@ -5204,56 +5233,6 @@ class GPModel(object):
                     log-likelihood or the parameters is below this value. 
                     If < 0, internal default values are used.
                     Default = 1e-6 except for "nelder_mead" for which the default is 1e-8.
-                - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood")
-                    The convergence criterion used for terminating the optimization algorithm.
-                    Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
-                - init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for covariance parameters of Gaussian process and random effects (can be None).
-                    The order it the same as the order of the parameters in the summary function: first is the error
-                    variance (only for "gaussian" likelihood), next follow the variances of the grouped random effects
-                    (if there are any, in the order provided in 'group_data'), and then follow the marginal variance
-                    and the range of the Gaussian process. If there are multiple Gaussian processes, then the variances
-                    and ranges follow alternatingly. If 'init_cov_pars = None', an internatl choice is used that depends
-                    on the likelihood and the random effects type and covariance function. If you select the option
-                    'trace = True' in the 'params' argument, you will see the first initial covariance parameters
-                    in iteration 0.
-                - init_coef : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for the regression coefficients (if there are any, can be None)
-                - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. otherwise)
-                    Initial learning rate for covariance parameters if a gradient-based optimization method is used.
-
-                        - If lr_cov < 0, internal default values are used (0.1 for "gradient_descent" and 1. otherwise).
-
-                        - If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those.
-
-                        - For "lbfgs", this is divided by the norm of the gradient in the first iteration.
-
-                - lr_coef : double, optional (default = 0.1)
-                    Learning rate for fixed effect regression coefficients.
-                - use_nesterov_acc : bool, optional (default = True)
-                    If True, Nesterov acceleration is used for gradient descent.
-                - acc_rate_cov : double, optional (default = 0.5)
-                    Acceleration rate for covariance parameters for Nesterov acceleration.
-                - acc_rate_coef : double, optional (default = 0.5)
-                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration.
-                - momentum_offset : integer, optional (default = 2)
-                    Number of iterations for which no momentum is applied in the beginning.
-                - trace : bool, optional (default = False)
-                    If True, information on the progress of the parameter optimization is printed.
-                - std_dev : bool (default=False)
-                    If True, approximate standard deviations are calculated for the covariance parameters
-                    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
-                    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods).
-                - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
-                    Initial values for additional parameters for non-Gaussian likelihoods
-                    (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
-                - estimate_aux_pars : bool, (default = True)
-                    If True, any additional parameters for non-Gaussian likelihoods are also estimated
-                    (e.g., shape parameter of a gamma or negative binomial likelihood).
-                - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1)
-                    If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, 
-                    estimate_cov_par_index[i] is then bool and indicates which ones are estimated. 
-                    For instance, "estimate_cov_par_index": [1,1,0] means that the first two covariance parameters are estimated and the last one not.
                 - cg_max_num_it: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithms.
                 - cg_max_num_it_tridiag: integer, optional (default = 1000)
@@ -5308,6 +5287,29 @@ class GPModel(object):
                     - 200 for the FITC preconditioner 
 
                     - 50 for the pivoted Cholesky decomposition preconditioner
+                
+                - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood", only relevant for "gradient_descent", "fisher_scoring", and "newton")
+                    The convergence criterion used for terminating the optimization algorithm.
+                    Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
+                - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. otherwise, only relevant for "gradient_descent", "fisher_scoring", and "newton")
+                    Initial learning rate for covariance parameters if a gradient-based optimization method is used.
+
+                        - If lr_cov < 0, internal default values are used (0.1 for "gradient_descent" and 1. otherwise).
+
+                        - If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those.
+
+                        - For "lbfgs", this is divided by the norm of the gradient in the first iteration.
+
+                - lr_coef : double, optional (default = 0.1, only relevant for "gradient_descent", "fisher_scoring", and "newton")
+                    Learning rate for fixed effect regression coefficients.
+                - use_nesterov_acc : bool, optional (default = True, only relevant for "gradient_descent")
+                    If True, Nesterov acceleration is used for gradient descent.
+                - acc_rate_cov : double, optional (default = 0.5, only relevant for "gradient_descent")
+                    Acceleration rate for covariance parameters for Nesterov acceleration.
+                - acc_rate_coef : double, optional (default = 0.5, only relevant for "gradient_descent")
+                    Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration.
+                - momentum_offset : integer, optional (default = 2, only relevant for "gradient_descent")
+                    Number of iterations for which no momentum is applied in the beginning.
 
         Example
         -------
