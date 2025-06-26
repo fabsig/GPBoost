@@ -6244,9 +6244,11 @@ namespace GPBoost {
 				}
 			}
 			else if (likelihood_type_ == "gaussian_heteroscedastic") {
+				if (predict_var) {
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < (int)pred_mean.size(); ++i) {
-					pred_var[i] += std::exp(pred_var_mean[i] + pred_var_var[i] / 2.);
+					for (int i = 0; i < (int)pred_mean.size(); ++i) {
+						pred_var[i] += std::exp(pred_var_mean[i] + pred_var_var[i] / 2.);
+					}
 				}
 			}
 			else {
@@ -7367,13 +7369,12 @@ namespace GPBoost {
 		}
 
 		inline void FirstDerivLogLikGaussianHeteroscedastic(const double y, const double location_par, const double location_par2,
-			double& first_deriv, double& first_deriv2) const {
+			double& first_deriv_mean, double& first_deriv_log_var) const {
 			double sigma2_inv = std::exp(-location_par2);
 			double resid = y - location_par;
-			first_deriv = resid * sigma2_inv;
-			first_deriv2 = (first_deriv * resid - 1.) / 2.;
+			first_deriv_mean = resid * sigma2_inv;
+			first_deriv_log_var = (first_deriv_mean * resid - 1.) / 2.;
 		}
-
 
 		/*!
 		* \brief Calculate (usually only the diagonal) the Fisher information (=usually the second derivative of the negative (!) log-likelihood with respect to the location parameter, i.e., the observed FI)

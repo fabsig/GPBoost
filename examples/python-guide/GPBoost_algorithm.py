@@ -169,7 +169,7 @@ opt_params = gpb.tune_pars_TPE_algorithm_optuna(search_space=search_space, n_tri
                                                 X=X, y=y, gp_model=gp_model,
                                                 max_num_boost_round=1000, early_stopping_rounds=20, 
                                                 nfold=5, metric=metric,
-                                                cv_seed=4, tpe_seed=1)
+                                                cv_seed=4, tpe_seed=1, verbose_eval=1)
 print("Best parameters: " + str(opt_params['best_params']))
 print("Best number of iterations: " + str(opt_params['best_iter']))
 print("Best score: " + str(opt_params['best_score']))
@@ -184,7 +184,7 @@ opt_params = gpb.tune_pars_TPE_algorithm_optuna(search_space=search_space, n_tri
                                                 X=X, y=y, gp_model=gp_model,
                                                 max_num_boost_round=1000, early_stopping_rounds=20, 
                                                 folds=folds, metric=metric,
-                                                cv_seed=4, tpe_seed=1)
+                                                cv_seed=4, tpe_seed=1, verbose_eval=1)
 
 #--------------------Choosing tuning parameters using random grid search----------------
 # Define parameter search grid
@@ -341,13 +341,13 @@ nx = 30  # test data: number of grid points on each axis
 coords_test_aux = np.arange(0, 1, 1 / nx)
 coords_test_x1, coords_test_x2 = np.meshgrid(coords_test_aux, coords_test_aux)
 coords_test = np.column_stack((coords_test_x1.flatten(), coords_test_x2.flatten()))
-coords = np.row_stack((coords_train, coords_test))
+coords = np.vstack((coords_train, coords_test))
 ntest = nx * nx
 n = ntrain + ntest
 # Simulate fixed effects
 X_train = np.random.rand(ntrain, 2)
 X_test = np.column_stack((np.linspace(0, 1, ntest), np.zeros(ntest)))
-X = np.row_stack((X_train, X_test))
+X = np.vstack((X_train, X_test))
 f = f1d(X[:, 0])
 # Simulate spatial Gaussian process
 sigma2_1 = 0.25  # marginal variance of GP

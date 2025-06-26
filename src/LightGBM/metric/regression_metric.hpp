@@ -419,6 +419,9 @@ namespace LightGBM {
 					Log::Fatal("The metric '%s' can only be used when "
 						"'use_gp_model_for_validation == true' for non-Gaussian likelihoods ", name_[0].c_str());
 				}
+				if (re_model->GetLikelihood() == "gaussian_heteroscedastic") {
+					Log::Fatal("The metric '%s' can currently not be used for the likelihood '%s' ", name_[0].c_str(), (re_model->GetLikelihood()).c_str());
+				}
 			}
 			double sum_loss = 0.;
 			if (objective->HasGPModel() && objective->UseGPModelForValidation()) {
