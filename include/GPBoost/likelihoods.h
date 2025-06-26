@@ -76,7 +76,7 @@ namespace GPBoost {
 		* \param type Type of likelihood
 		* \param num_data Number of data points
 		* \param num_re Number of random effects
-		* \param has_a_vec Indicates whether the vector a_vec_ / a = (Z Sigma Zt)^-1 mode is used or not
+		* \param has_SigmaI_mode Indicates whether the vector SigmaI_mode_ / a = (Z Sigma Zt)^-1 mode is used in the calculation of the mode or not
 		* \param use_Z_for_duplicates If true, an incidendce matrix Z is used for duplicate locations and calculations are done on the random effects scale with the unique locations (only for Gaussian processes)
 		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
 		* \param additional_param Additional parameter for the likelihood which cannot be estimated (e.g., degrees of freedom for likelihood = "t")
@@ -87,7 +87,7 @@ namespace GPBoost {
 		Likelihood(string_t type,
 			data_size_t num_data,
 			data_size_t num_re,
-			bool has_a_vec,
+			bool has_SigmaI_mode,
 			bool use_Z_for_duplicates,
 			const data_size_t* random_effects_indices_of_data,
 			double additional_param,
@@ -204,7 +204,7 @@ namespace GPBoost {
 					Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood_type_.c_str());
 				}
 			}
-			has_a_vec_ = has_a_vec;
+			has_SigmaI_mode_ = has_SigmaI_mode;
 			use_Z_for_duplicates_ = use_Z_for_duplicates;
 			if (use_Z_for_duplicates_) {
 				random_effects_indices_of_data_ = random_effects_indices_of_data;
@@ -267,9 +267,9 @@ namespace GPBoost {
 				//                          or use_Z_for_duplicates_ == false and num_re_ == num_data_ => dim_mode_ == num_re_ * num_sets_re_
 				mode_ = vec_t::Zero(num_re_ * num_sets_re_);
 				mode_previous_value_ = vec_t::Zero(num_re_ * num_sets_re_);
-				if (has_a_vec_) {
-					a_vec_ = vec_t::Zero(num_re_ * num_sets_re_);
-					a_vec_previous_value_ = vec_t::Zero(num_re_ * num_sets_re_);
+				if (has_SigmaI_mode_) {
+					SigmaI_mode_ = vec_t::Zero(num_re_ * num_sets_re_);
+					SigmaI_mode_previous_value_ = vec_t::Zero(num_re_ * num_sets_re_);
 				}
 				mode_initialized_ = true;
 				first_deriv_ll_ = vec_t(dim_mode_);
@@ -298,8 +298,8 @@ namespace GPBoost {
 		void ResetModeToPreviousValue() {
 			CHECK(mode_initialized_);
 			mode_ = mode_previous_value_;
-			if (has_a_vec_) {
-				a_vec_ = a_vec_previous_value_;
+			if (has_SigmaI_mode_) {
+				SigmaI_mode_ = SigmaI_mode_previous_value_;
 			}
 			na_or_inf_during_last_call_to_find_mode_ = na_or_inf_during_second_last_call_to_find_mode_;
 		}
@@ -905,23 +905,23 @@ namespace GPBoost {
 			}
 			else {
 				mode_previous_value_ = mode_;
-				a_vec_previous_value_ = a_vec_;
+				SigmaI_mode_previous_value_ = SigmaI_mode_;
 				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-				mode_ = (*Sigma) * a_vec_;//initialize mode with Sigma^(t+1) * a = Sigma^(t+1) * (Sigma^t)^(-1) * mode^t, where t+1 = current iteration. Otherwise the initial approx_marginal_ll is not correct since a_vec != Sigma^(-1)mode
-				// The alternative way of intializing a_vec_ = Sigma^(-1) mode_ requires an additional linear solve
+				mode_ = (*Sigma) * SigmaI_mode_;//initialize mode with Sigma^(t+1) * a = Sigma^(t+1) * (Sigma^t)^(-1) * mode^t, where t+1 = current iteration. Otherwise the initial approx_marginal_ll is not correct since SigmaI_mode != Sigma^(-1)mode
+				// The alternative way of intializing SigmaI_mode_ = Sigma^(-1) mode_ requires an additional linear solve
 				//T_mat Sigma_stable = (*Sigma);
 				//Sigma_stable.diagonal().array() *= JITTER_MUL;
 				//T_chol chol_fact_Sigma;
 				//CalcChol<T_mat>(chol_fact_Sigma, Sigma_stable);
-				//a_vec_ = chol_fact_Sigma.solve(mode_);
+				//SigmaI_mode_ = chol_fact_Sigma.solve(mode_);
 			}
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			double* location_par_ptr;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
-			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
+			approx_marginal_ll = -0.5 * (SigmaI_mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
 			double approx_marginal_ll_new = approx_marginal_ll;
-			vec_t rhs(dim_mode_), rhs2(dim_mode_), mode_new, a_vec_new, mode_update, a_vec_update;//auxiliary variables for updating mode
+			vec_t rhs(dim_mode_), rhs2(dim_mode_), mode_new, SigmaI_mode_new, mode_update, SigmaI_mode_update;//auxiliary variables for updating mode
 			vec_t diag_Wsqrt(dim_mode_);//diagonal of matrix sqrt(ZtWZ) if use_Z_for_duplicates_ or sqrt(W) if !use_Z_for_duplicates_ with square root of negative second derivatives of log-likelihood
 			T_mat Id_plus_Wsqrt_Sigma_Wsqrt(dim_mode_, dim_mode_);// = Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt if use_Z_for_duplicates_ or Id_plus_Wsqrt_ZSigmaZt_Wsqrt if !use_Z_for_duplicates_
 			// Start finding mode 
@@ -945,31 +945,31 @@ namespace GPBoost {
 				}
 				// Calculate right hand side for mode update
 				rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
-				// Update mode and a_vec_
+				// Update mode and SigmaI_mode_
 				rhs2 = (*Sigma) * rhs;//rhs2 = sqrt(W) * Sigma * rhs
 				rhs2.array() *= diag_Wsqrt.array();
 				// Backtracking line search
-				a_vec_update = -chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(rhs2);//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
-				a_vec_update.array() *= diag_Wsqrt.array();
-				a_vec_update.array() += rhs.array();
-				mode_update = (*Sigma) * a_vec_update;
+				SigmaI_mode_update = -chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(rhs2);//SigmaI_mode_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
+				SigmaI_mode_update.array() *= diag_Wsqrt.array();
+				SigmaI_mode_update.array() += rhs.array();
+				mode_update = (*Sigma) * SigmaI_mode_update;
 				double lr_mode = 1.;
 				double grad_dot_direction = 0.;//for Armijo check
 				if (armijo_condition_) {
-					vec_t direction = mode_update - mode_;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
-					grad_dot_direction = direction.dot(a_vec_update - a_vec_ + information_ll_.asDiagonal() * direction);
+					vec_t direction = mode_update - mode_;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode)) -> direction = mode_update - mode_
+					grad_dot_direction = direction.dot(SigmaI_mode_update - SigmaI_mode_ + information_ll_.asDiagonal() * direction); // gradient = (Sigma^-1 + W) * direction, SigmaI_mode_update - SigmaI_mode_ = Sigma^-1 direction
 				}
 				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 					if (ih == 0) {
-						a_vec_new = a_vec_update;
+						SigmaI_mode_new = SigmaI_mode_update;
 						mode_new = mode_update;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
 					}
 					else {
-						a_vec_new = (1 - lr_mode) * a_vec_ + lr_mode * a_vec_update;
+						SigmaI_mode_new = (1 - lr_mode) * SigmaI_mode_ + lr_mode * SigmaI_mode_update;
 						mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
 					}
 					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-					approx_marginal_ll_new = -0.5 * (a_vec_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr);// Calculate new objective function
+					approx_marginal_ll_new = -0.5 * (SigmaI_mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr);// Calculate new objective function
 					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 						lr_mode *= 0.5;
@@ -979,7 +979,7 @@ namespace GPBoost {
 					}
 				}// end loop over learnig rate halving procedure
 				mode_ = mode_new;
-				a_vec_ = a_vec_new;
+				SigmaI_mode_ = SigmaI_mode_new;
 				CheckConvergenceModeFinding(it, approx_marginal_ll_new, approx_marginal_ll, terminate_optim, has_NA_or_Inf);
 				//Log::REInfo("it = %d, mode_[0:2] = %g, %g, %g, LogLikelihood = %g", it, mode_[0], mode_[1], mode_[2], LogLikelihood(y_data, y_data_int, location_par_ptr));//for debugging
 				if (terminate_optim || has_NA_or_Inf) {
@@ -1066,6 +1066,9 @@ namespace GPBoost {
 			int it;
 			bool terminate_optim = false;
 			bool has_NA_or_Inf = false;
+			if (save_SigmaI_mode_) {
+				SigmaI_mode_ = Z * (SigmaI * mode_);
+			}
 			for (it = 0; it < maxit_mode_newton_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());
@@ -2200,21 +2203,21 @@ namespace GPBoost {
 			}
 			else {
 				mode_previous_value_ = mode_;
-				a_vec_previous_value_ = a_vec_;
+				SigmaI_mode_previous_value_ = SigmaI_mode_;
 				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-				vec_t v_aux_mode = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_);
-				mode_ = ((*cross_cov) * v_aux_mode) + (fitc_resid_diag.asDiagonal() * a_vec_);//initialize mode with Sigma^(t+1) * a = Sigma^(t+1) * (Sigma^t)^(-1) * mode^t, where t+1 = current iteration. Otherwise the initial approx_marginal_ll is not correct since a_vec != Sigma^(-1)mode
+				vec_t v_aux_mode = chol_fact_sigma_ip.solve((*cross_cov).transpose() * SigmaI_mode_);
+				mode_ = ((*cross_cov) * v_aux_mode) + (fitc_resid_diag.asDiagonal() * SigmaI_mode_);//initialize mode with Sigma^(t+1) * a = Sigma^(t+1) * (Sigma^t)^(-1) * mode^t, where t+1 = current iteration. Otherwise the initial approx_marginal_ll is not correct since SigmaI_mode != Sigma^(-1)mode
 				// Note: avoid the inversion of Sigma = (cross_cov * sigma_ip^-1 * cross_cov^T + fitc_resid_diag) with the Woodbury formula since fitc_resid_diag can be zero.
-				//       This is also the reason why we initilize with mode_ = Sigma * a_vec_ and not a_vec_ = Sigma^-1 mode_
+				//       This is also the reason why we initilize with mode_ = Sigma * SigmaI_mode_ and not SigmaI_mode_ = Sigma^-1 mode_
 			}
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
 			double* location_par_ptr;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
-			approx_marginal_ll = -0.5 * (a_vec_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
+			approx_marginal_ll = -0.5 * (SigmaI_mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t Wsqrt_diag(dim_mode_), sigma_ip_inv_cross_cov_T_rhs(num_ip), rhs(dim_mode_), Wsqrt_Sigma_rhs(dim_mode_), vaux(num_ip), vaux2(num_ip), vaux3(dim_mode_),
-				mode_new(dim_mode_), a_vec_new, DW_plus_I_inv_diag(dim_mode_), a_vec_update, mode_update, W_times_DW_plus_I_inv_diag;//auxiliary variables for updating mode
+				mode_new(dim_mode_), SigmaI_mode_new, DW_plus_I_inv_diag(dim_mode_), SigmaI_mode_update, mode_update, W_times_DW_plus_I_inv_diag;//auxiliary variables for updating mode
 			den_mat_t M_aux_Woodbury(num_ip, num_ip); // = sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
 			// Start finding mode 
 			int it;
@@ -2241,37 +2244,37 @@ namespace GPBoost {
 					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
 				}
 				rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
-				// Update mode and a_vec_
+				// Update mode and SigmaI_mode_
 				sigma_ip_inv_cross_cov_T_rhs = chol_fact_sigma_ip.solve((*cross_cov).transpose() * rhs);
 				Wsqrt_Sigma_rhs = ((*cross_cov) * sigma_ip_inv_cross_cov_T_rhs) + (fitc_resid_diag.asDiagonal() * rhs);//Sigma * rhs
 				vaux = (*cross_cov).transpose() * (W_times_DW_plus_I_inv_diag.asDiagonal() * Wsqrt_Sigma_rhs);
 				vaux2 = chol_fact_dense_Newton_.solve(vaux);
 				Wsqrt_Sigma_rhs.array() *= Wsqrt_diag.array();//Wsqrt_Sigma_rhs = sqrt(W) * Sigma * rhs
 				// Backtracking line search
-				a_vec_update = DW_plus_I_inv_diag.asDiagonal() * (Wsqrt_Sigma_rhs - Wsqrt_diag.asDiagonal() * ((*cross_cov) * vaux2));
-				a_vec_update.array() *= Wsqrt_diag.array();
-				a_vec_update.array() *= -1.;
-				a_vec_update.array() += rhs.array();//a_vec_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
-				vaux3 = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_update);
-				mode_update = ((*cross_cov) * vaux3) + (fitc_resid_diag.asDiagonal() * a_vec_update);//mode_ = Sigma * a_vec_
+				SigmaI_mode_update = DW_plus_I_inv_diag.asDiagonal() * (Wsqrt_Sigma_rhs - Wsqrt_diag.asDiagonal() * ((*cross_cov) * vaux2));
+				SigmaI_mode_update.array() *= Wsqrt_diag.array();
+				SigmaI_mode_update.array() *= -1.;
+				SigmaI_mode_update.array() += rhs.array();//SigmaI_mode_ = rhs - sqrt(W) * Id_plus_Wsqrt_Sigma_Wsqrt^-1 * rhs2
+				vaux3 = chol_fact_sigma_ip.solve((*cross_cov).transpose() * SigmaI_mode_update);
+				mode_update = ((*cross_cov) * vaux3) + (fitc_resid_diag.asDiagonal() * SigmaI_mode_update);//mode_ = Sigma * SigmaI_mode_
 				double grad_dot_direction = 0.;//for Armijo check
 				if (armijo_condition_) {
 					vec_t direction = mode_update - mode_;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
-					grad_dot_direction = direction.dot(a_vec_update - a_vec_ + information_ll_.asDiagonal() * direction);
+					grad_dot_direction = direction.dot(SigmaI_mode_update - SigmaI_mode_ + information_ll_.asDiagonal() * direction);
 				}
 				double lr_mode = 1.;
 				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 					if (ih == 0) {
-						a_vec_new = a_vec_update;
+						SigmaI_mode_new = SigmaI_mode_update;
 						mode_new = mode_update;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
 					}
 					else {
-						a_vec_new = (1 - lr_mode) * a_vec_ + lr_mode * a_vec_update;
+						SigmaI_mode_new = (1 - lr_mode) * SigmaI_mode_ + lr_mode * SigmaI_mode_update;
 						mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
 					}
-					//CapChangeModeUpdateNewton(mode_new);//not done since a_vec would also have to be modified accordingly. TODO: implement this?
+					//CapChangeModeUpdateNewton(mode_new);//not done since SigmaI_mode would also have to be modified accordingly. TODO: implement this?
 					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-					approx_marginal_ll_new = -0.5 * (a_vec_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr);// Calculate new objective function
+					approx_marginal_ll_new = -0.5 * (SigmaI_mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr);// Calculate new objective function
 					if (approx_marginal_ll_new < approx_marginal_ll ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 						lr_mode *= 0.5;
@@ -2281,7 +2284,7 @@ namespace GPBoost {
 					}
 				}// end loop over learnig rate halving procedure
 				mode_ = mode_new;
-				a_vec_ = a_vec_new;
+				SigmaI_mode_ = SigmaI_mode_new;
 				CheckConvergenceModeFinding(it, approx_marginal_ll_new, approx_marginal_ll, terminate_optim, has_NA_or_Inf);
 				if (terminate_optim || has_NA_or_Inf) {
 					break;
@@ -2332,7 +2335,7 @@ namespace GPBoost {
 		* \param[out] cov_grad Gradient of approximate marginal log-likelihood wrt covariance parameters (needs to be preallocated of size num_cov_par)
 		* \param[out] fixed_effect_grad Gradient of approximate marginal log-likelihood wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
-		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and SigmaI_mode_ are used (default=false)
 		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
 		void CalcGradNegMargLikelihoodLaplaceApproxStable(const double* y_data,
@@ -2412,7 +2415,7 @@ namespace GPBoost {
 						}
 						if (estimate_cov_par_index[par_count] > 0) {
 							// Calculate explicit derivative of approx. mariginal log-likelihood
-							explicit_derivative = -0.5 * (double)(a_vec_.transpose() * (*SigmaDeriv) * a_vec_) +
+							explicit_derivative = -0.5 * (double)(SigmaI_mode_.transpose() * (*SigmaDeriv) * SigmaI_mode_) +
 								0.5 * (WI_plus_Sigma_inv.cwiseProduct(*SigmaDeriv)).sum();
 							cov_grad[par_count] = explicit_derivative;
 							if (grad_information_wrt_mode_non_zero_) {
@@ -2507,7 +2510,7 @@ namespace GPBoost {
 		* \param[out] cov_grad Gradient wrt covariance parameters (needs to be preallocated of size num_cov_par)
 		* \param[out] fixed_effect_grad Gradient wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
-		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and SigmaI_mode_ are used (default=false)
 		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
 		void CalcGradNegMargLikelihoodLaplaceApproxGroupedRE(const double* y_data,
@@ -2842,7 +2845,7 @@ namespace GPBoost {
 		* \param[out] cov_grad Gradient wrt covariance parameters (needs to be preallocated of size num_cov_par)
 		* \param[out] fixed_effect_grad Gradient wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
-		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and SigmaI_mode_ are used (default=false)
 		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
 		void CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(const double* y_data,
@@ -2970,7 +2973,7 @@ namespace GPBoost {
 		* \param[out] cov_grad Gradient of approximate marginal log-likelihood wrt covariance parameters (needs to be preallocated of size num_cov_par)
 		* \param[out] fixed_effect_grad Gradient of approximate marginal log-likelihood wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
-		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and SigmaI_mode_ are used (default=false)
 		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
 		void CalcGradNegMargLikelihoodLaplaceApproxFSVA(const double* y_data,
@@ -3848,7 +3851,7 @@ namespace GPBoost {
 		* \param[out] cov_grad Gradient of approximate marginal log-likelihood wrt covariance parameters (needs to be preallocated of size num_cov_par)
 		* \param[out] fixed_effect_grad Gradient of approximate marginal log-likelihood wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
-		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and SigmaI_mode_ are used (default=false)
 		* \param num_comps_total Total number of random effect components ( = number of GPs)
 		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
@@ -4304,7 +4307,7 @@ namespace GPBoost {
 		* \param[out] cov_grad Gradient of approximate marginal log-likelihood wrt covariance parameters (needs to be preallocated of size num_cov_par)
 		* \param[out] fixed_effect_grad Gradient of approximate marginal log-likelihood wrt fixed effects F (note: this is passed as a Eigen vector in order to avoid the need for copying)
 		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters
-		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and SigmaI_mode_ are used (default=false)
 		* \param call_for_std_dev_coef If true, the function is called for calculating standard deviations of linear regression coefficients
 		*/
 		void CalcGradNegMargLikelihoodLaplaceApproxFITC(const double* y_data,
@@ -4374,7 +4377,7 @@ namespace GPBoost {
 			// Calculate gradient wrt covariance parameters
 			bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
 			if (calc_cov_grad && some_cov_par_estimated) {
-				vec_t sigma_ip_inv_cross_cov_T_a_vec = chol_fact_sigma_ip.solve((*cross_cov).transpose() * a_vec_);// sigma_ip^-1 * cross_cov^T * sigma^-1 * mode
+				vec_t sigma_ip_inv_cross_cov_T_SigmaI_mode = chol_fact_sigma_ip.solve((*cross_cov).transpose() * SigmaI_mode_);// sigma_ip^-1 * cross_cov^T * sigma^-1 * mode
 				vec_t fitc_diag_plus_WI_inv = (fitc_resid_diag + WI).cwiseInverse();
 				int par_count = 0;
 				double explicit_derivative;
@@ -4401,9 +4404,9 @@ namespace GPBoost {
 							sigma_woodbury_grad -= (*cross_cov).transpose() * v_aux_grad.asDiagonal() * (*cross_cov);
 							den_mat_t sigma_woodbury_inv_sigma_woodbury_grad = chol_fact_dense_Newton_.solve(sigma_woodbury_grad);
 							// Calculate explicit derivative of approx. mariginal log-likelihood
-							explicit_derivative = -((*cross_cov_grad).transpose() * a_vec_).dot(sigma_ip_inv_cross_cov_T_a_vec) +
-								0.5 * sigma_ip_inv_cross_cov_T_a_vec.dot(sigma_ip_grad * sigma_ip_inv_cross_cov_T_a_vec) -
-								0.5 * a_vec_.dot(fitc_diag_grad.asDiagonal() * a_vec_);//derivative of mode^T Sigma^-1 mode
+							explicit_derivative = -((*cross_cov_grad).transpose() * SigmaI_mode_).dot(sigma_ip_inv_cross_cov_T_SigmaI_mode) +
+								0.5 * sigma_ip_inv_cross_cov_T_SigmaI_mode.dot(sigma_ip_grad * sigma_ip_inv_cross_cov_T_SigmaI_mode) -
+								0.5 * SigmaI_mode_.dot(fitc_diag_grad.asDiagonal() * SigmaI_mode_);//derivative of mode^T Sigma^-1 mode
 							explicit_derivative += 0.5 * sigma_woodbury_inv_sigma_woodbury_grad.trace() -
 								0.5 * sigma_ip_inv_sigma_ip_grad.trace() +
 								0.5 * fitc_diag_grad.dot(fitc_diag_plus_WI_inv);//derivative of log determinant
@@ -4422,13 +4425,13 @@ namespace GPBoost {
 								////for debugging
 								//if (ipar == 0) {
 								//  Log::REInfo("mode_[0:4] = %g, %g, %g, %g, %g ", mode_[0], mode_[1], mode_[2], mode_[3], mode_[4]);
-								//  Log::REInfo("a_vec_[0:4] = %g, %g, %g, %g, %g ", a_vec_[0], a_vec_[1], a_vec_[2], a_vec_[3], a_vec_[4]);
+								//  Log::REInfo("SigmaI_mode_[0:4] = %g, %g, %g, %g, %g ", SigmaI_mode_[0], SigmaI_mode_[1], SigmaI_mode_[2], SigmaI_mode_[3], SigmaI_mode_[4]);
 								//  Log::REInfo("d_mll_d_mode[0:2] = %g, %g, %g ", d_mll_d_mode[0], d_mll_d_mode[1], d_mll_d_mode[2]);
 								//}
 								//Log::REInfo("d_mode_d_par[0:2] = %g, %g, %g ", d_mode_d_par[0], d_mode_d_par[1], d_mode_d_par[2]);
-								//double ed1 = -((*cross_cov_grad).transpose() * a_vec_).dot(sigma_ip_inv_cross_cov_T_a_vec);
-								//ed1 += 0.5 * sigma_ip_inv_cross_cov_T_a_vec.dot(sigma_ip_grad * sigma_ip_inv_cross_cov_T_a_vec);
-								//ed1 -= 0.5 * a_vec_.dot(fitc_diag_grad.asDiagonal() * a_vec_);
+								//double ed1 = -((*cross_cov_grad).transpose() * SigmaI_mode_).dot(sigma_ip_inv_cross_cov_T_SigmaI_mode);
+								//ed1 += 0.5 * sigma_ip_inv_cross_cov_T_SigmaI_mode.dot(sigma_ip_grad * sigma_ip_inv_cross_cov_T_SigmaI_mode);
+								//ed1 -= 0.5 * SigmaI_mode_.dot(fitc_diag_grad.asDiagonal() * SigmaI_mode_);
 								//double ed2 = 0.5 * sigma_woodbury_inv_sigma_woodbury_grad.trace() -
 								//  0.5 * sigma_ip_inv_sigma_ip_grad.trace() +
 								//  0.5 * fitc_diag_grad.dot(fitc_diag_plus_WI_inv);
@@ -4513,7 +4516,7 @@ namespace GPBoost {
 		* \param pred_var[out] Predictive variances
 		* \param calc_pred_cov If true, predictive covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
-		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and SigmaI_mode_ are used (default=false)
 		*/
 		void PredictLaplaceApproxStable(const double* y_data,
 			const int* y_data_int,
@@ -4600,7 +4603,7 @@ namespace GPBoost {
 		* \param pred_var[out] Predictive variances
 		* \param calc_pred_cov If true, predictive covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
-		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and SigmaI_mode_ are used (default=false)
 		*/
 		void PredictLaplaceApproxGroupedRE(const double* y_data,
 			const int* y_data_int,
@@ -4879,7 +4882,7 @@ namespace GPBoost {
 		* \param pred_var[out] Predictive variances
 		* \param calc_pred_cov If true, predictive covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
-		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and SigmaI_mode_ are used (default=false)
 		*/
 		void PredictLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
@@ -4967,7 +4970,7 @@ namespace GPBoost {
 		* \param pred_var[out] Predictive variances
 		* \param calc_pred_cov If true, predictive covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
-		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and SigmaI_mode_ are used (default=false)
 		* \param CondObsOnly If true, the nearest neighbors for the predictions are found only among the observed data and Bp is an identity matrix
 		*/
 		void PredictLaplaceApproxFSVA(const double* y_data,
@@ -5246,8 +5249,8 @@ namespace GPBoost {
 							vec_t sigma_woodbury_vec = (*cross_cov) * chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * rand_vec_pred_SigmaI_plus_W_inv);
 							//z_i ~ N(0, (Sigma_pm Sigma_ip^-1 Sigma_mn - B_p^-1 B_po (B_o^T D_o^-1 B_o)^-1) Sigma^{-1} (Sigma^{-1} + W)^{-1} Sigma^{-1} (Sigma_nm Sigma_ip^-1 Sigma_mp - (B_o^T D_o^-1 B_o)^-1 B_po^T B_p^-1 ))
 							vec_t sigma_pred_sigma_inv_vec = cross_cov_pred_ip * chol_fact_sigma_ip.solve(Bt_D_inv_B_cross_cov.transpose() * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec));
-							vec_t sigma_vecchia_vec = Bp_inv_Bpo_rm * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec);
-							vec_t rand_vec_pred = sigma_pred_sigma_inv_vec - sigma_vecchia_vec;
+							vec_t sigmSigmaI_modechiSigmaI_mode = Bp_inv_Bpo_rm * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec);
+							vec_t rand_vec_pred = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
 							if (calc_pred_cov) {
 								den_mat_t pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
 #pragma omp critical
@@ -5273,7 +5276,7 @@ namespace GPBoost {
 //							vec_t pred_proc_rand_vec_pred_I_1 = (Bt_D_inv_B_cross_cov)*chol_fact_sigma_ip.solve((cross_cov_pred_ip).transpose() * rand_vec_pred_I_1);
 //							vec_t sigma_woodbury_vec = (Bt_D_inv_B_cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * (vecchia_rand_vec_pred_I_1 - pred_proc_rand_vec_pred_I_1));
 //							vec_t rand_vec_pred_interim = pred_proc_rand_vec_pred_I_1 - vecchia_rand_vec_pred_I_1 + sigma_woodbury_vec;
-//							vec_t rand_vec_pred, rand_vec_pred_prec, sigma_pred_sigma_inv_vec, sigma_vecchia_vec;
+//							vec_t rand_vec_pred, rand_vec_pred_prec, sigma_pred_sigma_inv_vec, sigmSigmaI_modechiSigmaI_mode;
 //							vec_t WI_rand_vec_pred_prec_interim = information_ll_inv_pluss_Diag_I_I.asDiagonal() * rand_vec_pred_interim + chol_wood_diagonal_cross_cov.transpose() * (chol_wood_diagonal_cross_cov * rand_vec_pred_interim);
 //							if (cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") {
 //								vec_t W_D_inv = (information_ll_ + D_inv_rm_.diagonal());
@@ -5284,8 +5287,8 @@ namespace GPBoost {
 //
 //								sigma_woodbury_vec = (*cross_cov) * chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * rand_vec_pred_SigmaI_plus_W_inv);
 //								sigma_pred_sigma_inv_vec = cross_cov_pred_ip * chol_fact_sigma_ip.solve(Bt_D_inv_B_cross_cov.transpose() * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec));
-//								sigma_vecchia_vec = Bp_inv_Bpo_rm * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec);
-//								rand_vec_pred = sigma_pred_sigma_inv_vec - sigma_vecchia_vec;
+//								sigmSigmaI_modechiSigmaI_mode = Bp_inv_Bpo_rm * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec);
+//								rand_vec_pred = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
 //							}
 //							else if (cg_preconditioner_type_ == "fitc") {
 //								vec_t WI_rand_vec_pred_interim = information_ll_inv.asDiagonal() * rand_vec_pred_interim;
@@ -5298,8 +5301,8 @@ namespace GPBoost {
 //							}
 //							sigma_woodbury_vec = (*cross_cov) * chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * WI_rand_vec_pred_prec_interim);
 //							sigma_pred_sigma_inv_vec = cross_cov_pred_ip * chol_fact_sigma_ip.solve(Bt_D_inv_B_cross_cov.transpose() * (WI_rand_vec_pred_prec_interim - sigma_woodbury_vec));
-//							sigma_vecchia_vec = Bp_inv_Bpo_rm * (WI_rand_vec_pred_prec_interim - sigma_woodbury_vec);
-//							rand_vec_pred_prec = sigma_pred_sigma_inv_vec - sigma_vecchia_vec;
+//							sigmSigmaI_modechiSigmaI_mode = Bp_inv_Bpo_rm * (WI_rand_vec_pred_prec_interim - sigma_woodbury_vec);
+//							rand_vec_pred_prec = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
 //							if (calc_pred_cov) {
 //								den_mat_t pred_cov_private = rand_vec_pred_I_1 * rand_vec_pred.transpose();
 //#pragma omp critical			
@@ -5481,7 +5484,7 @@ namespace GPBoost {
 		* \param pred_var[out] Predictive variances
 		* \param calc_pred_cov If true, predictive covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
-		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and SigmaI_mode_ are used (default=false)
 		* \param CondObsOnly If true, the nearest neighbors for the predictions are found only among the observed data and Bp is an identity matrix
 		* \param num_gp GP number in case there are multiple parameters with GPs (e.g., heteroscedastic regression)
 		*/
@@ -5757,7 +5760,7 @@ namespace GPBoost {
 		* \param pred_var[out] Predictive variances
 		* \param calc_pred_cov If true, predictive covariance matrix is also calculated
 		* \param calc_pred_var If true, predictive variances are also calculated
-		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and a_vec_ are used (default=false)
+		* \param calc_mode If true, the mode of the random effects posterior is calculated otherwise the values in mode and SigmaI_mode_ are used (default=false)
 		*/
 		void PredictLaplaceApproxFITC(const double* y_data,
 			const int* y_data_int,
@@ -6490,12 +6493,12 @@ namespace GPBoost {
 		vec_t mode_;
 		/*! \brief Saving a previously found value allows for reseting the mode when having a too large step size. */
 		vec_t mode_previous_value_;
-		/*! \brief Auxiliary variable a=ZSigmaZt^-1 * mode_b used for Laplace approximation */
-		vec_t a_vec_;
+		/*! \brief Auxiliary variable a = ZSigmaZt^-1 * mode_b used for Laplace approximation */
+		vec_t SigmaI_mode_;
 		/*! \brief Saving a previously found value allows for reseting the mode when having a too large step size. */
-		vec_t a_vec_previous_value_;
-		/*! \brief Indicates whether the vector a_vec_ / a=ZSigmaZt^-1 is used or not */
-		bool has_a_vec_;
+		vec_t SigmaI_mode_previous_value_;
+		/*! \brief Indicates whether the vector SigmaI_mode_ / a=ZSigmaZt^-1 is used or not */
+		bool has_SigmaI_mode_;
 		/*! \brief First derivatives of the log-likelihood. If use_Z_for_duplicates_, this corresponds to Z^T * first_deriv_ll, i.e., it length is num_re_ */
 		vec_t first_deriv_ll_;
 		/*! \brief First derivatives of the log-likelihood on the data scale of length num_data_. Auxiliary variable used only if use_Z_for_duplicates_ */
@@ -6555,6 +6558,8 @@ namespace GPBoost {
 		double likelihood_learning_rate_ = 1.;
 		/*! \brief Auxiliary weights for likelihood_learning_rate_ */
 		vec_t weights_learning_rate_;
+		/*! \brief If true, SigmaI_mode is always calculated */
+		bool save_SigmaI_mode_ = false;
 
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";
@@ -8303,7 +8308,7 @@ namespace GPBoost {
 				return;
 			}
 			if (it == 0) {
-				if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for decreases in first iteration
+				if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for small decreases in first iteration
 					terminate_optim = true;
 				}
 			}
