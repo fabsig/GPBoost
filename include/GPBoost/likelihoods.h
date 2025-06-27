@@ -41,6 +41,7 @@
 #include <string>
 #include <set>
 #include <vector>
+#include <execution>
 
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
@@ -77,8 +78,9 @@ namespace GPBoost {
 		* \param num_data Number of data points
 		* \param num_re Number of random effects
 		* \param has_SigmaI_mode Indicates whether the vector SigmaI_mode_ / a = (Z Sigma Zt)^-1 mode is used in the calculation of the mode or not
-		* \param use_Z_for_duplicates If true, an incidendce matrix Z is used for duplicate locations and calculations are done on the random effects scale with the unique locations (only for Gaussian processes)
+		* \param use_random_effects_indices_of_data If true, an incidendce matrix Z is used for duplicate locations and calculations are done on the random effects scale with the unique locations (only for Gaussian processes)
 		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
+		* \param Zt Transpose Z^T of random effects design matrix that relates latent random effects to observations/likelihoods (used only for multiple level grouped random effects)
 		* \param additional_param Additional parameter for the likelihood which cannot be estimated (e.g., degrees of freedom for likelihood = "t")
 		* \param has_weights True, if sample weights should be used
 		* \param weights Sample weights
@@ -88,8 +90,9 @@ namespace GPBoost {
 			data_size_t num_data,
 			data_size_t num_re,
 			bool has_SigmaI_mode,
-			bool use_Z_for_duplicates,
+			bool use_random_effects_indices_of_data,
 			const data_size_t* random_effects_indices_of_data,
+			const sp_mat_t* Zt,
 			double additional_param,
 			bool has_weights,
 			const double* weights,
@@ -205,8 +208,10 @@ namespace GPBoost {
 				}
 			}
 			has_SigmaI_mode_ = has_SigmaI_mode;
-			use_Z_for_duplicates_ = use_Z_for_duplicates;
-			if (use_Z_for_duplicates_) {
+			use_random_effects_indices_of_data_ = use_random_effects_indices_of_data;
+			if (use_random_effects_indices_of_data_) {
+				CHECK(random_effects_indices_of_data != nullptr);
+				CHECK(Zt == nullptr);
 				random_effects_indices_of_data_ = random_effects_indices_of_data;
 				dim_mode_ = num_sets_re_ * num_re_;
 				dim_mode_per_set_re_ = num_re_;
@@ -214,6 +219,10 @@ namespace GPBoost {
 			else {
 				dim_mode_ = num_sets_re_ * num_data_;
 				dim_mode_per_set_re_ = num_data_;
+				if (Zt != nullptr) {
+					use_Z_ = true;
+					Zt_ = Zt;
+				}				
 			}
 			dim_location_par_ = num_sets_re_ * num_data_;
 			DetermineWhetherToCapChangeModeNewton();
@@ -262,9 +271,9 @@ namespace GPBoost {
 		void InitializeModeAvec() {
 			if (!mode_is_zero_) {
 				// Do not use dim_mode_ for initializing mode_
-				// This is a hack since grouped random effects models use use_Z_for_duplicates_ == false, and thus dim_mode_ == num_data_ for those
-				// For the other models:    either use_Z_for_duplicates_ == true => dim_mode_ == num_re_ * num_sets_re_ anyway
-				//                          or use_Z_for_duplicates_ == false and num_re_ == num_data_ => dim_mode_ == num_re_ * num_sets_re_
+				// This is a hack since grouped random effects models use use_random_effects_indices_of_data_ == false, and thus dim_mode_ == num_data_ for those
+				// For the other models:    either use_random_effects_indices_of_data_ == true => dim_mode_ == num_re_ * num_sets_re_ anyway
+				//                          or use_random_effects_indices_of_data_ == false and num_re_ == num_data_ => dim_mode_ == num_re_ * num_sets_re_
 				mode_ = vec_t::Zero(num_re_ * num_sets_re_);
 				mode_previous_value_ = vec_t::Zero(num_re_ * num_sets_re_);
 				if (has_SigmaI_mode_) {
@@ -274,13 +283,13 @@ namespace GPBoost {
 				mode_initialized_ = true;
 				first_deriv_ll_ = vec_t(dim_mode_);
 				information_ll_ = vec_t(dim_mode_);
-				if (use_Z_for_duplicates_) {
+				if (use_random_effects_indices_of_data_) {
 					first_deriv_ll_data_scale_ = vec_t(dim_location_par_);
 					information_ll_data_scale_ = vec_t(dim_location_par_);
 				}
 				if (likelihood_type_ == "gaussian_heteroscedastic" && approximation_type_ == "laplace") {
 					off_diag_information_ll_ = vec_t(dim_mode_per_set_re_);
-					if (use_Z_for_duplicates_) {
+					if (use_random_effects_indices_of_data_) {
 						off_diag_information_ll_data_scale_ = vec_t(num_data_);
 					}
 				}
@@ -883,14 +892,14 @@ namespace GPBoost {
 		*       Calculations are done using a numerically stable variant based on factorizing ("inverting") B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
 		*       In the notation of the paper: "Sigma = Z*Sigma*Z^T" and "Z = Id".
 		*       This version is used for the Laplace approximation when dense matrices are used (e.g. GP models).
-		*       If use_Z_for_duplicates_, calculations are done on the random effects (b) scale and not the "data scale" (Zb)
+		*       If use_random_effects_indices_of_data_, calculations are done on the random effects (b) scale and not the "data scale" (Zb)
 		*       factorizing ("inverting") B = (Id + ZtWZsqrt * Sigma * ZtWZsqrt).
-		*       This version (use_Z_for_duplicates_ == true) is used for the Laplace approximation when there is only one Gaussian process and
+		*       This version (use_random_effects_indices_of_data_ == true) is used for the Laplace approximation when there is only one Gaussian process and
 		*       there are multiple observations at the same location, i.e., the dimenion of the random effects b is much smaller than Zb
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param Sigma Covariance matrix of latent random effect ("Sigma = Z*Sigma*Z^T" if !use_Z_for_duplicates_)
+		* \param Sigma Covariance matrix of latent random effect ("Sigma = Z*Sigma*Z^T" if !use_random_effects_indices_of_data_)
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
 		void FindModePostRandEffCalcMLLStable(const double* y_data,
@@ -922,8 +931,8 @@ namespace GPBoost {
 			approx_marginal_ll = -0.5 * (SigmaI_mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t rhs(dim_mode_), rhs2(dim_mode_), mode_new, SigmaI_mode_new, mode_update, SigmaI_mode_update;//auxiliary variables for updating mode
-			vec_t diag_Wsqrt(dim_mode_);//diagonal of matrix sqrt(ZtWZ) if use_Z_for_duplicates_ or sqrt(W) if !use_Z_for_duplicates_ with square root of negative second derivatives of log-likelihood
-			T_mat Id_plus_Wsqrt_Sigma_Wsqrt(dim_mode_, dim_mode_);// = Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt if use_Z_for_duplicates_ or Id_plus_Wsqrt_ZSigmaZt_Wsqrt if !use_Z_for_duplicates_
+			vec_t diag_Wsqrt(dim_mode_);//diagonal of matrix sqrt(ZtWZ) if use_random_effects_indices_of_data_ or sqrt(W) if !use_random_effects_indices_of_data_ with square root of negative second derivatives of log-likelihood
+			T_mat Id_plus_Wsqrt_Sigma_Wsqrt(dim_mode_, dim_mode_);// = Id_plus_ZtWZsqrt_Sigma_ZtWZsqrt if use_random_effects_indices_of_data_ or Id_plus_Wsqrt_ZSigmaZt_Wsqrt if !use_random_effects_indices_of_data_
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
@@ -931,7 +940,7 @@ namespace GPBoost {
 			for (it = 0; it < maxit_mode_newton_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);
-				// Calculate Cholesky factor of matrix B = (Id + ZtWZsqrt * Sigma * ZtWZsqrt) if use_Z_for_duplicates_ or B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt) if !use_Z_for_duplicates_
+				// Calculate Cholesky factor of matrix B = (Id + ZtWZsqrt * Sigma * ZtWZsqrt) if use_random_effects_indices_of_data_ or B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt) if !use_random_effects_indices_of_data_
 				if (it == 0 || information_changes_during_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par_ptr, true);
 					if (HasNegativeValueInformationLogLik()) {
@@ -1016,9 +1025,7 @@ namespace GPBoost {
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param num_data Number of data points
 		* \param SigmaI Inverse covariance matrix of latent random effect. Currently, this needs to be a diagonal matrix
-		* \param Zt Transpose Z^T of random effect design matrix that relates latent random effects to observations/likelihoods
 		* \param first_update If true, the covariance parameters or linear regression coefficients are updated for the first time and the max. number of iterations for the CG should be decreased
 		* \param calc_mll If true the marginal log-likelihood is also calculated (only relevant for matrix_inversion_method_ == "iterative")
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
@@ -1026,9 +1033,7 @@ namespace GPBoost {
 		void FindModePostRandEffCalcMLLGroupedRE(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
-			const data_size_t num_data,
 			const sp_mat_t& SigmaI,
-			const sp_mat_t& Zt,
 			const bool first_update,
 			bool calc_mll,
 			double& approx_marginal_ll) {
@@ -1041,14 +1046,8 @@ namespace GPBoost {
 				mode_previous_value_ = mode_;
 				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			}
-			sp_mat_t Z = Zt.transpose();
-			vec_t location_par = Z * mode_;//location parameter = mode of random effects + fixed effects
-			if (fixed_effects != nullptr) {
-#pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					location_par[i] += fixed_effects[i];
-				}
-			}
+			vec_t location_par;
+			UpdateLocationParGroupedRE(mode_, fixed_effects, location_par);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			approx_marginal_ll = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data());
 			double approx_marginal_ll_new = approx_marginal_ll;
@@ -1067,16 +1066,16 @@ namespace GPBoost {
 			bool terminate_optim = false;
 			bool has_NA_or_Inf = false;
 			if (save_SigmaI_mode_) {
-				SigmaI_mode_ = Z * (SigmaI * mode_);
+				SigmaI_mode_ = (*Zt_).transpose() * (SigmaI * mode_);
 			}
 			for (it = 0; it < maxit_mode_newton_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());
-				rhs = Zt * first_deriv_ll_ - SigmaI * mode_;//right hand side for updating mode
+				rhs = (*Zt_) * first_deriv_ll_ - SigmaI * mode_;//right hand side for updating mode
 				if (matrix_inversion_method_ == "iterative") {
 					if (it == 0 || information_changes_after_mode_finding_) {
 						CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
-						SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t(SigmaI + Zt * information_ll_.asDiagonal() * Z);
+						SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t(SigmaI) + sp_mat_rm_t((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
 						if (cg_preconditioner_type_ == "incomplete_cholesky") {
 							ZeroFillInIncompleteCholeskyFactorization(SigmaI_plus_ZtWZ_rm_, L_SigmaI_plus_ZtWZ_rm_);
 						}
@@ -1103,7 +1102,7 @@ namespace GPBoost {
 					// Calculate Cholesky factor
 					if (it == 0 || information_changes_during_mode_finding_) {
 						CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
-						SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
+						SigmaI_plus_ZtWZ = SigmaI + (sp_mat_t)((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
 						SigmaI_plus_ZtWZ.makeCompressed();
 						if (!chol_fact_pattern_analyzed_) {
 							chol_fact_SigmaI_plus_ZtWZ_grouped_.analyzePattern(SigmaI_plus_ZtWZ);
@@ -1123,13 +1122,7 @@ namespace GPBoost {
 				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 					mode_new = mode_ + lr_mode * mode_update;
 					// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-					location_par = Z * mode_new;
-					if (fixed_effects != nullptr) {
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data; ++i) {
-							location_par[i] += fixed_effects[i];
-						}
-					}
+					UpdateLocationParGroupedRE(mode_new, fixed_effects, location_par);
 					approx_marginal_ll_new = -0.5 * (mode_new.dot(SigmaI * mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
 					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -1174,7 +1167,7 @@ namespace GPBoost {
 						if (information_changes_after_mode_finding_) {
 							//upadate with latest W
 							CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
-							SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t(SigmaI + Zt * information_ll_.asDiagonal() * Z);
+							SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t(SigmaI) + sp_mat_rm_t((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
 							if (cg_preconditioner_type_ == "incomplete_cholesky") {
 								ZeroFillInIncompleteCholeskyFactorization(SigmaI_plus_ZtWZ_rm_, L_SigmaI_plus_ZtWZ_rm_);
 							}
@@ -1242,7 +1235,7 @@ namespace GPBoost {
 				else {
 					if (information_changes_after_mode_finding_) {
 						CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
-						SigmaI_plus_ZtWZ = SigmaI + Zt * information_ll_.asDiagonal() * Z;
+						SigmaI_plus_ZtWZ = SigmaI + (sp_mat_t)((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
 						SigmaI_plus_ZtWZ.makeCompressed();
 						chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
 					}
@@ -1261,17 +1254,13 @@ namespace GPBoost {
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param num_data Number of data points
 		* \param sigma2 Variance of random effects
-		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
 		void FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
-			const data_size_t num_data,
 			const double sigma2,
-			const data_size_t* const random_effects_indices_of_data,
 			double& approx_marginal_ll) {
 			ChecksBeforeModeFinding();
 			// Initialize variables
@@ -1282,13 +1271,13 @@ namespace GPBoost {
 				mode_previous_value_ = mode_;
 				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			}
-			vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
-			UpdateLocationParOnlyOneGroupedRE(mode_, fixed_effects, random_effects_indices_of_data, location_par);
+			vec_t location_par(num_data_);//location parameter = mode of random effects + fixed effects
+			double* location_par_ptr_dummy;//not used
+			UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			approx_marginal_ll = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data());
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t rhs, mode_update, mode_new;
-			diag_SigmaI_plus_ZtWZ_ = vec_t(num_re_);
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
@@ -1298,12 +1287,10 @@ namespace GPBoost {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());
 				if (it == 0 || information_changes_during_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
-					CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, information_ll_.data(), diag_SigmaI_plus_ZtWZ_.data(), true);
-					diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
+					diag_SigmaI_plus_ZtWZ_ = (information_ll_.array()+ 1. / sigma2).matrix();
 				}
 				// Calculate rhs for mode update
-				rhs = -mode_ / sigma2;//right hand side for updating mode
-				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_.data(), rhs.data(), false);
+				rhs = first_deriv_ll_ -mode_ / sigma2;//right hand side for updating mode
 				// Update mode and do backtracking line search
 				mode_update = (rhs.array() / diag_SigmaI_plus_ZtWZ_.array()).matrix();
 				double grad_dot_direction = 0.;//for Armijo check
@@ -1313,7 +1300,7 @@ namespace GPBoost {
 				double lr_mode = 1.;
 				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 					mode_new = mode_ + lr_mode * mode_update;
-					UpdateLocationParOnlyOneGroupedRE(mode_new, fixed_effects, random_effects_indices_of_data, location_par); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr_dummy);
 					approx_marginal_ll_new = -0.5 / sigma2 * (mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
 					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -1334,8 +1321,7 @@ namespace GPBoost {
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (information_changes_after_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
-					CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, information_ll_.data(), diag_SigmaI_plus_ZtWZ_.data(), true);
-					diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
+					diag_SigmaI_plus_ZtWZ_ = (information_ll_.array()+ 1. / sigma2).matrix();
 				}
 				approx_marginal_ll -= 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() + 0.5 * num_re_ * std::log(sigma2);
 				mode_has_been_calculated_ = true;
@@ -2320,14 +2306,14 @@ namespace GPBoost {
 		*       Calculations are done using a numerically stable variant based on factorizing ("inverting") B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
 		*       In the notation of the paper: "Sigma = Z*Sigma*Z^T" and "Z = Id".
 		*       This version is used for the Laplace approximation when dense matrices are used (e.g. GP models).
-		*       If use_Z_for_duplicates_, calculations are done on the random effects (b) scale and not the "data scale" (Zb)
+		*       If use_random_effects_indices_of_data_, calculations are done on the random effects (b) scale and not the "data scale" (Zb)
 		*       factorizing ("inverting") B = (Id + ZtWZsqrt * Sigma * ZtWZsqrt).
-		*       This version (use_Z_for_duplicates_ == true) is used for the Laplace approximation when there is only one Gaussian process and
+		*       This version (use_random_effects_indices_of_data_ == true) is used for the Laplace approximation when there is only one Gaussian process and
 		*       there are multiple observations at the same location, i.e., the dimenion of the random effects b is much smaller than Zb
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param Sigma Covariance matrix of latent random effect ("Sigma = Z*Sigma*Z^T" if !use_Z_for_duplicates_)
+		* \param Sigma Covariance matrix of latent random effect ("Sigma = Z*Sigma*Z^T" if !use_random_effects_indices_of_data_)
 		* \param re_comps_cluster_i Vector with different random effects components. We pass the component pointers to save memory in order to avoid passing a large collection of gardient covariance matrices in memory//TODO: better way than passing this? (relying on all gradients in a vector can lead to large memory consumption)
 		* \param calc_cov_grad If true, the gradient wrt the covariance parameters is calculated
 		* \param calc_F_grad If true, the gradient wrt the fixed effects mean function F is calculated
@@ -2370,12 +2356,12 @@ namespace GPBoost {
 			double* location_par_ptr;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
 			vec_t deriv_information_diag_loc_par;//first derivative of the diagonal of the Fisher information wrt the location parameter (= usually negative third derivatives of the log-likelihood wrt the locatin parameter)
-			vec_t deriv_information_diag_loc_par_data_scale;//first derivative of the diagonal of the Fisher information wrt the location parameter on the data-scale (only used if use_Z_for_duplicates_), the vector 'deriv_information_diag_loc_par' actually contains diag_ZtDerivInformationZ if use_Z_for_duplicates_
+			vec_t deriv_information_diag_loc_par_data_scale;//first derivative of the diagonal of the Fisher information wrt the location parameter on the data-scale (only used if use_random_effects_indices_of_data_), the vector 'deriv_information_diag_loc_par' actually contains diag_ZtDerivInformationZ if use_random_effects_indices_of_data_
 			CHECK(num_sets_re_ == 1);
 			if (grad_information_wrt_mode_non_zero_) {
 				CalcFirstDerivInformationLocPar(y_data, y_data_int, location_par_ptr, deriv_information_diag_loc_par, deriv_information_diag_loc_par_data_scale);
 			}
-			T_mat L_inv_Wsqrt(dim_mode_, dim_mode_);//L_inv_Wsqrt = L\ZtWZsqrt if use_Z_for_duplicates_ or L\Wsqrt if !use_Z_for_duplicates_ where L is a Cholesky factor of Id_plus_Wsqrt_Sigma_Wsqrt
+			T_mat L_inv_Wsqrt(dim_mode_, dim_mode_);//L_inv_Wsqrt = L\ZtWZsqrt if use_random_effects_indices_of_data_ or L\Wsqrt if !use_random_effects_indices_of_data_ where L is a Cholesky factor of Id_plus_Wsqrt_Sigma_Wsqrt
 			L_inv_Wsqrt.setIdentity();
 			L_inv_Wsqrt.diagonal().array() = information_ll_.array().sqrt();
 			TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt, L_inv_Wsqrt, false);//L_inv_Wsqrt = L\Wsqrt
@@ -2388,7 +2374,7 @@ namespace GPBoost {
 				// Calculate gradient of approx. marginal log-likelihood wrt the mode
 				//      Note: use (i) (Sigma^-1 + W)^-1 = Sigma - Sigma*(W^-1 + Sigma)^-1*Sigma = Sigma - L_inv_Wsqrt_Sigma^T * L_inv_Wsqrt_Sigma and (ii) "Z=Id"
 				T_mat L_inv_Wsqrt_Sigma_sqr = L_inv_Wsqrt_Sigma.cwiseProduct(L_inv_Wsqrt_Sigma);
-				SigmaI_plus_W_inv_diag = (*Sigma).diagonal() - L_inv_Wsqrt_Sigma_sqr.transpose() * vec_t::Ones(L_inv_Wsqrt_Sigma_sqr.rows());// diagonal of (Sigma^-1 + ZtWZ) ^ -1 if use_Z_for_duplicates_ or of (ZSigmaZt^-1 + W)^-1 if !use_Z_for_duplicates_
+				SigmaI_plus_W_inv_diag = (*Sigma).diagonal() - L_inv_Wsqrt_Sigma_sqr.transpose() * vec_t::Ones(L_inv_Wsqrt_Sigma_sqr.rows());// diagonal of (Sigma^-1 + ZtWZ) ^ -1 if use_random_effects_indices_of_data_ or of (ZSigmaZt^-1 + W)^-1 if !use_random_effects_indices_of_data_
 			}
 			if (grad_information_wrt_mode_non_zero_) {
 				CHECK(first_deriv_information_loc_par_caluclated_);
@@ -2397,7 +2383,7 @@ namespace GPBoost {
 			// Calculate gradient wrt covariance parameters
 			bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
 			if (calc_cov_grad && some_cov_par_estimated) {
-				T_mat WI_plus_Sigma_inv;//WI_plus_Sigma_inv = ZtWZsqrt * L^T\(L\ZtWZsqrt) = ((ZtWZ)^-1 + Sigma)^-1 if use_Z_for_duplicates_ or Wsqrt * L^T\(L\Wsqrt) = (W^-1 + ZSigmaZt)^-1 if !use_Z_for_duplicates_
+				T_mat WI_plus_Sigma_inv;//WI_plus_Sigma_inv = ZtWZsqrt * L^T\(L\ZtWZsqrt) = ((ZtWZ)^-1 + Sigma)^-1 if use_random_effects_indices_of_data_ or Wsqrt * L^T\(L\Wsqrt) = (W^-1 + ZSigmaZt)^-1 if !use_random_effects_indices_of_data_
 				vec_t d_mode_d_par, SigmaDeriv_first_deriv_ll; //auxiliary variable for caclulating d_mode_d_par
 				int par_count = 0;
 				double explicit_derivative;
@@ -2437,7 +2423,7 @@ namespace GPBoost {
 				SigmaI_plus_W_inv_d_mll_d_mode = (*Sigma) * d_mll_d_mode - L_inv_Wsqrt_Sigma.transpose() * L_inv_Wsqrt_Sigma_d_mll_d_mode;
 			}
 			if (calc_F_grad) {
-				if (use_Z_for_duplicates_) {
+				if (use_random_effects_indices_of_data_) {
 					fixed_effect_grad = -first_deriv_ll_data_scale_;
 					if (grad_information_wrt_mode_non_zero_) {
 #pragma omp parallel for schedule(static)
@@ -2465,7 +2451,7 @@ namespace GPBoost {
 				for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
 					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 					double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
-					if (use_Z_for_duplicates_) {
+					if (use_random_effects_indices_of_data_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
 						for (data_size_t i = 0; i < num_data_; ++i) {
 							d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
@@ -2501,9 +2487,7 @@ namespace GPBoost {
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param num_data Number of data points
 		* \param SigmaI Inverse covariance matrix of latent random effect. Currently, this needs to be a diagonal matrix
-		* \param Zt Transpose Z^T of random effect design matrix that relates latent random effects to observations/likelihoods
 		* \param calc_cov_grad If true, the gradient wrt the covariance parameters is calculated
 		* \param calc_F_grad If true, the gradient wrt the fixed effects mean function F is calculated
 		* \param calc_aux_par_grad If true, the gradient wrt additional likelihood parameters is calculated
@@ -2516,9 +2500,7 @@ namespace GPBoost {
 		void CalcGradNegMargLikelihoodLaplaceApproxGroupedRE(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
-			const data_size_t num_data,
 			const sp_mat_t& SigmaI,
-			const sp_mat_t& Zt,
 			std::vector<data_size_t> cum_num_rand_eff_cluster_i,
 			bool calc_cov_grad,
 			bool calc_F_grad,
@@ -2533,7 +2515,7 @@ namespace GPBoost {
 			int num_comps = (int)cum_num_rand_eff_cluster_i.size() - 1;//number of different random effect components
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, num_data, SigmaI, Zt, false, true, mll);
+				FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, SigmaI, false, true, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				if (call_for_std_dev_coef) {
@@ -2545,14 +2527,8 @@ namespace GPBoost {
 			}
 			CHECK(mode_has_been_calculated_);
 			// Initialize variables
-			sp_mat_t Z = Zt.transpose();
-			vec_t location_par = Z * mode_;//location parameter = mode of random effects + fixed effects
-			if (fixed_effects != nullptr) {
-#pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					location_par[i] += fixed_effects[i];
-				}
-			}
+			vec_t location_par;
+			UpdateLocationParGroupedRE(mode_, fixed_effects, location_par);
 			if (matrix_inversion_method_ == "iterative") {
 				// calculate P^(-1) RV
 				den_mat_t PI_RV(num_REs, num_rand_vec_trace_), L_inv_Z, DI_L_plus_D_t_PI_RV;
@@ -2593,30 +2569,30 @@ namespace GPBoost {
 					Log::REFatal("Preconditioner type '%s' is not supported for gradients.", cg_preconditioner_type_.c_str());
 				}
 				// calculate Z P^(-1) z_i
-				den_mat_t Z_PI_RV(num_data, num_rand_vec_trace_);
+				den_mat_t Z_PI_RV(num_data_, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					Z_PI_RV.col(i) = Z * PI_RV.col(i);
+					Z_PI_RV.col(i) = (*Zt_).transpose() * PI_RV.col(i);
 				}
 				// calculate Z P^(-1) z_i
-				den_mat_t Z_SigmaI_plus_ZtWZ_inv_RV(num_data, num_rand_vec_trace_);
+				den_mat_t Z_SigmaI_plus_ZtWZ_inv_RV(num_data_, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
-					Z_SigmaI_plus_ZtWZ_inv_RV.col(i) = Z * SigmaI_plus_ZtWZ_inv_RV_.col(i);
+					Z_SigmaI_plus_ZtWZ_inv_RV.col(i) = (*Zt_).transpose() * SigmaI_plus_ZtWZ_inv_RV_.col(i);
 				}
 				//calculate gradient of approx. marginal likelihood wrt the mode
 				vec_t trace_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z;
 				vec_t Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode;
 				vec_t SigmaI_plus_ZtWZ_inv_d_mll_d_mode;
 				if (grad_information_wrt_mode_non_zero_) {
-					vec_t deriv_information_diag_loc_par(num_data);//usually vector of negative third derivatives of log-likelihood
+					vec_t deriv_information_diag_loc_par(num_data_);//usually vector of negative third derivatives of log-likelihood
 					CalcFirstDerivInformationLocPar_DataScale(y_data, y_data_int, location_par.data(), deriv_information_diag_loc_par);
 					//Stochastic trace: tr((Sigma^(-1) + Z^T W Z)^(-1) Z^T dW/dloc_par Z)
 					den_mat_t W_deriv_loc_par_rep = deriv_information_diag_loc_par.replicate(1, num_rand_vec_trace_);
 					den_mat_t RVt_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z_PI_RV = (Z_SigmaI_plus_ZtWZ_inv_RV.array() * W_deriv_loc_par_rep.array() * Z_PI_RV.array()).matrix();
 					trace_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z = RVt_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z_PI_RV.rowwise().mean();
 					//Stochastic trace: tr((Sigma^(-1) + Z^T W Z)^(-1) Z^T dW/db_j Z)
-					vec_t d_mll_d_mode = Zt * trace_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z;
+					vec_t d_mll_d_mode = (*Zt_) * trace_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z;
 					d_mll_d_mode *= 0.5;
 					//For implicit derivatives: calculate (Sigma^(-1) + Z^T W Z)^(-1) d_mll_d_mode
 					bool has_NA_or_Inf = false;
@@ -2628,7 +2604,7 @@ namespace GPBoost {
 						Log::REDebug(CG_NA_OR_INF_WARNING_);
 					}
 					if (calc_F_grad || calc_aux_par_grad) {
-						Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode = Z * SigmaI_plus_ZtWZ_inv_d_mll_d_mode;
+						Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode = (*Zt_).transpose() * SigmaI_plus_ZtWZ_inv_d_mll_d_mode;
 					}
 				}
 				// calculate gradient wrt covariance parameters
@@ -2671,7 +2647,7 @@ namespace GPBoost {
 							cov_grad[j] = explicit_derivative;
 							if (grad_information_wrt_mode_non_zero_) {
 								// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-								cov_grad[j] += SigmaI_plus_ZtWZ_inv_d_mll_d_mode.dot(I_j * (Zt * first_deriv_ll_));
+								cov_grad[j] += SigmaI_plus_ZtWZ_inv_d_mll_d_mode.dot(I_j * ((*Zt_) * first_deriv_ll_));
 							}
 						}
 					}
@@ -2686,8 +2662,8 @@ namespace GPBoost {
 				// calculate gradient wrt additional likelihood parameters
 				if (calc_aux_par_grad) {
 					vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
-					vec_t second_deriv_loc_aux_par(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
-					vec_t deriv_information_aux_par(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
+					vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
+					vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 					vec_t d_mode_d_aux_par;
 					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), neg_likelihood_deriv.data());
 					for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
@@ -2698,7 +2674,7 @@ namespace GPBoost {
 						double d_detmll_d_aux_par = tr_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_aux_Z;
 						if (cg_preconditioner_type_ == "ssor") {
 							//Variance reduction
-							sp_mat_t ZtdWZ = Zt * deriv_information_aux_par.asDiagonal() * Z;
+							sp_mat_t ZtdWZ = (*Zt_) * deriv_information_aux_par.asDiagonal() * (*Zt_).transpose();
 							//deterministic tr(D^(-1) diag(Z^T dW/daux Z))
 							double tr_D_inv_diag_Zt_W_deriv_aux_Z = (P_SSOR_D_inv_.cwiseProduct(ZtdWZ.diagonal())).sum();
 							//stochastic tr(P^(-1) dP/daux)
@@ -2734,19 +2710,19 @@ namespace GPBoost {
 				vec_t deriv_information_diag_loc_par;//usually vector of negative third derivatives of log-likelihood
 				vec_t d_mll_d_mode;
 				if (grad_information_wrt_mode_non_zero_) {
-					deriv_information_diag_loc_par = vec_t(num_data);
+					deriv_information_diag_loc_par = vec_t(num_data_);
 					CalcFirstDerivInformationLocPar_DataScale(y_data, y_data_int, location_par.data(), deriv_information_diag_loc_par);
 					d_mll_d_mode = vec_t(num_REs);
-					sp_mat_t Zt_deriv_information_loc_par = Zt * deriv_information_diag_loc_par.asDiagonal();//every column of Z multiplied elementwise by deriv_information_diag_loc_par
+					sp_mat_t Zt_deriv_information_loc_par = (*Zt_) * deriv_information_diag_loc_par.asDiagonal();//every column of Z multiplied elementwise by deriv_information_diag_loc_par
 #pragma omp parallel for schedule(static)
 					for (int ire = 0; ire < num_REs; ++ire) {
 						//calculate Z^T * diag(diag_d_W_d_mode_i) * Z = Z^T * diag(Z.col(i) * deriv_information_diag_loc_par) * Z
 						d_mll_d_mode[ire] = 0.;
 						double entry_ij;
-						for (data_size_t i = 0; i < num_data; ++i) {
+						for (data_size_t i = 0; i < num_data_; ++i) {
 							entry_ij = Zt_deriv_information_loc_par.coeff(ire, i);
 							if (std::abs(entry_ij) > EPSILON_NUMBERS) {
-								vec_t L_inv_Zt_col_i = L_inv * Zt.col(i);
+								vec_t L_inv_Zt_col_i = L_inv * (*Zt_).col(i);
 								d_mll_d_mode[ire] += entry_ij * (L_inv_Zt_col_i.squaredNorm());
 							}
 						}
@@ -2756,7 +2732,7 @@ namespace GPBoost {
 				// calculate gradient wrt covariance parameters
 				bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
 				if (calc_cov_grad && some_cov_par_estimated) {
-					sp_mat_t ZtWZ = Zt * information_ll_.asDiagonal() * Z;
+					sp_mat_t ZtWZ = (*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose();
 					vec_t d_mode_d_par;//derivative of mode wrt to a covariance parameter
 					vec_t v_aux;//auxiliary variable for caclulating d_mode_d_par
 					vec_t SigmaI_mode = SigmaI * mode_;
@@ -2782,7 +2758,7 @@ namespace GPBoost {
 							cov_grad[j] = explicit_derivative;
 							if (grad_information_wrt_mode_non_zero_) {
 								// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-								d_mode_d_par = L_inv.transpose() * (L_inv * (I_j * (Zt * first_deriv_ll_)));
+								d_mode_d_par = L_inv.transpose() * (L_inv * (I_j * ((*Zt_) * first_deriv_ll_)));
 								cov_grad[j] += d_mll_d_mode.dot(d_mode_d_par);
 							}
 						}
@@ -2793,33 +2769,33 @@ namespace GPBoost {
 					fixed_effect_grad = -first_deriv_ll_;
 					if (grad_information_wrt_mode_non_zero_) {
 						CHECK(first_deriv_information_loc_par_caluclated_);
-						vec_t d_detmll_d_F(num_data);
+						vec_t d_detmll_d_F(num_data_);
 #pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_data; ++i) {
-							vec_t L_inv_Zt_col_i = L_inv * Zt.col(i);
+						for (int i = 0; i < num_data_; ++i) {
+							vec_t L_inv_Zt_col_i = L_inv * (*Zt_).col(i);
 							d_detmll_d_F[i] = 0.5 * deriv_information_diag_loc_par[i] * (L_inv_Zt_col_i.squaredNorm());
 
 						}
-						vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = (((d_mll_d_mode.transpose() * L_inv.transpose()) * L_inv) * Zt) * information_ll_.asDiagonal();
+						vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = (((d_mll_d_mode.transpose() * L_inv.transpose()) * L_inv) * (*Zt_)) * information_ll_.asDiagonal();
 						fixed_effect_grad += d_detmll_d_F - d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W;
 					}//end grad_information_wrt_mode_non_zero_
 				}//end calc_F_grad
 				// calculate gradient wrt additional likelihood parameters
 				if (calc_aux_par_grad) {
 					vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
-					vec_t second_deriv_loc_aux_par(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
-					vec_t deriv_information_aux_par(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
+					vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
+					vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 					vec_t d_mode_d_aux_par;
 					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), neg_likelihood_deriv.data());
 					for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
 						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
-						sp_mat_t ZtdWZ = Zt * deriv_information_aux_par.asDiagonal() * Z;
+						sp_mat_t ZtdWZ = (*Zt_) * deriv_information_aux_par.asDiagonal() * (*Zt_).transpose();
 						SigmaI_plus_ZtWZ_inv = ZtdWZ;
 						CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv, false);
 						double d_detmll_d_aux_par = (SigmaI_plus_ZtWZ_inv.cwiseProduct(ZtdWZ)).sum();
 						aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par;
 						if (grad_information_wrt_mode_non_zero_) {
-							d_mode_d_aux_par = L_inv.transpose() * (L_inv * (Zt * second_deriv_loc_aux_par));
+							d_mode_d_aux_par = L_inv.transpose() * (L_inv * ((*Zt_) * second_deriv_loc_aux_par));
 							aux_par_grad[ind_ap] += d_mll_d_mode.dot(d_mode_d_aux_par);
 						}
 					}
@@ -2836,9 +2812,7 @@ namespace GPBoost {
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param num_data Number of data points
 		* \param sigma2 Variance of random effects
-		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
 		* \param calc_cov_grad If true, the gradient wrt the covariance parameters is calculated
 		* \param calc_F_grad If true, the gradient wrt the fixed effects mean function F is calculated
 		* \param calc_aux_par_grad If true, the gradient wrt additional likelihood parameters is calculated
@@ -2851,9 +2825,7 @@ namespace GPBoost {
 		void CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
-			const data_size_t num_data,
 			const double sigma2,
-			const data_size_t* const random_effects_indices_of_data,
 			bool calc_cov_grad,
 			bool calc_F_grad,
 			bool calc_aux_par_grad,
@@ -2865,8 +2837,7 @@ namespace GPBoost {
 			const std::vector<int>& estimate_cov_par_index) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_data, y_data_int, fixed_effects, num_data,
-					sigma2, random_effects_indices_of_data, mll);
+				FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_data, y_data_int, fixed_effects, sigma2, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				if (call_for_std_dev_coef) {
@@ -2878,30 +2849,28 @@ namespace GPBoost {
 			}
 			CHECK(mode_has_been_calculated_);
 			// Initialize variables
-			vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
-			UpdateLocationParOnlyOneGroupedRE(mode_, fixed_effects, random_effects_indices_of_data, location_par);
+			vec_t location_par(num_data_);//location parameter = mode of random effects + fixed effects
+			double* location_par_ptr_dummy;//not used
+			UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 			// calculate gradient of approx. marginal likelihood wrt the mode
 			vec_t deriv_information_diag_loc_par;//usually vector of negative third derivatives of log-likelihood
 			vec_t d_mll_d_mode;
 			if (grad_information_wrt_mode_non_zero_) {
 				d_mll_d_mode = vec_t(num_re_);
-				deriv_information_diag_loc_par = vec_t(num_data);
+				deriv_information_diag_loc_par = vec_t(num_data_);
 				CalcFirstDerivInformationLocPar_DataScale(y_data, y_data_int, location_par.data(), deriv_information_diag_loc_par);
-				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, deriv_information_diag_loc_par.data(), d_mll_d_mode.data(), true);
+				CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, deriv_information_diag_loc_par.data(), d_mll_d_mode.data(), true);
 				d_mll_d_mode.array() /= 2. * diag_SigmaI_plus_ZtWZ_.array();
 			}
 			// calculate gradient wrt covariance parameters
 			if (calc_cov_grad && estimate_cov_par_index[0]) {
-				vec_t diag_ZtWZ(num_re_);
-				CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, information_ll_.data(), diag_ZtWZ.data(), true);
 				double explicit_derivative = -0.5 * (mode_.array() * mode_.array()).sum() / sigma2 +
-					0.5 * (diag_ZtWZ.array() / diag_SigmaI_plus_ZtWZ_.array()).sum();
+					0.5 * (information_ll_.array() / diag_SigmaI_plus_ZtWZ_.array()).sum();
 				cov_grad[0] = explicit_derivative;
 				if (grad_information_wrt_mode_non_zero_) {
 					CHECK(first_deriv_information_loc_par_caluclated_);
 					// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-					vec_t d_mode_d_par(num_re_);
-					CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, first_deriv_ll_.data(), d_mode_d_par.data(), true);
+					vec_t d_mode_d_par = first_deriv_ll_;
 					d_mode_d_par.array() /= diag_SigmaI_plus_ZtWZ_.array();
 					cov_grad[0] += d_mll_d_mode.dot(d_mode_d_par);
 				}
@@ -2909,36 +2878,37 @@ namespace GPBoost {
 			// calculate gradient wrt fixed effects
 			if (calc_F_grad) {
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_data; ++i) {
-					fixed_effect_grad[i] = -first_deriv_ll_[i];
+				for (int i = 0; i < num_data_; ++i) {
+					//fixed_effect_grad[i] = -first_deriv_ll_[i];
+					fixed_effect_grad[i] = -first_deriv_ll_data_scale_[i];
 					if (grad_information_wrt_mode_non_zero_) {
-						fixed_effect_grad[i] += 0.5 * deriv_information_diag_loc_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data[i]] - //=d_detmll_d_F
-							d_mll_d_mode[random_effects_indices_of_data[i]] * information_ll_[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data[i]];//=implicit derivative = d_mll_d_mode * d_mode_d_F
+						fixed_effect_grad[i] += 0.5 * deriv_information_diag_loc_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]] - //=d_detmll_d_F
+							d_mll_d_mode[random_effects_indices_of_data_[i]] * information_ll_data_scale_[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];//=implicit derivative = d_mll_d_mode * d_mode_d_F
 					}
 				}
 			}//end calc_F_grad
 			// calculate gradient wrt additional likelihood parameters
 			if (calc_aux_par_grad) {
 				vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
-				vec_t second_deriv_loc_aux_par(num_data);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
-				vec_t deriv_information_aux_par(num_data);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
+				vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
+				vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par.data(), neg_likelihood_deriv.data());
 				for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
 					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 					double d_detmll_d_aux_par = 0.;
 					double implicit_derivative = 0.;// = implicit derivative = d_mll_d_mode * d_mode_d_aux_par
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-					for (int i = 0; i < num_data; ++i) {
-						d_detmll_d_aux_par += deriv_information_aux_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data[i]];
+					for (int i = 0; i < num_data_; ++i) {
+						d_detmll_d_aux_par += deriv_information_aux_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];
 						if (grad_information_wrt_mode_non_zero_) {
-							implicit_derivative += d_mll_d_mode[random_effects_indices_of_data[i]] * second_deriv_loc_aux_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data[i]];
+							implicit_derivative += d_mll_d_mode[random_effects_indices_of_data_[i]] * second_deriv_loc_aux_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];
 						}
 					}
 					aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par + implicit_derivative;
 					//Equivalent code:
 					//vec_t Zt_second_deriv_loc_aux_par, diag_Zt_deriv_information_loc_par_Z;
-					//CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, second_deriv_loc_aux_par, Zt_second_deriv_loc_aux_par, true);
-					//CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, deriv_information_aux_par, diag_Zt_deriv_information_loc_par_Z, true);
+					//CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, second_deriv_loc_aux_par, Zt_second_deriv_loc_aux_par, true);
+					//CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, deriv_information_aux_par, diag_Zt_deriv_information_loc_par_Z, true);
 					//double d_detmll_d_aux_par = (diag_Zt_deriv_information_loc_par_Z.array() / diag_SigmaI_plus_ZtWZ_.array()).sum();
 					//double implicit_derivative = (d_mll_d_mode.array() * Zt_second_deriv_loc_aux_par.array() / diag_SigmaI_plus_ZtWZ_.array()).sum();
 				}
@@ -3033,7 +3003,7 @@ namespace GPBoost {
 			double* location_par_ptr;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
 			vec_t deriv_information_diag_loc_par;//first derivative of the diagonal of the Fisher information wrt the location parameter (= usually negative third derivatives of the log-likelihood wrt the locatin parameter)
-			vec_t deriv_information_diag_loc_par_data_scale;//first derivative of the diagonal of the Fisher information wrt the location parameter on the data-scale (only used if use_Z_for_duplicates_), the vector 'deriv_information_diag_loc_par' actually contains diag_ZtDerivInformationZ if use_Z_for_duplicates_
+			vec_t deriv_information_diag_loc_par_data_scale;//first derivative of the diagonal of the Fisher information wrt the location parameter on the data-scale (only used if use_random_effects_indices_of_data_), the vector 'deriv_information_diag_loc_par' actually contains diag_ZtDerivInformationZ if use_random_effects_indices_of_data_
 			if (grad_information_wrt_mode_non_zero_) {
 				CalcFirstDerivInformationLocPar(y_data, y_data_int, location_par_ptr, deriv_information_diag_loc_par, deriv_information_diag_loc_par_data_scale);
 			}
@@ -3201,13 +3171,13 @@ namespace GPBoost {
 					}//end calc_cov_grad
 					//Calculate gradient wrt fixed effects
 					vec_t SigmaI_plus_W_inv_diag;
-					if (grad_information_wrt_mode_non_zero_ && ((use_Z_for_duplicates_ && calc_F_grad) || calc_aux_par_grad)) {
+					if (grad_information_wrt_mode_non_zero_ && ((use_random_effects_indices_of_data_ && calc_F_grad) || calc_aux_par_grad)) {
 						//Stochastic Trace: Calculate diagonal of SigmaI_plus_W_inv for gradient of approx. marginal likelihood wrt. F
 						SigmaI_plus_W_inv_diag = d_log_det_Sigma_W_plus_I_d_mode;
 						SigmaI_plus_W_inv_diag.array() /= deriv_information_diag_loc_par.array();
 					}
 					if (calc_F_grad) {
-						if (use_Z_for_duplicates_) {
+						if (use_random_effects_indices_of_data_) {
 							fixed_effect_grad = -first_deriv_ll_data_scale_;
 							if (grad_information_wrt_mode_non_zero_) {
 #pragma omp parallel for schedule(static)
@@ -3246,7 +3216,7 @@ namespace GPBoost {
 							CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 							double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 							if (grad_information_wrt_mode_non_zero_) {
-								if (use_Z_for_duplicates_) {
+								if (use_random_effects_indices_of_data_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
 									for (data_size_t i = 0; i < num_data_; ++i) {
 										d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
@@ -3262,7 +3232,7 @@ namespace GPBoost {
 								}
 							}//end if grad_information_wrt_mode_non_zero_
 							else {// grad_information_wrt_mode is zero
-								if (use_Z_for_duplicates_) {
+								if (use_random_effects_indices_of_data_) {
 									vec_t Zt_deriv_information_aux_par;
 									CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, deriv_information_aux_par.data(), Zt_deriv_information_aux_par.data(), true);
 									vec_t W_inv_d_W_W_inv = -1. * Zt_deriv_information_aux_par.cwiseProduct((information_ll_.cwiseInverse().cwiseProduct(information_ll_.cwiseInverse())));
@@ -3518,13 +3488,13 @@ namespace GPBoost {
 					}//end calc_cov_grad
 					//Calculate gradient wrt fixed effects
 					vec_t SigmaI_plus_W_inv_diag;
-					if (use_Z_for_duplicates_ && (calc_F_grad || calc_aux_par_grad)) {
+					if (use_random_effects_indices_of_data_ && (calc_F_grad || calc_aux_par_grad)) {
 						//Stochastic Trace: Calculate diagonal of SigmaI_plus_W_inv for gradient of approx. marginal likelihood wrt. F
 						SigmaI_plus_W_inv_diag = d_log_det_Sigma_W_plus_I_d_mode;
 						SigmaI_plus_W_inv_diag.array() *= -1. / deriv_information_diag_loc_par.array();
 					}
 					if (calc_F_grad) {
-						if (use_Z_for_duplicates_) {
+						if (use_random_effects_indices_of_data_) {
 							fixed_effect_grad = -first_deriv_ll_data_scale_;
 							if (grad_information_wrt_mode_non_zero_) {
 #pragma omp parallel for schedule(static)
@@ -3553,7 +3523,7 @@ namespace GPBoost {
 							CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 							double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 							if (grad_information_wrt_mode_non_zero_) {
-								if (use_Z_for_duplicates_) {
+								if (use_random_effects_indices_of_data_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
 									for (data_size_t i = 0; i < num_data_; ++i) {
 										d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
@@ -3569,7 +3539,7 @@ namespace GPBoost {
 								}
 							}//end if grad_information_wrt_mode_non_zero_
 							else {// grad_information_wrt_mode is zero
-								if (use_Z_for_duplicates_) {
+								if (use_random_effects_indices_of_data_) {
 									if (cg_preconditioner_type_ == "vifdu") {
 										//Stochastic Trace: Calculate tr((Sigma^(-1) + W)^(-1) dW/daux)
 										vec_t zt_SigmaI_plus_W_inv_W_deriv_PI_z = ((SigmaI_plus_W_inv_Z_.cwiseProduct(deriv_information_aux_par.asDiagonal() * PI_Z)).colwise().sum()).transpose();
@@ -3772,13 +3742,13 @@ namespace GPBoost {
 							SigmaI_plus_W_inv_d_mll_d_mode = information_ll_.cwiseInverse().asDiagonal() * (SigmaI_plus_W_inv_d_mll_d_mode_part - sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov * chol_fact_sigma_woodbury_2.solve((*cross_cov).transpose() * SigmaI_plus_W_inv_d_mll_d_mode_part));
 						}
 					}
-					else if (calc_aux_par_grad || (use_Z_for_duplicates_ && grad_information_wrt_mode_non_zero_)) {
+					else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_)) {
 						SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv.diagonal().array() + SigmaI_plus_W_inv_diag.array()).matrix();
 					}
 				}
 				// Calculate gradient wrt fixed effects
 				if (calc_F_grad) {
-					if (use_Z_for_duplicates_) {
+					if (use_random_effects_indices_of_data_) {
 						fixed_effect_grad = -first_deriv_ll_data_scale_;
 						if (grad_information_wrt_mode_non_zero_) {
 #pragma omp parallel for schedule(static)
@@ -3806,7 +3776,7 @@ namespace GPBoost {
 					for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
 						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 						double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
-						if (use_Z_for_duplicates_) {
+						if (use_random_effects_indices_of_data_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
 							for (data_size_t i = 0; i < num_data_; ++i) {
 								d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
@@ -3897,7 +3867,7 @@ namespace GPBoost {
 			double* location_par_ptr;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
 			vec_t deriv_information_diag_loc_par;//first derivative of the diagonal of the Fisher information wrt the location parameter (= usually negative third derivatives of the log-likelihood wrt the locatin parameter)
-			vec_t deriv_information_diag_loc_par_data_scale;//first derivative of the diagonal of the Fisher information wrt the location parameter on the data-scale (only used if use_Z_for_duplicates_), the vector 'deriv_information_diag_loc_par' actually contains diag_ZtDerivInformationZ if use_Z_for_duplicates_
+			vec_t deriv_information_diag_loc_par_data_scale;//first derivative of the diagonal of the Fisher information wrt the location parameter on the data-scale (only used if use_random_effects_indices_of_data_), the vector 'deriv_information_diag_loc_par' actually contains diag_ZtDerivInformationZ if use_random_effects_indices_of_data_
 			if (grad_information_wrt_mode_non_zero_) {
 				CalcFirstDerivInformationLocPar(y_data, y_data_int, location_par_ptr, deriv_information_diag_loc_par, deriv_information_diag_loc_par_data_scale);
 			}
@@ -3913,7 +3883,7 @@ namespace GPBoost {
 				//Declarations for preconditioner "Sigma_inv_plus_BtWB"
 				vec_t D_inv_plus_W_inv_diag;
 				den_mat_t PI_Z; //also used for preconditioner "zero_infill_incomplete_cholesky"
-				//Stochastic Trace: Calculate gradient of approx. marginal likelihood wrt. the mode (and thus also F here if !use_Z_for_duplicates_)
+				//Stochastic Trace: Calculate gradient of approx. marginal likelihood wrt. the mode (and thus also F here if !use_random_effects_indices_of_data_)
 				if (likelihood_type_ == "gaussian_heteroscedastic") {
 					vec_t deriv_information_diag_loc_par_all = vec_t::Zero(dim_mode_);
 					deriv_information_diag_loc_par_all.segment(0, dim_mode_per_set_re_) = deriv_information_diag_loc_par;
@@ -4028,7 +3998,7 @@ namespace GPBoost {
 					}//end loop num_sets_re_
 				}
 				//Calculate gradient wrt fixed effects
-				if (grad_information_wrt_mode_non_zero_ && ((use_Z_for_duplicates_ && calc_F_grad) || calc_aux_par_grad)) {
+				if (grad_information_wrt_mode_non_zero_ && ((use_random_effects_indices_of_data_ && calc_F_grad) || calc_aux_par_grad)) {
 					if (likelihood_type_ == "gaussian_heteroscedastic") {
 						vec_t ones = vec_t::Ones(dim_mode_);
 						vec_t diag_WI_dummy, D_inv_plus_W_inv_dia_dummy;
@@ -4067,7 +4037,7 @@ namespace GPBoost {
 								deriv_information_loc_par_has_zero = GPBoost::VectorContainsZero(deriv_information_diag_loc_par);
 							}
 							if (deriv_information_loc_par_has_zero) {//deriv_information_diag_loc_par has some zeros
-								if (use_Z_for_duplicates_) {
+								if (use_random_effects_indices_of_data_) {
 									vec_t Zt_deriv_information_aux_par(num_re_);
 									CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, deriv_information_aux_par.data(), Zt_deriv_information_aux_par.data(), true);
 									CalcLogDetStochDerivAuxParVecchia(Zt_deriv_information_aux_par, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z, d_detmll_d_aux_par, re_comps_cross_cov_cluster_i);
@@ -4075,7 +4045,7 @@ namespace GPBoost {
 								else {
 									CalcLogDetStochDerivAuxParVecchia(deriv_information_aux_par, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z, d_detmll_d_aux_par, re_comps_cross_cov_cluster_i);
 								}
-								if (use_Z_for_duplicates_) {
+								if (use_random_effects_indices_of_data_) {
 #pragma omp parallel for schedule(static) reduction(+:implicit_derivative)
 									for (data_size_t i = 0; i < num_data_; ++i) {
 										implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
@@ -4089,7 +4059,7 @@ namespace GPBoost {
 								}
 							}
 							else {//deriv_information_diag_loc_par is non-zero everywhere (!deriv_information_loc_par_has_zero )
-								if (use_Z_for_duplicates_) {
+								if (use_random_effects_indices_of_data_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
 									for (data_size_t i = 0; i < num_data_; ++i) {
 										d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
@@ -4106,7 +4076,7 @@ namespace GPBoost {
 							}
 						}//end if grad_information_wrt_mode_non_zero_
 						else {// grad_information_wrt_mode is zero
-							if (use_Z_for_duplicates_) {
+							if (use_random_effects_indices_of_data_) {
 								vec_t Zt_deriv_information_aux_par(num_re_);
 								CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, deriv_information_aux_par.data(), Zt_deriv_information_aux_par.data(), true);
 								CalcLogDetStochDerivAuxParVecchia(Zt_deriv_information_aux_par, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z, d_detmll_d_aux_par, re_comps_cross_cov_cluster_i);
@@ -4212,7 +4182,7 @@ namespace GPBoost {
 							SigmaI_plus_W_inv_d_mll_d_mode = L_inv.transpose() * (L_inv * d_mll_d_mode);
 						}
 					}
-					else if (calc_aux_par_grad || (use_Z_for_duplicates_ && grad_information_wrt_mode_non_zero_)) {
+					else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_)) {
 						SigmaI_plus_W_inv_diag = SigmaI_plus_W_inv.diagonal();
 					}
 				}//end calc_F_grad || calc_aux_par_grad
@@ -4227,7 +4197,7 @@ namespace GPBoost {
 					for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
 						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 						double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
-						if (use_Z_for_duplicates_) {
+						if (use_random_effects_indices_of_data_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
 							for (data_size_t i = 0; i < num_data_; ++i) {
 								d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
@@ -4252,7 +4222,7 @@ namespace GPBoost {
 			}//end Cholesky decomposition
 			// Calculate gradient wrt fixed effects
 			if (calc_F_grad) {
-				if (use_Z_for_duplicates_) {
+				if (use_random_effects_indices_of_data_) {
 					fixed_effect_grad = -first_deriv_ll_data_scale_;
 					if (grad_information_wrt_mode_non_zero_) {
 						if (likelihood_type_ == "gaussian_heteroscedastic") {
@@ -4351,7 +4321,7 @@ namespace GPBoost {
 			double* location_par_ptr;
 			InitializeLocationPar(fixed_effects, location_par, &location_par_ptr);
 			vec_t deriv_information_diag_loc_par;//first derivative of the diagonal of the Fisher information wrt the location parameter (= usually negative third derivatives of the log-likelihood wrt the locatin parameter)
-			vec_t deriv_information_diag_loc_par_data_scale;//first derivative of the diagonal of the Fisher information wrt the location parameter on the data-scale (only used if use_Z_for_duplicates_), the vector 'deriv_information_diag_loc_par' actually contains diag_ZtDerivInformationZ if use_Z_for_duplicates_
+			vec_t deriv_information_diag_loc_par_data_scale;//first derivative of the diagonal of the Fisher information wrt the location parameter on the data-scale (only used if use_random_effects_indices_of_data_), the vector 'deriv_information_diag_loc_par' actually contains diag_ZtDerivInformationZ if use_random_effects_indices_of_data_
 			CHECK(num_sets_re_ == 1);
 			if (grad_information_wrt_mode_non_zero_) {
 				CalcFirstDerivInformationLocPar(y_data, y_data_int, location_par_ptr, deriv_information_diag_loc_par, deriv_information_diag_loc_par_data_scale);
@@ -4451,7 +4421,7 @@ namespace GPBoost {
 					L_inv_cross_cov_T_DW_plus_I_inv.transpose() * (L_inv_cross_cov_T_DW_plus_I_inv * d_mll_d_mode);
 			}
 			if (calc_F_grad) {
-				if (use_Z_for_duplicates_) {
+				if (use_random_effects_indices_of_data_) {
 					fixed_effect_grad = -first_deriv_ll_data_scale_;
 					if (grad_information_wrt_mode_non_zero_) {
 #pragma omp parallel for schedule(static)
@@ -4479,7 +4449,7 @@ namespace GPBoost {
 				for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
 					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 					double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
-					if (use_Z_for_duplicates_) {
+					if (use_random_effects_indices_of_data_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
 						for (data_size_t i = 0; i < num_data_; ++i) {
 							d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
@@ -4549,7 +4519,7 @@ namespace GPBoost {
 				pred_mean = Cross_Cov * SigmaI_mode;
 			}
 			if (calc_pred_cov || calc_pred_var) {
-				vec_t Wsqrt(dim_mode_);//diagonal of matrix sqrt(ZtWZ) if use_Z_for_duplicates_ or sqrt(W) if !use_Z_for_duplicates_
+				vec_t Wsqrt(dim_mode_);//diagonal of matrix sqrt(ZtWZ) if use_random_effects_indices_of_data_ or sqrt(W) if !use_random_effects_indices_of_data_
 				if (HasNegativeValueInformationLogLik()) {
 					Log::REFatal("PredictLaplaceApproxStable: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
 						"Cannot have negative values when using the numerically stable version of Rasmussen and Williams (2006) for mode finding ");
@@ -4593,9 +4563,7 @@ namespace GPBoost {
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param num_data Number of data points
 		* \param SigmaI Inverse covariance matrix of latent random effect. Currently, this needs to be a diagonal matrix
-		* \param Zt Transpose Z^T of random effect design matrix that relates latent random effects to observations/likelihoods
 		* \param Ztilde matrix which relates existing random effects to prediction samples
 		* \param Sigma Covariance matrix of random effects
 		* \param pred_mean[out] Predictive mean
@@ -4608,9 +4576,7 @@ namespace GPBoost {
 		void PredictLaplaceApproxGroupedRE(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
-			const data_size_t num_data,
 			const sp_mat_t& SigmaI,
-			const sp_mat_t& Zt,
 			const sp_mat_t& Ztilde,
 			const sp_mat_t& Sigma,
 			vec_t& pred_mean,
@@ -4621,7 +4587,7 @@ namespace GPBoost {
 			bool calc_mode) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, num_data, SigmaI, Zt, false, false, mll);
+				FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, SigmaI, false, false, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				Log::REFatal(NA_OR_INF_ERROR_);
@@ -4763,7 +4729,7 @@ namespace GPBoost {
 					int n_pred = (int)pred_mean.size();
 					den_mat_t pred_cov_global = den_mat_t::Zero(n_pred, n_pred);
 					vec_t SigmaI_diag_sqrt = SigmaI.diagonal().cwiseSqrt();
-					sp_mat_rm_t Zt_W_sqrt_rm = sp_mat_rm_t(Zt * information_ll_.cwiseSqrt().asDiagonal());
+					sp_mat_rm_t Zt_W_sqrt_rm = sp_mat_rm_t((*Zt_) * information_ll_.cwiseSqrt().asDiagonal());
 					if (!cg_generator_seeded_) {
 						cg_generator_ = RNG_t(seed_rand_vec_trace_);
 						cg_generator_seeded_ = true;
@@ -4831,7 +4797,7 @@ namespace GPBoost {
 					SigmaI_plus_ZtWZ_I.setIdentity();
 					TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, false);
 					TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, true);
-					sp_mat_t Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I = (Sigma * (Zt * information_ll_.asDiagonal() * Zt.transpose())) * SigmaI_plus_ZtWZ_I;
+					sp_mat_t Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I = (Sigma * ((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose())) * SigmaI_plus_ZtWZ_I;
 					if (calc_pred_cov) {
 						pred_cov -= (T_mat)(Ztilde * Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I * Ztilde.transpose());
 					}
@@ -4845,8 +4811,8 @@ namespace GPBoost {
 					}
 					//Old code (not used anymore)
 	//              // calculate Maux = L\(Z^T * information_ll_.asDiagonal() * Cross_Cov^T)
-	//              sp_mat_t Cross_Cov = Ztilde * Sigma * Zt;
-	//              sp_mat_t Maux = Zt * information_ll_.asDiagonal() * Cross_Cov.transpose();
+	//              sp_mat_t Cross_Cov = Ztilde * Sigma * (*Zt_);
+	//              sp_mat_t Maux = (*Zt_) * information_ll_.asDiagonal() * Cross_Cov.transpose();
 	//              TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Maux, Maux, false);
 	//              if (calc_pred_cov) {
 	//                  pred_cov += (T_mat)(Maux.transpose() * Maux);
@@ -4871,9 +4837,7 @@ namespace GPBoost {
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param num_data Number of data points
 		* \param sigma2 Variance of random effects
-		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
 		* \param random_effects_indices_of_pred Indices that indicate to which training data random effect every prediction point is related. -1 means to none in the training data
 		* \param num_data_pred Number of prediction points
 		* \param Cross_Cov Cross covariance matrix between predicted and observed random effects ("=Cov(y_p,y)", = Ztilde * Sigma)
@@ -4887,9 +4851,7 @@ namespace GPBoost {
 		void PredictLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
-			const data_size_t num_data,
 			const double sigma2,
-			const data_size_t* const random_effects_indices_of_data,
 			const data_size_t* const random_effects_indices_of_pred,
 			const data_size_t num_data_pred,
 			const T_mat& Cross_Cov,
@@ -4901,8 +4863,7 @@ namespace GPBoost {
 			bool calc_mode) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_data, y_data_int, fixed_effects, num_data,
-					sigma2, random_effects_indices_of_data, mll);
+				FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_data, y_data_int, fixed_effects, sigma2, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				Log::REFatal(NA_OR_INF_ERROR_);
@@ -4918,12 +4879,11 @@ namespace GPBoost {
 			if (calc_pred_cov || calc_pred_var) {
 				if (use_variance_correction_for_prediction_) {
 					diag_information_variance_correction_for_prediction_ = true;
-					vec_t location_par(num_data);//location parameter = mode of random effects + fixed effects
-					UpdateLocationParOnlyOneGroupedRE(mode_, fixed_effects, random_effects_indices_of_data, location_par);
+					vec_t location_par(num_data_);//location parameter = mode of random effects + fixed effects
+					double* location_par_ptr_dummy;//not used
+					UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 					CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
-					diag_SigmaI_plus_ZtWZ_ = vec_t(num_re_);
-					CalcZtVGivenIndices(num_data, num_re_, random_effects_indices_of_data, information_ll_.data(), diag_SigmaI_plus_ZtWZ_.data(), true);
-					diag_SigmaI_plus_ZtWZ_.array() += 1. / sigma2;
+					diag_SigmaI_plus_ZtWZ_ = (information_ll_.array()+ 1. / sigma2).matrix();
 					diag_information_variance_correction_for_prediction_ = false;
 				}
 				vec_t minus_diag_Sigma_plus_ZtWZI_inv(num_re_);
@@ -6501,17 +6461,17 @@ namespace GPBoost {
 		vec_t SigmaI_mode_previous_value_;
 		/*! \brief Indicates whether the vector SigmaI_mode_ / a=ZSigmaZt^-1 is used or not */
 		bool has_SigmaI_mode_;
-		/*! \brief First derivatives of the log-likelihood. If use_Z_for_duplicates_, this corresponds to Z^T * first_deriv_ll, i.e., it length is num_re_ */
+		/*! \brief First derivatives of the log-likelihood. If use_random_effects_indices_of_data_, this corresponds to Z^T * first_deriv_ll, i.e., it length is num_re_ */
 		vec_t first_deriv_ll_;
-		/*! \brief First derivatives of the log-likelihood on the data scale of length num_data_. Auxiliary variable used only if use_Z_for_duplicates_ */
+		/*! \brief First derivatives of the log-likelihood on the data scale of length num_data_. Auxiliary variable used only if use_random_effects_indices_of_data_ */
 		vec_t first_deriv_ll_data_scale_;
-		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_Z_for_duplicates_, this corresponds to Z^T * information_ll, i.e., it length is num_re_ */
+		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_random_effects_indices_of_data_, this corresponds to Z^T * information_ll, i.e., it length is num_re_ */
 		vec_t information_ll_;
-		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W") on the data scale of length num_data_. Usually, this consists of the second derivatives of the negative log-likelihood. This is an auxiliary variable used only if use_Z_for_duplicates_ */
+		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W") on the data scale of length num_data_. Usually, this consists of the second derivatives of the negative log-likelihood. This is an auxiliary variable used only if use_random_effects_indices_of_data_ */
 		vec_t information_ll_data_scale_;
-		/*! \brief The off-diagonal elements (if there are any) of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_Z_for_duplicates_, this corresponds to Z^T * information_ll, i.e., it length is num_re_ */
+		/*! \brief The off-diagonal elements (if there are any) of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_random_effects_indices_of_data_, this corresponds to Z^T * information_ll, i.e., it length is num_re_ */
 		vec_t off_diag_information_ll_;
-		/*! \brief The off-diagonal elements (if there are any) of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W") on the data scale of length num_data_. Usually, this consists of the second derivatives of the negative log-likelihood. This is an auxiliary variable used only if use_Z_for_duplicates_ */
+		/*! \brief The off-diagonal elements (if there are any) of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W") on the data scale of length num_data_. Usually, this consists of the second derivatives of the negative log-likelihood. This is an auxiliary variable used only if use_random_effects_indices_of_data_ */
 		vec_t off_diag_information_ll_data_scale_;
 		/*! \brief (used only if information_has_off_diagonal_) The Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI) */
 		sp_mat_t information_ll_mat_;
@@ -6549,9 +6509,13 @@ namespace GPBoost {
 		/*! \brief If true, the function 'CalculateAuxQuantLogNormalizingConstant' has been called */
 		bool aux_normalizing_constant_has_been_calculated_ = false;
 		/*! \brief If true, an incidendce matrix Z is used for duplicate locations and calculations are done on the random effects scale with the unique locations (used, e.g., for Vecchia) */
-		bool use_Z_for_duplicates_ = false;
+		bool use_random_effects_indices_of_data_ = false;
 		/*! \brief Indices that indicate to which random effect every data point is related */
 		const data_size_t* random_effects_indices_of_data_;
+		/*! \brief True if Zt_ is used */
+		bool use_Z_ = false;
+		/*! \brief Zt Transpose Z^ T of random effects design matrix that relates latent random effects to observations / likelihoods(used only for multiple level grouped random effects) */
+		const sp_mat_t* Zt_;
 		/*! \brief True if there are weights */
 		bool has_weights_ = false;
 		/*! \brief Sample weights */
@@ -6560,8 +6524,12 @@ namespace GPBoost {
 		double likelihood_learning_rate_ = 1.;
 		/*! \brief Auxiliary weights for likelihood_learning_rate_ */
 		vec_t weights_learning_rate_;
-		/*! \brief If true, SigmaI_mode is always calculated */
+		/*! \brief If true, SigmaI_mode is always calculated  (currently not used) */
 		bool save_SigmaI_mode_ = false;
+		/*! \brief Indices of data points in grouped when the data is partitioned into groups of size group_size_ sorted according to the order of the mode  (currently not used) */
+		std::vector<std::vector<data_size_t>> group_indices_data_;
+		/*! \brief Group size if data is partitioned into groups (currently not used) */
+		data_size_t group_size_ = 100;
 
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";
@@ -7209,7 +7177,7 @@ namespace GPBoost {
 		void CalcFirstDerivLogLik(const double* y_data,
 			const int* y_data_int,
 			const double* location_par) {
-			if (!use_Z_for_duplicates_) {
+			if (!use_random_effects_indices_of_data_) {
 				CalcFirstDerivLogLik_DataScale(y_data, y_data_int, location_par, first_deriv_ll_);
 			}
 			else {
@@ -7387,7 +7355,7 @@ namespace GPBoost {
 			const int* y_data_int,
 			const double* location_par,
 			bool called_during_mode_finding) {
-			if (!use_Z_for_duplicates_) {
+			if (!use_random_effects_indices_of_data_) {
 				CalcInformationLogLik_DataScale(y_data, y_data_int, location_par, called_during_mode_finding, information_ll_, off_diag_information_ll_);
 			}
 			else {
@@ -7423,7 +7391,7 @@ namespace GPBoost {
 				//Log::REInfo("before correction: information_ll_[0:2] = %g, %g, %g, first_deriv_ll_[0:2] = %g, %g, %g ", 
 				//	information_ll_[0], information_ll_[1], information_ll_[2], first_deriv_ll_[0], first_deriv_ll_[1], first_deriv_ll_[2]);//for debugging
 				if (var_cor_pred_version_ == "freq_asymptotic") {
-					if (!use_Z_for_duplicates_) {
+					if (!use_random_effects_indices_of_data_) {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 						for (data_size_t i = 0; i < num_data_; ++i) {
 							information_ll_[i] = information_ll_[i] * information_ll_[i] / first_deriv_ll_[i] / first_deriv_ll_[i];
@@ -7438,7 +7406,7 @@ namespace GPBoost {
 					}
 				}//end var_cor_pred_version_ == "freq_asymptotic"
 				else if (var_cor_pred_version_ == "learning_rate") {
-					if (!use_Z_for_duplicates_) {
+					if (!use_random_effects_indices_of_data_) {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 						for (data_size_t i = 0; i < num_data_; ++i) {
 							information_ll_[i] = information_ll_[i] * likelihood_learning_rate_;
@@ -7589,14 +7557,14 @@ namespace GPBoost {
 				}
 			}//end approximation_type_local == "fisher_laplace"
 			else if (approximation_type_local == "lss_laplace") {
-				if (!use_Z_for_duplicates_) {
+				if (!use_random_effects_indices_of_data_) {
 					Log::REFatal("CalcInformationLogLik_DataScale: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_local.c_str());
-				}//end !use_Z_for_duplicates_
-				else {//use_Z_for_duplicates_
+				}//end !use_random_effects_indices_of_data_
+				else {//use_random_effects_indices_of_data_
 					Log::REFatal("CalcInformationLogLik_DataScale: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_local.c_str());
-				}//end use_Z_for_duplicates_
+				}//end use_random_effects_indices_of_data_
 			}//end approximation_type_local == "lss_laplace"
 			else {
 				Log::REFatal("CalcInformationLogLik_DataScale: approximation_type '%s' is not supported ", approximation_type_local.c_str());
@@ -7727,7 +7695,7 @@ namespace GPBoost {
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param location_par Location parameter (random plus fixed effects)
 		* \param[out] deriv_information_diag_loc_par First derivative of the diagonal of the Fisher information wrt the location parameter
-		* \param[out] deriv_information_diag_loc_par_data_scale First derivative of the diagonal of the Fisher information wrt the location parameter on the data-scale (only used if use_Z_for_duplicates_)
+		* \param[out] deriv_information_diag_loc_par_data_scale First derivative of the diagonal of the Fisher information wrt the location parameter on the data-scale (only used if use_random_effects_indices_of_data_)
 		*/
 		void CalcFirstDerivInformationLocPar(const double* y_data,
 			const int* y_data_int,
@@ -7736,7 +7704,7 @@ namespace GPBoost {
 			vec_t& deriv_information_diag_loc_par_data_scale) {
 			CHECK(grad_information_wrt_mode_non_zero_);
 			deriv_information_diag_loc_par = vec_t(dim_mode_per_set_re_);
-			if (use_Z_for_duplicates_) {
+			if (use_random_effects_indices_of_data_) {
 				deriv_information_diag_loc_par_data_scale = vec_t(num_data_);
 				CalcFirstDerivInformationLocPar_DataScale(y_data, y_data_int, location_par, deriv_information_diag_loc_par_data_scale);
 				CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_, deriv_information_diag_loc_par_data_scale.data(), deriv_information_diag_loc_par.data(), true);
@@ -8191,14 +8159,14 @@ namespace GPBoost {
 		/*!
 		* \brief Auxiliary function for initializinh the location parameter = mode of random effects + fixed effects
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param[out] location_par Locatioon parameter (used only if use_Z_for_duplicates_)
+		* \param[out] location_par Locatioon parameter (used only if use_random_effects_indices_of_data_)
 		* \param[out] location_par_ptr Pointer to location parameter
 		*/
 		void InitializeLocationPar(const double* fixed_effects,
 			vec_t& location_par,
 			double** location_par_ptr) {
-			if (use_Z_for_duplicates_ || fixed_effects != nullptr) {
-				location_par = vec_t(dim_location_par_);// if !use_Z_for_duplicates_ && fixed_effects == nullptr, then location_par is not used and *location_par_ptr = mode_.data()
+			if (use_random_effects_indices_of_data_ || fixed_effects != nullptr) {
+				location_par = vec_t(dim_location_par_);// if !use_random_effects_indices_of_data_ && fixed_effects == nullptr, then location_par is not used and *location_par_ptr = mode_.data()
 			}
 			UpdateLocationPar(mode_, fixed_effects, location_par, location_par_ptr);
 		}// end InitializeLocationPar
@@ -8214,7 +8182,7 @@ namespace GPBoost {
 			const double* fixed_effects,
 			vec_t& location_par,
 			double** location_par_ptr) {
-			if (use_Z_for_duplicates_) {
+			if (use_random_effects_indices_of_data_) {
 				for (int igp = 0; igp < num_sets_re_; ++igp) {
 					if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static)
@@ -8230,8 +8198,8 @@ namespace GPBoost {
 					}
 				}
 				*location_par_ptr = location_par.data();
-			}//end use_Z_for_duplicates_
-			else {
+			}//end use_random_effects_indices_of_data_
+			else {// !use_random_effects_indices_of_data_
 				CHECK(dim_location_par_ == dim_mode_);
 				if (fixed_effects == nullptr) {
 					*location_par_ptr = mode.data();
@@ -8243,34 +8211,70 @@ namespace GPBoost {
 					}
 					*location_par_ptr = location_par.data();
 				}
-			}//end !use_Z_for_duplicates_
+			}//end !use_random_effects_indices_of_data_
 		}//end UpdateLocationPar
 
 		/*!
-		* \brief Auxiliary function for updating the location parameter = mode of random effects + fixed effects
+		* \brief Auxiliary function for updating the location parameter = mode of random effects + fixed effects.
+		*			This function is used whene there are multiple level grouped random effects.
 		* \param mode Mode
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param random_effects_indices_of_data Indices that indicate to which random effect every data point is related
 		* \param[out] location_par Location parameter
 		*/
-		void UpdateLocationParOnlyOneGroupedRE(const vec_t& mode,
+		void UpdateLocationParGroupedRE(const vec_t& mode,
 			const double* fixed_effects,
-			const data_size_t* const random_effects_indices_of_data,
 			vec_t& location_par) {
 			CHECK(num_sets_re_ == 1);// not yet implemented otherwise
-			if (fixed_effects == nullptr) {
+			location_par = (*Zt_).transpose() * mode;//location parameter = mode of random effects + fixed effects
+			if (fixed_effects != nullptr) {
 #pragma omp parallel for schedule(static)
 				for (data_size_t i = 0; i < num_data_; ++i) {
-					location_par[i] = mode[random_effects_indices_of_data[i]];
+					location_par[i] += fixed_effects[i];
 				}
+			}
+		}//end UpdateLocationParGroupedRE
+
+		/*!
+		* \brief Partition the data into groups of size group_size_ sorted according to the order of the mode (currently not used)
+		*/
+		void DetermineGroupsOrderedMode() {
+			if (use_random_effects_indices_of_data_ || use_Z_) {
+				vec_t mode_data_scale(num_data_);
+				if (use_random_effects_indices_of_data_) {
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						mode_data_scale[i] = mode_[random_effects_indices_of_data_[i]];
+					}
+				}
+				else {
+					CHECK(use_Z_);
+					mode_data_scale = (*Zt_).transpose() * mode_;
+				}
+				DetermineGroupsOrderedMode_Inner(mode_data_scale);
 			}
 			else {
-#pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					location_par[i] = mode[random_effects_indices_of_data[i]] + fixed_effects[i];
-				}
+				DetermineGroupsOrderedMode_Inner(mode_); ;
 			}
-		}//end UpdateLocationParOnlyOneGroupedRE
+		}//end DetermineGroupsOrderedMode
+		void DetermineGroupsOrderedMode_Inner(const vec_t& mode) {
+			std::vector<data_size_t> idx(num_data_);
+			std::iota(idx.begin(), idx.end(), 0); // [0,1,2,…,n-1]				
+			std::sort(std::execution::par_unseq, idx.begin(), idx.end(),
+				[&mode](auto a, auto b) { return mode[a] < mode[b]; });
+			const data_size_t n_groups = num_data_ / group_size_;   // ceiling division
+			group_indices_data_.resize(n_groups);
+#pragma omp parallel for schedule(static)
+			for (data_size_t g = 0; g < n_groups; ++g) {
+				const data_size_t first = g * group_size_;
+				const data_size_t last = first + group_size_;
+				group_indices_data_[g].assign(idx.begin() + first, idx.begin() + last);
+			}
+			//merge remaing points to last group
+			if (num_data_ % group_size_ != 0) {
+				const data_size_t tail_first = n_groups * num_data_;
+				group_indices_data_.back().insert(group_indices_data_.back().end(), idx.begin() + tail_first, idx.end());
+			}
+		}//end DetermineGroupsOrderedMode_Inner
 
 		/*!
 		* \brief Make sure that the mode can only change by 'MAX_CHANGE_MODE_NEWTON_' in Newton's method (cap_change_mode_newton_)

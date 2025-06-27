@@ -1699,13 +1699,13 @@ namespace GPBoost {
 					}
 					else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
-							fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], cum_num_rand_eff_[cluster_i],
+							fixed_effects_cluster_i_ptr, SigmaI_[cluster_i], cum_num_rand_eff_[cluster_i],
 							calc_cov_aux_par_grad, calc_beta_grad, calc_grad_aux_par,
 							grad_cov_clus_i_ptr, grad_F_cluster_i, grad_aux_clus_i_ptr, false, call_for_std_dev_coef, estimate_cov_par_index_);
 					}
 					else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(y_[cluster_i].data(), y_int_[cluster_i].data(),
-							fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i], re_comps_[cluster_i][0][0]->cov_pars_[0], re_comps_[cluster_i][0][0]->random_effects_indices_of_data_.data(),
+							fixed_effects_cluster_i_ptr, re_comps_[cluster_i][0][0]->cov_pars_[0],
 							calc_cov_aux_par_grad, calc_beta_grad, calc_grad_aux_par,
 							grad_cov_clus_i_ptr, grad_F_cluster_i, grad_aux_clus_i_ptr, false, call_for_std_dev_coef, estimate_cov_par_index_);
 					}
@@ -5978,6 +5978,7 @@ namespace GPBoost {
 						false,
 						only_one_GP_calculations_on_RE_scale_,
 						re_comps_vecchia_[cluster_i][0][ind_intercept_gp_]->random_effects_indices_of_data_.data(),
+						nullptr,
 						likelihood_additional_param_,
 						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
 				}
@@ -5988,6 +5989,7 @@ namespace GPBoost {
 						true,
 						only_one_GP_calculations_on_RE_scale_,
 						re_comps_cross_cov_[cluster_i][0][ind_intercept_gp_]->random_effects_indices_of_data_.data(),
+						nullptr,
 						likelihood_additional_param_,
 						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
 				}
@@ -5998,6 +6000,7 @@ namespace GPBoost {
 						false,
 						false,
 						nullptr,
+						&(Zt_[cluster_i]),
 						likelihood_additional_param_,
 						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
 				}
@@ -6006,7 +6009,8 @@ namespace GPBoost {
 						num_data_per_cluster_[cluster_i],
 						re_comps_[cluster_i][0][0]->GetNumUniqueREs(),
 						false,
-						false,
+						true,
+						re_comps_[cluster_i][0][0]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
 						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
@@ -6018,6 +6022,7 @@ namespace GPBoost {
 						true,
 						true,
 						re_comps_[cluster_i][0][0]->random_effects_indices_of_data_.data(),
+						nullptr,
 						likelihood_additional_param_,
 						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
 				}
@@ -6027,6 +6032,7 @@ namespace GPBoost {
 						num_data_per_cluster_[cluster_i],
 						true,
 						false,
+						nullptr,
 						nullptr,
 						likelihood_additional_param_,
 						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
@@ -7331,12 +7337,12 @@ namespace GPBoost {
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], cum_num_rand_eff_[cluster_i],
+						fixed_effects_cluster_i_ptr, SigmaI_[cluster_i], cum_num_rand_eff_[cluster_i],
 						false, true, false, nullptr, grad_F_cluster_i, nullptr, false, false, estimate_cov_par_index_);
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(y_[cluster_i].data(), y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i], re_comps_[cluster_i][0][0]->cov_pars_[0], re_comps_[cluster_i][0][0]->random_effects_indices_of_data_.data(),
+						fixed_effects_cluster_i_ptr, re_comps_[cluster_i][0][0]->cov_pars_[0],
 						false, true, false, nullptr, grad_F_cluster_i, nullptr, false, false, estimate_cov_par_index_);
 				}
 				else {
@@ -8028,12 +8034,11 @@ namespace GPBoost {
 				}
 				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], first_update_, calc_mll, mll_cluster_i);
+						fixed_effects_cluster_i_ptr, SigmaI_[cluster_i], first_update_, calc_mll, mll_cluster_i);
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_[cluster_i].data(), y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i],
-						re_comps_[cluster_i][0][0]->cov_pars_[0], re_comps_[cluster_i][0][0]->random_effects_indices_of_data_.data(), mll_cluster_i);
+						fixed_effects_cluster_i_ptr, re_comps_[cluster_i][0][0]->cov_pars_[0], mll_cluster_i);
 				}
 				else {
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLStable(y_[cluster_i].data(), y_int_[cluster_i].data(),
@@ -10014,14 +10019,14 @@ namespace GPBoost {
 				// The mode has been calculated already before in the Predict() function above
 				if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i]->PredictLaplaceApproxGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i], SigmaI_[cluster_i], Zt_[cluster_i], Ztilde, Sigma,
+						fixed_effects_cluster_i_ptr, SigmaI_[cluster_i], Ztilde, Sigma,
 						mean_pred_id, cov_mat_pred_id, var_pred_id,
 						predict_cov_mat, predict_var, false);
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i]->PredictLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(y_[cluster_i].data(), y_int_[cluster_i].data(),
-						fixed_effects_cluster_i_ptr, num_data_per_cluster_[cluster_i],
-						re_comps_[cluster_i][0][0]->cov_pars_[0], re_comps_[cluster_i][0][0]->random_effects_indices_of_data_.data(),
+						fixed_effects_cluster_i_ptr,
+						re_comps_[cluster_i][0][0]->cov_pars_[0],
 						random_effects_indices_of_pred.data(), (data_size_t)random_effects_indices_of_pred.size(), cross_cov,
 						mean_pred_id, cov_mat_pred_id, var_pred_id,
 						predict_cov_mat, predict_var, false);

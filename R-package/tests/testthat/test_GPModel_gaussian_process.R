@@ -131,8 +131,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), num_it)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_STRICT)
     # Can switch between likelihoods
-    gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-    gp_model$set_likelihood("gamma")
+    gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood="gamma")
     gp_model$set_likelihood("gaussian")
     capture.output( fit(gp_model, y = y, params = params), 
                     file='NUL')
