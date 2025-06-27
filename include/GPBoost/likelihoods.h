@@ -6529,7 +6529,7 @@ namespace GPBoost {
 		/*! \brief Indices of data points in grouped when the data is partitioned into groups of size group_size_ sorted according to the order of the mode  (currently not used) */
 		std::vector<std::vector<data_size_t>> group_indices_data_;
 		/*! \brief Group size if data is partitioned into groups (currently not used) */
-		data_size_t group_size_ = 100;
+		data_size_t group_size_ = 1000;
 		/*! \brief Number of groups (currently not used) */
 		data_size_t num_groups_partition_data_ = 0;
 
