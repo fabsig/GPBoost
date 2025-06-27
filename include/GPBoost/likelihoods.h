@@ -6531,7 +6531,7 @@ namespace GPBoost {
 		/*! \brief Group size if data is partitioned into groups (currently not used) */
 		data_size_t group_size_ = 100;
 		/*! \brief Number of groups (currently not used) */
-		data_size_t num_groups_partition_data_;
+		data_size_t num_groups_partition_data_ = 0;
 
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";
