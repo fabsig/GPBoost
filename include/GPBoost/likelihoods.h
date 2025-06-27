@@ -8258,10 +8258,10 @@ namespace GPBoost {
 		}//end DetermineGroupsOrderedMode
 		void DetermineGroupsOrderedMode_Inner(const vec_t& mode) {
 			std::vector<data_size_t> idx(num_data_);
-			std::iota(idx.begin(), idx.end(), 0); // [0,1,2,…,n-1]				
+			std::iota(idx.begin(), idx.end(), 0);// [0,1,2,…,n-1]       
 			std::sort(std::execution::par_unseq, idx.begin(), idx.end(),
 				[&mode](auto a, auto b) { return mode[a] < mode[b]; });
-			const data_size_t n_groups = num_data_ / group_size_;   // ceiling division
+			const data_size_t n_groups = num_data_ / group_size_;// ceiling division
 			group_indices_data_.resize(n_groups);
 #pragma omp parallel for schedule(static)
 			for (data_size_t g = 0; g < n_groups; ++g) {
@@ -8271,7 +8271,7 @@ namespace GPBoost {
 			}
 			//merge remaing points to last group
 			if (num_data_ % group_size_ != 0) {
-				const data_size_t tail_first = n_groups * num_data_;
+				const data_size_t tail_first = n_groups * group_size_;
 				group_indices_data_.back().insert(group_indices_data_.back().end(), idx.begin() + tail_first, idx.end());
 			}
 		}//end DetermineGroupsOrderedMode_Inner
