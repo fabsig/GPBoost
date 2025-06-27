@@ -6530,6 +6530,8 @@ namespace GPBoost {
 		std::vector<std::vector<data_size_t>> group_indices_data_;
 		/*! \brief Group size if data is partitioned into groups (currently not used) */
 		data_size_t group_size_ = 100;
+		/*! \brief Number of groups (currently not used) */
+		data_size_t num_groups_partition_data_;
 
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";
@@ -8261,17 +8263,17 @@ namespace GPBoost {
 			std::iota(idx.begin(), idx.end(), 0);// [0,1,2,…,n-1]       
 			std::sort(std::execution::par_unseq, idx.begin(), idx.end(),
 				[&mode](auto a, auto b) { return mode[a] < mode[b]; });
-			const data_size_t n_groups = num_data_ / group_size_;// ceiling division
-			group_indices_data_.resize(n_groups);
+			num_groups_partition_data_ = num_data_ / group_size_;// ceiling division
+			group_indices_data_.resize(num_groups_partition_data_);
 #pragma omp parallel for schedule(static)
-			for (data_size_t g = 0; g < n_groups; ++g) {
+			for (data_size_t g = 0; g < num_groups_partition_data_; ++g) {
 				const data_size_t first = g * group_size_;
 				const data_size_t last = first + group_size_;
 				group_indices_data_[g].assign(idx.begin() + first, idx.begin() + last);
 			}
 			//merge remaing points to last group
 			if (num_data_ % group_size_ != 0) {
-				const data_size_t tail_first = n_groups * group_size_;
+				const data_size_t tail_first = num_groups_partition_data_ * group_size_;
 				group_indices_data_.back().insert(group_indices_data_.back().end(), idx.begin() + tail_first, idx.end());
 			}
 		}//end DetermineGroupsOrderedMode_Inner
