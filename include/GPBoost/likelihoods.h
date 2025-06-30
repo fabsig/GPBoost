@@ -8250,12 +8250,22 @@ namespace GPBoost {
 				}
 				else {
 					CHECK(use_Z_);
-					mode_data_scale = (*Zt_).transpose() * mode_;
+					if (num_sets_re_ == 1) {
+						mode_data_scale = (*Zt_).transpose() * mode_;
+					}
+					else {
+						mode_data_scale = (*Zt_).transpose() * (mode_.segment(0, dim_mode_per_set_re_));
+					}
 				}
 				DetermineGroupsOrderedMode_Inner(mode_data_scale);
 			}
 			else {
-				DetermineGroupsOrderedMode_Inner(mode_); ;
+				if (num_sets_re_ == 1) {
+					DetermineGroupsOrderedMode_Inner(mode_);
+				}
+				else {
+					DetermineGroupsOrderedMode_Inner(mode_.segment(0,num_data_));
+				}
 			}
 		}//end DetermineGroupsOrderedMode
 		void DetermineGroupsOrderedMode_Inner(const vec_t& mode) {
