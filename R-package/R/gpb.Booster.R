@@ -827,8 +827,8 @@ Booster <- R6::R6Class(
             fixed_effect <- NULL
           }
           
-        }# end Gaussian data
-        else{# non-Gaussian data
+        }# end Gaussian likelihood
+        else{# non-Gaussian likelihood
           
           y <- NULL
           # Either use raw_data or data loaded from file for determining fixed_effect_train
@@ -861,8 +861,18 @@ Booster <- R6::R6Class(
                                             , predcontrib = FALSE
                                             , header = header
                                             , reshape = FALSE )
+
+          if (private$gp_model$.__enclos_env__$private$num_sets_fe == 2) {
+            nt <- length(fixed_effect_train) / 2
+            fixed_effect_train <- fixed_effect_train[c((1:nt)*2 - 1, (1:nt)*2)]
+          }
           
           if (pred_latent) {
+            
+            if (private$gp_model$.__enclos_env__$private$num_sets_fe == 2) {
+              np <- length(fixed_effect) / 2
+              fixed_effect <- fixed_effect[(1:np)*2 - 1] # take only predictions for mean
+            }
             
             # Note: we don't need to provide the response variable y as this is saved
             #   in the gp_model ("in C++") for non-Gaussian data. y is only not NULL when
@@ -893,7 +903,10 @@ Booster <- R6::R6Class(
             
           }# end pred_latent
           else {# predict response variable for non-Gaussian data
-            
+            if (private$gp_model$.__enclos_env__$private$num_sets_fe == 2) {
+              np <- length(fixed_effect) / 2
+              fixed_effect <- fixed_effect[c((1:np)*2 - 1, (1:np)*2)] # fixed effects predictions for mean and variance
+            }
             pred_resp <- private$gp_model$predict( group_data_pred = group_data_pred
                                                   , group_rand_coef_data_pred = group_rand_coef_data_pred
                                                   , gp_coords_pred = gp_coords_pred
@@ -927,7 +940,7 @@ Booster <- R6::R6Class(
         preds <- predictor$predict(data = data, start_iteration = start_iteration
           , num_iteration = num_iteration, rawscore = pred_latent, predleaf = predleaf
           , predcontrib = predcontrib, header = header, reshape = reshape)
-        n <- length(preds) / 2
+        npred <- length(preds) / 2
         pred_mean <- preds[(1:npred)*2 - 1]
         pred_var <- exp(preds[(1:npred)*2])
         return(list(pred_mean = pred_mean, pred_var = pred_var))

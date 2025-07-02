@@ -3583,7 +3583,7 @@ class Booster:
                         response_var = random_effect_pred['var']
                     response_mean = random_effect_pred['mu'] + fixed_effect
                     fixed_effect = None
-            else:  # non-Gaussian data
+            else:  # non-Gaussian likelihood
                 y = None
                 if not has_raw_data and self.gp_model_prediction_data_loaded_from_file:
                     fixed_effect_train = self.fixed_effect_train_loaded_from_file
@@ -3599,7 +3599,11 @@ class Booster:
                                                  num_iteration=num_iteration, raw_score=True, pred_leaf=False,
                                                  pred_contrib=False, data_has_header=data_has_header,
                                                  is_reshape=False)
+                if self.gp_model.num_sets_fe == 2:
+                    fixed_effect_train = np.concatenate((fixed_effect_train[::2], fixed_effect_train[1::2]))
                 if pred_latent:
+                    if self.gp_model.num_sets_fe == 2:
+                        fixed_effect = fixed_effect[::2] # take only predictions for mean
                     # Note: we don't need to provide the response variable y as this is saved
                     #   in the gp_model ("in C++") for non-Gaussian data. y is only not NULL when
                     #   the model was loaded from a file
@@ -3623,6 +3627,8 @@ class Booster:
                         pred_var_cov = random_effect_pred['var']
                     random_effect_mean = random_effect_pred['mu']
                 else:  # predict response variable (not pred_latent)
+                    if self.gp_model.num_sets_fe == 2:
+                        fixed_effect = np.concatenate((fixed_effect[::2], fixed_effect[1::2])) # fixed effects predictions for mean and variance
                     pred_resp = self.gp_model.predict(group_data_pred=group_data_pred,
                                                       group_rand_coef_data_pred=group_rand_coef_data_pred,
                                                       gp_coords_pred=gp_coords_pred,
@@ -4424,6 +4430,7 @@ class GPModel(object):
                        "estimate_cov_par_index": np.array([-1], dtype=np.int32)
                        }
         self.num_sets_re = 1
+        self.num_sets_fe = 1
 
         if (model_file is not None) or (model_dict is not None):
             if model_file is not None:
@@ -4474,13 +4481,17 @@ class GPModel(object):
                 self.num_sets_re = 1 # for backwards compatibility
             else:
                 self.num_sets_re = model_dict.get("num_sets_re")
+            if model_dict.get("num_sets_fe") is None:
+                self.num_sets_fe = 1 # for backwards compatibility
+            else:
+                self.num_sets_fe = model_dict.get("num_sets_fe")
             self.has_covariates = model_dict.get("has_covariates")
             if model_dict.get("has_covariates"):
                 if model_dict.get("coefs") is not None:
                     self.coefs_loaded_from_file = np.array(model_dict.get("coefs"))
                 self.num_covariates = model_dict.get("num_covariates")
                 self.num_coef = model_dict.get("num_coef")
-                if self.num_coef != self.num_covariates * self.num_sets_re:
+                if self.num_coef != self.num_covariates * self.num_sets_fe:
                     raise ValueError("incorrect 'num_coef'")
                 if model_dict.get("X") is not None:
                     self.X_loaded_from_file = np.array(model_dict.get("X"))
@@ -4493,7 +4504,7 @@ class GPModel(object):
                             self.coef_names.append("Covariate_" + str(ii + 1))
                         else:
                             self.coef_names.append(X_names[ii])
-                    if self.num_sets_re == 2:
+                    if self.num_sets_fe == 2:
                         self.coef_names = self.coef_names + [name + "_scale" for name in self.coef_names]
             self.model_fitted = model_dict.get("model_fitted")
             if self.model_fitted:
@@ -4503,6 +4514,7 @@ class GPModel(object):
             raise ValueError("Both group_data and gp_coords are None. Provide at least one of them")
         if likelihood == "gaussian_heteroscedastic":
             self.num_sets_re = 2
+            self.num_sets_fe = 2
         if likelihood == "gaussian" and gp_approx != "vecchia_latent":
             self.cov_par_names = ["Error_term"]
         else:
@@ -4866,7 +4878,7 @@ class GPModel(object):
                                                               convert_to_type=np.float64)
                         if self.num_covariates is None or self.num_covariates == 0:
                             self.num_covariates = params["init_coef"].shape[0]
-                            self.num_coef = self.num_covariates * self.num_sets_re
+                            self.num_coef = self.num_covariates * self.num_sets_fe
                         if params["init_coef"].shape[0] != self.num_coef:
                             raise ValueError("params['init_coef'] does not contain the correct number of parameters")
                 if param == "init_aux_pars":
@@ -5091,7 +5103,7 @@ class GPModel(object):
                 raise ValueError("Incorrect number of data points in X")
             self.has_covariates = True
             self.num_covariates = X.shape[1]
-            self.num_coef = self.num_covariates * self.num_sets_re
+            self.num_coef = self.num_covariates * self.num_sets_fe
             X_c, _, _ = c_float_array(X.flatten(order='F'))
             self.coef_names = []
             for ii in range(self.num_covariates):
@@ -5099,7 +5111,7 @@ class GPModel(object):
                     self.coef_names.append("Covariate_" + str(ii + 1))
                 else:
                     self.coef_names.append(X_names[ii])
-            if self.num_sets_re == 2:
+            if self.num_sets_fe == 2:
                 self.coef_names = self.coef_names + [name + "_scale" for name in self.coef_names]
         else:
             self.has_covariates = False
@@ -5171,7 +5183,7 @@ class GPModel(object):
                 raise ValueError("'fixed_effects' needs to be a numpy.ndarray ")
             if len(fixed_effects.shape) != 1:
                 raise ValueError("'fixed_effects' needs to be a vector / one-dimensional numpy.ndarray ")
-            if fixed_effects.shape[0] != self.num_data * self.num_sets_re:
+            if fixed_effects.shape[0] != self.num_data * self.num_sets_fe:
                 raise ValueError("Length of 'fixed_effects' is not correct ")
             fixed_effects_c = fixed_effects.astype(np.float64)
             fixed_effects_c = fixed_effects_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
@@ -5893,7 +5905,7 @@ class GPModel(object):
                 raise ValueError("'offset' needs to be a numpy.ndarray")
             if len(offset.shape) != 1:
                 raise ValueError("'offset' needs to be a vector / one-dimensional numpy.ndarray ")
-            if offset.shape[0] != (self.num_data * self.num_sets_re):
+            if offset.shape[0] != (self.num_data * self.num_sets_fe):
                 raise ValueError("Incorrect number of data points in 'offset'")
             offset = offset.astype(np.float64)
             offset_c = offset.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
@@ -5902,7 +5914,7 @@ class GPModel(object):
                 raise ValueError("'offset_pred' needs to be a numpy.ndarray")
             if len(offset_pred.shape) != 1:
                 raise ValueError("'offset_pred' needs to be a vector / one-dimensional numpy.ndarray ")
-            if offset_pred.shape[0] != (num_data_pred * self.num_sets_re):
+            if offset_pred.shape[0] != (num_data_pred * self.num_sets_fe):
                 raise ValueError("Incorrect number of data points in 'offset_pred'")
             offset_pred = offset_pred.astype(np.float64)
             offset_pred_c = offset_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
@@ -6300,6 +6312,7 @@ class GPModel(object):
         model_dict["seed"] = self.seed
         model_dict["num_parallel_threads"] = self.num_parallel_threads
         model_dict["num_sets_re"] = self.num_sets_re
+        model_dict["num_sets_fe"] = self.num_sets_fe
         # Covariate data
         model_dict["has_covariates"] = self.has_covariates
         if self.has_covariates:
