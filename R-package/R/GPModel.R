@@ -1763,7 +1763,7 @@ gpb.GPModel <- R6::R6Class(
         } else {
           stop("predict.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("offset"))
         }
-        if (length(offset) != private$num_data) {
+        if (length(offset) != (private$num_data * private$num_sets_re)) {
           stop("predict.GPModel: Length of ", sQuote("offset"), " does not match number of observed data points")
         }
       }# end offset
@@ -1776,7 +1776,7 @@ gpb.GPModel <- R6::R6Class(
         } else {
           stop("predict.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("offset_pred"))
         }
-        if (length(offset_pred) != num_data_pred) {
+        if (length(offset_pred) != (num_data_pred * private$num_sets_re)) {
           stop("predict.GPModel: Length of ", sQuote("offset"), " does not match number of predicted data points")
         }
       }# end offset_pred

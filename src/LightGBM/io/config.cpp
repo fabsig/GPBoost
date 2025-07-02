@@ -272,7 +272,7 @@ void Config::CheckParamConflict() {
   int num_class_check = num_class;
   bool objective_type_multiclass = CheckMultiClassObjective(objective) || (objective == std::string("custom") && num_class_check > 1);
 
-  if (objective != "mean_scale_regression") {
+  if (objective != "mean_scale_regression" && !has_gp_model) {
       if (objective_type_multiclass) {
           if (num_class_check <= 1) {
               Log::Fatal("Number of classes should be specified and greater than 1 for multiclass training");

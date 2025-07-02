@@ -129,6 +129,7 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 			}
 			else {
 				config_.has_gp_model = true;
+				config_.num_class = re_model->GetNumSetsFixedEffects();
 			}
 			auto param = Config::Str2Map(parameters);
 			config_.Set(param);

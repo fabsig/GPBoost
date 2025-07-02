@@ -4848,6 +4848,8 @@ namespace GPBoost {
 		int num_sets_re_ = 1;
 		/*! \brief Number of covariance parameters per sets of random effects / GPs. This is larger than 1, e.g., heteroscedastic models */
 		int num_cov_par_per_set_re_;
+		/*! \brief Number of fixed effects sets (>1 e.g. for heteroscedastic models) */
+		int num_sets_fixed_effects_ = 1;
 
 		// SPECIAL CASES OF RE MODELS FOR FASTER CALCULATIONS
 		/*! \brief If true, the Woodbury, Sherman and Morrison matrix inversion formula is used for calculating the inverse of the covariance matrix (only used if there are only grouped REs and no Gaussian processes) */
@@ -6042,6 +6044,7 @@ namespace GPBoost {
 				}
 			}
 			num_sets_re_ = likelihood_[unique_clusters_[0]]->GetNumSetsRE();
+			num_sets_fixed_effects_ = num_sets_re_;
 			if (num_sets_re_ > 1) {
 				if (!(gp_approx_ == "vecchia" && num_gp_ ==1 && num_comps_total_ == 1)) {
 					Log::REFatal("likelihood = '%s' is currently only supported for GPs with a 'vecchia' approximation ", (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());

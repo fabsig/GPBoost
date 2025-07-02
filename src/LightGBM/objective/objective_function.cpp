@@ -156,16 +156,16 @@ namespace LightGBM {
 			re_model_->InitializeCovParsIfNotDefined(nullptr, nullptr);
 			likelihood_type_ = re_model_->GetLikelihood();
 		}
-		num_sets_re_ = re_model_->GetNumSetsRE();
+		num_sets_fixed_effects_ = re_model_->GetNumSetsFixedEffects();
 	}
 
 	bool ObjectiveFunction::HasGPModel() const {
 		return(has_gp_model_);
 	}
 
-	int ObjectiveFunction::GetNumSetsRE_GPModel() const {
+	int ObjectiveFunction::GetNumSetsFixedEffects() const {
 		CHECK(has_gp_model_);
-		return(num_sets_re_);
+		return(num_sets_fixed_effects_);
 	}
 
 	bool ObjectiveFunction::UseGPModelForValidation() const {

@@ -106,7 +106,7 @@ namespace LightGBM {
 
 		int NumModelPerIteration() const override { 
 			if (has_gp_model_) {
-				return(num_sets_re_);
+				return(num_sets_fixed_effects_);
 			}
 			else {
 				return 1;
@@ -171,7 +171,7 @@ namespace LightGBM {
 					}//end Gaussian data
 					else {//non-Gaussian data
 #pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_ * num_sets_re_; ++i) {
+						for (data_size_t i = 0; i < num_data_ * num_sets_fixed_effects_; ++i) {
 							hessians[i] = 1.0f;
 						}
 						if (train_gp_model_cov_pars_) {//also train covariance parameters

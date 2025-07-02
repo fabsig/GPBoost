@@ -95,7 +95,7 @@ namespace LightGBM {
 		num_tree_per_iteration_ = num_class_;
 		if (objective_function_ != nullptr) {
 			if (objective_function_->HasGPModel()) {
-				num_tree_per_iteration_ = objective_function_->GetNumSetsRE_GPModel();
+				num_tree_per_iteration_ = objective_function_->GetNumSetsFixedEffects();
 			}
 			else {
 				num_tree_per_iteration_ = objective_function_->NumModelPerIteration();

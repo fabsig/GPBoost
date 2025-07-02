@@ -5893,7 +5893,7 @@ class GPModel(object):
                 raise ValueError("'offset' needs to be a numpy.ndarray")
             if len(offset.shape) != 1:
                 raise ValueError("'offset' needs to be a vector / one-dimensional numpy.ndarray ")
-            if offset.shape[0] != self.num_data:
+            if offset.shape[0] != (self.num_data * self.num_sets_re):
                 raise ValueError("Incorrect number of data points in 'offset'")
             offset = offset.astype(np.float64)
             offset_c = offset.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
@@ -5902,7 +5902,7 @@ class GPModel(object):
                 raise ValueError("'offset_pred' needs to be a numpy.ndarray")
             if len(offset_pred.shape) != 1:
                 raise ValueError("'offset_pred' needs to be a vector / one-dimensional numpy.ndarray ")
-            if offset_pred.shape[0] != num_data_pred:
+            if offset_pred.shape[0] != (num_data_pred * self.num_sets_re):
                 raise ValueError("Incorrect number of data points in 'offset_pred'")
             offset_pred = offset_pred.astype(np.float64)
             offset_pred_c = offset_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
