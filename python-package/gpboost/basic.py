@@ -2353,6 +2353,7 @@ class Booster:
         self.label_loaded_from_file = None
         self.fixed_effect_train_loaded_from_file = None
         self.gp_model_prediction_data_loaded_from_file = False
+        self.is_mean_scale_regression = False
         params = {} if params is None else deepcopy(params)
         if gp_model is not None:
             if not isinstance(gp_model, GPModel):
@@ -2503,6 +2504,8 @@ class Booster:
             raise TypeError('Need at least one training dataset or model file or model string '
                             'to create Booster instance')
         self.params = params
+        if self.params.get("objective", None) == "mean_scale_regression":
+            self.is_mean_scale_regression = True
 
     def __del__(self):
         try:
@@ -3639,7 +3642,14 @@ class Booster:
                     "random_effect_mean": random_effect_mean,
                     "random_effect_cov": pred_var_cov,
                     "response_mean": response_mean,
-                    "response_var": response_var}
+                    "response_var": response_var} # end GPBoost prediction        
+        elif self.is_mean_scale_regression:
+            preds = predictor.predict(data=data, start_iteration=start_iteration, num_iteration=num_iteration,
+                                     raw_score=pred_latent, pred_leaf=pred_leaf, pred_contrib=pred_contrib,
+                                     data_has_header=data_has_header, is_reshape=is_reshape)
+            pred_mean = preds[:,0]
+            pred_var  = np.exp(preds[:,1])
+            return {"pred_mean": pred_mean, "pred_var": pred_var}
         else:  # no gp_model or pred_contrib or ignore_gp_model
             return predictor.predict(data=data, start_iteration=start_iteration, num_iteration=num_iteration,
                                      raw_score=pred_latent, pred_leaf=pred_leaf, pred_contrib=pred_contrib,

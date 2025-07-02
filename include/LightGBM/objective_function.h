@@ -146,9 +146,9 @@ namespace LightGBM {
 		* \param new_score Number of leaves
 		* \param[out] lr Optimal learning rate
 		*/
-		virtual void LineSearchLearningRate(const double* score,
+		void LineSearchLearningRate(const double* score,
 			const double* new_score,
-			double& lr) const = 0;//used only for "regression" loss
+			double& lr) const;//used only for "regression" loss
 
 	protected:
 		///*! \brief Gaussian process model */

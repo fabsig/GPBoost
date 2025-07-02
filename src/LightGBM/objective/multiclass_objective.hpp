@@ -130,12 +130,6 @@ class MulticlassSoftmax: public ObjectiveFunction {
     }
   }
 
-  void LineSearchLearningRate(const double*,
-      const double*,
-      double&) const override {//used only for "regression" loss
-      Log::Fatal("LineSearchLearningRate has not been implemented for 'multiclass' loss");
-  }
-
   void ConvertOutput(const double* input, double* output) const override {
     Common::Softmax(input, output, num_class_);
   }
@@ -237,12 +231,6 @@ class MulticlassOVA: public ObjectiveFunction {
       int64_t offset = static_cast<int64_t>(num_data_) * i;
       binary_loss_[i]->GetGradients(score + offset, gradients + offset, hessians + offset);
     }
-  }
-
-  void LineSearchLearningRate(const double*,
-      const double*,
-      double&) const override {//used only for "regression" loss
-      Log::Fatal("LineSearchLearningRate has not been implemented for 'multiclassova' loss");
   }
 
   const char* GetName() const override {

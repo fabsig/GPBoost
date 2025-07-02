@@ -15,6 +15,7 @@
 #include <chrono>
 #include <ctime>
 #include <sstream>
+#include <cstring>
 
 namespace LightGBM {
 
@@ -61,6 +62,11 @@ namespace LightGBM {
 		num_iteration_for_pred_ = 0;
 		max_feature_idx_ = 0;
 		num_class_ = config->num_class;
+		if (objective_function != nullptr) {
+			if (std::strcmp(objective_function->GetName(), "mean_scale_regression") == 0) {
+				num_class_ = 2;
+			}
+		}
 		config_ = std::unique_ptr<Config>(new Config(*config));
 		early_stopping_round_ = config_->early_stopping_round;
 		es_first_metric_only_ = config_->first_metric_only;
@@ -170,7 +176,7 @@ namespace LightGBM {
 		for (const auto& metric : valid_metrics) {
 			valid_metrics_.back().push_back(metric);
 			if ((metric->GetName()[0] == std::string("test_neg_log_likelihood") || metric->GetName()[0] == std::string("crps_gaussian")) &&
-				!(objective_function_->UseGPModelForValidation())) {
+				!(objective_function_->UseGPModelForValidation()) && !(std::strcmp(objective_function_->GetName(), "mean_scale_regression") == 0)) {
 				calculate_residual_variance_ = true;
 			}
 		}

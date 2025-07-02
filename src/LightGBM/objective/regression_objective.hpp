@@ -1,6 +1,6 @@
 /*!
 * Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
-* Modified work Copyright (c) 2020-2024 Fabio Sigrist. All rights reserved.
+* Modified work Copyright (c) 2020 - 2025 Fabio Sigrist. All rights reserved.
 * Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 */
 #ifndef LIGHTGBM_OBJECTIVE_REGRESSION_OBJECTIVE_HPP_
@@ -199,21 +199,6 @@ namespace LightGBM {
 				}
 			}
 		}//end GetGradients
-
-		void LineSearchLearningRate(const double* score,
-			const double* new_score,
-			double& lr) const override {
-			if (has_gp_model_) {
-				if (re_model_->GaussLikelihood()) {//Gaussian likelihood
-					lr *= -1;//re_model_template_.h contains (score - label_) from previous 'GetGradients' call and not (label_ - score) -> need to invert sign of lr
-					re_model_->LineSearchLearningRate(nullptr, new_score, reuse_learning_rates_gp_model_, lr);//current score / fixed_effects is omitted since this has already been set in y_vec_ in re_model_template.h when calling 'GetGradients' above
-					lr *= -1;//re_model_template_.h contains (score - label_) from previous 'GetGradients' call and not (label_ - score) -> need to invert sign of lr
-				}
-				else {
-					re_model_->LineSearchLearningRate(score, new_score, reuse_learning_rates_gp_model_, lr);
-				}
-			}
-		}
 
 		const char* GetName() const override {
 			return "regression";
@@ -1011,6 +996,134 @@ namespace LightGBM {
 		double yu_;
 		/*! \brief Normalizing constant for (negative) Tobit log-likelihood not depending on data */
 		double const_;
+	};
+
+	/*!
+	* \brief Objective function for mean-scale regression
+	*/
+	class MeanScaleLoss : public ObjectiveFunction {
+	public:
+
+		int NumModelPerIteration() const override {
+			return 2;
+		}
+
+		explicit MeanScaleLoss(const Config& config)
+			: deterministic_(config.deterministic) {
+		}
+
+		explicit MeanScaleLoss(const std::vector<std::string>& )
+			: deterministic_(false) {
+		}
+
+		~MeanScaleLoss() {
+		}
+
+		void Init(const Metadata& metadata, data_size_t num_data) override {
+			num_data_ = num_data;
+			label_ = metadata.label();
+			weights_ = metadata.weights();
+		}
+
+		void GetGradients(const double* score, score_t* gradients,
+			score_t* hessians) const override {
+			if (weights_ == nullptr) {
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double inv_var = std::exp(-score[i + num_data_]);
+					double neg_resid = score[i] - label_[i];
+					gradients[i] = static_cast<score_t>(inv_var * neg_resid);
+					hessians[i] = static_cast<score_t>(inv_var);
+					hessians[i + num_data_] = static_cast<score_t>(inv_var * neg_resid * neg_resid / 2.);
+					gradients[i + num_data_] = -hessians[i + num_data_] + 0.5;
+				}
+			}
+			else {
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double inv_var = std::exp(-score[i + num_data_]);
+					double neg_resid = score[i] - label_[i];
+					gradients[i] = static_cast<score_t>(neg_resid * inv_var * weights_[i]);
+					hessians[i] = static_cast<score_t>(inv_var * weights_[i]);
+					hessians[i + num_data_] = static_cast<score_t>(inv_var * neg_resid * neg_resid / 2. * weights_[i]);
+					gradients[i + num_data_] = -gradients[i + num_data_] + 0.5;
+				}
+			}
+		}//end GetGradients
+
+		const char* GetName() const override {
+			return "mean_scale_regression";
+		}
+
+		void ConvertOutput(const double* input, double* output) const override {
+			output[0] = input[0];
+		}
+
+		std::string ToString() const override {
+			std::stringstream str_buf;
+			str_buf << GetName();
+			return str_buf.str();
+		}
+
+		bool IsConstantHessian() const override {
+			return false;
+		}
+
+		double BoostFromScore(int num_tree) const override {
+			double suml = 0.0f;
+			double sumw = 0.0f;
+			double initscore = 0.0f;
+			if (num_tree == 0) {
+				if (weights_ != nullptr) {
+#pragma omp parallel for schedule(static) reduction(+:suml, sumw) if (!deterministic_)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						suml += label_[i] * weights_[i];
+						sumw += weights_[i];
+					}
+					initscore = suml / sumw;
+				}
+				else {
+					sumw = static_cast<double>(num_data_);
+#pragma omp parallel for schedule(static) reduction(+:suml) if (!deterministic_)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						suml += label_[i];
+					}
+					initscore = suml / sumw;
+				}
+			}
+			else if (num_tree == 1) {
+				double sum_sq = 0.0f;
+				if (weights_ != nullptr) {
+#pragma omp parallel for schedule(static) reduction(+:suml, sumw) if (!deterministic_)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						suml += label_[i] * weights_[i];
+						sum_sq += label_[i] * label_[i] * weights_[i];
+						sumw += weights_[i];
+					}
+					initscore = std::log(sum_sq / sumw - suml * suml / sumw / sumw);
+				}
+				else {
+					sumw = static_cast<double>(num_data_);
+#pragma omp parallel for schedule(static) reduction(+:suml) if (!deterministic_)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						suml += label_[i];
+						sum_sq += label_[i] * label_[i];
+					}
+					initscore = std::log(sum_sq / sumw - suml * suml / sumw / sumw);
+				}
+			}
+			return initscore;
+		}
+
+	protected:
+		/*! \brief Number of data */
+		data_size_t num_data_;
+		/*! \brief Pointer of label */
+		const label_t* label_;
+		/*! \brief Pointer of weights */
+		const label_t* weights_;
+		const bool deterministic_;
+		std::function<bool(label_t)> is_pos_ = [](label_t label) { return label > 0; };
 	};
 
 #undef PercentileFun

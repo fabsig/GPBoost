@@ -66,3 +66,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   expect_lt(sum(abs(y_pred_no_limits - y_pred_l2)),TOLERANCE)
   
 }
+
+context("mean_scale_regression")
+
+if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
+  # train model and make predictions
+  dtrain <- gpb.Dataset(data = X, label = y)
+  bst <- gpb.train(data = dtrain, nrounds = 100, objective = "mean_scale_regression", verbose = 0)
+  y_pred <- predict(bst, data = X_test)
+  expect_lt(sum(abs(tail(y_pred$pred_mean)-c(4.799971, 3.923057, 4.809607, 4.648908, 4.798814, 4.787426))),TOLERANCE)
+  expect_lt(sum(abs(tail(y_pred$pred_var)-c(1.565620e-08, 1.119467e-01, 3.535502e-05, 3.352519e-04, 8.629310e-07, 3.238109e-06))),TOLERANCE)
+}

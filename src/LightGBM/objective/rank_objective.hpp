@@ -64,12 +64,6 @@ class RankingObjective : public ObjectiveFunction {
     }
   }
 
-  void LineSearchLearningRate(const double*,
-      const double*,
-      double&) const override {//used only for "regression" loss
-      Log::Fatal("LineSearchLearningRate has not been implemented for 'rank' loss");
-  }
-
   virtual void GetGradientsForOneQuery(data_size_t query_id, data_size_t cnt,
                                        const label_t* label,
                                        const double* score, score_t* lambdas,

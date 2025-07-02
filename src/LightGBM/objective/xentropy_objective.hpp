@@ -95,12 +95,6 @@ class CrossEntropy: public ObjectiveFunction {
     }
   }
 
-  void LineSearchLearningRate(const double*,
-      const double*,
-      double&) const override {//used only for "regression" loss
-      Log::Fatal("LineSearchLearningRate has not been implemented for 'cross_entropy' loss");
-  }
-
   const char* GetName() const override {
     return "cross_entropy";
   }
@@ -222,12 +216,6 @@ class CrossEntropyLambda: public ObjectiveFunction {
         hessians[i] = static_cast<score_t>(a * (1.0f + y * b));
       }
     }
-  }
-
-  void LineSearchLearningRate(const double*,
-      const double*,
-      double&) const override {//used only for "regression" loss
-      Log::Fatal("LineSearchLearningRate has not been implemented for 'cross_entropy_lambda' loss");
   }
 
   const char* GetName() const override {

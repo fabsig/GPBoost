@@ -23,7 +23,7 @@ This page contains descriptions of all tree-boosting (i.e., not random effects) 
 Core Parameters
 ---------------
 
--  ``objective`` :raw-html:`<a id="objective" title="Permalink to this parameter" href="#objective">&#x1F517;&#xFE0E;</a>`, default = ``gaussian``, type = string, options: ``gaussian``, ``bernoulli_probit``, ``binary_logit``, ``poisson``, ``gamma``, aliases: ``likelihood``, ``objective_type``, ``app``, ``application``
+-  ``objective`` :raw-html:`<a id="objective" title="Permalink to this parameter" href="#objective">&#x1F517;&#xFE0E;</a>`, default = ``gaussian``, type = string, options: ``gaussian``, ``bernoulli_probit``, ``binary_logit``, ``poisson``, ``gamma``, ``negative_binomial``, ``t``, ``tobit``, ``mean_scale_regression``, aliases: ``likelihood``, ``objective_type``, ``app``, ``application``
 
    -  The distribution of the response variable (=label) conditional on fixed and random effects.
 
@@ -44,6 +44,8 @@ Core Parameters
       -  ``gamma``, Gamma likelihood with a log link function
 
       -  ``negative_binomial``, negative binomial likelihood with a log link function
+
+      -  ``t``, t distribution for robust regression
 
 -  ``num_iterations`` :raw-html:`<a id="num_iterations" title="Permalink to this parameter" href="#num_iterations">&#x1F517;&#xFE0E;</a>`, default = ``100``, type = int, aliases: ``num_iteration``, ``n_iter``, ``num_tree``, ``num_trees``, ``num_round``, ``num_rounds``, ``num_boost_round``, ``n_estimators``, constraints: ``num_iterations >= 0``
 

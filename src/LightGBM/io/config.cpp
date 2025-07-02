@@ -217,6 +217,9 @@ void Config::Set(const std::unordered_map<std::string, std::string>& params) {
   GetMetricType(params, &metric);
   GetObjectiveType(params, &objective);
   objective = ParseObjectiveAlias(objective); // parse again in case it was not set by a user
+  if (objective == "mean_scale_regression") {
+      num_class = 2;
+  }
   GetDeviceType(params, &device_type);
   if (device_type == std::string("cuda")) {
     LGBM_config_::current_device = lgbm_device_cuda;
@@ -269,14 +272,17 @@ void Config::CheckParamConflict() {
   int num_class_check = num_class;
   bool objective_type_multiclass = CheckMultiClassObjective(objective) || (objective == std::string("custom") && num_class_check > 1);
 
-  if (objective_type_multiclass) {
-    if (num_class_check <= 1) {
-      Log::Fatal("Number of classes should be specified and greater than 1 for multiclass training");
-    }
-  } else {
-    if (task == TaskType::kTrain && num_class_check != 1) {
-      Log::Fatal("Number of classes must be 1 for non-multiclass training");
-    }
+  if (objective != "mean_scale_regression") {
+      if (objective_type_multiclass) {
+          if (num_class_check <= 1) {
+              Log::Fatal("Number of classes should be specified and greater than 1 for multiclass training");
+          }
+      }
+      else {
+          if (task == TaskType::kTrain && num_class_check != 1) {
+              Log::Fatal("Number of classes must be 1 for non-multiclass training");
+          }
+      }
   }
   for (std::string metric_type : metric) {
     bool metric_type_multiclass = (CheckMultiClassObjective(metric_type)

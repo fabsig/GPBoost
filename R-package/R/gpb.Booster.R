@@ -234,6 +234,12 @@ Booster <- R6::R6Class(
       
       self$params <- params
       
+      if (!is.null(self$params[["objective"]])) {
+        if (self$params[["objective"]] %in% c("mean_scale_regression", "gaussian_heteroscedastic")) {
+          private$is_mean_scale_regression <- TRUE
+        }
+      }
+      
       return(invisible(NULL))
       
     },
@@ -917,6 +923,15 @@ Booster <- R6::R6Class(
                     response_var = response_var))
         
       }# end GPBoost prediction
+      else if (private$is_mean_scale_regression) {
+        preds <- predictor$predict(data = data, start_iteration = start_iteration
+          , num_iteration = num_iteration, rawscore = pred_latent, predleaf = predleaf
+          , predcontrib = predcontrib, header = header, reshape = reshape)
+        n <- length(preds) / 2
+        pred_mean <- preds[(1:npred)*2 - 1]
+        pred_var <- exp(preds[(1:npred)*2])
+        return(list(pred_mean = pred_mean, pred_var = pred_var))
+      } 
       else {# no gp_model or predcontrib or ignore_gp_model
         return(
           predictor$predict(
@@ -975,6 +990,7 @@ Booster <- R6::R6Class(
     higher_better_inner_eval = NULL,
     set_objective_to_none = FALSE,
     train_set_version = 0L,
+    is_mean_scale_regression = FALSE,
     
     # Finalize will free up the handles
     finalize = function() {

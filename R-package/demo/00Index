@@ -1,5 +1,5 @@
 GPBoost_algorithm           GPBoost and LaGaBoost algorithms: combining tree-boosting with Gaussian process and random effects models
 generalized_linear_Gaussian_process_mixed_effects_models           Generalized linear Gaussian process and mixed effects model examples for various likelihoods
 examples_in_R_package_documentation           Examples used in the R package documentation
-Grabit               Grabit model of Sigrist and Hirnschall (2019)
+Grabit_and_mean-scale_regression               Grabit model of Sigrist and Hirnschall (2019) and heteroscedastic mean-scale regression with a Gaussian likelihood
 compare_usage_lme4_gpboost           Comparison of gpboost and lme4

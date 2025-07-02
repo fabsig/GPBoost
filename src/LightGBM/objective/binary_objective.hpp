@@ -136,12 +136,6 @@ class BinaryLogloss: public ObjectiveFunction {
     }
   }
 
-  void LineSearchLearningRate(const double*,
-      const double*,
-      double&) const override {//used only for "regression" loss
-      Log::Fatal("LineSearchLearningRate has not been implemented for 'binary' loss");
-  }
-
   // implement custom average to boost from (if enabled among options)
   double BoostFromScore(int) const override {
     double suml = 0.0f;

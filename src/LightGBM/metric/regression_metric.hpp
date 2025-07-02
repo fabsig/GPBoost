@@ -1,6 +1,6 @@
 /*!
 * Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
-* Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+* Modified work Copyright (c) 2020 - 2025 Fabio Sigrist. All rights reserved.
 * Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 */
 #ifndef LIGHTGBM_METRIC_REGRESSION_METRIC_HPP_
@@ -534,9 +534,8 @@ namespace LightGBM {
 				Log::Fatal("Cannot use the metric '%s' on the training data ", name_[0].c_str());
 			}
 			std::string obj_name = objective->GetName();
-			if (!(objective->HasGPModel()) && obj_name != "regression") {
-				Log::Fatal("The metric '%s' can only be used when "
-					"having a GPModel / including random effects for non-Gaussian likelihoods ", name_[0].c_str());
+			if (!(objective->HasGPModel()) && obj_name != "regression" && obj_name != "mean_scale_regression") {
+				Log::Fatal("The metric '%s' can currently not be used for the objective '%s' without a GPModel ", name_[0].c_str(), obj_name.c_str());
 			}
 			REModel* re_model = nullptr;
 			if (objective->HasGPModel()) {
@@ -577,6 +576,15 @@ namespace LightGBM {
 					}
 				}//end non-Gaussian data
 			}//end if (objective->HasGPModel()) && objective->UseGPModelForValidation())
+			else if (std::strcmp(objective->GetName(), "mean_scale_regression") == 0) {
+#pragma omp parallel for schedule(static) reduction(+:sum_loss)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					double pred_stdv = std::exp(score[num_data_ + i] / 2.);
+					double resid_stdzd = (label_[i] - score[i]) / pred_stdv;
+					sum_loss += pred_stdv * (minus_one_over_sqrt_PI_ + 2 * GPBoost::normalPDF(resid_stdzd) +
+						resid_stdzd * (2 * GPBoost::normalCDF(resid_stdzd) - 1.));
+				}
+			}
 			else {//re_model inexistent or not used for calculating validation loss for Gaussian likelihoods
 				double pred_stdv = std::sqrt(residual_variance[0]);
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
