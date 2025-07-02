@@ -564,7 +564,7 @@ namespace LightGBM {
 					}
 				}//end Gaussian data
 				else {//non-Gaussian data
-					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, false,
+					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, true,
 						nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 						true, nullptr, score, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)
