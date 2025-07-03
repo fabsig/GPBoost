@@ -471,6 +471,9 @@ namespace LightGBM {
 				}
 				//Find optimal step length using a line search
 				if (objective_function_->HasGPModel() && config_->line_search_step_length) {
+					if (num_tree_per_iteration_ > 1) {
+						Log::Fatal("the option 'line_search_step_length' is currently no implemented for this likelihood ");
+					}
 					CHECK(!is_use_subset_);//if not true, this is not yet implemented, see 'UpdateScore' how to extend to this
 					CHECK(num_data_ == bag_data_cnt_);//if not true, this is not yet implemented, see 'UpdateScore' how to extend to this
 					std::vector<double> new_score(num_data_, 0.0);
@@ -598,18 +601,14 @@ namespace LightGBM {
 		// update training score
 		if (!is_use_subset_) {
 			train_score_updater_->AddScore(tree_learner_.get(), tree, cur_tree_id);
-
 			// we need to predict out-of-bag scores of data for boosting
 			if (num_data_ - bag_data_cnt_ > 0) {
 				train_score_updater_->AddScore(tree, bag_data_indices_.data() + bag_data_cnt_, num_data_ - bag_data_cnt_, cur_tree_id);
 			}
-
 		}
 		else {
 			train_score_updater_->AddScore(tree, cur_tree_id);
 		}
-
-
 		// update validation score
 		for (auto& score_updater : valid_score_updater_) {
 			score_updater->AddScore(tree, cur_tree_id);
