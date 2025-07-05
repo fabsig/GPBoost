@@ -2179,22 +2179,24 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                        learning_rate = 0.5,
                        max_depth = 6,
                        min_data_in_leaf = 5,
-                       verbose = 0)
+                       verbose = 0, deterministic = TRUE)
       cov_pars_est <- c(1.127432e-01, 2.989325e-02, 1.064309e-06, 1.970296e-01)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
+      
       # Prediction
-      # pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
-      #                 predict_var = TRUE, pred_latent = TRUE)
-      # expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.8197184),TOLERANCE)
-      # expect_lt(abs(sqrt(mean((pred$random_effect_mean - eps_test)^2))-0.9186907),TOLERANCE)
-      # expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.3368866, 0.3202246, 0.3128022, 0.3221874))),TOLERANCE)
+      pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                      predict_var = TRUE, pred_latent = TRUE)
+      npred <- dim(X_test)[1]
+      expect_lt(sum(abs(pred$fixed_effect[1:4]-c(0.9287969, 0.9392324, 0.6386508, 0.6837547))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0.013631968, 0.001888464, 0.072146693, 0.118746547))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.10732077, 0.07915076, 0.07670887, 0.09757507))),0.01)
       # Predict response
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, 
                       predict_var = TRUE, pred_latent = FALSE)
-      expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(1.3574970, -1.0015160, 1.4338683, -0.9788731))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$response_var, n=4)-c(2.2493941, 0.2298627, 1.8130107, 0.3563585))),TOLERANCE)
-      # Parameter tuning
+      expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(1.2609604, 0.4655176, 0.8336034, 0.6664328))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.2599629, 0.2383203, 0.2248717, 0.3464849))),TOLERANCE)
       
+      # Parameter tuning
       # Folds for CV
       group_aux <- rep(1,ntrain) # grouping variable
       nfold <- 2
@@ -2210,7 +2212,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                                     data = dtrain, gp_model = gp_model, verbose_eval = 1,
                                                     nrounds = 100, early_stopping_rounds = 5,
                                                     metric = metric, folds = folds)
-      expect_lt(abs(opt_params$best_score-0.2962766),0.01)
+      expect_lt(abs(opt_params$best_score-0.2723836),0.01)
       expect_equal(opt_params$best_iter,7)
       expect_equal(opt_params$best_params$learning_rate,0.11)
       expect_equal(opt_params$best_params$max_bin,255)

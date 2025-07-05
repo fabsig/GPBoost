@@ -4764,7 +4764,7 @@ class GPModel(object):
                     cluster_ids = np.array([self.cluster_ids_map_to_int[cl_name] for cl_name in cluster_ids])
             cluster_ids = cluster_ids.astype(np.int32)
             cluster_ids_c = cluster_ids.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-         # Set weights
+        # Set weights
         if weights is not None:
             weights = _format_check_1D_data(weights, data_name="weights", check_data_type=True, 
                                             check_must_be_int=False, convert_to_type=np.float64)
