@@ -419,9 +419,15 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
             test_id = [randidx[i: i + kstep] for i in range(0, num_data, kstep)]
             train_id = [np.concatenate([test_id[i] for i in range(nfold) if k != i]) for k in range(nfold)]
             folds = zip(train_id, test_id)
-
     ret = CVBooster()
     for train_idx, test_idx in folds:
+        if np.max(train_idx) >= num_data or np.max(test_idx) >= num_data:
+            raise ValueError("Index out of bound. "
+                             "Maximum index in train_idx and test_idx should be less than num_data ({})"
+                             .format(num_data))
+        if np.min(train_idx) < 0 or np.min(test_idx) < 0:
+            raise ValueError("Index out of bound. "
+                             "Minimum index in train_idx and test_idx should be greater than or equal to 0")
         train_set = full_data.subset(sorted(train_idx))
         if full_data.free_raw_data:
             valid_set = full_data.subset(sorted(test_idx))
@@ -1043,6 +1049,18 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
     if metrics is not None:
         raise GPBoostError("The argument 'metrics' is discontinued. "
                            "Use the renamed equivalent argument 'metric' instead")
+    if folds is not None:
+        for train_idx, test_idx in folds:
+            train_set = train_set.construct()
+            num_data = train_set.num_data()
+            if np.max(train_idx) >= num_data or np.max(test_idx) >= num_data:
+                raise ValueError("Index out of bound. "
+                                "Maximum index in train_idx and test_idx should be less than num_data ({})"
+                                .format(num_data))
+            if np.min(train_idx) < 0 or np.min(test_idx) < 0:
+                raise ValueError("Index out of bound. "
+                                "Minimum index in train_idx and test_idx should be greater than or equal to 0")
+
     # Check correct format
     if not isinstance(param_grid, dict):
         raise ValueError("param_grid needs to be a dict")
@@ -1134,9 +1152,8 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
                 if current_score < best_score:
                     current_score_is_better = True
         except Exception as err: # Note: this is typically not called anymore since gpv.cv() now already contains a tryCatch statement
-            if verbose_eval < 1:
-                print("Error for parameter combination " + str(counter_num_comb) +
-                      " of " + str(len(try_param_combs)) + ": " + str(param_comb))
+            print("Error for parameter combination " + str(counter_num_comb) +
+                    " of " + str(len(try_param_combs)) + ": " + str(param_comb))
         if current_score_is_better:
             best_score = current_score
             best_params = param_comb
@@ -1322,7 +1339,17 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
         raise ValueError("'search_space' must be a dictionary")
     if not isinstance(n_trials, int) or n_trials <= 0:
         raise ValueError("'n_trials' must be a positive integer")
-    
+    if folds is not None:
+        for train_idx, test_idx in folds:
+            num_data = len(y)
+            if np.max(train_idx) >= num_data or np.max(test_idx) >= num_data:
+                raise ValueError("Index out of bound. "
+                                "Maximum index in train_idx and test_idx should be less than num_data ({})"
+                                .format(num_data))
+            if np.min(train_idx) < 0 or np.min(test_idx) < 0:
+                raise ValueError("Index out of bound. "
+                                "Minimum index in train_idx and test_idx should be greater than or equal to 0")
+        
     if params is None:
         params = {}
     else:
@@ -1404,8 +1431,8 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
             if found_better_combination:
                 best_score = best_score_trial
                 best_iter = best_iter_trial
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"An error occurred: {e}")
 
         return best_score_trial
     
