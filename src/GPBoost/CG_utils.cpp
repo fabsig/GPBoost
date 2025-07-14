@@ -734,11 +734,9 @@ namespace GPBoost {
 			r = rhs; //since u is 0
 		}
 		else {
-			//r = rhs - A * u //note: u contains the previous solution to (W + Sigma)^(-1)u = rhs, but here we solve (W^(-1) + Sigma) W u = Sigma * rhs, i.e. W * u is our initial vector
-			vec_t diag_W = diag_W_inv.cwiseInverse();
-			vec_t Wu = diag_W.cwiseProduct(u);
-			B_inv_D_B_invt_u = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(Wu)));
-			r = rhs - chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * (Wu)) - B_inv_D_B_invt_u - u;
+			//r = rhs - A * u
+			B_inv_D_B_invt_u = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(u)));
+			r = rhs - chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * u) - B_inv_D_B_invt_u - diag_W_inv.asDiagonal() * u;
 		}
 		if (cg_preconditioner_type == "fitc") {
 			FITC_W_inv_r = FITC_W_inv.asDiagonal() * r;
