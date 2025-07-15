@@ -82,7 +82,7 @@ namespace GPBoost {
 				return;
 			}
 			if (r_norm < delta_conv) {
-				//Log::REInfo("Number CG iterations: %i", j + 1);
+				//Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
 				return;
 			}
 			z_old = z;
@@ -245,7 +245,7 @@ namespace GPBoost {
 		}
 		vec_t r, r_old;
 		vec_t z, z_old;
-		vec_t h, v, diag_W_inv, B_invt_u, B_invt_h, B_invt_rhs, Sigma_Lkt_W_r, Sigma_rhs, W_r;
+		vec_t h, v, diag_W_inv, B_invt_h, B_invt_rhs, Sigma_Lkt_W_r, Sigma_rhs, W_r;
 		double a, b, r_norm;
 		//Avoid numerical instabilites when rhs is de facto 0
 		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
@@ -262,9 +262,12 @@ namespace GPBoost {
 			r = Sigma_rhs; //since u is 0
 		}
 		else {
-			//r = Sigma * rhs - (W^(-1) + Sigma) * W * u // note: u contains the previous solution to (W + Sigma)^(-1)u = rhs, but here we solve (W^(-1) + Sigma) W u = Sigma * rhs, i.e. W * u is our initial vector
-			B_invt_u = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(diag_W.cwiseProduct(u));
-			r = Sigma_rhs - (D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_u) + u);
+			//r = Sigma * rhs - (W^(-1) + Sigma) * W * u = Sigma * rhs - u - Sigma * W * u 
+			// note: u contains the previous solution to (W + Sigma^(-1))u = rhs, but here we solve (W^(-1) + Sigma) u' = Sigma * rhs, u' = Wu, and then return W^-1 u' = u, i.e. u' = W * u should be the initial vector
+			r = Sigma_rhs - u;
+			u = diag_W.cwiseProduct(u);
+			vec_t B_invt_W_u = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(u);
+			r = r - D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_W_u);
 		}
 		//z = P^(-1) r 
 		if (cg_preconditioner_type == "pivoted_cholesky") {
