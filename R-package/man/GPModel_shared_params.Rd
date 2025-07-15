@@ -8,11 +8,12 @@
 Available options:
 \itemize{
 \item{ "gaussian" }
-\item{ "bernoulli_probit": binary data with Bernoulli likelihood and a probit link function }
-\item{ "bernoulli_logit": binary data with Bernoulli likelihood and a logit link function }
-\item{ "gamma": gamma distribution with a with log link function }
+\item{ "bernoulli_probit": Binary data with Bernoulli likelihood and a probit link function }
+\item{ "bernoulli_logit": Binary data with Bernoulli likelihood and a logit link function }
+\item{ "gamma": Pamma distribution with a with log link function }
 \item{ "poisson": Poisson distribution with a with log link function }
 \item{ "negative_binomial": negative binomial distribution with a with log link function }
+\item{ "beta" : Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)}
 \item{ "t": t-distribution (e.g., for robust regression) }
 \item{ "t_fix_df": t-distribution with the degrees-of-freedom (df) held fixed and not estimated. 
 The df can be set via the \code{likelihood_additional_param} parameter }

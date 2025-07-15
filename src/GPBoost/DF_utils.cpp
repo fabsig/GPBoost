@@ -172,6 +172,87 @@ namespace GPBoost {
                             - r * (1.0 / 132.0)))));
 
         return value;
+    }//end digamma
+
+    double trigamma(double x) {
+        double a = 0.0001;
+        double b = 5.0;
+        double b2 = 0.1666666667;
+        double b4 = -0.03333333333;
+        double b6 = 0.02380952381;
+        double b8 = -0.03333333333;
+        double value;
+        double y;
+        double z;
+        CHECK(x > 0);
+        z = x;
+        //
+        //  Use small value approximation if X <= A.
+        //
+        if (x <= a)
+        {
+            value = 1.0 / x / x;
+            return value;
+        }
+        //
+        //  Increase argument to ( X + I ) >= B.
+        //
+        value = 0.0;
+
+        while (z < b)
+        {
+            value = value + 1.0 / z / z;
+            z = z + 1.0;
+        }
+        //
+        //  Apply asymptotic formula if argument is B or greater.
+        //
+        y = 1.0 / z / z;
+
+        value = value + 0.5 *
+            y + (1.0
+                + y * (b2
+                    + y * (b4
+                        + y * (b6
+                            + y * b8)))) / z;
+
+        return value;
+    }//end trigamma
+
+    double tetragamma(double x) {
+        CHECK(x > 0.0);
+        const double tiny = 1e-4;   // tiny-x shortcut
+        const double threshold = 8.0;    // switch to asymptotic series
+
+        /* tiny-x limit: phi''(x) approx -2/x^3 */
+        if (x <= tiny)
+            return -2.0 / (x * x * x);
+
+        /* Shift upward until z >= threshold, using
+           phi''(x) = phi''(x+1) - 2/x^3   */
+        double z = x;
+        double value = 0.0;
+        while (z < threshold) {
+            value -= 2.0 / (z * z * z);   // **minus** sign is crucial
+            z += 1.0;
+        }
+
+        /* Bernoulli–based asymptotic series */
+        double z2 = z * z;
+        double z3 = z2 * z;
+        double z4 = z2 * z2;
+        double z6 = z4 * z2;
+        double z8 = z4 * z4;
+        double z10 = z8 * z2;
+
+        value += -1.0 / z2
+            - 1.0 / z3
+            - 0.5 / z4
+            + 1.0 / (6.0 * z6)
+            - 1.0 / (6.0 * z8)
+            + 3.0 / (10.0 * z10);
+
+        return value;
     }
 
 }  // namespace GPBoost

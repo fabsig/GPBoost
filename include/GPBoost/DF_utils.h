@@ -97,6 +97,34 @@ namespace GPBoost {
 	*/
 	double digamma(double x);
 
+	/*!
+	* \brief Calculates the trigamma function trigamma(x) = d**2 log(gamma(x)) / dx**2
+	* \param x Value at which the trigamma function is evaluated
+	* \return The value of the trigamma function at x
+	* source: https://people.math.sc.edu/Burkardt/cpp_src/asa121/asa121.html
+	*
+	*  Author:
+	*
+	*    Original FORTRAN77 version by BE Schneider..
+	*    C++ version by John Burkardt with minor adaptions by Fabio Sigrist
+	*
+	*  Reference:
+	*
+	*    BE Schneider,
+	*    Algorithm AS 121:
+	*    Trigamma Function,
+	*    Applied Statistics,
+	*    Volume 27, Number 1, pages 97-99, 1978.
+	*/
+	double trigamma(double x);
+
+	/*!
+	* \brief Calculates the tetragamma function trigamma(x) = d**3 log(gamma(x)) / dx**3
+	* \param x Value at which the tetragamma function is evaluated
+	* \return The value of the tetragamma function at x
+	*/
+	double tetragamma(double x);
+
 }  // namespace GPBoost
 
 #endif   // GPB_DF_UTIL_H_

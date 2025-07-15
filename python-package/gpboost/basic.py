@@ -4096,6 +4096,10 @@ class GPModel(object):
                     - "negative_binomial":
 
                         Negative binomial distribution with a with log link function
+
+                    - "beta":
+
+                        Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)
                     
                     - "t":
 

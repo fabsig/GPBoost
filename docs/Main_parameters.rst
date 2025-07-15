@@ -149,6 +149,8 @@ Model specification parameters
 
       -  ``negative_binomial`` : Negative binomial likelihood with log link function
 
+      -  ``beta`` : Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)
+
       -  ``t`` : t-distribution (e.g., for robust regression)
 
       -  ``t_fix_df`` : t-distribution with the degrees-of-freedom (df) held fixed and not estimated. The df can be set via the ``likelihood_additional_param`` parameter 
