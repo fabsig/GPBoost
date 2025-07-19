@@ -3962,5 +3962,47 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }# end loop inv_method in c("cholesky", "iterative")
   }) #end gaussian_heteroscedastic likelihood
   
+  test_that("beta regression ", {
+    params <- OPTIM_PARAMS_BFGS
+    likelihood <- "beta"
+    
+    # Single level grouped random effects
+    mu <- 1 / (1 + exp(-(Z1 %*% b_gr_1 + 0.5*X%*%beta)))
+    phi = 2
+    y <- qbeta(sim_rand_unif(n=n, init_c=0.135456), shape1 = mu * phi,shape2 = (1 - mu) * phi)
+    
+    # Evaluate negative log-likelihood
+    gp_model <- GPModel(group_data = group, likelihood = likelihood)
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y)
+    expect_lt(abs(nll--31.05453707),TOLERANCE_MEDIUM)
+    
+    # Estimation 
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
+                                           y = y, X=X, params = params)
+                    , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.4001315457)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-1.868524016 )),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(-0.1282965526, 1.1881972770 ))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()--54.4500614 )),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 10)
+    # Prediction
+    group_test <- c(1,3,3,9999)
+    X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, 
+                    predict_var= TRUE, predict_response = FALSE)
+    expected_mu <- c(-1.1826158504, -0.1320929747, 0.1055464807, 1.0599007244)
+    expected_var <- c(0.10336229497, 0.08644181625, 0.08644181625, 0.40013154573)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_STRICT)
+    # Predict response
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, 
+                    predict_var=TRUE, predict_response = TRUE)
+    expected_mu <- c(0.2393651554, 0.4677054534, 0.5258171071, 0.7262142368)
+    expected_var <- c(0.06565030867, 0.09013797079, 0.09027893547, 0.07849860055)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_MEDIUM)
+      
+  }) # end beta binomial regression
+  
 }
 

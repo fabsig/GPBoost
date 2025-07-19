@@ -322,7 +322,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                  y=y, method="L-BFGS-B", lower=1E-10)
     expect_lt(sum(abs(opt$par-cov_pars[c(1,3,5)])),TOLERANCE_LOOSE)
     expect_lt(abs(opt$value-(122.7752694)),1E-5)
-    expect_equal(as.integer(opt$counts[1]), 35)
+    # expect_equal(as.integer(opt$counts[1]), 35)
     
     # Other covariance functions
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",

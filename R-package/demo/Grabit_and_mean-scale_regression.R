@@ -94,7 +94,8 @@ print(paste0("Best number of iterations: ", opt_params$best_iter))
 print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
 
 # Train model
-params <- list(learning_rate = 0.1, max_depth = -1, num_leaves = 8, max_bin = 250, lambda_l2 = 100, min_data_in_leaf = 100)
+params <- list(learning_rate = 0.1, max_depth = -1, num_leaves = 8, max_bin = 250, 
+               lambda_l2 = 100, min_data_in_leaf = 100)
 bst <- gpb.train(data = dtrain, nrounds = 100, params = params,
                  objective = "mean_scale_regression", verbose = 0)
 
