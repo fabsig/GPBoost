@@ -695,7 +695,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # "vecchia_latent"
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
-                                        vecchia_ordering = "none"), file='NUL')
+                                        vecchia_ordering = "none", matrix_inversion_method = "cholesky"), file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll[-1],y=y,aux_pars=cov_pars_ll[1])
     expect_lt(abs(nll-exp_nll), TOLERANCE_STRICT)
     # "vecchia_latent" with iterative methods (pivoted Cholesky preconditioner)
@@ -729,7 +729,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     exp_nll_less_nn_lat <- 124.2549533
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
-                                        vecchia_ordering = "none"), file='NUL')
+                                        vecchia_ordering = "none", matrix_inversion_method = "cholesky"), file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll[-1],y=y,aux_pars=cov_pars_ll[1])
     expect_lt(abs(nll-exp_nll_less_nn_lat), TOLERANCE_STRICT)
     # "vecchia_latent" with iterative methods (pivoted Cholesky)
@@ -764,7 +764,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # With "vecchia_latent"
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
-                                        vecchia_ordering = "none"), file='NUL')
+                                        vecchia_ordering = "none", matrix_inversion_method = "cholesky"), file='NUL')
     params_latent <- params_vecchia
     params_latent$std_dev = FALSE
     params_latent$init_cov_pars <- NULL
@@ -781,7 +781,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(3,5)])),0.02)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars[1])),0.02)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est), 0.2)
-    
     # "vecchia_latent" with iterative methods (FITC preconditioner)
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
@@ -845,7 +844,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # vecchia_latent
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
-                                        vecchia_ordering = "none"), file='NUL')
+                                        vecchia_ordering = "none", matrix_inversion_method = "cholesky"), file='NUL')
     gp_model$set_optim_params(params=list(init_aux_pars = cov_pars[1]))
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=n+2)
     pred <- predict(gp_model, y = y, gp_coords_pred = coord_test,
@@ -943,7 +942,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # With "vecchia_latent"
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = 30,
-                                        vecchia_ordering = "none"), file='NUL')
+                                        vecchia_ordering = "none", matrix_inversion_method = "cholesky"), file='NUL')
     capture.output( fit(gp_model, y = y, params = params_latent), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_vecchia[c(3,5)])),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars_vecchia[1])),TOLERANCE_LOOSE)
@@ -956,7 +955,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_vecchia[c(3,5)])),0.02)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars_vecchia[1])),0.02)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_vecchia), 0.2)
-    
     # "vecchia_latent" with iterative methods (FITC preconditioner)
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = 30,
@@ -1139,7 +1137,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            gp_approx = "vecchia_latent", num_neighbors = n+2,
                                            vecchia_ordering = "none", y = y, X = X,
-                                           params = params_latent), file='NUL')
+                                           params = params_latent, matrix_inversion_method = "cholesky"), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(3,5)])),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars[1])),TOLERANCE_LOOSE)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est), TOLERANCE_LOOSE)
@@ -1151,7 +1149,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(3,5)])),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars[1])),TOLERANCE_LOOSE)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est), 0.2)
-    
     # "vecchia_latent" and iterative methods (FITC preconditioner)
     params_latent_FITC = params_latent
     params_latent_FITC$cg_preconditioner_type = "predictive_process_plus_diagonal"
@@ -1244,7 +1241,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential",
                                            gp_approx = "vecchia_latent", num_neighbors = n+2,
                                            vecchia_ordering = "none", y = y,
-                                           params = params_latent), file='NUL')
+                                           params = params_latent, matrix_inversion_method = "cholesky"), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(3,5)])),0.02)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars[1])),0.02)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll), TOLERANCE_LOOSE)
@@ -1256,7 +1253,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(3,5)])),0.02)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars[1])),0.02)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll), 0.2)
-    
     # "vecchia_latent" and matrix_inversion_method = "iterative" (FITC preconditioner)
     params_latent_FITC = params_latent
     params_latent_FITC$cg_preconditioner_type = "predictive_process_plus_diagonal"
@@ -2584,8 +2580,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Matern with shape estimated
     params_ARD_est_shape <- OPTIM_PARAMS_BFGS_STD
     params_ARD_est_shape$init_cov_pars <- c(init_cov_pars_ARD,1.5)
-    gp_model <- fitGPModel(gp_coords = coords_ARD, cov_function = "matern_ard_estimate_shape",
-                           y = y, X = X, params = params_ARD_est_shape)
+    capture.output(     gp_model <- fitGPModel(gp_coords = coords_ARD, cov_function = "matern_ard_estimate_shape",
+                                               y = y, X = X, params = params_ARD_est_shape), 
+                    file='NUL')
     cov_pars_est_shape <- c(6.685939690e-02, 3.389668693e-02, 1.050559295e+00, 2.417603051e-01, 1.703677225e-01, 3.619481495e-02, 2.179632368e-01, 4.622495774e-02, 1.544734537e-01, 3.248756329e-02, 1.418090169e+02, 5.839766923e+03)
     coef_est_shape <- c(2.338314047, 0.222568330, 1.746677838, 0.068681676)
     nrounds_est_shape <- 48

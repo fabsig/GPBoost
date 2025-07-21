@@ -441,14 +441,14 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         
         # Newton updates for tree leaves
         if(inv_method=="cholesky"){
-          params <- list(learning_rate = 0.1,
+          params_loc <- list(learning_rate = 0.1,
                          max_depth = 6,
                          min_data_in_leaf = 5,
                          objective = "regression_l2",
                          leaves_newton_update = TRUE)
-          gp_model <- GPModel(group_data = group_data_train)
+          gp_model <- GPModel(group_data = group_data_train, matrix_inversion_method = inv_method)
           gp_model$set_optim_params(params=params_gp)
-          cvbst <- gpb.cv(params = params,
+          cvbst <- gpb.cv(params = params_loc,
                           data = dtrain,
                           gp_model = gp_model,
                           nrounds = 100,
@@ -539,7 +539,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         expect_lt(abs(bst$best_score - 3.058637),TOLERANCE)
         # CV
         if(inv_method=="cholesky"){
-          gp_model <- GPModel(group_data = group_data_train)
+          gp_model <- GPModel(group_data = group_data_train, matrix_inversion_method = inv_method)
           gp_model$set_optim_params(params=params_gp)
           cvbst <- gpb.cv(params = params,
                           data = dtrain,
@@ -552,8 +552,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                           folds = folds,
                           verbose = 0,
                           eval = l4_loss, metric = "l4")
-          expect_equal(cvbst$best_iter, 52)
-          expect_lt(abs(cvbst$best_score - 2.932338),TOLERANCE2)
+          expect_equal(cvbst$best_iter, 59)
+          expect_lt(abs(cvbst$best_score - 2.983831),TOLERANCE2)
         }
         
         # Use of validation data and test_neg_log_likelihood as metric

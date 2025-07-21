@@ -4049,7 +4049,7 @@ class GPModel(object):
                  cov_fct_shape=1.5,
                  gp_approx="none",
                  num_parallel_threads=None,
-                 matrix_inversion_method="cholesky",
+                 matrix_inversion_method="default",
                  weights=None,
                  likelihood_learning_rate = 1.,
                  cov_fct_taper_range=1.,
@@ -4228,6 +4228,10 @@ class GPModel(object):
             matrix_inversion_method : string, optional (default="cholesky")
                 Method used for inverting covariance matrices. Available options:
 
+                    - "default":
+
+                        Iterative methods where possible, otherwise Cholesky factorization 
+                    
                     - "cholesky":
 
                         Cholesky factorization
@@ -4390,7 +4394,7 @@ class GPModel(object):
         self.ind_points_selection = "kmeans++"
         self.num_ind_points = -1
         self.cover_tree_radius = 1.
-        self.matrix_inversion_method = "cholesky"
+        self.matrix_inversion_method = "default"
         self.has_weights = False
         self.weights = None
         self.likelihood_learning_rate = 1.

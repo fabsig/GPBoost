@@ -137,6 +137,7 @@
 #' @param matrix_inversion_method A \code{string} specifying the method used for inverting covariance matrices. 
 #' Available options:
 #' \itemize{
+#' \item{"default": iterative methods where possible, otherwise Cholesky factorization }
 #' \item{"cholesky": Cholesky factorization }
 #' \item{"iterative": iterative methods. A combination of the conjugate gradient, the Lanczos algorithm, and other methods. 
 #' 
@@ -144,7 +145,7 @@
 #' \itemize{
 #' \item{ grouped random effects with more than one level }
 #' \item{likelihood != "gaussian" and gp_approx == "vecchia" (non-Gaussian likelihoods with a Vecchia-Laplace approximation) }
-#' \item{likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIFapproximation) }
+#' \item{likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIF approximation) }
 #' \item{likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation) }
 #' }
 #' }
@@ -373,7 +374,7 @@ gpb.GPModel <- R6::R6Class(
                           cov_fct_shape = 1.5,
                           gp_approx = "none",
                           num_parallel_threads = NULL,
-                          matrix_inversion_method = "cholesky",
+                          matrix_inversion_method = "default",
                           weights = NULL,
                           likelihood_learning_rate = 1.,
                           cov_fct_taper_range = 1.,
@@ -2185,7 +2186,7 @@ gpb.GPModel <- R6::R6Class(
     cov_function = "matern",
     cov_fct_shape = 1.5,
     gp_approx = "none",
-    matrix_inversion_method = "cholesky",
+    matrix_inversion_method = "default",
     has_weights = FALSE,
     weights = NULL,
     likelihood_learning_rate = 1.,
@@ -2444,7 +2445,7 @@ GPModel <- function(likelihood = "gaussian",
                     cov_fct_shape = 1.5,
                     gp_approx = "none",
                     num_parallel_threads = NULL,
-                    matrix_inversion_method = "cholesky",
+                    matrix_inversion_method = "default",
                     weights = NULL,
                     likelihood_learning_rate = 1.,
                     cov_fct_taper_range = 1.,
@@ -2656,7 +2657,7 @@ fitGPModel <- function(likelihood = "gaussian",
                        cov_fct_shape = 1.5,
                        gp_approx = "none",
                        num_parallel_threads = NULL,
-                       matrix_inversion_method = "cholesky",
+                       matrix_inversion_method = "default",
                        weights = NULL,
                        likelihood_learning_rate = 1.,
                        cov_fct_taper_range = 1.,

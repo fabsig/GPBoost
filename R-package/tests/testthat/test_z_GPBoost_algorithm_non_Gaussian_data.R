@@ -1881,7 +1881,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       group_data_test <- group_data[1:ntest+ntrain,]
       
       # Train model and make predictions
-      gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit")
+      gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit", matrix_inversion_method = "cholesky")
       gp_model$set_optim_params(params=DEFAULT_OPTIM_PARAMS_NO_NESTEROV)
       bst <- gpboost(data = X_train,
                      label = y_train,

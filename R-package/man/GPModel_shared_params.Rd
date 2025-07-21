@@ -155,6 +155,7 @@ for the cover tree algorithm}
 \item{matrix_inversion_method}{A \code{string} specifying the method used for inverting covariance matrices. 
 Available options:
 \itemize{
+\item{"default": iterative methods where possible, otherwise Cholesky factorization }
 \item{"cholesky": Cholesky factorization }
 \item{"iterative": iterative methods. A combination of the conjugate gradient, the Lanczos algorithm, and other methods. 
 
@@ -162,7 +163,7 @@ This is currently only supported for the following cases:
 \itemize{
 \item{ grouped random effects with more than one level }
 \item{likelihood != "gaussian" and gp_approx == "vecchia" (non-Gaussian likelihoods with a Vecchia-Laplace approximation) }
-\item{likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIFapproximation) }
+\item{likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIF approximation) }
 \item{likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation) }
 }
 }

@@ -144,10 +144,7 @@ namespace GPBoost {
 			likelihood_additional_param_ = likelihood_additional_param;
 			//Set up matrix inversion method
 			if (matrix_inversion_method != nullptr) {
-				matrix_inversion_method_ = std::string(matrix_inversion_method);
-				if (SUPPORTED_MATRIX_INVERSION_METHODS_.find(matrix_inversion_method_) == SUPPORTED_MATRIX_INVERSION_METHODS_.end()) {
-					Log::REFatal("Matrix inversion method '%s' is not supported.", matrix_inversion_method_.c_str());
-				}
+				matrix_inversion_method_user_provided_ = std::string(matrix_inversion_method);
 			}
 			//Set up GP approximation
 			if (gp_approx == nullptr) {
@@ -158,9 +155,6 @@ namespace GPBoost {
 				if (gp_approx_ == "full_scale_tapering_pred_var_stochastic_stable" ||
 					gp_approx_ == "full_scale_tapering_pred_var_exact_stable" ||
 					gp_approx_ == "full_scale_tapering_pred_var_exact") {
-					if (matrix_inversion_method_ != "cholesky") {
-						Log::REFatal("gp_approx_ = '%s' is only supported if matrix_inversion_method = 'cholesky' ", gp_approx_.c_str());
-					}
 					if (gp_approx_ == "full_scale_tapering_pred_var_stochastic_stable") {
 						calc_pred_cov_var_FSA_cholesky_ = "stochastic_stable";
 					}
@@ -5092,7 +5086,8 @@ namespace GPBoost {
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
-		string_t matrix_inversion_method_ = "cholesky";
+		string_t matrix_inversion_method_ = "";
+		string_t matrix_inversion_method_user_provided_ = "";
 		/*! \brief Supported matrix inversion methods */
 		const std::set<string_t> SUPPORTED_MATRIX_INVERSION_METHODS_{ "cholesky", "iterative" };
 		/*! \brief Maximal number of iterations for conjugate gradient algorithm */
@@ -6151,6 +6146,17 @@ namespace GPBoost {
 			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && gp_approx_ == "none";//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (only for non-Gaussian likelihoods)
 			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods)
 			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && gauss_likelihood_;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods)
+			if (matrix_inversion_method_user_provided_ == "default") {
+				if (CanUseIterative()) {
+					matrix_inversion_method_ = "iterative";
+				}
+				else {
+					matrix_inversion_method_ = "cholesky";
+				}
+			}
+			else {
+				matrix_inversion_method_ = matrix_inversion_method_user_provided_;
+			}
 		}//end DetermineSpecialCasesModelsEstimationPrediction
 
 		/*!
@@ -6286,6 +6292,9 @@ namespace GPBoost {
 		* \brief Function that checks the compatibility of the chosen special options for estimation and prediction for certain special cases of random effects models
 		*/
 		void CheckCompatibilitySpecialOptions() {
+			if (SUPPORTED_MATRIX_INVERSION_METHODS_.find(matrix_inversion_method_) == SUPPORTED_MATRIX_INVERSION_METHODS_.end()) {
+				Log::REFatal("Matrix inversion method '%s' is not supported.", matrix_inversion_method_.c_str());
+			}
 			if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 				CHECK(num_ind_points_ > 0);
 			}
@@ -6344,9 +6353,7 @@ namespace GPBoost {
 				Log::REFatal("Approximation '%s' is currently not supported for non-Gaussian likelihoods ", gp_approx_.c_str());
 			}
 			if (matrix_inversion_method_ == "iterative") {
-				bool can_use_iterative = ((gp_approx_ == "full_scale_vecchia" || gp_approx_ == "vecchia") && !gauss_likelihood_) || 
-					(gp_approx_ == "full_scale_tapering" && gauss_likelihood_) || (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ > 1);
-				if (!can_use_iterative) {
+				if (!CanUseIterative()) {
 					if (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ == 1) {
 						Log::REFatal("Cannot use matrix_inversion_method = 'iterative' if there is only a single-level grouped random effects. " 
 							"Use matrix_inversion_method = 'cholesky' instead (this is very fast). Iterative methods are for multiple grouped random effects ");
@@ -6359,6 +6366,11 @@ namespace GPBoost {
 			}
 			CHECK((int)estimate_cov_par_index_.size() == num_cov_par_);
 		}//end CheckCompatibilitySpecialOptions
+
+		bool CanUseIterative() const {
+			return ((gp_approx_ == "full_scale_vecchia" || gp_approx_ == "vecchia") && !gauss_likelihood_) ||
+				(gp_approx_ == "full_scale_tapering" && gauss_likelihood_) || (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ > 1);
+		}
 
 		/*! \brief Check whether preconditioner is supported */
 		void CheckPreconditionerType() {
@@ -9831,13 +9843,13 @@ namespace GPBoost {
 								cov_mat_pred_id += pred_cov_T_mat;
 							} //end iterative
 							else { //begin cholesky
-							T_mat M_aux;
-							TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], ZtZ_[cluster_i], M_aux, false);
-							sp_mat_t ZtildeSigma = Ztilde * Sigma;
-							T_mat M_aux2 = M_aux * ZtildeSigma.transpose();
-							M_aux.resize(0, 0);
-							cov_mat_pred_id -= (T_mat)(ZtildeSigma * ZtZ_[cluster_i] * ZtildeSigma.transpose());
-							cov_mat_pred_id += (T_mat)(M_aux2.transpose() * M_aux2);
+								T_mat M_aux;
+								TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], ZtZ_[cluster_i], M_aux, false);
+								sp_mat_t ZtildeSigma = Ztilde * Sigma;
+								T_mat M_aux2 = M_aux * ZtildeSigma.transpose();
+								M_aux.resize(0, 0);
+								cov_mat_pred_id -= (T_mat)(ZtildeSigma * ZtZ_[cluster_i] * ZtildeSigma.transpose());
+								cov_mat_pred_id += (T_mat)(M_aux2.transpose() * M_aux2);
 							} //end cholesky
 						}
 					}
@@ -9990,19 +10002,19 @@ namespace GPBoost {
 								}
 							} //end iterative
 							else { //begin cholesky
-							T_mat M_aux;
-							TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], ZtZ_[cluster_i], M_aux, false);
-							sp_mat_t ZtildeSigma = Ztilde * Sigma;
-							T_mat M_aux2 = M_aux * ZtildeSigma.transpose();
-							M_aux.resize(0, 0);
-							sp_mat_t SigmaZtilde_ZtZ = ZtildeSigma * ZtZ_[cluster_i];
-							sp_mat_t M_aux3 = ZtildeSigma.cwiseProduct(SigmaZtilde_ZtZ);
-							M_aux2 = M_aux2.cwiseProduct(M_aux2);
+								T_mat M_aux;
+								TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], ZtZ_[cluster_i], M_aux, false);
+								sp_mat_t ZtildeSigma = Ztilde * Sigma;
+								T_mat M_aux2 = M_aux * ZtildeSigma.transpose();
+								M_aux.resize(0, 0);
+								sp_mat_t SigmaZtilde_ZtZ = ZtildeSigma * ZtZ_[cluster_i];
+								sp_mat_t M_aux3 = ZtildeSigma.cwiseProduct(SigmaZtilde_ZtZ);
+								M_aux2 = M_aux2.cwiseProduct(M_aux2);
 #pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_REs_pred; ++i) {
-								var_pred_id[i] -= M_aux3.row(i).sum() - M_aux2.col(i).sum();
+								for (int i = 0; i < num_REs_pred; ++i) {
+									var_pred_id[i] -= M_aux3.row(i).sum() - M_aux2.col(i).sum();
+								}
 							}
-						}
 						}
 					}//end only_grouped_REs_use_woodbury_identity_
 					else {//not only_grouped_REs_use_woodbury_identity_

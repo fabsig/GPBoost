@@ -9,7 +9,7 @@ GPModel(likelihood = "gaussian", group_data = NULL,
   drop_intercept_group_rand_effect = NULL, gp_coords = NULL,
   gp_rand_coef_data = NULL, cov_function = "matern", cov_fct_shape = 1.5,
   gp_approx = "none", num_parallel_threads = NULL,
-  matrix_inversion_method = "cholesky", weights = NULL,
+  matrix_inversion_method = "default", weights = NULL,
   likelihood_learning_rate = 1, cov_fct_taper_range = 1,
   cov_fct_taper_shape = 1, num_neighbors = NULL,
   vecchia_ordering = "random", ind_points_selection = "kmeans++",
@@ -112,6 +112,7 @@ If num_parallel_threads = NULL, all available threads are used}
 \item{matrix_inversion_method}{A \code{string} specifying the method used for inverting covariance matrices. 
 Available options:
 \itemize{
+\item{"default": iterative methods where possible, otherwise Cholesky factorization }
 \item{"cholesky": Cholesky factorization }
 \item{"iterative": iterative methods. A combination of the conjugate gradient, the Lanczos algorithm, and other methods. 
 
@@ -119,7 +120,7 @@ This is currently only supported for the following cases:
 \itemize{
 \item{ grouped random effects with more than one level }
 \item{likelihood != "gaussian" and gp_approx == "vecchia" (non-Gaussian likelihoods with a Vecchia-Laplace approximation) }
-\item{likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIFapproximation) }
+\item{likelihood != "gaussian" and gp_approx == "full_scale_vecchia" (non-Gaussian likelihoods with a VIF approximation) }
 \item{likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation) }
 }
 }
