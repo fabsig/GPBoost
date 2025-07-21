@@ -134,6 +134,9 @@ namespace GPBoost {
 					Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", shape, cov_fct_type.c_str());
 #endif
 				}
+				if (shape > LARGE_SHAPE_WARNING_THRESHOLD_) {
+					Log::REInfo(LARGE_SHAPE_WARNING_);
+				}
 			}
 			else if (cov_fct_type == "powered_exponential") {
 				if (shape <= 0. || shape > 2.) {
@@ -278,7 +281,7 @@ namespace GPBoost {
 		* \brief Check whether covariance parameter are on correct scales
 		* \param pars Vector with covariance parameters 
 		*/
-		void CheckRangePars(const vec_t& pars) const {
+		void CheckPars(const vec_t& pars) const {
 			if (cov_fct_type_ == "space_time_gneiting") {
 				for (int i = 0; i < num_cov_par_; ++i) {//sigma2, a, c, alpha, nu, beta, delta
 					if (i == 3) {
@@ -300,13 +303,23 @@ namespace GPBoost {
 					CHECK(pars[i] > 0.);
 				}
 			}
-		}//CheckRangePars
+			if (cov_fct_type_ == "matern_estimate_shape" || cov_fct_type_ == "matern_ard_estimate_shape") {
+				if (pars[num_cov_par_ - 1] > LARGE_SHAPE_WARNING_THRESHOLD_) {
+					Log::REInfo(LARGE_SHAPE_WARNING_);
+				}
+			}
+			else if (cov_fct_type_ == "space_time_gneiting") {
+				if (pars[4] > LARGE_SHAPE_WARNING_THRESHOLD_) {
+					Log::REInfo(LARGE_SHAPE_WARNING_);
+				}
+			}
+		}//CheckPars
 
 		/*!
 		* \brief Cap parameters
 		* \param pars Vector with covariance parameters
 		*/
-		void EnforceRangeParameters(vec_t& pars) const {
+		void CapPars(vec_t& pars) const {
 			if (cov_fct_type_ == "space_time_gneiting") {
 				if (pars[3] > 1.) {//alpha
 					pars[3] = 1.;
@@ -315,7 +328,7 @@ namespace GPBoost {
 					pars[5] = 1.;
 				}
 			}
-		}//EnforceRangeParameters
+		}//CapPars
 
 		/*!
 		* \brief Transform the covariance parameters
@@ -449,8 +462,8 @@ namespace GPBoost {
 			// some checks
 			CHECK(pars_in.size() == num_cov_par_);
 			vec_t pars = pars_in;
-			EnforceRangeParameters(pars);
-			CheckRangePars(pars);
+			CapPars(pars);
+			CheckPars(pars);
 			if (use_precomputed_dist_for_calc_cov_) {
 				CHECK(dist.rows() > 0);
 				CHECK(dist.cols() > 0);
@@ -562,8 +575,8 @@ namespace GPBoost {
 			// some checks
 			CHECK(pars_in.size() == num_cov_par_);
 			vec_t pars = pars_in;
-			EnforceRangeParameters(pars);
-			CheckRangePars(pars);
+			CapPars(pars);
+			CheckPars(pars);
 			CHECK(dist.rows() > 0);//dist is used to define sigma
 			CHECK(dist.cols() > 0);
 			if (is_symmmetric) {
@@ -674,8 +687,8 @@ namespace GPBoost {
 			double& sigma) const {
 			CHECK(pars_in.size() == num_cov_par_);
 			vec_t pars = pars_in;
-			EnforceRangeParameters(pars);
-			CheckRangePars(pars);
+			CapPars(pars);
+			CheckPars(pars);
 			if (cov_fct_type_ == "space_time_gneiting") {
 				sigma = SpaceTimeGneitingCovariance(coords, coords_pred, pars);
 			}
@@ -695,8 +708,8 @@ namespace GPBoost {
 			double& sigma) const {
 			CHECK(pars_in.size() == num_cov_par_);
 			vec_t pars = pars_in;
-			EnforceRangeParameters(pars);
-			CheckRangePars(pars);
+			CapPars(pars);
+			CheckPars(pars);
 			if (cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard" || cov_fct_type_ == "gaussian_ard") {
 				Log::REFatal("'CalculateCovMat()' is not implemented for one distance when cov_fct_type_ == '%s' ", cov_fct_type_.c_str());
 			}
@@ -867,7 +880,7 @@ namespace GPBoost {
 			bool is_symmmetric) const {
 			CHECK(pars_in.size() == num_cov_par_);
 			vec_t pars = pars_in;
-			EnforceRangeParameters(pars);
+			CapPars(pars);
 			if (use_precomputed_dist_for_calc_cov_) {
 				CHECK(sigma.cols() == dist.cols());
 				CHECK(sigma.rows() == dist.rows());
@@ -968,7 +981,7 @@ namespace GPBoost {
 			bool is_symmmetric) const {
 			CHECK(pars_in.size() == num_cov_par_);
 			vec_t pars = pars_in;
-			EnforceRangeParameters(pars);
+			CapPars(pars);
 			CHECK(sigma.cols() == sigma.rows());
 			if (use_precomputed_dist_for_calc_cov_) {
 				CHECK(sigma.cols() == dist.cols());
@@ -1315,40 +1328,6 @@ namespace GPBoost {
 		}//end FindInitCovPar
 
 	private:
-		/*! \brief Type of covariance function  */
-		string_t cov_fct_type_;
-		/*! \brief Shape parameter of covariance function (=smoothness parameter for Matern covariance) */
-		double shape_;
-		/*! \brief Constant in covariance function (used only for Matern with general shape) */
-		double const_;
-		/*! \brief Range parameter of the Wendland covariance functionand Wendland correlation taper function.We follow the notation of Bevilacqua et al. (2019, AOS) */
-		double taper_range_;
-		/*! \brief Shape parameter of the Wendland covariance functionand Wendland correlation taper function.We follow the notation of Bevilacqua et al. (2019, AOS) */
-		double taper_shape_;
-		/*! \briefParameter \mu of the Wendland covariance functionand Wendland correlation taper function.We follow the notation of Bevilacqua et al. (2019, AOS) */
-		double taper_mu_;
-		/*! \brief If true, tapering is applied to the covariance function(element - wise multiplication with a compactly supported Wendland correlation function) */
-		bool apply_tapering_ = false;
-		/*! \brief Number of covariance parameters */
-		int num_cov_par_;
-		/*! \brief If true, the covariance function is isotropic */
-		bool is_isotropic_;
-		/*! \brief for calculating finite differences  */
-		const double delta_step_ = 1e-6;// based on https://math.stackexchange.com/questions/815113/is-there-a-general-formula-for-estimating-the-step-size-h-in-numerical-different/819015#819015
-		/*! \brief If true, precomputed distances('dist') are used for calculating covariances, otherwise the coordinates are used('coords' and 'coords_pred') */
-		bool use_precomputed_dist_for_calc_cov_;
-		/*! \brief List of supported covariance functions */
-		const std::set<string_t> SUPPORTED_COV_TYPES_{ "exponential",
-			"gaussian",
-			"powered_exponential",
-			"matern",
-			"wendland",
-			"matern_space_time",
-			"matern_ard",
-			"gaussian_ard",
-			"matern_estimate_shape",
-			"matern_ard_estimate_shape",
-			"space_time_gneiting" };
 
 		/*!
 		* \brief Calculates Wendland correlation function if taper_shape == 0
@@ -2323,6 +2302,43 @@ namespace GPBoost {
 				shape = 0.5;
 			}
 		}
+
+		/*! \brief Type of covariance function  */
+		string_t cov_fct_type_;
+		/*! \brief Shape parameter of covariance function (=smoothness parameter for Matern covariance) */
+		double shape_;
+		/*! \brief Constant in covariance function (used only for Matern with general shape) */
+		double const_;
+		/*! \brief Range parameter of the Wendland covariance functionand Wendland correlation taper function.We follow the notation of Bevilacqua et al. (2019, AOS) */
+		double taper_range_;
+		/*! \brief Shape parameter of the Wendland covariance functionand Wendland correlation taper function.We follow the notation of Bevilacqua et al. (2019, AOS) */
+		double taper_shape_;
+		/*! \briefParameter \mu of the Wendland covariance functionand Wendland correlation taper function.We follow the notation of Bevilacqua et al. (2019, AOS) */
+		double taper_mu_;
+		/*! \brief If true, tapering is applied to the covariance function(element - wise multiplication with a compactly supported Wendland correlation function) */
+		bool apply_tapering_ = false;
+		/*! \brief Number of covariance parameters */
+		int num_cov_par_;
+		/*! \brief If true, the covariance function is isotropic */
+		bool is_isotropic_;
+		/*! \brief for calculating finite differences  */
+		const double delta_step_ = 1e-6;// based on https://math.stackexchange.com/questions/815113/is-there-a-general-formula-for-estimating-the-step-size-h-in-numerical-different/819015#819015
+		/*! \brief If true, precomputed distances('dist') are used for calculating covariances, otherwise the coordinates are used('coords' and 'coords_pred') */
+		bool use_precomputed_dist_for_calc_cov_;
+		/*! \brief List of supported covariance functions */
+		const std::set<string_t> SUPPORTED_COV_TYPES_{ "exponential",
+			"gaussian",
+			"powered_exponential",
+			"matern",
+			"wendland",
+			"matern_space_time",
+			"matern_ard",
+			"gaussian_ard",
+			"matern_estimate_shape",
+			"matern_ard_estimate_shape",
+			"space_time_gneiting" };
+		const double LARGE_SHAPE_WARNING_THRESHOLD_ = 50.;
+		const char* LARGE_SHAPE_WARNING_ = "The shape parameter is very large, it is recommended to use the 'gausian' covariance funtion ";
 
 		template<typename>
 		friend class RECompGP;
