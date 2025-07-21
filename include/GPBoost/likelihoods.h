@@ -6552,399 +6552,6 @@ namespace GPBoost {
 		}
 
 	private:
-		/*! \brief Number of data points */
-		data_size_t num_data_;
-		/*! \brief Number (dimension) of random effects */
-		data_size_t num_re_;
-		/*! \brief Number of sets of random effects / GPs. This is larger than 1, e.g., heteroscedastic models */
-		int num_sets_re_ = 1;
-		/*! \brief Dimension (= length) of mode_ */
-		data_size_t dim_mode_;
-		/*! \brief Dimension (= length) of mode_ per parameter / set of RE / GP */
-		data_size_t dim_mode_per_set_re_;
-		/*! \brief Dimension (= length) of location par = Z * mode + F(X) */
-		data_size_t dim_location_par_;
-		/*! \brief Posterior mode used for Laplace approximation */
-		vec_t mode_;
-		/*! \brief Saving a previously found value allows for reseting the mode when having a too large step size. */
-		vec_t mode_previous_value_;
-		/*! \brief Auxiliary variable a = ZSigmaZt^-1 * mode_b used for Laplace approximation */
-		vec_t SigmaI_mode_;
-		/*! \brief Saving a previously found value allows for reseting the mode when having a too large step size. */
-		vec_t SigmaI_mode_previous_value_;
-		/*! \brief Indicates whether the vector SigmaI_mode_ / a=ZSigmaZt^-1 is used or not */
-		bool has_SigmaI_mode_;
-		/*! \brief First derivatives of the log-likelihood. If use_random_effects_indices_of_data_, this corresponds to Z^T * first_deriv_ll, i.e., it length is num_re_ */
-		vec_t first_deriv_ll_;
-		/*! \brief First derivatives of the log-likelihood on the data scale of length num_data_. Auxiliary variable used only if use_random_effects_indices_of_data_ */
-		vec_t first_deriv_ll_data_scale_;
-		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_random_effects_indices_of_data_, this corresponds to Z^T * information_ll, i.e., it length is num_re_ */
-		vec_t information_ll_;
-		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W") on the data scale of length num_data_. Usually, this consists of the second derivatives of the negative log-likelihood. This is an auxiliary variable used only if use_random_effects_indices_of_data_ */
-		vec_t information_ll_data_scale_;
-		/*! \brief The off-diagonal elements (if there are any) of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_random_effects_indices_of_data_, this corresponds to Z^T * information_ll, i.e., it length is num_re_ */
-		vec_t off_diag_information_ll_;
-		/*! \brief The off-diagonal elements (if there are any) of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W") on the data scale of length num_data_. Usually, this consists of the second derivatives of the negative log-likelihood. This is an auxiliary variable used only if use_random_effects_indices_of_data_ */
-		vec_t off_diag_information_ll_data_scale_;
-		/*! \brief (used only if information_has_off_diagonal_) The Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI) */
-		sp_mat_t information_ll_mat_;
-		/*! \brief Diagonal of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'GroupedRE' when there is only one random effect and ZtWZ is diagonal. Otherwise 'diag_SigmaI_plus_ZtWZ_' is used for grouped REs) */
-		vec_t diag_SigmaI_plus_ZtWZ_;
-		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version'GroupedRE' if there is more than one random effect). */
-		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_grouped_;
-		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'Vecchia') */
-		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_vecchia_;
-		/*!
-		* \brief Cholesky factors of matrix B = I + Wsqrt *  Z * Sigma * Zt * Wsqrt in Laplace approximation (for version 'Stable')
-		*       or of matrix B = Id + ZtWZsqrt * Sigma * ZtWZsqrt (for version 'OnlyOneGPCalculationsOnREScale')
-		*/
-		T_chol chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_;
-		/*! \brief Cholesky factor of dense matrix used in Newton's method for finding mode (used in version 'FITC') */
-		chol_den_mat_t chol_fact_dense_Newton_;
-		/*! \brief If true, the pattern for the Cholesky factor (chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, chol_fact_SigmaI_plus_ZtWZ_grouped_, or chol_fact_SigmaI_plus_ZtWZ_vecchia_) has been analyzed */
-		bool chol_fact_pattern_analyzed_ = false;
-		/*! \brief If true, the mode has been initialized to 0 */
-		bool mode_initialized_ = false;
-		/*! \brief If true, the mode has been determined */
-		bool mode_has_been_calculated_ = false;
-		/*! \brief If true, the mode is currently zero (after initialization) */
-		bool mode_is_zero_ = false;
-		/*! \brief If true, NA or Inf has occurred during the last call to find mode */
-		bool na_or_inf_during_last_call_to_find_mode_ = false;
-		/*! \brief If true, NA or Inf has occurred during the second last call to find mode when mode_previous_value_ was calculated */
-		bool na_or_inf_during_second_last_call_to_find_mode_ = false;
-		/*! \brief Normalizing constant of the log-likelihood (not all likelihoods have one) */
-		double log_normalizing_constant_;
-		/*! \brief If true, the function 'CalculateLogNormalizingConstant' has been called */
-		bool normalizing_constant_has_been_calculated_ = false;
-		/*! \brief Auxiliary quantities that do not depend on aux_pars_ for normalizing constant for likelihoods (not all likelihoods have one, for gamma this is sum( log(y) ) ) */
-		double aux_log_normalizing_constant_;
-		/*! \brief If true, the function 'CalculateAuxQuantLogNormalizingConstant' has been called */
-		bool aux_normalizing_constant_has_been_calculated_ = false;
-		/*! \brief If true, an incidendce matrix Z is used for duplicate locations and calculations are done on the random effects scale with the unique locations (used, e.g., for Vecchia) */
-		bool use_random_effects_indices_of_data_ = false;
-		/*! \brief Indices that indicate to which random effect every data point is related */
-		const data_size_t* random_effects_indices_of_data_;
-		/*! \brief True if Zt_ is used */
-		bool use_Z_ = false;
-		/*! \brief Zt Transpose Z^ T of random effects design matrix that relates latent random effects to observations / likelihoods(used only for multiple level grouped random effects) */
-		const sp_mat_t* Zt_;
-		/*! \brief True if there are weights */
-		bool has_weights_ = false;
-		/*! \brief Sample weights */
-		const double* weights_;
-		/*! \brief A learning rate for the likelihood for generalized Bayesian inference */
-		double likelihood_learning_rate_ = 1.;
-		/*! \brief Auxiliary weights for likelihood_learning_rate_ */
-		vec_t weights_learning_rate_;
-		/*! \brief If true, SigmaI_mode is always calculated  (currently not used) */
-		bool save_SigmaI_mode_ = false;
-		/*! \brief Indices of data points in grouped when the data is partitioned into groups of size group_size_ sorted according to the order of the mode  (currently not used) */
-		std::vector<std::vector<data_size_t>> group_indices_data_;
-		/*! \brief Group size if data is partitioned into groups (currently not used) */
-		data_size_t group_size_ = 1000;
-		/*! \brief Number of groups (currently not used) */
-		data_size_t num_groups_partition_data_ = 0;
-
-		/*! \brief Type of likelihood  */
-		string_t likelihood_type_ = "gaussian";
-		/*! \brief List of supported covariance likelihoods */
-		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit",
-			"poisson", "gamma", "negative_binomial", "beta", "t", "gaussian_heteroscedastic" };
-		/*! \brief Number of additional parameters for likelihoods */
-		int num_aux_pars_ = 0;
-		/*! \brief Number of additional parameters for likelihoods that are estimated */
-		int num_aux_pars_estim_ = 0;
-		/*! \brief Additional parameters for likelihoods. For "gamma", aux_pars_[0] = shape parameter, for gaussian, aux_pars_[0] = 1 / sqrt(variance) */
-		std::vector<double> aux_pars_;
-		/*! \brief Names of additional parameters for likelihoods */
-		std::vector<string_t> names_aux_pars_;
-		/*! \brief True, if the function 'SetAuxPars' has been called */
-		bool aux_pars_have_been_set_ = false;
-		/*! \brief Type of approximation for non-Gaussian likelihoods */
-		string_t approximation_type_ = "laplace";
-		/*! \brief Type of approximation for non-Gaussian likelihoods defined by user */
-		string_t user_defined_approximation_type_ = "none";
-		/*! \brief List of supported approximations */
-		const std::set<string_t> SUPPORTED_APPROX_TYPE_{ "laplace", "fisher_laplace", "lss_laplace" };
-		/*! \brief If true, 'information_ll_' could contain negative values */
-		bool information_ll_can_be_negative_ = false;
-		/*! \brief If true, the (observed or expected) Fisher information ('information_ll_') changes in the mode finding algorithm (usually Newton's method) for the Laplace approximation */
-		bool information_changes_during_mode_finding_ = true;
-		/*! \brief If true, the (observed or expected) Fisher information ('information_ll_') changes after the mode finding algorithm (e.g., if Fisher-Laplace is used for mode finding but Laplace for the final likelihood calculation) */
-		bool information_changes_after_mode_finding_ = true;
-		/*! \brief If true, the derivative of the information wrt the mode is non-zero (it is zero, e.g., for a "gaussian" likelihood) */
-		bool grad_information_wrt_mode_non_zero_ = true;
-		/*! \brief True, if the derivative of the information wrt the mode can be zero for some points even though it is non-zero generally */
-		bool grad_information_wrt_mode_can_be_zero_for_some_points_ = false;
-		/*! \brief True, if the information has off-diagonal elements */
-		bool information_has_off_diagonal_ = false;
-		/*! \brief If true, the (expected) Fisher information is used for the mode finding */
-		bool use_fisher_for_mode_finding_ = false;
-		/*! \brief If true, the mode finding is continued with an (approximae) Hessian after convergence has been achieved with the Fisher information  */
-		bool continue_mode_finding_after_fisher_ = false;
-		/*! \brief True, if the mode finding has been continued with an (approximae) Hessian after convergence has been achieved with the Fisher information  */
-		bool mode_finding_fisher_has_been_continued_ = false;
-		/*! \brief If true, the relationship "D log_lik(b) - Sigma^-1 b = 0" at the mode is used for calculating predictive means */
-		bool can_use_first_deriv_log_like_for_pred_mean_ = true;
-		/*! \brief If true, the degrees of freedom (df) are also estimated for the "t" likelihood */
-		bool estimate_df_t_ = true;
-		/*! \brief If true, a Gaussian likelihood is estimated using this file */
-		bool use_likelihoods_file_for_gaussian_ = false;
-		/*! \brief If true, the function 'CalcFirstDerivInformationLocPar_DataScale' has been called before */
-		bool first_deriv_information_loc_par_caluclated_ = false;
-		/*! \brief If true, this likelihood requires latent predictive variances for predicting response means */
-		bool need_pred_latent_var_for_response_mean_ = true;
-		/*! \brief If true, a curvature / variance correction is applied in 'CalcInformationLogLik' when calculating the approximate information for prediction */
-		bool diag_information_variance_correction_for_prediction_ = false;
-		/*! \brief If true, 'diag_information_variance_correction_for_prediction_' is enabled for prediction, otherwise not */
-		bool use_variance_correction_for_prediction_ = false;
-		/*! \brief Type of predictive variance correction */
-		string_t var_cor_pred_version_ = "freq_asymptotic";
-
-
-		// MODE FINDING PROPERTIES
-		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
-		int maxit_mode_newton_ = 1000;
-		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
-		double DELTA_REL_CONV_ = 1e-8;
-		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the ewton method for mode finding in Laplace approximation */
-		int max_number_lr_shrinkage_steps_newton_ = 20;
-		/*! \brief If true, a quasi-Newton method instead of Newton's method is used for finding the maximal mode. Only supported for the Vecchia approximation */
-		bool quasi_newton_for_mode_finding_ = false;
-		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the quasi-Newton method for mode finding in Laplace approximation */
-		int MAX_NUMBER_LR_SHRINKAGE_STEPS_QUASI_NEWTON_ = 20;
-		/*! \brief If true, the mode can only change by 'MAX_CHANGE_MODE_NEWTON_' in Newton's method */
-		bool cap_change_mode_newton_ = false;
-		/*! \brief Maximally allowed change for mode in Newton's method for those likelihoods where a cap is enforced */
-		double MAX_CHANGE_MODE_NEWTON_ = std::log(100.);
-		/*! \brief If true, Armijo's condition is used to check whether there is sufficient increase during the mode finding */
-		bool armijo_condition_ = true;
-		/*! \brief Constant c for Armijo's condition. Needs to be in (0,1) */
-		double c_armijo_ = 1e-4;
-
-		// MATRIX INVERSION PROPERTIES
-		/*! \brief Matrix inversion method */
-		string_t matrix_inversion_method_;
-		/*! \brief Maximal number of iterations for conjugate gradient algorithm */
-		int cg_max_num_it_;
-		/*! \brief Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization */
-		int cg_max_num_it_tridiag_;
-		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation */
-		double cg_delta_conv_;
-		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
-		double cg_delta_conv_pred_;
-		/*! \brief Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix */
-		int num_rand_vec_trace_;
-		/*! \brief If true, random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning of Newton's method for finding the mode in the Laplace approximation and are then reused in later trace approximations, otherwise they are sampled every time a trace is calculated */
-		bool reuse_rand_vec_trace_;
-		/*! \brief Seed number to generate random vectors (e.g., Rademacher) */
-		int seed_rand_vec_trace_;
-		/*! \brief Type of preconditioner used for conjugate gradient algorithms */
-		string_t cg_preconditioner_type_;
-		/*! \brief Rank of the FITC and pivoted Cholesky preconditioners in conjugate gradient algorithms */
-		int fitc_piv_chol_preconditioner_rank_;
-		/*! \brief Rank of the matrix for approximating predictive covariance matrices obtained using the Lanczos algorithm */
-		int rank_pred_approx_matrix_lanczos_;
-		/*! \brief Number of samples when simulation is used for calculating predictive variances */
-		int nsim_var_pred_;
-		/*! \brief If true, cg_max_num_it and cg_max_num_it_tridiag are reduced by 2/3 (multiplied by 1/3) for the mode finding of the Laplace approximation in the first gradient step when finding a learning rate that reduces the ll */
-		bool reduce_cg_max_num_it_first_optim_step_ = true;
-
-		//ITERATIVE MATRIX INVERSION + VECCIA APPROXIMATION
-		//A) ROW-MAJOR MATRICES OF VECCIA APPROXIMATION
-		/*! \brief Row-major matrix of the Veccia-matrix B*/
-		sp_mat_rm_t B_rm_;
-		/*! \brief Row-major matrix of the Veccia-matrix D_inv*/
-		sp_mat_rm_t D_inv_rm_;
-		/*! \brief Row-major matrix of B^T D^(-1)*/
-		sp_mat_rm_t B_t_D_inv_rm_;
-
-		//ITERATIVE MATRIX INVERSION + RANDOM EFFECTS
-		/*! \brief Row-major version of Inverse covariance matrix of latent random effect. */
-		sp_mat_rm_t SigmaI_plus_ZtWZ_rm_;
-		/*! Matrix to store (Sigma^(-1) + Z^T W Z)^(-1) (z_1, ..., z_t) calculated in CGTridiagRandomEffects() for later use in the stochastic trace approximation when calculating the gradient*/
-		den_mat_t SigmaI_plus_ZtWZ_inv_RV_;
-		/*! \brief For SSOR preconditioner - lower.triangular(Sigma^-1 + Z^T W Z) times diag(Sigma^-1 + Z^T W Z)^(-0.5)*/
-		sp_mat_rm_t P_SSOR_L_D_sqrt_inv_rm_;
-		/*! \brief For SSOR preconditioner - diag(Sigma^-1 + Z^T W Z)^(-1)*/
-		vec_t P_SSOR_D_inv_;
-		/*! \brief For ZIC preconditioner - sparse cholesky factor L of matrix L L^T = (Sigma^-1 + Z^T W Z)*/
-		sp_mat_rm_t L_SigmaI_plus_ZtWZ_rm_;
-		/*! \brief For diagonal preconditioner - diag(Sigma^-1 + Z^T W Z)^(-1)*/
-		vec_t SigmaI_plus_ZtWZ_inv_diag_;
-
-		//B) RANDOM VECTOR VARIABLES
-		/*! Random number generator used to generate rand_vec_trace_I_*/
-		RNG_t cg_generator_;
-		/*! If the seed of the random number generator cg_generator_ is set, cg_generator_seeded_ is set to true*/
-		bool cg_generator_seeded_ = false;
-		/*! If reuse_rand_vec_trace_ is true and rand_vec_trace_I_ has been generated for the first time, then saved_rand_vec_trace_ is set to true */
-		bool saved_rand_vec_trace_ = false;
-		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension num_data, and t = num_rand_vec_trace_ */
-		den_mat_t rand_vec_trace_I_;
-		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension fitc_piv_chol_preconditioner_rank_, and t = num_rand_vec_trace_. This is used only if cg_preconditioner_type_ == "pivoted_cholesky" */
-		den_mat_t rand_vec_trace_I2_;
-		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension fitc_piv_chol_preconditioner_rank_, and t = num_rand_vec_trace_. This is used only if cg_preconditioner_type_ == "pivoted_cholesky" */
-		den_mat_t rand_vec_trace_I3_;
-		/*! Matrix Z of random vectors (z_1, ..., z_t) with Cov(z_i) = P (P being the preconditioner matrix), z_i is of dimension num_data, and t = num_rand_vec_trace_ */
-		den_mat_t rand_vec_trace_P_;
-		/*! Matrix to store (Sigma^(-1) + W)^(-1) (z_1, ..., z_t) calculated in CGTridiagVecchiaLaplace() for later use in the stochastic trace approximation when calculating the gradient*/
-		den_mat_t SigmaI_plus_W_inv_Z_;
-		/*! Matrix to store (W^(-1) + Sigma)^(-1) (z_1, ..., z_t) calculated in CGTridiagVecchiaLaplaceSigmaplusWinv() for later use in the stochastic trace approximation when calculating the gradient*/
-		den_mat_t WI_plus_Sigma_inv_Z_;
-
-		//C) PRECONDITIONER VARIABLES
-		/*! \brief piv_chol_on_Sigma: matrix of dimension nxk with rank(Sigma_L_k_) <= fitc_piv_chol_preconditioner_rank generated in re_model_template.h*/
-		den_mat_t Sigma_L_k_;
-		/*! \brief piv_chol_on_Sigma: Factor E of matrix EE^T = (I_k + Sigma_L_k_^T W Sigma_L_k_)*/
-		chol_den_mat_t chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_;
-		/*! \brief Sigma_inv_plus_BtWB (P = B^T (D^(-1) + W) B): matrix that contains the product (D^(-1) + W) B */
-		sp_mat_rm_t D_inv_plus_W_B_rm_;
-		/*! \brief zero_infill_incomplete_cholesky (P = L^T L): sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W*/
-		sp_mat_rm_t L_SigmaI_plus_W_rm_;
-		/*! \brief B of vecchia preconditioner */
-		sp_mat_rm_t B_vecchia_pc_rm_;
-		/*! \brief D_inv of vecchia preconditioner */
-		sp_mat_t D_inv_vecchia_pc_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, values: Diagonal of residual covariance matrix (Preconditioner) */
-		vec_t diagonal_approx_preconditioner_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, values: Inverse of diagonal of residual covariance matrix (Preconditioner) */
-		vec_t diagonal_approx_inv_preconditioner_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of matrix sigma_ip + cross_cov^T * D^-1 * cross_cov used in Woodbury identity where D is given by the Preconditioner */
-		chol_den_mat_t chol_fact_woodbury_preconditioner_;
-		/*! \brief Sigma_ip^(-1/2) Sigma_mn */
-		den_mat_t chol_ip_cross_cov_;
-		/*! \brief Cholesky decompositions of inducing points matrix sigma_ip */
-		chol_den_mat_t chol_fact_sigma_ip_;
-		/*! \brief Doubled Woodbury */
-		den_mat_t sigma_woodbury_woodbury_;
-		/*! \brief Cholesky decompositions of doubled Woodbury */
-		chol_den_mat_t chol_fact_sigma_woodbury_woodbury_;
-		/*! \brief Matrix D^(-1) B Sigma_nm */
-		den_mat_t D_inv_B_cross_cov_;
-		/*! \brief Row-major matrix D^(-1) B*/
-		sp_mat_rm_t D_inv_B_rm_;
-
-		/*! \brief Order of the (adaptive) Gauss-Hermite quadrature */
-		int order_GH_ = 30;
-		/*!
-		\brief Nodes and weights for the Gauss-Hermite quadrature
-		Source: https://keisan.casio.com/exec/system/1281195844
-
-		Can also be computed using the following Python code:
-		import numpy as np
-		from scipy.special import roots_hermite
-
-		N = 30  # Number of quadrature points
-		nodes, weights = roots_hermite(N)
-		adaptive_weights = weights * np.exp(nodes**2)
-
-		*/
-		const std::vector<double> GH_nodes_ = { -6.863345293529891581061,
-										-6.138279220123934620395,
-										-5.533147151567495725118,
-										-4.988918968589943944486,
-										-4.48305535709251834189,
-										-4.003908603861228815228,
-										-3.544443873155349886925,
-										-3.099970529586441748689,
-										-2.667132124535617200571,
-										-2.243391467761504072473,
-										-1.826741143603688038836,
-										-1.415527800198188511941,
-										-1.008338271046723461805,
-										-0.6039210586255523077782,
-										-0.2011285765488714855458,
-										0.2011285765488714855458,
-										0.6039210586255523077782,
-										1.008338271046723461805,
-										1.415527800198188511941,
-										1.826741143603688038836,
-										2.243391467761504072473,
-										2.667132124535617200571,
-										3.099970529586441748689,
-										3.544443873155349886925,
-										4.003908603861228815228,
-										4.48305535709251834189,
-										4.988918968589943944486,
-										5.533147151567495725118,
-										6.138279220123934620395,
-										6.863345293529891581061 };
-		const std::vector<double> GH_weights_ = { 2.908254700131226229411E-21,
-										2.8103336027509037088E-17,
-										2.87860708054870606219E-14,
-										8.106186297463044204E-12,
-										9.1785804243785282085E-10,
-										5.10852245077594627739E-8,
-										1.57909488732471028835E-6,
-										2.9387252289229876415E-5,
-										3.48310124318685523421E-4,
-										0.00273792247306765846299,
-										0.0147038297048266835153,
-										0.0551441768702342511681,
-										0.1467358475408900997517,
-										0.2801309308392126674135,
-										0.386394889541813862556,
-										0.3863948895418138625556,
-										0.2801309308392126674135,
-										0.1467358475408900997517,
-										0.0551441768702342511681,
-										0.01470382970482668351528,
-										0.002737922473067658462989,
-										3.48310124318685523421E-4,
-										2.938725228922987641501E-5,
-										1.579094887324710288346E-6,
-										5.1085224507759462774E-8,
-										9.1785804243785282085E-10,
-										8.10618629746304420399E-12,
-										2.87860708054870606219E-14,
-										2.81033360275090370876E-17,
-										2.9082547001312262294E-21 };
-		const std::vector<double> adaptive_GH_weights_ = { 0.83424747101276179534,
-										0.64909798155426670071,
-										0.56940269194964050397,
-										0.52252568933135454964,
-										0.491057995832882696506,
-										0.46837481256472881677,
-										0.45132103599118862129,
-										0.438177022652683703695,
-										0.4279180629327437485828,
-										0.4198950037368240886418,
-										0.413679363611138937184,
-										0.4089815750035316024972,
-										0.4056051233256844363121,
-										0.403419816924804022553,
-										0.402346066701902927115,
-										0.4023460667019029271154,
-										0.4034198169248040225528,
-										0.4056051233256844363121,
-										0.4089815750035316024972,
-										0.413679363611138937184,
-										0.4198950037368240886418,
-										0.427918062932743748583,
-										0.4381770226526837037,
-										0.45132103599118862129,
-										0.46837481256472881677,
-										0.4910579958328826965056,
-										0.52252568933135454964,
-										0.56940269194964050397,
-										0.64909798155426670071,
-										0.83424747101276179534 };
-
-		const char* NA_OR_INF_WARNING_ = "Mode finding algorithm for Laplace approximation: NA or Inf occurred. "
-			"This is not necessary a problem as it might have been the cause of a too large learning rate which, "
-			"consequently, might have been decreased by the optimization algorithm ";
-		const char* CANNOT_CALC_STDEV_ERROR_ = "Cannot calculate standard deviations for the regression coefficients since "
-			"the marginal likelihood is numerically unstable (NA or Inf) in a neighborhood of the optimal values. "
-			"The likely reason for this is that the marginal likelihood is very flat. "
-			"If you include an intercept in your model, you can try estimating your model without an intercept (and excluding variables that are almost constant) ";
-		const char* NA_OR_INF_ERROR_ = "NA or Inf occurred in the mode finding algorithm for the Laplace approximation ";
-		const char* NO_INCREASE_IN_MLL_WARNING_ = "Mode finding algorithm for Laplace approximation: "
-			"The convergence criterion (log-likelihood + log-prior) has decreased and the algorithm has been terminated ";
-		const char* NO_CONVERGENCE_WARNING_ = "Algorithm for finding mode for Laplace approximation has not "
-			"converged after the maximal number of iterations ";
-		const char* CG_NA_OR_INF_WARNING_ = "NA or Inf occured in the Conjugate Gradient Algorithm when calculating the gradients ";
 
 		/*!
 		* \brief Calculate the part of the logarithmic normalizing constant of the likelihood that does not depend neither on aux_pars_ nor on location_par
@@ -9233,6 +8840,400 @@ namespace GPBoost {
 				Log::REFatal("CalcLogDetStochDerivAuxPar: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 			}
 		} //end CalcLogDetStochDerivAuxParVecchia
+
+		/*! \brief Number of data points */
+		data_size_t num_data_;
+		/*! \brief Number (dimension) of random effects */
+		data_size_t num_re_;
+		/*! \brief Number of sets of random effects / GPs. This is larger than 1, e.g., heteroscedastic models */
+		int num_sets_re_ = 1;
+		/*! \brief Dimension (= length) of mode_ */
+		data_size_t dim_mode_;
+		/*! \brief Dimension (= length) of mode_ per parameter / set of RE / GP */
+		data_size_t dim_mode_per_set_re_;
+		/*! \brief Dimension (= length) of location par = Z * mode + F(X) */
+		data_size_t dim_location_par_;
+		/*! \brief Posterior mode used for Laplace approximation */
+		vec_t mode_;
+		/*! \brief Saving a previously found value allows for reseting the mode when having a too large step size. */
+		vec_t mode_previous_value_;
+		/*! \brief Auxiliary variable a = ZSigmaZt^-1 * mode_b used for Laplace approximation */
+		vec_t SigmaI_mode_;
+		/*! \brief Saving a previously found value allows for reseting the mode when having a too large step size. */
+		vec_t SigmaI_mode_previous_value_;
+		/*! \brief Indicates whether the vector SigmaI_mode_ / a=ZSigmaZt^-1 is used or not */
+		bool has_SigmaI_mode_;
+		/*! \brief First derivatives of the log-likelihood. If use_random_effects_indices_of_data_, this corresponds to Z^T * first_deriv_ll, i.e., it length is num_re_ */
+		vec_t first_deriv_ll_;
+		/*! \brief First derivatives of the log-likelihood on the data scale of length num_data_. Auxiliary variable used only if use_random_effects_indices_of_data_ */
+		vec_t first_deriv_ll_data_scale_;
+		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_random_effects_indices_of_data_, this corresponds to Z^T * information_ll, i.e., it length is num_re_ */
+		vec_t information_ll_;
+		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W") on the data scale of length num_data_. Usually, this consists of the second derivatives of the negative log-likelihood. This is an auxiliary variable used only if use_random_effects_indices_of_data_ */
+		vec_t information_ll_data_scale_;
+		/*! \brief The off-diagonal elements (if there are any) of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_random_effects_indices_of_data_, this corresponds to Z^T * information_ll, i.e., it length is num_re_ */
+		vec_t off_diag_information_ll_;
+		/*! \brief The off-diagonal elements (if there are any) of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W") on the data scale of length num_data_. Usually, this consists of the second derivatives of the negative log-likelihood. This is an auxiliary variable used only if use_random_effects_indices_of_data_ */
+		vec_t off_diag_information_ll_data_scale_;
+		/*! \brief (used only if information_has_off_diagonal_) The Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI) */
+		sp_mat_t information_ll_mat_;
+		/*! \brief Diagonal of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'GroupedRE' when there is only one random effect and ZtWZ is diagonal. Otherwise 'diag_SigmaI_plus_ZtWZ_' is used for grouped REs) */
+		vec_t diag_SigmaI_plus_ZtWZ_;
+		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version'GroupedRE' if there is more than one random effect). */
+		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_grouped_;
+		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'Vecchia') */
+		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_vecchia_;
+		/*!
+		* \brief Cholesky factors of matrix B = I + Wsqrt *  Z * Sigma * Zt * Wsqrt in Laplace approximation (for version 'Stable')
+		*       or of matrix B = Id + ZtWZsqrt * Sigma * ZtWZsqrt (for version 'OnlyOneGPCalculationsOnREScale')
+		*/
+		T_chol chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_;
+		/*! \brief Cholesky factor of dense matrix used in Newton's method for finding mode (used in version 'FITC') */
+		chol_den_mat_t chol_fact_dense_Newton_;
+		/*! \brief If true, the pattern for the Cholesky factor (chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, chol_fact_SigmaI_plus_ZtWZ_grouped_, or chol_fact_SigmaI_plus_ZtWZ_vecchia_) has been analyzed */
+		bool chol_fact_pattern_analyzed_ = false;
+		/*! \brief If true, the mode has been initialized to 0 */
+		bool mode_initialized_ = false;
+		/*! \brief If true, the mode has been determined */
+		bool mode_has_been_calculated_ = false;
+		/*! \brief If true, the mode is currently zero (after initialization) */
+		bool mode_is_zero_ = false;
+		/*! \brief If true, NA or Inf has occurred during the last call to find mode */
+		bool na_or_inf_during_last_call_to_find_mode_ = false;
+		/*! \brief If true, NA or Inf has occurred during the second last call to find mode when mode_previous_value_ was calculated */
+		bool na_or_inf_during_second_last_call_to_find_mode_ = false;
+		/*! \brief Normalizing constant of the log-likelihood (not all likelihoods have one) */
+		double log_normalizing_constant_;
+		/*! \brief If true, the function 'CalculateLogNormalizingConstant' has been called */
+		bool normalizing_constant_has_been_calculated_ = false;
+		/*! \brief Auxiliary quantities that do not depend on aux_pars_ for normalizing constant for likelihoods (not all likelihoods have one, for gamma this is sum( log(y) ) ) */
+		double aux_log_normalizing_constant_;
+		/*! \brief If true, the function 'CalculateAuxQuantLogNormalizingConstant' has been called */
+		bool aux_normalizing_constant_has_been_calculated_ = false;
+		/*! \brief If true, an incidendce matrix Z is used for duplicate locations and calculations are done on the random effects scale with the unique locations (used, e.g., for Vecchia) */
+		bool use_random_effects_indices_of_data_ = false;
+		/*! \brief Indices that indicate to which random effect every data point is related */
+		const data_size_t* random_effects_indices_of_data_;
+		/*! \brief True if Zt_ is used */
+		bool use_Z_ = false;
+		/*! \brief Zt Transpose Z^ T of random effects design matrix that relates latent random effects to observations / likelihoods(used only for multiple level grouped random effects) */
+		const sp_mat_t* Zt_;
+		/*! \brief True if there are weights */
+		bool has_weights_ = false;
+		/*! \brief Sample weights */
+		const double* weights_;
+		/*! \brief A learning rate for the likelihood for generalized Bayesian inference */
+		double likelihood_learning_rate_ = 1.;
+		/*! \brief Auxiliary weights for likelihood_learning_rate_ */
+		vec_t weights_learning_rate_;
+		/*! \brief If true, SigmaI_mode is always calculated  (currently not used) */
+		bool save_SigmaI_mode_ = false;
+		/*! \brief Indices of data points in grouped when the data is partitioned into groups of size group_size_ sorted according to the order of the mode  (currently not used) */
+		std::vector<std::vector<data_size_t>> group_indices_data_;
+		/*! \brief Group size if data is partitioned into groups (currently not used) */
+		data_size_t group_size_ = 1000;
+		/*! \brief Number of groups (currently not used) */
+		data_size_t num_groups_partition_data_ = 0;
+
+		/*! \brief Type of likelihood  */
+		string_t likelihood_type_ = "gaussian";
+		/*! \brief List of supported covariance likelihoods */
+		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit",
+			"poisson", "gamma", "negative_binomial", "beta", "t", "gaussian_heteroscedastic" };
+		/*! \brief Number of additional parameters for likelihoods */
+		int num_aux_pars_ = 0;
+		/*! \brief Number of additional parameters for likelihoods that are estimated */
+		int num_aux_pars_estim_ = 0;
+		/*! \brief Additional parameters for likelihoods. For "gamma", aux_pars_[0] = shape parameter, for gaussian, aux_pars_[0] = 1 / sqrt(variance) */
+		std::vector<double> aux_pars_;
+		/*! \brief Names of additional parameters for likelihoods */
+		std::vector<string_t> names_aux_pars_;
+		/*! \brief True, if the function 'SetAuxPars' has been called */
+		bool aux_pars_have_been_set_ = false;
+		/*! \brief Type of approximation for non-Gaussian likelihoods */
+		string_t approximation_type_ = "laplace";
+		/*! \brief Type of approximation for non-Gaussian likelihoods defined by user */
+		string_t user_defined_approximation_type_ = "none";
+		/*! \brief List of supported approximations */
+		const std::set<string_t> SUPPORTED_APPROX_TYPE_{ "laplace", "fisher_laplace", "lss_laplace" };
+		/*! \brief If true, 'information_ll_' could contain negative values */
+		bool information_ll_can_be_negative_ = false;
+		/*! \brief If true, the (observed or expected) Fisher information ('information_ll_') changes in the mode finding algorithm (usually Newton's method) for the Laplace approximation */
+		bool information_changes_during_mode_finding_ = true;
+		/*! \brief If true, the (observed or expected) Fisher information ('information_ll_') changes after the mode finding algorithm (e.g., if Fisher-Laplace is used for mode finding but Laplace for the final likelihood calculation) */
+		bool information_changes_after_mode_finding_ = true;
+		/*! \brief If true, the derivative of the information wrt the mode is non-zero (it is zero, e.g., for a "gaussian" likelihood) */
+		bool grad_information_wrt_mode_non_zero_ = true;
+		/*! \brief True, if the derivative of the information wrt the mode can be zero for some points even though it is non-zero generally */
+		bool grad_information_wrt_mode_can_be_zero_for_some_points_ = false;
+		/*! \brief True, if the information has off-diagonal elements */
+		bool information_has_off_diagonal_ = false;
+		/*! \brief If true, the (expected) Fisher information is used for the mode finding */
+		bool use_fisher_for_mode_finding_ = false;
+		/*! \brief If true, the mode finding is continued with an (approximae) Hessian after convergence has been achieved with the Fisher information  */
+		bool continue_mode_finding_after_fisher_ = false;
+		/*! \brief True, if the mode finding has been continued with an (approximae) Hessian after convergence has been achieved with the Fisher information  */
+		bool mode_finding_fisher_has_been_continued_ = false;
+		/*! \brief If true, the relationship "D log_lik(b) - Sigma^-1 b = 0" at the mode is used for calculating predictive means */
+		bool can_use_first_deriv_log_like_for_pred_mean_ = true;
+		/*! \brief If true, the degrees of freedom (df) are also estimated for the "t" likelihood */
+		bool estimate_df_t_ = true;
+		/*! \brief If true, a Gaussian likelihood is estimated using this file */
+		bool use_likelihoods_file_for_gaussian_ = false;
+		/*! \brief If true, the function 'CalcFirstDerivInformationLocPar_DataScale' has been called before */
+		bool first_deriv_information_loc_par_caluclated_ = false;
+		/*! \brief If true, this likelihood requires latent predictive variances for predicting response means */
+		bool need_pred_latent_var_for_response_mean_ = true;
+		/*! \brief If true, a curvature / variance correction is applied in 'CalcInformationLogLik' when calculating the approximate information for prediction */
+		bool diag_information_variance_correction_for_prediction_ = false;
+		/*! \brief If true, 'diag_information_variance_correction_for_prediction_' is enabled for prediction, otherwise not */
+		bool use_variance_correction_for_prediction_ = false;
+		/*! \brief Type of predictive variance correction */
+		string_t var_cor_pred_version_ = "freq_asymptotic";
+
+
+		// MODE FINDING PROPERTIES
+		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
+		int maxit_mode_newton_ = 1000;
+		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
+		double DELTA_REL_CONV_ = 1e-8;
+		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the ewton method for mode finding in Laplace approximation */
+		int max_number_lr_shrinkage_steps_newton_ = 20;
+		/*! \brief If true, a quasi-Newton method instead of Newton's method is used for finding the maximal mode. Only supported for the Vecchia approximation */
+		bool quasi_newton_for_mode_finding_ = false;
+		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the quasi-Newton method for mode finding in Laplace approximation */
+		int MAX_NUMBER_LR_SHRINKAGE_STEPS_QUASI_NEWTON_ = 20;
+		/*! \brief If true, the mode can only change by 'MAX_CHANGE_MODE_NEWTON_' in Newton's method */
+		bool cap_change_mode_newton_ = false;
+		/*! \brief Maximally allowed change for mode in Newton's method for those likelihoods where a cap is enforced */
+		double MAX_CHANGE_MODE_NEWTON_ = std::log(100.);
+		/*! \brief If true, Armijo's condition is used to check whether there is sufficient increase during the mode finding */
+		bool armijo_condition_ = true;
+		/*! \brief Constant c for Armijo's condition. Needs to be in (0,1) */
+		double c_armijo_ = 1e-4;
+
+		// MATRIX INVERSION PROPERTIES
+		/*! \brief Matrix inversion method */
+		string_t matrix_inversion_method_;
+		/*! \brief Maximal number of iterations for conjugate gradient algorithm */
+		int cg_max_num_it_;
+		/*! \brief Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization */
+		int cg_max_num_it_tridiag_;
+		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation */
+		double cg_delta_conv_;
+		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
+		double cg_delta_conv_pred_;
+		/*! \brief Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix */
+		int num_rand_vec_trace_;
+		/*! \brief If true, random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning of Newton's method for finding the mode in the Laplace approximation and are then reused in later trace approximations, otherwise they are sampled every time a trace is calculated */
+		bool reuse_rand_vec_trace_;
+		/*! \brief Seed number to generate random vectors (e.g., Rademacher) */
+		int seed_rand_vec_trace_;
+		/*! \brief Type of preconditioner used for conjugate gradient algorithms */
+		string_t cg_preconditioner_type_;
+		/*! \brief Rank of the FITC and pivoted Cholesky preconditioners in conjugate gradient algorithms */
+		int fitc_piv_chol_preconditioner_rank_;
+		/*! \brief Rank of the matrix for approximating predictive covariance matrices obtained using the Lanczos algorithm */
+		int rank_pred_approx_matrix_lanczos_;
+		/*! \brief Number of samples when simulation is used for calculating predictive variances */
+		int nsim_var_pred_;
+		/*! \brief If true, cg_max_num_it and cg_max_num_it_tridiag are reduced by 2/3 (multiplied by 1/3) for the mode finding of the Laplace approximation in the first gradient step when finding a learning rate that reduces the ll */
+		bool reduce_cg_max_num_it_first_optim_step_ = true;
+
+		//ITERATIVE MATRIX INVERSION + VECCIA APPROXIMATION
+		//A) ROW-MAJOR MATRICES OF VECCIA APPROXIMATION
+		/*! \brief Row-major matrix of the Veccia-matrix B*/
+		sp_mat_rm_t B_rm_;
+		/*! \brief Row-major matrix of the Veccia-matrix D_inv*/
+		sp_mat_rm_t D_inv_rm_;
+		/*! \brief Row-major matrix of B^T D^(-1)*/
+		sp_mat_rm_t B_t_D_inv_rm_;
+
+		//ITERATIVE MATRIX INVERSION + RANDOM EFFECTS
+		/*! \brief Row-major version of Inverse covariance matrix of latent random effect. */
+		sp_mat_rm_t SigmaI_plus_ZtWZ_rm_;
+		/*! Matrix to store (Sigma^(-1) + Z^T W Z)^(-1) (z_1, ..., z_t) calculated in CGTridiagRandomEffects() for later use in the stochastic trace approximation when calculating the gradient*/
+		den_mat_t SigmaI_plus_ZtWZ_inv_RV_;
+		/*! \brief For SSOR preconditioner - lower.triangular(Sigma^-1 + Z^T W Z) times diag(Sigma^-1 + Z^T W Z)^(-0.5)*/
+		sp_mat_rm_t P_SSOR_L_D_sqrt_inv_rm_;
+		/*! \brief For SSOR preconditioner - diag(Sigma^-1 + Z^T W Z)^(-1)*/
+		vec_t P_SSOR_D_inv_;
+		/*! \brief For ZIC preconditioner - sparse cholesky factor L of matrix L L^T = (Sigma^-1 + Z^T W Z)*/
+		sp_mat_rm_t L_SigmaI_plus_ZtWZ_rm_;
+		/*! \brief For diagonal preconditioner - diag(Sigma^-1 + Z^T W Z)^(-1)*/
+		vec_t SigmaI_plus_ZtWZ_inv_diag_;
+
+		//B) RANDOM VECTOR VARIABLES
+		/*! Random number generator used to generate rand_vec_trace_I_*/
+		RNG_t cg_generator_;
+		/*! If the seed of the random number generator cg_generator_ is set, cg_generator_seeded_ is set to true*/
+		bool cg_generator_seeded_ = false;
+		/*! If reuse_rand_vec_trace_ is true and rand_vec_trace_I_ has been generated for the first time, then saved_rand_vec_trace_ is set to true */
+		bool saved_rand_vec_trace_ = false;
+		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension num_data, and t = num_rand_vec_trace_ */
+		den_mat_t rand_vec_trace_I_;
+		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension fitc_piv_chol_preconditioner_rank_, and t = num_rand_vec_trace_. This is used only if cg_preconditioner_type_ == "pivoted_cholesky" */
+		den_mat_t rand_vec_trace_I2_;
+		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension fitc_piv_chol_preconditioner_rank_, and t = num_rand_vec_trace_. This is used only if cg_preconditioner_type_ == "pivoted_cholesky" */
+		den_mat_t rand_vec_trace_I3_;
+		/*! Matrix Z of random vectors (z_1, ..., z_t) with Cov(z_i) = P (P being the preconditioner matrix), z_i is of dimension num_data, and t = num_rand_vec_trace_ */
+		den_mat_t rand_vec_trace_P_;
+		/*! Matrix to store (Sigma^(-1) + W)^(-1) (z_1, ..., z_t) calculated in CGTridiagVecchiaLaplace() for later use in the stochastic trace approximation when calculating the gradient*/
+		den_mat_t SigmaI_plus_W_inv_Z_;
+		/*! Matrix to store (W^(-1) + Sigma)^(-1) (z_1, ..., z_t) calculated in CGTridiagVecchiaLaplaceSigmaplusWinv() for later use in the stochastic trace approximation when calculating the gradient*/
+		den_mat_t WI_plus_Sigma_inv_Z_;
+
+		//C) PRECONDITIONER VARIABLES
+		/*! \brief piv_chol_on_Sigma: matrix of dimension nxk with rank(Sigma_L_k_) <= fitc_piv_chol_preconditioner_rank generated in re_model_template.h*/
+		den_mat_t Sigma_L_k_;
+		/*! \brief piv_chol_on_Sigma: Factor E of matrix EE^T = (I_k + Sigma_L_k_^T W Sigma_L_k_)*/
+		chol_den_mat_t chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_;
+		/*! \brief Sigma_inv_plus_BtWB (P = B^T (D^(-1) + W) B): matrix that contains the product (D^(-1) + W) B */
+		sp_mat_rm_t D_inv_plus_W_B_rm_;
+		/*! \brief zero_infill_incomplete_cholesky (P = L^T L): sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W*/
+		sp_mat_rm_t L_SigmaI_plus_W_rm_;
+		/*! \brief B of vecchia preconditioner */
+		sp_mat_rm_t B_vecchia_pc_rm_;
+		/*! \brief D_inv of vecchia preconditioner */
+		sp_mat_t D_inv_vecchia_pc_;
+		/*! \brief Key: labels of independent realizations of REs/GPs, values: Diagonal of residual covariance matrix (Preconditioner) */
+		vec_t diagonal_approx_preconditioner_;
+		/*! \brief Key: labels of independent realizations of REs/GPs, values: Inverse of diagonal of residual covariance matrix (Preconditioner) */
+		vec_t diagonal_approx_inv_preconditioner_;
+		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of matrix sigma_ip + cross_cov^T * D^-1 * cross_cov used in Woodbury identity where D is given by the Preconditioner */
+		chol_den_mat_t chol_fact_woodbury_preconditioner_;
+		/*! \brief Sigma_ip^(-1/2) Sigma_mn */
+		den_mat_t chol_ip_cross_cov_;
+		/*! \brief Cholesky decompositions of inducing points matrix sigma_ip */
+		chol_den_mat_t chol_fact_sigma_ip_;
+		/*! \brief Doubled Woodbury */
+		den_mat_t sigma_woodbury_woodbury_;
+		/*! \brief Cholesky decompositions of doubled Woodbury */
+		chol_den_mat_t chol_fact_sigma_woodbury_woodbury_;
+		/*! \brief Matrix D^(-1) B Sigma_nm */
+		den_mat_t D_inv_B_cross_cov_;
+		/*! \brief Row-major matrix D^(-1) B*/
+		sp_mat_rm_t D_inv_B_rm_;
+
+		/*! \brief Order of the (adaptive) Gauss-Hermite quadrature */
+		int order_GH_ = 30;
+		/*!
+		\brief Nodes and weights for the Gauss-Hermite quadrature
+		Source: https://keisan.casio.com/exec/system/1281195844
+
+		Can also be computed using the following Python code:
+		import numpy as np
+		from scipy.special import roots_hermite
+
+		N = 30  # Number of quadrature points
+		nodes, weights = roots_hermite(N)
+		adaptive_weights = weights * np.exp(nodes**2)
+
+		*/
+		const std::vector<double> GH_nodes_ = { -6.863345293529891581061,
+										-6.138279220123934620395,
+										-5.533147151567495725118,
+										-4.988918968589943944486,
+										-4.48305535709251834189,
+										-4.003908603861228815228,
+										-3.544443873155349886925,
+										-3.099970529586441748689,
+										-2.667132124535617200571,
+										-2.243391467761504072473,
+										-1.826741143603688038836,
+										-1.415527800198188511941,
+										-1.008338271046723461805,
+										-0.6039210586255523077782,
+										-0.2011285765488714855458,
+										0.2011285765488714855458,
+										0.6039210586255523077782,
+										1.008338271046723461805,
+										1.415527800198188511941,
+										1.826741143603688038836,
+										2.243391467761504072473,
+										2.667132124535617200571,
+										3.099970529586441748689,
+										3.544443873155349886925,
+										4.003908603861228815228,
+										4.48305535709251834189,
+										4.988918968589943944486,
+										5.533147151567495725118,
+										6.138279220123934620395,
+										6.863345293529891581061 };
+		const std::vector<double> GH_weights_ = { 2.908254700131226229411E-21,
+										2.8103336027509037088E-17,
+										2.87860708054870606219E-14,
+										8.106186297463044204E-12,
+										9.1785804243785282085E-10,
+										5.10852245077594627739E-8,
+										1.57909488732471028835E-6,
+										2.9387252289229876415E-5,
+										3.48310124318685523421E-4,
+										0.00273792247306765846299,
+										0.0147038297048266835153,
+										0.0551441768702342511681,
+										0.1467358475408900997517,
+										0.2801309308392126674135,
+										0.386394889541813862556,
+										0.3863948895418138625556,
+										0.2801309308392126674135,
+										0.1467358475408900997517,
+										0.0551441768702342511681,
+										0.01470382970482668351528,
+										0.002737922473067658462989,
+										3.48310124318685523421E-4,
+										2.938725228922987641501E-5,
+										1.579094887324710288346E-6,
+										5.1085224507759462774E-8,
+										9.1785804243785282085E-10,
+										8.10618629746304420399E-12,
+										2.87860708054870606219E-14,
+										2.81033360275090370876E-17,
+										2.9082547001312262294E-21 };
+		const std::vector<double> adaptive_GH_weights_ = { 0.83424747101276179534,
+										0.64909798155426670071,
+										0.56940269194964050397,
+										0.52252568933135454964,
+										0.491057995832882696506,
+										0.46837481256472881677,
+										0.45132103599118862129,
+										0.438177022652683703695,
+										0.4279180629327437485828,
+										0.4198950037368240886418,
+										0.413679363611138937184,
+										0.4089815750035316024972,
+										0.4056051233256844363121,
+										0.403419816924804022553,
+										0.402346066701902927115,
+										0.4023460667019029271154,
+										0.4034198169248040225528,
+										0.4056051233256844363121,
+										0.4089815750035316024972,
+										0.413679363611138937184,
+										0.4198950037368240886418,
+										0.427918062932743748583,
+										0.4381770226526837037,
+										0.45132103599118862129,
+										0.46837481256472881677,
+										0.4910579958328826965056,
+										0.52252568933135454964,
+										0.56940269194964050397,
+										0.64909798155426670071,
+										0.83424747101276179534 };
+
+		const char* NA_OR_INF_WARNING_ = "Mode finding algorithm for Laplace approximation: NA or Inf occurred. "
+			"This is not necessary a problem as it might have been the cause of a too large learning rate which, "
+			"consequently, might have been decreased by the optimization algorithm ";
+		const char* CANNOT_CALC_STDEV_ERROR_ = "Cannot calculate standard deviations for the regression coefficients since "
+			"the marginal likelihood is numerically unstable (NA or Inf) in a neighborhood of the optimal values. "
+			"The likely reason for this is that the marginal likelihood is very flat. "
+			"If you include an intercept in your model, you can try estimating your model without an intercept (and excluding variables that are almost constant) ";
+		const char* NA_OR_INF_ERROR_ = "NA or Inf occurred in the mode finding algorithm for the Laplace approximation ";
+		const char* NO_INCREASE_IN_MLL_WARNING_ = "Mode finding algorithm for Laplace approximation: "
+			"The convergence criterion (log-likelihood + log-prior) has decreased and the algorithm has been terminated ";
+		const char* NO_CONVERGENCE_WARNING_ = "Algorithm for finding mode for Laplace approximation has not "
+			"converged after the maximal number of iterations ";
+		const char* CG_NA_OR_INF_WARNING_ = "NA or Inf occured in the Conjugate Gradient Algorithm when calculating the gradients ";
 
 	};//end class Likelihood
 
