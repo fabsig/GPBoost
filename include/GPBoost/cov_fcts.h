@@ -2095,10 +2095,10 @@ namespace GPBoost {
 			const den_mat_t* coords_ptr,
 			const den_mat_t* coords_pred_ptr,
 			const double shape) const {
+#if MSVC_OR_GCC_COMPILER
 			double range_dist = cm_dist * dist_ij;
 			double dist_sq_ij_coord = ((*coords_pred_ptr).coeff(i, ind_range) - (*coords_ptr).coeff(j, ind_range));
 			dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
-#if MSVC_OR_GCC_COMPILER
 			return(cm * std::pow(range_dist, shape - 2.) * (2. * shape * std::cyl_bessel_k(shape, range_dist) - range_dist * std::cyl_bessel_k(shape + 1., range_dist)) * dist_sq_ij_coord);
 #else
 			return(0.);
@@ -2178,7 +2178,7 @@ namespace GPBoost {
 #if MSVC_OR_GCC_COMPILER
 				return(d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux));
 #else
-				Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", pars[4], cov_fct_type.c_str());
+				Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", pars[4], cov_fct_type_.c_str());
 				return(0.);
 #endif
 			}

@@ -9265,7 +9265,6 @@ namespace GPBoost {
 						}//end not transf_scale
 					}//end include_error_var
 					//Remaining covariance parameters
-					int counter = 0;
 					for (int j = 0; j < num_comps_total_; ++j) {
 						for (int k = j; k < num_comps_total_; ++k) {
 							double FI_jk = (((Zj_Zjt_RV_minus_Zj_Zjt_Z_MInv_Zt_RV[j]).cwiseProduct(Zj_Zjt_RV_minus_Z_MInv_Zt_Zj_Zjt_RV[k])).colwise().sum()).mean();
@@ -9276,7 +9275,6 @@ namespace GPBoost {
 								FI_jk /= cov_pars[0] * cov_pars[0];
 							}
 							FI(j + first_cov_par, k + first_cov_par) += FI_jk / 2.;
-							counter++;
 						}//end loop k
 					}//end loop j
 				}//end iterative
@@ -10145,7 +10143,6 @@ namespace GPBoost {
 					coords_pred_sum[i] = gp_coords_mat_pred(i, Eigen::all).sum();
 				}
 				den_mat_t sigma_ip_inv_cross_cov_T;
-				re_comp_cross_cov_cluster_i_pred_ip->coords_;
 #pragma omp parallel for schedule(static)
 				for (int ii = 0; ii < num_REs_pred; ++ii) {
 					for (int jj = 0; jj < num_REs_obs; ++jj) {
