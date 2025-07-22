@@ -6902,7 +6902,7 @@ namespace GPBoost {
 		}
 
 		inline double LogLikGaussianHeteroscedastic(double y, double location_par,
-			const double location_par2, bool incl_norm_const) const {
+			double location_par2, bool incl_norm_const) const {
 			double resid = y - location_par;
 			double ll = -resid * resid * std::exp(-location_par2) / 2. - location_par2 / 2.;
 			if (incl_norm_const) {
@@ -7100,7 +7100,7 @@ namespace GPBoost {
 			return ((y - location_par) / aux_pars_[0]);
 		}
 
-		inline void FirstDerivLogLikGaussianHeteroscedastic(double y, double location_par, const double location_par2,
+		inline void FirstDerivLogLikGaussianHeteroscedastic(double y, double location_par, double location_par2,
 			double& first_deriv_mean, double& first_deriv_log_var) const {
 			double sigma2_inv = std::exp(-location_par2);
 			double resid = y - location_par;
@@ -7462,7 +7462,7 @@ namespace GPBoost {
 			return ((aux_pars_[1] + 1.) / (aux_pars_[1] + 3.) / (aux_pars_[0] * aux_pars_[0]));
 		}
 
-		inline void SecondDerivNegLogLikGaussianHeteroscedastic(double y, double location_par, const double location_par2,
+		inline void SecondDerivNegLogLikGaussianHeteroscedastic(double y, double location_par, double location_par2,
 			double& second_deriv, double& second_deriv2, double& off_diag_second_deriv) const {
 			double sigma2_inv = std::exp(-location_par2);
 			double resid = y - location_par;
