@@ -4814,11 +4814,11 @@ namespace GPBoost {
 						for (int i = 0; i < nsim_var_pred_; ++i) {
 							//z_i ~ N(0,I)
 							std::normal_distribution<double> ndist(0.0, 1.0);
-							vec_t rand_vec_pred_I_1(num_re_), rand_vec_pred_I_2(n_pred);
+							vec_t rand_vec_pred_I_1(num_re_), rand_vec_pred_I_2(num_data_);
 							for (int j = 0; j < num_re_; j++) {
 								rand_vec_pred_I_1(j) = ndist(rng_local);
 							}
-							for (int j = 0; j < n_pred; j++) {
+							for (int j = 0; j < num_data_; j++) {
 								rand_vec_pred_I_2(j) = ndist(rng_local);
 							}
 							//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
