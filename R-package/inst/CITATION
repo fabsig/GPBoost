@@ -3,8 +3,8 @@ NOTE <- paste( "R package version", meta$Version )
 bibentry(bibtype="Misc",
    key = "sigrist2021gpboost",
    mheader = "Please cite gpboost including its version as ",
-   title = "{GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models}",
-    author = "{Fabio Sigrist and Tim Gyger and Pascal K{\"u}ndig}",
+   title = "GPBoost: Combining Tree-Boosting with Gaussian Process and Mixed Effects Models",
+    author = "Fabio Sigrist and Tim Gyger and Pascal Kündig",
 	       note = NOTE,
     year = 2021,
     url = "https://github.com/fabsig/GPBoost"

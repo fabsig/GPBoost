@@ -223,21 +223,18 @@ namespace GPBoost {
         CHECK(x > 0.0);
         const double tiny = 1e-4;   // tiny-x shortcut
         const double threshold = 8.0;    // switch to asymptotic series
-
         /* tiny-x limit: phi''(x) approx -2/x^3 */
         if (x <= tiny)
             return -2.0 / (x * x * x);
-
         /* Shift upward until z >= threshold, using
            phi''(x) = phi''(x+1) - 2/x^3   */
         double z = x;
         double value = 0.0;
         while (z < threshold) {
-            value -= 2.0 / (z * z * z);   // **minus** sign is crucial
+            value -= 2.0 / (z * z * z);
             z += 1.0;
         }
-
-        /* Bernoulli–based asymptotic series */
+        /* Bernoulli based asymptotic series */
         double z2 = z * z;
         double z3 = z2 * z;
         double z4 = z2 * z2;
