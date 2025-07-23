@@ -356,6 +356,7 @@ plt.show(block=False)
 
 #--------------------Gaussian process model with linear mean function----------------
 # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"
+# Note: you need to include a column of 1's manually for an intercept term
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
                        likelihood=likelihood)
 gp_model.fit(y=y_lin, X=X, params={"std_dev": True})

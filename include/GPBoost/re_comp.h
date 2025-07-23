@@ -869,7 +869,7 @@ namespace GPBoost {
 				}
 			}//end use_Z_for_duplicates
 			else {//not use_Z_for_duplicates (ignore duplicates)
-				//this option is used for, e.g., the Vecchia approximation
+				//this option is used for, e.g., the Vecchia approximation for a Gaussian likelihood
 				coords_ = coords;
 				num_random_effects_ = (data_size_t)coords_.rows();
 			}

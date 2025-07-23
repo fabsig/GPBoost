@@ -356,6 +356,7 @@ plot(b_1_train, GP_smooth[,1], xlab="truth", ylab="predicted",
 
 #--------------------Gaussian process model with linear mean function----------------
 # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"
+# Note: you need to include a column of 1's manually for an intercept term
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                        y = y_lin, X = X, likelihood = likelihood, params = list(std_dev = TRUE))
 summary(gp_model)
