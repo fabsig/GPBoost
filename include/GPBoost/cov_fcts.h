@@ -2153,7 +2153,12 @@ namespace GPBoost {
 				return(d_aux2 * (1. + d_aux + d_aux * d_aux / 3.) * std::exp(-d_aux));
 			}
 			else {
+#if MSVC_OR_GCC_COMPILER
 				return(d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux));
+#else
+				Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", pars[4], cov_fct_type_.c_str());
+				return(0.);
+#endif
 			}
 		}// end SpaceTimeGneitingCovariance
 		inline double SpaceTimeGneitingCovariance(const vec_t& coords,
