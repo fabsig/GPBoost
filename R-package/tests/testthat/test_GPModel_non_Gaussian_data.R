@@ -849,12 +849,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         expected_mu <- c(0.5195889, -0.6411954, 0.0000000)
         expected_cov <- c(0.3422367, 0.1554011, 0.0000000, 0.1554011,
                           0.3457334, 0.0000000, 0.0000000, 0.0000000, 1.8080000)
-        if(inv_method=="cholesky"){
-          pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
-                                   cov_pars = c(0.9,0.8,1.2), predict_cov_mat = TRUE, predict_response = FALSE)
-          expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
-          expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
-        }
+        pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
+                                 cov_pars = c(0.9,0.8,1.2), predict_cov_mat = TRUE, predict_response = FALSE)
+        expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+        expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
         # Predict variances
         pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
                                  cov_pars = c(0.9,0.8,1.2), predict_var = TRUE, predict_response = FALSE)
