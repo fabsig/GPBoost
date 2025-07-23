@@ -19,15 +19,18 @@
 #include <set>
 #include <string>
 #include <vector>
+#if __has_include(<version>)
+#  include <version>   // collects all feature-test macros
+#endif
 #include <cmath>
 
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
 
-#if (defined(__GNUC__) && !defined(__clang__)) || defined(_MSC_VER)
-#define MSVC_OR_GCC_COMPILER 1
-#else 
-#define MSVC_OR_GCC_COMPILER 0
+#if defined(__cpp_lib_math_special_functions) && __cpp_lib_math_special_functions >= 201603L
+#  define HAS_STD_CYL_BESSEL_K 1
+#else
+#  define HAS_STD_CYL_BESSEL_K 0
 #endif
 
 
@@ -127,11 +130,11 @@ namespace GPBoost {
 			if (cov_fct_type == "matern" || cov_fct_type == "matern_space_time" || cov_fct_type == "matern_ard") {
 				CHECK(shape > 0.);
 				if (!(TwoNumbersAreEqual<double>(shape, 0.5) || TwoNumbersAreEqual<double>(shape, 1.5) || TwoNumbersAreEqual<double>(shape, 2.5))) {
-#if MSVC_OR_GCC_COMPILER
+#if HAS_STD_CYL_BESSEL_K
 					const_ = std::pow(2., 1 - shape_) / std::tgamma(shape_);
 #else
 					// Mathematical special functions are not supported in C++17 by Clang and some other compilers (see https://en.cppreference.com/w/cpp/compiler_support/17#C.2B.2B17_library_features) 
-					Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", shape, cov_fct_type.c_str());
+					Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g., Clang on Mac). Use another compiler such as gcc or (a newer version of) MSVC instead. ", shape, cov_fct_type.c_str());
 #endif
 				}
 				if (shape > LARGE_SHAPE_WARNING_THRESHOLD_) {
@@ -144,9 +147,9 @@ namespace GPBoost {
 				}
 			}
 			else if (cov_fct_type == "matern_estimate_shape" || cov_fct_type == "matern_ard_estimate_shape") {
-#if !defined(MSVC_OR_GCC_COMPILER)
+#if !defined(HAS_STD_CYL_BESSEL_K)
 				// Mathematical special functions are not supported in C++17 by Clang and some other compilers (see https://en.cppreference.com/w/cpp/compiler_support/17#C.2B.2B17_library_features) 
-				Log::REFatal("The covariance function '%s' is not supported when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", cov_fct_type.c_str());
+				Log::REFatal("The covariance function '%s' is not supported when using this compiler (e.g. Clang on Mac). Use another compiler such as gcc or (a newer version of) MSVC instead. ", cov_fct_type.c_str());
 #endif
 			}
 			if (cov_fct_type == "wendland" || apply_tapering) {
@@ -1474,7 +1477,7 @@ namespace GPBoost {
 				return(var);
 			}
 			else {
-#if MSVC_OR_GCC_COMPILER
+#if HAS_STD_CYL_BESSEL_K
 				return(var * const_ * std::pow(range_dist, shape_) * std::cyl_bessel_k(shape_, range_dist));
 #else
 				return(1.);
@@ -1492,7 +1495,7 @@ namespace GPBoost {
 				return(var);
 			}
 			else {
-#if MSVC_OR_GCC_COMPILER
+#if HAS_STD_CYL_BESSEL_K
 				return(var * std::pow(2., 1 - shape) / std::tgamma(shape) * std::pow(range_dist, shape) * std::cyl_bessel_k(shape, range_dist));
 #else
 				return(1.);
@@ -1865,7 +1868,7 @@ namespace GPBoost {
 			const double dist_ij,
 			double cm_dist,
 			double shape) const {
-#if MSVC_OR_GCC_COMPILER
+#if HAS_STD_CYL_BESSEL_K
 			double range_dist = cm_dist * dist_ij;
 			return(cm * std::pow(range_dist, shape) * (2. * shape * std::cyl_bessel_k(shape, range_dist) - range_dist * std::cyl_bessel_k(shape + 1., range_dist)));
 #else
@@ -1882,7 +1885,7 @@ namespace GPBoost {
 			double pars_2_up,
 			double pars_2_down,
 			double shape) const {
-#if MSVC_OR_GCC_COMPILER
+#if HAS_STD_CYL_BESSEL_K
 			double z = dist_ij * par_aux;
 			double z_up = dist_ij * par_aux_up;
 			double z_down = dist_ij * par_aux_down;
@@ -2028,7 +2031,7 @@ namespace GPBoost {
 			const int j,
 			const den_mat_t* coords_ptr,
 			const den_mat_t* coords_pred_ptr) const {
-#if MSVC_OR_GCC_COMPILER
+#if HAS_STD_CYL_BESSEL_K
 			int dim_space = (int)(*coords_ptr).cols() - 1;
 			if (ind_range == 0) {
 				double dist_sq_ij_time = ((*coords_pred_ptr).coeff(i, 0) - (*coords_ptr).coeff(j, 0));
@@ -2095,7 +2098,7 @@ namespace GPBoost {
 			const den_mat_t* coords_ptr,
 			const den_mat_t* coords_pred_ptr,
 			const double shape) const {
-#if MSVC_OR_GCC_COMPILER
+#if HAS_STD_CYL_BESSEL_K
 			double range_dist = cm_dist * dist_ij;
 			double dist_sq_ij_coord = ((*coords_pred_ptr).coeff(i, ind_range) - (*coords_ptr).coeff(j, ind_range));
 			dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
@@ -2153,7 +2156,7 @@ namespace GPBoost {
 				return(d_aux2 * (1. + d_aux + d_aux * d_aux / 3.) * std::exp(-d_aux));
 			}
 			else {
-#if MSVC_OR_GCC_COMPILER
+#if HAS_STD_CYL_BESSEL_K
 				return(d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux));
 #else
 				Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", pars[4], cov_fct_type_.c_str());
@@ -2180,7 +2183,7 @@ namespace GPBoost {
 				return(d_aux2 * (1. + d_aux + d_aux * d_aux / 3.) * std::exp(-d_aux));
 			}
 			else {
-#if MSVC_OR_GCC_COMPILER
+#if HAS_STD_CYL_BESSEL_K
 				return(d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux));
 #else
 				Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", pars[4], cov_fct_type_.c_str());
@@ -2252,7 +2255,7 @@ namespace GPBoost {
 						d_aux2 * (d_aux+ d_aux * d_aux) / 3. * d_aux_grad) * std::exp(-d_aux);
 				}
 				else {
-#if MSVC_OR_GCC_COMPILER
+#if HAS_STD_CYL_BESSEL_K
 					double bessel = std::cyl_bessel_k(pars[4], d_aux);
 					double grad_bessel = pars[4] / d_aux * bessel - std::cyl_bessel_k(pars[4] + 1., d_aux); // d/dz K_nu(z) = nu / z * K_nu(z) - K_(nu+1)(z)
 					grad = d_aux2_grad * std::pow(d_aux, pars[4]) * bessel +
@@ -2265,7 +2268,7 @@ namespace GPBoost {
 				}
 			}//end a, c, alpha, beta, delta
 			else if (ind_par == 3) {//nu
-#if MSVC_OR_GCC_COMPILER
+#if HAS_STD_CYL_BESSEL_K
 				double nu_up, nu_down;
 				if (transf_scale) {
 					nu_up = std::exp(std::log(pars[4]) + delta_step_);//gradient on log-scale
