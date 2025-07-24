@@ -3372,7 +3372,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params_ARD_est_shape <- OPTIM_PARAMS_BFGS_STD
     params_ARD_est_shape$init_cov_pars <- c(init_cov_pars,1.5)
     capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard_estimate_shape",
-                                               y = y, X = X, params = params_ARD_est_shape), 
+                                           y = y, X = X, params = params_ARD_est_shape), 
                     file='NUL')
     cov_pars_est_shape <- c(0.57108958797,  0.08471275821,  0.03304572501,  0.16194229745, 115.08702014148)
     coef_est_shape <- c(-0.2905450775, 0.2387123371, 0.1944576895, 0.3275844333)
@@ -3981,16 +3981,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Single level grouped random effects
     mu <- 1 / (1 + exp(-(Z1 %*% b_gr_1 + 0.5*X%*%beta)))
     phi = 2
-    y <- qbeta(sim_rand_unif(n=n, init_c=0.135456), shape1 = mu * phi,shape2 = (1 - mu) * phi)
+    y <- qbeta(sim_rand_unif(n=n, init_c=0.135456), shape1 = mu * phi, shape2 = (1 - mu) * phi)
     
     # Evaluate negative log-likelihood
-    gp_model <- GPModel(group_data = group, likelihood = likelihood)
+    gp_model <- GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = "cholesky")
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y)
-    expect_lt(abs(nll--31.05453707),TOLERANCE_MEDIUM)
+    expect_lt(abs(nll--31.05453707),TOLERANCE_STRICT)
     
     # Estimation 
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
-                                           y = y, X=X, params = params)
+                                           y = y, X=X, params = params, matrix_inversion_method = "cholesky")
                     , file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.4001315457)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-1.868524016 )),TOLERANCE_STRICT)
@@ -4014,7 +4014,86 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_MEDIUM)
     
-  }) # end beta binomial regression
+    ## GPBoost algorithm
+    y_gpb <- qbeta(sim_rand_unif(n=n, init_c=0.1456), shape1 = mu * phi, shape2 = (1 - mu) * phi)
+    dtrain <- gpb.Dataset(data = X, label = y_gpb)
+    gp_model <- GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = "cholesky")
+    gp_model$set_optim_params(params=OPTIM_PARAMS_BFGS)
+    bst <- gpboost(data = dtrain, gp_model = gp_model,
+                   nrounds = 30, learning_rate = 0.1, max_depth = 6,
+                   min_data_in_leaf = 5, verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.3202520438)),TOLERANCE_STRICT)
+    # Prediction
+    pred <- predict(bst, data = X_test, group_data_pred = group_test,
+                    predict_var = TRUE, pred_latent = TRUE)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(-0.83438828037, -0.11965478176, -0.02962818377, 1.26103671054))),TOLERANCE_MEDIUM)
+    # Predict response
+    pred <- predict(bst, data = X_test, group_data_pred = group_test,
+                    predict_var = TRUE, pred_latent = FALSE)
+    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.4202132157, 0.2823993747, 0.3006671296, 0.7650395471))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.07663208127, 0.06368025701, 0.06616115505, 0.06105965388))), TOLERANCE_MEDIUM)
+    
+  }) # end beta regression
+  
+  test_that("negative_binomial_1 regression ", {
+    params <- OPTIM_PARAMS_BFGS
+    likelihood <- "negative_binomial_1"
+    
+    # Single level grouped random effects
+    mu <- exp(Z1 %*% b_gr_1 + 0.5*X%*%beta)
+    phi = 0.5
+    y <- qnbinom(sim_rand_unif(n=n, init_c=0.135456), size = mu / phi, prob = 1/(1+phi))
+    
+    # Evaluate negative log-likelihood
+    gp_model <- GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = "cholesky")
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y)
+    expect_lt(abs(nll-178.2504468),TOLERANCE_STRICT)
+    
+    # Estimation 
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
+                                           y = y, X=X, params = params, matrix_inversion_method = "cholesky")
+                    , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.479443183)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-0.3875111886)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(-0.1869209845, 1.2215795573))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-147.4626638)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 12)
+    # Prediction
+    group_test <- c(1,3,3,9999)
+    X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, 
+                    predict_var= TRUE, predict_response = FALSE)
+    expected_mu <- c(-1.50813623680, -0.06547232544, 0.17884358603, 1.03465857279)
+    expected_var <- c(0.13214360292, 0.09038251055, 0.09038251055, 0.47944318296)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_STRICT)
+    # Predict response
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, 
+                    predict_var=TRUE, predict_response = TRUE)
+    expected_mu <- c(0.2364391412, 0.9799232074, 1.2511146091, 3.5764838904)
+    expected_var <- c(0.3359595595, 1.4504871955, 1.8840006227, 12.8312580231)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
+    
+    ## GPBoost algorithm
+    dtrain <- gpb.Dataset(data = X, label = y)
+    gp_model <- GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = "cholesky")
+    gp_model$set_optim_params(params=OPTIM_PARAMS_BFGS)
+    bst <- gpboost(data = dtrain, gp_model = gp_model,
+                   nrounds = 30, learning_rate = 0.1, max_depth = 6,
+                   min_data_in_leaf = 5, verbose = 0)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.5959292609 )),TOLERANCE_STRICT)
+    # Prediction
+    pred <- predict(bst, data = X_test, group_data_pred = group_test,
+                    predict_var = TRUE, pred_latent = TRUE)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(0.22626493197, -0.02387452881, -0.02387452881, 1.37497338251))),TOLERANCE_MEDIUM)
+    # Predict response
+    pred <- predict(bst, data = X_test, group_data_pred = group_test,
+                    predict_var = TRUE, pred_latent = FALSE)
+    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.5074674531, 0.7102847977, 0.7102847977, 5.3277979647))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.7090701094, 0.9862357452, 0.9862357452, 30.1741534567))), TOLERANCE_MEDIUM)
+    
+  }) # end negative_binomial_1 regression
   
 }
 

@@ -4087,16 +4087,20 @@ class GPModel(object):
 
                     - "gamma":
 
-                        Gamma binomial distribution with a with log link function
+                        Gamma binomial distribution with a log link function
 
                     - "poisson":
 
-                        Poisson distribution with a with log link function
+                        Poisson distribution with a log link function
 
                     - "negative_binomial":
 
-                        Negative binomial distribution with a with log link function
+                        Negative binomial distribution with a log link function (aka "nbinom2", "negative_binomial_2"). The variance is mu * (mu + r) / r, mu = mean, r = shape, with this parametrization
 
+                    - "negative_binomial_1":
+
+                        Negative binomial 1 (aka "nbinom1") likelihood with a log link function. The variance is mu * (1 + phi), mu = mean, phi = dispersion, with this parametrization
+                    
                     - "beta":
 
                         Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)

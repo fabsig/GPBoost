@@ -10,9 +10,12 @@ Available options:
 \item{ "gaussian" }
 \item{ "bernoulli_probit": Binary data with Bernoulli likelihood and a probit link function }
 \item{ "bernoulli_logit": Binary data with Bernoulli likelihood and a logit link function }
-\item{ "gamma": Pamma distribution with a with log link function }
-\item{ "poisson": Poisson distribution with a with log link function }
-\item{ "negative_binomial": negative binomial distribution with a with log link function }
+\item{ "gamma": Gamma distribution with a log link function }
+\item{ "poisson": Poisson distribution with a log link function }
+\item{ "negative_binomial": negative binomial distribution with a log link function (aka "nbinom2", "negative_binomial_2"). 
+The variance is mu * (mu + r) / r, mu = mean, r = shape, with this parametrization }
+\item{ "negative_binomial_1": Negative binomial 1 (aka "nbinom1") likelihood with a log link function. 
+The variance is mu * (1 + phi), mu = mean, phi = dispersion, with this parametrization }
 \item{ "beta" : Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)}
 \item{ "t": t-distribution (e.g., for robust regression) }
 \item{ "t_fix_df": t-distribution with the degrees-of-freedom (df) held fixed and not estimated. 

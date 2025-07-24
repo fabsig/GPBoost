@@ -183,12 +183,12 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 				if (config_.sigmoid != 1.0) {
 					Log::Fatal("The GPBoost algorithm currently does not support a sigmoid != 1.0 ");
 				}
-				if (config_.objective != std::string("regression") && config_.objective != std::string("bernoulli_probit")
-					&& config_.objective != std::string("bernoulli_logit") && config_.objective != std::string("binary") 
-					&& config_.objective != std::string("poisson") && config_.objective != std::string("gamma") && 
-					config_.objective != std::string("negative_binomial") &&
+				if (config_.objective != std::string("regression") && config_.objective != std::string("bernoulli_probit") && 
+					config_.objective != std::string("bernoulli_logit") && config_.objective != std::string("binary") && 
+					config_.objective != std::string("poisson") && config_.objective != std::string("gamma") && 
+					config_.objective != std::string("negative_binomial") && config_.objective != std::string("negative_binomial_1") &&
 					config_.objective != std::string("t") && config_.objective != std::string("t_fix_df") &&
-					config_.objective != std::string("gaussian_heteroscedastic")) {
+					config_.objective != std::string("beta") && config_.objective != std::string("gaussian_heteroscedastic")) {
 					Log::Fatal("GPBoost currently does not support 'objective = %s' ", config_.objective.c_str());
 				}
 				// Make sure that objective for boosting and likelihood for re_model match, otherwise change them accordingly
