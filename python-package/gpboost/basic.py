@@ -174,11 +174,11 @@ def list_to_1d_numpy(data, dtype=np.float32, name='list'):
         else:
             return data.astype(dtype=dtype, copy=False)
     elif is_1d_list(data):
-        return np.array(data, dtype=dtype, copy=False)
+        return np.asarray(data, dtype=dtype)
     elif isinstance(data, pd_Series):
         if _get_bad_pandas_dtypes([data.dtypes]):
             raise ValueError('Series.dtypes must be int, float or bool')
-        return np.array(data, dtype=dtype, copy=False)  # SparseArray should be supported as well
+        return np.asarray(data, dtype=dtype)  # SparseArray should be supported as well
     else:
         raise TypeError("Wrong type({0}) for {1}.\n"
                         "It should be list, numpy 1-D array or pandas Series".format(type(data).__name__, name))
@@ -480,7 +480,7 @@ def convert_from_sliced_object(data):
 def c_float_array(data):
     """Get pointer of float numpy array / list."""
     if is_1d_list(data):
-        data = np.array(data, copy=False)
+        data = np.asarray(data)
     if is_numpy_1d_array(data):
         data = convert_from_sliced_object(data)
         assert data.flags.c_contiguous
@@ -501,7 +501,7 @@ def c_float_array(data):
 def c_int_array(data):
     """Get pointer of int numpy array / list."""
     if is_1d_list(data):
-        data = np.array(data, copy=False)
+        data = np.asarray(data)
     if is_numpy_1d_array(data):
         data = convert_from_sliced_object(data)
         assert data.flags.c_contiguous
@@ -900,9 +900,9 @@ class _InnerPredictor:
 
         def inner_predict(mat, start_iteration, num_iteration, predict_type, preds=None):
             if mat.dtype == np.float32 or mat.dtype == np.float64:
-                data = np.array(mat.reshape(mat.size), dtype=mat.dtype, copy=False)
+                data = np.asarray(mat.reshape(mat.size), dtype=mat.dtype)
             else:  # change non-float data to float data, need to copy
-                data = np.array(mat.reshape(mat.size), dtype=np.float32)
+                data = np.asarray(mat.reshape(mat.size), dtype=np.float32)
             ptr_data, type_ptr_data, _ = c_float_array(data)
             n_preds = self.__get_num_preds(start_iteration, num_iteration, mat.shape[0], predict_type)
             if preds is None:
@@ -1435,9 +1435,9 @@ class Dataset:
 
         self.handle = ctypes.c_void_p()
         if mat.dtype == np.float32 or mat.dtype == np.float64:
-            data = np.array(mat.reshape(mat.size), dtype=mat.dtype, copy=False)
+            data = np.asarray(mat.reshape(mat.size), dtype=mat.dtype)
         else:  # change non-float data to float data, need to copy
-            data = np.array(mat.reshape(mat.size), dtype=np.float32)
+            data = np.asarray(mat.reshape(mat.size), dtype=np.float32)
 
         ptr_data, type_ptr_data, _ = c_float_array(data)
         _safe_call(_LIB.LGBM_DatasetCreateFromMat(
@@ -1473,7 +1473,7 @@ class Dataset:
             nrow[i] = mat.shape[0]
 
             if mat.dtype == np.float32 or mat.dtype == np.float64:
-                mats[i] = np.array(mat.reshape(mat.size), dtype=mat.dtype, copy=False)
+                mats[i] = np.asarray(mat.reshape(mat.size), dtype=mat.dtype)
             else:  # change non-float data to float data, need to copy
                 mats[i] = np.array(mat.reshape(mat.size), dtype=np.float32)
 
