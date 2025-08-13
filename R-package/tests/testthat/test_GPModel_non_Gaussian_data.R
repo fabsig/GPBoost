@@ -268,14 +268,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params$init_cov_pars <- c(1,mean(dist(coords))/3)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
                                            cov_fct_shape = 1.5, y = y, params = params, likelihood = "bernoulli_probit") , file='NUL')
-    deltas <- c(0,0,1e-5,1e-1)
+    deltas <- c(0,1e-5,1e-1)
     for (i in 1:length(deltas)) {
       delta <- deltas[i]
-      if (i==1) {
-        weights = rep(0.13,n)
-      } else {
-        weights = c(rep(1+delta,nws),rep(1-delta,n-nws))
-      }
+      weights = c(rep(1+delta,nws),rep(1-delta,n-nws))
       gp_model_weights <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5, 
                                   weights = weights, likelihood = "bernoulli_probit", matrix_inversion_method = "cholesky")
       nll_weighted <- gp_model_weights$neg_log_likelihood(cov_pars=c(0.5,0.1),y=y)
@@ -552,14 +548,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params$init_cov_pars <- c(1.)
     capture.output( gp_model <- fitGPModel(group_data = group, y = y, params = params, likelihood = "bernoulli_probit") , file='NUL')
     
-    deltas <- c(0,0,1e-5,1e-1)
+    deltas <- c(0,1e-5,1e-1)
     for (i in 1:length(deltas)) {
       delta <- deltas[i]
-      if (i==1) {
-        weights = rep(0.13,n)
-      } else {
-        weights = c(rep(1+delta,nws),rep(1-delta,n-nws))
-      }
+      weights = c(rep(1+delta,nws),rep(1-delta,n-nws))
       gp_model_weights <- GPModel(group_data = group, weights = weights, likelihood = "bernoulli_probit")
       nll_weighted <- gp_model_weights$neg_log_likelihood(cov_pars=c(0.5),y=y)
       capture.output( gp_model_weights <- fitGPModel(group_data = group, y = y, weights = weights, 

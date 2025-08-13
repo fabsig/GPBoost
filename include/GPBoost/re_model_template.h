@@ -358,13 +358,24 @@ namespace GPBoost {
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					sum_weights += weights[i];
 				}
-				double corr_fact = num_data_ / sum_weights;
+				if (std::abs(sum_weights - num_data_) > 0.001 * num_data_) {
+					Log::REInfo("The total sum of the weights (%g) does not equal the number of data points (%d). This is not necessarily an issue ", 
+						sum_weights, num_data_);
+				}
 				for (const auto& cluster_i : unique_clusters_) {
 					weights_[cluster_i] = vec_t(num_data_per_cluster_[cluster_i]);
 					for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
-						weights_[cluster_i][j] = weights[data_indices_per_cluster_[cluster_i][j]] * corr_fact;
+						weights_[cluster_i][j] = weights[data_indices_per_cluster_[cluster_i][j]];
 					}
 				}
+				// old version where weights are normalized
+//				double corr_fact = num_data_ / sum_weights;
+//				for (const auto& cluster_i : unique_clusters_) {
+//					weights_[cluster_i] = vec_t(num_data_per_cluster_[cluster_i]);
+//					for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
+//						weights_[cluster_i][j] = weights[data_indices_per_cluster_[cluster_i][j]] * corr_fact;
+//					}
+//				}
 			}
 			else {
 				for (const auto& cluster_i : unique_clusters_) {
