@@ -8,8 +8,14 @@
 Available options:
 \itemize{
 \item{ "gaussian" }
-\item{ "bernoulli_probit": Binary data with Bernoulli likelihood and a probit link function }
-\item{ "bernoulli_logit": Binary data with Bernoulli likelihood and a logit link function }
+\item{ "bernoulli_logit": Bernoulli likelihood with a logit link function for binary classification. Aliases: "binary", "binary_logit" }
+\item{ "bernoulli_probit": Bernoulli likelihood with a probit link function for binary classification. Aliases: "binary_probit" }
+\item{ "binomial_logit": Binomial likelihood with a logit link function. 
+The response variable \code{y} needs to contain proportions of successes / trials, 
+and the \code{weights} parameter needs to contain the numbers of trials. Aliases: ``binomial``}
+\item{ "binomial_probit": Binomial likelihood with a probit link function. 
+The response variable \code{y} needs to contain proportions of successes / trials, 
+and the \code{weights} parameter needs to contain the numbers of trials }
 \item{ "gamma": Gamma distribution with a log link function }
 \item{ "poisson": Poisson distribution with a log link function }
 \item{ "negative_binomial": negative binomial distribution with a log link function (aka "nbinom2", "negative_binomial_2"). 

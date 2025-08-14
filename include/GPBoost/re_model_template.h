@@ -353,14 +353,16 @@ namespace GPBoost {
 			}//end loop over clusters
 			if (has_weights) {
 				has_weights_ = true;
-				double sum_weights = 0.;
+				if (likelihood_strg != "binomial_logit" && likelihood_strg != "binomial_probit") {
+					double sum_weights = 0.;
 #pragma omp parallel for schedule(static) reduction(+:sum_weights)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					sum_weights += weights[i];
-				}
-				if (std::abs(sum_weights - num_data_) > 0.001 * num_data_) {
-					Log::REInfo("The total sum of the weights (%g) does not equal the number of data points (%d). This is not necessarily an issue ", 
-						sum_weights, num_data_);
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						sum_weights += weights[i];
+					}
+					if (std::abs(sum_weights - num_data_) > 0.001 * num_data_) {
+						Log::REInfo("The total sum of the weights (%g) does not equal the number of data points (%d). This is not necessarily an issue ",
+							sum_weights, num_data_);
+					}
 				}
 				for (const auto& cluster_i : unique_clusters_) {
 					weights_[cluster_i] = vec_t(num_data_per_cluster_[cluster_i]);

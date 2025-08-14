@@ -26,6 +26,9 @@ namespace GPBoost {
 	/*! \brief Tolerance level when comparing two vectors for equality */
 	const double EPSILON_VECTORS = 1e-10;
 
+	const double TINY_NUMBER = (std::numeric_limits<double>::has_denorm == std::denorm_present)
+		? std::numeric_limits<double>::denorm_min() : std::numeric_limits<double>::min();
+
 	/*! \brief Small numbers by which the diagonals of some matrices are multiplied to make inversion numerically stable */
 	const double JITTER_MUL = 1. + 1e-10;
 

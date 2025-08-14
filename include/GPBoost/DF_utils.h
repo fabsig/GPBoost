@@ -2,7 +2,7 @@
 * This file is part of GPBoost a C++ library for combining
 *	boosting with Gaussian process and mixed effects models
 *
-* Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+* Copyright (c) 2020 - 2025 Fabio Sigrist. All rights reserved.
 *
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 */
@@ -12,6 +12,7 @@
 #define _USE_MATH_DEFINES // for M_SQRT1_2 and M_PI
 #include <cmath>
 #include <limits>       // std::numeric_limits
+#include <algorithm>
 
 //Mathematical constants usually defined in cmath
 #ifndef M_PI
@@ -27,31 +28,71 @@
 namespace GPBoost {
 
 	static const double M_SQRT2PI = std::sqrt(2. * M_PI);
-	static const double M_LOGSQRT2PI = 0.5 * std::log(2. * M_PI);
+	static const double M_LOGSQRT2PI = 0.5 * std::log(2. * M_PI);//0.91893853320467274178
 
-	double normalPDF(double value);
+	inline double sigmoid_stable(double x) noexcept {
+		const double t = std::exp(-std::fabs(x));
+		const double inv = 1.0 / (1.0 + t);// p for x >= 0
+		return (x >= 0.0) ? inv : (1.0 - inv);
+	}
 
-	double normalLogPDF(double value);
+	inline double softplus(double x) {
+		const double a = std::fabs(x);
+		return std::log1p(std::exp(-a)) + std::max(x, 0.0);
+	}
 
-	double normalCDF(double value);
+	inline double normalPDF(double x) {
+		return std::exp(-x * x / 2.) / M_SQRT2PI;
+	}
 
-	/*
-	* \brief Logarithm of normal CDF
-	* Copyright 1984, 1987, 1988, 1992 by Stephen L. Moshier
-	*
-	* For a > -20, use the existing normalCDF and take a log.
-	* for a <= -20, we use the Taylor series approximation of erf to compute
-	* the log CDF directly. The Taylor series consists of two parts which we will name "left"
-	* and "right" accordingly.  The right part involves a summation which we compute until the
-	* difference in terms falls below the machine-specific EPSILON.
-	*
-	* \Phi(z) &=&
-	*   \frac{e^{-z^2/2}}{-z\sqrt{2\pi}}  * [1 +  \sum_{n=1}^{N-1}  (-1)^n \frac{(2n-1)!!}{(z^2)^n}]
-	*   + O(z^{-2N+2})
-	*   = [\mbox{LHS}] * [\mbox{RHS}] + \mbox{error}.
-	*
-	*/
-	double normalLogCDF(double value);
+	inline double normalLogPDF(double x) {
+		return -x * x / 2. - M_LOGSQRT2PI;
+	}
+
+	inline double normalCDF(double x) {
+		return 0.5 * std::erfc(-x * M_SQRT1_2);
+	}
+
+	inline double normalLogCDF(double x) {
+		if (x < 0.0) {
+			// Left tail: Phi(x) = 0.5 * erfc(-x/sqrt(2))
+			const double e = std::erfc(-x * M_SQRT1_2);
+			if (e > 0.0) return std::log(0.5) + std::log(e);
+			// Extreme left tail: asymptotic approximation
+			const double u = -x;
+			const double u2 = u * u;
+			const double series = 1.0 - 1.0 / u2 + 3.0 / (u2 * u2);
+			return -0.5 * u2 - std::log(u) - 0.5 * std::log(2 * M_PI) + std::log(series);
+		}
+		else {
+			// Right/center: log(Phi(x)) = log(1 - Q), Q = 1 - Phi(x) = 0.5 * erfc(x/sqrt(2))
+			const double Q = 0.5 * std::erfc(x * M_SQRT1_2);
+			if (Q == 0.0) return 0.0;
+			return std::log1p(-Q);
+		}
+	}
+
+	inline double InvMillsRatioNormalPhi(double x) {
+		const double logphi = normalLogPDF(x);
+		const double logPhi = normalLogCDF(x);
+		return std::exp(logphi - logPhi);
+	}
+
+	inline double InvMillsRatioNormalOneMinusPhi(double x) {
+		const double logphi = normalLogPDF(x);
+		const double logQ = normalLogCDF(-x);//log(1-Phi(x)) = log(Phi(-x))
+		return std::exp(logphi - logQ);
+	}
+
+	//// Inverse Mills ratios phi(x) / (1 - Phi(x)) and phi(x) / Phi(x) 
+	////    with an asymptotic fallback when denom (= 1-Phi(x) or Phi(x)) underflows (which is the same for both denom = 1-Phi(x) and Phi(x))
+	////     Note: this is currently not used
+	//inline double InvMillsRatioNormal(double x, double pdf, double denom) {
+	//    if (!std::isfinite(denom)) return std::numeric_limits<double>::quiet_NaN();
+	//    if (denom > 0.0) return pdf / denom;
+	//    const double u = std::fabs(x);
+	//    return u + 1.0 / u + 2.0 / (u * u * u); // phi/denom approx u + 1/u + 2/u^3  with u = |x|
+	//}
 
 	/*!
 	* \brief Quantile function of a normal distribution

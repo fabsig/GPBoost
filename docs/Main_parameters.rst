@@ -139,9 +139,13 @@ Model specification parameters
 
       -  ``gaussian`` : Gaussian likelihood
 
-      -  ``bernoulli_probit`` : Bernoulli likelihood with a probit link function. Aliases: ``binary``, ``binary_probit``
+      -  ``bernoulli_logit`` : Bernoulli likelihood with a logit link function for binary classification. Aliases: ``binary``, ``binary_logit``
 
-      -  ``bernoulli_probit`` : Bernoulli likelihood with a logit link function. Aliases: ``binary``, ``binary_logit``
+      -  ``bernoulli_probit`` : Bernoulli likelihood with a probit link function for binary classification. Aliases: ``binary_probit``
+
+      -  ``binomial_logit`` : Binomial likelihood with a logit link function. The response variable ``y`` needs to contain proportions of successes / trials, and the ``weights`` parameter needs to contain the numbers of trials. Aliases: ``binomial``
+
+      -  ``binomial_probit`` : Binomial likelihood with a probit link function. The response variable ``y`` needs to contain proportions of successes / trials, and the ``weights`` parameter needs to contain the numbers of trials
 
       -  ``poisson`` : Poisson likelihood with log link function
 

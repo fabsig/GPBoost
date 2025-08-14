@@ -4077,13 +4077,21 @@ class GPModel(object):
 
                     - "gaussian"
 
-                    - "bernoulli_probit":
-
-                        Binary data with a Bernoulli likelihood and a probit link function
-
                     - "bernoulli_logit":
 
-                        Binary data with a Bernoulli likelihood and a logit link function
+                        Bernoulli likelihood with a logit link function for binary classification. Aliases: "binary", "binary_logit"
+
+                    - "bernoulli_probit":
+
+                        Bernoulli likelihood with a probit link function for binary classification. Aliases: "binary_probit "
+
+                    - "binomial_logit":
+
+                        Binomial likelihood with a logit link function. The response variable 'y' needs to contain proportions of successes / trials, and the 'weights' parameter needs to contain the numbers of trials. Aliases: ``binomial``
+
+                    - "binomial_probit":
+
+                        Binomial likelihood with a probit link function. The response variable 'y' needs to contain proportions of successes / trials, and the 'weights' parameter needs to contain the numbers of trials
 
                     - "gamma":
 
