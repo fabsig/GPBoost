@@ -6497,10 +6497,10 @@ namespace GPBoost {
 		}//end SetMatrixInversionProperties
 
 		static string_t ParseLikelihoodAlias(const string_t& likelihood) {
-			if (likelihood == string_t("binary") || likelihood == string_t("binary_probit")) {
+			if (likelihood == string_t("binary_probit")) {
 				return "bernoulli_probit";
 			}
-			else if (likelihood == string_t("binary_logit")) {
+			else if (likelihood == string_t("binary") || likelihood == string_t("binary_logit")) {
 				return "bernoulli_logit";
 			}
 			else if (likelihood == string_t("binomial")) {

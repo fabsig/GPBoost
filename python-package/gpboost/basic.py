@@ -4087,7 +4087,7 @@ class GPModel(object):
 
                     - "binomial_logit":
 
-                        Binomial likelihood with a logit link function. The response variable 'y' needs to contain proportions of successes / trials, and the 'weights' parameter needs to contain the numbers of trials. Aliases: ``binomial``
+                        Binomial likelihood with a logit link function. The response variable 'y' needs to contain proportions of successes / trials, and the 'weights' parameter needs to contain the numbers of trials. Aliases: "binomial"
 
                     - "binomial_probit":
 

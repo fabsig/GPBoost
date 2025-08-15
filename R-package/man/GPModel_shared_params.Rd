@@ -12,7 +12,7 @@ Available options:
 \item{ "bernoulli_probit": Bernoulli likelihood with a probit link function for binary classification. Aliases: "binary_probit" }
 \item{ "binomial_logit": Binomial likelihood with a logit link function. 
 The response variable \code{y} needs to contain proportions of successes / trials, 
-and the \code{weights} parameter needs to contain the numbers of trials. Aliases: ``binomial``}
+and the \code{weights} parameter needs to contain the numbers of trials. Aliases: "binomial"}
 \item{ "binomial_probit": Binomial likelihood with a probit link function. 
 The response variable \code{y} needs to contain proportions of successes / trials, 
 and the \code{weights} parameter needs to contain the numbers of trials }
