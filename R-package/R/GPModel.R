@@ -17,12 +17,12 @@
 #' \item{ "binomial_probit": Binomial likelihood with a probit link function. 
 #' The response variable \code{y} needs to contain proportions of successes / trials, 
 #' and the \code{weights} parameter needs to contain the numbers of trials }
-#' \item{ "gamma": Gamma distribution with a log link function }
 #' \item{ "poisson": Poisson distribution with a log link function }
 #' \item{ "negative_binomial": negative binomial distribution with a log link function (aka "nbinom2", "negative_binomial_2"). 
 #' The variance is mu * (mu + r) / r, mu = mean, r = shape, with this parametrization }
 #' \item{ "negative_binomial_1": Negative binomial 1 (aka "nbinom1") likelihood with a log link function. 
 #' The variance is mu * (1 + phi), mu = mean, phi = dispersion, with this parametrization }
+#' \item{ "gamma": Gamma distribution with a log link function }
 #' \item{ "beta" : Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)}
 #' \item{ "t": t-distribution (e.g., for robust regression) }
 #' \item{ "t_fix_df": t-distribution with the degrees-of-freedom (df) held fixed and not estimated. 

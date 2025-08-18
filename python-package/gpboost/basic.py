@@ -4093,10 +4093,6 @@ class GPModel(object):
 
                         Binomial likelihood with a probit link function. The response variable 'y' needs to contain proportions of successes / trials, and the 'weights' parameter needs to contain the numbers of trials
 
-                    - "gamma":
-
-                        Gamma binomial distribution with a log link function
-
                     - "poisson":
 
                         Poisson distribution with a log link function
@@ -4108,6 +4104,10 @@ class GPModel(object):
                     - "negative_binomial_1":
 
                         Negative binomial 1 (aka "nbinom1") likelihood with a log link function. The variance is mu * (1 + phi), mu = mean, phi = dispersion, with this parametrization
+                    
+                    - "gamma":
+
+                        Gamma distribution with a log link function
                     
                     - "beta":
 
