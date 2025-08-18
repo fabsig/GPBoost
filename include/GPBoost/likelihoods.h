@@ -7023,9 +7023,9 @@ namespace GPBoost {
 		}
 
 		inline double LogLikBeta(double y, double location_par, bool incl_norm_const) const {
-			const double mu = 1. / (1. + std::exp(-location_par));
+			const double mu = GPBoost::sigmoid_stable(location_par);
 			double ll = -std::lgamma(mu * aux_pars_[0]) - std::lgamma((1. - mu) * aux_pars_[0])
-				+ (mu * aux_pars_[0] - 1.) * std::log(y) + ((1. - mu) * aux_pars_[0] - 1.) * std::log(1. - y);
+				+ (mu * aux_pars_[0] - 1.) * std::log(y) + ((1. - mu) * aux_pars_[0] - 1.) * std::log1p(-y);
 			if (incl_norm_const) {
 				return (ll + std::lgamma(aux_pars_[0]));
 			}
@@ -7263,7 +7263,6 @@ namespace GPBoost {
 		template <typename T>
 		inline double FirstDerivLogLikBernoulliLogit(T y, double location_par) const {
 			return y - GPBoost::sigmoid_stable(location_par);
-			//return (y - 1. / (1. + std::exp(-location_par)));
 		}
 
 		inline double FirstDerivLogLikPoisson(int y, double location_par) const {
@@ -7287,8 +7286,8 @@ namespace GPBoost {
 		}
 
 		inline double FirstDerivLogLikBeta(double y, double location_par) const {
-			const double mu = 1.0 / (1.0 + std::exp(-location_par));
-			const double logit_y = std::log(y) - std::log(1.0 - y);
+			const double mu = GPBoost::sigmoid_stable(location_par);
+			const double logit_y = std::log(y) - std::log1p(-y);
 			const double dig1 = GPBoost::digamma((1.0 - mu) * aux_pars_[0]);
 			const double dig2 = GPBoost::digamma(mu * aux_pars_[0]);
 			return (aux_pars_[0] * mu * (1.0 - mu) * (dig1 - dig2 + logit_y));
@@ -7682,8 +7681,8 @@ namespace GPBoost {
 		}
 
 		inline double SecondDerivNegLogLikBeta(double y, double location_par) const {
-			const double mu = 1.0 / (1.0 + std::exp(-location_par));
-			const double logit_y = std::log(y) - std::log(1.0 - y);
+			const double mu = GPBoost::sigmoid_stable(location_par);
+			const double logit_y = std::log(y) - std::log1p(-y);
 			const double dig1 = GPBoost::digamma((1.0 - mu) * aux_pars_[0]);
 			const double dig2 = GPBoost::digamma(mu * aux_pars_[0]);
 			const double tri1 = GPBoost::trigamma((1.0 - mu) * aux_pars_[0]);
@@ -7848,10 +7847,11 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
-						const double mu = 1.0 / (1.0 + std::exp(-location_par[i]));
+						const double mu = GPBoost::sigmoid_stable(location_par[i]);
 						const double d = mu * (1.0 - mu);
 						const double phi = aux_pars_[0];
-						const double logit_y = std::log(y_data[i]) - std::log(1.0 - y_data[i]);
+						const double y = y_data[i];
+						const double logit_y = std::log(y) - std::log1p(-y);
 						const double dig1 = GPBoost::digamma((1.0 - mu) * phi);
 						const double dig2 = GPBoost::digamma(mu * phi);
 						const double tri1 = GPBoost::trigamma((1.0 - mu) * phi);
@@ -8000,10 +8000,10 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static) reduction(+:grad_log_phi)
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					const double w = has_weights_ ? weights_[i] : 1.0;
-					const double mu = 1. / (1. + std::exp(-location_par[i]));
+					const double mu = GPBoost::sigmoid_stable(location_par[i]);
 					const double y = y_data[i];
 					grad_log_phi += w * (digamma(aux_pars_[0]) - mu * digamma(mu * aux_pars_[0])
-						- (1. - mu) * digamma((1. - mu) * aux_pars_[0]) + mu * std::log(y) + (1. - mu) * std::log(1. - y));
+						- (1. - mu) * digamma((1. - mu) * aux_pars_[0]) + mu * std::log(y) + (1. - mu) * std::log1p(-y));
 				}
 				grad[0] = -aux_pars_[0] * grad_log_phi;   // negative log-likelihood gradient
 			}
@@ -8109,11 +8109,11 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
-						const double mu = 1.0 / (1.0 + std::exp(-location_par[i]));
+						const double mu = GPBoost::sigmoid_stable(location_par[i]);
 						const double d = mu * (1.0 - mu);
 						const double phi = aux_pars_[0];
 						const double y = y_data[i];
-						const double logit_y = std::log(y) - std::log(1.0 - y);
+						const double logit_y = std::log(y) - std::log1p(-y);
 						const double dig1 = GPBoost::digamma((1.0 - mu) * phi);
 						const double dig2 = GPBoost::digamma(mu * phi);
 						const double tri1 = GPBoost::trigamma((1.0 - mu) * phi);

@@ -4014,7 +4014,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     bst <- gpboost(data = dtrain, gp_model = gp_model,
                    nrounds = 30, learning_rate = 0.1, max_depth = 6,
                    min_data_in_leaf = 5, verbose = 0)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-0.3202520438)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_cov_pars()-0.3202534169)),TOLERANCE_STRICT)
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_test,
                     predict_var = TRUE, pred_latent = TRUE)
