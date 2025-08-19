@@ -353,12 +353,18 @@ namespace GPBoost {
 			}//end loop over clusters
 			if (has_weights) {
 				has_weights_ = true;
-				if (likelihood_strg != "binomial_logit" && likelihood_strg != "binomial_probit") {
-					double sum_weights = 0.;
+				if (GPBoost::HasNegativeValues<double>(weights, num_data_)) {
+					Log::REFatal(" Found negative values in 'weights' ");
+				}
+				double sum_weights = 0.;
 #pragma omp parallel for schedule(static) reduction(+:sum_weights)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						sum_weights += weights[i];
-					}
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					sum_weights += weights[i];
+				}
+				if (GPBoost::IsZero(sum_weights)) {
+					Log::REFatal("The total sum of the 'weights' is zero ");
+				}
+				if (likelihood_strg != "binomial_logit" && likelihood_strg != "binomial_probit" && likelihood_strg != "beta_binomial") {
 					if (std::abs(sum_weights - num_data_) > 0.001 * num_data_) {
 						Log::REInfo("The total sum of the weights (%g) does not equal the number of data points (%d). This is not necessarily an issue ",
 							sum_weights, num_data_);
