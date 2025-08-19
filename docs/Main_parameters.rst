@@ -153,7 +153,9 @@ Model specification parameters
 
       -  ``negative_binomial_1`` : Negative binomial 1 (aka ``nbinom1``) likelihood with a log link function. The variance is mu * (1 + phi), mu = mean, phi = dispersion, with this parametrization
 
-      -  ``gamma`` : Gamma likelihood with log link function
+      -  ``gamma`` : Gamma likelihood with a log link function
+
+      -  ``lognormal`` : Log-normal likelihood with a log link function
 
       -  ``beta`` : Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)
 
@@ -163,7 +165,9 @@ Model specification parameters
 
       - ``gaussian_heteroscedastic`` :  Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a ``vecchia`` approximation
 
-      - Note: other likelihoods could be implemented upon request
+      - Note: the first lines in `the file <https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h>`_ contain additional comments on the specific parametrizations used
+
+      - Note: other likelihoods can be implemented upon request
 
 -  ``group_data`` : two dimensional array / matrix of doubles or strings, optional (default = None)
 

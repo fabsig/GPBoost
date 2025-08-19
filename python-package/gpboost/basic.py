@@ -4095,11 +4095,11 @@ class GPModel(object):
 
                     - "poisson":
 
-                        Poisson distribution with a log link function
+                        Poisson likelihood with a log link function
 
                     - "negative_binomial":
 
-                        Negative binomial distribution with a log link function (aka "nbinom2", "negative_binomial_2"). The variance is mu * (mu + r) / r, mu = mean, r = shape, with this parametrization
+                        Negative binomial likelihood with a log link function (aka "nbinom2", "negative_binomial_2"). The variance is mu * (mu + r) / r, mu = mean, r = shape, with this parametrization
 
                     - "negative_binomial_1":
 
@@ -4107,8 +4107,12 @@ class GPModel(object):
                     
                     - "gamma":
 
-                        Gamma distribution with a log link function
+                        Gamma likelihood with a log link function
+
+                    - "lognormal":
                     
+                        Log-normal likelihood with a log link function
+
                     - "beta":
 
                         Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)
@@ -4125,7 +4129,9 @@ class GPModel(object):
 
                         Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation
 
-                    - Note: other likelihoods could be implemented upon request
+                    - Note: the first lines in \url{https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h} contain additional comments on the specific parametrizations used
+                    
+                    - Note: other likelihoods can be implemented upon request
             
             group_data : numpy array or pandas DataFrame with numeric or string data or None, optional (default=None)
                 Either a vector or a matrix whose columns are categorical grouping variables. The elements are group
