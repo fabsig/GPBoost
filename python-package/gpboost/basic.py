@@ -4093,6 +4093,10 @@ class GPModel(object):
 
                         Binomial likelihood with a probit link function. The response variable 'y' needs to contain proportions of successes / trials, and the 'weights' parameter needs to contain the numbers of trials
 
+                    - "beta_binomial":
+
+                        Beta-binomial likelihood with a logit link function. The response variable 'y' needs to contain proportions of successes / trials, and the 'weights' parameter needs to contain the numbers of trials. Aliases: "betabinomial", "beta-binomial"
+                    
                     - "poisson":
 
                         Poisson likelihood with a log link function

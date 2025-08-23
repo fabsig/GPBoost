@@ -32,6 +32,9 @@ and the \code{weights} parameter needs to contain the numbers of trials. Aliases
 \item{ "binomial_probit": Binomial likelihood with a probit link function. 
 The response variable \code{y} needs to contain proportions of successes / trials, 
 and the \code{weights} parameter needs to contain the numbers of trials }
+\item{ "beta_binomial": Beta-binomial likelihood with a logit link function. 
+The response variable \code{y} needs to contain proportions of successes / trials, 
+and the \code{weights} parameter needs to contain the numbers of trials. Aliases: "betabinomial", "beta-binomial"}
 \item{ "poisson": Poisson likelihood with a log link function }
 \item{ "negative_binomial": negative binomial likelihood with a log link function (aka "nbinom2", "negative_binomial_2"). 
 The variance is mu * (mu + r) / r, mu = mean, r = shape, with this parametrization }

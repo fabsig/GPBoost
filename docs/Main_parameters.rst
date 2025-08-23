@@ -133,7 +133,7 @@ Model specification parameters
 
 -  ``likelihood`` : string, (default = ``gaussian``)
 
-   -  Likelihood function, i.e., conditional distribution of the response variable (=label)
+   -  Likelihood function, i.e., conditional distribution of the response variable 
 
    -  Currently supported likelihoods:
 
@@ -146,6 +146,8 @@ Model specification parameters
       -  ``binomial_logit`` : Binomial likelihood with a logit link function. The response variable ``y`` needs to contain proportions of successes / trials, and the ``weights`` parameter needs to contain the numbers of trials. Aliases: ``binomial``
 
       -  ``binomial_probit`` : Binomial likelihood with a probit link function. The response variable ``y`` needs to contain proportions of successes / trials, and the ``weights`` parameter needs to contain the numbers of trials
+
+      -  ``beta_binomial`` : Beta-binomial likelihood with a logit link function. The response variable ``y`` needs to contain proportions of successes / trials, and the ``weights`` parameter needs to contain the numbers of trials. Aliases: ``betabinomial``,  ``beta-binomial``
 
       -  ``poisson`` : Poisson likelihood with log link function
 
@@ -165,7 +167,7 @@ Model specification parameters
 
       - ``gaussian_heteroscedastic`` :  Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a ``vecchia`` approximation
 
-      - Note: the first lines in `the file <https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h>`_ contain additional comments on the specific parametrizations used
+      - Note: the first lines in `this file <https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h>`_ contain additional comments on the specific parametrizations used
 
       - Note: other likelihoods can be implemented upon request
 

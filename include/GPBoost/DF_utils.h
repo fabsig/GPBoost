@@ -30,10 +30,24 @@ namespace GPBoost {
 	static const double M_SQRT2PI = std::sqrt(2. * M_PI);
 	static const double M_LOGSQRT2PI = 0.5 * std::log(2. * M_PI);//0.91893853320467274178
 
-	inline double sigmoid_stable(double x) noexcept {
-		const double t = std::exp(-std::fabs(x));
-		const double inv = 1.0 / (1.0 + t);// p for x >= 0
-		return (x >= 0.0) ? inv : (1.0 - inv);
+	inline double sigmoid_stable(double x) {
+		if (x >= 0.0) {
+			const double t = std::exp(-x);
+			return 1.0 / (1.0 + t);
+		}
+		else {
+			const double t = std::exp(x);
+			return t / (1.0 + t);
+		}
+	}
+
+	inline double sigmoid_stable_clamped(double x) {
+		double mu = sigmoid_stable(x);
+		// clamp
+		const double eps = 1e-12;
+		if (mu < eps) mu = eps;
+		if (mu > 1.0 - eps) mu = 1.0 - eps;
+		return mu;
 	}
 
 	inline double softplus(double x) {
