@@ -1089,6 +1089,12 @@ namespace GPBoost {
 			return((int)coords_.cols());
 		}
 
+		/*! \brief Dimension of coordinates */
+		int GetNumData() const {
+			CHECK(coord_saved_);
+			return((int)coords_.rows());
+		}
+
 		/*!
 		* \brief Scale / transform coordinates for anisotropic covariance functions
 		* \param pars Vector with covariance parameters
@@ -1115,6 +1121,14 @@ namespace GPBoost {
 		*/
 		bool HasIsotropicCovFct() const {
 			return(cov_function_->IsIsotropic());
+		}
+
+		bool UseScaledCoordinates() const {
+			return(cov_function_->UseScaledCoordinates());
+		}
+
+		bool RedetermineVecchiaNeighborsInducingPoints() const {
+			return(cov_function_->RedetermineVecchiaNeighborsInducingPoints());
 		}
 
 		bool IsSpaceTimeModel() const {
@@ -1144,7 +1158,7 @@ namespace GPBoost {
 		*			Note: this is currently only used when changing the likelihood in the re_model
 		*/
 		void DropZ() override {
-			CHECK(!this->is_rand_coef_);//not intended for random coefficient models
+			CHECK(!this->is_rand_coef_);//not intended for random coefficient models			
 			if (this->has_Z_) {
 				this->random_effects_indices_of_data_ = std::vector<data_size_t>(this->num_data_);
 				for (int k = 0; k < this->Z_.outerSize(); ++k) {
@@ -1154,6 +1168,14 @@ namespace GPBoost {
 				}
 				this->has_Z_ = false;
 				this->Z_.resize(0, 0);
+			}
+			else if (this->random_effects_indices_of_data_.size() == 0) {
+				this->random_effects_indices_of_data_ = std::vector<data_size_t>(this->num_data_);
+				// always add 'random_effects_indices_of_data_' to avoid problems when switching between likelihoods
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < this->num_data_; ++i) {
+					this->random_effects_indices_of_data_[i] = i;
+				}
 			}
 		}
 
@@ -1354,7 +1376,7 @@ namespace GPBoost {
 				}
 			}
 			else {//inverse range parameters
-				CHECK(cov_function_->cov_fct_type_ != "wendland");
+				CHECK(cov_function_->num_cov_par_ > 1);
 				T_mat Z_sigma_grad_Zt;
 				if (this->has_Z_) {
 					T_mat sigma_grad;
@@ -1420,7 +1442,7 @@ namespace GPBoost {
 						cov_grad[0] /= this->cov_pars_[0];
 					}
 				}
-				if (cov_function_->cov_fct_type_ != "wendland") {
+				if (cov_function_->num_cov_par_ > 1) {
 					//gradient wrt to range parameters
 					for (int ipar = 1; ipar < this->num_cov_par_; ++ipar) {
 						if (calc_grad_index[ipar]) {

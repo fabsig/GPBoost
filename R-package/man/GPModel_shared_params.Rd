@@ -84,13 +84,14 @@ Note that the first column in \code{gp_coords} must correspond to the time dimen
 \item{ "matern_ard": anisotropic Matern covariance function with Automatic Relevance Determination (ARD), 
 i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
 \item{ "matern_ard_estimate_shape": same as "matern_ard" but the smoothness parameter is also estimated }
-\item{"exponential": Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
-\item{"gaussian": Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
+\item{ "exponential": Exponential covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
+\item{ "gaussian": Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007) }
 \item{ "gaussian_ard": anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance Determination (ARD), 
 i.e., with a different range parameter for every coordinate dimension / column of \code{gp_coords} }
-\item{"powered_exponential": powered exponential covariance function with the exponent specified by 
+\item{ "powered_exponential": powered exponential covariance function with the exponent specified by 
 the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribeiro, 2007) }
 \item{ "wendland": Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS) }
+\item{ "linear": linear covariance function. This corresponds to a Bayesian linear regression model with a Gaussian prior on the coefficients with a constant variance diagonal prior covariance, and the prior variance is estimated using empirical Bayes. }
 }}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 

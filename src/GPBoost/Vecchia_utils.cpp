@@ -965,7 +965,7 @@ namespace GPBoost {
 		nearest_neighbors_cluster_i = std::vector<std::vector<int>>(re_comp->GetNumUniqueREs());
 		dist_obs_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
 		dist_between_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
-		if (re_comp->HasIsotropicCovFct() && vecchia_neighbor_selection != "residual_correlation") {
+		if (!(re_comp->RedetermineVecchiaNeighborsInducingPoints()) && vecchia_neighbor_selection != "residual_correlation") {
 			Log::REDebug("Starting nearest neighbor search for Vecchia approximation");
 			find_nearest_neighbors_Vecchia_fast(re_comp->GetCoords(), re_comp->GetNumUniqueREs(), num_neighbors,
 				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates,
@@ -1019,7 +1019,7 @@ namespace GPBoost {
 		}
 		//Random coefficients
 		if (num_gp_rand_coef > 0) {
-			if (!(re_comp->HasIsotropicCovFct())) {
+			if (re_comp->RedetermineVecchiaNeighborsInducingPoints()) {
 				Log::REFatal("Random coefficient processes are not supported for covariance functions "
 					"for which the neighbors are dynamically determined based on correlations ");
 			}
@@ -1068,7 +1068,7 @@ namespace GPBoost {
 		std::vector<den_mat_t>& dist_between_neighbors_cluster_i,
 		bool save_distances_isotropic_cov_fct) {
 		std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia_cluster_i[ind_intercept_gp];
-		CHECK(re_comp->HasIsotropicCovFct() == false || vecchia_neighbor_selection == "residual_correlation");
+		CHECK(re_comp->RedetermineVecchiaNeighborsInducingPoints() || vecchia_neighbor_selection == "residual_correlation");
 		int num_re = re_comp->GetNumUniqueREs();
 		CHECK((int)nearest_neighbors_cluster_i.size() == num_re);
 		// find correlation-based nearest neighbors
@@ -1482,7 +1482,7 @@ namespace GPBoost {
 		std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_re_pred_cli);
 		bool check_has_duplicates = false;
 		bool distances_saved = re_comp->HasIsotropicCovFct() && save_distances_isotropic_cov_fct;
-		bool scale_coordinates = !re_comp->HasIsotropicCovFct();
+		bool scale_coordinates = re_comp->UseScaledCoordinates();
 		den_mat_t coords_scaled;
 		if (scale_coordinates) {
 			const vec_t pars = re_comp->CovPars();
@@ -1842,7 +1842,7 @@ namespace GPBoost {
 		bool check_has_duplicates = false;
 		std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia[ind_intercept_gp];
 		bool distances_saved = re_comp->HasIsotropicCovFct() && save_distances_isotropic_cov_fct;
-		bool scale_coordinates = !re_comp->HasIsotropicCovFct();
+		bool scale_coordinates = re_comp->UseScaledCoordinates();
 		den_mat_t coords_scaled;
 		if (scale_coordinates) {
 			const vec_t pars = re_comp->CovPars();
@@ -2079,7 +2079,7 @@ namespace GPBoost {
 		bool check_has_duplicates = true;
 		std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia[ind_intercept_gp];
 		bool distances_saved = re_comp->HasIsotropicCovFct() && save_distances_isotropic_cov_fct;
-		bool scale_coordinates = !re_comp->HasIsotropicCovFct();
+		bool scale_coordinates = re_comp->UseScaledCoordinates();
 		den_mat_t coords_unique_scaled;
 		if (scale_coordinates) {
 			const vec_t pars = re_comp->CovPars();

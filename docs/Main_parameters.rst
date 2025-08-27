@@ -217,6 +217,8 @@ Model specification parameters
 
       - ``wendland`` : Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
 
+      - ``linear``: Linear covariance function. This corresponds to a Bayesian linear regression model with a Gaussian prior on the coefficients with a constant variance diagonal prior covariance, and the prior variance is estimated using empirical Bayes.
+
 -  ``cov_fct_shape`` : double, (default = 1.5)
 
    -  Shape parameter of the covariance function (e.g., smoothness parameter for Matern and Wendland covariance). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.

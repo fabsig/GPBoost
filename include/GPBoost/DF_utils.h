@@ -9,7 +9,7 @@
 #ifndef GPB_DF_UTIL_H_
 #define GPB_DF_UTIL_H_
 
-#define _USE_MATH_DEFINES // for M_SQRT1_2 and M_PI
+//#define _USE_MATH_DEFINES // for M_SQRT1_2 and M_PI
 #include <cmath>
 #include <limits>       // std::numeric_limits
 #include <algorithm>

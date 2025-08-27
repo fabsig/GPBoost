@@ -146,6 +146,7 @@ namespace GPBoost {
 			if (matrix_inversion_method != nullptr) {
 				matrix_inversion_method_user_provided_ = std::string(matrix_inversion_method);
 			}
+			std::string cov_fct_strg = "";
 			//Set up GP approximation
 			if (gp_approx == nullptr) {
 				gp_approx_ = "none";
@@ -234,6 +235,7 @@ namespace GPBoost {
 			}
 			//Do some checks for GP components and set meta data (number of components etc.)
 			if (num_gp > 0) {
+				cov_fct_strg = std::string(cov_fct);
 				if (num_gp > 1) {
 					Log::REFatal("num_gp can only be either 0 or 1 in the current implementation");
 				}
@@ -301,7 +303,7 @@ namespace GPBoost {
 				num_gp_total_ = num_gp_ + num_gp_rand_coef_;
 				num_comps_total_ += num_gp_total_;
 			}
-			DetermineSpecialCasesModelsEstimationPrediction();
+			DetermineSpecialCasesModelsEstimationPrediction(cov_fct_strg);
 			for (const auto& cluster_i : unique_clusters_) {
 				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
@@ -313,7 +315,7 @@ namespace GPBoost {
 						}
 					}
 					CreateREComponentsFITC_FSA(num_data_, data_indices_per_cluster_, cluster_i, gp_coords_data,
-						std::string(cov_fct), cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
+						cov_fct_strg, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
 						re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, false);
 					re_comps_ip_[cluster_i][0] = re_comps_ip_cluster_i;
 					re_comps_cross_cov_[cluster_i][0] = re_comps_cross_cov_cluster_i;
@@ -331,7 +333,7 @@ namespace GPBoost {
 						re_comps_cluster_i, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
 						entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_, has_duplicates_coords_,
 						vecchia_ordering_, num_neighbors_, vecchia_neighbor_selection_, true, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
-						std::string(cov_fct), cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_,
+						cov_fct_strg, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_,
 						gp_approx_);
 					nearest_neighbors_[cluster_i][0] = nearest_neighbors_cluster_i;
 					dist_obs_neighbors_[cluster_i][0] = dist_obs_neighbors_cluster_i;
@@ -345,8 +347,8 @@ namespace GPBoost {
 					CreateREComponents(num_data_, data_indices_per_cluster_, cluster_i,
 						re_group_levels, num_data_per_cluster_, re_group_rand_coef_data,
 						gp_coords_data, gp_rand_coef_data,
-						!only_grouped_REs_use_woodbury_identity_,
-						std::string(cov_fct), cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
+						!use_woodbury_identity_,
+						cov_fct_strg, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
 						re_comps_cluster_i);
 					re_comps_[cluster_i][0] = re_comps_cluster_i;
 				}
@@ -393,8 +395,8 @@ namespace GPBoost {
 			CHECK(likelihood_learning_rate > 0.);
 			likelihood_learning_rate_ = likelihood_learning_rate;
 			//Create matrices Z and ZtZ if Woodbury identity is used (used only if there are only grouped REs and no GPs)
-			if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
-				InitializeMatricesForOnlyGroupedREsUseWoodburyIdentity();
+			if (use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
+				InitializeMatricesForUseWoodburyIdentity();
 			}
 			if (gp_approx_ != "vecchia") {
 				InitializeIdentityMatricesForGaussianData();
@@ -431,6 +433,31 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Returns the type of covariance function
+		*/
+		string_t CovFunctionName() {
+			std::string cov_fct = "";
+			if (num_gp_total_ > 0) {
+				if (gp_approx_ == "none" || gp_approx_ == "tapering") {
+					std::shared_ptr<RECompGP<T_mat>> re_comp_gp_clus0 = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[unique_clusters_[0]][0][ind_intercept_gp_]);
+					cov_fct = re_comp_gp_clus0->CovFunctionName();
+				}
+				else if (gp_approx_ == "vecchia") {
+					std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp_clus0 = re_comps_vecchia_[unique_clusters_[0]][0][ind_intercept_gp_];
+					cov_fct = re_comp_gp_clus0->CovFunctionName();
+				}
+				else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
+					std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp_clus0 = re_comps_ip_[unique_clusters_[0]][0][ind_intercept_gp_];
+					cov_fct = re_comp_gp_clus0->CovFunctionName();
+				}
+				else {
+					Log::REFatal("CovFunctionName not implemented for gp_approx = '%s' ", gp_approx_.c_str());
+				}
+			}
+			return(cov_fct);
+		}//end CovFunctionName
+
+		/*!
 		* \brief Set / change the type of likelihood
 		* \param likelihood Likelihood name
 		*/
@@ -438,14 +465,15 @@ namespace GPBoost {
 			bool gauss_likelihood_before = gauss_likelihood_;
 			bool only_one_grouped_RE_calculations_on_RE_scale_before = only_one_grouped_RE_calculations_on_RE_scale_;
 			bool only_one_GP_calculations_on_RE_scale_before = only_one_GP_calculations_on_RE_scale_;
-			bool only_grouped_REs_use_woodbury_identity_before = only_grouped_REs_use_woodbury_identity_;
+			bool only_grouped_REs_use_woodbury_identity_before = use_woodbury_identity_;
 			gauss_likelihood_ = (Likelihood<T_mat, T_chol>::ParseLikelihoodAlias(likelihood) == "gaussian") && !vecchia_latent_approx_gaussian_;
-			DetermineSpecialCasesModelsEstimationPrediction();
+			std::string cov_fct = CovFunctionName();
+			DetermineSpecialCasesModelsEstimationPrediction(cov_fct);
 			CheckCompatibilitySpecialOptions();
 			//Make adaptions in re_comps_ for special options when switching between Gaussian and non-Gaussian likelihoods
 			if (gauss_likelihood_before && !gauss_likelihood_) {
 				if ((gp_approx_ == "vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_vecchia") && has_duplicates_coords_) {
-					Log::REFatal("Cannot change the likelihood to 'gaussian' when using a '%s' approximation and having duplicate coordinates ", gp_approx_.c_str());
+					Log::REFatal("Cannot change the likelihood to '%s' from 'gaussian' when gp_approx = '%s' and having duplicate coordinates ", likelihood.c_str(), gp_approx_.c_str());
 				}
 				if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
 					CHECK(gp_approx_ != "full_scale_tapering");
@@ -466,7 +494,7 @@ namespace GPBoost {
 			}//end gauss_likelihood_before && !gauss_likelihood_
 			else if (!gauss_likelihood_before && gauss_likelihood_) {
 				if (only_one_GP_calculations_on_RE_scale_before && (gp_approx_ == "vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_vecchia")) {
-					Log::REFatal("Cannot change the likelihood to 'gaussian' when using a '%s' approximation and having duplicate coordinates ", gp_approx_.c_str());
+					Log::REFatal("Cannot change the likelihood to 'gaussian' when gp_approx = '%s' and having duplicate coordinates ", gp_approx_.c_str());
 				}
 				if (only_one_GP_calculations_on_RE_scale_before || only_one_grouped_RE_calculations_on_RE_scale_before) {
 					CHECK(gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering" && gp_approx_ != "full_scale_vecchia");
@@ -485,12 +513,12 @@ namespace GPBoost {
 					estimate_cov_par_index_.insert(estimate_cov_par_index_.begin(), 1);
 				}
 			}//end !gauss_likelihood_before && gauss_likelihood_
-			//Matrices used when only_grouped_REs_use_woodbury_identity_==true 
-			if ((only_grouped_REs_use_woodbury_identity_ && !only_grouped_REs_use_woodbury_identity_before) ||
-				(only_grouped_REs_use_woodbury_identity_ && only_one_grouped_RE_calculations_on_RE_scale_before && !only_one_grouped_RE_calculations_on_RE_scale_)) {
-				InitializeMatricesForOnlyGroupedREsUseWoodburyIdentity();
+			//Matrices used when use_woodbury_identity_==true 
+			if ((use_woodbury_identity_ && !only_grouped_REs_use_woodbury_identity_before) ||
+				(use_woodbury_identity_ && only_one_grouped_RE_calculations_on_RE_scale_before && !only_one_grouped_RE_calculations_on_RE_scale_)) {
+				InitializeMatricesForUseWoodburyIdentity();
 			}
-			else if (!only_grouped_REs_use_woodbury_identity_) {
+			else if (!use_woodbury_identity_) {
 				//Delete not required matrices
 				Zt_ = std::map<data_size_t, sp_mat_t>();
 				P_Zt_ = std::map<data_size_t, sp_mat_t>();
@@ -1546,7 +1574,7 @@ namespace GPBoost {
 		/*!
 		* \brief Calculate gradient wrt the covariance and auxiliary parameters and regression coefficients
 		*	Call 'CalcCovFactorOrModeAndNegLL' first since this function assumes that the covariance matrix has been factorized (by 'CalcCovFactor') and
-		*		that y_aux or y_tilde/y_tilde2 (if only_grouped_REs_use_woodbury_identity_) have been calculated (by 'CalcYAux' or 'CalcYtilde')
+		*		that y_aux or y_tilde/y_tilde2 (if use_woodbury_identity_) have been calculated (by 'CalcYAux' or 'CalcYtilde')
 		*	The gradient wrt covariance and auxiliary parameters is calculated on the log-scale
 		* \param cov_pars_in Covariance parameters
 		* \param marg_var Marginal variance parameters sigma^2 (only used for Gaussian data)
@@ -1607,10 +1635,10 @@ namespace GPBoost {
 						else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 							CalcGradPars_FITC_FSA_GaussLikelihood_Cluster_i(cov_pars[0], grad_cov_aux_par, include_error_var, first_cov_par, cluster_i);
 						}// end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
-						else if (only_grouped_REs_use_woodbury_identity_) {
+						else if (use_woodbury_identity_) {
 							CalcGradPars_Only_Grouped_REs_Woodbury_GaussLikelihood_Cluster_i(cov_pars, grad_cov_aux_par, include_error_var, save_psi_inv_for_FI, first_cov_par, cluster_i);
-						}//end only_grouped_REs_use_woodbury_identity_
-						else {//not only_grouped_REs_use_woodbury_identity_
+						}//end use_woodbury_identity_
+						else {//not use_woodbury_identity_
 							T_mat psi_inv;
 							CalcPsiInv(psi_inv, cluster_i, !save_psi_inv_for_FI);
 							if (save_psi_inv_for_FI) {//save for latter use when calculating the Fisher information
@@ -1630,11 +1658,11 @@ namespace GPBoost {
 									}
 								}
 							}
-						}//end not only_grouped_REs_use_woodbury_identity_
+						}//end not use_woodbury_identity_
 					}// end loop over clusters
 				}//end grad_cov_aux_par
 				if (calc_beta_grad) {
-					if (only_grouped_REs_use_woodbury_identity_ && matrix_inversion_method_ != "iterative") {// calculate y_aux = Psi^-1*y (in most cases, this has been already calculated when calling 'CalcCovFactorOrModeAndNegLL' before this)
+					if (use_woodbury_identity_ && matrix_inversion_method_ != "iterative") {// calculate y_aux = Psi^-1*y (in most cases, this has been already calculated when calling 'CalcCovFactorOrModeAndNegLL' before this)
 						CalcYAux(1., false);
 					}
 					vec_t y_aux(num_data_);
@@ -1710,7 +1738,7 @@ namespace GPBoost {
 							false, call_for_std_dev_coef, re_comps_ip_preconditioner_[cluster_i][0], re_comps_cross_cov_preconditioner_[cluster_i][0],
 							chol_ip_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0], estimate_cov_par_index_);
 					}
-					else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
+					else if (use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 						likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
 							fixed_effects_cluster_i_ptr, SigmaI_[cluster_i], cum_num_rand_eff_[cluster_i],
 							calc_cov_aux_par_grad, calc_beta_grad, calc_grad_aux_par,
@@ -2015,7 +2043,7 @@ namespace GPBoost {
 			bool save_psi_inv_for_FI,
 			int first_cov_par,
 			data_size_t cluster_i) {
-			CHECK(only_grouped_REs_use_woodbury_identity_);
+			CHECK(use_woodbury_identity_);
 			CHECK(gauss_likelihood_);
 			if (include_error_var) {
 				double yTPsiInvy;
@@ -2032,9 +2060,16 @@ namespace GPBoost {
 				}
 				for (int j = 0; j < num_comps_total_; ++j) {
 					if (estimate_cov_par_index_[ind_par_[j]] > 0) {
-						sp_mat_t* Z_j = re_comps_[cluster_i][0][j]->GetZ();
-						vec_t y_tilde_j = (*Z_j).transpose() * y_[cluster_i];
-						vec_t y_tilde2_j = (*Z_j).transpose() * y_tilde2_[cluster_i];
+						vec_t y_tilde_j, y_tilde2_j;
+						if (linear_kernel_use_woodbury_identity_) {
+							y_tilde_j = Zt_[cluster_i] * y_[cluster_i];
+							y_tilde2_j = Zt_[cluster_i] * y_tilde2_[cluster_i];
+						}
+						else {
+							sp_mat_t* Z_j = re_comps_[cluster_i][0][j]->GetZ();
+							y_tilde_j = (*Z_j).transpose() * y_[cluster_i];
+							y_tilde2_j = (*Z_j).transpose() * y_tilde2_[cluster_i];
+						}						
 						double yTPsiIGradPsiPsiIy = y_tilde_j.transpose() * y_tilde_j - 2. * (double)(y_tilde_j.transpose() * y_tilde2_j) + y_tilde2_j.transpose() * y_tilde2_j;
 						yTPsiIGradPsiPsiIy *= cov_pars[j + 1];
 						T_mat LInvZtZj;
@@ -2065,9 +2100,9 @@ namespace GPBoost {
 			}//end cholesky
 			else if (matrix_inversion_method_ == "iterative") {
 				//Calculate P^(-1)z_i
-				den_mat_t PI_RV(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_), L_inv_RV, DI_L_plus_D_t_PI_RV;
+				den_mat_t PI_RV(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_), L_inv_RV, DI_L_plus_D_t_PI_RV;
 				if (cg_preconditioner_type_ == "incomplete_cholesky") {
-					L_inv_RV.resize(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
+					L_inv_RV.resize(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
 						L_inv_RV.col(i) = (L_SigmaI_plus_ZtZ_rm_[cluster_i].template triangularView<Eigen::Lower>()).solve(rand_vec_probe_P_[cluster_i].col(i));
@@ -2076,10 +2111,10 @@ namespace GPBoost {
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
 						PI_RV.col(i) = (L_SigmaI_plus_ZtZ_rm_[cluster_i].transpose().template triangularView<Eigen::Upper>()).solve(L_inv_RV.col(i));
 					}
-				}
+				}//end "incomplete_cholesky"
 				else if (cg_preconditioner_type_ == "ssor") {
-					DI_L_plus_D_t_PI_RV.resize(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
-					L_inv_RV.resize(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
+					DI_L_plus_D_t_PI_RV.resize(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_);
+					L_inv_RV.resize(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
 						L_inv_RV.col(i) = (P_SSOR_L_D_sqrt_inv_rm_[cluster_i].template triangularView<Eigen::Lower>()).solve(rand_vec_probe_P_[cluster_i].col(i));
@@ -2089,7 +2124,7 @@ namespace GPBoost {
 						PI_RV.col(i) = (P_SSOR_L_D_sqrt_inv_rm_[cluster_i].transpose().template triangularView<Eigen::Upper>()).solve(L_inv_RV.col(i));
 					}
 					//For variance reduction
-					den_mat_t L_plus_D_t_PI_RV(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
+					den_mat_t L_plus_D_t_PI_RV(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
 						L_plus_D_t_PI_RV.col(i) = (SigmaI_plus_ZtZ_rm_[cluster_i].template triangularView<Eigen::Upper>()) * PI_RV.col(i);
@@ -2098,19 +2133,26 @@ namespace GPBoost {
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
 						DI_L_plus_D_t_PI_RV.col(i) = P_SSOR_D_inv_[cluster_i].asDiagonal() * L_plus_D_t_PI_RV.col(i); //alternative D^-0.5 * P_SSOR_L_D_sqrt_inv_rm_ m*t vs nnz
 					}
-				}
+				}//end "ssor"
 				else {
 					Log::REFatal("Preconditioner type '%s' is not supported for gradients.", cg_preconditioner_type_.c_str());
 				}
 				for (int j = 0; j < num_comps_total_; ++j) {
 					if (estimate_cov_par_index_[ind_par_[j]] > 0) {
-						sp_mat_t* Z_j = re_comps_[cluster_i][0][j]->GetZ();
-						vec_t y_tilde_j = (*Z_j).transpose() * y_[cluster_i];
-						vec_t y_tilde2_j = (*Z_j).transpose() * y_tilde2_[cluster_i];
+						vec_t y_tilde_j, y_tilde2_j;
+						if (linear_kernel_use_woodbury_identity_) {
+							y_tilde_j = Zt_[cluster_i] * y_[cluster_i];
+							y_tilde2_j = Zt_[cluster_i] * y_tilde2_[cluster_i];
+						}
+						else {
+							sp_mat_t* Z_j = re_comps_[cluster_i][0][j]->GetZ();
+							y_tilde_j = (*Z_j).transpose() * y_[cluster_i];
+							y_tilde2_j = (*Z_j).transpose() * y_tilde2_[cluster_i];
+						}
 						double yTPsiIGradPsiPsiIy = y_tilde_j.transpose() * y_tilde_j - 2. * (double)(y_tilde_j.transpose() * y_tilde2_j) + y_tilde2_j.transpose() * y_tilde2_j;
 						yTPsiIGradPsiPsiIy *= cov_pars[j + 1];
 						//-dSigma^(-1)/dtheta_j
-						vec_t neg_SigmaI_deriv = vec_t::Zero(cum_num_rand_eff_[cluster_i][num_re_group_total_]);
+						vec_t neg_SigmaI_deriv = vec_t::Zero(cum_num_rand_eff_[cluster_i][num_comps_total_]);
 #pragma omp parallel for schedule(static)
 						for (int i = cum_num_rand_eff_[cluster_i][j]; i < cum_num_rand_eff_[cluster_i][j + 1]; ++i) {
 							neg_SigmaI_deriv[i] = 1. / cov_pars[j + 1];
@@ -2334,7 +2376,7 @@ namespace GPBoost {
 			SetCovParsComps(cov_pars);
 			CalcCovFactor(true, 1.);
 			if (gauss_likelihood_) {
-				if (only_grouped_REs_use_woodbury_identity_ && matrix_inversion_method_ != "iterative") {
+				if (use_woodbury_identity_ && matrix_inversion_method_ != "iterative") {
 					CalcYtilde(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
 				}
 				else {
@@ -2387,8 +2429,8 @@ namespace GPBoost {
 		* \param fixed_effects Externally provided fixed effects component of location parameter
 		* \param[out] negll Negative log-likelihood
 		* \param CalcCovFactor_already_done If true, it is assumed that the covariance matrix has already been factorized
-		* \param CalcYAux_already_done If true, it is assumed that y_aux_=Psi^-1y_ has already been calculated (only relevant if not only_grouped_REs_use_woodbury_identity_)
-		* \param CalcYtilde_already_done If true, it is assumed that y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z), has already been calculated (only relevant for only_grouped_REs_use_woodbury_identity_)
+		* \param CalcYAux_already_done If true, it is assumed that y_aux_=Psi^-1y_ has already been calculated (only relevant if not use_woodbury_identity_)
+		* \param CalcYtilde_already_done If true, it is assumed that y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z), has already been calculated (only relevant for use_woodbury_identity_)
 		* \param redetermine_neighbors_vecchia If true, 'RedetermineNearestNeighborsVecchiaInducingPointsFITC' is called if applicable
 		*/
 		void EvalNegLogLikelihood(const double* y_data,
@@ -2527,13 +2569,13 @@ namespace GPBoost {
 						}
 					}//end gp_approx_ == "fitc" or "full_scale_tapering"
 					else {
-						if (only_grouped_REs_use_woodbury_identity_) {
+						if (use_woodbury_identity_) {
 							if (num_re_group_total_ == 1 && num_comps_total_ == 1) {
 								log_det_Psi_ += (2. * sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().log().sum());
 							}
 							else {
 								if (matrix_inversion_method_ == "cholesky") {
-								log_det_Psi_ += (2. * chol_facts_[cluster_i].CholFactMatrix().diagonal().array().log().sum());
+									log_det_Psi_ += (2. * chol_facts_[cluster_i].CholFactMatrix().diagonal().array().log().sum());
 								}//end cholesky
 								else if (matrix_inversion_method_ == "iterative") {
 									// Sample probe vectors
@@ -2541,18 +2583,18 @@ namespace GPBoost {
 										if (!cg_generator_seeded_) {
 											cg_generator_ = RNG_t(seed_rand_vec_trace_);
 											cg_generator_seeded_ = true;
-							}
-										rand_vec_probe_[cluster_i].resize(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_); //N(0,I)
+										}
+										rand_vec_probe_[cluster_i].resize(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_); //N(0,I)
 										GenRandVecNormal(cg_generator_, rand_vec_probe_[cluster_i]);
 										if (reuse_rand_vec_trace_) {
 											saved_rand_vec_[cluster_i] = true;
 										}
-										rand_vec_probe_P_[cluster_i].resize(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_); //N(0,P)
+										rand_vec_probe_P_[cluster_i].resize(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_); //N(0,P)
 									}
 									CHECK(rand_vec_probe_[cluster_i].cols() == num_rand_vec_trace_);
 									CHECK(rand_vec_probe_P_[cluster_i].cols() == num_rand_vec_trace_);
-									CHECK(rand_vec_probe_[cluster_i].rows() == cum_num_rand_eff_[cluster_i][num_re_group_total_]);
-									CHECK(rand_vec_probe_P_[cluster_i].rows() == cum_num_rand_eff_[cluster_i][num_re_group_total_]);
+									CHECK(rand_vec_probe_[cluster_i].rows() == cum_num_rand_eff_[cluster_i][num_comps_total_]);
+									CHECK(rand_vec_probe_P_[cluster_i].rows() == cum_num_rand_eff_[cluster_i][num_comps_total_]);
 									// Get probe vectors from N(0,P)
 									if (cg_preconditioner_type_ == "incomplete_cholesky") {
 										//P = L L^T: u_i = L r_i, where r_i ~ N(0,I)
@@ -2579,7 +2621,7 @@ namespace GPBoost {
 										Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
 									}
 									// Initialize Solution Sigma^-1 (u_1,...,u_t) 
-									solution_for_trace_[cluster_i].resize(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
+									solution_for_trace_[cluster_i].resize(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_);
 									solution_for_trace_[cluster_i].setZero();
 									// Initialize tridiagonal Matrices
 									int cg_max_num_it_tridiag = cg_max_num_it_tridiag_;
@@ -2590,16 +2632,14 @@ namespace GPBoost {
 									std::vector<vec_t> Tsubdiags_(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
 									// Conjuagte Gradient with Lanczos
 									CGTridiagRandomEffects(SigmaI_plus_ZtZ_rm_[cluster_i], rand_vec_probe_P_[cluster_i],
-										Tdiags_, Tsubdiags_, solution_for_trace_[cluster_i], NaN_found, cum_num_rand_eff_[cluster_i][num_re_group_total_],
+										Tdiags_, Tsubdiags_, solution_for_trace_[cluster_i], NaN_found, cum_num_rand_eff_[cluster_i][num_comps_total_],
 										num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
-										L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]
-										//cum_num_rand_eff_[cluster_i], num_re_group_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
-									);
+										L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]);
 									if (NaN_found) {
 										Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 									}
 									// LogDet Estimation
-									LogDetStochTridiag(Tdiags_, Tsubdiags_, log_det_Psi_, cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
+									LogDetStochTridiag(Tdiags_, Tsubdiags_, log_det_Psi_, cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_);
 									// Correction for preconditioner
 									if (cg_preconditioner_type_ == "incomplete_cholesky") {
 										//log|P| = log|L| + log|L^T|
@@ -2653,8 +2693,8 @@ namespace GPBoost {
 		*/
 		void EvalNegLogLikelihoodOnlyUpdateFixedEffects(const double sigma2,
 			double& negll) {
-			// Calculate y_aux = Psi^-1 * y (if not only_grouped_REs_use_woodbury_identity_) or y_tilde and y_tilde2 (if only_grouped_REs_use_woodbury_identity_) for covariance parameter update (only for Gaussian data)
-			if (only_grouped_REs_use_woodbury_identity_ && matrix_inversion_method_ != "iterative") {
+			// Calculate y_aux = Psi^-1 * y (if not use_woodbury_identity_) or y_tilde and y_tilde2 (if use_woodbury_identity_) for covariance parameter update (only for Gaussian data)
+			if (use_woodbury_identity_ && matrix_inversion_method_ != "iterative") {
 				CalcYtilde(true);//y_tilde = L^-1 * Z^T * y and y_tilde2 = Z * L^-T * L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
 			}
 			else {
@@ -3105,7 +3145,7 @@ namespace GPBoost {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_vecchia_cluster_i[j]->SetCovPars(pars);
 							}
-							if (!(re_comp_gp_clus0->HasIsotropicCovFct())) {//determine nearest neighbors when using correlation-based approach
+							if (re_comp_gp_clus0->RedetermineVecchiaNeighborsInducingPoints()) {//determine nearest neighbors when using correlation-based approach
 								UpdateNearestNeighbors(re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i,
 									entries_init_B_cluster_i, num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
 									has_duplicates_coords_, false, gauss_likelihood_, gp_approx_, chol_ip_cross_cov_[cluster_i][0],
@@ -3232,7 +3272,7 @@ namespace GPBoost {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_vecchia_cluster_i[j]->SetCovPars(pars);
 							}
-							if (!(re_comp_gp_clus0->HasIsotropicCovFct()) || vecchia_neighbor_selection_ == "residual_correlation") {//determine nearest neighbors when using correlation-based approach
+							if (re_comp_gp_clus0->RedetermineVecchiaNeighborsInducingPoints() || vecchia_neighbor_selection_ == "residual_correlation") {//determine nearest neighbors when using correlation-based approach
 								UpdateNearestNeighbors(re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i,
 									entries_init_B_cluster_i, num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
 									has_duplicates_coords_, false, gauss_likelihood_, gp_approx_, chol_ip_cross_cov_[cluster_i][0],
@@ -3758,6 +3798,9 @@ namespace GPBoost {
 			bool calc_cov_factor,
 			const double* fixed_effects,
 			bool calc_var) {
+			if (linear_kernel_use_woodbury_identity_) {
+				Log::REFatal("PredictTrainingDataRandomEffects() is not implemented for the option 'linear_kernel_use_woodbury_identity_' ");
+			}
 			//Some checks
 			CHECK(cov_pars_pred != nullptr);
 			if (has_covariates_) {
@@ -3818,7 +3861,7 @@ namespace GPBoost {
 						//Grouped random effects
 						for (int j = 0; j < num_re_group_total_; ++j) {
 							double sigma = re_comps_[cluster_i][0][cn]->cov_pars_[0];
-							if (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ == 1) {
+							if (use_woodbury_identity_ && num_re_group_total_ == 1) {
 								if (re_comps_[cluster_i][0][cn]->IsRandCoef()) {
 									Log::REFatal("PredictTrainingDataRandomEffects() is not implemented when having only one grouped random coefficient effect ");
 								}
@@ -3842,7 +3885,7 @@ namespace GPBoost {
 										var_pred_id[i] = cov_pars[0] * M_aux5.col(i).squaredNorm();
 									}
 								}
-							}//end only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ == 1
+							}//end use_woodbury_identity_ && num_re_group_total_ == 1
 							else {
 								sp_mat_t* Z_j = re_comps_[cluster_i][0][cn]->GetZ();
 								sp_mat_t Z_base_j;
@@ -3861,7 +3904,7 @@ namespace GPBoost {
 								}
 								if (calc_var) {
 									sp_mat_t ZjtZj = (*Z_j).transpose() * (*Z_j);
-									if (only_grouped_REs_use_woodbury_identity_) {
+									if (use_woodbury_identity_) {
 										if (matrix_inversion_method_ == "iterative") {
 											Log::REFatal("PredictTrainingDataRandomEffects() is currently not implemented for matrix_inversion_method_ == '%s' and likelihood == 'Gaussian'. Call the predict() function instead.", 
 												matrix_inversion_method_.c_str());
@@ -3885,8 +3928,8 @@ namespace GPBoost {
 											var_pred_id[i] = cov_pars[0] * (*Z_j).row(i).cwiseProduct(M_aux4.row(i)).sum();
 										}
 										} //end Cholesky
-									}//end only_grouped_REs_use_woodbury_identity_
-									else {//!only_grouped_REs_use_woodbury_identity_
+									}//end use_woodbury_identity_
+									else {//!use_woodbury_identity_
 										T_mat M_aux;
 										TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], *Z_j, M_aux, false);
 										T_mat M_aux2 = (*Z_j) * M_aux.transpose();
@@ -3897,9 +3940,9 @@ namespace GPBoost {
 										for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
 											var_pred_id[i] = cov_pars[0] * (sigma - sigma * sigma * M_aux2.row(i).squaredNorm());
 										}
-									}//end !only_grouped_REs_use_woodbury_identity_
+									}//end !use_woodbury_identity_
 								}//end calc_var
-							}//end !(only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ == 1)
+							}//end !(use_woodbury_identity_ && num_re_group_total_ == 1)
 #pragma omp parallel for schedule(static)// Write on output
 							for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
 								out_predict[data_indices_per_cluster_[cluster_i][i] + num_data_ * cn] = mean_pred_id[i];
@@ -4008,7 +4051,7 @@ namespace GPBoost {
 					else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 						Log::REFatal("PredictTrainingDataRandomEffects() is currently not implemented for the '%s' approximation. Call the predict() function instead ", gp_approx_.c_str());
 					}
-					else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
+					else if (use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 						vec_t var_pred_all;
 						for (int cn = 0; cn < num_re_group_total_; ++cn) {
 							vec_t mean_pred_id;
@@ -4042,7 +4085,7 @@ namespace GPBoost {
 								}
 							}
 						}
-					}//end only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_
+					}//end use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_
 					else if (only_one_grouped_RE_calculations_on_RE_scale_ || only_one_GP_calculations_on_RE_scale_) {
 #pragma omp parallel for schedule(static)// Write on output
 						for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
@@ -4293,7 +4336,7 @@ namespace GPBoost {
 					sp_mat_t H_cluster_i(num_data_per_cluster_[cluster_i], num_leaves);
 					H_cluster_i.setFromTriplets(entries_H_cluster_i.begin(), entries_H_cluster_i.end());
 					HTYAux -= H_cluster_i.transpose() * y_aux_[cluster_i];//minus sign since y_aux_ has been calculated on the gradient = F-y (and not y-F)
-					if (only_grouped_REs_use_woodbury_identity_) {
+					if (use_woodbury_identity_) {
 						T_mat MInvSqrtZtH;
 						if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 							sp_mat_t ZtH_cluster_i = Zt_[cluster_i] * H_cluster_i;
@@ -4378,7 +4421,7 @@ namespace GPBoost {
 			bool redetermine_nn = false;
 			if (gp_approx_ == "vecchia") {
 				std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia_[unique_clusters_[0]][0][ind_intercept_gp_];
-				if (!(re_comp->HasIsotropicCovFct())) {
+				if (re_comp->RedetermineVecchiaNeighborsInducingPoints()) {
 					if ((((num_iter_ + 1) & num_iter_) == 0) || num_iter_ == 0 || force_redermination) {//(num_iter_ + 1) is power of 2 or 0. 
 						// Note that convergence of internal optimizers is not checked in iterations with redetermine_nn if convergence_criterion_ == "relative_change_in_log_likelihood"
 						redetermine_nn = true;
@@ -4387,7 +4430,7 @@ namespace GPBoost {
 			}
 			else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 				std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_cross_cov_[unique_clusters_[0]][0][ind_intercept_gp_];
-				if (!(re_comp->HasIsotropicCovFct())) {
+				if (re_comp->RedetermineVecchiaNeighborsInducingPoints()) {
 					if ((((num_iter_ + 1) & num_iter_) == 0) || num_iter_ == 0 || force_redermination) {//(num_iter_ + 1) is power of 2 or 0. 
 						// Note that convergence of internal optimizers is not checked in iterations with redetermine_nn if convergence_criterion_ == "relative_change_in_log_likelihood"
 						redetermine_nn = true;
@@ -4396,7 +4439,7 @@ namespace GPBoost {
 			}
 			else if (gp_approx_ == "full_scale_vecchia") {
 				std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia_[unique_clusters_[0]][0][ind_intercept_gp_];
-				if (!(re_comp->HasIsotropicCovFct()) || vecchia_neighbor_selection_ == "residual_correlation") {
+				if (re_comp->RedetermineVecchiaNeighborsInducingPoints() || vecchia_neighbor_selection_ == "residual_correlation") {
 					if ((((num_iter_ + 1) & num_iter_) == 0) || num_iter_ == 0 || force_redermination) {//(num_iter_ + 1) is power of 2 or 0. 
 						// Note that convergence of internal optimizers is not checked in iterations with redetermine_nn if convergence_criterion_ == "relative_change_in_log_likelihood"
 						redetermine_nn = true;
@@ -4418,7 +4461,7 @@ namespace GPBoost {
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 					std::shared_ptr<RECompGP<den_mat_t>> re_comp = std::dynamic_pointer_cast<RECompGP<den_mat_t>>(re_comps_cross_cov_[cluster_i][0][0]);
-					if (!(re_comp->HasIsotropicCovFct())) {
+					if (re_comp->UseScaledCoordinates()) {
 						// Scale Coordinates
 						den_mat_t coords_scaled;
 						vec_t pars = re_comp->CovPars();
@@ -4521,7 +4564,8 @@ namespace GPBoost {
 						if (num_ll_evaluations_ > 0) {
 							Log::REDebug("Inducing points redetermined after iteration number %d ", num_iter_ + 1);
 						}
-					} else if (chol_ip_cross_cov_.empty() && gp_approx_ == "full_scale_vecchia" && vecchia_neighbor_selection_ == "residual_correlation") {
+					}//end re_comp->UseScaledCoordinates()
+					else if (chol_ip_cross_cov_.empty() && gp_approx_ == "full_scale_vecchia" && vecchia_neighbor_selection_ == "residual_correlation") {
 						CalcSigmaComps();
 					}
 				}
@@ -4566,7 +4610,7 @@ namespace GPBoost {
 						den_mat_t coords_scaled;
 						den_mat_t coords_all = re_comp->GetCoords();
 						vec_t pars = re_comp->CovPars();
-						if (!(re_comp->HasIsotropicCovFct())) {
+						if (re_comp->UseScaledCoordinates()) {
 							re_comp->ScaleCoordinates(pars, coords_all, coords_scaled);
 						}
 						else {
@@ -4607,7 +4651,7 @@ namespace GPBoost {
 							den_mat_t gp_coords_ip_mat_scaled;
 							// Start with inducing points from last redetermination
 							if (ind_points_determined_for_preconditioner_) {
-								if (!(re_comp->HasIsotropicCovFct())) {
+								if (re_comp->UseScaledCoordinates()) {
 									re_comp->ScaleCoordinates(pars, gp_coords_ip_mat_preconditioner_, gp_coords_ip_mat_scaled);
 								}
 								else {
@@ -4644,7 +4688,7 @@ namespace GPBoost {
 						}
 						den_mat_t coords_ip_rescaled;
 						// Start with inducing points from last redetermination
-						if (!(re_comp->HasIsotropicCovFct())) {
+						if (re_comp->UseScaledCoordinates()) {
 							vec_t pars_inv = pars.cwiseInverse();
 							re_comp->ScaleCoordinates(pars_inv, gp_coords_ip_mat, coords_ip_rescaled);
 						}
@@ -4797,9 +4841,9 @@ namespace GPBoost {
 		std::map<data_size_t, vec_t> last_y_aux_;
 		/*! \brief Psi^-1*X_ (from last iteration) */
 		std::map<data_size_t, den_mat_t> last_psi_inv_X_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, value: L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when only_grouped_REs_use_woodbury_identity_==true) */
+		/*! \brief Key: labels of independent realizations of REs/GPs, value: L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when use_woodbury_identity_==true) */
 		std::map<data_size_t, vec_t> y_tilde_;
-		/*! \brief Key: labels of independent realizations of REs/GPs, value: Z * L ^ -T * L ^ -1 * Z ^ T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when only_grouped_REs_use_woodbury_identity_==true) */
+		/*! \brief Key: labels of independent realizations of REs/GPs, value: Z * L ^ -T * L ^ -1 * Z ^ T * y, L = chol(Sigma^-1 + Z^T * Z) (used for various computations when use_woodbury_identity_==true) */
 		std::map<data_size_t, vec_t> y_tilde2_;
 		/*! \brief Indicates whether y_aux_ has been calculated */
 		bool y_aux_has_been_calculated_ = false;
@@ -4866,13 +4910,15 @@ namespace GPBoost {
 
 		// SPECIAL CASES OF RE MODELS FOR FASTER CALCULATIONS
 		/*! \brief If true, the Woodbury, Sherman and Morrison matrix inversion formula is used for calculating the inverse of the covariance matrix (only used if there are only grouped REs and no Gaussian processes) */
-		bool only_grouped_REs_use_woodbury_identity_ = false;
+		bool use_woodbury_identity_ = false;
 		/*! \brief True if there is only one grouped random effect component, and (all) calculations are done on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods) */
 		bool only_one_grouped_RE_calculations_on_RE_scale_ = false;
 		/*! \brief True if there is only one grouped random effect component for Gaussian data, can calculations for predictions (only) are done on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods) */
 		bool only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = false;
 		/*! \brief True if there is only one GP random effect component, and calculations are done on the b-scale instead of the Zb-scale (only for non-Gaussian likelihoods) */
 		bool only_one_GP_calculations_on_RE_scale_ = false;
+		/*! \brief If true, the Woodbury formula is used for calculating the inverse of the covariance matrix (only if cov_function = "linear" and there is only one GP) */
+		bool linear_kernel_use_woodbury_identity_ = false;
 
 		// COVARIANCE MATRIX AND CHOLESKY FACTORS OF IT
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decomposition of covariance matrices */
@@ -4889,9 +4935,9 @@ namespace GPBoost {
 		bool chol_fact_pattern_analyzed_ = false;
 		/*! \brief Collects inverse covariance matrices Psi^{-1} (usually not saved, but used e.g. in Fisher scoring without the Vecchia approximation) */
 		std::map<data_size_t, T_mat> psi_inv_;
-		/*! \brief Inverse covariance matrices Sigma^-1 of random effects. This is only used if only_grouped_REs_use_woodbury_identity_==true (if there are only grouped REs) */
+		/*! \brief Inverse covariance matrices Sigma^-1 of random effects. This is only used if use_woodbury_identity_==true (if there are only grouped REs) */
 		std::map<data_size_t, sp_mat_t> SigmaI_;
-		/*! \brief Pointer to covariance matrix of the random effects (sum of all components). This is only used for non-Gaussian likelihoods and if only_grouped_REs_use_woodbury_identity_==false. In the Gaussian case this needs not be saved */
+		/*! \brief Pointer to covariance matrix of the random effects (sum of all components). This is only used for non-Gaussian likelihoods and if use_woodbury_identity_==false. In the Gaussian case this needs not be saved */
 		std::map<data_size_t, std::shared_ptr<T_mat>> ZSigmaZt_;
 
 		// COVARIATE DATA FOR LINEAR REGRESSION TERM
@@ -5171,29 +5217,29 @@ namespace GPBoost {
 		int rank_pred_approx_matrix_lanczos_ = 1000;
 
 		// WOODBURY IDENTITY FOR GROUPED RANDOM EFFECTS ONLY
-		/*! \brief Collects matrices Z^T (only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
+		/*! \brief Collects matrices Z^T (only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
 		std::map<data_size_t, sp_mat_t> Zt_;
-		/*! \brief Collects matrices Z^TZ (only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
+		/*! \brief Collects matrices Z^TZ (only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
 		std::map<data_size_t, sp_mat_t> ZtZ_;
-		/*! \brief Collects vectors Z^Ty (only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects) */
+		/*! \brief Collects vectors Z^Ty (only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects) */
 		std::map<data_size_t, vec_t> Zty_;
-		/*! \brief Cumulative number of random effects for components (usually not saved, only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
+		/*! \brief Cumulative number of random effects for components (usually not saved, only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
 		std::map<data_size_t, std::vector<data_size_t>> cum_num_rand_eff_;//The random effects of component j start at cum_num_rand_eff_[0][j]+1 and end at cum_num_rand_eff_[0][j+1]
-		/*! \brief Sum of squared entries of Z_j for every random effect component (usually not saved, only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects) */
+		/*! \brief Sum of squared entries of Z_j for every random effect component (usually not saved, only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects) */
 		std::map<data_size_t, std::vector<double>> Zj_square_sum_;
-		/*! \brief Collects matrices Z^T * Z_j for every random effect component (usually not saved, only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects) */
+		/*! \brief Collects matrices Z^T * Z_j for every random effect component (usually not saved, only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects) */
 		std::map<data_size_t, std::vector<sp_mat_t>> ZtZj_;
-		/*! \brief Collects matrices L^-1 * Z^T * Z_j for every random effect component (usually not saved, only saved when only_grouped_REs_use_woodbury_identity_=true i.e. when there are only grouped random effects and when Fisher scoring is done) */
+		/*! \brief Collects matrices L^-1 * Z^T * Z_j for every random effect component (usually not saved, only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects and when Fisher scoring is done) */
 		std::map<data_size_t, std::vector<T_mat>> LInvZtZj_;
 		/*! \brief Permuted matrices Zt_ when Cholesky factors have a permutation matrix */
 		std::map<data_size_t, sp_mat_t> P_Zt_;
 		/*! \brief Permuted matrices ZtZj_ when Cholesky factors have a permutation matrix */
 		std::map<data_size_t, std::vector<sp_mat_t>> P_ZtZj_;
-		/*! \brief Collects matrices Z_j^T * Z_k (usually not saved, only if only_grouped_REs_use_woodbury_identity_ and Fisher scoring is used) */
+		/*! \brief Collects matrices Z_j^T * Z_k (usually not saved, only if use_woodbury_identity_ and Fisher scoring is used) */
 		std::map<data_size_t, std::vector<T_mat>> Zjt_Zk_;
 		/*! \brief Indicates whether Zjt_Zk_ has been saved */
 		bool Zjt_Zk_saved_ = false;
-		/*! \brief Collects matrices (Z_j^T * Z_k).squaredNorm() (usually not saved, only if only_grouped_REs_use_woodbury_identity_ and Fisher scoring is used) */
+		/*! \brief Collects matrices (Z_j^T * Z_k).squaredNorm() (usually not saved, only if use_woodbury_identity_ and Fisher scoring is used) */
 		std::map<data_size_t, std::vector<double>> Zjt_Zk_squaredNorm_;
 
 		// ITERATIVE METHODS for GROUPED RANDOM EFFECTS
@@ -5400,24 +5446,23 @@ namespace GPBoost {
 		/*! \brief Constructs identity matrices if sparse matrices are used (used for calculating inverse covariance matrix) */
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
 		void ConstructI(data_size_t cluster_i) {
-			int dim_I = only_grouped_REs_use_woodbury_identity_ ? cum_num_rand_eff_[cluster_i][num_re_group_total_] : num_data_per_cluster_[cluster_i];
+			int dim_I = use_woodbury_identity_ ? cum_num_rand_eff_[cluster_i][num_comps_total_] : num_data_per_cluster_[cluster_i];
 			T_mat I(dim_I, dim_I);//identity matrix for calculating precision matrix
 			I.setIdentity();
 			I.makeCompressed();
 			Id_.insert({ cluster_i, I });
 		}
-
 		/*! \brief Constructs identity matrices if dense matrices are used (used for calculating inverse covariance matrix) */
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
 		void ConstructI(data_size_t cluster_i) {
-			int dim_I = only_grouped_REs_use_woodbury_identity_ ? cum_num_rand_eff_[cluster_i][num_re_group_total_] : num_data_per_cluster_[cluster_i];
+			int dim_I = use_woodbury_identity_ ? cum_num_rand_eff_[cluster_i][num_comps_total_] : num_data_per_cluster_[cluster_i];
 			den_mat_t I(dim_I, dim_I);//identity matrix for calculating precision matrix
 			I.setIdentity();
 			Id_.insert({ cluster_i, I });
 		}
 
 		/*!
-		* \brief Set response variable data y_ (and calculate Z^T * y if  only_grouped_REs_use_woodbury_identity_ == true)
+		* \brief Set response variable data y_ (and calculate Z^T * y if  use_woodbury_identity_ == true)
 		* \param y_data Response variable data
 		*/
 		void SetY(const double* y_data) {
@@ -5433,7 +5478,7 @@ namespace GPBoost {
 						}
 					}
 				}
-				if (only_grouped_REs_use_woodbury_identity_) {
+				if (use_woodbury_identity_) {
 					CalcZtY();
 				}
 			}//end gauss_likelihood_
@@ -5536,7 +5581,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate Z^T*y (use only when only_grouped_REs_use_woodbury_identity_ == true)
+		* \brief Calculate Z^T*y (use only when use_woodbury_identity_ == true)
 		*/
 		void CalcZtY() {
 			for (const auto& cluster_i : unique_clusters_) {
@@ -5597,7 +5642,7 @@ namespace GPBoost {
 				if (CholeskyHasPermutation<T_chol>(chol_facts_[cluster_i])) {
 					P_Id_[cluster_i] = chol_facts_[cluster_i].permutationP() * Id_[cluster_i];
 					P_Id_[cluster_i].makeCompressed();
-					if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
+					if (use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 						P_Zt_[cluster_i] = chol_facts_[cluster_i].permutationP() * Zt_[cluster_i];
 						std::vector<sp_mat_t> P_ZtZj_cluster_i(num_comps_total_);
 						for (int j = 0; j < num_comps_total_; ++j) {
@@ -5645,7 +5690,7 @@ namespace GPBoost {
 			if (gp_approx_ == "vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 				Log::REFatal("'CalcPsiInv': no implemented for approximation '%s' ", gp_approx_.c_str());
 			}
-			if (only_grouped_REs_use_woodbury_identity_) {
+			if (use_woodbury_identity_) {
 				sp_mat_t MInvSqrtZt;
 				if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 					MInvSqrtZt = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().inverse().matrix().asDiagonal() * Zt_[cluster_i];
@@ -5699,7 +5744,7 @@ namespace GPBoost {
 			if (gp_approx_ == "vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 				Log::REFatal("'CalcPsiInv': no implemented for approximation '%s' ", gp_approx_.c_str());
 			}
-			if (only_grouped_REs_use_woodbury_identity_) {//typically currently not called as only_grouped_REs_use_woodbury_identity_ is only true for grouped REs only i.e. sparse matrices
+			if (use_woodbury_identity_) {//typically currently not called as use_woodbury_identity_ is only true for grouped REs only i.e. sparse matrices
 				den_mat_t MInvSqrtZt;
 				if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 					MInvSqrtZt = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().inverse().matrix().asDiagonal() * Zt_[cluster_i];
@@ -5729,7 +5774,7 @@ namespace GPBoost {
 					XT_psi_inv_X = BX.transpose() * D_inv_[unique_clusters_[0]][0] * BX;
 				}
 				else {
-					if (only_grouped_REs_use_woodbury_identity_) {
+					if (use_woodbury_identity_) {
 						den_mat_t ZtX = Zt_[unique_clusters_[0]] * X;
 						if (matrix_inversion_method_ == "cholesky") {
 						den_mat_t MInvSqrtZtX;
@@ -5746,9 +5791,9 @@ namespace GPBoost {
 							//Use last solution as initial guess
 							if (num_iter_ > 0 && optimizer_coef_ == "wls") {
 								MInvZtX = last_MInvZtX_[unique_clusters_[0]];
-					}
-					else {
-								MInvZtX.resize(cum_num_rand_eff_[unique_clusters_[0]][num_re_group_total_], X.cols());
+							}
+							else {
+								MInvZtX.resize(cum_num_rand_eff_[unique_clusters_[0]][num_comps_total_], X.cols());
 							}
 							//Reduce max. number of iterations for the CG in first update
 							int cg_max_num_it = cg_max_num_it_;
@@ -5756,7 +5801,7 @@ namespace GPBoost {
 								cg_max_num_it = (int)round(cg_max_num_it_ / 3);
 							}
 							CGRandomEffectsMat(SigmaI_plus_ZtZ_rm_[unique_clusters_[0]], ZtX, MInvZtX, NaN_found,
-								cum_num_rand_eff_[unique_clusters_[0]][num_re_group_total_], (int)X.cols(),
+								cum_num_rand_eff_[unique_clusters_[0]][num_comps_total_], (int)X.cols(),
 								cg_max_num_it, cg_delta_conv_, cg_preconditioner_type_,
 								L_SigmaI_plus_ZtZ_rm_[unique_clusters_[0]], P_SSOR_L_D_sqrt_inv_rm_[unique_clusters_[0]]);
 							last_MInvZtX_[unique_clusters_[0]] = MInvZtX;
@@ -5860,7 +5905,7 @@ namespace GPBoost {
 						XT_psi_inv_X += X_cluster_i.transpose() * psi_inv_X;
 					}
 					else {
-						if (only_grouped_REs_use_woodbury_identity_) {
+						if (use_woodbury_identity_) {
 							den_mat_t ZtX = Zt_[cluster_i] * X_cluster_i;
 							if (matrix_inversion_method_ == "cholesky") {
 							den_mat_t MInvSqrtZtX;
@@ -5879,7 +5924,7 @@ namespace GPBoost {
 									MInvZtX = last_MInvZtX_[cluster_i];
 								}
 								else {
-									MInvZtX.resize(cum_num_rand_eff_[cluster_i][num_re_group_total_], X_cluster_i.cols());
+									MInvZtX.resize(cum_num_rand_eff_[cluster_i][num_comps_total_], X_cluster_i.cols());
 								}
 								//Reduce max. number of iterations for the CG in first update
 								int cg_max_num_it = cg_max_num_it_;
@@ -5887,7 +5932,7 @@ namespace GPBoost {
 									cg_max_num_it = (int)round(cg_max_num_it_ / 3);
 								}
 								CGRandomEffectsMat(SigmaI_plus_ZtZ_rm_[cluster_i], ZtX, MInvZtX, NaN_found,
-									cum_num_rand_eff_[cluster_i][num_re_group_total_], (int)X_cluster_i.cols(),
+									cum_num_rand_eff_[cluster_i][num_comps_total_], (int)X_cluster_i.cols(),
 									cg_max_num_it, cg_delta_conv_, cg_preconditioner_type_,
 									L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i]);
 								last_MInvZtX_[cluster_i] = MInvZtX;
@@ -6009,10 +6054,10 @@ namespace GPBoost {
 						likelihood_additional_param_,
 						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
 				}
-				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
+				else if (use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
 						num_data_per_cluster_[cluster_i],
-						cum_num_rand_eff_[cluster_i][num_re_group_total_],
+						cum_num_rand_eff_[cluster_i][num_comps_total_],
 						false,
 						false,
 						nullptr,
@@ -6150,21 +6195,31 @@ namespace GPBoost {
 		/*!
 		* \brief Function that determines whether to use special options for estimation and prediction for certain special cases of random effects models
 		*/
-		void DetermineSpecialCasesModelsEstimationPrediction() {
+		void DetermineSpecialCasesModelsEstimationPrediction(std::string& cov_fct) {
 			chol_fact_pattern_analyzed_ = false;
 			// Decide whether to use the Woodbury identity (i.e. do matrix inversion on the b scale and not the Zb scale) for grouped random effects models only
 			if (num_re_group_total_ > 0 && num_gp_total_ == 0) {
-				only_grouped_REs_use_woodbury_identity_ = true;//Faster to use Woodbury identity since the dimension of the random effects is typically much smaller than the number of data points
+				use_woodbury_identity_ = true;//Faster to use Woodbury identity since the dimension of the random effects is typically much smaller than the number of data points
 				//Note: the use of the Woodburry identity is currently only implemented for grouped random effects (which is also the only use of it). 
 				//		If this should be applied to GPs in the future, adaptions need to be made e.g. in the calculations of the gradient (see y_tilde2_)
 			}
 			else {
-				only_grouped_REs_use_woodbury_identity_ = false;
+				use_woodbury_identity_ = false;
 			}
 			// Define options for faster calculations for special cases of RE models (these options depend on the type of likelihood)
 			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && gp_approx_ == "none";//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (only for non-Gaussian likelihoods)
 			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods)
 			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && gauss_likelihood_;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods)
+			if (num_gp_total_ == 1 && num_comps_total_ == 1 && gp_approx_ == "none") {
+				if (cov_fct == "linear") {
+					use_woodbury_identity_ = true;
+					linear_kernel_use_woodbury_identity_ = true;
+					only_one_GP_calculations_on_RE_scale_ = false;
+				} 
+				else if (cov_fct == "linear_no_woodbury") {
+					cov_fct = "linear";
+				}
+			}
 			if (matrix_inversion_method_user_provided_ == "default") {
 				if (CanUseIterative()) {
 					matrix_inversion_method_ = "iterative";
@@ -6199,7 +6254,7 @@ namespace GPBoost {
 				}
 			}
 			if (!cg_preconditioner_type_has_been_set_) {
-				if (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ > 1) {
+				if (use_woodbury_identity_ && ((num_re_group_total_ > 1) || linear_kernel_use_woodbury_identity_)) {
 					cg_preconditioner_type_ = "ssor";
 				}
 				else if (gauss_likelihood_ && gp_approx_ == "full_scale_tapering") {
@@ -6221,7 +6276,7 @@ namespace GPBoost {
 				}
 			}
 			if (!nsim_var_pred_has_been_set_) {
-				if (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ > 1) {
+				if (use_woodbury_identity_ && ((num_re_group_total_ > 1) || linear_kernel_use_woodbury_identity_)) {
 					nsim_var_pred_ = 500;
 				}
 				else if (gauss_likelihood_ && gp_approx_ == "full_scale_tapering") {
@@ -6240,11 +6295,10 @@ namespace GPBoost {
 		}//end InitializeDefaultSettings
 
 		/*!
-		* \brief Initialize required matrices used when only_grouped_REs_use_woodbury_identity_==true
+		* \brief Initialize required matrices used when use_woodbury_identity_==true
 		*/
-		void InitializeMatricesForOnlyGroupedREsUseWoodburyIdentity() {
-			CHECK(num_comps_total_ == num_re_group_total_);
-			CHECK(only_grouped_REs_use_woodbury_identity_);
+		void InitializeMatricesForUseWoodburyIdentity() {
+			CHECK(use_woodbury_identity_);
 			Zt_ = std::map<data_size_t, sp_mat_t>();
 			ZtZ_ = std::map<data_size_t, sp_mat_t>();
 			cum_num_rand_eff_ = std::map<data_size_t, std::vector<data_size_t>>();
@@ -6253,48 +6307,62 @@ namespace GPBoost {
 			for (const auto& cluster_i : unique_clusters_) {
 				std::vector<data_size_t> cum_num_rand_eff_cluster_i(num_comps_total_ + 1);
 				cum_num_rand_eff_cluster_i[0] = 0;
-				//Determine number of rows and non-zero entries of Z
-				int non_zeros = 0;
-				int ncols = 0;
-				for (int j = 0; j < num_comps_total_; ++j) {
-					sp_mat_t* Z_j = re_comps_[cluster_i][0][j]->GetZ();
-					ncols += (int)Z_j->cols();
-					non_zeros += (int)Z_j->nonZeros();
-					cum_num_rand_eff_cluster_i[j + 1] = ncols;
-				}
-				//Create matrix Z and calculate sum(Z_j^2) = trace(Z_j^T * Z_j)
-				std::vector<Triplet_t> triplets;
-				triplets.reserve(non_zeros);
-				std::vector<double> Zj_square_sum_cluster_i(num_comps_total_);
-				int ncol_prev = 0;
-				for (int j = 0; j < num_comps_total_; ++j) {
-					sp_mat_t* Z_j = re_comps_[cluster_i][0][j]->GetZ();
-					for (int k = 0; k < Z_j->outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(*Z_j, k); it; ++it) {
-							triplets.emplace_back(it.row(), ncol_prev + it.col(), it.value());
-						}
+				if (linear_kernel_use_woodbury_identity_) {
+					std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][0][ind_intercept_gp_]);
+					den_mat_t coords = re_comp->GetCoords();
+					Zt_.insert({ cluster_i, coords.transpose().sparseView()});
+					ZtZ_.insert({ cluster_i, (coords.transpose() * coords).sparseView()});
+					cum_num_rand_eff_cluster_i[1] = re_comp->GetDimCoords();
+					cum_num_rand_eff_.insert({ cluster_i, cum_num_rand_eff_cluster_i });
+					std::vector<double> Zj_square_sum_cluster_i = { coords.squaredNorm() };
+					Zj_square_sum_.insert({ cluster_i, Zj_square_sum_cluster_i });
+					std::vector<sp_mat_t> ZtZj_cluster_i = { ZtZ_[cluster_i] };
+					ZtZj_.insert({ cluster_i, ZtZj_cluster_i });
+				}//end linear_kernel_use_woodbury_identity_
+				else {// only grouped REs
+					//Determine number of rows and non-zero entries of Z
+					int non_zeros = 0;
+					int ncols = 0;
+					for (int j = 0; j < num_comps_total_; ++j) {
+						sp_mat_t* Z_j = re_comps_[cluster_i][0][j]->GetZ();
+						ncols += (int)Z_j->cols();
+						non_zeros += (int)Z_j->nonZeros();
+						cum_num_rand_eff_cluster_i[j + 1] = ncols;
 					}
-					ncol_prev += (int)Z_j->cols();
-					Zj_square_sum_cluster_i[j] = Z_j->squaredNorm();
-				}
-				sp_mat_t Z_cluster_i(num_data_per_cluster_[cluster_i], ncols);
-				Z_cluster_i.setFromTriplets(triplets.begin(), triplets.end());
-				sp_mat_t Zt_cluster_i = Z_cluster_i.transpose();
-				sp_mat_t ZtZ_cluster_i = Zt_cluster_i * Z_cluster_i;
-				//Calculate Z^T * Z_j
-				std::vector<sp_mat_t> ZtZj_cluster_i(num_comps_total_);
-				for (int j = 0; j < num_comps_total_; ++j) {
-					sp_mat_t* Z_j = re_comps_[cluster_i][0][j]->GetZ();
-					ZtZj_cluster_i[j] = Zt_cluster_i * (*Z_j);
-				}
-				//Save all quantities
-				Zt_.insert({ cluster_i, Zt_cluster_i });
-				ZtZ_.insert({ cluster_i, ZtZ_cluster_i });
-				cum_num_rand_eff_.insert({ cluster_i, cum_num_rand_eff_cluster_i });
-				Zj_square_sum_.insert({ cluster_i, Zj_square_sum_cluster_i });
-				ZtZj_.insert({ cluster_i, ZtZj_cluster_i });
+					//Create matrix Z and calculate sum(Z_j^2) = trace(Z_j^T * Z_j)
+					std::vector<Triplet_t> triplets;
+					triplets.reserve(non_zeros);
+					std::vector<double> Zj_square_sum_cluster_i(num_comps_total_);
+					int ncol_prev = 0;
+					for (int j = 0; j < num_comps_total_; ++j) {
+						sp_mat_t* Z_j = re_comps_[cluster_i][0][j]->GetZ();
+						for (int k = 0; k < Z_j->outerSize(); ++k) {
+							for (sp_mat_t::InnerIterator it(*Z_j, k); it; ++it) {
+								triplets.emplace_back(it.row(), ncol_prev + it.col(), it.value());
+							}
+						}
+						ncol_prev += (int)Z_j->cols();
+						Zj_square_sum_cluster_i[j] = Z_j->squaredNorm();
+					}
+					sp_mat_t Z_cluster_i(num_data_per_cluster_[cluster_i], ncols);
+					Z_cluster_i.setFromTriplets(triplets.begin(), triplets.end());
+					sp_mat_t Zt_cluster_i = Z_cluster_i.transpose();
+					sp_mat_t ZtZ_cluster_i = Zt_cluster_i * Z_cluster_i;
+					//Calculate Z^T * Z_j
+					std::vector<sp_mat_t> ZtZj_cluster_i(num_comps_total_);
+					for (int j = 0; j < num_comps_total_; ++j) {
+						sp_mat_t* Z_j = re_comps_[cluster_i][0][j]->GetZ();
+						ZtZj_cluster_i[j] = Zt_cluster_i * (*Z_j);
+					}
+					//Save all quantities
+					Zt_.insert({ cluster_i, Zt_cluster_i });
+					ZtZ_.insert({ cluster_i, ZtZ_cluster_i });
+					cum_num_rand_eff_.insert({ cluster_i, cum_num_rand_eff_cluster_i });
+					Zj_square_sum_.insert({ cluster_i, Zj_square_sum_cluster_i });
+					ZtZj_.insert({ cluster_i, ZtZj_cluster_i });
+				}//end !linear_kernel_use_woodbury_identity_
 			}
-		}
+		}//end InitializeMatricesForUseWoodburyIdentity
 
 		/*!
 		* \brief Initialize identity matrices required for Gaussian data
@@ -6321,8 +6389,8 @@ namespace GPBoost {
 				CHECK(num_neighbors_ > 0);
 			}
 			//Some checks
-			if (only_one_GP_calculations_on_RE_scale_ && only_grouped_REs_use_woodbury_identity_) {
-				Log::REFatal("Cannot set both 'only_one_GP_calculations_on_RE_scale_' and 'only_grouped_REs_use_woodbury_identity_' to 'true'");
+			if (only_one_GP_calculations_on_RE_scale_ && use_woodbury_identity_) {
+				Log::REFatal("Cannot set both 'only_one_GP_calculations_on_RE_scale_' and 'use_woodbury_identity_' to 'true'");
 			}
 			if (only_one_GP_calculations_on_RE_scale_ && only_one_grouped_RE_calculations_on_RE_scale_) {
 				Log::REFatal("Cannot set both 'only_one_GP_calculations_on_RE_scale_' and 'only_one_grouped_RE_calculations_on_RE_scale_' to 'true'");
@@ -6361,19 +6429,29 @@ namespace GPBoost {
 					Log::REFatal("Option 'only_one_grouped_RE_calculations_on_RE_scale_for_prediction_' is currently only effective for Gaussian data");
 				}
 			}
-			if (only_grouped_REs_use_woodbury_identity_) {//only_grouped_REs_use_woodbury_identity_
+			if (use_woodbury_identity_) {//use_woodbury_identity_
 				if (gauss_likelihood_ && only_one_grouped_RE_calculations_on_RE_scale_) {
-					Log::REFatal("Cannot enable 'only_one_grouped_RE_calculations_on_RE_scale_' if 'only_grouped_REs_use_woodbury_identity_' is enabled for Gaussian data");
+					Log::REFatal("Cannot enable 'only_one_grouped_RE_calculations_on_RE_scale_' if 'use_woodbury_identity_' is enabled for Gaussian data");
 				}
-				CHECK(num_gp_total_ == 0);
-				CHECK(num_comps_total_ == num_re_group_total_);
+				if (linear_kernel_use_woodbury_identity_) {
+					CHECK(num_gp_total_ == 1);
+					CHECK(num_comps_total_ == num_gp_total_);
+					CHECK(num_re_group_total_ == 0);
+				}
+				else {
+					CHECK(num_gp_total_ == 0);
+					CHECK(num_comps_total_ == num_re_group_total_);
+				}
+			}
+			if (linear_kernel_use_woodbury_identity_) {
+				CHECK(num_gp_total_ == 1);
 			}
 			if (gp_approx_ == "full_scale_tapering" && !gauss_likelihood_) {
 				Log::REFatal("Approximation '%s' is currently not supported for non-Gaussian likelihoods ", gp_approx_.c_str());
 			}
 			if (matrix_inversion_method_ == "iterative") {
 				if (!CanUseIterative()) {
-					if (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ == 1) {
+					if (use_woodbury_identity_ && num_re_group_total_ == 1) {
 						Log::REFatal("Cannot use matrix_inversion_method = 'iterative' if there is only a single-level grouped random effects. " 
 							"Use matrix_inversion_method = 'cholesky' instead (this is very fast). Iterative methods are for multiple grouped random effects ");
 					}
@@ -6387,14 +6465,16 @@ namespace GPBoost {
 		}//end CheckCompatibilitySpecialOptions
 
 		bool CanUseIterative() const {
-			return ((gp_approx_ == "full_scale_vecchia" || gp_approx_ == "vecchia") && !gauss_likelihood_) ||
-				(gp_approx_ == "full_scale_tapering" && gauss_likelihood_) || (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ > 1);
+			bool can_use_iter = ((gp_approx_ == "full_scale_vecchia" || gp_approx_ == "vecchia") && !gauss_likelihood_) ||
+				(gp_approx_ == "full_scale_tapering" && gauss_likelihood_) ||
+				(use_woodbury_identity_ && (num_re_group_total_ > 1 || linear_kernel_use_woodbury_identity_));
+			return can_use_iter;
 		}
 
 		/*! \brief Check whether preconditioner is supported */
 		void CheckPreconditionerType() {
 			if (matrix_inversion_method_ == "iterative") {
-				if (only_grouped_REs_use_woodbury_identity_ && num_re_group_total_ > 1) {
+				if (use_woodbury_identity_ && (num_re_group_total_ > 1 || linear_kernel_use_woodbury_identity_)) {
 					if (SUPPORTED_PRECONDITIONERS_GROUPED_RE_.find(cg_preconditioner_type_) == SUPPORTED_PRECONDITIONERS_GROUPED_RE_.end()) {
 						Log::REFatal("Preconditioner type '%s' is not supported for grouped random effects ",
 							cg_preconditioner_type_.c_str(), gp_approx_.c_str(), (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
@@ -6963,17 +7043,17 @@ namespace GPBoost {
 							}
 						}
 					}//end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
-					else {
+					else if (!use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_ && !linear_kernel_use_woodbury_identity_) {
 						re_comps_[cluster_i][0][j]->CalcSigma();
 					}
 				}
 			}
 			if (!gauss_likelihood_ && (gp_approx_ == "none" || gp_approx_ == "tapering")) {
-				// Calculate the covariance matrix 'ZSigmaZt_' if !only_grouped_REs_use_woodbury_identity_ or the inverse covariance matrix 'SigmaI_' if only_grouped_REs_use_woodbury_identity_
+				// Calculate the covariance matrix 'ZSigmaZt_' if !use_woodbury_identity_ or the inverse covariance matrix 'SigmaI_' if use_woodbury_identity_
 				if (!only_one_grouped_RE_calculations_on_RE_scale_) {//Nothing to calculate if only_one_grouped_RE_calculations_on_RE_scale_
-					if (only_grouped_REs_use_woodbury_identity_) {
+					if (use_woodbury_identity_) {
 						for (const auto& cluster_i : unique_clusters_) {
-							CalcSigmaIGroupedREsOnly(SigmaI_[cluster_i], cluster_i, true);
+							CalcSigmaOrInverseGroupedREsOnly(SigmaI_[cluster_i], cluster_i, true);
 						}
 					}
 					else {
@@ -6998,9 +7078,11 @@ namespace GPBoost {
 		* \param cluster_i Cluster index for which SigmaI is constructed
 		* \param inverse If true, the inverse covariance matrix is calculated
 		*/
-		void CalcSigmaIGroupedREsOnly(sp_mat_t& SigmaI, data_size_t cluster_i, bool inverse) {
+		void CalcSigmaOrInverseGroupedREsOnly(sp_mat_t& SigmaI, 
+			data_size_t cluster_i, 
+			bool inverse) {
 			CHECK(!only_one_grouped_RE_calculations_on_RE_scale_);
-			std::vector<Triplet_t> triplets(cum_num_rand_eff_[cluster_i][num_re_group_total_]);
+			std::vector<Triplet_t> triplets(cum_num_rand_eff_[cluster_i][num_comps_total_]);
 			for (int j = 0; j < num_comps_total_; ++j) {
 				double sigmaI = re_comps_[cluster_i][0][j]->cov_pars_[0];
 				if (inverse) {
@@ -7011,7 +7093,7 @@ namespace GPBoost {
 					triplets[i] = Triplet_t(i, i, sigmaI);
 				}
 			}
-			SigmaI = sp_mat_t(cum_num_rand_eff_[cluster_i][num_re_group_total_], cum_num_rand_eff_[cluster_i][num_re_group_total_]);
+			SigmaI = sp_mat_t(cum_num_rand_eff_[cluster_i][num_comps_total_], cum_num_rand_eff_[cluster_i][num_comps_total_]);
 			SigmaI.setFromTriplets(triplets.begin(), triplets.end());
 		}
 
@@ -7369,7 +7451,7 @@ namespace GPBoost {
 						false, false, re_comps_ip_preconditioner_[cluster_i][0], re_comps_cross_cov_preconditioner_[cluster_i][0],
 						chol_ip_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0], estimate_cov_par_index_);
 				}
-				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
+				else if (use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i]->CalcGradNegMargLikelihoodLaplaceApproxGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr, SigmaI_[cluster_i], cum_num_rand_eff_[cluster_i],
 						false, true, false, nullptr, grad_F_cluster_i, nullptr, false, false, estimate_cov_par_index_);
@@ -8066,7 +8148,7 @@ namespace GPBoost {
 						chol_fact_sigma_ip_[cluster_i][0], re_comps_cross_cov_[cluster_i][0][0]->GetSigmaPtr(),
 						fitc_resid_diag_[cluster_i], mll_cluster_i);
 				}
-				else if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
+				else if (use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i]->FindModePostRandEffCalcMLLGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr, SigmaI_[cluster_i], first_update_, calc_mll, mll_cluster_i);
 				}
@@ -8124,17 +8206,17 @@ namespace GPBoost {
 					}
 					else {// gp_approx_ != "vecchia" && gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering"
 						for (const auto& cluster_i : unique_clusters_) {
-							if (only_grouped_REs_use_woodbury_identity_) {//Use Woodburry matrix inversion formula: used only if there are only grouped REs
+							if (use_woodbury_identity_) {//Use Woodburry matrix inversion formula: used only if there are only grouped REs
 								if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
-									CalcSigmaIGroupedREsOnly(SigmaI_[cluster_i], cluster_i, true);
+									CalcSigmaOrInverseGroupedREsOnly(SigmaI_[cluster_i], cluster_i, true);
 									sqrt_diag_SigmaI_plus_ZtZ_[cluster_i] = (SigmaI_[cluster_i].diagonal().array() + ZtZ_[cluster_i].diagonal().array()).sqrt().matrix();
 								}
 								else {
 									sp_mat_t SigmaI;
-									CalcSigmaIGroupedREsOnly(SigmaI, cluster_i, true);
+									CalcSigmaOrInverseGroupedREsOnly(SigmaI, cluster_i, true);
 									if (matrix_inversion_method_ == "cholesky") {
-									T_mat SigmaIplusZtZ = SigmaI + ZtZ_[cluster_i];
-									CalcChol(SigmaIplusZtZ, cluster_i);
+										T_mat SigmaIplusZtZ = SigmaI + ZtZ_[cluster_i];
+										CalcChol(SigmaIplusZtZ, cluster_i);
 									}// end cholesky
 									else if (matrix_inversion_method_ == "iterative") {
 										//Calculate Sigma^(-1) + Z^T Z
@@ -8168,12 +8250,12 @@ namespace GPBoost {
 										Log::REFatal("Matrix inversion method '%s' is not supported.", matrix_inversion_method_.c_str());
 									}
 								}
-							}//end only_grouped_REs_use_woodbury_identity_
-							else {//not only_grouped_REs_use_woodbury_identity_
+							}//end use_woodbury_identity_
+							else {//not use_woodbury_identity_
 								T_mat psi;
 								CalcZSigmaZt(psi, cluster_i);
 								CalcChol(psi, cluster_i);
-							}//end not only_grouped_REs_use_woodbury_identity_
+							}//end not use_woodbury_identity_
 						}
 					}
 				}//end gauss_likelihood_
@@ -8439,7 +8521,7 @@ namespace GPBoost {
 		/*!
 		* \brief Calculate Psi^-1*y (and save in y_aux_)
 		* \param marg_variance The marginal variance. Default = 1.
-		* \param store_ytilde2 If true && only_grouped_REs_use_woodbury_identity_: y_tilde2_ = Z * (Sigma^(-1)+ Z^T Z)^(-1)  Z^T * y is stored for later covariance gradient calculations
+		* \param store_ytilde2 If true && use_woodbury_identity_: y_tilde2_ = Z * (Sigma^(-1)+ Z^T Z)^(-1)  Z^T * y is stored for later covariance gradient calculations
 		*/
 		void CalcYAux(double marg_variance,
 			bool store_ytilde2) {
@@ -8521,14 +8603,14 @@ namespace GPBoost {
 
 					}
 				}//end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
-				else if (only_grouped_REs_use_woodbury_identity_) {
+				else if (use_woodbury_identity_) {
 					vec_t MInvZty;
 					if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 						MInvZty = (Zty_[cluster_i].array() / sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().square()).matrix();
 					}
 					else {
 						if (matrix_inversion_method_ == "cholesky") {
-						MInvZty = chol_facts_[cluster_i].solve(Zty_[cluster_i]);
+							MInvZty = chol_facts_[cluster_i].solve(Zty_[cluster_i]);
 						}//end cholesky
 						else if (matrix_inversion_method_ == "iterative") {
 							//Use last solution as initial guess
@@ -8536,7 +8618,7 @@ namespace GPBoost {
 								MInvZty = last_MInvZty_[cluster_i];
 							}
 							else {
-								MInvZty = vec_t::Zero(cum_num_rand_eff_[cluster_i][num_re_group_total_]);
+								MInvZty = vec_t::Zero(cum_num_rand_eff_[cluster_i][num_comps_total_]);
 							}
 							//Reduce max. number of iterations for the CG in first update
 							int cg_max_num_it = cg_max_num_it_;
@@ -8544,9 +8626,7 @@ namespace GPBoost {
 								cg_max_num_it = (int)round(cg_max_num_it_ / 3);
 							}
 							CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], Zty_[cluster_i], MInvZty, NaN_found, cg_max_num_it, cg_delta_conv_, 1, THRESHOLD_ZERO_RHS_CG_, false, cg_preconditioner_type_,
-								L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]
-								//cum_num_rand_eff_[cluster_i], num_re_group_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
-							);
+								L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]);
 							last_MInvZty_[cluster_i] = MInvZty;
 							if (NaN_found) {
 								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
@@ -8564,7 +8644,7 @@ namespace GPBoost {
 					y_aux_[cluster_i] = y_[cluster_i] - Zt_[cluster_i].transpose() * MInvZty;
 				}
 				}
-				else {//not only_grouped_REs_use_woodbury_identity_ || gp_approx_ == "vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
+				else {//not use_woodbury_identity_ || gp_approx_ == "vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
 					y_aux_[cluster_i] = chol_facts_[cluster_i].solve(y_[cluster_i]);
 				}
 				if (!TwoNumbersAreEqual<double>(marg_variance, 1.)) {
@@ -8606,8 +8686,8 @@ namespace GPBoost {
 		* \param[out] yTPsiInvy y^T*Psi^-1*y
 		* \param all_clusters If true, then y^T*Psi^-1*y is calculated for all clusters / data and cluster_ind is ignored
 		* \param cluster_ind Cluster index
-		* \param CalcYAux_already_done If true, it is assumed that y_aux_=Psi^-1y_ has already been calculated (only relevant for not only_grouped_REs_use_woodbury_identity_)
-		* \param CalcYtilde_already_done If true, it is assumed that y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z), has already been calculated (only relevant for only_grouped_REs_use_woodbury_identity_)
+		* \param CalcYAux_already_done If true, it is assumed that y_aux_=Psi^-1y_ has already been calculated (only relevant for not use_woodbury_identity_)
+		* \param CalcYtilde_already_done If true, it is assumed that y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z), has already been calculated (only relevant for use_woodbury_identity_)
 		*/
 		void CalcYTPsiIInvY(double& yTPsiInvy,
 			bool all_clusters,
@@ -8646,15 +8726,16 @@ namespace GPBoost {
 					}
 					yTPsiInvy += (y_[cluster_i].transpose() * y_aux_[cluster_i])(0, 0);
 				}//end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
-				else if (only_grouped_REs_use_woodbury_identity_) {
+				else if (use_woodbury_identity_) {
 					if (matrix_inversion_method_ == "cholesky") {
 						if (!CalcYtilde_already_done) {
 							CalcYtilde(false);//y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z)
 						}
-						else if ((int)y_tilde_[cluster_i].size() != cum_num_rand_eff_[cluster_i][num_re_group_total_]) {
+						else if ((int)y_tilde_[cluster_i].size() != cum_num_rand_eff_[cluster_i][num_comps_total_]) {
 							Log::REFatal("y_tilde = L^-1 * Z^T * y has not the correct number of data points. Call 'CalcYtilde' first.");
 						}
 						yTPsiInvy += (y_[cluster_i].transpose() * y_[cluster_i])(0, 0) - (y_tilde_[cluster_i].transpose() * y_tilde_[cluster_i])(0, 0);
+
 					}//end cholesky
 					else if (matrix_inversion_method_ == "iterative") {
 						if (!CalcYAux_already_done) {
@@ -8665,8 +8746,8 @@ namespace GPBoost {
 					else {
 						Log::REFatal("Matrix inversion method '%s' is not supported.", matrix_inversion_method_.c_str());
 					}
-				}//end only_grouped_REs_use_woodbury_identity_
-				else {//not only_grouped_REs_use_woodbury_identity_
+				}//end use_woodbury_identity_
+				else {//not use_woodbury_identity_
 					if (CalcYAux_already_done) {
 						yTPsiInvy += (y_[cluster_i].transpose() * y_aux_[cluster_i])(0, 0);
 					}
@@ -8675,7 +8756,7 @@ namespace GPBoost {
 						TriangularSolveGivenCholesky<T_chol, T_mat, vec_t, vec_t>(chol_facts_[cluster_i], y_[cluster_i], y_aux_sqrt, false);
 						yTPsiInvy += (y_aux_sqrt.transpose() * y_aux_sqrt)(0, 0);
 					}
-				}//end not only_grouped_REs_use_woodbury_identity_
+				}//end not use_woodbury_identity_
 			}//end not gp_approx_ == "vecchia"
 		}//end CalcYTPsiIInvY
 
@@ -8732,10 +8813,10 @@ namespace GPBoost {
 			else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 				CalcFisherInformation_FITC_FSA(cov_pars, FI, transf_scale, include_error_var, first_cov_par);
 			}//end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
-			else if (only_grouped_REs_use_woodbury_identity_) {
+			else if (use_woodbury_identity_) {
 				CalcFisherInformation_Only_Grouped_REs_Woodbury(cov_pars, FI, transf_scale, include_error_var, use_saved_psi_inv, first_cov_par);
-			}//end only_grouped_REs_use_woodbury_identity_
-			else {//gp_approx_ == "none" and not only_grouped_REs_use_woodbury_identity_
+			}//end use_woodbury_identity_
+			else {//gp_approx_ == "none" and not use_woodbury_identity_
 				for (const auto& cluster_i : unique_clusters_) {
 					T_mat psi_inv;
 					if (use_saved_psi_inv) {
@@ -8785,7 +8866,7 @@ namespace GPBoost {
 						psi_inv_grad_psi_par_nb_T.resize(0, 0);
 					}
 				}//end loop over clusterI
-			}//end gp_approx_ == "none" and not only_grouped_REs_use_woodbury_identity_
+			}//end gp_approx_ == "none" and not use_woodbury_identity_
 			FI.triangularView<Eigen::StrictlyLower>() = FI.triangularView<Eigen::StrictlyUpper>().transpose();
 			//for (int i = 0; i < std::min((int)FI.rows(),4); ++i) {//For debugging only
 			//    for (int j = i; j < std::min((int)FI.cols(),4); ++j) {
@@ -9110,6 +9191,7 @@ namespace GPBoost {
 			bool use_saved_psi_inv,
 			int first_cov_par) {
 			CHECK(gauss_likelihood_);
+			CHECK(use_woodbury_identity_);
 			for (const auto& cluster_i : unique_clusters_) {
 				if (matrix_inversion_method_ == "cholesky") {
 					//Notation used below: M = Sigma^-1 + ZtZ, Sigma = cov(b) b=latent random effects, L=chol(M) i.e. M=LLt, MInv = M^-1 = L^-TL^-1
@@ -9210,15 +9292,15 @@ namespace GPBoost {
 						}
 					}
 					//Z^T z_i
-					den_mat_t Zt_RV(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
+					den_mat_t Zt_RV(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
 						Zt_RV.col(i) = Zt_[cluster_i] * rand_vec_fisher_info_[cluster_i].col(i);
 					}
 					//(Sigma^(-1) + Z^T Z)^(-1) Z^T z_i
-					den_mat_t MInv_Zt_RV(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
+					den_mat_t MInv_Zt_RV(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_);
 					CGRandomEffectsMat(SigmaI_plus_ZtZ_rm_[cluster_i], Zt_RV, MInv_Zt_RV, NaN_found,
-						cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_,
+						cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_,
 						cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 						L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i]);
 					if (NaN_found) {
@@ -9242,15 +9324,15 @@ namespace GPBoost {
 							Zj_Zjt_RV.col(i) = Zj_Zjt * rand_vec_fisher_info_[cluster_i].col(i);
 						}
 						//Z^T Z_j Z_j^T z_i
-						den_mat_t Zt_Zj_Zjt_RV(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
+						den_mat_t Zt_Zj_Zjt_RV(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 						for (int i = 0; i < num_rand_vec_trace_; ++i) {
 							Zt_Zj_Zjt_RV.col(i) = Zt_[cluster_i] * Zj_Zjt_RV.col(i);
 						}
 						//(Sigma^(-1) + Z^T Z)^(-1) Z^T Z_j Z_j^T z_i
-						den_mat_t MInv_Zt_Zj_Zjt_RV(cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_);
+						den_mat_t MInv_Zt_Zj_Zjt_RV(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_);
 						CGRandomEffectsMat(SigmaI_plus_ZtZ_rm_[cluster_i], Zt_Zj_Zjt_RV, MInv_Zt_Zj_Zjt_RV, NaN_found,
-							cum_num_rand_eff_[cluster_i][num_re_group_total_], num_rand_vec_trace_,
+							cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_,
 							cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 							L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i]);
 						if (NaN_found) {
@@ -9610,8 +9692,8 @@ namespace GPBoost {
 				}
 			}
 			T_mat cross_cov;//Cross-covariance between prediction and observation points
-			sp_mat_t Ztilde;//Matrix which relates existing random effects to prediction samples (used only if only_grouped_REs_use_woodbury_identity_ and not only_one_grouped_RE_calculations_on_RE_scale_)
-			sp_mat_t Sigma;//Covariance matrix of random effects (used only if only_grouped_REs_use_woodbury_identity_ and not only_one_grouped_RE_calculations_on_RE_scale_)
+			sp_mat_t Ztilde;//Matrix which relates existing random effects to prediction samples (used only if use_woodbury_identity_ and not only_one_grouped_RE_calculations_on_RE_scale_)
+			sp_mat_t Sigma;//Covariance matrix of random effects (used only if use_woodbury_identity_ and not only_one_grouped_RE_calculations_on_RE_scale_)
 			std::vector<data_size_t> random_effects_indices_of_pred;//Indices that indicate to which training data random effect every prediction point is related. -1 means to none in the training data
 			//Calculate (cross-)covariance matrix
 			int cn = 0;//component number counter
@@ -9633,61 +9715,78 @@ namespace GPBoost {
 					}
 				}
 			}
-			else if (only_grouped_REs_use_woodbury_identity_) {
-				Ztilde = sp_mat_t(num_data_per_cluster_pred[cluster_i], cum_num_rand_eff_[cluster_i][num_re_group_total_]);
-				bool has_ztilde = false;
-				std::vector<Triplet_t> triplets(num_data_per_cluster_pred[cluster_i] * num_re_group_total_);
-				for (int j = 0; j < num_group_variables_; ++j) {
-					if (!drop_intercept_group_rand_effect_[j]) {
-						std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][0][cn]);
-						std::vector<re_group_t> group_data;
-						for (const auto& id : data_indices_per_cluster_pred[cluster_i]) {
-							group_data.push_back(re_group_levels_pred[j][id]);
+			else if (use_woodbury_identity_) {
+				Ztilde = sp_mat_t(num_data_per_cluster_pred[cluster_i], cum_num_rand_eff_[cluster_i][num_re_group_total_]);				
+				if (linear_kernel_use_woodbury_identity_) {
+					Ztilde = gp_coords_mat_pred.sparseView();
+					std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][0][ind_intercept_gp_]);
+					if (predict_cov_mat) {
+						T_mat cov_mat_pred_id_aux;
+						ConvertTo_T_mat_FromDense<T_mat>(re_comp->GetZSigmaZtii() * gp_coords_mat_pred * gp_coords_mat_pred.transpose(), cov_mat_pred_id_aux);
+						cov_mat_pred_id += cov_mat_pred_id_aux;
+					}
+					if (predict_var) {
+						if (matrix_inversion_method_ == "cholesky") {
+							var_pred_id += re_comp->GetZSigmaZtii() * gp_coords_mat_pred.rowwise().squaredNorm();
 						}
-						re_comp->CalcInsertZtilde(group_data, nullptr, cum_num_rand_eff_[cluster_i][cn], cn, triplets, has_ztilde);
-						if (predict_cov_mat) {
-							re_comp->AddPredCovMatrices(group_data, cross_cov, cov_mat_pred_id,
-								false, true, dont_add_but_overwrite, false, nullptr);
-							dont_add_but_overwrite = false;
-						}
-						if (predict_var) {
-							if (matrix_inversion_method_ == "iterative") {
-								re_comp->AddPredUncondVarNewGroups(var_pred_id.data(), num_REs_pred, nullptr, group_data);
+						//else {//"iterative"
+						//	//nothing to do as there are no "new groups"			
+						//}
+					}
+				}//end linear_kernel_use_woodbury_identity_
+				else {//!linear_kernel_use_woodbury_identity_
+					bool has_ztilde = false;
+					std::vector<Triplet_t> triplets(num_data_per_cluster_pred[cluster_i] * num_re_group_total_);
+					for (int j = 0; j < num_group_variables_; ++j) {
+						if (!drop_intercept_group_rand_effect_[j]) {
+							std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][0][cn]);
+							std::vector<re_group_t> group_data_pred;
+							for (const auto& id : data_indices_per_cluster_pred[cluster_i]) {
+								group_data_pred.push_back(re_group_levels_pred[j][id]);
 							}
-							else {
-							re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
+							re_comp->CalcInsertZtilde(group_data_pred, nullptr, cum_num_rand_eff_[cluster_i][cn], cn, triplets, has_ztilde);
+							if (predict_cov_mat) {
+								re_comp->AddPredCovMatrices(group_data_pred, cross_cov, cov_mat_pred_id,
+									false, true, false, false, nullptr);//Note: cross_cov is not used, only unconditional predictive covariance is added
+							}
+							if (predict_var) {
+								if (matrix_inversion_method_ == "iterative") {
+									re_comp->AddPredUncondVarNewGroups(var_pred_id.data(), num_REs_pred, nullptr, group_data_pred);
+								}
+								else {//"cholesky"
+									re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
+								}
+							}
+							cn += 1;
 						}
-						}
-						cn += 1;
 					}
-				}
-				if (num_re_group_rand_coef_ > 0) {//Random coefficient grouped random effects
-					for (int j = 0; j < num_re_group_rand_coef_; ++j) {
-						std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][0][cn]);
-						std::vector<re_group_t> group_data;
-						std::vector<double> rand_coef_data;
-						for (const auto& id : data_indices_per_cluster_pred[cluster_i]) {
-							rand_coef_data.push_back(re_group_rand_coef_data_pred[j * num_data_pred + id]);
-							group_data.push_back(re_group_levels_pred[ind_effect_group_rand_coef_[j] - 1][id]);//subtract 1 since counting starts at one for this index
+					if (num_re_group_rand_coef_ > 0) {//Random coefficient grouped random effects
+						for (int j = 0; j < num_re_group_rand_coef_; ++j) {
+							std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][0][cn]);
+							std::vector<re_group_t> group_data_pred;
+							std::vector<double> rand_coef_data;
+							for (const auto& id : data_indices_per_cluster_pred[cluster_i]) {
+								rand_coef_data.push_back(re_group_rand_coef_data_pred[j * num_data_pred + id]);
+								group_data_pred.push_back(re_group_levels_pred[ind_effect_group_rand_coef_[j] - 1][id]);//subtract 1 since counting starts at one for this index
+							}
+							re_comp->CalcInsertZtilde(group_data_pred, rand_coef_data.data(), cum_num_rand_eff_[cluster_i][cn], cn, triplets, has_ztilde);
+							if (predict_cov_mat) {
+								re_comp->AddPredCovMatrices(group_data_pred, cross_cov, cov_mat_pred_id,
+									false, true, false, false, rand_coef_data.data());
+							}
+							if (predict_var) {
+								re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, rand_coef_data.data());
+							}
+							cn += 1;
 						}
-						re_comp->CalcInsertZtilde(group_data, rand_coef_data.data(), cum_num_rand_eff_[cluster_i][cn], cn, triplets, has_ztilde);
-						if (predict_cov_mat) {
-							re_comp->AddPredCovMatrices(group_data, cross_cov, cov_mat_pred_id,
-								false, true, dont_add_but_overwrite, false, rand_coef_data.data());
-							dont_add_but_overwrite = false;
-						}
-						if (predict_var) {
-							re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, rand_coef_data.data());
-						}
-						cn += 1;
 					}
-				}
-				if (has_ztilde) {
-					Ztilde.setFromTriplets(triplets.begin(), triplets.end());
-				}
-				CalcSigmaIGroupedREsOnly(Sigma, cluster_i, false);
-			}//end only_grouped_REs_use_woodbury_identity_
-			else {
+					if (has_ztilde) {
+						Ztilde.setFromTriplets(triplets.begin(), triplets.end());
+					}
+				}//end !linear_kernel_use_woodbury_identity_
+				CalcSigmaOrInverseGroupedREsOnly(Sigma, cluster_i, false);
+			}//end use_woodbury_identity_
+			else {//!only_one_grouped_RE_calculations_on_RE_scale_ && !use_woodbury_identity_
 				if (num_re_group_ > 0) {//Grouped random effects
 					for (int j = 0; j < num_group_variables_; ++j) {
 						if (!drop_intercept_group_rand_effect_[j]) {
@@ -9732,7 +9831,12 @@ namespace GPBoost {
 						false, cross_dist);
 					dont_add_but_overwrite = false;
 					if (predict_var) {
-						re_comp_base->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
+						if (re_comp_base->CovFunctionName() == "linear") {
+							var_pred_id += re_comp_base->GetZSigmaZtii() * gp_coords_mat_pred.rowwise().squaredNorm();
+						}
+						else {
+							re_comp_base->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
+						}
 					}
 					cn += 1;
 					if (num_gp_rand_coef_ > 0) {
@@ -9754,7 +9858,7 @@ namespace GPBoost {
 						}
 					}
 				}// end Gaussian process
-			}//end calculate cross-covariances
+			}//end calculate cross-covariances for !only_one_grouped_RE_calculations_on_RE_scale_ && !use_woodbury_identity_
 			// Calculate predictive means and covariances
 			if (gauss_likelihood_) {//Gaussian data
 				if (only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
@@ -9770,11 +9874,11 @@ namespace GPBoost {
 						}
 					}
 				}//end only_one_grouped_RE_calculations_on_RE_scale_for_prediction_
-				else if (only_grouped_REs_use_woodbury_identity_) {
+				else if (use_woodbury_identity_) {
 					vec_t v_aux = Zt_[cluster_i] * y_aux_[cluster_i];
 					vec_t v_aux2 = Sigma * v_aux;
 					mean_pred_id = Ztilde * v_aux2;
-				}//end only_grouped_REs_use_woodbury_identity_
+				}//end use_woodbury_identity_
 				else {
 					mean_pred_id = cross_cov * y_aux_[cluster_i];
 				}
@@ -9785,7 +9889,7 @@ namespace GPBoost {
 					cross_cov_temp.resize(0, 0);
 				}
 				if (predict_cov_mat) {
-					if (only_grouped_REs_use_woodbury_identity_) {
+					if (use_woodbury_identity_) {
 						if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 							T_mat ZtM_aux = (T_mat)(Zt_[cluster_i] * cross_cov.transpose());
 							ZtM_aux = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().inverse().matrix().asDiagonal() * ZtM_aux;
@@ -9826,8 +9930,8 @@ namespace GPBoost {
 									for (int i = 0; i < nsim_var_pred_; ++i) {
 										//z_i ~ N(0,I)
 										std::normal_distribution<double> ndist(0.0, 1.0);
-										vec_t rand_vec_pred_I_1(cum_num_rand_eff_[cluster_i][num_re_group_total_]), rand_vec_pred_I_2(num_data_per_cluster_[cluster_i]);
-										for (int j = 0; j < cum_num_rand_eff_[cluster_i][num_re_group_total_]; j++) {
+										vec_t rand_vec_pred_I_1(cum_num_rand_eff_[cluster_i][num_comps_total_]), rand_vec_pred_I_2(num_data_per_cluster_[cluster_i]);
+										for (int j = 0; j < cum_num_rand_eff_[cluster_i][num_comps_total_]; j++) {
 											rand_vec_pred_I_1(j) = ndist(rng_local);
 										}
 										for (int j = 0; j < num_data_per_cluster_[cluster_i]; j++) {
@@ -9835,11 +9939,11 @@ namespace GPBoost {
 										}
 										//z_i ~ N(0,(Sigma^(-1) + Z^T Z))
 										vec_t rand_vec_pred_SigmaI_plus_ZtZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_pred_I_1 + Zt_[cluster_i] * rand_vec_pred_I_2;
-										vec_t rand_vec_pred_SigmaI_plus_ZtZ_inv(cum_num_rand_eff_[cluster_i][num_re_group_total_]);
+										vec_t rand_vec_pred_SigmaI_plus_ZtZ_inv(cum_num_rand_eff_[cluster_i][num_comps_total_]);
 										//z_i ~ N(0,(Sigma^(-1) + Z^T Z)^(-1))
 										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], rand_vec_pred_SigmaI_plus_ZtZ, rand_vec_pred_SigmaI_plus_ZtZ_inv, NaN_found, cg_max_num_it_, cg_delta_conv_pred_, 0, THRESHOLD_ZERO_RHS_CG_,
 											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]
-											//cum_num_rand_eff_[cluster_i], num_re_group_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
+											//cum_num_rand_eff_[cluster_i], num_comps_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
 										);
 										if (NaN_found) {
 											Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
@@ -9877,7 +9981,7 @@ namespace GPBoost {
 					}
 				}//end predict_cov_mat
 				if (predict_var) {
-					if (only_grouped_REs_use_woodbury_identity_) {
+					if (use_woodbury_identity_) {
 						if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
 							vec_t SigmaI_plus_ZtZ_inv = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().square().inverse().matrix();
 #pragma omp parallel for schedule(static)
@@ -9898,7 +10002,7 @@ namespace GPBoost {
 									c_cov = vec_t::Zero(num_REs_pred);
 									c_var = vec_t::Zero(num_REs_pred);
 									//Calculate P^(-0.5) explicitly
-									sp_mat_rm_t Identity_rm(cum_num_rand_eff_[cluster_i][num_re_group_total_], cum_num_rand_eff_[cluster_i][num_re_group_total_]);
+									sp_mat_rm_t Identity_rm(cum_num_rand_eff_[cluster_i][num_comps_total_], cum_num_rand_eff_[cluster_i][num_comps_total_]);
 									Identity_rm.setIdentity();
 									sp_mat_rm_t P_sqrt_invt_rm;
 									if (cg_preconditioner_type_ == "incomplete_cholesky") {
@@ -9963,10 +10067,10 @@ namespace GPBoost {
 										//Z_po^T RV
 										vec_t Z_tilde_t_RV = Ztilde.transpose() * rand_vec_init;
 										//Part 2: (Sigma^(-1) + Z^T Z)^(-1) Z_po^T RV
-										vec_t MInv_Ztilde_t_RV(cum_num_rand_eff_[cluster_i][num_re_group_total_]);
+										vec_t MInv_Ztilde_t_RV(cum_num_rand_eff_[cluster_i][num_comps_total_]);
 										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], Z_tilde_t_RV, MInv_Ztilde_t_RV, NaN_found, cg_max_num_it_, cg_delta_conv_pred_, 0, THRESHOLD_ZERO_RHS_CG_,
 											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]
-											//cum_num_rand_eff_[cluster_i], num_re_group_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
+											//cum_num_rand_eff_[cluster_i], num_comps_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
 										);
 										if (NaN_found) {
 											Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
@@ -10004,7 +10108,7 @@ namespace GPBoost {
 									c_cov /= nsim_var_pred_;
 									c_var /= nsim_var_pred_;
 									//Deterministic: diag(Z_po P^(-0.5T) P^(-0.5) Z_po^T)
-									vec_t varred_determ = Ztilde_P_sqrt_invt_rm.cwiseProduct(Ztilde_P_sqrt_invt_rm) * vec_t::Ones(cum_num_rand_eff_[cluster_i][num_re_group_total_]);
+									vec_t varred_determ = Ztilde_P_sqrt_invt_rm.cwiseProduct(Ztilde_P_sqrt_invt_rm) * vec_t::Ones(cum_num_rand_eff_[cluster_i][num_comps_total_]);
 									//optimal c
 									c_cov -= varred_global.cwiseProduct(pred_var_global);
 									c_var -= varred_global.cwiseProduct(varred_global);
@@ -10033,8 +10137,8 @@ namespace GPBoost {
 								}
 							}
 						}
-					}//end only_grouped_REs_use_woodbury_identity_
-					else {//not only_grouped_REs_use_woodbury_identity_
+					}//end use_woodbury_identity_
+					else {//not use_woodbury_identity_
 						T_mat M_aux2;
 						TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_facts_[cluster_i], cross_cov.transpose(), M_aux2, false);
 						M_aux2 = M_aux2.cwiseProduct(M_aux2);
@@ -10042,14 +10146,14 @@ namespace GPBoost {
 						for (int i = 0; i < num_REs_pred; ++i) {
 							var_pred_id[i] -= M_aux2.col(i).sum();
 						}
-					}//end not only_grouped_REs_use_woodbury_identity_
+					}//end not use_woodbury_identity_
 				}//end predict_var
 			}//end gauss_likelihood_
 			if (!gauss_likelihood_) {//not gauss_likelihood_
 				const double* fixed_effects_cluster_i_ptr = nullptr;
 				// Note that fixed_effects_cluster_i_ptr is not used since calc_mode == false
 				// The mode has been calculated already before in the Predict() function above
-				if (only_grouped_REs_use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
+				if (use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i]->PredictLaplaceApproxGroupedRE(y_[cluster_i].data(), y_int_[cluster_i].data(),
 						fixed_effects_cluster_i_ptr, SigmaI_[cluster_i], Ztilde, Sigma,
 						mean_pred_id, cov_mat_pred_id, var_pred_id,

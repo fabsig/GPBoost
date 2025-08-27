@@ -4208,6 +4208,12 @@ class GPModel(object):
 
                     Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
 
+                - "linear": 
+                
+                    Linear covariance function. This corresponds to a Bayesian linear regression model with a Gaussian prior 
+                    on the coefficients with a constant variance diagonal prior covariance, 
+                    and the prior variance is estimated using empirical Bayes.
+
             cov_fct_shape : float, optional (default=0.)
                 Shape parameter of the covariance function (e.g., smoothness parameter for Matern and Wendland covariance).
                 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
@@ -4691,7 +4697,7 @@ class GPModel(object):
             elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard" or \
                     self.cov_function == "exponential_ard":
                 self.cov_par_names.extend(["GP_var"] + ["GP_range_" + str(i+1) for i in range(0,self.dim_coords)])
-            elif self.cov_function == "wendland":
+            elif self.cov_function == "wendland" or self.cov_function == "linear" or self.cov_function == "linear_no_woodbury":
                 self.cov_par_names.extend(["GP_var"])
             elif self.cov_function == "matern_estimate_shape":
                 self.cov_par_names.extend(["GP_var", "GP_range", "GP_smoothness"])
@@ -4727,7 +4733,7 @@ class GPModel(object):
                             self.cov_par_names.extend(
                                 ["GP_rand_coef_nb_" + str(ii + 1) + "_var"] +
                                  ["GP_rand_coef_nb_" + str(ii + 1) + str(i+1) for i in range(0,self.dim_coords)])
-                        elif self.cov_function == "wendland":
+                        elif self.cov_function == "wendland" or self.cov_function == "linear" or self.cov_function == "linear_no_woodbury":
                             self.cov_par_names.extend(["GP_rand_coef_nb_" + str(ii + 1) + "_var"])
                         elif self.cov_function == "matern_estimate_shape":
                             self.cov_par_names.extend(
@@ -4755,7 +4761,7 @@ class GPModel(object):
                             self.cov_par_names.extend(
                                 ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + "_var"] +
                                  ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + str(i+1) for i in range(0,self.dim_coords)])
-                        elif self.cov_function == "wendland":
+                        elif self.cov_function == "wendland" or self.cov_function == "linear" or self.cov_function == "linear_no_woodbury":
                             self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"])
                         elif self.cov_function == "matern_estimate_shape":
                             self.cov_par_names.extend(
@@ -4873,7 +4879,7 @@ class GPModel(object):
             num_par_per_GP = 1 + self.dim_coords
         elif self.cov_function == "matern_ard_estimate_shape":
             num_par_per_GP = 2 + self.dim_coords
-        elif self.cov_function == "wendland":
+        elif self.cov_function == "wendland" or self.cov_function == "linear" or self.cov_function == "linear_no_woodbury":
             num_par_per_GP = 1
         else:
             num_par_per_GP = 2

@@ -6888,13 +6888,13 @@ namespace GPBoost {
 					log_normalizing_constant_ = aux_const;
 				}
 				else if (likelihood_type_ == "gamma") {
-					log_normalizing_constant_ = LogNormalizingConstantGamma(y_data, y_data_int);
+					log_normalizing_constant_ = LogNormalizingConstantGamma();
 				}
 				else if (likelihood_type_ == "negative_binomial") {
-					log_normalizing_constant_ = LogNormalizingConstantNegBin(y_data, y_data_int);
+					log_normalizing_constant_ = LogNormalizingConstantNegBin(y_data_int);
 				}
 				else if (likelihood_type_ == "negative_binomial_1") {
-					log_normalizing_constant_ = LogNormalizingConstantNegBin1(y_data, y_data_int);
+					log_normalizing_constant_ = LogNormalizingConstantNegBin1(y_data_int);
 				}
 				else if (likelihood_type_ == "beta") {
 					log_normalizing_constant_ = num_data_ * std::lgamma(aux_pars_[0]);
@@ -6939,7 +6939,7 @@ namespace GPBoost {
 			}
 		}
 
-		inline double LogNormalizingConstantGamma(const double* y_data, const int* y_data_int) {
+		inline double LogNormalizingConstantGamma() {
 			CHECK(aux_normalizing_constant_has_been_calculated_);
 			if (TwoNumbersAreEqual<double>(aux_pars_[0], 1.)) {
 				return(0.);
@@ -6960,7 +6960,7 @@ namespace GPBoost {
 			}
 		}
 
-		inline double LogNormalizingConstantNegBin(const double* y_data, const int* y_data_int) {
+		inline double LogNormalizingConstantNegBin(const int* y_data_int) {
 			CHECK(aux_normalizing_constant_has_been_calculated_);
 			double aux_const = 0.;
 #pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:aux_const)
@@ -6979,7 +6979,7 @@ namespace GPBoost {
 			return(norm_const);
 		}
 
-		inline double LogNormalizingConstantNegBin1(const double* y_data, const int* y_data_int) {
+		inline double LogNormalizingConstantNegBin1(const int* y_data_int) {
 			CHECK(aux_normalizing_constant_has_been_calculated_);
 			const double log_1_min_p = std::log(aux_pars_[0] / (1.0 + aux_pars_[0]));// log(1‑p)
 			double aux_const = 0.;
