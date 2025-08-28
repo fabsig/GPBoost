@@ -35,7 +35,7 @@ def train(params, train_set, num_boost_round=100,
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     train_set : Dataset
         Data to be trained on.
-    num_boost_round : int, optional (default=1000)
+    num_boost_round : int, optional (default=100)
         Number of boosting iterations.
     gp_model : GPModel or None, optional (default=None)
         GPModel object for the GPBoost algorithm
