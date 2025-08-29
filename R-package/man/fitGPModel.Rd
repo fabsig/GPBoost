@@ -48,7 +48,7 @@ The variance is mu * (1 + phi), mu = mean, phi = dispersion, with this parametri
 The df can be set via the \code{likelihood_additional_param} parameter }
 \item{ "gaussian_heteroscedastic": Gaussian likelihood where both the mean and the variance 
 are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation }
-\item{ Note: the first lines in \url{https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h} contain additional comments on the specific parametrizations used }
+\item{ Note: the first lines in the \url{https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h}{likelihoods source file} contain additional comments on the specific parametrizations used }
 \item{ Note: other likelihoods can be implemented upon request }
 }}
 

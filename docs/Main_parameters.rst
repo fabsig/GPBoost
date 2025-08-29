@@ -167,7 +167,7 @@ Model specification parameters
 
       - ``gaussian_heteroscedastic`` :  Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a ``vecchia`` approximation
 
-      - Note: the first lines in `this file <https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h>`_ contain additional comments on the specific parametrizations used
+      - Note: the first lines in the `likelihoods source file <https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h>`__ contain additional comments on the specific parametrizations used
 
       - Note: other likelihoods can be implemented upon request
 
