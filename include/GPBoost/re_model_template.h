@@ -586,6 +586,7 @@ namespace GPBoost {
 		* \param fitc_piv_chol_preconditioner_rank Rank of the FITC and pivoted Cholesky preconditioners of the conjugate gradient algorithm
 		* \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
 		* \param estimate_cov_par_index If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, estimate_cov_par_index[i] is then bool and indicates which ones are estimated
+		* \param m_lbfgs Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer
 		*/
 		void SetOptimConfig(double lr,
 			double acc_rate_cov,
@@ -608,7 +609,8 @@ namespace GPBoost {
 			int seed_rand_vec_trace,
 			int fitc_piv_chol_preconditioner_rank,
 			bool estimate_aux_pars,
-			const int* estimate_cov_par_index) {
+			const int* estimate_cov_par_index,
+			int m_lbfgs) {
 			lr_cov_init_ = lr;
 			lr_cov_after_first_iteration_ = lr;
 			lr_cov_after_first_optim_boosting_iteration_ = lr;
@@ -715,6 +717,9 @@ namespace GPBoost {
 					estimate_cov_par_index_[ipar] = estimate_cov_par_index[ipar];
 				}
 				estimate_cov_par_index_has_been_set_ = true;
+			}
+			if (m_lbfgs > 0) {
+				m_lbfgs_ = m_lbfgs;
 			}
 		}//end SetOptimConfig
 
@@ -1143,7 +1148,8 @@ namespace GPBoost {
 					OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
 						delta_rel_conv_, convergence_criterion_, num_it, learn_covariance_parameters,
 						optimizer_cov_pars_, profile_out_error_variance_, profile_out_coef,
-						neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call);
+						neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call,
+						 m_lbfgs_);
 					// Check for NA or Inf
 					if (optimizer_cov_pars_ == "bfgs_optim_lib" || optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
 						if (learn_covariance_parameters) {
@@ -1452,7 +1458,8 @@ namespace GPBoost {
 				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
 					delta_rel_conv_, convergence_criterion_, num_it,
 					learn_covariance_parameters, "nelder_mead", profile_out_error_variance_, false,
-					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call);
+					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call,
+					m_lbfgs_);
 			}
 			if (num_it == max_iter_) {
 				Log::REDebug("GPModel: no convergence after the maximal number of iterations "
@@ -5148,6 +5155,8 @@ namespace GPBoost {
 		std::vector<int> estimate_cov_par_index_;
 		// True if estimate_cov_par_index_ has been set in 'SetOptimConfig()'
 		bool estimate_cov_par_index_has_been_set_ = false;
+		// Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer
+		int m_lbfgs_ = 6;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */

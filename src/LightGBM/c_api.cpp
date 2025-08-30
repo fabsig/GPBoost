@@ -2791,7 +2791,8 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	int piv_chol_rank,
 	double* init_aux_pars,
 	bool estimate_aux_pars,
-	const int* estimate_cov_par_index) {
+	const int* estimate_cov_par_index,
+	int m_lbfgs) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetOptimConfig(init_cov_pars,
@@ -2821,7 +2822,8 @@ int GPB_SetOptimConfig(REModelHandle handle,
 		piv_chol_rank,
 		init_aux_pars,
 		estimate_aux_pars,
-		estimate_cov_par_index);
+		estimate_cov_par_index,
+		m_lbfgs);
 	API_END();
 }
 

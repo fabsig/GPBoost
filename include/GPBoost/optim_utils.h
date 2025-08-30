@@ -556,6 +556,7 @@ namespace GPBoost {
 	* \param has_covariates If true, the model linearly incluses covariates
 	* \param initial_step_factor Only for 'lbfgs': The initial step length in the first iteration is this factor divided by the search direction (i.e. gradient)
 	* \param reuse_m_bfgs_from_previous_call If true, the approximate Hessian for the LBFGS are kept at the values from a previous call and not re-initialized (applies only to LBFGSSolver)
+	* \param m_lbfgs Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer
 	*/
 	template<typename T_mat, typename T_chol>
 	void OptimExternal(REModelTemplate<T_mat, T_chol>* re_model_templ,
@@ -576,7 +577,8 @@ namespace GPBoost {
 		const double* aux_pars,
 		bool has_covariates,
 		double initial_step_factor,
-		bool reuse_m_bfgs_from_previous_call) {
+		bool reuse_m_bfgs_from_previous_call, 
+		int m_lbfgs) {
 		// Some checks
 		if (re_model_templ->EstimateAuxPars()) {
 			CHECK(num_cov_par + nb_aux_pars == (int)cov_pars.size());
@@ -656,7 +658,7 @@ namespace GPBoost {
 			param_LBFGSpp.epsilon = 1e-20;//tolerance for norm of gradient as convergence check
 			param_LBFGSpp.epsilon_rel = 1e-20;//tolerance for norm of gradient relative to norm of parameters as convergence check
 			param_LBFGSpp.max_linesearch = 20;
-			param_LBFGSpp.m = 6;
+			param_LBFGSpp.m = m_lbfgs;
 			param_LBFGSpp.initial_step_factor = initial_step_factor;
 			EvalLLforLBFGSpp<T_mat, T_chol> ll_fun(re_model_templ, fixed_effects, learn_cov_aux_pars,
 				cov_pars.segment(0, num_cov_par), profile_out_error_variance, profile_out_regression_coef);

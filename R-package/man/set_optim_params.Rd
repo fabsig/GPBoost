@@ -142,6 +142,7 @@ set_optim_params(gp_model, params = list())
     Acceleration rate for covariance parameters for Nesterov acceleration }
     \item{momentum_offset: \code{integer} (Default = 2, only relevant for "gradient_descent")}. 
     Number of iterations for which no momentum is applied in the beginning.
+    \item{m_lbfgs: \code{integer} (Default = 6)}. Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer
 }}
 }
 \description{

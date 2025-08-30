@@ -341,6 +341,7 @@
 #'                Acceleration rate for covariance parameters for Nesterov acceleration }
 #'                \item{momentum_offset: \code{integer} (Default = 2, only relevant for "gradient_descent")}. 
 #'                Number of iterations for which no momentum is applied in the beginning.
+#'                \item{m_lbfgs: \code{integer} (Default = 6)}. Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer
 #'            }
 #' @param offset A \code{numeric} \code{vector} with 
 #' additional fixed effects contributions that are added to the linear predictor (= offset). 
@@ -1171,6 +1172,7 @@ gpb.GPModel <- R6::R6Class(
         , init_aux_pars
         , private$params[["estimate_aux_pars"]]
         , private$params[["estimate_cov_par_index"]]
+        , private$params[["m_lbfgs"]]
       )
       return(invisible(self))
     },
@@ -2254,7 +2256,8 @@ gpb.GPModel <- R6::R6Class(
                   seed_rand_vec_trace = 1L,
                   fitc_piv_chol_preconditioner_rank = -1L, # default value is set in C++
                   estimate_aux_pars = TRUE,
-                  estimate_cov_par_index = -1L),
+                  estimate_cov_par_index = -1L,
+                  m_lbfgs = -1L),# default value is set in C++
     num_sets_re = 1,
     num_sets_fe = 1,
 
@@ -2306,7 +2309,8 @@ gpb.GPModel <- R6::R6Class(
       integer_params <- c("maxit", "nesterov_schedule_version",
                           "momentum_offset", "cg_max_num_it", "cg_max_num_it_tridiag",
                           "num_rand_vec_trace", "seed_rand_vec_trace",
-                          "fitc_piv_chol_preconditioner_rank", "estimate_cov_par_index")
+                          "fitc_piv_chol_preconditioner_rank", "estimate_cov_par_index", 
+                          "m_lbfgs")
       character_params <- c("optimizer_cov", "convergence_criterion",
                             "optimizer_coef", "cg_preconditioner_type")
       logical_params <- c("use_nesterov_acc", "trace", "std_dev", 
