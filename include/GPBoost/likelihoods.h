@@ -1421,8 +1421,11 @@ namespace GPBoost {
 								rand_vec_trace_P_.col(i) = SigmaI_plus_ZtWZ_inv_diag_.cwiseInverse().cwiseSqrt().asDiagonal() * rand_vec_trace_I_.col(i);
 							}
 						}
+						else if (cg_preconditioner_type_ == "none") {
+							rand_vec_trace_P_ = rand_vec_trace_I_;
+						}
 						else {
-							Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+							Log::REFatal("FindModePostRandEffCalcMLLGroupedRE: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 						}
 						std::vector<vec_t> Tdiags_PI_SigmaI_plus_ZtWZ(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
 						std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_ZtWZ(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
@@ -2789,7 +2792,7 @@ namespace GPBoost {
 					}
 				}
 				else {
-					Log::REFatal("Preconditioner type '%s' is not supported for gradients.", cg_preconditioner_type_.c_str());
+					Log::REFatal("Preconditioner type '%s' is not supported for calculating gradients ", cg_preconditioner_type_.c_str());
 				}
 				// calculate Z P^(-1) z_i
 				den_mat_t Z_PI_RV(num_data_, num_rand_vec_trace_);

@@ -1142,8 +1142,11 @@ namespace GPBoost {
 			//P^(-1) = diag(Sigma^-1 + Z^T W Z)^(-1)
 			z = SigmaI_plus_ZtWZ_inv_diag.asDiagonal() * r;
 		}
+		else if (cg_preconditioner_type == "none") {
+			z = r;
+		}
 		else {
-			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			Log::REFatal("CGRandomEffectsVec: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 		}
 		h = z;
 		for (int j = 0; j < p; ++j) {
@@ -1187,8 +1190,11 @@ namespace GPBoost {
 				//P^(-1) = diag(Sigma^-1 + Z^T W Z)^(-1)
 				z = SigmaI_plus_ZtWZ_inv_diag.asDiagonal() * r;
 			}
+			else if (cg_preconditioner_type == "none") {
+				z = r;
+			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+				Log::REFatal("CGRandomEffectsVec: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
 			b = r.transpose() * z;
 			b /= r_old.transpose() * z_old;
@@ -1278,8 +1284,11 @@ namespace GPBoost {
 				Z.col(i) = SigmaI_plus_ZtWZ_inv_diag.asDiagonal() * R.col(i);
 			}
 		}
+		else if (cg_preconditioner_type == "none") {
+			Z = R;
+		}
 		else {
-			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			Log::REFatal("CGTridiagRandomEffects: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 		}
 		H = Z;
 		for (int j = 0; j < p; ++j) {
@@ -1346,8 +1355,11 @@ namespace GPBoost {
 					Z.col(i) = SigmaI_plus_ZtWZ_inv_diag.asDiagonal() * R.col(i);
 				}
 			}
+			else if (cg_preconditioner_type == "none") {
+				Z = R;
+			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+				Log::REFatal("CGTridiagRandomEffects: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
 			b_old = b;
 			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();

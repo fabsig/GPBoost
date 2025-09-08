@@ -2142,7 +2142,7 @@ namespace GPBoost {
 					}
 				}//end "ssor"
 				else {
-					Log::REFatal("Preconditioner type '%s' is not supported for gradients.", cg_preconditioner_type_.c_str());
+					Log::REFatal("Preconditioner type '%s' is not supported for calculating gradients ", cg_preconditioner_type_.c_str());
 				}
 				for (int j = 0; j < num_comps_total_; ++j) {
 					if (estimate_cov_par_index_[ind_par_[j]] > 0) {
@@ -2624,6 +2624,9 @@ namespace GPBoost {
 											rand_vec_probe_P_[cluster_i].col(i) = SigmaI_plus_ZtZ_inv_diag_[cluster_i].cwiseInverse().cwiseSqrt().asDiagonal() * rand_vec_probe_[cluster_i].col(i);
 										}
 									}
+									else if (cg_preconditioner_type_ == "none") {
+										rand_vec_probe_P_[cluster_i] = rand_vec_probe_[cluster_i];
+									}
 									else {
 										Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
 									}
@@ -2660,7 +2663,7 @@ namespace GPBoost {
 										//log|P| = - log|diag(Sigma^-1 + Z^T Z)^(-1)|
 										log_det_Psi_ -= SigmaI_plus_ZtZ_inv_diag_[cluster_i].array().log().sum();
 									}
-									else {
+									else if (cg_preconditioner_type_ != "none") {
 										Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
 									}
 								}//end iterative
@@ -5209,7 +5212,7 @@ namespace GPBoost {
 		/*! \brief List of supported preconditioners for conjugate gradient algorithms for non-Gaussian likelihoods and gp_approx = "vecchia" */
 		const std::set<string_t> SUPPORTED_PRECONDITIONERS_NONGAUSS_VECCHIA_{ "vadu", "pivoted_cholesky", "fitc", "incomplete_cholesky", "vecchia_response"};
 		/*! \brief List of supported preconditioners for conjugate gradient algorithms for grouped random effects */
-		const std::set<string_t> SUPPORTED_PRECONDITIONERS_GROUPED_RE_{ "ssor", "incomplete_cholesky", "diagonal" };
+		const std::set<string_t> SUPPORTED_PRECONDITIONERS_GROUPED_RE_{ "ssor", "incomplete_cholesky", "diagonal", "none"};
 		/*! \brief List of supported preconditioners for conjugate gradient algorithms for non-Gaussian likelihoods and gp_approx = "full_scale_vecchia" */
 		const std::set<string_t> SUPPORTED_PRECONDITIONERS_NONGAUSS_VIF_{ "fitc", "vifdu", "none" };
 		/*! \brief true if 'cg_preconditioner_type_' has been set */
@@ -8251,12 +8254,12 @@ namespace GPBoost {
 										else if (cg_preconditioner_type_ == "diagonal") {
 											SigmaI_plus_ZtZ_inv_diag_[cluster_i] = SigmaI_plus_ZtZ_rm_[cluster_i].diagonal().cwiseInverse();
 										}
-										else {
-											Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type_.c_str());
+										else if (cg_preconditioner_type_ != "none") {
+											Log::REFatal("Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 										}
 									}//end iterative
 									else {
-										Log::REFatal("Matrix inversion method '%s' is not supported.", matrix_inversion_method_.c_str());
+										Log::REFatal("Matrix inversion method '%s' is not supported ", matrix_inversion_method_.c_str());
 									}
 								}
 							}//end use_woodbury_identity_
