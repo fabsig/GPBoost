@@ -308,6 +308,7 @@ namespace GPBoost {
 			dim_mode_per_set_re_ = num_re;
 			dim_location_par_ = num_sets_re_ * num_data_;
 			if (use_Z_) {
+				CHECK(!use_random_effects_indices_of_data_);
 				dim_deriv_ll_ = num_sets_re_ * num_data_; // grouped random effects models calculate fist_deriv_ll_ and information_ll_ on the data-scale and the apply the Z^T transformation
 				dim_deriv_ll_per_set_re_ = num_data_;
 			}
@@ -1272,7 +1273,8 @@ namespace GPBoost {
 				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			}
 			vec_t location_par;
-			UpdateLocationParGroupedRE(mode_, fixed_effects, location_par);
+			double* location_par_ptr_dummy;//not used
+			UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			approx_marginal_ll = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data());
 			double approx_marginal_ll_new = approx_marginal_ll;
@@ -1347,7 +1349,7 @@ namespace GPBoost {
 				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 					mode_new = mode_ + lr_mode * mode_update;
 					// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-					UpdateLocationParGroupedRE(mode_new, fixed_effects, location_par);
+					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr_dummy);
 					approx_marginal_ll_new = -0.5 * (mode_new.dot(SigmaI * mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
 					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -2759,7 +2761,8 @@ namespace GPBoost {
 			CHECK(mode_has_been_calculated_);
 			// Initialize variables
 			vec_t location_par;
-			UpdateLocationParGroupedRE(mode_, fixed_effects, location_par);
+			double* location_par_ptr_dummy;//not used
+			UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 			if (matrix_inversion_method_ == "iterative") {
 				// calculate P^(-1) RV
 				den_mat_t PI_RV(num_REs, num_rand_vec_trace_), L_inv_Z, DI_L_plus_D_t_PI_RV;
@@ -8938,7 +8941,18 @@ namespace GPBoost {
 				}
 				*location_par_ptr = location_par.data();
 			}//end use_random_effects_indices_of_data_
-			else {// !use_random_effects_indices_of_data_
+			else if (use_Z_) {
+				CHECK(num_sets_re_ == 1);// not yet implemented otherwise
+				location_par = (*Zt_).transpose() * mode;//location parameter = mode of random effects + fixed effects
+				if (fixed_effects != nullptr) {
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						location_par[i] += fixed_effects[i];
+					}
+				}
+				*location_par_ptr = location_par.data();
+			}
+			else {// !use_random_effects_indices_of_data_ && !use_Z_
 				CHECK(dim_location_par_ == dim_mode_);
 				if (fixed_effects == nullptr) {
 					*location_par_ptr = mode.data();
@@ -8952,26 +8966,6 @@ namespace GPBoost {
 				}
 			}//end !use_random_effects_indices_of_data_
 		}//end UpdateLocationPar
-
-		/*!
-		* \brief Auxiliary function for updating the location parameter = mode of random effects + fixed effects.
-		*			This function is used whene there are multiple level grouped random effects.
-		* \param mode Mode
-		* \param fixed_effects Fixed effects component of location parameter
-		* \param[out] location_par Location parameter
-		*/
-		void UpdateLocationParGroupedRE(const vec_t& mode,
-			const double* fixed_effects,
-			vec_t& location_par) {
-			CHECK(num_sets_re_ == 1);// not yet implemented otherwise
-			location_par = (*Zt_).transpose() * mode;//location parameter = mode of random effects + fixed effects
-			if (fixed_effects != nullptr) {
-#pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					location_par[i] += fixed_effects[i];
-				}
-			}
-		}//end UpdateLocationParGroupedRE
 
 		/*!
 		* \brief Partition the data into groups of size group_size_ sorted according to the order of the mode (currently not used)
