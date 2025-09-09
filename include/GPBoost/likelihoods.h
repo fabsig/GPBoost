@@ -144,7 +144,7 @@ namespace GPBoost {
 			const double* weights,
 			double likelihood_learning_rate) {
 			num_data_ = num_data;
-			num_re_ = num_re;
+			//num_re_ = num_re;//DELETE
 			string_t likelihood = type;
 			likelihood = ParseLikelihoodAliasVarianceCorrection(likelihood);
 			likelihood = ParseLikelihoodAliasModeFindingMethod(likelihood);
@@ -298,18 +298,31 @@ namespace GPBoost {
 				CHECK(random_effects_indices_of_data != nullptr);
 				CHECK(Zt == nullptr);
 				random_effects_indices_of_data_ = random_effects_indices_of_data;
-				dim_mode_ = num_sets_re_ * num_re_;
-				dim_mode_per_set_re_ = num_re_;
+				//dim_mode_ = num_sets_re_ * num_re_;//DELETE
+				//dim_mode_per_set_re_ = num_re_;
 			}
 			else {
-				dim_mode_ = num_sets_re_ * num_data_;
-				dim_mode_per_set_re_ = num_data_;
+				//dim_mode_ = num_sets_re_ * num_data_;//DELETE
+				//dim_mode_per_set_re_ = num_data_;
 				if (Zt != nullptr) {
 					use_Z_ = true;
 					Zt_ = Zt;
 				}				
 			}
+			dim_mode_ = num_sets_re_ * num_re;
+			dim_mode_per_set_re_ = num_re;
 			dim_location_par_ = num_sets_re_ * num_data_;
+			if (use_Z_) {
+				dim_deriv_ll_ = num_sets_re_ * num_data_; // grouped random effects models calculate fist_deriv_ll_ and information_ll_ on the data-scale and the apply the Z^T transformation
+				dim_deriv_ll_per_set_re_ = num_data_;
+			}
+			else {
+				dim_deriv_ll_ = dim_mode_;
+				dim_deriv_ll_per_set_re_ = dim_mode_per_set_re_;
+			}
+			if (!(use_random_effects_indices_of_data_ || use_Z_)) {
+				CHECK(num_data_ == num_re)
+			}			
 			DetermineWhetherToCapChangeModeNewton();
 			if (SUPPORTED_APPROX_TYPE_.find(approximation_type_) == SUPPORTED_APPROX_TYPE_.end()) {
 				Log::REFatal("'approximation_type' = '%s' is not supported ", approximation_type_.c_str());
@@ -360,25 +373,31 @@ namespace GPBoost {
 		*/
 		void InitializeModeAvec() {
 			if (!mode_is_zero_) {
-				// Do not use dim_mode_ for initializing mode_
-				// This is a hack since grouped random effects models use use_random_effects_indices_of_data_ == false, and thus dim_mode_ == num_data_ for those
-				// For the other models:    either use_random_effects_indices_of_data_ == true => dim_mode_ == num_re_ * num_sets_re_ anyway
-				//                          or use_random_effects_indices_of_data_ == false and num_re_ == num_data_ => dim_mode_ == num_re_ * num_sets_re_
-				mode_ = vec_t::Zero(num_re_ * num_sets_re_);
-				mode_previous_value_ = vec_t::Zero(num_re_ * num_sets_re_);
+				//// Do not use dim_mode_ for initializing mode_//DELETE
+				//// This is a hack since grouped random effects models use use_random_effects_indices_of_data_ == false, and thus dim_mode_ == num_data_ for those
+				//// For the other models:    either use_random_effects_indices_of_data_ == true => dim_mode_ == num_re_ * num_sets_re_ anyway
+				////                          or use_random_effects_indices_of_data_ == false and num_re_ == num_data_ => dim_mode_ == num_re_ * num_sets_re_
+				//mode_ = vec_t::Zero(num_re_ * num_sets_re_);
+				//mode_previous_value_ = vec_t::Zero(num_re_ * num_sets_re_);
+				//if (has_SigmaI_mode_) {
+				//	SigmaI_mode_ = vec_t::Zero(num_re_ * num_sets_re_);
+				//	SigmaI_mode_previous_value_ = vec_t::Zero(num_re_ * num_sets_re_);
+				//}
+				mode_ = vec_t::Zero(dim_mode_);
+				mode_previous_value_ = vec_t::Zero(dim_mode_);
 				if (has_SigmaI_mode_) {
-					SigmaI_mode_ = vec_t::Zero(num_re_ * num_sets_re_);
-					SigmaI_mode_previous_value_ = vec_t::Zero(num_re_ * num_sets_re_);
+					SigmaI_mode_ = vec_t::Zero(dim_mode_);
+					SigmaI_mode_previous_value_ = vec_t::Zero(dim_mode_);
 				}
 				mode_initialized_ = true;
-				first_deriv_ll_ = vec_t(dim_mode_);
-				information_ll_ = vec_t(dim_mode_);
+				first_deriv_ll_ = vec_t(dim_deriv_ll_);
+				information_ll_ = vec_t(dim_deriv_ll_);
 				if (use_random_effects_indices_of_data_) {
 					first_deriv_ll_data_scale_ = vec_t(dim_location_par_);
 					information_ll_data_scale_ = vec_t(dim_location_par_);
 				}
 				if (likelihood_type_ == "gaussian_heteroscedastic" && approximation_type_ == "laplace") {
-					off_diag_information_ll_ = vec_t(dim_mode_per_set_re_);
+					off_diag_information_ll_ = vec_t(dim_deriv_ll_per_set_re_);
 					if (use_random_effects_indices_of_data_) {
 						off_diag_information_ll_data_scale_ = vec_t(num_data_);
 					}
@@ -1273,7 +1292,7 @@ namespace GPBoost {
 			approx_marginal_ll = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data());
 			double approx_marginal_ll_new = approx_marginal_ll;
 			sp_mat_t SigmaI_plus_ZtWZ;
-			vec_t rhs, mode_update(num_re_), mode_new;
+			vec_t rhs, mode_update(dim_mode_), mode_new;
 			// Variables when using iterative methods
 			int cg_max_num_it = cg_max_num_it_;
 			int cg_max_num_it_tridiag = cg_max_num_it_tridiag_;
@@ -1371,20 +1390,20 @@ namespace GPBoost {
 						//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
 						if (!saved_rand_vec_trace_) {
 							//Generate t (= num_rand_vec_trace_) random vectors
-							rand_vec_trace_I_.resize(num_re_, num_rand_vec_trace_);
+							rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
 							GenRandVecNormal(cg_generator_, rand_vec_trace_I_);
 							if (reuse_rand_vec_trace_) {
 								saved_rand_vec_trace_ = true;
 							}
-							rand_vec_trace_P_.resize(num_re_, num_rand_vec_trace_);
-							SigmaI_plus_ZtWZ_inv_RV_.resize(num_re_, num_rand_vec_trace_);
+							rand_vec_trace_P_.resize(dim_mode_, num_rand_vec_trace_);
+							SigmaI_plus_ZtWZ_inv_RV_.resize(dim_mode_, num_rand_vec_trace_);
 						}
 						double log_det_SigmaI_plus_ZtWZ;
 						//Stochastic Lanczos quadrature
 						CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
 						CHECK(rand_vec_trace_P_.cols() == num_rand_vec_trace_);
-						CHECK(rand_vec_trace_I_.rows() == num_re_);
-						CHECK(rand_vec_trace_P_.rows() == num_re_);
+						CHECK(rand_vec_trace_I_.rows() == dim_mode_);
+						CHECK(rand_vec_trace_P_.rows() == dim_mode_);
 						if (information_changes_after_mode_finding_) {
 							//upadate with latest W
 							CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
@@ -1430,10 +1449,10 @@ namespace GPBoost {
 						std::vector<vec_t> Tdiags_PI_SigmaI_plus_ZtWZ(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
 						std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_ZtWZ(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
 						CGTridiagRandomEffects(SigmaI_plus_ZtWZ_rm_, rand_vec_trace_P_, Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ,
-							SigmaI_plus_ZtWZ_inv_RV_, has_NA_or_Inf, num_re_, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
+							SigmaI_plus_ZtWZ_inv_RV_, has_NA_or_Inf, dim_mode_, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
 							L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
 						if (!has_NA_or_Inf) {
-							LogDetStochTridiag(Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ, log_det_SigmaI_plus_ZtWZ, num_re_, num_rand_vec_trace_);
+							LogDetStochTridiag(Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ, log_det_SigmaI_plus_ZtWZ, dim_mode_, num_rand_vec_trace_);
 							approx_marginal_ll += 0.5 * (SigmaI.diagonal().array().log().sum() - log_det_SigmaI_plus_ZtWZ);
 							// Correction for preconditioner
 							if (cg_preconditioner_type_ == "incomplete_cholesky") {
@@ -1549,7 +1568,7 @@ namespace GPBoost {
 					CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
 					diag_SigmaI_plus_ZtWZ_ = (information_ll_.array() + 1. / sigma2).matrix();
 				}
-				approx_marginal_ll -= 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() + 0.5 * num_re_ * std::log(sigma2);
+				approx_marginal_ll -= 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() + 0.5 * dim_mode_ * std::log(sigma2);
 				mode_has_been_calculated_ = true;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
@@ -2118,8 +2137,8 @@ namespace GPBoost {
 					sp_mat_t SigmaI_1 = B[0].transpose() * D_inv[0] * B[0];
 					sp_mat_t SigmaI_2 = B[1].transpose() * D_inv[1] * B[1];
 					GPBoost::CreatSparseBlockDiagonalMartix<sp_mat_t>(SigmaI_1, SigmaI_2, SigmaI);
-					CHECK(SigmaI.cols() == num_re_ * num_sets_re_);
-					CHECK(SigmaI.rows() == num_re_ * num_sets_re_);
+					CHECK(SigmaI.cols() == dim_mode_);
+					CHECK(SigmaI.rows() == dim_mode_);
 				}
 			}
 			// Start finding mode 
@@ -2822,7 +2841,7 @@ namespace GPBoost {
 					d_mll_d_mode *= 0.5;
 					//For implicit derivatives: calculate (Sigma^(-1) + Z^T W Z)^(-1) d_mll_d_mode
 					bool has_NA_or_Inf = false;
-					SigmaI_plus_ZtWZ_inv_d_mll_d_mode = vec_t(num_re_);
+					SigmaI_plus_ZtWZ_inv_d_mll_d_mode = vec_t(dim_mode_);
 					CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, d_mll_d_mode, SigmaI_plus_ZtWZ_inv_d_mll_d_mode, has_NA_or_Inf,
 						cg_max_num_it_, cg_delta_conv_pred_, 0, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
 						L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
@@ -3082,10 +3101,10 @@ namespace GPBoost {
 			vec_t deriv_information_diag_loc_par;//usually vector of negative third derivatives of log-likelihood
 			vec_t d_mll_d_mode;
 			if (grad_information_wrt_mode_non_zero_) {
-				d_mll_d_mode = vec_t(num_re_);
+				d_mll_d_mode = vec_t(dim_mode_);
 				deriv_information_diag_loc_par = vec_t(num_data_);
 				CalcFirstDerivInformationLocPar_DataScale(y_data, y_data_int, location_par.data(), deriv_information_diag_loc_par);
-				CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, deriv_information_diag_loc_par.data(), d_mll_d_mode.data(), true);
+				CalcZtVGivenIndices(num_data_, dim_mode_, random_effects_indices_of_data_, deriv_information_diag_loc_par.data(), d_mll_d_mode.data(), true);
 				d_mll_d_mode.array() /= 2. * diag_SigmaI_plus_ZtWZ_.array();
 			}
 			// calculate gradient wrt covariance parameters
@@ -3133,8 +3152,8 @@ namespace GPBoost {
 					aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par + implicit_derivative;
 					//Equivalent code:
 					//vec_t Zt_second_deriv_loc_aux_par, diag_Zt_deriv_information_loc_par_Z;
-					//CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, second_deriv_loc_aux_par, Zt_second_deriv_loc_aux_par, true);
-					//CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, deriv_information_aux_par, diag_Zt_deriv_information_loc_par_Z, true);
+					//CalcZtVGivenIndices(num_data_, dim_mode_, random_effects_indices_of_data_, second_deriv_loc_aux_par, Zt_second_deriv_loc_aux_par, true);
+					//CalcZtVGivenIndices(num_data_, dim_mode_, random_effects_indices_of_data_, deriv_information_aux_par, diag_Zt_deriv_information_loc_par_Z, true);
 					//double d_detmll_d_aux_par = (diag_Zt_deriv_information_loc_par_Z.array() / diag_SigmaI_plus_ZtWZ_.array()).sum();
 					//double implicit_derivative = (d_mll_d_mode.array() * Zt_second_deriv_loc_aux_par.array() / diag_SigmaI_plus_ZtWZ_.array()).sum();
 				}
@@ -3460,7 +3479,7 @@ namespace GPBoost {
 							else {// grad_information_wrt_mode is zero
 								if (use_random_effects_indices_of_data_) {
 									vec_t Zt_deriv_information_aux_par;
-									CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, deriv_information_aux_par.data(), Zt_deriv_information_aux_par.data(), true);
+									CalcZtVGivenIndices(num_data_, dim_mode_, random_effects_indices_of_data_, deriv_information_aux_par.data(), Zt_deriv_information_aux_par.data(), true);
 									vec_t W_inv_d_W_W_inv = -1. * Zt_deriv_information_aux_par.cwiseProduct((information_ll_.cwiseInverse().cwiseProduct(information_ll_.cwiseInverse())));
 									//Stochastic Trace: Calculate tr((Sigma^(-1) + W)^(-1) dW/daux)
 									vec_t zt_SigmaI_plus_W_inv_W_deriv_PI_z = ((SigmaI_plus_W_inv_Z_.cwiseProduct(W_inv_d_W_W_inv.asDiagonal() * PI_Z)).colwise().sum()).transpose();
@@ -4264,8 +4283,8 @@ namespace GPBoost {
 							}
 							if (deriv_information_loc_par_has_zero) {//deriv_information_diag_loc_par has some zeros
 								if (use_random_effects_indices_of_data_) {
-									vec_t Zt_deriv_information_aux_par(num_re_);
-									CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, deriv_information_aux_par.data(), Zt_deriv_information_aux_par.data(), true);
+									vec_t Zt_deriv_information_aux_par(dim_mode_);
+									CalcZtVGivenIndices(num_data_, dim_mode_, random_effects_indices_of_data_, deriv_information_aux_par.data(), Zt_deriv_information_aux_par.data(), true);
 									CalcLogDetStochDerivAuxParVecchia(Zt_deriv_information_aux_par, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z, d_detmll_d_aux_par, re_comps_cross_cov_cluster_i);
 								}
 								else {
@@ -4303,8 +4322,8 @@ namespace GPBoost {
 						}//end if grad_information_wrt_mode_non_zero_
 						else {// grad_information_wrt_mode is zero
 							if (use_random_effects_indices_of_data_) {
-								vec_t Zt_deriv_information_aux_par(num_re_);
-								CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, deriv_information_aux_par.data(), Zt_deriv_information_aux_par.data(), true);
+								vec_t Zt_deriv_information_aux_par(dim_mode_);
+								CalcZtVGivenIndices(num_data_, dim_mode_, random_effects_indices_of_data_, deriv_information_aux_par.data(), Zt_deriv_information_aux_par.data(), true);
 								CalcLogDetStochDerivAuxParVecchia(Zt_deriv_information_aux_par, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z, d_detmll_d_aux_par, re_comps_cross_cov_cluster_i);
 							}
 							else {
@@ -4836,7 +4855,7 @@ namespace GPBoost {
 						c_cov = vec_t::Zero(n_pred);
 						c_var = vec_t::Zero(n_pred);
 						//Calculate P^(-0.5) explicitly
-						sp_mat_rm_t Identity_rm(num_re_, num_re_);
+						sp_mat_rm_t Identity_rm(dim_mode_, dim_mode_);
 						Identity_rm.setIdentity();
 						sp_mat_rm_t P_sqrt_invt_rm;
 						if (cg_preconditioner_type_ == "incomplete_cholesky") {
@@ -4897,7 +4916,7 @@ namespace GPBoost {
 							//Z_po^T RV
 							vec_t Z_tilde_t_RV = Ztilde.transpose() * rand_vec_init;
 							//Part 2: (Sigma^(-1) + Z^T W Z)^(-1) Z_po^T RV
-							vec_t MInv_Ztilde_t_RV(num_re_);
+							vec_t MInv_Ztilde_t_RV(dim_mode_);
 							bool has_NA_or_Inf = false;
 							CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, Z_tilde_t_RV, MInv_Ztilde_t_RV, has_NA_or_Inf,
 								cg_max_num_it_, cg_delta_conv_pred_, 0, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
@@ -4937,7 +4956,7 @@ namespace GPBoost {
 						c_cov /= nsim_var_pred_;
 						c_var /= nsim_var_pred_;
 						//Deterministic: diag(Z_po P^(-0.5T) P^(-0.5) Z_po^T)
-						vec_t varred_determ = Ztilde_P_sqrt_invt_rm.cwiseProduct(Ztilde_P_sqrt_invt_rm) * vec_t::Ones(num_re_);
+						vec_t varred_determ = Ztilde_P_sqrt_invt_rm.cwiseProduct(Ztilde_P_sqrt_invt_rm) * vec_t::Ones(dim_mode_);
 						//optimal c
 						c_cov -= varred_global.cwiseProduct(pred_var_global);
 						c_var -= varred_global.cwiseProduct(varred_global);
@@ -4986,8 +5005,8 @@ namespace GPBoost {
 						for (int i = 0; i < nsim_var_pred_; ++i) {
 							//z_i ~ N(0,I)
 							std::normal_distribution<double> ndist(0.0, 1.0);
-							vec_t rand_vec_pred_I_1(num_re_), rand_vec_pred_I_2(num_data_);
-							for (int j = 0; j < num_re_; j++) {
+							vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(num_data_);
+							for (int j = 0; j < dim_mode_; j++) {
 								rand_vec_pred_I_1(j) = ndist(rng_local);
 							}
 							for (int j = 0; j < num_data_; j++) {
@@ -4995,7 +5014,7 @@ namespace GPBoost {
 							}
 							//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
 							vec_t rand_vec_pred_SigmaI_plus_ZtWZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_pred_I_1 + Zt_W_sqrt_rm * rand_vec_pred_I_2;
-							vec_t rand_vec_pred_SigmaI_plus_ZtWZ_inv(num_re_);
+							vec_t rand_vec_pred_SigmaI_plus_ZtWZ_inv(dim_mode_);
 							//z_i ~ N(0,(Sigma^(-1) + Z^T W Z)^(-1))
 							bool has_NA_or_Inf = false;
 							CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
@@ -5112,7 +5131,7 @@ namespace GPBoost {
 					diag_SigmaI_plus_ZtWZ_ = (information_ll_.array()+ 1. / sigma2).matrix();
 					diag_information_variance_correction_for_prediction_ = false;
 				}
-				vec_t minus_diag_Sigma_plus_ZtWZI_inv(num_re_);
+				vec_t minus_diag_Sigma_plus_ZtWZI_inv(dim_mode_);
 				minus_diag_Sigma_plus_ZtWZI_inv.array() = 1. / diag_SigmaI_plus_ZtWZ_.array();
 				minus_diag_Sigma_plus_ZtWZI_inv.array() /= sigma2;
 				minus_diag_Sigma_plus_ZtWZI_inv.array() -= 1.;
@@ -6055,7 +6074,7 @@ namespace GPBoost {
 				Log::REFatal(NA_OR_INF_ERROR_);
 			}
 			CHECK(mode_has_been_calculated_);
-			pred_var = vec_t(num_re_);
+			pred_var = vec_t(dim_mode_);
 			vec_t diag_ZtWZ_sqrt(information_ll_.size());
 			if (HasNegativeValueInformationLogLik()) {
 				Log::REFatal("CalcVarLaplaceApproxOnlyOneGPCalculationsOnREScale: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
@@ -6065,7 +6084,7 @@ namespace GPBoost {
 			T_mat L_inv_ZtWZ_sqrt_Sigma = diag_ZtWZ_sqrt.asDiagonal() * (*Sigma);
 			TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_ZtWZ_sqrt_Sigma, L_inv_ZtWZ_sqrt_Sigma, false);
 #pragma omp parallel for schedule(static)
-			for (int i = 0; i < num_re_; ++i) {
+			for (int i = 0; i < dim_mode_; ++i) {
 				pred_var[i] = (*Sigma).coeff(i, i) - L_inv_ZtWZ_sqrt_Sigma.col(i).squaredNorm();
 			}
 		}//end CalcVarLaplaceApproxOnlyOneGPCalculationsOnREScale
@@ -6075,22 +6094,23 @@ namespace GPBoost {
 		* \param[out] pred_var Variance of Laplace-approximated posterior
 		*/
 		void CalcVarLaplaceApproxGroupedRE(vec_t& pred_var) {
+			CHECK(num_sets_re_ == 1);
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				Log::REFatal(NA_OR_INF_ERROR_);
 			}
 			CHECK(mode_has_been_calculated_);
-			pred_var = vec_t(num_re_);
+			pred_var = vec_t(dim_mode_);
 			if (matrix_inversion_method_ == "iterative") {
-				pred_var = vec_t::Zero(num_re_);
+				pred_var = vec_t::Zero(dim_mode_);
 				//Variance reduction
 				sp_mat_rm_t P_sqrt_invt_rm;
 				vec_t varred_global, c_cov, c_var;
 				if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
-					varred_global = vec_t::Zero(num_re_);
-					c_cov = vec_t::Zero(num_re_);
-					c_var = vec_t::Zero(num_re_);
+					varred_global = vec_t::Zero(dim_mode_);
+					c_cov = vec_t::Zero(dim_mode_);
+					c_var = vec_t::Zero(dim_mode_);
 					//Calculate P^(-0.5) explicitly
-					sp_mat_rm_t Identity_rm(num_re_, num_re_);
+					sp_mat_rm_t Identity_rm(dim_mode_, dim_mode_);
 					Identity_rm.setIdentity();
 					if (cg_preconditioner_type_ == "incomplete_cholesky") {
 						TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(L_SigmaI_plus_ZtWZ_rm_, Identity_rm, P_sqrt_invt_rm, true);
@@ -6120,23 +6140,23 @@ namespace GPBoost {
 					thread_nb = 0;
 #endif
 					RNG_t rng_local = parallel_rngs[thread_nb];
-					vec_t pred_var_private = vec_t::Zero(num_re_);
+					vec_t pred_var_private = vec_t::Zero(dim_mode_);
 					vec_t varred_private;
 					vec_t c_cov_private;
 					vec_t c_var_private;
 					//Variance reduction
 					if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
-						varred_private = vec_t::Zero(num_re_);
-						c_cov_private = vec_t::Zero(num_re_);
-						c_var_private = vec_t::Zero(num_re_);
+						varred_private = vec_t::Zero(dim_mode_);
+						c_cov_private = vec_t::Zero(dim_mode_);
+						c_var_private = vec_t::Zero(dim_mode_);
 					}
 #pragma omp for
 					for (int i = 0; i < nsim_var_pred_; ++i) {
 						//RV - Rademacher
 						std::uniform_real_distribution<double> udist(0.0, 1.0);
-						vec_t rand_vec_init(num_re_);
+						vec_t rand_vec_init(dim_mode_);
 						double u;
-						for (int j = 0; j < num_re_; j++) {
+						for (int j = 0; j < dim_mode_; j++) {
 							u = udist(rng_local);
 							if (u > 0.5) {
 								rand_vec_init(j) = 1.;
@@ -6146,7 +6166,7 @@ namespace GPBoost {
 							}
 						}
 						//Part 2: (Sigma^(-1) + Z^T W Z)^(-1) RV
-						vec_t MInv_RV(num_re_);
+						vec_t MInv_RV(dim_mode_);
 						bool has_NA_or_Inf = false;
 						CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_init, MInv_RV, has_NA_or_Inf,
 							cg_max_num_it_, cg_delta_conv_pred_, 0, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
@@ -6184,7 +6204,7 @@ namespace GPBoost {
 					c_cov /= nsim_var_pred_;
 					c_var /= nsim_var_pred_;
 					//Deterministic: diag(P^(-0.5T) P^(-0.5))
-					vec_t varred_determ = P_sqrt_invt_rm.cwiseProduct(P_sqrt_invt_rm) * vec_t::Ones(num_re_);
+					vec_t varred_determ = P_sqrt_invt_rm.cwiseProduct(P_sqrt_invt_rm) * vec_t::Ones(dim_mode_);
 					//optimal c
 					c_cov -= varred_global.cwiseProduct(pred_var);
 					c_var -= varred_global.cwiseProduct(varred_global);
@@ -6199,11 +6219,11 @@ namespace GPBoost {
 				}
 			} //end iterative
 			else { //begin Cholesky
-				sp_mat_t L_inv(num_re_, num_re_);
+				sp_mat_t L_inv(dim_mode_, dim_mode_);
 				L_inv.setIdentity();
 				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, L_inv, L_inv, false);
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_re_; ++i) {
+				for (int i = 0; i < dim_mode_; ++i) {
 					pred_var[i] = L_inv.col(i).squaredNorm();
 				}
 			} //end Cholesky
@@ -6218,7 +6238,7 @@ namespace GPBoost {
 				Log::REFatal(NA_OR_INF_ERROR_);
 			}
 			CHECK(mode_has_been_calculated_);
-			pred_var = vec_t(num_re_);
+			pred_var = vec_t(dim_mode_);
 			pred_var.array() = diag_SigmaI_plus_ZtWZ_.array().inverse();
 		}//end CalcVarLaplaceApproxOnlyOneGroupedRECalculationsOnREScale
 
@@ -6232,10 +6252,11 @@ namespace GPBoost {
 				Log::REFatal(NA_OR_INF_ERROR_);
 			}
 			CHECK(mode_has_been_calculated_);
-			pred_var = vec_t(num_re_ * num_sets_re_);
+			pred_var = vec_t(dim_mode_);
 			//Version Simulation
 			if (matrix_inversion_method_ == "iterative") {
-				pred_var = vec_t::Zero(num_re_);
+				CHECK(num_sets_re_ == 1);
+				pred_var = vec_t::Zero(dim_mode_);
 				if (HasNegativeValueInformationLogLik()) {
 					Log::REFatal("CalcVarLaplaceApproxVecchia: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
 						"Cannot have negative values when using 'iterative' methods for predictive variances in Vecchia-Laplace approximations ");
@@ -6668,6 +6689,7 @@ namespace GPBoost {
 			}
 			rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
 			nsim_var_pred_ = nsim_var_pred;
+			num_rand_vec_sim_post_ = nsim_var_pred;
 		}//end SetMatrixInversionProperties
 
 		static string_t ParseLikelihoodAlias(const string_t& likelihood) {
@@ -7311,15 +7333,15 @@ namespace GPBoost {
 		void CalcFirstDerivLogLik(const double* y_data,
 			const int* y_data_int,
 			const double* location_par) {
-			if (!use_random_effects_indices_of_data_) {
-				CalcFirstDerivLogLik_DataScale(y_data, y_data_int, location_par, first_deriv_ll_);
-			}
-			else {
+			if (use_random_effects_indices_of_data_) {
 				CalcFirstDerivLogLik_DataScale(y_data, y_data_int, location_par, first_deriv_ll_data_scale_);
 				for (int igp = 0; igp < num_sets_re_; ++igp) {
-					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_,
+					CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_,
 						first_deriv_ll_data_scale_.data() + num_data_ * igp, first_deriv_ll_.data() + dim_mode_per_set_re_ * igp, true);
 				}
+			}
+			else {//!use_random_effects_indices_of_data_
+				CalcFirstDerivLogLik_DataScale(y_data, y_data_int, location_par, first_deriv_ll_);
 			}
 		}//end CalcFirstDerivLogLik
 
@@ -7590,18 +7612,18 @@ namespace GPBoost {
 			const int* y_data_int,
 			const double* location_par,
 			bool called_during_mode_finding) {
-			if (!use_random_effects_indices_of_data_) {
-				CalcInformationLogLik_DataScale(y_data, y_data_int, location_par, called_during_mode_finding, information_ll_, off_diag_information_ll_);
-			}
-			else {
+			if (use_random_effects_indices_of_data_) {
 				CalcInformationLogLik_DataScale(y_data, y_data_int, location_par, called_during_mode_finding, information_ll_data_scale_, off_diag_information_ll_data_scale_);
 				for (int igp = 0; igp < num_sets_re_; ++igp) {
-					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_,
+					CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_,
 						information_ll_data_scale_.data() + num_data_ * igp, information_ll_.data() + dim_mode_per_set_re_ * igp, true);
 				}
 				if (information_has_off_diagonal_) {
-					CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, off_diag_information_ll_data_scale_.data(), off_diag_information_ll_.data(), true);
+					CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_, off_diag_information_ll_data_scale_.data(), off_diag_information_ll_.data(), true);
 				}
+			}
+			else {// !use_random_effects_indices_of_data_
+				CalcInformationLogLik_DataScale(y_data, y_data_int, location_par, called_during_mode_finding, information_ll_, off_diag_information_ll_);
 			}
 			if (HasNegativeValueInformationLogLik()) {
 				Log::REDebug("Negative values found in the (diagonal) Hessian / Fisher information for the Laplace approximation. "
@@ -7637,7 +7659,7 @@ namespace GPBoost {
 						for (data_size_t i = 0; i < num_data_; ++i) {
 							information_ll_data_scale_[i] = information_ll_data_scale_[i] * information_ll_data_scale_[i] / first_deriv_ll_data_scale_[i] / first_deriv_ll_data_scale_[i];
 						}
-						CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, information_ll_data_scale_.data(), information_ll_.data(), true);
+						CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_, information_ll_data_scale_.data(), information_ll_.data(), true);
 					}
 				}//end var_cor_pred_version_ == "freq_asymptotic"
 				else if (var_cor_pred_version_ == "learning_rate") {
@@ -7652,7 +7674,7 @@ namespace GPBoost {
 						for (data_size_t i = 0; i < num_data_; ++i) {
 							information_ll_data_scale_[i] = information_ll_data_scale_[i] * likelihood_learning_rate_;
 						}
-						CalcZtVGivenIndices(num_data_, num_re_, random_effects_indices_of_data_, information_ll_data_scale_.data(), information_ll_.data(), true);
+						CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_, information_ll_data_scale_.data(), information_ll_.data(), true);
 					}
 				}//end var_cor_pred_version_ == "learning_rate"
 				//Log::REInfo("after correction: information_ll_[0:2] = %g, %g, %g ", information_ll_[0], information_ll_[1], information_ll_[2]);//for debugging
@@ -9598,8 +9620,8 @@ namespace GPBoost {
 
 		/*! \brief Number of data points */
 		data_size_t num_data_;
-		/*! \brief Number (dimension) of random effects */
-		data_size_t num_re_;
+		///*! \brief Number (dimension) of random effects *///DELETE
+		//data_size_t num_re_;
 		/*! \brief Number of sets of random effects / GPs. This is larger than 1, e.g., heteroscedastic models */
 		int num_sets_re_ = 1;
 		/*! \brief Dimension (= length) of mode_ */
@@ -9608,6 +9630,10 @@ namespace GPBoost {
 		data_size_t dim_mode_per_set_re_;
 		/*! \brief Dimension (= length) of location par = Z * mode + F(X) */
 		data_size_t dim_location_par_;
+		/*! \brief Dimension (= length) of first_deriv_ll_ and information_ll_ */
+		data_size_t dim_deriv_ll_;
+		/*! \brief Dimension (= length) of first_deriv_ll_ and information_ll_ per parameter / set of RE / GP */
+		data_size_t dim_deriv_ll_per_set_re_;
 		/*! \brief Posterior mode used for Laplace approximation */
 		vec_t mode_;
 		/*! \brief Saving a previously found value allows for reseting the mode when having a too large step size. */
@@ -9618,15 +9644,15 @@ namespace GPBoost {
 		vec_t SigmaI_mode_previous_value_;
 		/*! \brief Indicates whether the vector SigmaI_mode_ / a=ZSigmaZt^-1 is used or not */
 		bool has_SigmaI_mode_;
-		/*! \brief First derivatives of the log-likelihood. If use_random_effects_indices_of_data_, this corresponds to Z^T * first_deriv_ll, i.e., it length is num_re_ */
+		/*! \brief First derivatives of the log-likelihood. If use_random_effects_indices_of_data_, this corresponds to Z^T * first_deriv_ll, i.e., it length is dim_mode_ */
 		vec_t first_deriv_ll_;
 		/*! \brief First derivatives of the log-likelihood on the data scale of length num_data_. Auxiliary variable used only if use_random_effects_indices_of_data_ */
 		vec_t first_deriv_ll_data_scale_;
-		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_random_effects_indices_of_data_, this corresponds to Z^T * information_ll, i.e., it length is num_re_ */
+		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_random_effects_indices_of_data_, this corresponds to Z^T * information_ll, i.e., it length is dim_mode_ */
 		vec_t information_ll_;
 		/*! \brief The diagonal of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W") on the data scale of length num_data_. Usually, this consists of the second derivatives of the negative log-likelihood. This is an auxiliary variable used only if use_random_effects_indices_of_data_ */
 		vec_t information_ll_data_scale_;
-		/*! \brief The off-diagonal elements (if there are any) of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_random_effects_indices_of_data_, this corresponds to Z^T * information_ll, i.e., it length is num_re_ */
+		/*! \brief The off-diagonal elements (if there are any) of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI). If use_random_effects_indices_of_data_, this corresponds to Z^T * information_ll, i.e., it length is dim_mode_ */
 		vec_t off_diag_information_ll_;
 		/*! \brief The off-diagonal elements (if there are any) of the (observed or expected) Fisher information for the log-likelihood (diagonal of matrix "W") on the data scale of length num_data_. Usually, this consists of the second derivatives of the negative log-likelihood. This is an auxiliary variable used only if use_random_effects_indices_of_data_ */
 		vec_t off_diag_information_ll_data_scale_;
@@ -9837,6 +9863,11 @@ namespace GPBoost {
 		den_mat_t SigmaI_plus_W_inv_Z_;
 		/*! Matrix to store (W^(-1) + Sigma)^(-1) (z_1, ..., z_t) calculated in CGTridiagVecchiaLaplaceSigmaplusWinv() for later use in the stochastic trace approximation when calculating the gradient*/
 		den_mat_t WI_plus_Sigma_inv_Z_;
+
+		/*! \brief Number of random vectors (e.g., Rademacher) for sampling from the Laplace-approximated posterior */
+		int num_rand_vec_sim_post_ = 100;
+		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with samples for the Laplace-approximated posterior */
+		den_mat_t rand_vec_sim_post_;
 
 		//C) PRECONDITIONER VARIABLES
 		/*! \brief piv_chol_on_Sigma: matrix of dimension nxk with rank(Sigma_L_k_) <= fitc_piv_chol_preconditioner_rank generated in re_model_template.h*/

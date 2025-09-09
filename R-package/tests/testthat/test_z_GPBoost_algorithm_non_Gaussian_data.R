@@ -1082,11 +1082,11 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                           likelihood = "gaussian", gp_approx="vecchia")
       gp_model$set_optim_params(params=OPTIM_PARAMS_BFGS)
-      cvbst <- gpb.cv(data = dtrain, gp_model = gp_model, nrounds = 10,
+      capture.output( cvbst <- gpb.cv(data = dtrain, gp_model = gp_model, nrounds = 10,
                       learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5,
                       objective = "binary", eval = "binary_error",
                       early_stopping_rounds = 5, use_gp_model_for_validation = TRUE,
-                      folds = folds, verbose = 0)
+                      folds = folds, verbose = 0) , file='NUL')
       expcet_iter <- 10
       expcet_score <- 0.32
       expect_equal(cvbst$best_iter, expcet_iter)
@@ -1387,7 +1387,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         gp_model$set_optim_params(params=params)
         bst <- gpb.train(data = dtrain, gp_model = gp_model,
                          nrounds = 5, learning_rate = 0.5, max_depth = 6,
-                         min_data_in_leaf = 5, objective = "binary", verbose = 0)
+                         min_data_in_leaf = 5, objective = "binary", verbose = 0, deterministic = TRUE)
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),tolerance_loc)
         # Prediction
         gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", 
