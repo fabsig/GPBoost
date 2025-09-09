@@ -1134,6 +1134,7 @@ namespace GPBoost {
 			const std::shared_ptr<T_mat> Sigma,
 			double& approx_marginal_ll) {
 			ChecksBeforeModeFinding();
+			fixed_effects_ = fixed_effects;
 			// Initialize variables
 			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
 				InitializeModeAvec();
@@ -1264,6 +1265,7 @@ namespace GPBoost {
 			bool calc_mll,
 			double& approx_marginal_ll) {
 			ChecksBeforeModeFinding();
+			fixed_effects_ = fixed_effects;
 			// Initialize variables
 			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
 				InitializeModeAvec();
@@ -1493,6 +1495,7 @@ namespace GPBoost {
 			const double sigma2,
 			double& approx_marginal_ll) {
 			ChecksBeforeModeFinding();
+			fixed_effects_ = fixed_effects;
 			// Initialize variables
 			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
 				InitializeModeAvec();
@@ -1606,6 +1609,7 @@ namespace GPBoost {
 			const den_mat_t& chol_ip_cross_cov_preconditioner,
 			const chol_den_mat_t& chol_fact_sigma_ip_preconditioner) {
 			ChecksBeforeModeFinding();
+			fixed_effects_ = fixed_effects;
 			const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 			int num_ip = (int)((sigma_ip).rows());
 			int num_ip_preconditioner = 0;
@@ -2038,6 +2042,7 @@ namespace GPBoost {
 			data_size_t cluster_i,
 			REModelTemplate<T_mat, T_chol>* re_model) {
 			ChecksBeforeModeFinding();
+			fixed_effects_ = fixed_effects;
 			// Initialize variables
 			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
 				InitializeModeAvec();
@@ -2412,6 +2417,7 @@ namespace GPBoost {
 			const vec_t& fitc_resid_diag,
 			double& approx_marginal_ll) {
 			ChecksBeforeModeFinding();
+			fixed_effects_ = fixed_effects;
 			int num_ip = (int)((*sigma_ip).rows());
 			CHECK((int)((*cross_cov).rows()) == dim_mode_);
 			CHECK((int)((*cross_cov).cols()) == num_ip);
@@ -9777,6 +9783,8 @@ namespace GPBoost {
 		data_size_t group_size_ = 1000;
 		/*! \brief Number of groups (currently not used) */
 		data_size_t num_groups_partition_data_ = 0;
+		/*! \brief For saving fixed_effects pointer */
+		const double* fixed_effects_;
 
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";
