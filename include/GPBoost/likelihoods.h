@@ -144,7 +144,6 @@ namespace GPBoost {
 			const double* weights,
 			double likelihood_learning_rate) {
 			num_data_ = num_data;
-			//num_re_ = num_re;//DELETE
 			string_t likelihood = type;
 			likelihood = ParseLikelihoodAliasVarianceCorrection(likelihood);
 			likelihood = ParseLikelihoodAliasModeFindingMethod(likelihood);
@@ -298,12 +297,8 @@ namespace GPBoost {
 				CHECK(random_effects_indices_of_data != nullptr);
 				CHECK(Zt == nullptr);
 				random_effects_indices_of_data_ = random_effects_indices_of_data;
-				//dim_mode_ = num_sets_re_ * num_re_;//DELETE
-				//dim_mode_per_set_re_ = num_re_;
 			}
 			else {
-				//dim_mode_ = num_sets_re_ * num_data_;//DELETE
-				//dim_mode_per_set_re_ = num_data_;
 				if (Zt != nullptr) {
 					use_Z_ = true;
 					Zt_ = Zt;
@@ -373,16 +368,6 @@ namespace GPBoost {
 		*/
 		void InitializeModeAvec() {
 			if (!mode_is_zero_) {
-				//// Do not use dim_mode_ for initializing mode_//DELETE
-				//// This is a hack since grouped random effects models use use_random_effects_indices_of_data_ == false, and thus dim_mode_ == num_data_ for those
-				//// For the other models:    either use_random_effects_indices_of_data_ == true => dim_mode_ == num_re_ * num_sets_re_ anyway
-				////                          or use_random_effects_indices_of_data_ == false and num_re_ == num_data_ => dim_mode_ == num_re_ * num_sets_re_
-				//mode_ = vec_t::Zero(num_re_ * num_sets_re_);
-				//mode_previous_value_ = vec_t::Zero(num_re_ * num_sets_re_);
-				//if (has_SigmaI_mode_) {
-				//	SigmaI_mode_ = vec_t::Zero(num_re_ * num_sets_re_);
-				//	SigmaI_mode_previous_value_ = vec_t::Zero(num_re_ * num_sets_re_);
-				//}
 				mode_ = vec_t::Zero(dim_mode_);
 				mode_previous_value_ = vec_t::Zero(dim_mode_);
 				if (has_SigmaI_mode_) {
@@ -1618,6 +1603,7 @@ namespace GPBoost {
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_preconditioner_cluster_i,
 			const den_mat_t& chol_ip_cross_cov_preconditioner,
 			const chol_den_mat_t& chol_fact_sigma_ip_preconditioner) {
+			ChecksBeforeModeFinding();
 			const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 			int num_ip = (int)((sigma_ip).rows());
 			int num_ip_preconditioner = 0;
@@ -5948,6 +5934,90 @@ namespace GPBoost {
 		}//end PredictLaplaceApproxVecchia
 
 		/*!
+		* \brief Sampling from the Laplace-approximated posterior when using a Vecchia approximation
+		*/
+		void Sample_Posterior_LaplaceApprox_Vecchia(const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) {
+			Log::REInfo("SamplePosterior_LaplaceApprox_Vecchia: num_rand_vec_sim_post_ = %d ", num_rand_vec_sim_post_);//DELETE
+			rand_vec_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+			if (!cg_generator_seeded_) {
+				cg_generator_ = RNG_t(seed_rand_vec_trace_);
+				cg_generator_seeded_ = true;
+			}
+			CHECK(num_sets_re_ == 1);
+			if (matrix_inversion_method_ == "cholesky") {
+				GenRandVecNormal(cg_generator_, rand_vec_sim_post_);
+				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_sim_post_, rand_vec_sim_post_, false);
+			}
+			else {
+				CHECK(matrix_inversion_method_ == "iterative");
+				vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
+				sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * (D_inv_rm_.cwiseSqrt());
+				int num_threads;
+#ifdef _OPENMP
+				num_threads = omp_get_max_threads();
+#else
+				num_threads = 1;
+#endif
+				std::uniform_int_distribution<> unif(0, 2147483646);
+				std::vector<RNG_t> parallel_rngs;
+				for (int ig = 0; ig < num_threads; ++ig) {
+					int seed_local = unif(cg_generator_);
+					parallel_rngs.push_back(RNG_t(seed_local));
+				}
+#pragma omp parallel
+				{
+					int thread_nb;
+#ifdef _OPENMP
+					thread_nb = omp_get_thread_num();
+#else
+					thread_nb = 0;
+#endif
+					RNG_t rng_local = parallel_rngs[thread_nb];
+#pragma omp for
+					for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
+						//z_i ~ N(0,I)
+						std::normal_distribution<double> ndist(0.0, 1.0);
+						vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_);
+						for (int j = 0; j < dim_mode_; j++) {
+							rand_vec_pred_I_1(j) = ndist(rng_local);
+							rand_vec_pred_I_2(j) = ndist(rng_local);
+						}
+						//z_i ~ N(0,(Sigma^{-1} + W))
+						vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
+						vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
+						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
+						bool has_NA_or_Inf = false;
+						if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
+							const den_mat_t* cross_cov = nullptr;
+							if (cg_preconditioner_type_ == "fitc") {
+								cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
+							}
+							CGVecchiaLaplaceSigmaPlusWinvVec(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
+								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_,
+								chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_, true);
+						}
+						else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
+							CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
+								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, true);
+						}
+						else {
+							Log::REFatal("PredictLaplaceApproxVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
+						}
+						if (has_NA_or_Inf) {
+							Log::REDebug(CG_NA_OR_INF_WARNING_);
+						}
+						rand_vec_sim_post_.col(j) = rand_vec_pred_SigmaI_plus_W_inv;
+					}//end parallel loop
+				}//end pragma
+			}//end matrix_inversion_method_ == "iterative"
+			// add mean
+#pragma omp parallel for schedule(static
+			for (int j = 0; j < num_rand_vec_sim_post_; ++j) {
+				rand_vec_sim_post_.col(j).noalias() += mode_;
+			}
+		}//end SamplePosterior_LaplaceApprox_Vecchia
+
+		/*!
 		* \brief Make predictions for the (latent) random effects when using the Laplace approximation.
 		*       This version is used for the Laplace approximation when dense matrices are used (e.g. GP models).
 		* \param y_data Response variable data if response variable is continuous
@@ -9620,8 +9690,6 @@ namespace GPBoost {
 
 		/*! \brief Number of data points */
 		data_size_t num_data_;
-		///*! \brief Number (dimension) of random effects *///DELETE
-		//data_size_t num_re_;
 		/*! \brief Number of sets of random effects / GPs. This is larger than 1, e.g., heteroscedastic models */
 		int num_sets_re_ = 1;
 		/*! \brief Dimension (= length) of mode_ */
