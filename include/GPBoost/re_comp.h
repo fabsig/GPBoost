@@ -1434,7 +1434,7 @@ namespace GPBoost {
 				(*cov_function_).template MultiplyWendlandCorrelationTaper<T_mat>(dist, cov_mat, is_symmmetric);
 			}
 			if (calc_gradient) {
-				CHECK(calc_grad_index.size() == this->num_cov_par_);
+				CHECK((int)calc_grad_index.size() == this->num_cov_par_);
 				if (calc_grad_index[0]) {
 					//gradient wrt to variance parameter
 					cov_grad[0] = cov_mat;
