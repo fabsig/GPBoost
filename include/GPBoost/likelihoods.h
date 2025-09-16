@@ -2037,8 +2037,8 @@ namespace GPBoost {
 			double& approx_marginal_ll,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
-			const den_mat_t chol_ip_cross_cov,
-			const chol_den_mat_t chol_fact_sigma_ip,
+			const den_mat_t& chol_ip_cross_cov,
+			const chol_den_mat_t& chol_fact_sigma_ip,
 			data_size_t cluster_i,
 			REModelTemplate<T_mat, T_chol>* re_model) {
 			ChecksBeforeModeFinding();
@@ -2081,7 +2081,6 @@ namespace GPBoost {
 				}
 			}
 			double approx_marginal_ll_new = approx_marginal_ll;
-			den_mat_t sigma_ip_stable;
 			if (matrix_inversion_method_ == "iterative") {
 				if (num_sets_re_ > 1) {
 					if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" ||
@@ -2117,8 +2116,8 @@ namespace GPBoost {
 				else if (cg_preconditioner_type_ == "fitc") {
 					chol_fact_sigma_ip_ = chol_fact_sigma_ip;
 					chol_ip_cross_cov_ = chol_ip_cross_cov;
-					sigma_ip_stable = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
-					sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+					sigma_ip_stable_ = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
+					sigma_ip_stable_.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
 				}
 			}
 			if (matrix_inversion_method_ != "iterative" ||
@@ -2188,63 +2187,9 @@ namespace GPBoost {
 						rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();//right hand side for updating mode
 					}
 					if (matrix_inversion_method_ == "iterative") {
-						if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
-							if ((information_ll_.array() > 1e10).any()) {
-								has_NA_or_Inf = true;// the inversion of the preconditioner with the Woodbury identity can be numerically unstable when information_ll_ is very large
-							}
-							else {
-								const den_mat_t* cross_cov = nullptr;
-								if (cg_preconditioner_type_ == "fitc") {
-									cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
-								}
-								if (it == 0 || information_changes_during_mode_finding_) {
-									if (cg_preconditioner_type_ == "pivoted_cholesky") {
-										I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
-										I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * information_ll_.asDiagonal() * Sigma_L_k_;
-										chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
-									}
-									else if (cg_preconditioner_type_ == "fitc") {
-										diagonal_approx_preconditioner_ = information_ll_.cwiseInverse();
-										diagonal_approx_preconditioner_.array() += sigma_ip_stable.coeffRef(0, 0);
-#pragma omp parallel for schedule(static)
-										for (int ii = 0; ii < diagonal_approx_preconditioner_.size(); ++ii) {
-											diagonal_approx_preconditioner_[ii] -= chol_ip_cross_cov.col(ii).array().square().sum();
-										}
-										diagonal_approx_inv_preconditioner_ = diagonal_approx_preconditioner_.cwiseInverse();
-										den_mat_t sigma_woodbury;
-										sigma_woodbury = (*cross_cov).transpose() * (diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov));
-										sigma_woodbury += sigma_ip_stable;
-										chol_fact_woodbury_preconditioner_.compute(sigma_woodbury);
-									}
-									else if (cg_preconditioner_type_ == "vecchia_response") {
-										sp_mat_t B_vecchia;
-										vec_t pseudo_nugget = information_ll_.cwiseInverse();
-										re_model->CalcVecchiaApproxLatentAddDiagonal(cluster_i, B_vecchia, D_inv_vecchia_pc_, pseudo_nugget.data());
-										B_vecchia_pc_rm_ = sp_mat_rm_t(B_vecchia);
-									}
-								}
-								CGVecchiaLaplaceSigmaPlusWinvVec(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, mode_update, has_NA_or_Inf,
-									cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_,
-									chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_, false);
-							}
-						}//end cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc"
-						else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
-							if (it == 0 || information_changes_during_mode_finding_) {
-								if (cg_preconditioner_type_ == "vadu") {
-									D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + information_ll_).asDiagonal() * B_rm_;
-								}
-								else if (cg_preconditioner_type_ == "incomplete_cholesky") {
-									SigmaI_plus_W = SigmaI;
-									SigmaI_plus_W.diagonal().array() += information_ll_.array();
-									ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B[0], L_SigmaI_plus_W_rm_);
-								}
-							}
-							CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rhs, mode_update, has_NA_or_Inf,
-								cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, false);
-						}
-						else {
-							Log::REFatal("FindModePostRandEffCalcMLLVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
-						}
+						bool calculate_preconditioners = it == 0 || information_changes_during_mode_finding_;
+						Inv_SigmaI_plus_ZtWZ_iterative(cg_max_num_it, I_k_plus_Sigma_L_kt_W_Sigma_L_k, SigmaI, SigmaI_plus_W, B[0], has_NA_or_Inf, 
+							re_comps_cross_cov_cluster_i, cluster_i, re_model, rhs, mode_update, it, calculate_preconditioners);
 						if (has_NA_or_Inf) {
 							approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
 							Log::REDebug(NA_OR_INF_WARNING_);
@@ -2358,7 +2303,7 @@ namespace GPBoost {
 						}
 						double log_det_Sigma_W_plus_I;
 						CalcLogDetStochVecchia(dim_mode_, cg_max_num_it_tridiag, I_k_plus_Sigma_L_kt_W_Sigma_L_k, SigmaI, SigmaI_plus_W, B[0], has_NA_or_Inf, log_det_Sigma_W_plus_I,
-							re_comps_cross_cov_cluster_i, re_comps_ip_cluster_i, cluster_i, re_model);
+							re_comps_cross_cov_cluster_i, cluster_i, re_model);
 						if (has_NA_or_Inf) {
 							approx_marginal_ll = std::numeric_limits<double>::quiet_NaN();
 							Log::REDebug(NA_OR_INF_WARNING_);
@@ -4138,29 +4083,10 @@ namespace GPBoost {
 						WI_WI_plus_Sigma_inv_Z, re_comps_cross_cov_cluster_i);
 				}
 				//For implicit derivatives: calculate (Sigma^(-1) + W)^(-1) d_mll_d_mode
-				bool has_NA_or_Inf = false;
 				if (grad_information_wrt_mode_non_zero_) {
 					d_mll_d_mode = 0.5 * d_log_det_Sigma_W_plus_I_d_mode;
 					SigmaI_plus_W_inv_d_mll_d_mode = vec_t(dim_mode_);
-					if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
-						const den_mat_t* cross_cov = nullptr;
-						if (cg_preconditioner_type_ == "fitc") {
-							cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
-						}
-						CGVecchiaLaplaceSigmaPlusWinvVec(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
-							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_,
-							chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_, false);
-					}
-					else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
-						CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
-							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, false);
-					}
-					else {
-						Log::REFatal("CalcGradNegMargLikelihoodLaplaceApproxVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
-					}
-					if (has_NA_or_Inf) {
-						Log::REDebug(CG_NA_OR_INF_WARNING_);
-					}
+					Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, 0);
 				}
 				// Calculate gradient wrt covariance parameters
 				bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
@@ -5817,26 +5743,7 @@ namespace GPBoost {
 							vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
 							vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
 							//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
-							bool has_NA_or_Inf = false;
-							if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
-								const den_mat_t* cross_cov = nullptr;
-								if (cg_preconditioner_type_ == "fitc") {
-									cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
-								}
-								CGVecchiaLaplaceSigmaPlusWinvVec(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_,
-									chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_, true);
-							}
-							else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
-								CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, true);
-							}
-							else {
-								Log::REFatal("PredictLaplaceApproxVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
-							}
-							if (has_NA_or_Inf) {
-								Log::REDebug(CG_NA_OR_INF_WARNING_);
-							}
+							Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, 0);
 							if (num_sets_re_ > 1) {
 								rand_vec_pred_SigmaI_plus_W_inv = rand_vec_pred_SigmaI_plus_W_inv.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_);// this could be done much more efficiently avoiding double calculations...
 							}
@@ -5946,7 +5853,6 @@ namespace GPBoost {
 		* \brief Sampling from the Laplace-approximated posterior when using a Vecchia approximation
 		*/
 		void Sample_Posterior_LaplaceApprox_Vecchia(const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) {
-			Log::REInfo("SamplePosterior_LaplaceApprox_Vecchia: num_rand_vec_sim_post_ = %d ", num_rand_vec_sim_post_);//DELETE
 			rand_vec_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
 			if (!cg_generator_seeded_) {
 				cg_generator_ = RNG_t(seed_rand_vec_trace_);
@@ -5983,7 +5889,7 @@ namespace GPBoost {
 #endif
 					RNG_t rng_local = parallel_rngs[thread_nb];
 #pragma omp for
-					for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
+					for (int j = 0; j < num_rand_vec_sim_post_; ++j) {
 						//z_i ~ N(0,I)
 						std::normal_distribution<double> ndist(0.0, 1.0);
 						vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_);
@@ -5995,32 +5901,13 @@ namespace GPBoost {
 						vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
 						vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
 						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
-						bool has_NA_or_Inf = false;
-						if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
-							const den_mat_t* cross_cov = nullptr;
-							if (cg_preconditioner_type_ == "fitc") {
-								cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
-							}
-							CGVecchiaLaplaceSigmaPlusWinvVec(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_,
-								chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_, true);
-						}
-						else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
-							CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, true);
-						}
-						else {
-							Log::REFatal("PredictLaplaceApproxVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
-						}
-						if (has_NA_or_Inf) {
-							Log::REDebug(CG_NA_OR_INF_WARNING_);
-						}
+						Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, 0);
 						rand_vec_sim_post_.col(j) = rand_vec_pred_SigmaI_plus_W_inv;
 					}//end parallel loop
 				}//end pragma
 			}//end matrix_inversion_method_ == "iterative"
 			// add mean
-#pragma omp parallel for schedule(static
+#pragma omp parallel for schedule(static)
 			for (int j = 0; j < num_rand_vec_sim_post_; ++j) {
 				rand_vec_sim_post_.col(j).noalias() += mode_;
 			}
@@ -6377,26 +6264,7 @@ namespace GPBoost {
 						vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
 						vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
 						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
-						bool has_NA_or_Inf = false;
-						if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
-							const den_mat_t* cross_cov = nullptr;
-							if (cg_preconditioner_type_ == "fitc") {
-								cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
-							}
-							CGVecchiaLaplaceSigmaPlusWinvVec(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_,
-								chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_, true);
-						}
-						else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
-							CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-								cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, true);
-						}
-						else {
-							Log::REFatal("CalcVarLaplaceApproxVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
-						}
-						if (has_NA_or_Inf) {
-							Log::REDebug(CG_NA_OR_INF_WARNING_);
-						}
+						Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, 0);
 						pred_var_private += rand_vec_pred_SigmaI_plus_W_inv.cwiseProduct(rand_vec_pred_SigmaI_plus_W_inv);
 					}// end for loop
 #pragma omp critical
@@ -9201,6 +9069,96 @@ namespace GPBoost {
 		}//end CalcLogDetStochFSVA
 
 		/*!
+		* \brief Calculate (Sigma^-1 + ZtWZ)^-1 rhs
+		*/
+		void Inv_SigmaI_plus_ZtWZ_iterative(int cg_max_num_it,
+			den_mat_t& I_k_plus_Sigma_L_kt_W_Sigma_L_k,
+			const sp_mat_t& SigmaI,
+			sp_mat_t& SigmaI_plus_W,
+			const sp_mat_t& B,
+			bool& has_NA_or_Inf,
+			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
+			data_size_t cluster_i,
+			REModelTemplate<T_mat, T_chol>* re_model,
+			const vec_t& rhs,
+			vec_t& SigmaI_plus_ZtWZ_inv_rhs,
+			int it,
+			bool calculate_preconditioners) {
+			if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
+				if ((information_ll_.array() > 1e10).any() && calculate_preconditioners) {
+					has_NA_or_Inf = true;// the inversion of the preconditioner with the Woodbury identity can be numerically unstable when information_ll_ is very large
+				}
+				else {
+					const den_mat_t* cross_cov = nullptr;
+					if (cg_preconditioner_type_ == "fitc") {
+						cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
+					}
+					if (calculate_preconditioners) {
+						if (cg_preconditioner_type_ == "pivoted_cholesky") {
+							I_k_plus_Sigma_L_kt_W_Sigma_L_k.setIdentity();
+							I_k_plus_Sigma_L_kt_W_Sigma_L_k += Sigma_L_k_.transpose() * information_ll_.asDiagonal() * Sigma_L_k_;
+							chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
+						}
+						else if (cg_preconditioner_type_ == "fitc") {
+							diagonal_approx_preconditioner_ = information_ll_.cwiseInverse();
+							diagonal_approx_preconditioner_.array() += sigma_ip_stable_.coeffRef(0, 0);
+#pragma omp parallel for schedule(static)
+							for (int ii = 0; ii < diagonal_approx_preconditioner_.size(); ++ii) {
+								diagonal_approx_preconditioner_[ii] -= chol_ip_cross_cov_.col(ii).array().square().sum();
+							}
+							diagonal_approx_inv_preconditioner_ = diagonal_approx_preconditioner_.cwiseInverse();
+							den_mat_t sigma_woodbury;
+							sigma_woodbury = (*cross_cov).transpose() * (diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov));
+							sigma_woodbury += sigma_ip_stable_;
+							chol_fact_woodbury_preconditioner_.compute(sigma_woodbury);
+						}
+						else if (cg_preconditioner_type_ == "vecchia_response") {
+							sp_mat_t B_vecchia;
+							vec_t pseudo_nugget = information_ll_.cwiseInverse();
+							re_model->CalcVecchiaApproxLatentAddDiagonal(cluster_i, B_vecchia, D_inv_vecchia_pc_, pseudo_nugget.data());
+							B_vecchia_pc_rm_ = sp_mat_rm_t(B_vecchia);
+						}
+					}//end calculate_preconditioners
+					CGVecchiaLaplaceSigmaPlusWinvVec(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, SigmaI_plus_ZtWZ_inv_rhs, has_NA_or_Inf,
+						cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_,
+						chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_, false);
+				}
+			}//end cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc"
+			else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
+				if (calculate_preconditioners) {
+					if (cg_preconditioner_type_ == "vadu") {
+						D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + information_ll_).asDiagonal() * B_rm_;
+					}
+					else if (cg_preconditioner_type_ == "incomplete_cholesky") {
+						SigmaI_plus_W = SigmaI;
+						SigmaI_plus_W.diagonal().array() += information_ll_.array();
+						ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
+					}
+				}//end calculate_preconditioners
+				CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rhs, SigmaI_plus_ZtWZ_inv_rhs, has_NA_or_Inf,
+					cg_max_num_it, it, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, false);
+			}
+			else {
+				Log::REFatal("Inv_SigmaI_plus_ZtWZ_iterative: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
+			}
+			if (has_NA_or_Inf) {
+				Log::REDebug(CG_NA_OR_INF_WARNING_);
+			}
+		}//end Inv_SigmaI_plus_ZtWZ_iterative
+		// Overload when preconditioners are not calculated
+		void Inv_SigmaI_plus_ZtWZ_iterative_given_PC(int cg_max_num_it,
+			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
+			const vec_t& rhs,
+			vec_t& SigmaI_plus_ZtWZ_inv_rhs,
+			int it) {
+			den_mat_t d1{};
+			sp_mat_t  d2{}, d3{}, d4{};
+			REModelTemplate<T_mat, T_chol>* model = nullptr;
+			bool has_NA_or_Inf;
+			Inv_SigmaI_plus_ZtWZ_iterative(cg_max_num_it, d1, d2, d3, d4, has_NA_or_Inf, re_comps_cross_cov_cluster_i, 0, model, rhs, SigmaI_plus_ZtWZ_inv_rhs, it, false);
+		}//end Inv_SigmaI_plus_ZtWZ_iterative_given_PC
+
+		/*!
 		* \brief Calculate log|Sigma W + I| using stochastic trace estimation and variance reduction.
 		* \param num_data Number of data points
 		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
@@ -9222,7 +9180,6 @@ namespace GPBoost {
 			bool& has_NA_or_Inf,
 			double& log_det_Sigma_W_plus_I,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
-			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
 			data_size_t cluster_i,
 			REModelTemplate<T_mat, T_chol>* re_model) {
 			CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
@@ -9253,10 +9210,8 @@ namespace GPBoost {
 					//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
 					//For P = W^(-1) + chol_ip_cross_cov^T chol_ip_cross_cov: z_i = W^(-1/2) r_j + chol_ip_cross_cov^T r_i, where r_i, r_j ~ N(0,I)
 					if (information_changes_after_mode_finding_) {
-						den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
-						sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
 						diagonal_approx_preconditioner_ = information_ll_.cwiseInverse();
-						diagonal_approx_preconditioner_.array() += sigma_ip_stable.coeffRef(0, 0);
+						diagonal_approx_preconditioner_.array() += sigma_ip_stable_.coeffRef(0, 0);
 #pragma omp parallel for schedule(static)
 						for (int ii = 0; ii < diagonal_approx_preconditioner_.size(); ++ii) {
 							diagonal_approx_preconditioner_[ii] -= chol_ip_cross_cov_.col(ii).array().square().sum();
@@ -9264,7 +9219,7 @@ namespace GPBoost {
 						diagonal_approx_inv_preconditioner_ = diagonal_approx_preconditioner_.cwiseInverse();
 						den_mat_t sigma_woodbury;
 						sigma_woodbury = (*cross_cov).transpose() * (diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov));
-						sigma_woodbury += sigma_ip_stable;
+						sigma_woodbury += sigma_ip_stable_;
 						chol_fact_woodbury_preconditioner_.compute(sigma_woodbury);
 					}
 					rand_vec_trace_P_ = chol_ip_cross_cov_.transpose() * rand_vec_trace_I2_ + diagonal_approx_preconditioner_.cwiseSqrt().asDiagonal() * rand_vec_trace_I_;
@@ -9958,6 +9913,8 @@ namespace GPBoost {
 		vec_t diagonal_approx_inv_preconditioner_;
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decompositions of matrix sigma_ip + cross_cov^T * D^-1 * cross_cov used in Woodbury identity where D is given by the Preconditioner */
 		chol_den_mat_t chol_fact_woodbury_preconditioner_;
+		/*! \brief Sigma_ip */
+		den_mat_t sigma_ip_stable_;
 		/*! \brief Sigma_ip^(-1/2) Sigma_mn */
 		den_mat_t chol_ip_cross_cov_;
 		/*! \brief Cholesky decompositions of inducing points matrix sigma_ip */

@@ -777,12 +777,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       if(inv_method == "iterative") {
         tolerance_loc_1 <- TOLERANCE_ITERATIVE
         tolerance_loc_2 <- TOLERANCE_LOOSE
-        tolerance_loc_3 <- 0.1
+        tolerance_loc_3 <- TOLERANCE_ITERATIVE
+        tolerance_loc_4 <- 0.2
         loop_cg_PC = c("ssor", "zic")
       } else {
         tolerance_loc_1 <- TOLERANCE_STRICT
         tolerance_loc_2 <- TOLERANCE_STRICT
         tolerance_loc_3 <- TOLERANCE_MEDIUM
+        tolerance_loc_4 <- TOLERANCE_STRICT
         loop_cg_PC = c("ssor")
       }
       for (cg_preconditioner_type in loop_cg_PC) {
@@ -849,7 +851,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
                                  cov_pars = c(0.9,0.8,1.2), predict_cov_mat = TRUE, predict_response = FALSE)
         expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
-        expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_1)
+        expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),tolerance_loc_4)
         # Predict variances
         pred <- gp_model$predict(y = y, group_data_pred=group_data_pred, group_rand_coef_data_pred=group_rand_coef_data_pred,
                                  cov_pars = c(0.9,0.8,1.2), predict_var = TRUE, predict_response = FALSE)

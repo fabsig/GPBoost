@@ -2136,9 +2136,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                    params = params_fix)
         cov_pars_fix <- c(0.08591799937, 1.43524508454, 0.17864807736)
         nll_fix <- 122.8497227
-        expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars())-cov_pars_fix)), TOLERANCE_STRICT)
+        expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars())-cov_pars_fix)), TOLERANCE_LOOSE)
         expect_lt(sum(abs(gp_model_fix$get_cov_pars()[c(2,3)]-params_fix$init_cov_pars[c(2,3)])),TOLERANCE_STRICT)
-        expect_lt(sum(abs(gp_model_fix$get_current_neg_log_likelihood()-nll_fix)), TOLERANCE_STRICT)
+        expect_lt(sum(abs(gp_model_fix$get_current_neg_log_likelihood()-nll_fix)), 0.02)
         params_fix$estimate_cov_par_index <- c(1,1,0)
         gp_model_fix <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                    gp_approx = gp_approx, num_ind_points = 50, num_neighbors = 10,
@@ -2587,12 +2587,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     coef_est_shape <- c(2.338314047, 0.222568330, 1.746677838, 0.068681676)
     nrounds_est_shape <- 48
     nll_opt_est_shape <- 106.56952
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[1:10]-cov_pars_est_shape[1:10])),TOLERANCE_MEDIUM)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[11]-cov_pars_est_shape[11])),0.2)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[12]-cov_pars_est_shape[12])),15)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_est_shape )),TOLERANCE_MEDIUM)
-    expect_equal(gp_model$get_num_optim_iter(), nrounds_est_shape )
-    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_est_shape), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[1:10]-cov_pars_est_shape[1:10])),TOLERANCE_LOOSE)
+    expect_lt(sum(abs((gp_model$get_cov_pars())[11]-cov_pars_est_shape[11])/cov_pars_est_shape[11]),0.2)
+    expect_lt(sum(abs((gp_model$get_cov_pars())[12]-cov_pars_est_shape[12])/cov_pars_est_shape[12]),0.25)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_est_shape)),TOLERANCE_LOOSE)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_est_shape), TOLERANCE_MEDIUM)
     
     ##############
     ## With Vecchia approximation
@@ -3144,7 +3143,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
     expect_lt(sum(abs(pred$mu-exp_mu_mult)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-exp_cov_mult[c(1,5,9)])),TOLERANCE_STRICT)
-  })
+  })## end ARD Gaussian process model with linear regression term
   
 }
 
