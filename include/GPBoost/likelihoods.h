@@ -348,6 +348,7 @@ namespace GPBoost {
 				}
 				weights_ = weights_learning_rate_.data();
 			}//end likelihood_learning_rate_ != 1.
+			has_int_label_ = label_type() == "int";
 		}//end constructor
 
 		/*!
@@ -7155,7 +7156,7 @@ namespace GPBoost {
 
 		template <typename T>
 		inline double LogLikBernoulliLogit(T y, double location_par) const {			
-			return static_cast<double>(y) * location_par - softplus(location_par);
+			return static_cast<double>(y) * location_par - GPBoost::softplus(location_par);
 			// Alternative version (less numerically stable for large location_par
 			//return (y * location_par - std::log(1.0 + std::exp(location_par)));
 		}
@@ -9741,11 +9742,13 @@ namespace GPBoost {
 		/*! \brief For saving fixed_effects pointer */
 		const double* fixed_effects_;
 
-		/*! \brief Type of likelihood  */
+		/*! \brief Type of likelihood */
 		string_t likelihood_type_ = "gaussian";
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit",
 			"poisson", "gamma", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "lognormal", "beta_binomial" };
+		/*! \brief True if response variable has int type */
+		bool has_int_label_;
 		/*! \brief Number of additional parameters for likelihoods */
 		int num_aux_pars_ = 0;
 		/*! \brief Number of additional parameters for likelihoods that are estimated */
