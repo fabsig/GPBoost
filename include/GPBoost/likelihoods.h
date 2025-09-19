@@ -2786,7 +2786,7 @@ namespace GPBoost {
 						cg_max_num_it_, cg_delta_conv_pred_, 0, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
 						L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
 					if (has_NA_or_Inf) {
-						Log::REDebug(CG_NA_OR_INF_WARNING_);
+						Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
 					}
 					if (calc_F_grad || calc_aux_par_grad) {
 						Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode = (*Zt_).transpose() * SigmaI_plus_ZtWZ_inv_d_mll_d_mode;
@@ -3254,7 +3254,7 @@ namespace GPBoost {
 							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
 						SigmaI_plus_W_inv_d_mll_d_mode = information_ll_.cwiseInverse().asDiagonal() * W_SigmaI_plus_W_inv_d_mll_d_mode;
 						if (has_NA_or_Inf) {
-							Log::REDebug(CG_NA_OR_INF_WARNING_);
+							Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
 						}
 					}
 					// Calculate gradient wrt covariance parameters
@@ -3524,7 +3524,7 @@ namespace GPBoost {
 							W_D_inv_inv, chol_fact_sigma_woodbury_woodbury_, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
 							cg_max_num_it_, 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
 						if (has_NA_or_Inf) {
-							Log::REDebug(CG_NA_OR_INF_WARNING_);
+							Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
 						}
 					}
 					// Calculate gradient wrt covariance parameters
@@ -4843,7 +4843,7 @@ namespace GPBoost {
 								cg_max_num_it_, cg_delta_conv_pred_, 0, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
 								L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
 							if (has_NA_or_Inf) {
-								Log::REDebug(CG_NA_OR_INF_WARNING_);
+								Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
 							}
 							//Part 2: Z_po (Sigma^(-1) + Z^T W Z)^(-1) Z_po^T RV
 							vec_t rand_vec_final = Ztilde * MInv_Ztilde_t_RV;
@@ -5370,7 +5370,7 @@ namespace GPBoost {
 								rand_vec_pred_SigmaI_plus_W_inv = information_ll_inv.asDiagonal() * rand_vec_pred_SigmaI_plus_W_inv_interim;
 							}
 							if (has_NA_or_Inf) {
-								Log::REDebug(CG_NA_OR_INF_WARNING_);
+								Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
 							}
 							vec_t sigma_woodbury_vec = (*cross_cov) * chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * rand_vec_pred_SigmaI_plus_W_inv);
 							//z_i ~ N(0, (Sigma_pm Sigma_ip^-1 Sigma_mn - B_p^-1 B_po (B_o^T D_o^-1 B_o)^-1) Sigma^{-1} (Sigma^{-1} + W)^{-1} Sigma^{-1} (Sigma_nm Sigma_ip^-1 Sigma_mp - (B_o^T D_o^-1 B_o)^-1 B_po^T B_p^-1 ))
@@ -6138,7 +6138,7 @@ namespace GPBoost {
 							cg_max_num_it_, cg_delta_conv_pred_, 0, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
 							L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
 						if (has_NA_or_Inf) {
-							Log::REDebug(CG_NA_OR_INF_WARNING_);
+							Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
 						}
 						//Part 2: RV o (Sigma^(-1) + Z^T W Z)^(-1) RV
 						pred_var_private += MInv_RV.cwiseProduct(rand_vec_init);
@@ -9142,7 +9142,7 @@ namespace GPBoost {
 				Log::REFatal("Inv_SigmaI_plus_ZtWZ_iterative: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 			}
 			if (has_NA_or_Inf) {
-				Log::REDebug(CG_NA_OR_INF_WARNING_);
+				Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
 			}
 		}//end Inv_SigmaI_plus_ZtWZ_iterative
 		// Overload when preconditioners are not calculated
@@ -10046,7 +10046,8 @@ namespace GPBoost {
 			"The convergence criterion (log-likelihood + log-prior) has decreased and the algorithm has been terminated ";
 		const char* NO_CONVERGENCE_WARNING_ = "Algorithm for finding mode for Laplace approximation has not "
 			"converged after the maximal number of iterations ";
-		const char* CG_NA_OR_INF_WARNING_ = "NA or Inf occured in the Conjugate Gradient Algorithm when calculating the gradients ";
+		const char* CG_NA_OR_INF_WARNING_GRADIENT_ = "NA or Inf occured in the conjugate gradient (CG) algorithm when calculating gradients. The CG algorithm was terminated early ";
+		const char* CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_ = "NA or Inf occured in the conjugate gradient (CG) algorithm when sampling from the posterior. The CG algorithm was terminated early ";
 
 	};//end class Likelihood
 
