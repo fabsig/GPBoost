@@ -2470,6 +2470,126 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7)+1]-cov_pars[c(1,3,5,7)+1])),2*TOLERANCE_ITERATIVE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    
+    #####################
+    ## Gneiting
+    #####################
+    cov_pars_nll_gneiting <- c(0.1,1,0.2,2,0.5,1.5,0.5,2)
+    nll_exp <- 604.779654987741
+    # Evaluate negative log-likelihood
+    gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+    expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
+    params_ST$init_cov_pars <- cov_pars_nll_gneiting
+    # Fit model
+    gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                           y = y, X = X, params = params_ST)
+    cov_pars <- c(0.02633181, 1.40263123, 0.98025373, 1.41115317, 0.52186135, 6.34242936, 7.42595708, 12.70786416,
+                  0.56802644, 2.47464004, 0.38871000, 1.49764133, 1.59751470, 10.29308442, 0.37754550, 4.60955445)
+    coef <- c(1.9523613, 0.1785007, 2.1877478, 0.1393563)
+    nrounds <- 33
+    nll_opt <- 138.289451205022
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_STRICT)
+    # Prediction 
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_nll_gneiting)
+    expected_mu <- c(1.952361, 1.848199, 2.419974)
+    expected_cov <- c(1.100000e+00, -5.406416e-11, -2.934254e-11, -5.406416e-11,  
+                      1.610924e-01,  5.727994e-05, -2.934254e-11,  5.727994e-05,
+                      1.460070e-01)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_nll_gneiting)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
+    
+    ##############
+    ## With Vecchia approximation
+    ##############
+    # Evaluate negative log-likelihood
+    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                        gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none"), 
+                    file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+    expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
+    # Fit model
+    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                           gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none",
+                                           y = y, X = X, params = params_ST), 
+                    file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7)]-cov_pars[c(1,3,5,7)])),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_STRICT)
+    # Prediction 
+    gp_model$set_prediction_data(num_neighbors_pred=n+2)
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_nll_gneiting)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_LOOSE)
+    
+    ## Less neighbors 
+    # Evaluate negative log-likelihood
+    num_neighbors <- 50
+    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                        gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
+                    file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+    expect_lt(abs(nll-603.189168889409),TOLERANCE_STRICT)
+    # Fit model
+    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                           gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
+                                           y = y, X = X, params = params_ST), 
+                    file='NUL')
+    cov_pars_nn <- c(0.08620009,  1.65808432,  0.92637855,  1.66547216,  0.10622668,  0.84991582, 
+                     7.47153166, 11.97787117,  0.88951424, 2.59589631,  0.34853439,  1.41965968,  
+                     0.51082079,  5.68063370,  1.09786555, 11.08306555)
+    coef_nn <- c(1.9595367, 0.1574036, 2.2068320, 0.1408037)
+    nrounds_nn <- 14
+    nll_opt_nn <- 138.466491802357
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7)]-cov_pars_nn[c(1,3,5,7)])),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7)+1]-cov_pars_nn[c(1,3,5,7)+1])),0.1)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), TOLERANCE_STRICT)
+    # Prediction 
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
+    expected_mu <- c(1.959537, 1.843698, 2.414417)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    
+    ## Correlation-based neighbor search 
+    # Evaluate negative log-likelihood
+    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                        gp_approx = "vecchia_correlation_based", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
+                    file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+    expect_lt(abs(nll-602.88672043745),TOLERANCE_STRICT)
+    # Fit model
+    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                           gp_approx = "vecchia_correlation_based", num_neighbors = num_neighbors, vecchia_ordering = "none",
+                                           y = y, X = X, params = params_ST), 
+                    file='NUL')
+    cov_pars_nn <- c(0.08175108,1.70393078,0.92592837,1.71033901,0.13672222,1.12127797,7.60982233,
+                     12.71060068, 0.81783619, 2.32960745,  0.35430528,  1.50497866,  0.57800133,  
+                     5.94311863,  1.08064422, 10.55381018)
+    coef_nn <- c(1.9552693, 0.1567284, 2.2103648, 0.1405621)
+    nrounds_nn <- 20
+    nll_opt_nn <- 138.475005910823
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7)]-cov_pars_nn[c(1,3,5,7)])),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())[c(1,3,5,7)+1]-cov_pars_nn[c(1,3,5,7)+1])),0.1)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef_nn)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), TOLERANCE_STRICT)
+    # Prediction 
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
+    expected_mu <- c(1.955269, 1.842921, 2.413421)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
   })
   
   test_that("ARD Gaussian process model with linear regression term ", {

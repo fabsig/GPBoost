@@ -2196,11 +2196,16 @@ namespace GPBoost {
 			}
 			else {
 #if HAS_STD_CYL_BESSEL_K
-				return(d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux));
+				if (d_aux == 0) {
+					return(d_aux2);
+				}
+				else {
+					return(d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux));
 #else
 				Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", pars[4], cov_fct_type_.c_str());
 				return(0.);
 #endif
+				}
 			}
 		}// end SpaceTimeGneitingCovariance
 		inline double SpaceTimeGneitingCovariance(const vec_t& coords,
@@ -2223,7 +2228,12 @@ namespace GPBoost {
 			}
 			else {
 #if HAS_STD_CYL_BESSEL_K
-				return(d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux));
+				if (d_aux < EPSILON_NUMBERS) {
+					return(d_aux2);
+				}
+				else {
+					return(d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux));
+				}
 #else
 				Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", pars[4], cov_fct_type_.c_str());
 				return(0.);
@@ -2239,7 +2249,7 @@ namespace GPBoost {
 		* \param coords_pred Coordinates
 		* \param pars Parameter in the following order: sigma2, a, c, alpha, nu, beta, delta
 		* \param ind_par Parameter number
-		* \param transf_scale On transformed  scale or not 
+		* \param transf_scale On transformed  scale or not
 		* \param nugget_var Nugget variance
 		* \return Gradient of covariance
 		*/
@@ -2256,9 +2266,15 @@ namespace GPBoost {
 			double dist_space = (coords_pred.row(i).tail(dim_space) - coords.row(j).tail(dim_space)).norm();
 			double grad = transf_scale ? 1. : 0.;
 			double d_aux_time = pars[1] * std::pow(dist_time, 2 * pars[3]) + 1.;// = a*u^(2*alpha) + 1
-			double d_aux = pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2.));// = c * |h| / ( (a*u^(2*alpha) + 1)^(beta/2) )
+			double d_aux;
+			if (dist_space < EPSILON_NUMBERS) {
+				d_aux = 0;
+			}
+			else {
+				d_aux = pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2.));// = c * |h| / ( (a*u^(2*alpha) + 1)^(beta/2) )
+			}
 			double d_aux2 = pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2.));// = sigma2 / ( (a*u^(2*alpha) + 1)^(delta + beta*d/2) )
-			double cm = transf_scale ? pars[ind_par] : nugget_var;// multiplicative constant to get gradient on log-scale or backtransform with nugget variance
+			double cm = transf_scale ? pars[ind_par + 1] : nugget_var;// multiplicative constant to get gradient on log-scale or backtransform with nugget variance
 			if (ind_par == 0 || ind_par == 1 || ind_par == 2 || ind_par == 4 || ind_par == 5) {//a, c, alpha, beta, delta
 				double d_aux_grad = 0., d_aux2_grad = 0.;
 				if (ind_par == 0) {//a
@@ -2267,17 +2283,38 @@ namespace GPBoost {
 					d_aux2_grad = -(pars[6] + pars[5] * dim_space / 2.) * pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2. + 1.)) * c_aux;
 				}
 				else if (ind_par == 1) {//c
-					d_aux_grad = dist_space / (std::pow(d_aux_time, pars[5] / 2.));
+					if (dist_space < EPSILON_NUMBERS) {
+						d_aux_grad = 0;
+					}
+					else {
+						d_aux_grad = dist_space / (std::pow(d_aux_time, pars[5] / 2.));
+					}
 					d_aux2_grad = 0.;
 				}
 				else if (ind_par == 2) {//alpha
-					double c_aux = 2 * pars[1] * std::log(dist_time) * std::pow(dist_time, 2 * pars[3]);// d/dalpha (a u^(2 alpha) + 1), u = dist_time
-					d_aux_grad = -pars[5] / 2. * pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2. + 1.)) * c_aux;
-					d_aux2_grad = -(pars[6] + pars[5] * dim_space / 2.) * pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2. + 1.)) * c_aux;
+					if (dist_time < EPSILON_NUMBERS) {
+						d_aux_grad = 0;
+						d_aux2_grad = 0;
+					}
+					else {
+						double c_aux = 2 * pars[1] * std::log(dist_time) * std::pow(dist_time, 2 * pars[3]);// d/dalpha (a u^(2 alpha) + 1), u = dist_time
+						if (dist_space < EPSILON_NUMBERS) {
+							d_aux_grad = 0;
+						}
+						else {
+							d_aux_grad = -pars[5] / 2. * pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2. + 1.)) * c_aux;
+						}
+						d_aux2_grad = -(pars[6] + pars[5] * dim_space / 2.) * pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2. + 1.)) * c_aux;
+					}
 				}
 				else if (ind_par == 4) {//beta
-					d_aux_grad = -pars[2] * dist_space / 2. * std::log(d_aux_time) / (std::pow(d_aux_time, pars[5] / 2.));
-					d_aux2_grad = - pars[0] * dim_space / 2. * std::log(d_aux_time) / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2.));
+					if (dist_space < EPSILON_NUMBERS) {
+						d_aux_grad = 0;
+					}
+					else {
+						d_aux_grad = -pars[2] * dist_space / 2. * std::log(d_aux_time) / (std::pow(d_aux_time, pars[5] / 2.));
+					}
+					d_aux2_grad = -pars[0] * dim_space / 2. * std::log(d_aux_time) / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2.));
 				}
 				else if (ind_par == 5) {//delta
 					d_aux_grad = 0.;
@@ -2290,17 +2327,22 @@ namespace GPBoost {
 					grad = (d_aux2_grad * (1. + d_aux) - d_aux2 * d_aux * d_aux_grad) * std::exp(-d_aux);
 				}
 				else if (TwoNumbersAreEqual<double>(pars[4], 2.5)) {
-					grad = (d_aux2_grad * (1. + d_aux + d_aux * d_aux / 3.)  - 
-						d_aux2 * (d_aux+ d_aux * d_aux) / 3. * d_aux_grad) * std::exp(-d_aux);
+					grad = (d_aux2_grad * (1. + d_aux + d_aux * d_aux / 3.) -
+						d_aux2 * (d_aux + d_aux * d_aux) / 3. * d_aux_grad) * std::exp(-d_aux);
 				}
 				else {
 #if HAS_STD_CYL_BESSEL_K
-					double bessel = std::cyl_bessel_k(pars[4], d_aux);
-					double grad_bessel = pars[4] / d_aux * bessel - std::cyl_bessel_k(pars[4] + 1., d_aux); // d/dz K_nu(z) = nu / z * K_nu(z) - K_(nu+1)(z)
-					grad = d_aux2_grad * std::pow(d_aux, pars[4]) * bessel +
-						d_aux2 * pars[4] * std::pow(d_aux, pars[4] - 1.) * d_aux_grad * bessel +
-						d_aux2 * std::pow(d_aux, pars[4]) * grad_bessel;
-					grad *= std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]);
+					if (d_aux < EPSILON_NUMBERS) {
+						grad = d_aux2_grad;
+					}
+					else {
+						double bessel = std::cyl_bessel_k(pars[4], d_aux);
+						double grad_bessel = pars[4] / d_aux * bessel - std::cyl_bessel_k(pars[4] + 1., d_aux); // d/dz K_nu(z) = nu / z * K_nu(z) - K_(nu+1)(z)
+						grad = d_aux2_grad * std::pow(d_aux, pars[4]) * bessel +
+							d_aux2 * pars[4] * std::pow(d_aux, pars[4] - 1.) * d_aux_grad * bessel +
+							d_aux2 * std::pow(d_aux, pars[4]) * d_aux_grad * grad_bessel;
+						grad *= std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]);
+					}
 #else
 					grad = 0.;
 #endif
@@ -2319,11 +2361,16 @@ namespace GPBoost {
 					nu_down = pars[4] - delta_step_;
 					CHECK(nu_down > 0.);
 				}
-				double bessel_num_deriv = (std::cyl_bessel_k(nu_up, d_aux) - std::cyl_bessel_k(nu_down, d_aux)) / (2. * delta_step_);
-				double bessel = std::cyl_bessel_k(pars[4], d_aux);
-				grad = std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * d_aux2 * 
-					(std::pow(d_aux, pars[4]) * bessel * (-std::log(2.) - GPBoost::digamma(pars[4])) + // (i) d/dnu 2^{1-v} = -log(2)*2^{1-v} and (ii) d/dnu 1/Gamma(nu) = -digamm(nu) / Gamma(nu)
-					pars[4] * std::pow(d_aux, pars[4] - 1.) * bessel + std::pow(d_aux, pars[4]) * bessel_num_deriv);
+				if (d_aux < EPSILON_NUMBERS) {
+					grad = 0;
+				}
+				else {
+					double bessel_num_deriv = (std::cyl_bessel_k(nu_up, d_aux) - std::cyl_bessel_k(nu_down, d_aux)) / (2. * delta_step_);
+					double bessel = std::cyl_bessel_k(pars[4], d_aux);
+					grad = std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * d_aux2 * std::pow(d_aux, pars[4]) *
+						(bessel * (-std::log(2.) - GPBoost::digamma(pars[4]) + // (i) d/dnu 2^{1-v} = -log(2)*2^{1-v} and (ii) d/dnu 1/Gamma(nu) = -digamm(nu) / Gamma(nu)
+							std::log(d_aux)) + bessel_num_deriv);
+				}
 #else
 				grad = 0.;
 #endif
