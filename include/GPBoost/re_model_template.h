@@ -184,6 +184,10 @@ namespace GPBoost {
 					vecchia_latent_approx_gaussian_ = true;
 					gauss_likelihood_ = false;
 				}
+				if (gp_approx_ == "vecchia_correlation_based") {
+					gp_approx_ = "vecchia";
+					vecchia_neighbor_selection_ = "correlation";
+				}
 			}
 			if (SUPPORTED_GP_APPROX_.find(gp_approx_) == SUPPORTED_GP_APPROX_.end()) {
 				Log::REFatal("GP approximation '%s' is currently not supported ", gp_approx_.c_str());
@@ -3155,7 +3159,7 @@ namespace GPBoost {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_vecchia_cluster_i[j]->SetCovPars(pars);
 							}
-							if (re_comp_gp_clus0->RedetermineVecchiaNeighborsInducingPoints()) {//determine nearest neighbors when using correlation-based approach
+							if (re_comp_gp_clus0->RedetermineVecchiaNeighborsInducingPoints() || vecchia_neighbor_selection_ == "correlation") {//determine nearest neighbors when using correlation-based approach
 								UpdateNearestNeighbors(re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i,
 									entries_init_B_cluster_i, num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
 									has_duplicates_coords_, false, gauss_likelihood_, gp_approx_, chol_ip_cross_cov_[cluster_i][0],
@@ -4431,7 +4435,7 @@ namespace GPBoost {
 			bool redetermine_nn = false;
 			if (gp_approx_ == "vecchia") {
 				std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia_[unique_clusters_[0]][0][ind_intercept_gp_];
-				if (re_comp->RedetermineVecchiaNeighborsInducingPoints()) {
+				if (re_comp->RedetermineVecchiaNeighborsInducingPoints() || vecchia_neighbor_selection_ == "correlation") {
 					if ((((num_iter_ + 1) & num_iter_) == 0) || num_iter_ == 0 || force_redermination) {//(num_iter_ + 1) is power of 2 or 0. 
 						// Note that convergence of internal optimizers is not checked in iterations with redetermine_nn if convergence_criterion_ == "relative_change_in_log_likelihood"
 						redetermine_nn = true;
