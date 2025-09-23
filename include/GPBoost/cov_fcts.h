@@ -102,14 +102,10 @@ namespace GPBoost {
 				use_precomputed_dist_for_calc_cov_ = false;
 				if (cov_fct_type == "space_time_gneiting" || cov_fct_type == "linear") {
 					use_scaled_coordinates_ = false;
-				}
-				else {
-					use_scaled_coordinates_ = true;
-				}
-				if (cov_fct_type == "linear") {
 					redetermine_vecchia_neighbors_IPs_ = false;
 				}
 				else {
+					use_scaled_coordinates_ = true;
 					redetermine_vecchia_neighbors_IPs_ = true;
 				}
 			}
@@ -2311,6 +2307,7 @@ namespace GPBoost {
 				}
 			}//end a, c, alpha, beta, delta
 			else if (ind_par == 3) {//nu
+				Log::REFatal("The gradient for the smoothness parameter is currently not correctly implemented for the '%s' covariance. Either (i) disable the estimation of it using the 'estimate_cov_par_index' parameter of the 'params' argument or (ii) use a non-gradient-based optimizer such as 'nelder_mead' ", cov_fct_type_.c_str());
 #if HAS_STD_CYL_BESSEL_K
 				double nu_up, nu_down;
 				if (transf_scale) {

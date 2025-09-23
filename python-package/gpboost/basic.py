@@ -4988,9 +4988,10 @@ class GPModel(object):
                 - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for additional parameters for non-Gaussian likelihoods
                     (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
-                - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1)
-                    If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, 
-                    estimate_cov_par_index[i] is then bool and indicates which ones are estimated.
+                - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1) 
+                    This allows for disabling the estimation of some (or all) covariance parameters if estimate_cov_par_index != -1. 
+                    'estimate_cov_par_index' should then be a vector with length equal to the number of covariance parameters, 
+                    and estimate_cov_par_index[i] should be of bool type indicating whether parameter number i is estimated or not. 
                     For instance, "estimate_cov_par_index": [1,1,0] means that the first two covariance parameters are estimated and the last one not. 
                 - estimate_aux_pars : bool, (default = True)
                     If True, any additional parameters for non-Gaussian likelihoods are also estimated
@@ -5268,9 +5269,10 @@ class GPModel(object):
                 - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for additional parameters for non-Gaussian likelihoods
                     (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
-                - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1)
-                    If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, 
-                    estimate_cov_par_index[i] is then bool and indicates which ones are estimated.
+                - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1) 
+                    This allows for disabling the estimation of some (or all) covariance parameters if estimate_cov_par_index != -1. 
+                    'estimate_cov_par_index' should then be a vector with length equal to the number of covariance parameters, 
+                    and estimate_cov_par_index[i] should be of bool type indicating whether parameter number i is estimated or not. 
                     For instance, "estimate_cov_par_index": [1,1,0] means that the first two covariance parameters are estimated and the last one not. 
                 - estimate_aux_pars : bool, (default = True)
                     If True, any additional parameters for non-Gaussian likelihoods are also estimated
