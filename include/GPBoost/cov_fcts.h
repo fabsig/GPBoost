@@ -2349,7 +2349,6 @@ namespace GPBoost {
 				}
 			}//end a, c, alpha, beta, delta
 			else if (ind_par == 3) {//nu
-				Log::REFatal("The gradient for the smoothness parameter is currently not correctly implemented for the '%s' covariance. Either (i) disable the estimation of it using the 'estimate_cov_par_index' parameter of the 'params' argument or (ii) use a non-gradient-based optimizer such as 'nelder_mead' ", cov_fct_type_.c_str());
 #if HAS_STD_CYL_BESSEL_K
 				double nu_up, nu_down;
 				if (transf_scale) {
@@ -2365,11 +2364,14 @@ namespace GPBoost {
 					grad = 0;
 				}
 				else {
-					double bessel_num_deriv = (std::cyl_bessel_k(nu_up, d_aux) - std::cyl_bessel_k(nu_down, d_aux)) / (2. * delta_step_);
-					double bessel = std::cyl_bessel_k(pars[4], d_aux);
+					cm = 1.;
+					const double cm_deriv = transf_scale ? pars[4] : nugget_var;
+					const double cm_num_deriv = transf_scale ? 1 : nugget_var;//already on log-scale if transf_scale
+					const double bessel_num_deriv = (std::cyl_bessel_k(nu_up, d_aux) - std::cyl_bessel_k(nu_down, d_aux)) / (2. * delta_step_);
+					const double bessel = std::cyl_bessel_k(pars[4], d_aux);
 					grad = std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * d_aux2 * std::pow(d_aux, pars[4]) *
-						(bessel * (-std::log(2.) - GPBoost::digamma(pars[4]) + // (i) d/dnu 2^{1-v} = -log(2)*2^{1-v} and (ii) d/dnu 1/Gamma(nu) = -digamm(nu) / Gamma(nu)
-							std::log(d_aux)) + bessel_num_deriv);
+						(cm_deriv * bessel * (-std::log(2.) - GPBoost::digamma(pars[4]) + std::log(d_aux)) + // (i) d/dnu 2^{1-v} = -log(2)*2^{1-v}, (ii) d/dnu 1/Gamma(nu) = -digamm(nu) / Gamma(nu), (iii) d/dnu d_aux^v = log(d_aux)*d_aux^v
+							cm_num_deriv * bessel_num_deriv);
 				}
 #else
 				grad = 0.;

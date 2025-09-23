@@ -2482,8 +2482,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     params_ST$init_cov_pars <- cov_pars_nll_gneiting
     # Fit model
-    gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
-                           y = y, X = X, params = params_ST)
+    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                           y = y, X = X, params = params_ST), 
+                    file='NUL')
     cov_pars <- c(0.02633181, 1.40263123, 0.98025373, 1.41115317, 0.52186135, 6.34242936, 7.42595708, 12.70786416,
                   0.56802644, 2.47464004, 0.38871000, 1.49764133, 1.59751470, 10.29308442, 0.37754550, 4.60955445)
     coef <- c(1.9523613, 0.1785007, 2.1877478, 0.1393563)
