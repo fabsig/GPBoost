@@ -965,7 +965,7 @@ namespace GPBoost {
 		nearest_neighbors_cluster_i = std::vector<std::vector<int>>(re_comp->GetNumUniqueREs());
 		dist_obs_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
 		dist_between_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
-		if (!(re_comp->RedetermineVecchiaNeighborsInducingPoints()) && vecchia_neighbor_selection != "residual_correlation") {
+		if (!(re_comp->RedetermineVecchiaNeighborsInducingPoints()) && vecchia_neighbor_selection != "residual_correlation" && vecchia_neighbor_selection != "correlation") {
 			Log::REDebug("Starting nearest neighbor search for Vecchia approximation");
 			find_nearest_neighbors_Vecchia_fast(re_comp->GetCoords(), re_comp->GetNumUniqueREs(), num_neighbors,
 				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates,
@@ -985,7 +985,7 @@ namespace GPBoost {
 				entries_init_B_cluster_i.push_back(Triplet_t(i, i, 1.));//Put 1's on the diagonal since B = I - A
 			}
 		}
-		if (vecchia_neighbor_selection == "residual_correlation") {
+		if (vecchia_neighbor_selection == "residual_correlation" || vecchia_neighbor_selection == "correlation") {
 			has_duplicates = false;
 			den_mat_t coords = re_comp->GetCoords();
 			//Intialize neighbor vectors
@@ -1068,13 +1068,13 @@ namespace GPBoost {
 		std::vector<den_mat_t>& dist_between_neighbors_cluster_i,
 		bool save_distances_isotropic_cov_fct) {
 		std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia_cluster_i[ind_intercept_gp];
-		CHECK(re_comp->RedetermineVecchiaNeighborsInducingPoints() || vecchia_neighbor_selection == "residual_correlation");
+		CHECK(re_comp->RedetermineVecchiaNeighborsInducingPoints() || vecchia_neighbor_selection == "residual_correlation" || vecchia_neighbor_selection == "correlation");
 		int num_re = re_comp->GetNumUniqueREs();
 		CHECK((int)nearest_neighbors_cluster_i.size() == num_re);
 		// find correlation-based nearest neighbors
 		std::vector<den_mat_t> dist_dummy;
 		bool has_duplicates = check_has_duplicates;
-		if (gp_approx == "full_scale_vecchia" && vecchia_neighbor_selection == "residual_correlation") {
+		if ((gp_approx == "full_scale_vecchia" && vecchia_neighbor_selection == "residual_correlation") || vecchia_neighbor_selection == "correlation") {
 			find_nearest_neighbors_Vecchia_FSA_fast(re_comp->GetCoords(), num_re, num_neighbors, chol_ip_cross_cov,
 				re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates, save_distances_isotropic_cov_fct,
 				false, false, num_re);
@@ -1512,7 +1512,7 @@ namespace GPBoost {
 			}
 		}
 		if (CondObsOnly) {
-			if (gp_approx == "full_scale_vecchia" && vecchia_neighbor_selection == "residual_correlation") {
+			if ((gp_approx == "full_scale_vecchia" && vecchia_neighbor_selection == "residual_correlation") || vecchia_neighbor_selection == "correlation") {
 				find_nearest_neighbors_Vecchia_FSA_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred, chol_ip_cross_cov_obs_pred,
 					re_comps_vecchia, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli,
 					num_re_cli - 1, check_has_duplicates, distances_saved, true, false, (int)num_re_cli);
@@ -1534,7 +1534,7 @@ namespace GPBoost {
 			if (!gauss_likelihood) {
 				check_has_duplicates = true;
 			}
-			if (gp_approx == "full_scale_vecchia" && vecchia_neighbor_selection == "residual_correlation") {
+			if ((gp_approx == "full_scale_vecchia" && vecchia_neighbor_selection == "residual_correlation") || vecchia_neighbor_selection == "correlation") {
 				find_nearest_neighbors_Vecchia_FSA_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred, chol_ip_cross_cov_obs_pred,
 					re_comps_vecchia, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli,
 					-1, check_has_duplicates, distances_saved, true, true, (int)num_re_cli);
