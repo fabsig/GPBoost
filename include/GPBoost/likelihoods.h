@@ -2276,6 +2276,9 @@ namespace GPBoost {
 			if (!has_NA_or_Inf) {//calculate determinant
 				mode_has_been_calculated_ = true;
 				na_or_inf_during_last_call_to_find_mode_ = false;
+				if (sample_from_posterior_after_mode_finding_) {
+					Sample_Posterior_LaplaceApprox_Vecchia(re_comps_cross_cov_cluster_i);
+				}
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (information_changes_after_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
@@ -9909,6 +9912,8 @@ namespace GPBoost {
 		/*! Matrix to store (W^(-1) + Sigma)^(-1) (z_1, ..., z_t) calculated in CGTridiagVecchiaLaplaceSigmaplusWinv() for later use in the stochastic trace approximation when calculating the gradient*/
 		den_mat_t WI_plus_Sigma_inv_Z_;
 
+		/*! \brief If true, samples are generated after the mode is found for the Laplace-approximated posterior */
+		bool sample_from_posterior_after_mode_finding_ = false;
 		/*! \brief Number of random vectors (e.g., Rademacher) for sampling from the Laplace-approximated posterior */
 		int num_rand_vec_sim_post_ = 100;
 		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with samples for the Laplace-approximated posterior */
