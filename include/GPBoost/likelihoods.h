@@ -5930,6 +5930,7 @@ namespace GPBoost {
 			for (int j = 0; j < num_rand_vec_sim_post_; ++j) {
 				rand_vec_sim_post_.col(j) += mode_;
 			}
+			rand_vec_sim_post_calculated_ = true;
 		}//end SamplePosterior_LaplaceApprox_Vecchia
 
 		/*!
@@ -9912,8 +9913,10 @@ namespace GPBoost {
 		/*! Matrix to store (W^(-1) + Sigma)^(-1) (z_1, ..., z_t) calculated in CGTridiagVecchiaLaplaceSigmaplusWinv() for later use in the stochastic trace approximation when calculating the gradient*/
 		den_mat_t WI_plus_Sigma_inv_Z_;
 
-		/*! \brief If true, samples are generated after the mode is found for the Laplace-approximated posterior */
+		/*! \brief If true, samples are generated from the Laplace-approximated posterior after the mode is found */
 		bool sample_from_posterior_after_mode_finding_ = false;
+		/*! \brief True if samples have been generated from the Laplace-approximated posterior */
+		bool rand_vec_sim_post_calculated_ = false;
 		/*! \brief Number of random vectors (e.g., Rademacher) for sampling from the Laplace-approximated posterior */
 		int num_rand_vec_sim_post_ = 100;
 		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with samples for the Laplace-approximated posterior */
