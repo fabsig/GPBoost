@@ -5916,10 +5916,16 @@ namespace GPBoost {
 					}//end parallel loop
 				}//end pragma
 			}//end matrix_inversion_method_ == "iterative"
-			// add mean
+			if (!TwoNumbersAreEqual<double>(c_mult_sim_post_, 1.)) {
+#pragma omp parallel for schedule(static)
+				for (int j = 0; j < num_rand_vec_sim_post_; ++j) {
+					rand_vec_sim_post_.col(j) *= c_mult_sim_post_;
+				}
+			}
+			// Add mean
 #pragma omp parallel for schedule(static)
 			for (int j = 0; j < num_rand_vec_sim_post_; ++j) {
-				rand_vec_sim_post_.col(j).noalias() += mode_;
+				rand_vec_sim_post_.col(j) += mode_;
 			}
 		}//end SamplePosterior_LaplaceApprox_Vecchia
 
@@ -9907,6 +9913,8 @@ namespace GPBoost {
 		int num_rand_vec_sim_post_ = 100;
 		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with samples for the Laplace-approximated posterior */
 		den_mat_t rand_vec_sim_post_;
+		/*! Constant by whose square the the covariance of the posterior is multiplied with */
+		double c_mult_sim_post_ = 1.;
 
 		//C) PRECONDITIONER VARIABLES
 		/*! \brief piv_chol_on_Sigma: matrix of dimension nxk with rank(Sigma_L_k_) <= fitc_piv_chol_preconditioner_rank generated in re_model_template.h*/
