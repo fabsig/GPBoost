@@ -1214,7 +1214,7 @@ namespace GPBoost {
 						SigmaI_mode_new = (1 - lr_mode) * SigmaI_mode_ + lr_mode * SigmaI_mode_update;
 						mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
 					}
-					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+					UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 					approx_marginal_ll_new = -0.5 * (SigmaI_mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr);// Calculate new objective function
 					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -1286,7 +1286,7 @@ namespace GPBoost {
 			}
 			vec_t location_par;
 			double* location_par_ptr_dummy;//not used
-			UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
+			UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			approx_marginal_ll = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data());
 			double approx_marginal_ll_new = approx_marginal_ll;
@@ -1361,7 +1361,7 @@ namespace GPBoost {
 				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 					mode_new = mode_ + lr_mode * mode_update;
 					// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr_dummy);
+					UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr_dummy);
 					approx_marginal_ll_new = -0.5 * (mode_new.dot(SigmaI * mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
 					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -1516,7 +1516,7 @@ namespace GPBoost {
 			}
 			vec_t location_par(num_data_);//location parameter = mode of random effects + fixed effects
 			double* location_par_ptr_dummy;//not used
-			UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
+			UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
 			approx_marginal_ll = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data());
 			double approx_marginal_ll_new = approx_marginal_ll;
@@ -1545,7 +1545,7 @@ namespace GPBoost {
 				double lr_mode = 1.;
 				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
 					mode_new = mode_ + lr_mode * mode_update;
-					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr_dummy);
+					UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr_dummy);
 					approx_marginal_ll_new = -0.5 / sigma2 * (mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
 					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -1775,7 +1775,7 @@ namespace GPBoost {
 						D_inv_B_mode = D_inv_rm_ * B_mode;
 						cross_cov_B_t_D_inv_B_mode = Bt_D_inv_B_cross_cov.transpose() * mode_new;
 						wood_inv_cross_cov_B_t_D_inv_B_mode = chol_fact_sigma_woodbury.solve(cross_cov_B_t_D_inv_B_mode);
-						UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+						UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 						approx_marginal_ll_new = -0.5 * ((B_mode.dot(D_inv_B_mode)) - cross_cov_B_t_D_inv_B_mode.dot(wood_inv_cross_cov_B_t_D_inv_B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
 						if (approx_marginal_ll_new < approx_marginal_ll ||
 							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -1879,7 +1879,7 @@ namespace GPBoost {
 							mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
 						}
 						CapChangeModeUpdateNewton(mode_new);
-						UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+						UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 						B_mode = B * mode_new;
 						cross_cov_B_t_D_inv_B_mode = Bt_D_inv_B_cross_cov.transpose() * mode_new;
 						wood_inv_cross_cov_B_t_D_inv_B_mode = chol_fact_sigma_woodbury.solve(cross_cov_B_t_D_inv_B_mode);
@@ -2174,7 +2174,7 @@ namespace GPBoost {
 							mode_new, nesterov_acc_rate, 0, false, 2, false);
 						CapChangeModeUpdateNewton(mode_new);
 						B_mode = B[0] * mode_new;
-						UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+						UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 						approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv[0] * B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
 						if (approx_marginal_ll_new < approx_marginal_ll ||
 							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -2246,7 +2246,7 @@ namespace GPBoost {
 							mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
 						}
 						CapChangeModeUpdateNewton(mode_new);
-						UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+						UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 						approx_marginal_ll_new = LogLikelihood(y_data, y_data_int, location_par_ptr);
 						if (num_sets_re_ == 1) {
 							B_mode = B[0] * mode_new;
@@ -2456,7 +2456,7 @@ namespace GPBoost {
 						mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
 					}
 					//CapChangeModeUpdateNewton(mode_new);//not done since SigmaI_mode would also have to be modified accordingly. TODO: implement this?
-					UpdateLocationPar(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+					UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 					approx_marginal_ll_new = -0.5 * (SigmaI_mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr);// Calculate new objective function
 					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
@@ -2726,7 +2726,7 @@ namespace GPBoost {
 			// Initialize variables
 			vec_t location_par;
 			double* location_par_ptr_dummy;//not used
-			UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
+			UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 			if (matrix_inversion_method_ == "iterative") {
 				// calculate P^(-1) RV
 				den_mat_t PI_RV(num_REs, num_rand_vec_trace_), L_inv_Z, DI_L_plus_D_t_PI_RV;
@@ -3049,7 +3049,7 @@ namespace GPBoost {
 			// Initialize variables
 			vec_t location_par(num_data_);//location parameter = mode of random effects + fixed effects
 			double* location_par_ptr_dummy;//not used
-			UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
+			UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 			// calculate gradient of approx. marginal likelihood wrt the mode
 			vec_t deriv_information_diag_loc_par;//usually vector of negative third derivatives of log-likelihood
 			vec_t d_mll_d_mode;
@@ -5060,7 +5060,7 @@ namespace GPBoost {
 					diag_information_variance_correction_for_prediction_ = true;
 					vec_t location_par(num_data_);//location parameter = mode of random effects + fixed effects
 					double* location_par_ptr_dummy;//not used
-					UpdateLocationPar(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
+					UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 					CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
 					diag_SigmaI_plus_ZtWZ_ = (information_ll_.array()+ 1. / sigma2).matrix();
 					diag_information_variance_correction_for_prediction_ = false;
@@ -8804,17 +8804,17 @@ namespace GPBoost {
 			if (use_random_effects_indices_of_data_ || fixed_effects != nullptr) {
 				location_par = vec_t(dim_location_par_);// if !use_random_effects_indices_of_data_ && fixed_effects == nullptr, then location_par is not used and *location_par_ptr = mode_.data()
 			}
-			UpdateLocationPar(mode_, fixed_effects, location_par, location_par_ptr);
+			UpdateLocationParNewMode(mode_, fixed_effects, location_par, location_par_ptr);
 		}// end InitializeLocationPar
 
 		/*!
-		* \brief Auxiliary function for updating the location parameter = mode of random effects + fixed effects
+		* \brief Auxiliary function for updating the location parameter = Z*mode + fixed_effects with a new mode
 		* \param mode Mode
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param[out] location_par Location parameter
 		* \param[out] location_par_ptr Pointer to location parameter
 		*/
-		void UpdateLocationPar(vec_t& mode,
+		void UpdateLocationParNewMode(vec_t& mode,
 			const double* fixed_effects,
 			vec_t& location_par,
 			double** location_par_ptr) {
@@ -8859,7 +8859,7 @@ namespace GPBoost {
 					*location_par_ptr = location_par.data();
 				}
 			}//end !use_random_effects_indices_of_data_
-		}//end UpdateLocationPar
+		}//end UpdateLocationParNewMode
 
 		/*!
 		* \brief Partition the data into groups of size group_size_ sorted according to the order of the mode (currently not used)
