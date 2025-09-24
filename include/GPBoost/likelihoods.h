@@ -131,6 +131,7 @@ namespace GPBoost {
 		* \param has_weights True, if sample weights should be used
 		* \param weights Sample weights
 		* \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
+		* \param only_one_grouped_RE True if there are only a single level grouped random effects
 		*/
 		Likelihood(string_t type,
 			data_size_t num_data,
@@ -142,7 +143,8 @@ namespace GPBoost {
 			double additional_param,
 			bool has_weights,
 			const double* weights,
-			double likelihood_learning_rate) {
+			double likelihood_learning_rate,
+			bool only_one_grouped_RE) {
 			num_data_ = num_data;
 			string_t likelihood = type;
 			likelihood = ParseLikelihoodAliasVarianceCorrection(likelihood);
@@ -303,6 +305,13 @@ namespace GPBoost {
 					use_Z_ = true;
 					Zt_ = Zt;
 				}				
+			}
+			only_one_grouped_RE_ = only_one_grouped_RE;
+			if (only_one_grouped_RE_) {
+				CHECK(use_random_effects_indices_of_data_);
+				CHECK(random_effects_indices_of_data != nullptr);
+				CHECK(Zt == nullptr);
+				CHECK(!has_SigmaI_mode)
 			}
 			dim_mode_ = num_sets_re_ * num_re;
 			dim_mode_per_set_re_ = num_re;
@@ -9723,6 +9732,8 @@ namespace GPBoost {
 		bool use_Z_ = false;
 		/*! \brief Zt Transpose Z^ T of random effects design matrix that relates latent random effects to observations / likelihoods(used only for multiple level grouped random effects) */
 		const sp_mat_t* Zt_;
+		/*! \brief True if there are only a single level grouped random effects */
+		bool only_one_grouped_RE_ = false;
 		/*! \brief True if there are weights */
 		bool has_weights_ = false;
 		/*! \brief Sample weights */

@@ -6057,7 +6057,7 @@ namespace GPBoost {
 						re_comps_vecchia_[cluster_i][0][ind_intercept_gp_]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
-						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false));
 				}
 				else if (gp_approx_ == "fitc") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -6068,7 +6068,7 @@ namespace GPBoost {
 						re_comps_cross_cov_[cluster_i][0][ind_intercept_gp_]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
-						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false));
 				}
 				else if (use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -6079,7 +6079,7 @@ namespace GPBoost {
 						nullptr,
 						&(Zt_[cluster_i]),
 						likelihood_additional_param_,
-						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false));
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -6090,9 +6090,9 @@ namespace GPBoost {
 						re_comps_[cluster_i][0][0]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
-						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, true));
 				}
-				else if (only_one_GP_calculations_on_RE_scale_ && gp_approx_ != "vecchia") {
+				else if (only_one_GP_calculations_on_RE_scale_ && gp_approx_ != "vecchia" && gp_approx_ != "full_scale_vecchia") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
 						num_data_per_cluster_[cluster_i],
 						re_comps_[cluster_i][0][0]->GetNumUniqueREs(),
@@ -6101,7 +6101,7 @@ namespace GPBoost {
 						re_comps_[cluster_i][0][0]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
-						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false));
 				}
 				else {//!only_one_GP_calculations_on_RE_scale_ && gp_approx_ == "none"
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -6112,7 +6112,7 @@ namespace GPBoost {
 						nullptr,
 						nullptr,
 						likelihood_additional_param_,
-						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_));
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false));
 				}
 				if (!gauss_likelihood_) {
 					likelihood_[cluster_i]->InitializeModeAvec();
