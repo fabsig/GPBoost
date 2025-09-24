@@ -1338,7 +1338,7 @@ namespace GPBoost {
 					pars[3] = 1.;//alpha
 					pars[4] = 1.5;//nu -> matern 1.5
 					pars[5] = 1.;//beta
-					pars[6] = 1e-10;//delta (ecactly zero currently not possible as gradients are done on a log-scale)
+					pars[6] = 1;//delta
 				}
 				else if (cov_fct_type_ == "matern_ard") {
 					if (shape_ <= 1.) {
