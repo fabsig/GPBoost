@@ -376,6 +376,9 @@ if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
 # Define Gaussian process model
 gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                     likelihood = likelihood)
+# GPs become slow for large data sets -> use an approximation such as a Vecchia approximation:
+# gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
+#                     likelihood = likelihood, gp_approx = "vecchia")
 # Create dataset for gpb.train
 dtrain <- gpb.Dataset(data = X_train, label = y_train)
 bst <- gpb.train(data = dtrain, gp_model = gp_model,
