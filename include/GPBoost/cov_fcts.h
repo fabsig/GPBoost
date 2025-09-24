@@ -2248,7 +2248,9 @@ namespace GPBoost {
 		* \param coords Coordinates
 		* \param coords_pred Coordinates
 		* \param pars Parameter in the following order: sigma2, a, c, alpha, nu, beta, delta
-		* \param ind_par Parameter number
+		* \param ind_par Parameter number for which the gradient is calculated, from 0 to 6 for a, c, alpha, nu, beta, delta. 
+		*			Note: sigma2 is not included as the gradient is trivial and computed elsewhere. 
+		*			ind_par thus starts at 0 for a, but pars[ind_par + 1] gives the corresponding parameter in pars
 		* \param transf_scale On transformed  scale or not
 		* \param nugget_var Nugget variance
 		* \return Gradient of covariance
