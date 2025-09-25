@@ -5902,8 +5902,7 @@ namespace GPBoost {
 #endif
 					RNG_t rng_local = parallel_rngs[thread_nb];
 #pragma omp for
-					for (int j = 0; j < num_rand_vec_sim_post_; ++j) {
-						//z_i ~ N(0,I)
+					for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
 						std::normal_distribution<double> ndist(0.0, 1.0);
 						vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_);
 						for (int j = 0; j < dim_mode_; j++) {
@@ -5915,7 +5914,7 @@ namespace GPBoost {
 						vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
 						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
 						Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, 0);
-						rand_vec_sim_post_.col(j) = rand_vec_pred_SigmaI_plus_W_inv;
+						rand_vec_sim_post_.col(i) = rand_vec_pred_SigmaI_plus_W_inv;
 					}//end parallel loop
 				}//end pragma
 			}//end matrix_inversion_method_ == "iterative"
@@ -9918,11 +9917,13 @@ namespace GPBoost {
 		/*! \brief True if samples have been generated from the Laplace-approximated posterior */
 		bool rand_vec_sim_post_calculated_ = false;
 		/*! \brief Number of random vectors (e.g., Rademacher) for sampling from the Laplace-approximated posterior */
-		int num_rand_vec_sim_post_ = 100;
+		int num_rand_vec_sim_post_ = 50;
 		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with samples for the Laplace-approximated posterior */
 		den_mat_t rand_vec_sim_post_;
 		/*! Constant by whose square the the covariance of the posterior is multiplied with */
 		double c_mult_sim_post_ = 1.;
+		/*! Vector of length num_rand_vec_sim_post_ with sums of squared random vectors from the Laplace-approximated posterior minus the mean / mode */
+		std::vector<double> sum_sq_rand_vec_sim_post_zero_mean_;
 
 		//C) PRECONDITIONER VARIABLES
 		/*! \brief piv_chol_on_Sigma: matrix of dimension nxk with rank(Sigma_L_k_) <= fitc_piv_chol_preconditioner_rank generated in re_model_template.h*/
