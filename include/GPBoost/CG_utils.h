@@ -15,7 +15,6 @@
 #include <LightGBM/utils/log.h>
 #include <chrono>
 #include <thread> //temp
-#include <atomic>
 
 using LightGBM::Log;
 
@@ -336,28 +335,42 @@ namespace GPBoost {
 		const double delta_conv,
 		const string_t cg_preconditioner_type);
 
-	/*!
-	* \brief Fills a given matrix with standard normal RV's.
-	* \param generator Random number generator
-	* \param[out] R Matrix of random vectors (r_1, r_2, r_3, ...), where r_i is of dimension n & Cov(r_i) = I (must have been declared with the correct dimensions)
-	*/
-	void GenRandVecNormal(RNG_t& generator,
-		den_mat_t& R);
+	// Old non-parallel version
+	///*!
+	//* \brief Fills a given matrix with standard normal RV's.
+	//* \param generator Random number generator
+	//* \param[out] R Matrix of random vectors (r_1, r_2, r_3, ...), where r_i is of dimension n & Cov(r_i) = I (must have been declared with the correct dimensions)
+	//*/
+	//void GenRandVecNormal(RNG_t& generator,
+	//	den_mat_t& R);
 
 	/*!
 	* \brief Fills a given matrix with standard normal RV's in parallel
 	* \param base_seed Random number generator seed
+	* \param run_id Counter for seeding
 	* \param[out] R Matrix of random vectors (r_1, r_2, r_3, ...), where r_i is of dimension n & Cov(r_i) = I (must have been declared with the correct dimensions)
 	*/
 	void GenRandVecNormalParallel(int base_seed,
+		uint64_t& run_id,
 		den_mat_t& R);
 
+	// Old non-parallel version
+	///*!
+	//* \brief Fills a given matrix with Rademacher RV's.
+	//* \param generator Random number generator
+	//* \param[out] R Matrix of random vectors (r_1, r_2, r_3, ...), where r_i is of dimension n & Cov(r_i) = I (must have been declared with the correct dimensions)
+	//*/
+	//void GenRandVecRademacher(RNG_t& generator,
+	//	den_mat_t& R);
+
 	/*!
-	* \brief Fills a given matrix with Rademacher RV's.
-	* \param generator Random number generator
+	* \brief Fills a given matrix with Rademacher RV's in parallel
+	* \param base_seed Random number generator seed
+	* \param run_id Counter for seeding
 	* \param[out] R Matrix of random vectors (r_1, r_2, r_3, ...), where r_i is of dimension n & Cov(r_i) = I (must have been declared with the correct dimensions)
 	*/
-	void GenRandVecRademacher(RNG_t& generator,
+	void GenRandVecRademacherParallel(int base_seed,
+		uint64_t& run_id,
 		den_mat_t& R);
 
 	/*!

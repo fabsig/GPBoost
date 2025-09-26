@@ -2517,16 +2517,12 @@ namespace GPBoost {
 						else if (matrix_inversion_method_ == "iterative") {//Conjugate Gradient
 							// Sample probe vectors
 							if (!saved_rand_vec_[cluster_i]) {
-								if (!cg_generator_seeded_) {
-									cg_generator_ = RNG_t(seed_rand_vec_trace_);
-									cg_generator_seeded_ = true;
-								}
 								rand_vec_probe_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-								GenRandVecNormal(cg_generator_, rand_vec_probe_[cluster_i]);
+								GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_probe_[cluster_i]);
 								// Sample probe vectors from N(0,P)
 								if (cg_preconditioner_type_ == "fitc") {
 									rand_vec_probe_low_rank_[cluster_i].resize(num_ind_points_, num_rand_vec_trace_);
-									GenRandVecNormal(cg_generator_, rand_vec_probe_low_rank_[cluster_i]);
+									GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_probe_low_rank_[cluster_i]);
 									rand_vec_probe_P_[cluster_i] = rand_vec_probe_[cluster_i];
 								}
 								if (reuse_rand_vec_trace_) {//Use same random vectors for each iteration && cluster_i == end(unique_cluster) Tim
@@ -2591,12 +2587,8 @@ namespace GPBoost {
 								else if (matrix_inversion_method_ == "iterative") {
 									// Sample probe vectors
 									if (!saved_rand_vec_[cluster_i]) {
-										if (!cg_generator_seeded_) {
-											cg_generator_ = RNG_t(seed_rand_vec_trace_);
-											cg_generator_seeded_ = true;
-										}
 										rand_vec_probe_[cluster_i].resize(cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_); //N(0,I)
-										GenRandVecNormal(cg_generator_, rand_vec_probe_[cluster_i]);
+										GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_probe_[cluster_i]);
 										if (reuse_rand_vec_trace_) {
 											saved_rand_vec_[cluster_i] = true;
 										}
@@ -5193,8 +5185,10 @@ namespace GPBoost {
 		bool cg_generator_seeded_ = false;
 		/*! Indicates if we observe a NAN or Inf value in a conjugate gradient iteration */
 		bool NaN_found = false;
-		/*! Random number generator used generate Rademacher-vectors in GenRandVecNormal() and GenRandVecRademacher()*/
+		/*! Random number generator used in iterative methods */
 		RNG_t cg_generator_;
+		/*! See counter for parallel RNG */
+		uint64_t cg_generator_counter_ = 0;
 		/*! Matrix of random Rademacher vectors (u_1,...,u_t), where u_i is of dimension n & Cov(u_i) = I*/
 		std::map<data_size_t, den_mat_t> rand_vec_probe_;
 		/*! Matrix of random Rademacher vectors (u_1,...,u_t), where u_i is of dimension n & Cov(u_i) = I or Cov(u_i) = P*/
@@ -8906,12 +8900,8 @@ namespace GPBoost {
 					D.diagonal().array() = D_inv_[cluster_i][0].diagonal().array().pow(-1);
 					// Sample vectors
 					if (!saved_rand_vec_fisher_info_[cluster_i]) {
-						if (!cg_generator_seeded_) {
-							cg_generator_ = RNG_t(seed_rand_vec_trace_);
-							cg_generator_seeded_ = true;
-						}
 						rand_vec_fisher_info_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-						GenRandVecNormal(cg_generator_, rand_vec_fisher_info_[cluster_i]);
+						GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_fisher_info_[cluster_i]);
 						if (reuse_rand_vec_trace_) {//Use same random vectors for each iteration && cluster_i == end(unique_cluster) Tim
 							saved_rand_vec_fisher_info_[cluster_i] = true;
 						}
@@ -9030,12 +9020,8 @@ namespace GPBoost {
 				// Hutchinson's Trace estimator
 				// Sample vectors
 				if (!saved_rand_vec_fisher_info_[cluster_i]) {
-					if (!cg_generator_seeded_) {
-						cg_generator_ = RNG_t(seed_rand_vec_trace_);
-						cg_generator_seeded_ = true;
-					}
 					rand_vec_fisher_info_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-					GenRandVecNormal(cg_generator_, rand_vec_fisher_info_[cluster_i]);
+					GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_fisher_info_[cluster_i]);
 					if (reuse_rand_vec_trace_) {//Use same random vectors for each iteration && cluster_i == end(unique_cluster) Tim
 						saved_rand_vec_fisher_info_[cluster_i] = true;
 					}
@@ -9297,12 +9283,8 @@ namespace GPBoost {
 				else if (matrix_inversion_method_ == "iterative") {
 					// Sample vectors
 					if (!saved_rand_vec_fisher_info_[cluster_i]) {
-						if (!cg_generator_seeded_) {
-							cg_generator_ = RNG_t(seed_rand_vec_trace_);
-							cg_generator_seeded_ = true;
-						}
 						rand_vec_fisher_info_[cluster_i].resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
-						GenRandVecNormal(cg_generator_, rand_vec_fisher_info_[cluster_i]);
+						GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_fisher_info_[cluster_i]);
 						if (reuse_rand_vec_trace_) {
 							saved_rand_vec_fisher_info_[cluster_i] = true;
 						}
@@ -10447,7 +10429,7 @@ namespace GPBoost {
 								// Use stochastic estimate of sigma_resid_pred_obs * resid_obs_inv * sigma_resid_pred_obs.transpose()
 								cg_generator_ = RNG_t(seed_rand_vec_trace_);
 								den_mat_t rand_vecs(nsim_var_pred, num_REs_obs);
-								GenRandVecNormal(cg_generator_, rand_vecs);
+								GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vecs);
 								den_mat_t sample_resid_cov;
 								vec_t sample_resid_var;
 								if (calc_pred_cov) {
@@ -10490,7 +10472,7 @@ namespace GPBoost {
 									//			instead of the diagonal of sigma_resid_pred_obs * sigma_resid_obs^-1 * sigma_resid_pred_obs^T
 //									sample_resid_var = vec_t::Zero(num_REs_pred);
 //									den_mat_t rand_vec_s(nsim_var_pred, num_REs_pred);
-//									GenRandVecRademacher(cg_generator_, rand_vec_s);
+//									GenRandVecRademacher(cg_generator_, rand_vec_s);//note (26.09.2025): 'GenRandVecRademacher' has been replaced by 'GenRandVecRademacherParallel'
 //#pragma omp parallel for schedule(static)
 //									for (int i = 0; i < nsim_var_pred; ++i) {
 //										vec_t rand_vec_i_0 = rand_vec_s.row(i);

@@ -799,17 +799,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                              num_rand_vec_trace=100))
                         , file='NUL')
         expected_values <- c(0.3060671, 0.9328884, 0.3146682)
+        nll_opt <- 59.33113628
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),tolerance_loc_1)
-        if(inv_method=="iterative"){
-          if(cg_preconditioner_type=="ssor"){
-            opt_it <- 32 
-          } else{
-            opt_it <- 22  
-          }
-        } else{
-          opt_it <- 37
-        }
-        expect_equal(gp_model$get_num_optim_iter(), opt_it)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt),tolerance_loc_3)
         
         # Predict training data random effects
         cov_pars <- gp_model$get_cov_pars()
@@ -885,18 +877,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                y = y_2, likelihood = "bernoulli_probit", params = params)
                         , file='NUL')
         expected_values <- c(0.1950790008, 0.5496159992)
-        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),tolerance_loc_2)
-        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-64.37229209),tolerance_loc_2)
-        if(inv_method=="iterative"){
-          if(cg_preconditioner_type=="ssor"){
-            opt_it <- 19
-          } else{
-            opt_it <- 14
-          }
-        } else{
-          opt_it <- 20
-        }
-        expect_equal(gp_model$get_num_optim_iter(), opt_it)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),5*tolerance_loc_2)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-64.37229209),tolerance_loc_3)
         # summary(gp_model)
         # # Compare to lme4
         # library(lme4)
@@ -1334,7 +1316,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
           expect_lt(sum(abs(pred$var-expected_var_resp)),tolerance_loc_1)
           # Likelihood evaluation
           nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
-          expect_lt(abs(nll-expected_nll),tolerance_loc_1)
+          expect_lt(abs(nll-expected_nll),2*tolerance_loc_1)
           
           #######################
           ## Less neighbors than observations
@@ -1471,7 +1453,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         
       }# end loop cg_preconditioner_type in loop_cg_PC
     }# end loop inv_method in c("cholesky", "iterative")
-    
     
     ## "vecchia" preconditioner
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
@@ -1756,7 +1737,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         predict_var = TRUE, predict_response = FALSE, 
                                         cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
         expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
-        expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),tolerance_loc_1)
+        expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),2*tolerance_loc_1)
         # Likelihood evaluation
         nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
         expect_lt(abs(nll-expected_nll),tolerance_loc_1)
@@ -2418,6 +2399,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   test_that("Gamma regression ", {
+    
     params <- OPTIM_PARAMS_BFGS
     params$init_aux_pars = 1.
     params$estimate_aux_pars = FALSE
@@ -2779,7 +2761,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
       nll_exp <- 159.9221359
       if(inv_method=="iterative"){
-        expect_lt(abs(nll-nll_exp),0.2)
+        expect_lt(abs(nll-nll_exp),0.4)
       } else{
         expect_lt(abs(nll-nll_exp),0.05)
       }
@@ -2817,6 +2799,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   }) # end Gamma regression
   
   test_that("negative binomial regression ", {
+    
     params <- DEFAULT_OPTIM_PARAMS
     params$estimate_aux_pars <- TRUE
     params$init_aux_pars <- 1.
@@ -3001,15 +2984,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expected_mu <- c(-0.1924198, -0.2171927, 0.4252168)
       expected_cov <- c(0.3457035342, 0.1671072475, 0.0001336443, 0.1671072475, 0.3481552180, 
                         0.0001349335, 0.0001336443, 0.0001349335, 0.2529442560)
-      expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+      expect_lt(sum(abs(pred$mu-expected_mu)),2*tolerance_loc_1)
       adjust_tol <- 2
-      if (inv_method == "iterative") adjust_tol <- 1.5
+      if (inv_method == "iterative") adjust_tol <- 4
       expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),adjust_tol*tolerance_loc_1)
       # Evaluate approximate negative marginal log-likelihood
       nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
       nll_exp <- 164.4182898
       if(inv_method=="iterative"){
-        expect_lt(abs(nll-nll_exp),0.3)
+        expect_lt(abs(nll-nll_exp),2)
       } else{
         expect_lt(abs(nll-nll_exp),0.05)
       }
@@ -3705,7 +3688,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                             matrix_inversion_method = inv_method), file='NUL')
         gp_model$set_optim_params(params = params_vecchia)
         capture.output( nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y, aux_pars = aux_pars_pred_eval), file='NUL')
-        expect_lt(abs(nll-expected_nll),tolerance_loc_3)
+        expect_lt(abs(nll-expected_nll),2*tolerance_loc_3)
         # Estimation
         capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                             likelihood = "t", gp_approx = "vecchia", 
@@ -3715,7 +3698,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_ITERATIVE)
         expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE_ITERATIVE)
         expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_ITERATIVE)
-        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est),tolerance_loc_3)
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est),3*tolerance_loc_3)
         # Prediction
         gp_model$set_optim_params(params = list(init_aux_pars = aux_pars_pred_eval, init_coef = coefs_pred))
         gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", 
@@ -3755,7 +3738,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                y = y_multiple, X = X, params = params_vecchia_mult, likelihood_additional_param=likelihood_additional_param), file='NUL')
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_multiple)),tolerance_loc_2)
         expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs_multiple)),TOLERANCE_ITERATIVE)
-        expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars_multiple)),0.2)
+        expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars_multiple)),0.3)
         expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est_multiple),tolerance_loc_2)
         gp_model$set_optim_params(params = list(init_aux_pars = aux_pars_pred_eval, init_coef = coefs_pred))
         gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", 
@@ -3777,7 +3760,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
           gp_model$set_optim_params(params = params_vecchia)
           capture.output( nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y, aux_pars = aux_pars_pred_eval), file='NUL')
           expected_nll_less_nn <- 144.099563
-          expect_lt(abs(nll-expected_nll_less_nn),tolerance_loc_3)
+          expect_lt(abs(nll-expected_nll_less_nn),2*tolerance_loc_3)
           # Estimation
           capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                               likelihood = "t", gp_approx = "vecchia", 
@@ -3788,7 +3771,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
           expect_lt(sum(abs(as.vector(gp_model$get_coef())-coefs)),TOLERANCE_ITERATIVE)
           expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_ITERATIVE)
           nll_est_less_nn <- 107.8264387
-          expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est_less_nn),tolerance_loc_3)
+          expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est_less_nn),3*tolerance_loc_3)
           # Prediction
           gp_model$set_optim_params(params = list(init_aux_pars = aux_pars_pred_eval, init_coef = coefs_pred))
           gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", nsim_var_pred = nsim_var_pred)

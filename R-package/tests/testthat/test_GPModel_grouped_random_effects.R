@@ -392,16 +392,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              cg_preconditioner_type=cg_preconditioner_type, num_rand_vec_trace=100))
         expected_values <- c(0.49792062, 0.02408196, 1.21972166, 0.18357646, 1.06962710, 0.22567292)
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),tolerance_loc_1)
-        if(inv_method == "iterative"){
-          if(cg_preconditioner_type=="ssor"){
-            opt_it <- 6
-          } else{
-            opt_it <- 5
-          }
-        } else{
-          opt_it <- 4
-        }
-        expect_equal(gp_model$get_num_optim_iter(), opt_it)
+        expect_lte(gp_model$get_num_optim_iter(), 6)
+        expect_gte(gp_model$get_num_optim_iter(), 4)
         
         # fix some covariance parameters
         params_loc <- list(optimizer_cov = "lbfgs", std_dev = TRUE, 

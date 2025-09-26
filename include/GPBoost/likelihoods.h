@@ -1380,17 +1380,12 @@ namespace GPBoost {
 			if (!has_NA_or_Inf) {//calculate determinant
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (matrix_inversion_method_ == "iterative") {
-					//Seed Generator
-					if (!cg_generator_seeded_) {
-						cg_generator_ = RNG_t(seed_rand_vec_trace_);
-						cg_generator_seeded_ = true;
-					}
 					if (calc_mll) {//calculate determinant term for approx_marginal_ll
 						//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
 						if (!saved_rand_vec_trace_) {
 							//Generate t (= num_rand_vec_trace_) random vectors
 							rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
-							GenRandVecNormal(cg_generator_, rand_vec_trace_I_);
+							GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_trace_I_);
 							if (reuse_rand_vec_trace_) {
 								saved_rand_vec_trace_ = true;
 							}
@@ -1907,27 +1902,22 @@ namespace GPBoost {
 					CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
 				}
 				if (matrix_inversion_method_ == "iterative") {
-					//Seed Generator
-					if (!cg_generator_seeded_) {
-						cg_generator_ = RNG_t(seed_rand_vec_trace_);
-						cg_generator_seeded_ = true;
-					}
 					if (calc_mll) {//calculate determinant term for approx_marginal_ll
 						//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
 						if (!saved_rand_vec_trace_) {
 							rand_vec_trace_I2_.resize(dim_mode_, num_rand_vec_trace_);
 							rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
-							GenRandVecNormal(cg_generator_, rand_vec_trace_I2_);
+							GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_trace_I2_);
 							SigmaI_plus_W_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
 							if (cg_preconditioner_type_ == "vifdu") {
 								rand_vec_trace_P_.resize(num_ip, num_rand_vec_trace_);
 								rand_vec_trace_I3_.resize(dim_mode_, num_rand_vec_trace_);
-								GenRandVecNormal(cg_generator_, rand_vec_trace_P_);
-								GenRandVecNormal(cg_generator_, rand_vec_trace_I3_);
+								GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_trace_P_);
+								GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_trace_I3_);
 							}
 							else if (cg_preconditioner_type_ == "fitc") {
 								rand_vec_trace_P_.resize(num_ip_preconditioner, num_rand_vec_trace_);
-								GenRandVecNormal(cg_generator_, rand_vec_trace_P_);
+								GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_trace_P_);
 							}
 							if (reuse_rand_vec_trace_) {
 								saved_rand_vec_trace_ = true;
@@ -2284,11 +2274,6 @@ namespace GPBoost {
 					CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
 				}
 				if (matrix_inversion_method_ == "iterative") {
-					//Seed Generator
-					if (!cg_generator_seeded_) {
-						cg_generator_ = RNG_t(seed_rand_vec_trace_);
-						cg_generator_seeded_ = true;
-					}
 					if (calc_mll) {//calculate determinant term for approx_marginal_ll
 						//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
 						if (!saved_rand_vec_trace_) {
@@ -2297,7 +2282,7 @@ namespace GPBoost {
 								rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
 								if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc") {
 									rand_vec_trace_I2_.resize(fitc_piv_chol_preconditioner_rank_, num_rand_vec_trace_);
-									GenRandVecNormal(cg_generator_, rand_vec_trace_I2_);
+									GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_trace_I2_);
 								}
 								WI_plus_Sigma_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
 							}
@@ -2308,7 +2293,7 @@ namespace GPBoost {
 							else {
 								Log::REFatal("FindModePostRandEffCalcMLLVecchia: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 							}
-							GenRandVecNormal(cg_generator_, rand_vec_trace_I_);
+							GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_trace_I_);
 							if (reuse_rand_vec_trace_) {
 								saved_rand_vec_trace_ = true;
 							}
@@ -5874,19 +5859,15 @@ namespace GPBoost {
 		*/
 		void Sample_Posterior_LaplaceApprox_Vecchia(const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) {
 			
-			if (!cg_generator_seeded_) {
-				cg_generator_ = RNG_t(seed_rand_vec_trace_);
-				cg_generator_seeded_ = true;
-			}
 			CHECK(num_sets_re_ == 1);
 			//sample iid normal random vectors
 			if (!sampled_rand_vec_I_sim_post_) {
 				rand_vec_I_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
-				GenRandVecNormal(cg_generator_, rand_vec_I_sim_post_);
-				rand_vec_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);				
+				GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_sim_post_);
+				rand_vec_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
 				if (matrix_inversion_method_ == "iterative") {
 					rand_vec_I_2_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
-					GenRandVecNormal(cg_generator_, rand_vec_I_2_sim_post_);
+					GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_2_sim_post_);
 				}
 				if (reuse_rand_vec_I_sim_post_) {
 					sampled_rand_vec_I_sim_post_ = true;
@@ -9897,10 +9878,12 @@ namespace GPBoost {
 		vec_t SigmaI_plus_ZtWZ_inv_diag_;
 
 		//B) RANDOM VECTOR VARIABLES
-		/*! Random number generator used to generate rand_vec_trace_I_*/
+		/*! Random number generator used to generate rand_vec_trace_I_ */
 		RNG_t cg_generator_;
-		/*! If the seed of the random number generator cg_generator_ is set, cg_generator_seeded_ is set to true*/
+		/*! If the seed of the random number generator cg_generator_ is set, cg_generator_seeded_ is set to true */
 		bool cg_generator_seeded_ = false;
+		/*! See counter for parallel RNG */
+		uint64_t cg_generator_counter_ = 0;
 		/*! If reuse_rand_vec_trace_ is true and rand_vec_trace_I_ has been generated for the first time, then saved_rand_vec_trace_ is set to true */
 		bool saved_rand_vec_trace_ = false;
 		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I, r_i is of dimension num_data, and t = num_rand_vec_trace_ */
