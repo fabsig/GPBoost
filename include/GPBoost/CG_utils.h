@@ -15,6 +15,7 @@
 #include <LightGBM/utils/log.h>
 #include <chrono>
 #include <thread> //temp
+#include <atomic>
 
 using LightGBM::Log;
 
@@ -341,6 +342,14 @@ namespace GPBoost {
 	* \param[out] R Matrix of random vectors (r_1, r_2, r_3, ...), where r_i is of dimension n & Cov(r_i) = I (must have been declared with the correct dimensions)
 	*/
 	void GenRandVecNormal(RNG_t& generator,
+		den_mat_t& R);
+
+	/*!
+	* \brief Fills a given matrix with standard normal RV's in parallel
+	* \param base_seed Random number generator seed
+	* \param[out] R Matrix of random vectors (r_1, r_2, r_3, ...), where r_i is of dimension n & Cov(r_i) = I (must have been declared with the correct dimensions)
+	*/
+	void GenRandVecNormalParallel(int base_seed,
 		den_mat_t& R);
 
 	/*!

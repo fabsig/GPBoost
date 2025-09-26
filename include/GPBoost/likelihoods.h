@@ -4099,7 +4099,11 @@ namespace GPBoost {
 				if (grad_information_wrt_mode_non_zero_) {
 					d_mll_d_mode = 0.5 * d_log_det_Sigma_W_plus_I_d_mode;
 					SigmaI_plus_W_inv_d_mll_d_mode = vec_t(dim_mode_);
-					Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, 0);
+					bool has_NA_or_Inf = false;
+					Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, 0, has_NA_or_Inf);
+					if (has_NA_or_Inf) {
+						Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
+					}
 				}
 				// Calculate gradient wrt covariance parameters
 				bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
@@ -5376,7 +5380,6 @@ namespace GPBoost {
 								rhs_part = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(rhs_part1);
 								rhs_part2 = (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * rand_vec_pred_SigmaI_plus_W));
 								rand_vec_pred_SigmaI_plus_W = rhs_part + rhs_part2;
-
 								CGVIFLaplaceSigmaPlusWinvVec(information_ll_inv, D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
 									chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv_interim, has_NA_or_Inf,
 									cg_max_num_it_, 0, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true);
@@ -5756,7 +5759,11 @@ namespace GPBoost {
 							vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
 							vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
 							//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
-							Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, 0);
+							bool has_NA_or_Inf = false;
+							Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, 0, has_NA_or_Inf);
+							if (has_NA_or_Inf) {
+								Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
+							}
 							if (num_sets_re_ > 1) {
 								rand_vec_pred_SigmaI_plus_W_inv = rand_vec_pred_SigmaI_plus_W_inv.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_);// this could be done much more efficiently avoiding double calculations...
 							}
@@ -5866,57 +5873,50 @@ namespace GPBoost {
 		* \brief Sampling from the Laplace-approximated posterior when using a Vecchia approximation
 		*/
 		void Sample_Posterior_LaplaceApprox_Vecchia(const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) {
-			rand_vec_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+			
 			if (!cg_generator_seeded_) {
 				cg_generator_ = RNG_t(seed_rand_vec_trace_);
 				cg_generator_seeded_ = true;
 			}
 			CHECK(num_sets_re_ == 1);
-			if (matrix_inversion_method_ == "cholesky") {
-				GenRandVecNormal(cg_generator_, rand_vec_sim_post_);
-				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_sim_post_, rand_vec_sim_post_, false);
+			//sample iid normal random vectors
+			if (!sampled_rand_vec_I_sim_post_) {
+				rand_vec_I_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+				GenRandVecNormal(cg_generator_, rand_vec_I_sim_post_);
+				rand_vec_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);				
+				if (matrix_inversion_method_ == "iterative") {
+					rand_vec_I_2_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+					GenRandVecNormal(cg_generator_, rand_vec_I_2_sim_post_);
+				}
+				if (reuse_rand_vec_I_sim_post_) {
+					sampled_rand_vec_I_sim_post_ = true;
+				}
+			}//end !sampled_rand_vec_I_sim_post_
+			CHECK(rand_vec_I_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_I_sim_post_.rows() == dim_mode_);
+			CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_sim_post_.rows() == dim_mode_);
+			if (matrix_inversion_method_ == "cholesky") {				
+				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_I_sim_post_, rand_vec_sim_post_, false);
 			}
-			else {
-				CHECK(matrix_inversion_method_ == "iterative");
+			else if (matrix_inversion_method_ == "iterative") {
+				CHECK(rand_vec_I_2_sim_post_.cols() == num_rand_vec_sim_post_);
+				CHECK(rand_vec_I_2_sim_post_.rows() == dim_mode_);
 				vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
 				sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * (D_inv_rm_.cwiseSqrt());
-				int num_threads;
-#ifdef _OPENMP
-				num_threads = omp_get_max_threads();
-#else
-				num_threads = 1;
-#endif
-				std::uniform_int_distribution<> unif(0, 2147483646);
-				std::vector<RNG_t> parallel_rngs;
-				for (int ig = 0; ig < num_threads; ++ig) {
-					int seed_local = unif(cg_generator_);
-					parallel_rngs.push_back(RNG_t(seed_local));
-				}
-#pragma omp parallel
-				{
-					int thread_nb;
-#ifdef _OPENMP
-					thread_nb = omp_get_thread_num();
-#else
-					thread_nb = 0;
-#endif
-					RNG_t rng_local = parallel_rngs[thread_nb];
-#pragma omp for
-					for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
-						std::normal_distribution<double> ndist(0.0, 1.0);
-						vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_);
-						for (int j = 0; j < dim_mode_; j++) {
-							rand_vec_pred_I_1(j) = ndist(rng_local);
-							rand_vec_pred_I_2(j) = ndist(rng_local);
-						}
-						//z_i ~ N(0,(Sigma^{-1} + W))
-						vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
-						vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
-						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
-						Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, 0);
-						rand_vec_sim_post_.col(i) = rand_vec_pred_SigmaI_plus_W_inv;
-					}//end parallel loop
-				}//end pragma
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
+					//z_i ~ N(0,(Sigma^{-1} + W))
+					vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_I_sim_post_.col(i) + W_diag_sqrt.cwiseProduct(rand_vec_I_2_sim_post_.col(i));
+					vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
+					//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
+					bool has_NA_or_Inf = false;
+					Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, 0, has_NA_or_Inf);
+					if (has_NA_or_Inf) {
+						Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
+					}
+					rand_vec_sim_post_.col(i) = rand_vec_pred_SigmaI_plus_W_inv;
+				}//end parallel loop
 			}//end matrix_inversion_method_ == "iterative"
 			if (!TwoNumbersAreEqual<double>(c_mult_sim_post_, 1.)) {
 #pragma omp parallel for schedule(static)
@@ -5925,9 +5925,11 @@ namespace GPBoost {
 				}
 			}
 			// Add mean
+			if (add_mean_sim_post_) {
 #pragma omp parallel for schedule(static)
-			for (int j = 0; j < num_rand_vec_sim_post_; ++j) {
-				rand_vec_sim_post_.col(j) += mode_;
+				for (int j = 0; j < num_rand_vec_sim_post_; ++j) {
+					rand_vec_sim_post_.col(j) += mode_;
+				}
 			}
 			rand_vec_sim_post_calculated_ = true;
 		}//end SamplePosterior_LaplaceApprox_Vecchia
@@ -6283,7 +6285,11 @@ namespace GPBoost {
 						vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
 						vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
 						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
-						Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, 0);
+						bool has_NA_or_Inf = false;
+						Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, 0, has_NA_or_Inf);
+						if (has_NA_or_Inf) {
+							Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
+						}
 						pred_var_private += rand_vec_pred_SigmaI_plus_W_inv.cwiseProduct(rand_vec_pred_SigmaI_plus_W_inv);
 					}// end for loop
 #pragma omp critical
@@ -6656,6 +6662,7 @@ namespace GPBoost {
 			rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
 			nsim_var_pred_ = nsim_var_pred;
 			num_rand_vec_sim_post_ = nsim_var_pred;
+			reuse_rand_vec_I_sim_post_ = reuse_rand_vec_trace;
 		}//end SetMatrixInversionProperties
 
 		static string_t ParseLikelihoodAlias(const string_t& likelihood) {
@@ -9160,21 +9167,19 @@ namespace GPBoost {
 			else {
 				Log::REFatal("Inv_SigmaI_plus_ZtWZ_iterative: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 			}
-			if (has_NA_or_Inf) {
-				Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
-			}
 		}//end Inv_SigmaI_plus_ZtWZ_iterative
 		// Overload when preconditioners are not calculated
 		void Inv_SigmaI_plus_ZtWZ_iterative_given_PC(int cg_max_num_it,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
 			const vec_t& rhs,
 			vec_t& SigmaI_plus_ZtWZ_inv_rhs,
-			int it) {
+			int it,
+			bool& has_NA_or_Inf) {
 			den_mat_t d1{};
 			sp_mat_t  d2{}, d3{}, d4{};
 			REModelTemplate<T_mat, T_chol>* model = nullptr;
-			bool has_NA_or_Inf;
-			Inv_SigmaI_plus_ZtWZ_iterative(cg_max_num_it, d1, d2, d3, d4, has_NA_or_Inf, re_comps_cross_cov_cluster_i, 0, model, rhs, SigmaI_plus_ZtWZ_inv_rhs, it, false);
+			Inv_SigmaI_plus_ZtWZ_iterative(cg_max_num_it, d1, d2, d3, d4, has_NA_or_Inf, 
+				re_comps_cross_cov_cluster_i, 0, model, rhs, SigmaI_plus_ZtWZ_inv_rhs, it, false);
 		}//end Inv_SigmaI_plus_ZtWZ_iterative_given_PC
 
 		/*!
@@ -9820,7 +9825,6 @@ namespace GPBoost {
 		/*! \brief Type of predictive variance correction */
 		string_t var_cor_pred_version_ = "freq_asymptotic";
 
-
 		// MODE FINDING PROPERTIES
 		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
 		int maxit_mode_newton_ = 1000;
@@ -9912,19 +9916,6 @@ namespace GPBoost {
 		/*! Matrix to store (W^(-1) + Sigma)^(-1) (z_1, ..., z_t) calculated in CGTridiagVecchiaLaplaceSigmaplusWinv() for later use in the stochastic trace approximation when calculating the gradient*/
 		den_mat_t WI_plus_Sigma_inv_Z_;
 
-		/*! \brief If true, samples are generated from the Laplace-approximated posterior after the mode is found */
-		bool sample_from_posterior_after_mode_finding_ = false;
-		/*! \brief True if samples have been generated from the Laplace-approximated posterior */
-		bool rand_vec_sim_post_calculated_ = false;
-		/*! \brief Number of random vectors (e.g., Rademacher) for sampling from the Laplace-approximated posterior */
-		int num_rand_vec_sim_post_ = 50;
-		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with samples for the Laplace-approximated posterior */
-		den_mat_t rand_vec_sim_post_;
-		/*! Constant by whose square the the covariance of the posterior is multiplied with */
-		double c_mult_sim_post_ = 1.;
-		/*! Vector of length num_rand_vec_sim_post_ with sums of squared random vectors from the Laplace-approximated posterior minus the mean / mode */
-		std::vector<double> sum_sq_rand_vec_sim_post_zero_mean_;
-
 		//C) PRECONDITIONER VARIABLES
 		/*! \brief piv_chol_on_Sigma: matrix of dimension nxk with rank(Sigma_L_k_) <= fitc_piv_chol_preconditioner_rank generated in re_model_template.h*/
 		den_mat_t Sigma_L_k_;
@@ -9958,6 +9949,30 @@ namespace GPBoost {
 		den_mat_t D_inv_B_cross_cov_;
 		/*! \brief Row-major matrix D^(-1) B*/
 		sp_mat_rm_t D_inv_B_rm_;
+
+		// VARIABLES FOR SAMPLING FROM THE LAPLACE-APPROXIMATED POSTERIOR
+		/*! \brief If true, samples are generated from the Laplace-approximated posterior after the mode is found */
+		bool sample_from_posterior_after_mode_finding_ = false;
+		/*! \brief True if samples have been generated from the Laplace-approximated posterior */
+		bool rand_vec_sim_post_calculated_ = false;
+		/*! \brief Number of random vectors (e.g., Rademacher) for sampling from the Laplace-approximated posterior */
+		int num_rand_vec_sim_post_ = 50;
+		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with samples from the Laplace-approximated posterior */
+		den_mat_t rand_vec_sim_post_;
+		/*! Matrix with iid normal random vectors for sampling from the Laplace-approximated posterior */
+		den_mat_t rand_vec_I_sim_post_;
+		/*! Second set of iid normal random vectors for sampling from the Laplace-approximated posterior (for iterative methods) */
+		den_mat_t rand_vec_I_2_sim_post_;
+		/*! If true, the mean is added for sampling from the Laplace-approximated posterior (otherwise the mean of the samples is 0)  */
+		bool add_mean_sim_post_ = true;
+		/*! Constant by whose square the the covariance of the posterior is multiplied with */
+		double c_mult_sim_post_ = 1.;
+		/*! Vector of length num_rand_vec_sim_post_ with sums of squared random vectors from the Laplace-approximated posterior minus the mean / mode */
+		std::vector<double> sum_sq_rand_vec_sim_post_zero_mean_;
+		/*! \brief If true, iid normal random vectors for sampling from the Laplace-approximated posterior are sampled only once and are then reused later */
+		bool reuse_rand_vec_I_sim_post_ = true;
+		/*! If reuse_rand_vec_I_sim_post_ is true and rand_vec_I_sim_post_ has been generated for the first time, then sampled_rand_vec_I_sim_post_ is set to true */
+		bool sampled_rand_vec_I_sim_post_ = false;
 
 		/*! \brief Order of the (adaptive) Gauss-Hermite quadrature */
 		int order_GH_ = 30;

@@ -947,6 +947,23 @@ namespace GPBoost {
 		}
 	}
 
+	void GenRandVecNormalParallel(int base_seed, den_mat_t& R) {
+
+		static std::atomic<uint64_t> call_counter{ 0 };
+		uint64_t run_id = call_counter.fetch_add(1, std::memory_order_relaxed);
+		const uint32_t b32 = static_cast<uint32_t>(base_seed); // capture 32-bit seed
+#pragma omp parallel for schedule(static)
+		for (int col_i = 0; col_i < R.cols(); ++col_i) {
+			std::normal_distribution<double> ndist(0.0, 1.0);
+			// derive a per-column seed from the base seed and column index
+			std::seed_seq seq{ b32, static_cast<uint32_t>(run_id), static_cast<uint32_t>(run_id >> 32), static_cast<uint32_t>(col_i) };
+			RNG_t generator(seq);
+			for (int row_i = 0; row_i < R.rows(); ++row_i) {
+				R(row_i, col_i) = ndist(generator);
+			}
+		}
+	}//endGenRandVecNormalParallel
+
 	void GenRandVecRademacher(RNG_t& generator,
 		den_mat_t& R) {
 
