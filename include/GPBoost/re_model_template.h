@@ -8635,7 +8635,7 @@ namespace GPBoost {
 							if (first_update_) {
 								cg_max_num_it = (int)round(cg_max_num_it_ / 3);
 							}
-							CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], Zty_[cluster_i], MInvZty, NaN_found, cg_max_num_it, cg_delta_conv_, 1, THRESHOLD_ZERO_RHS_CG_, false, cg_preconditioner_type_,
+							CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], Zty_[cluster_i], MInvZty, NaN_found, cg_max_num_it, cg_delta_conv_, false, THRESHOLD_ZERO_RHS_CG_, false, cg_preconditioner_type_,
 								L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]);
 							last_MInvZty_[cluster_i] = MInvZty;
 							if (NaN_found) {
@@ -8662,7 +8662,7 @@ namespace GPBoost {
 				}
 			}
 			y_aux_has_been_calculated_ = true;
-		}
+		}//end CalcYAux
 
 		/*!
 		* \brief Calculate y_tilde = L^-1 * Z^T * y, L = chol(Sigma^-1 + Z^T * Z) (and save in y_tilde_)
@@ -9939,7 +9939,7 @@ namespace GPBoost {
 										vec_t rand_vec_pred_SigmaI_plus_ZtZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_pred_I_1 + Zt_[cluster_i] * rand_vec_pred_I_2;
 										vec_t rand_vec_pred_SigmaI_plus_ZtZ_inv(cum_num_rand_eff_[cluster_i][num_comps_total_]);
 										//z_i ~ N(0,(Sigma^(-1) + Z^T Z)^(-1))
-										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], rand_vec_pred_SigmaI_plus_ZtZ, rand_vec_pred_SigmaI_plus_ZtZ_inv, NaN_found, cg_max_num_it_, cg_delta_conv_pred_, 0, THRESHOLD_ZERO_RHS_CG_,
+										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], rand_vec_pred_SigmaI_plus_ZtZ, rand_vec_pred_SigmaI_plus_ZtZ_inv, NaN_found, cg_max_num_it_, cg_delta_conv_pred_, true, THRESHOLD_ZERO_RHS_CG_,
 											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]
 											//cum_num_rand_eff_[cluster_i], num_comps_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
 										);
@@ -10066,7 +10066,7 @@ namespace GPBoost {
 										vec_t Z_tilde_t_RV = Ztilde.transpose() * rand_vec_init;
 										//Part 2: (Sigma^(-1) + Z^T Z)^(-1) Z_po^T RV
 										vec_t MInv_Ztilde_t_RV(cum_num_rand_eff_[cluster_i][num_comps_total_]);
-										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], Z_tilde_t_RV, MInv_Ztilde_t_RV, NaN_found, cg_max_num_it_, cg_delta_conv_pred_, 0, THRESHOLD_ZERO_RHS_CG_,
+										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], Z_tilde_t_RV, MInv_Ztilde_t_RV, NaN_found, cg_max_num_it_, cg_delta_conv_pred_, true, THRESHOLD_ZERO_RHS_CG_,
 											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]
 											//cum_num_rand_eff_[cluster_i], num_comps_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
 										);

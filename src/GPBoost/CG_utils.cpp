@@ -25,7 +25,7 @@ namespace GPBoost {
 		vec_t& u,
 		bool& NA_or_Inf_found,
 		int p,
-		const int find_mode_it,
+		bool initialize_to_zero,
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
@@ -43,11 +43,12 @@ namespace GPBoost {
 			u.setZero();
 			return;
 		}
-		//Cold-start in the first iteration of mode finding, otherwise always warm-start (=initalize with mode from previous iteration)
-		if (find_mode_it == 0) {
-			u.setZero();
-			//r = rhs - A * u
-			r = rhs; //since u is 0
+		if (initialize_to_zero) {
+			u.setZero();			
+			r = rhs; //r = rhs - A * u
+		}
+		else if (u.isZero(0)) {
+			r = rhs; //r = rhs - A * u
 		}
 		else {
 			//r = rhs - A * u
@@ -222,7 +223,7 @@ namespace GPBoost {
 		vec_t& u,
 		bool& NA_or_Inf_found,
 		int p,
-		const int find_mode_it,
+		bool initialize_to_zero,
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
@@ -256,10 +257,12 @@ namespace GPBoost {
 		//Sigma * rhs, where Sigma = B^(-1) D B^(-T)
 		B_invt_rhs = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(rhs);
 		Sigma_rhs = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_rhs);
-		//Cold-start in the first iteration of mode finding, otherwise always warm-start (=initalize with mode from previous iteration)
-		if (find_mode_it == 0) {
+		if (initialize_to_zero) {
 			u.setZero();
-			r = Sigma_rhs; //since u is 0
+			r = Sigma_rhs; //r = rhs - A * u
+		}
+		else if (u.isZero(0)) {
+			r = Sigma_rhs; //r = rhs - A * u
 		}
 		else {
 			//r = Sigma * rhs - (W^(-1) + Sigma) * W * u = Sigma * rhs - u - Sigma * W * u 
@@ -482,7 +485,7 @@ namespace GPBoost {
 		vec_t& u,
 		bool& NA_or_Inf_found,
 		int p,
-		const int find_mode_it,
+		bool initialize_to_zero,
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
@@ -500,11 +503,12 @@ namespace GPBoost {
 			u.setZero();
 			return;
 		}
-		//Cold-start in the first iteration of mode finding, otherwise always warm-start (=initalize with mode from previous iteration)
-		if (find_mode_it == 0) {
-			u.setZero();
-			//r = rhs - A * u
-			r = rhs; //since u is 0
+		if (initialize_to_zero) {
+			u.setZero();			
+			r = rhs; //r = rhs - A * u
+		}
+		else if (u.isZero(0)) {
+			r = rhs; //r = rhs - A * u
 		}
 		else {
 			//r = rhs - A * u
@@ -712,7 +716,7 @@ namespace GPBoost {
 		vec_t& u,
 		bool& NA_or_Inf_found,
 		int p,
-		const int find_mode_it,
+		bool initialize_to_zero,
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
@@ -730,11 +734,12 @@ namespace GPBoost {
 			u.setZero();
 			return;
 		}
-		//Cold-start in the first iteration of mode finding, otherwise always warm-start (=initalize with mode from previous iteration)
-		if (find_mode_it == 0) {
-			u.setZero();
-			//r = rhs - A * u
-			r = rhs; //since u is 0
+		if (initialize_to_zero) {
+			u.setZero();			
+			r = rhs; //r = rhs - A * u
+		}
+		else if (u.isZero(0)) {
+			r = rhs; //r = rhs - A * u
 		}
 		else {
 			//r = rhs - A * u
@@ -1092,7 +1097,7 @@ namespace GPBoost {
 		bool& NA_or_Inf_found,
 		int p,
 		const double delta_conv,
-		const int find_mode_it,
+		bool initialize_to_zero,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const bool run_in_parallel_do_not_report_non_convergence,
 		const string_t cg_preconditioner_type,
@@ -1118,8 +1123,7 @@ namespace GPBoost {
 			u.setZero();
 			return;
 		}
-		if (find_mode_it == 0) {
-			//Cold-start in the first iteration of mode finding, otherwise always warm-start (=initalize with mode from previous iteration)
+		if (initialize_to_zero) {
 			u.setZero();
 			r = rhs; //r = rhs - A * u
 		}

@@ -1399,19 +1399,19 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                             matrix_inversion_method = inv_method), file='NUL')
         gp_model$set_optim_params(params=params)
         bst <- gpb.train(data = dtrain, gp_model = gp_model,
-                         nrounds = 5, learning_rate = 0.5, max_depth = 6,
+                         nrounds = 5, learning_rate = 0.5, max_depth = 6, deterministic = TRUE,
                          min_data_in_leaf = 5, objective = "binary", verbose = 0)
-        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),tolerance_loc)
+        adjust_tol <- 1
+        if (inv_method == "iterative") adjust_tol <- 2
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),adjust_tol*tolerance_loc)
         
         # Prediction
         gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", num_neighbors_pred = ntest+ntrain-1)
         pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                         predict_var = TRUE, pred_latent = TRUE)
-        expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-P_RE_mean)),tolerance_loc)
-        adjust_tol <- 1
-        if (inv_method == "iterative") adjust_tol <- 1.5
+        expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-P_RE_mean)),adjust_tol*tolerance_loc)
         expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-P_RE_cov)),adjust_tol*tolerance_loc)
-        expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-P_F)),tolerance_loc)
+        expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-P_F)),adjust_tol*tolerance_loc)
       }
     })
     

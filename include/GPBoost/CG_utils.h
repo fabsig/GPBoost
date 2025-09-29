@@ -31,7 +31,7 @@ namespace GPBoost {
 	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
 	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
 	* \param p Maximal number of conjugate gradient steps
-	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param initialize_to_zero If true, u is set to zero at the beginning of the algorithm (cold-start)
 	* \param delta_conv Tolerance for checking convergence of the algorithm
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param cg_preconditioner_type Type of preconditioner used.
@@ -46,7 +46,7 @@ namespace GPBoost {
 		vec_t& u,
 		bool& NA_or_Inf_found,
 		int p,
-		const int find_mode_it,
+		bool initialize_to_zero,
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
@@ -106,7 +106,7 @@ namespace GPBoost {
 	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
 	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
 	* \param p Maximal number of conjugate gradient steps
-	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param initialize_to_zero If true, u is set to zero at the beginning of the algorithm (cold-start)
 	* \param delta_conv Tolerance for checking convergence of the algorithm
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param cg_preconditioner_type Type of preconditioner used
@@ -126,7 +126,7 @@ namespace GPBoost {
 		vec_t& u,
 		bool& NA_or_Inf_found,
 		int p,
-		const int find_mode_it,
+		bool initialize_to_zero,
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
@@ -199,7 +199,7 @@ namespace GPBoost {
 	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
 	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
 	* \param p Maximal number of conjugate gradient steps
-	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param initialize_to_zero If true, u is set to zero at the beginning of the algorithm (cold-start)
 	* \param delta_conv Tolerance for checking convergence of the algorithm
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param cg_preconditioner_type Type of preconditioner used.
@@ -216,7 +216,7 @@ namespace GPBoost {
 		vec_t& u,
 		bool& NA_or_Inf_found,
 		int p,
-		const int find_mode_it,
+		bool initialize_to_zero,
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
@@ -237,7 +237,6 @@ namespace GPBoost {
 	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
 	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
 	* \param p Maximal number of conjugate gradient steps
-	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
 	* \param delta_conv Tolerance for checking convergence of the algorithm
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param cg_preconditioner_type Type of preconditioner used.
@@ -274,7 +273,7 @@ namespace GPBoost {
 	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
 	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
 	* \param p Maximal number of conjugate gradient steps
-	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param initialize_to_zero If true, u is set to zero at the beginning of the algorithm (cold-start)
 	* \param delta_conv Tolerance for checking convergence of the algorithm
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param cg_preconditioner_type Type of preconditioner used.
@@ -291,7 +290,7 @@ namespace GPBoost {
 		vec_t& u,
 		bool& NA_or_Inf_found,
 		int p,
-		const int find_mode_it,
+		bool initialize_to_zero,
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
@@ -312,7 +311,6 @@ namespace GPBoost {
 	* \param[out] u Approximative solution of the linear system (solution written on input) (must have been declared with the correct n-dimension)
 	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
 	* \param p Maximal number of conjugate gradient steps
-	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
 	* \param delta_conv Tolerance for checking convergence of the algorithm
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param cg_preconditioner_type Type of preconditioner used.
@@ -964,7 +962,7 @@ namespace GPBoost {
 	* \param[out] NA_or_Inf_found Is set to true, if NA or Inf is found in the residual of conjugate gradient algorithm.
 	* \param p Maximal number of conjugate gradient steps
 	* \param delta_conv Tolerance for checking convergence of the algorithm
-	* \param find_mode_it In the first mode-finding iteration (find_mode_it == 0) u is set to zero at the beginning of the algorithm (cold-start).
+	* \param initialize_to_zero If true, u is set to zero at the beginning of the algorithm (cold-start)
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes.
 	* \param cg_preconditioner_type Type of preconditioner used.
@@ -983,7 +981,7 @@ namespace GPBoost {
 		bool& NA_or_Inf_found,
 		int p,
 		const double delta_conv,
-		const int find_mode_it,
+		bool initialize_to_zero,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const bool run_in_parallel_do_not_report_non_convergence,
 		const string_t cg_preconditioner_type,

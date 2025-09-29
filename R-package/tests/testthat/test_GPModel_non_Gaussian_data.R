@@ -1136,6 +1136,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
   
   test_that("Binary classification Gaussian process model with Vecchia approximation", {
+    
     params_vecchia <- c(DEFAULT_OPTIM_PARAMS, cg_delta_conv = sqrt(1e-6), 
                         num_rand_vec_trace = 500, cg_preconditioner_type = "pivoted_cholesky",
                         fitc_piv_chol_preconditioner_rank = dim(coords)[1] - 1 )
