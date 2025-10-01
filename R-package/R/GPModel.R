@@ -343,6 +343,7 @@
 #'                \item{momentum_offset: \code{integer} (Default = 2, only relevant for "gradient_descent")}. 
 #'                Number of iterations for which no momentum is applied in the beginning.
 #'                \item{m_lbfgs: \code{integer} (Default = 6)}. Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer
+#'                \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8)}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods
 #'            }
 #' @param offset A \code{numeric} \code{vector} with 
 #' additional fixed effects contributions that are added to the linear predictor (= offset). 
@@ -1174,6 +1175,7 @@ gpb.GPModel <- R6::R6Class(
         , private$params[["estimate_aux_pars"]]
         , private$params[["estimate_cov_par_index"]]
         , private$params[["m_lbfgs"]]
+        , private$params[["delta_conv_mode_finding"]]
       )
       return(invisible(self))
     },
@@ -2258,7 +2260,9 @@ gpb.GPModel <- R6::R6Class(
                   fitc_piv_chol_preconditioner_rank = -1L, # default value is set in C++
                   estimate_aux_pars = TRUE,
                   estimate_cov_par_index = -1L,
-                  m_lbfgs = -1L),# default value is set in C++
+                  m_lbfgs = -1L, # default value is set in C++
+                  delta_conv_mode_finding = -1 # default value is set in C++
+                  ),
     num_sets_re = 1,
     num_sets_fe = 1,
 
@@ -2306,7 +2310,7 @@ gpb.GPModel <- R6::R6Class(
       }
       ## Check format of parameters
       numeric_params <- c("lr_cov", "acc_rate_cov", "delta_rel_conv",
-                          "lr_coef", "acc_rate_coef", "cg_delta_conv")
+                          "lr_coef", "acc_rate_coef", "cg_delta_conv", "delta_conv_mode_finding")
       integer_params <- c("maxit", "nesterov_schedule_version",
                           "momentum_offset", "cg_max_num_it", "cg_max_num_it_tridiag",
                           "num_rand_vec_trace", "seed_rand_vec_trace",

@@ -222,7 +222,8 @@ namespace GPBoost {
 		double* init_aux_pars,
 		bool estimate_aux_pars,
 		const int* estimate_cov_par_index,
-		int m_lbfgs) {
+		int m_lbfgs,
+		double delta_conv_mode_finding) {
 		// Initial covariance parameters
 		if (init_cov_pars != nullptr) {
 			vec_t init_cov_pars_orig = Eigen::Map<const vec_t>(init_cov_pars, num_cov_pars_);
@@ -271,19 +272,19 @@ namespace GPBoost {
 			re_model_sp_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
 				cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace,
-				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars, estimate_cov_par_index, m_lbfgs);
+				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars, estimate_cov_par_index, m_lbfgs, delta_conv_mode_finding);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
 				cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace,
-				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars, estimate_cov_par_index, m_lbfgs);
+				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars, estimate_cov_par_index, m_lbfgs, delta_conv_mode_finding);
 		}
 		else {
 			re_model_den_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
 				cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace,
-				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars, estimate_cov_par_index, m_lbfgs);
+				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars, estimate_cov_par_index, m_lbfgs, delta_conv_mode_finding);
 		}
 	}
 

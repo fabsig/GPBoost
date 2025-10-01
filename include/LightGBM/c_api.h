@@ -1426,6 +1426,7 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
 * \param estimate_cov_par_index If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, estimate_cov_par_index[i] is then bool and indicates which ones are estimated
 * \param m_lbfgs Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer
+* \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
@@ -1457,7 +1458,8 @@ GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
     double* init_aux_pars,
     bool estimate_aux_pars,
     const int* estimate_cov_par_index,
-    int m_lbfgs);
+    int m_lbfgs,
+    double delta_conv_mode_finding);
 
 /*!
 * \brief Find parameters that minimize the negative log-ligelihood (=MLE)

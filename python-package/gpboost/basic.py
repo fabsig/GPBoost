@@ -4464,7 +4464,8 @@ class GPModel(object):
                        "fitc_piv_chol_preconditioner_rank": -1, # default value is set in C++
                        "estimate_aux_pars": True,
                        "estimate_cov_par_index": np.array([-1], dtype=np.int32),
-                       "m_lbfgs": -1 # default value is set in C++
+                       "m_lbfgs": -1, # default value is set in C++
+                       "delta_conv_mode_finding": -1 # default value is set in C++
                        }
         self.num_sets_re = 1
         self.num_sets_fe = 1
@@ -5094,6 +5095,8 @@ class GPModel(object):
                     Number of iterations for which no momentum is applied in the beginning.
                 - m_lbfgs : integer, optional (default = 6)
                     Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer
+                - delta_conv_mode_finding : double, optional (default = 1e-8)
+                    Convergence in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods
 
         offset : numpy 1-D array or None, optional (default=None)
             Additional fixed effects contributions that are added to the linear predictor (= offset).
@@ -5438,7 +5441,8 @@ class GPModel(object):
             init_aux_pars_c,
             ctypes.c_bool(self.params["estimate_aux_pars"]),
             self.params["estimate_cov_par_index"].ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
-            ctypes.c_int(self.params["m_lbfgs"])))
+            ctypes.c_int(self.params["m_lbfgs"]),
+            ctypes.c_double(self.params["delta_conv_mode_finding"])))
         return self
 
     def _get_optim_params(self):

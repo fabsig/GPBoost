@@ -360,6 +360,43 @@ namespace GPBoost {
 			has_int_label_ = label_type() == "int";
 		}//end constructor
 
+		/*! \brief Set properties (matrix inversion properties, choices for iterative methods, etc.). This function is calle from re_model_template.h which also holds these variables */
+		void SetPropertiesLikelihood(const string_t& matrix_inversion_method,
+			int cg_max_num_it,
+			int cg_max_num_it_tridiag,
+			double cg_delta_conv,
+			double cg_delta_conv_pred,
+			int num_rand_vec_trace,
+			bool reuse_rand_vec_trace,
+			int seed_rand_vec_trace,
+			const string_t& cg_preconditioner_type,
+			int fitc_piv_chol_preconditioner_rank,
+			int rank_pred_approx_matrix_lanczos,
+			int nsim_var_pred,
+			double delta_conv_mode_finding) {
+			matrix_inversion_method_ = matrix_inversion_method;
+			cg_max_num_it_ = cg_max_num_it;
+			cg_max_num_it_tridiag_ = cg_max_num_it_tridiag;
+			cg_delta_conv_ = cg_delta_conv;
+			cg_delta_conv_pred_ = cg_delta_conv_pred;
+			num_rand_vec_trace_ = num_rand_vec_trace;
+			reuse_rand_vec_trace_ = reuse_rand_vec_trace;
+			seed_rand_vec_trace_ = seed_rand_vec_trace;
+			cg_preconditioner_type_ = cg_preconditioner_type;
+			fitc_piv_chol_preconditioner_rank_ = fitc_piv_chol_preconditioner_rank;
+			if (cg_preconditioner_type_ == "pivoted_cholesky") {
+				if (fitc_piv_chol_preconditioner_rank_ > dim_mode_) {
+					Log::REFatal("'fitc_piv_chol_preconditioner_rank' cannot be larger than the dimension of the mode (= number of unique locations) ");
+				}
+			}
+			rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
+			nsim_var_pred_ = nsim_var_pred;
+			num_rand_vec_sim_post_ = nsim_var_pred;
+			reuse_rand_vec_I_sim_post_ = reuse_rand_vec_trace;
+			CHECK(delta_conv_mode_finding > 0.);
+			delta_conv_mode_finding_ = delta_conv_mode_finding;
+		}//end SetPropertiesLikelihood
+
 		/*!
 		* \brief Determine cap_change_mode_newton_
 		*/
@@ -6518,7 +6555,7 @@ namespace GPBoost {
 				update = (c_mult * FirstDerivLogCondMeanLikelihood(mode_integrand) - sigma2_inv * (mode_integrand - latent_mean))
 					/ (c_mult * SecondDerivLogCondMeanLikelihood(mode_integrand) - sigma2_inv);
 				mode_integrand -= update;
-				if (std::abs(update) / std::abs(mode_integrand_last) < DELTA_REL_CONV_) {
+				if (std::abs(update) / std::abs(mode_integrand_last) < delta_conv_mode_finding_) {
 					break;
 				}
 			}
@@ -6555,7 +6592,7 @@ namespace GPBoost {
 				update = (FirstDerivLogCondVarLikelihood(mode_integrand) - sigma2_inv * (mode_integrand - latent_mean))
 					/ (SecondDerivLogCondVarLikelihood(mode_integrand) - sigma2_inv);
 				mode_integrand -= update;
-				if (std::abs(update) / std::abs(mode_integrand_last) < DELTA_REL_CONV_) {
+				if (std::abs(update) / std::abs(mode_integrand_last) < delta_conv_mode_finding_) {
 					break;
 				}
 			}
@@ -6601,7 +6638,7 @@ namespace GPBoost {
 					update = (CalcFirstDerivLogLikOneSample(y_test_d, y_test_int, mode_integrand) - sigma2_inv * (mode_integrand - pred_mean[i]))
 						/ (-CalcDiagInformationLogLikOneSample(y_test_d, y_test_int, mode_integrand) - sigma2_inv);
 					mode_integrand -= update;
-					if (std::abs(update) / std::abs(mode_integrand_last) < DELTA_REL_CONV_) {
+					if (std::abs(update) / std::abs(mode_integrand_last) < delta_conv_mode_finding_) {
 						break;
 					}
 				}
@@ -6618,40 +6655,6 @@ namespace GPBoost {
 			}
 			return -ll;
 		}//end TestNegLogLikelihoodAdaptiveGHQuadrature
-
-		/*! \brief Set matrix inversion properties and choices for iterative methods. This function is calle from re_model_template.h which also holds these variables */
-		void SetMatrixInversionProperties(const string_t& matrix_inversion_method,
-			int cg_max_num_it,
-			int cg_max_num_it_tridiag,
-			double cg_delta_conv,
-			double cg_delta_conv_pred,
-			int num_rand_vec_trace,
-			bool reuse_rand_vec_trace,
-			int seed_rand_vec_trace,
-			const string_t& cg_preconditioner_type,
-			int fitc_piv_chol_preconditioner_rank,
-			int rank_pred_approx_matrix_lanczos,
-			int nsim_var_pred) {
-			matrix_inversion_method_ = matrix_inversion_method;
-			cg_max_num_it_ = cg_max_num_it;
-			cg_max_num_it_tridiag_ = cg_max_num_it_tridiag;
-			cg_delta_conv_ = cg_delta_conv;
-			cg_delta_conv_pred_ = cg_delta_conv_pred;
-			num_rand_vec_trace_ = num_rand_vec_trace;
-			reuse_rand_vec_trace_ = reuse_rand_vec_trace;
-			seed_rand_vec_trace_ = seed_rand_vec_trace;
-			cg_preconditioner_type_ = cg_preconditioner_type;
-			fitc_piv_chol_preconditioner_rank_ = fitc_piv_chol_preconditioner_rank;
-			if (cg_preconditioner_type_ == "pivoted_cholesky") {
-				if (fitc_piv_chol_preconditioner_rank_ > dim_mode_) {
-					Log::REFatal("'fitc_piv_chol_preconditioner_rank' cannot be larger than the dimension of the mode (= number of unique locations) ");
-				}
-			}
-			rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
-			nsim_var_pred_ = nsim_var_pred;
-			num_rand_vec_sim_post_ = nsim_var_pred;
-			reuse_rand_vec_I_sim_post_ = reuse_rand_vec_trace;
-		}//end SetMatrixInversionProperties
 
 		static string_t ParseLikelihoodAlias(const string_t& likelihood) {
 			if (likelihood == string_t("binary_probit")) {
@@ -6720,7 +6723,6 @@ namespace GPBoost {
 			if (likelihood.size() > 13) {
 				if (likelihood.substr(likelihood.size() - 13) == string_t("_quasi-newton")) {
 					quasi_newton_for_mode_finding_ = true;
-					DELTA_REL_CONV_ = 1e-9;
 					return likelihood.substr(0, likelihood.size() - 13);
 				}
 			}
@@ -8948,12 +8950,12 @@ namespace GPBoost {
 				return;
 			}
 			if (it == 0) {
-				if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) { // allow for small decreases in first iteration
+				if (std::abs(approx_marginal_ll_new - approx_marginal_ll) < delta_conv_mode_finding_ * std::abs(approx_marginal_ll)) { // allow for small decreases in first iteration
 					terminate_optim = true;
 				}
 			}
 			else {
-				if ((approx_marginal_ll_new - approx_marginal_ll) < DELTA_REL_CONV_ * std::abs(approx_marginal_ll)) {
+				if ((approx_marginal_ll_new - approx_marginal_ll) < delta_conv_mode_finding_ * std::abs(approx_marginal_ll)) {
 					terminate_optim = true;
 				}
 			}
@@ -9817,7 +9819,7 @@ namespace GPBoost {
 		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
 		int maxit_mode_newton_ = 1000;
 		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
-		double DELTA_REL_CONV_ = 1e-8;
+		double delta_conv_mode_finding_ = 1e-8;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the ewton method for mode finding in Laplace approximation */
 		int max_number_lr_shrinkage_steps_newton_ = 20;
 		/*! \brief If true, a quasi-Newton method instead of Newton's method is used for finding the maximal mode. Only supported for the Vecchia approximation */

@@ -150,6 +150,7 @@ fixed effects linear regression term (if there is one)}
     \item{momentum_offset: \code{integer} (Default = 2, only relevant for "gradient_descent")}. 
     Number of iterations for which no momentum is applied in the beginning.
     \item{m_lbfgs: \code{integer} (Default = 6)}. Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer
+    \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8)}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods
 }}
 
 \item{offset}{A \code{numeric} \code{vector} with 
