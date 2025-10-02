@@ -391,10 +391,10 @@ namespace GPBoost {
 			}
 			rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
 			nsim_var_pred_ = nsim_var_pred;
-			num_rand_vec_sim_post_ = nsim_var_pred;
-			reuse_rand_vec_I_sim_post_ = reuse_rand_vec_trace;
 			CHECK(delta_conv_mode_finding > 0.);
 			delta_conv_mode_finding_ = delta_conv_mode_finding;
+			num_rand_vec_sim_post_ = nsim_var_pred;
+			reuse_rand_vec_I_sim_post_ = reuse_rand_vec_trace;
 		}//end SetPropertiesLikelihood
 
 		/*!
@@ -1172,7 +1172,7 @@ namespace GPBoost {
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param Sigma Covariance matrix of latent random effect ("Sigma = Z*Sigma*Z^T" if !use_random_effects_indices_of_data_)
+		* \param Sigma Covariance matrix of latent random effects ("Sigma = Z*Sigma*Z^T" if !use_random_effects_indices_of_data_)
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
 		*/
 		void FindModePostRandEffCalcMLLStable(const double* y_data,
@@ -1195,7 +1195,7 @@ namespace GPBoost {
 				//T_mat Sigma_stable = (*Sigma);
 				//Sigma_stable.diagonal().array() *= JITTER_MUL;
 				//T_chol chol_fact_Sigma;
-				//CalcChol<T_mat>(chol_fact_Sigma, Sigma_stable);
+				//CalcChol<T_mat>(chol_fact_Sigma, Sigma_stable, chol_fact_pattern_analyzed_);
 				//SigmaI_mode_ = chol_fact_Sigma.solve(mode_);
 			}
 			vec_t location_par;//location parameter = mode of random effects + fixed effects
@@ -1224,7 +1224,7 @@ namespace GPBoost {
 					diag_Wsqrt.array() = information_ll_.array().sqrt();
 					Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
 					Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
-					CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt);//this is the bottleneck (for large data and sparse matrices)
+					CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt, chol_fact_pattern_analyzed_);//this is the bottleneck (for large data and sparse matrices)
 				}
 				// Calculate right hand side for mode update
 				rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
@@ -1270,6 +1270,9 @@ namespace GPBoost {
 				}
 			}
 			if (!has_NA_or_Inf) {//calculate determinant
+				if (sample_from_posterior_after_mode_finding_) {
+					Sample_Posterior_LaplaceApprox_Stable(Sigma);
+				}
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (information_changes_after_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
@@ -1280,7 +1283,7 @@ namespace GPBoost {
 					diag_Wsqrt.array() = information_ll_.array().sqrt();
 					Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
 					Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
-					CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt);
+					CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt, chol_fact_pattern_analyzed_);
 				}
 				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 				mode_has_been_calculated_ = true;
@@ -1374,7 +1377,7 @@ namespace GPBoost {
 						break;
 					}
 				} //end iterative
-				else { // start Cholesky 
+				else if (matrix_inversion_method_ == "cholesky") { // start Cholesky 
 					// Calculate Cholesky factor
 					if (it == 0 || information_changes_during_mode_finding_) {
 						CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
@@ -1415,6 +1418,9 @@ namespace GPBoost {
 				}
 			}//end mode finding algorithm
 			if (!has_NA_or_Inf) {//calculate determinant
+				if (sample_from_posterior_after_mode_finding_) {
+					Sample_Posterior_LaplaceApprox_GroupedRE(SigmaI);
+				}
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (matrix_inversion_method_ == "iterative") {
 					if (calc_mll) {//calculate determinant term for approx_marginal_ll
@@ -1487,16 +1493,13 @@ namespace GPBoost {
 							approx_marginal_ll += 0.5 * (SigmaI.diagonal().array().log().sum() - log_det_SigmaI_plus_ZtWZ);
 							// Correction for preconditioner
 							if (cg_preconditioner_type_ == "incomplete_cholesky") {
-								//log|P| = log|L| + log|L^T|
-								approx_marginal_ll -= L_SigmaI_plus_ZtWZ_rm_.diagonal().array().log().sum();
+								approx_marginal_ll -= L_SigmaI_plus_ZtWZ_rm_.diagonal().array().log().sum();//log|P| = log|L| + log|L^T|
 							}
 							else if (cg_preconditioner_type_ == "ssor") {
-								//log|P| = log|L| + log|D^-1| + log|L^T|
-								approx_marginal_ll -= P_SSOR_L_D_sqrt_inv_rm_.diagonal().array().log().sum();
+								approx_marginal_ll -= P_SSOR_L_D_sqrt_inv_rm_.diagonal().array().log().sum();//log|P| = log|L| + log|D^-1| + log|L^T|
 							}
 							else if (cg_preconditioner_type_ == "diagonal") {
-								//log|P| = - log|diag(Sigma^-1 + Z^T W Z)^(-1)|
-								approx_marginal_ll += 0.5 * SigmaI_plus_ZtWZ_inv_diag_.array().log().sum();
+								approx_marginal_ll += 0.5 * SigmaI_plus_ZtWZ_inv_diag_.array().log().sum();//log|P| = - log|diag(Sigma^-1 + Z^T W Z)^(-1)|
 							}
 						}
 						else {
@@ -1595,6 +1598,9 @@ namespace GPBoost {
 				}
 			}//end mode finding algorithm
 			if (!has_NA_or_Inf) {//calculate determinant
+				if (sample_from_posterior_after_mode_finding_) {
+					Sample_Posterior_LaplaceApprox_OnlyOneGroupedRE();
+				}
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (information_changes_after_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
@@ -1934,6 +1940,10 @@ namespace GPBoost {
 			if (!has_NA_or_Inf) {//calculate determinant
 				mode_has_been_calculated_ = true;
 				na_or_inf_during_last_call_to_find_mode_ = false;
+				if (sample_from_posterior_after_mode_finding_) {
+					Log::REFatal("FindModePostRandEffCalcMLLFSVA: 'Sample_Posterior_LaplaceApprox_FSVA' not yet implemented ");
+					//Sample_Posterior_LaplaceApprox_FSVA();
+				}
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (information_changes_after_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
@@ -2423,7 +2433,7 @@ namespace GPBoost {
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t Wsqrt_diag(dim_mode_), sigma_ip_inv_cross_cov_T_rhs(num_ip), rhs(dim_mode_), Wsqrt_Sigma_rhs(dim_mode_), vaux(num_ip), vaux2(num_ip), vaux3(dim_mode_),
 				mode_new(dim_mode_), SigmaI_mode_new, DW_plus_I_inv_diag(dim_mode_), SigmaI_mode_update, mode_update, W_times_DW_plus_I_inv_diag;//auxiliary variables for updating mode
-			den_mat_t M_aux_Woodbury(num_ip, num_ip); // = sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
+			den_mat_t M_aux_Woodbury(num_ip, num_ip); // = sigma_ip + (*cross_cov).transpose() * D_plus_WI_inv_diag.asDiagonal() * (*cross_cov)
 			// Start finding mode 
 			int it;
 			bool terminate_optim = false;
@@ -2445,8 +2455,8 @@ namespace GPBoost {
 					W_times_DW_plus_I_inv_diag = Wsqrt_diag;
 					W_times_DW_plus_I_inv_diag.array() *= W_times_DW_plus_I_inv_diag.array();
 					W_times_DW_plus_I_inv_diag.array() *= DW_plus_I_inv_diag.array();
-					M_aux_Woodbury += (*cross_cov).transpose() * W_times_DW_plus_I_inv_diag.asDiagonal() * (*cross_cov);// = *sigma_ip + (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov)
-					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
+					M_aux_Woodbury += (*cross_cov).transpose() * W_times_DW_plus_I_inv_diag.asDiagonal() * (*cross_cov);// = *sigma_ip + (*cross_cov).transpose() * D_plus_WI_inv_diag.asDiagonal() * (*cross_cov)
+					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm = sigma_ip + Sigma_nm^T * D_plus_WI_inv_diag * Sigma_nm
 				}
 				rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
 				// Update mode and SigmaI_mode_
@@ -2498,22 +2508,25 @@ namespace GPBoost {
 			if (!has_NA_or_Inf) {//calculate determinant
 				mode_has_been_calculated_ = true;
 				na_or_inf_during_last_call_to_find_mode_ = false;
+				if (sample_from_posterior_after_mode_finding_) {
+					Sample_Posterior_LaplaceApprox_FITC(cross_cov, fitc_resid_diag);
+				}
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
-				vec_t fitc_diag_plus_WI_inv;
+				vec_t D_plus_WI_inv_diag;
 				if (information_changes_after_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
-					fitc_diag_plus_WI_inv = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
+					D_plus_WI_inv_diag = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
 					M_aux_Woodbury = *sigma_ip;
 					M_aux_Woodbury.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
-					M_aux_Woodbury += (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov);
-					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of (sigma_ip + Sigma_nm^T * fitc_diag_plus_WI_inv * Sigma_nm)
+					M_aux_Woodbury += (*cross_cov).transpose() * D_plus_WI_inv_diag.asDiagonal() * (*cross_cov);
+					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of (sigma_ip + Sigma_nm^T * D_plus_WI_inv_diag * Sigma_nm)
 				}
 				else {
-					fitc_diag_plus_WI_inv = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
+					D_plus_WI_inv_diag = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
 				}
 				approx_marginal_ll -= ((den_mat_t)chol_fact_dense_Newton_.matrixL()).diagonal().array().log().sum();
 				approx_marginal_ll += ((den_mat_t)chol_fact_sigma_ip.matrixL()).diagonal().array().log().sum();
-				approx_marginal_ll += 0.5 * fitc_diag_plus_WI_inv.array().log().sum();
+				approx_marginal_ll += 0.5 * D_plus_WI_inv_diag.array().log().sum();
 				approx_marginal_ll -= 0.5 * information_ll_.array().log().sum();
 			}
 			mode_is_zero_ = false;
@@ -2532,7 +2545,7 @@ namespace GPBoost {
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param Sigma Covariance matrix of latent random effect ("Sigma = Z*Sigma*Z^T" if !use_random_effects_indices_of_data_)
+		* \param Sigma Covariance matrix of latent random effects ("Sigma = Z*Sigma*Z^T" if !use_random_effects_indices_of_data_)
 		* \param re_comps_cluster_i Vector with different random effects components. We pass the component pointers to save memory in order to avoid passing a large collection of gardient covariance matrices in memory//TODO: better way than passing this? (relying on all gradients in a vector can lead to large memory consumption)
 		* \param calc_cov_grad If true, the gradient wrt the covariance parameters is calculated
 		* \param calc_F_grad If true, the gradient wrt the fixed effects mean function F is calculated
@@ -4553,7 +4566,7 @@ namespace GPBoost {
 			bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
 			if (calc_cov_grad && some_cov_par_estimated) {
 				vec_t sigma_ip_inv_cross_cov_T_SigmaI_mode = chol_fact_sigma_ip.solve((*cross_cov).transpose() * SigmaI_mode_);// sigma_ip^-1 * cross_cov^T * sigma^-1 * mode
-				vec_t fitc_diag_plus_WI_inv = (fitc_resid_diag + WI).cwiseInverse();
+				vec_t D_plus_WI_inv_diag = (fitc_resid_diag + WI).cwiseInverse();
 				int par_count = 0;
 				double explicit_derivative;
 				for (int j = 0; j < (int)re_comps_ip_cluster_i.size(); ++j) {
@@ -4570,10 +4583,10 @@ namespace GPBoost {
 							fitc_diag_grad += (sigma_ip_inv_cross_cov_T.cwiseProduct(sigma_ip_grad_sigma_ip_inv_cross_cov_T)).colwise().sum();
 							// Derivative of Woodbury matrix
 							den_mat_t sigma_woodbury_grad = sigma_ip_grad;
-							den_mat_t cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad = (*cross_cov).transpose() * fitc_diag_plus_WI_inv.asDiagonal() * (*cross_cov_grad);
+							den_mat_t cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad = (*cross_cov).transpose() * D_plus_WI_inv_diag.asDiagonal() * (*cross_cov_grad);
 							sigma_woodbury_grad += cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad + cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad.transpose();
 							cross_cov_T_fitc_diag_plus_WI_inv_cross_cov_grad.resize(0, 0);
-							vec_t v_aux_grad = fitc_diag_plus_WI_inv;
+							vec_t v_aux_grad = D_plus_WI_inv_diag;
 							v_aux_grad.array() *= v_aux_grad.array();
 							v_aux_grad.array() *= fitc_diag_grad.array();
 							sigma_woodbury_grad -= (*cross_cov).transpose() * v_aux_grad.asDiagonal() * (*cross_cov);
@@ -4584,7 +4597,7 @@ namespace GPBoost {
 								0.5 * SigmaI_mode_.dot(fitc_diag_grad.asDiagonal() * SigmaI_mode_);//derivative of mode^T Sigma^-1 mode
 							explicit_derivative += 0.5 * sigma_woodbury_inv_sigma_woodbury_grad.trace() -
 								0.5 * sigma_ip_inv_sigma_ip_grad.trace() +
-								0.5 * fitc_diag_grad.dot(fitc_diag_plus_WI_inv);//derivative of log determinant
+								0.5 * fitc_diag_grad.dot(D_plus_WI_inv_diag);//derivative of log determinant
 							cov_grad[par_count] = explicit_derivative;
 							if (grad_information_wrt_mode_non_zero_) {
 								// Calculate implicit derivative (through mode) of approx. mariginal log-likelihood
@@ -4592,10 +4605,10 @@ namespace GPBoost {
 								SigmaDeriv_first_deriv_ll += sigma_ip_inv_cross_cov_T.transpose() * ((*cross_cov_grad).transpose() * first_deriv_ll_);
 								SigmaDeriv_first_deriv_ll -= sigma_ip_inv_cross_cov_T.transpose() * (sigma_ip_grad_sigma_ip_inv_cross_cov_T * first_deriv_ll_);
 								SigmaDeriv_first_deriv_ll += fitc_diag_grad.asDiagonal() * first_deriv_ll_;
-								vec_t rhs = (*cross_cov).transpose() * (fitc_diag_plus_WI_inv.asDiagonal() * SigmaDeriv_first_deriv_ll);
+								vec_t rhs = (*cross_cov).transpose() * (D_plus_WI_inv_diag.asDiagonal() * SigmaDeriv_first_deriv_ll);
 								vec_t vaux = chol_fact_dense_Newton_.solve(rhs);
 								vec_t d_mode_d_par = WI.asDiagonal() *
-									(fitc_diag_plus_WI_inv.asDiagonal() * SigmaDeriv_first_deriv_ll - fitc_diag_plus_WI_inv.asDiagonal() * ((*cross_cov) * vaux));
+									(D_plus_WI_inv_diag.asDiagonal() * SigmaDeriv_first_deriv_ll - D_plus_WI_inv_diag.asDiagonal() * ((*cross_cov) * vaux));
 								cov_grad[par_count] += d_mll_d_mode.dot(d_mode_d_par);
 								////for debugging
 								//if (ipar == 0) {
@@ -4609,7 +4622,7 @@ namespace GPBoost {
 								//ed1 -= 0.5 * SigmaI_mode_.dot(fitc_diag_grad.asDiagonal() * SigmaI_mode_);
 								//double ed2 = 0.5 * sigma_woodbury_inv_sigma_woodbury_grad.trace() -
 								//  0.5 * sigma_ip_inv_sigma_ip_grad.trace() +
-								//  0.5 * fitc_diag_grad.dot(fitc_diag_plus_WI_inv);
+								//  0.5 * fitc_diag_grad.dot(D_plus_WI_inv_diag);
 								//Log::REInfo("explicit_derivative = %g (%g + %g), d_mll_d_mode.dot(d_mode_d_par) = %g, cov_grad = %g ", 
 								//  explicit_derivative, ed1, ed2, d_mll_d_mode.dot(d_mode_d_par), cov_grad[par_count]);
 							}//end grad_information_wrt_mode_non_zero_
@@ -4684,7 +4697,7 @@ namespace GPBoost {
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param fixed_effects Fixed effects component of location parameter
-		* \param ZSigmaZt Covariance matrix of latent random effect
+		* \param ZSigmaZt Covariance matrix of latent random effects
 		* \param Cross_Cov Cross covariance matrix between predicted and observed random effects ("=Cov(y_p,y)")
 		* \param pred_mean[out] Predictive mean
 		* \param pred_cov[out] Predictive covariance matrix
@@ -4719,7 +4732,8 @@ namespace GPBoost {
 				T_mat ZSigmaZt_stable = (*ZSigmaZt);
 				ZSigmaZt_stable.diagonal().array() *= JITTER_MUL;
 				T_chol chol_fact_ZSigmaZt;
-				CalcChol<T_mat>(chol_fact_ZSigmaZt, ZSigmaZt_stable);
+				bool chol_fact_pattern_analyzed = false;
+				CalcChol<T_mat>(chol_fact_ZSigmaZt, ZSigmaZt_stable, chol_fact_pattern_analyzed);
 				vec_t SigmaI_mode = chol_fact_ZSigmaZt.solve(mode_);
 				pred_mean = Cross_Cov * SigmaI_mode;
 			}
@@ -4739,7 +4753,7 @@ namespace GPBoost {
 					T_mat Id_plus_Wsqrt_Sigma_Wsqrt(dim_mode_, dim_mode_);
 					Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
 					Id_plus_Wsqrt_Sigma_Wsqrt += (Wsqrt.asDiagonal() * (*ZSigmaZt) * Wsqrt.asDiagonal());
-					CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt);//this is the bottleneck (for large data and sparse matrices)
+					CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt, chol_fact_pattern_analyzed_);//this is the bottleneck (for large data and sparse matrices)
 					diag_information_variance_correction_for_prediction_ = false;
 				}
 				else {
@@ -5892,10 +5906,125 @@ namespace GPBoost {
 		}//end PredictLaplaceApproxVecchia
 
 		/*!
+		* \brief Sampling from the Laplace-approximated posterior
+		*/
+		void Sample_Posterior_LaplaceApprox_Stable(const std::shared_ptr<T_mat> Sigma) {
+			CHECK(num_sets_re_ == 1);
+			T_mat Sigma_stable = (*Sigma);
+			Sigma_stable.diagonal().array() *= JITTER_MUL;
+			T_chol chol_fact;
+			bool chol_fact_pattern_analyzed = false;
+			CalcChol<T_mat>(chol_fact, Sigma_stable, chol_fact_pattern_analyzed);
+			T_mat SigmaI_plus_W(Sigma_stable.rows(), Sigma_stable.cols());
+			SigmaI_plus_W.setIdentity();
+			SolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact, SigmaI_plus_W, SigmaI_plus_W);
+			SigmaI_plus_W += information_ll_.asDiagonal();
+			chol_fact_pattern_analyzed = false;
+			CalcChol<T_mat>(chol_fact, SigmaI_plus_W, chol_fact_pattern_analyzed);
+			//sample iid normal random vectors
+			if (!sampled_rand_vec_I_sim_post_) {
+				rand_vec_I_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+				GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_sim_post_);
+				rand_vec_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+				if (reuse_rand_vec_I_sim_post_) {
+					sampled_rand_vec_I_sim_post_ = true;
+				}
+			}//end !sampled_rand_vec_I_sim_post_
+			CHECK(rand_vec_I_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_I_sim_post_.rows() == dim_mode_);
+			CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_sim_post_.rows() == dim_mode_);
+			TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_fact, rand_vec_I_sim_post_, rand_vec_sim_post_, false);
+			SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
+			rand_vec_sim_post_calculated_ = true;
+		}//end Sample_Posterior_LaplaceApprox_Stable
+
+		/*!
+		* \brief Sampling from the Laplace-approximated posterior when there are multiple levels of grouped random effects
+		*/
+		void Sample_Posterior_LaplaceApprox_GroupedRE(const sp_mat_t& SigmaI) {
+			CHECK(num_sets_re_ == 1);
+			//sample iid normal random vectors
+			if (!sampled_rand_vec_I_sim_post_) {
+				rand_vec_I_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+				GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_sim_post_);
+				rand_vec_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+				if (matrix_inversion_method_ == "iterative") {
+					rand_vec_I_2_sim_post_.resize(num_data_, num_rand_vec_sim_post_);
+					GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_2_sim_post_);
+				}
+				if (reuse_rand_vec_I_sim_post_) {
+					sampled_rand_vec_I_sim_post_ = true;
+				}
+			}//end !sampled_rand_vec_I_sim_post_
+			CHECK(rand_vec_I_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_I_sim_post_.rows() == dim_mode_);
+			CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_sim_post_.rows() == dim_mode_);
+			if (matrix_inversion_method_ == "cholesky") {
+				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, rand_vec_I_sim_post_, rand_vec_sim_post_, false);
+			}
+			else if (matrix_inversion_method_ == "iterative") {
+				CHECK(rand_vec_I_2_sim_post_.cols() == num_rand_vec_sim_post_);
+				CHECK(rand_vec_I_2_sim_post_.rows() == num_data_);
+				vec_t SigmaI_diag_sqrt = SigmaI.diagonal().cwiseSqrt();
+				sp_mat_rm_t Zt_W_sqrt_rm = sp_mat_rm_t((*Zt_) * information_ll_.cwiseSqrt().asDiagonal());
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
+					//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
+					vec_t rand_vec_pred_SigmaI_plus_ZtWZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_I_sim_post_.col(i) + Zt_W_sqrt_rm * rand_vec_I_2_sim_post_.col(i);
+					vec_t rand_vec_pred_SigmaI_plus_ZtWZ_inv;
+					if (rand_vec_sim_post_calculated_ && reuse_rand_vec_I_sim_post_) {
+						rand_vec_pred_SigmaI_plus_ZtWZ_inv = rand_vec_sim_post_.col(i);
+					}
+					else {
+						rand_vec_pred_SigmaI_plus_ZtWZ_inv = vec_t(dim_mode_);
+						rand_vec_pred_SigmaI_plus_ZtWZ_inv.setZero();
+					}
+					//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
+					bool has_NA_or_Inf = false;
+					CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
+						true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
+					if (has_NA_or_Inf) {
+						Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
+					}
+					rand_vec_sim_post_.col(i) = rand_vec_pred_SigmaI_plus_ZtWZ_inv;
+				}//end parallel loop
+			}//end matrix_inversion_method_ == "iterative"
+			SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
+			rand_vec_sim_post_calculated_ = true;
+		}//end Sample_Posterior_LaplaceApprox_GroupedRE
+
+			/*!
+		* \brief Sampling from the Laplace-approximated posterior when there are only single-level grouped random effects
+		*/
+		void Sample_Posterior_LaplaceApprox_OnlyOneGroupedRE() {
+			CHECK(num_sets_re_ == 1);
+			//sample iid normal random vectors
+			if (!sampled_rand_vec_I_sim_post_) {
+				rand_vec_I_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+				GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_sim_post_);
+				rand_vec_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+				if (reuse_rand_vec_I_sim_post_) {
+					sampled_rand_vec_I_sim_post_ = true;
+				}
+			}//end !sampled_rand_vec_I_sim_post_
+			CHECK(rand_vec_I_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_I_sim_post_.rows() == dim_mode_);
+			CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_sim_post_.rows() == dim_mode_);
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
+				rand_vec_sim_post_.col(i) = (rand_vec_I_sim_post_.col(i).array() / diag_SigmaI_plus_ZtWZ_.array()).matrix();
+			}
+			SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
+			rand_vec_sim_post_calculated_ = true;
+		}//end Sample_Posterior_LaplaceApprox_OnlyOneGroupedRE
+		
+		/*!
 		* \brief Sampling from the Laplace-approximated posterior when using a Vecchia approximation
 		*/
-		void Sample_Posterior_LaplaceApprox_Vecchia(const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) {
-			
+		void Sample_Posterior_LaplaceApprox_Vecchia(const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) {			
 			CHECK(num_sets_re_ == 1);
 			//sample iid normal random vectors
 			if (!sampled_rand_vec_I_sim_post_) {
@@ -5927,7 +6056,7 @@ namespace GPBoost {
 					//z_i ~ N(0,(Sigma^{-1} + W))
 					vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_I_sim_post_.col(i) + W_diag_sqrt.cwiseProduct(rand_vec_I_2_sim_post_.col(i));
 					vec_t rand_vec_pred_SigmaI_plus_W_inv;
-					if (rand_vec_sim_post_calculated_) {
+					if (rand_vec_sim_post_calculated_ && reuse_rand_vec_I_sim_post_) {
 						rand_vec_pred_SigmaI_plus_W_inv = rand_vec_sim_post_.col(i);
 					}
 					else {
@@ -5943,6 +6072,44 @@ namespace GPBoost {
 					rand_vec_sim_post_.col(i) = rand_vec_pred_SigmaI_plus_W_inv;
 				}//end parallel loop
 			}//end matrix_inversion_method_ == "iterative"
+			SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
+			rand_vec_sim_post_calculated_ = true;
+		}//end SamplePosterior_LaplaceApprox_Vecchia
+
+		/*!
+		* \brief Sampling from the Laplace-approximated posterior when using an FITC approximation
+		*/
+		void Sample_Posterior_LaplaceApprox_FITC(const den_mat_t* cross_cov,
+			const vec_t& fitc_resid_diag) {
+			CHECK(num_sets_re_ == 1);
+			vec_t DW_plus_I_inv_diag = (information_ll_.array() * fitc_resid_diag.array() + 1.).matrix().cwiseInverse();
+			vec_t D_div_DW_plus_I_sqrt = (DW_plus_I_inv_diag.array() * fitc_resid_diag.array()).sqrt().matrix();// = W^-1*(1-1/(DW+1))
+			int num_ip = (*cross_cov).cols();
+			//sample iid normal random vectors
+			if (!sampled_rand_vec_I_sim_post_) {
+				rand_vec_I_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+				GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_sim_post_);
+				rand_vec_I_2_sim_post_.resize(num_ip, num_rand_vec_sim_post_);
+				GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_2_sim_post_);
+				rand_vec_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+				if (reuse_rand_vec_I_sim_post_) {
+					sampled_rand_vec_I_sim_post_ = true;
+				}
+			}//end !sampled_rand_vec_I_sim_post_
+			CHECK(rand_vec_I_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_I_sim_post_.rows() == dim_mode_);
+			CHECK(rand_vec_I_2_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_I_2_sim_post_.rows() == num_ip);
+			CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_sim_post_.rows() == dim_mode_);
+			den_mat_t rand_vec_aux(num_ip, num_rand_vec_sim_post_);
+			TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_dense_Newton_, rand_vec_I_2_sim_post_, rand_vec_aux, false);// ~ sigma_ip + Sigma_nm^T * D_plus_WI_inv_diag * Sigma_nm
+			rand_vec_sim_post_ = D_div_DW_plus_I_sqrt.asDiagonal() * rand_vec_I_sim_post_ + DW_plus_I_inv_diag.asDiagonal() * ((*cross_cov) * rand_vec_aux);
+			SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
+			rand_vec_sim_post_calculated_ = true;
+		}//end Sample_Posterior_LaplaceApprox_FITC
+
+		void SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean() {
 			if (!TwoNumbersAreEqual<double>(c_mult_sim_post_, 1.)) {
 #pragma omp parallel for schedule(static)
 				for (int j = 0; j < num_rand_vec_sim_post_; ++j) {
@@ -5956,8 +6123,7 @@ namespace GPBoost {
 					rand_vec_sim_post_.col(j) += mode_;
 				}
 			}
-			rand_vec_sim_post_calculated_ = true;
-		}//end SamplePosterior_LaplaceApprox_Vecchia
+		}//end SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean
 
 		/*!
 		* \brief Make predictions for the (latent) random effects when using the Laplace approximation.
@@ -6021,8 +6187,8 @@ namespace GPBoost {
 				den_mat_t woodburry_part_sqrt = cross_cov_pred_ip.transpose();
 				sp_mat_t resid_obs_inv_resid_pred_obs_t;
 				if (has_fitc_correction) {
-					vec_t fitc_diag_plus_WI_inv = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
-					resid_obs_inv_resid_pred_obs_t = fitc_diag_plus_WI_inv.asDiagonal() * (fitc_resid_pred_obs.transpose());
+					vec_t D_plus_WI_inv_diag = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
+					resid_obs_inv_resid_pred_obs_t = D_plus_WI_inv_diag.asDiagonal() * (fitc_resid_pred_obs.transpose());
 					woodburry_part_sqrt -= (*cross_cov).transpose() * resid_obs_inv_resid_pred_obs_t;
 				}
 				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_dense_Newton_, woodburry_part_sqrt, woodburry_part_sqrt, false);
@@ -8775,15 +8941,15 @@ namespace GPBoost {
 		*/
 		template <class T_mat_1, typename std::enable_if <std::is_same<sp_mat_t, T_mat_1>::value ||
 			std::is_same<sp_mat_rm_t, T_mat_1>::value>::type* = nullptr >
-		void CalcChol(T_chol& chol_fact, const T_mat_1& psi) {
-			if (!chol_fact_pattern_analyzed_) {
+		void CalcChol(T_chol& chol_fact, const T_mat_1& psi, bool& chol_fact_pattern_analyzed) {
+			if (!chol_fact_pattern_analyzed) {
 				chol_fact.analyzePattern(psi);
-				chol_fact_pattern_analyzed_ = true;
+				chol_fact_pattern_analyzed = true;
 			}
 			chol_fact.factorize(psi);
 		}
 		template <class T_mat_1, typename std::enable_if <std::is_same<den_mat_t, T_mat_1>::value>::type* = nullptr  >
-		void CalcChol(T_chol& chol_fact, const T_mat_1& psi) {
+		void CalcChol(T_chol& chol_fact, const T_mat_1& psi, bool&) {
 			chol_fact.compute(psi);
 		}
 
@@ -9948,12 +10114,12 @@ namespace GPBoost {
 		/*! \brief True if samples have been generated from the Laplace-approximated posterior */
 		bool rand_vec_sim_post_calculated_ = false;
 		/*! \brief Number of random vectors (e.g., Rademacher) for sampling from the Laplace-approximated posterior */
-		int num_rand_vec_sim_post_ = 50;
+		int num_rand_vec_sim_post_ = 100;
 		/*! Matrix of random vectors (r_1, r_2, r_3, ...) with samples from the Laplace-approximated posterior */
 		den_mat_t rand_vec_sim_post_;
 		/*! Matrix with iid normal random vectors for sampling from the Laplace-approximated posterior */
 		den_mat_t rand_vec_I_sim_post_;
-		/*! Second set of iid normal random vectors for sampling from the Laplace-approximated posterior (for iterative methods) */
+		/*! Second set of iid normal random vectors for sampling from the Laplace-approximated posterior (e.g., for iterative methods) */
 		den_mat_t rand_vec_I_2_sim_post_;
 		/*! If true, the mean is added for sampling from the Laplace-approximated posterior (otherwise the mean of the samples is 0)  */
 		bool add_mean_sim_post_ = true;
