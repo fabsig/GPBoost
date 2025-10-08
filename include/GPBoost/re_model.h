@@ -440,9 +440,9 @@ namespace GPBoost {
 		int NumAuxPars() const;
 
 		/*!
-		* \brief Get additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
+		* \brief Get additional likelihood parameters (e.g., shape parameter for a gamma likelihood, on original scale)
 		* \param[out] aux_pars Additional likelihood parameters (aux_pars_). This vector needs to be pre-allocated
-		* \param[out] name Name of the first parameter
+		* \param[out] name Name of the parameters (separated by "_SEP_" if there are multiple parameters)
 		*/
 		void GetAuxPars(double* aux_pars,
 			string_t& name) const;

@@ -1077,7 +1077,7 @@ namespace GPBoost {
 			}
 			if (estimate_aux_pars_) {
 				// Find initial values for additional likelihood parameters (aux_pars) if they have not been given
-				if (!(likelihood_[unique_clusters_[0]]->AuxParsHaveBeenSet())) {
+				if (!(likelihood_[unique_clusters_[0]]->AuxParsHaveBeenSet())) {//If initial values have been provided, these were set in re_model previously
 					const double* aux_pars;
 					if (y_data == nullptr) {
 						vec_t y_aux_temp(num_data_);
@@ -1487,7 +1487,7 @@ namespace GPBoost {
 				Log::REDebug("Approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
 			}
 			vec_t cov_pars_var_const_maybe;
-			MaybeKeekVarianceConstant(cov_aux_pars.segment(0, num_cov_par_), cov_pars_var_const_maybe);
+			MaybeKeepVarianceConstant(cov_aux_pars.segment(0, num_cov_par_), cov_pars_var_const_maybe);
 			for (int i = 0; i < num_cov_par_; ++i) {
 				cov_aux_pars[i] = cov_pars_var_const_maybe[i];
 				optim_cov_pars[i] = cov_aux_pars[i];
@@ -1616,7 +1616,7 @@ namespace GPBoost {
 			const double* fixed_effects,
 			bool call_for_std_dev_coef) {
 			vec_t cov_pars;
-			MaybeKeekVarianceConstant(cov_pars_in, cov_pars);
+			MaybeKeepVarianceConstant(cov_pars_in, cov_pars);
 			if ((gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") && calc_cov_aux_par_grad) {
 				CalcGradientVecchia(true, 1., false);
 			}
@@ -2389,7 +2389,7 @@ namespace GPBoost {
 		void CalcCovFactorOrModeAndNegLL(const vec_t& cov_pars_in,
 			const double* fixed_effects) {
 			vec_t cov_pars;
-			MaybeKeekVarianceConstant(cov_pars_in, cov_pars);
+			MaybeKeepVarianceConstant(cov_pars_in, cov_pars);
 			SetCovParsComps(cov_pars);
 			CalcCovFactor(true, 1.);
 			if (gauss_likelihood_) {
@@ -2780,7 +2780,7 @@ namespace GPBoost {
 			const double* aux_pars,
 			bool print_cov_aux_pars) {
 			vec_t cov_pars;
-			MaybeKeekVarianceConstant(cov_pars_in, cov_pars);
+			MaybeKeepVarianceConstant(cov_pars_in, cov_pars);
 			vec_t cov_pars_orig, beta_orig;
 			if (Log::GetLevelRE() == LogLevelRE::Debug) { // do transformation only if log level Debug is active
 				if (print_cov_aux_pars) {
@@ -2806,8 +2806,10 @@ namespace GPBoost {
 				if (estimate_aux_pars_ && print_cov_aux_pars) {
 					SetAuxPars(aux_pars);//hack to avoid that wrong parameters are displayed for likelihoods when some parameters are not estimated (e.g., the 'df' parameter for a 't' likelihood)
 					const double* aux_pars_print = GetAuxPars();
+					vec_t aux_pars_print_orig(NumAuxPars());
+					BackTransformAuxPars(aux_pars_print, aux_pars_print_orig.data());
 					for (int i = 0; i < NumAuxPars(); ++i) {
-						Log::REDebug("%s: %g", likelihood_[unique_clusters_[0]]->GetNameAuxPars(i), aux_pars_print[i]);
+						Log::REDebug("%s: %g", likelihood_[unique_clusters_[0]]->GetNameAuxPars(i), aux_pars_print_orig[i]);
 					}
 				}
 			}
@@ -2828,7 +2830,7 @@ namespace GPBoost {
 			bool calc_cov_factor,
 			const vec_t& cov_pars_in) {
 			vec_t cov_pars;
-			MaybeKeekVarianceConstant(cov_pars_in, cov_pars);
+			MaybeKeepVarianceConstant(cov_pars_in, cov_pars);
 			//1. Factorize covariance matrix
 			if (calc_cov_factor) {
 				SetCovParsComps(cov_pars);
@@ -6830,7 +6832,7 @@ namespace GPBoost {
 		* \param cov_pars Covariance parameters
 		* \param[out] cov_pars_out Covariance parameters
 		*/
-		void MaybeKeekVarianceConstant(const vec_t& cov_pars,
+		void MaybeKeepVarianceConstant(const vec_t& cov_pars,
 			vec_t& cov_pars_out) {
 			cov_pars_out = cov_pars;
 			if (gauss_likelihood_ && optimization_running_currently_) {
@@ -6845,7 +6847,7 @@ namespace GPBoost {
 					}
 				}
 			}
-		}//end MaybeKeekVarianceConstant
+		}//end MaybeKeepVarianceConstant
 
 		/*!
 		* \brief Set the covariance parameters of the components
@@ -6854,7 +6856,7 @@ namespace GPBoost {
 		void SetCovParsComps(const vec_t& cov_pars_in) {
 			CHECK(cov_pars_in.size() == num_cov_par_);
 			vec_t cov_pars;
-			MaybeKeekVarianceConstant(cov_pars_in, cov_pars);
+			MaybeKeepVarianceConstant(cov_pars_in, cov_pars);
 			if (gauss_likelihood_) {
 				sigma2_ = cov_pars[0];
 			}
@@ -6892,7 +6894,7 @@ namespace GPBoost {
 		double GetTotalVarComps(const vec_t& cov_pars_in,
 			int ind_set_re) {
 			vec_t cov_pars;
-			MaybeKeekVarianceConstant(cov_pars_in, cov_pars);
+			MaybeKeepVarianceConstant(cov_pars_in, cov_pars);
 			CHECK(cov_pars.size() == num_cov_par_);
 			if (ind_set_re > 0) {
 				CHECK(ind_set_re <= num_sets_re_);
@@ -7020,6 +7022,26 @@ namespace GPBoost {
 				}
 			}
 		}
+
+		/*!
+		* \brief Transform the auxiliary parameters to the scale on which the optimization is done (if there are any)
+		* \param aux_pars_orig Auxiliary parameters on orginal scale
+		* \param[out] aux_pars_trans Auxiliary parameters on transformed scale
+		*/
+		void TransformAuxPars(const double* aux_pars_orig,
+			double* aux_pars_trans) {
+			likelihood_[unique_clusters_[0]]->TransformAuxPars(aux_pars_orig, aux_pars_trans);
+		}//end TransformAuxPars
+
+		/*!
+		* \brief Back-transform the auxiliary parameters to the scale on which the optimization is done (if there are any)
+		* \param aux_pars_trans Auxiliary parameters on transformed scale
+		* \param[out] aux_pars_orig Auxiliary parameters on orginal scale
+		*/
+		void BackTransformAuxPars(const double* aux_pars_trans,
+			double* aux_pars_orig) {
+			likelihood_[unique_clusters_[0]]->BackTransformAuxPars(aux_pars_trans, aux_pars_orig);
+		}//end BackTransformAuxPars
 
 		/*!
 		* \brief Calculate covariance matrices of the components and some auxiliary quantities for some approximations
@@ -8812,7 +8834,7 @@ namespace GPBoost {
 			bool include_error_var,
 			bool use_saved_psi_inv) {
 			vec_t cov_pars;
-			MaybeKeekVarianceConstant(cov_pars_in, cov_pars);
+			MaybeKeepVarianceConstant(cov_pars_in, cov_pars);
 			CHECK(gauss_likelihood_);
 			if (include_error_var) {
 				FI = den_mat_t(num_cov_par_, num_cov_par_);

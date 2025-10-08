@@ -53,6 +53,11 @@
 *		- y = (number of successes) / (number of trials), n = number of trials
 *		- mu = mean(p) = 1 / (1 + exp(-location_par)), phi \in (0,\infty) (= aux_pars_[0])
 *		- Note: phi = precision
+* 
+* For a "gamma_zero_inflated" likelihood, the following density is used:
+*   f(y) = p0 * 1_{y=0} + (1-p0) * (1-1_{y=0}) * lambda^gamma / Gamma(gamma) * y^(gamma - 1) * exp(-lambda * y)
+*       - mu = mean(y) = exp(location_par), lambda = (1-p0) * gamma / mu, gamma \in (0,\infty) (= aux_pars_[0]), p0 \in (0,1) (= aux_pars_[1] / (aux_pars_[1] + 1) )
+*		- Note: lambda = rate, gamma = shape, p0 = zero-inflation probability
 *
 */
 #ifndef GPB_LIKELIHOODS_
@@ -173,6 +178,17 @@ namespace GPBoost {
 				num_aux_pars_ = 1;
 				num_aux_pars_estim_ = 1;
 			}//end "gamma"
+			else if (likelihood_type_ == "gamma_zero_inflated") {
+				if (approximation_type_ != "laplace") {
+					Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood_type_.c_str());
+				}
+				aux_pars_ = { 1., 0. };//shape and p0/(1-p0)
+				names_aux_pars_ = { "shape", "p0"};
+				num_aux_pars_ = 2;
+				num_aux_pars_estim_ = 2;
+				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
+				information_ll_can_be_zero_ = true;
+			}//end "gamma_zero_inflated"
 			else if (likelihood_type_ == "negative_binomial") {
 				if (approximation_type_ != "laplace") {
 					Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood_type_.c_str());
@@ -360,6 +376,48 @@ namespace GPBoost {
 			has_int_label_ = label_type() == "int";
 		}//end constructor
 
+		/*!
+		* \brief Transform aux_pars
+		* \param aux_pars_orig Original aux_pars
+		* \param aux_pars_trans Transformed aux_pars
+		*/
+		void TransformAuxPars(const double* aux_pars_orig,
+			double* aux_pars_trans) {
+			if (likelihood_type_ == "gamma_zero_inflated") {
+				if (!(aux_pars_orig[1] > 0. && aux_pars_orig[1] < 1.)) {
+					Log::REFatal("The '%s' parameter (= %g) needs to be larger than 0 and smaller than 1 ", names_aux_pars_[1].c_str(), aux_pars_orig[1]);
+				}
+				aux_pars_trans[1] = aux_pars_orig[1] / (1. - aux_pars_orig[1]);
+				aux_pars_trans[0] = aux_pars_orig[0];
+			}//end likelihood_type_ == "gamma_zero_inflated"
+			else {//nothing to transform
+				for (int i = 0; i < num_aux_pars_; ++i) {
+					aux_pars_trans[i] = aux_pars_orig[i];
+				}
+			}
+		}
+
+		/*!
+		* \brief Back-transform aux_pars
+		* \param aux_pars_trans Transformed aux_pars
+		* \param aux_pars_orig Original aux_pars
+		*/
+		void BackTransformAuxPars(const double* aux_pars_trans,
+			double* aux_pars_orig) {
+			if (likelihood_type_ == "gamma_zero_inflated") {
+				if (!(aux_pars_trans[1] > 0.)) {
+					Log::REFatal("BackTransformAuxPars: the transformed '%s' parameter (= %g) needs to be larger than 0 ", names_aux_pars_[1].c_str(), aux_pars_trans[1]);
+				}
+				aux_pars_orig[1] = aux_pars_trans[1] / (1. + aux_pars_trans[1]);
+				aux_pars_orig[0] = aux_pars_trans[0];
+			}//end likelihood_type_ == "gamma_zero_inflated"
+			else {//nothing to transform
+				for (int i = 0; i < num_aux_pars_; ++i) {
+					aux_pars_orig[i] = aux_pars_trans[i];
+				}
+			}
+		}
+
 		/*! \brief Set properties (matrix inversion properties, choices for iterative methods, etc.). This function is calle from re_model_template.h which also holds these variables */
 		void SetPropertiesLikelihood(const string_t& matrix_inversion_method,
 			int cg_max_num_it,
@@ -403,7 +461,7 @@ namespace GPBoost {
 		void DetermineWhetherToCapChangeModeNewton() {
 			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
-				likelihood_type_ == "lognormal") {
+				likelihood_type_ == "lognormal" || likelihood_type_ == "gamma_zero_inflated") {
 				cap_change_mode_newton_ = true;
 			}
 			else {
@@ -580,6 +638,13 @@ namespace GPBoost {
 					}
 				}
 			}
+			else if (likelihood_type_ == "gamma_zero_inflated") {
+				for (data_size_t i = 0; i < num_data; ++i) {
+					if (y_data[i] < 0) {
+						Log::REFatal(" Must have y >= 0 for the response variable ('y') for likelihood = '%s', found %g ", likelihood_type_.c_str(), y_data[i]);
+					}
+				}
+			}
 			else if (likelihood_type_ == "beta") {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (y_data[i] <= 0 || y_data[i] >= 1) {
@@ -633,7 +698,8 @@ namespace GPBoost {
 				init_intercept = std::min(std::max(init_intercept, -3.0), 3.0); // avoid too small / large initial intercepts for better numerical stability
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || likelihood_type_ == "lognormal") {
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
+				likelihood_type_ == "lognormal" || likelihood_type_ == "gamma_zero_inflated") {
 				double sw = 0.0, avg = 0.;
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:avg, sw)
@@ -740,7 +806,8 @@ namespace GPBoost {
 			bool ret_val = false;
 			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
-				likelihood_type_ == "gaussian_heteroscedastic" || likelihood_type_ == "lognormal") {
+				likelihood_type_ == "gaussian_heteroscedastic" || likelihood_type_ == "lognormal" || 
+				likelihood_type_ == "gamma_zero_inflated") {
 				ret_val = true;
 			}
 			else {
@@ -980,7 +1047,54 @@ namespace GPBoost {
 					if (phi_init > 1e12) phi_init = 1e12;
 				}
 				aux_pars_[0] = phi_init;
-			}//end "beta_binomial")
+			}//end "beta_binomial"
+			else if (likelihood_type_ == "gamma_zero_inflated") {
+				sw = 0.0;
+				double log_avg = 0., avg_log = 0., avg_zero = 0.;
+				if (fixed_effects == nullptr) {
+#pragma omp parallel for schedule(static) reduction(+:log_avg, avg_log, sw, avg_zero)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double yi = y_data[i];
+						if (yi <= 0.) {
+							avg_zero += w;
+						}
+						else {
+							log_avg += w * yi;
+							avg_log += w * std::log(yi);
+						}
+						sw += w;
+					}
+				}
+				else {
+#pragma omp parallel for schedule(static) reduction(+:log_avg, avg_log, sw, avg_zero)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double yi = y_data[i];
+						if (yi <= 0.) {
+							avg_zero += w;
+						}
+						else {
+							log_avg += w * yi / std::exp(fixed_effects[i]);
+							avg_log += w * (std::log(yi) - fixed_effects[i]);
+						}
+						sw += w;
+					}
+				}
+				log_avg /= sw;
+				log_avg = std::log(log_avg);
+				avg_log /= sw;
+				avg_zero /= sw;
+				double s = log_avg - avg_log;
+				aux_pars_[0] = (3. - s + std::sqrt((s - 3.) * (s - 3.) + 24. * s)) / (12. * s);//same as for "gamma"
+				aux_pars_[1] = avg_zero / (1. - avg_zero);
+				if (TwoNumbersAreEqual<double>(avg_zero, 1.)) {
+					Log::REFatal("Only 0's in the response variable data ");
+				}
+				if (GPBoost::IsZero<double>(avg_zero)) {
+					Log::REFatal("No 0's in the response variable data ");
+				}
+			}//end likelihood_type_ == "gamma_zero_inflated"
 			else if (likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 				likelihood_type_ != "binomial_probit" && likelihood_type_ != "binomial_logit" && 
 				likelihood_type_ != "poisson" && likelihood_type_ != "gaussian_heteroscedastic") {
@@ -1009,7 +1123,8 @@ namespace GPBoost {
 				C_sigma2 = 1.;
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || likelihood_type_ == "lognormal") {
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
+				likelihood_type_ == "lognormal" || likelihood_type_ == "gamma_zero_inflated") {
 				double sw = 0.0, mean = 0., sec_mom = 0;
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
 				for (data_size_t i = 0; i < num_data; ++i) {
@@ -1128,9 +1243,10 @@ namespace GPBoost {
 			}
 			if (likelihood_type_ == "gaussian" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
-				likelihood_type_ == "beta" || likelihood_type_ == "t" || likelihood_type_ == "lognormal" || likelihood_type_ == "beta_binomial") {
+				likelihood_type_ == "beta" || likelihood_type_ == "t" || likelihood_type_ == "lognormal" || 
+				likelihood_type_ == "beta_binomial" || likelihood_type_ == "gamma_zero_inflated") {
 				for (int i = 0; i < num_aux_pars_estim_; ++i) {
-					if (!(aux_pars[i] > 0)) {
+					if (!(aux_pars[i] > 0.)) {
 						Log::REFatal("The '%s' parameter (= %g) is not > 0. This might be due to a problem when estimating the '%s' parameter (e.g., a numerical overflow). "
 							"You can try either (i) manually setting a different initial value using the 'init_aux_pars' parameter "
 							"or (ii) not estimating the '%s' parameter at all by setting 'estimate_aux_pars' to 'false'. "
@@ -2235,7 +2351,7 @@ namespace GPBoost {
 					}
 					if (matrix_inversion_method_ == "iterative") {
 						bool calculate_preconditioners = it == 0 || information_changes_during_mode_finding_;
-						Inv_SigmaI_plus_ZtWZ_iterative(cg_max_num_it, I_k_plus_Sigma_L_kt_W_Sigma_L_k, SigmaI, SigmaI_plus_W, B[0], has_NA_or_Inf, 
+						Inv_SigmaI_plus_ZtWZ_Vecchia_iterative(cg_max_num_it, I_k_plus_Sigma_L_kt_W_Sigma_L_k, SigmaI, SigmaI_plus_W, B[0], has_NA_or_Inf, 
 							re_comps_cross_cov_cluster_i, cluster_i, re_model, rhs, mode_update, it == 0, calculate_preconditioners);
 						if (has_NA_or_Inf) {
 							approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
@@ -2513,8 +2629,12 @@ namespace GPBoost {
 				}
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				vec_t D_plus_WI_inv_diag;
-				if (information_changes_after_mode_finding_) {
-					CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
+				if (information_changes_after_mode_finding_) CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
+				if (HasZeroValueInformationLogLik()) {
+					Log::REFatal("FindModePostRandEffCalcMLLFITC: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+						"Cannot have negative values when using the FITC approximation ");
+				}
+				if (information_changes_after_mode_finding_) {					
 					D_plus_WI_inv_diag = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
 					M_aux_Woodbury = *sigma_ip;
 					M_aux_Woodbury.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
@@ -3243,6 +3363,10 @@ namespace GPBoost {
 			vec_t W_D_inv = information_ll_ + D_inv_rm_.diagonal();
 			vec_t W_D_inv_inv = W_D_inv.cwiseInverse();
 			vec_t d_mll_d_mode;
+			if (HasZeroValueInformationLogLik()) {
+				Log::REFatal("CalcGradNegMargLikelihoodLaplaceApproxFSVA: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+					"Cannot have negative values when using the VIF approximation and gradient-based optimization ");
+			}
 			if (matrix_inversion_method_ == "iterative") {
 				double c_opt;
 				sp_mat_rm_t SigmaI_rm = B_t_D_inv_rm_ * B_rm_;
@@ -4135,7 +4259,7 @@ namespace GPBoost {
 					d_mll_d_mode = 0.5 * d_log_det_Sigma_W_plus_I_d_mode;
 					SigmaI_plus_W_inv_d_mll_d_mode = vec_t(dim_mode_);
 					bool has_NA_or_Inf = false;
-					Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, true, has_NA_or_Inf);
+					Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, true, has_NA_or_Inf);
 					if (has_NA_or_Inf) {
 						Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
 					}
@@ -4232,7 +4356,7 @@ namespace GPBoost {
 						if (grad_information_wrt_mode_can_be_zero_for_some_points_) {
 #pragma omp parallel for schedule(static)
 							for (int i = 0; i < (int)SigmaI_plus_W_inv_diag.size(); ++i) {
-								if (IsZero<double>(deriv_information_diag_loc_par[i])) {
+								if (GPBoost::IsZero<double>(deriv_information_diag_loc_par[i])) {
 									SigmaI_plus_W_inv_diag[i] = 0.;//set to 0 for safety, but this is actually not needed
 								}
 							}
@@ -4543,6 +4667,10 @@ namespace GPBoost {
 			CHECK(num_sets_re_ == 1);
 			if (grad_information_wrt_mode_non_zero_) {
 				CalcFirstDerivInformationLocPar(y_data, y_data_int, location_par_ptr, deriv_information_diag_loc_par, deriv_information_diag_loc_par_data_scale);
+			}
+			if (HasZeroValueInformationLogLik()) {
+				Log::REFatal("CalcGradNegMargLikelihoodLaplaceApproxFITC: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+					"Cannot have negative values when using the FITC approximation and gradient-based optimization ");
 			}
 			vec_t WI = information_ll_.cwiseInverse();
 			vec_t DW_plus_I_inv_diag, SigmaI_plus_W_inv_diag, d_mll_d_mode;
@@ -5796,7 +5924,7 @@ namespace GPBoost {
 							vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
 							//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
 							bool has_NA_or_Inf = false;
-							Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, true, has_NA_or_Inf);
+							Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, true, has_NA_or_Inf);
 							if (has_NA_or_Inf) {
 								Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
 							}
@@ -6065,7 +6193,7 @@ namespace GPBoost {
 					}
 					//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
 					bool has_NA_or_Inf = false;
-					Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, false, has_NA_or_Inf);
+					Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, false, has_NA_or_Inf);
 					if (has_NA_or_Inf) {
 						Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
 					}
@@ -6084,7 +6212,7 @@ namespace GPBoost {
 			CHECK(num_sets_re_ == 1);
 			vec_t DW_plus_I_inv_diag = (information_ll_.array() * fitc_resid_diag.array() + 1.).matrix().cwiseInverse();
 			vec_t D_div_DW_plus_I_sqrt = (DW_plus_I_inv_diag.array() * fitc_resid_diag.array()).sqrt().matrix();// = W^-1*(1-1/(DW+1))
-			int num_ip = (*cross_cov).cols();
+			int num_ip = (int)(*cross_cov).cols();
 			//sample iid normal random vectors
 			if (!sampled_rand_vec_I_sim_post_) {
 				rand_vec_I_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
@@ -6187,6 +6315,9 @@ namespace GPBoost {
 				den_mat_t woodburry_part_sqrt = cross_cov_pred_ip.transpose();
 				sp_mat_t resid_obs_inv_resid_pred_obs_t;
 				if (has_fitc_correction) {
+					if (HasZeroValueInformationLogLik()) {
+						Log::REFatal("PredictLaplaceApproxFITC: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. ");
+					}
 					vec_t D_plus_WI_inv_diag = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
 					resid_obs_inv_resid_pred_obs_t = D_plus_WI_inv_diag.asDiagonal() * (fitc_resid_pred_obs.transpose());
 					woodburry_part_sqrt -= (*cross_cov).transpose() * resid_obs_inv_resid_pred_obs_t;
@@ -6477,7 +6608,7 @@ namespace GPBoost {
 						vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
 						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
 						bool has_NA_or_Inf = false;
-						Inv_SigmaI_plus_ZtWZ_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, true, has_NA_or_Inf);
+						Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, true, has_NA_or_Inf);
 						if (has_NA_or_Inf) {
 							Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
 						}
@@ -6696,6 +6827,32 @@ namespace GPBoost {
 					}
 				}
 			}//end "beta_binomial"
+			else if (likelihood_type_ == "gamma_zero_inflated") {
+				CHECK(need_pred_latent_var_for_response_mean_);
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < (int)pred_mean.size(); ++i) {
+					const double m = pred_mean[i];
+					const double v = std::max(pred_var[i], 0.0);
+					// E[Y | y] = E_mu = E[mu] with mu = exp(eta)
+					double pm = std::exp(m + 0.5 * v);
+					if (predict_var) {
+						// Var(Y) = Var(E[Y|eta]) + E[Var(Y|eta)]
+						// Var(E[Y|eta]) = Var(mu) = (e^v - 1) * e^{2m+v} = (e^v - 1) * pm^2
+						const double var_of_mean = (std::exp(v) - 1.0) * pm * pm;
+						// For ZI-Gamma with shape k and odds a (p0 = a/(1+a), q = 1-p0 = 1/(1+a)):
+						// Var(Y | eta) = mu^2 * (1 + p0 * k) / (q * k)
+						// so E[Var(Y | eta)] = (1 + p0 * k) / (q * k) * E[mu^2] with E[mu^2] = e^{2m+2v}
+						const double k = aux_pars_[0];
+						const double a = aux_pars_[1];
+						const double q = 1.0 / (1.0 + a);          // = 1 - p0
+						const double p0 = a / (1.0 + a);
+						const double E_mu2 = std::exp(2.0 * m + 2.0 * v);
+						const double mean_of_var = ((1.0 + p0 * k) / (q * k)) * E_mu2;
+						pred_var[i] = var_of_mean + mean_of_var;
+					}
+					pred_mean[i] = pm;
+				}
+			}//end gamma_zero_inflated
 			else {
 				Log::REFatal("PredictResponse: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
@@ -7002,6 +7159,17 @@ namespace GPBoost {
 					}
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
+				else if (likelihood_type_ == "gamma_zero_inflated") {
+					double log_aux_normalizing_constant = 0.0;
+#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						if (y_data[i] > 0.0) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							log_aux_normalizing_constant += w * std::log(y_data[i]);
+						}
+					}
+					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
+				}
 				else if (likelihood_type_ != "gaussian" && likelihood_type_ != "gaussian_heteroscedastic" &&
 					likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 					likelihood_type_ != "poisson" && likelihood_type_ != "t" && likelihood_type_ != "beta") {
@@ -7072,6 +7240,20 @@ namespace GPBoost {
 				}
 				else if (likelihood_type_ == "lognormal") {
 					log_normalizing_constant_ = aux_log_normalizing_constant_ - (double)num_data_ * (M_LOGSQRT2PI + 0.5 * std::log(aux_pars_[0]));
+				}
+				else if (likelihood_type_ == "gamma_zero_inflated") {
+					const double r = aux_pars_[1];
+					const double q = 1.0 / (1.0 + r);// = 1 - p0
+					const double log_q = std::log(q);
+					double w_pos = 0.0, w_zero = 0.0;
+#pragma omp parallel for schedule(static) reduction(+:w_pos,w_zero)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						if (y_data[i] > 0.0) w_pos += w;
+						else                 w_zero += w;
+					}
+					log_normalizing_constant_ = w_zero * std::log(1.0 - q) + w_pos * (log_q + aux_pars_[0] * std::log(aux_pars_[0] * q) - std::lgamma(aux_pars_[0])) + 
+						(aux_pars_[0] - 1.0) * aux_log_normalizing_constant_;
 				}
 				else {
 					Log::REFatal("CalculateLogNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
@@ -7261,6 +7443,13 @@ namespace GPBoost {
 					ll += LogLikBetaBinomial(y_data[i], location_par[i], weights_[i]);
 				}
 			}
+			else if (likelihood_type_ == "gamma_zero_inflated") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					ll += w * LogLikGammaZeroInflated(y_data[i], location_par[i], false);
+				}
+			}
 			else {
 				Log::REFatal("LogLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
@@ -7308,6 +7497,9 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "lognormal") {
 				return(LogLikLogNormal(y_data, location_par, true));
+			}
+			else if (likelihood_type_ == "gamma_zero_inflated") {
+				return(LogLikGammaZeroInflated(y_data, location_par, true));
 			}
 			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || 
 				likelihood_type_ == "beta_binomial") {
@@ -7453,6 +7645,25 @@ namespace GPBoost {
 			return ll;
 		}
 
+		inline double LogLikGammaZeroInflated(double y, double location_par, bool incl_norm_const) const {
+			const double r = aux_pars_[1];
+			double ll = 0.0;
+			if (y > 0.0) {
+				const double q = 1.0 / (1.0 + r);//1 - p0
+				ll = -aux_pars_[0] * (location_par + q * y * std::exp(-location_par));
+				if (incl_norm_const) {
+					ll += std::log(q) + aux_pars_[0] * std::log(aux_pars_[0] * q) - std::lgamma(aux_pars_[0]) + (aux_pars_[0] - 1.0) * std::log(y);
+				}
+			}
+			else { // y == 0
+				if (incl_norm_const) {
+					const double p0 = r / (1.0 + r);
+					ll += std::log(p0);
+				}
+			}
+			return ll;
+		}
+
 		/*!
 		* \brief Calculate the first derivative of the log-likelihood with respect to the location parameter
 		* \param y_data Response variable data if response variable is continuous
@@ -7587,6 +7798,12 @@ namespace GPBoost {
 					first_deriv_ll[i] = FirstDerivLogLikBetaBinomial(y_data[i], location_par[i], weights_[i]);
 				}
 			}
+			else if (likelihood_type_ == "gamma_zero_inflated") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					first_deriv_ll[i] = FirstDerivLogLikGammaZeroInflated(y_data[i], location_par[i]);
+				}
+			}
 			else {
 				Log::REFatal("CalcFirstDerivLogLik_DataScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
@@ -7631,6 +7848,9 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "lognormal") {
 				return(FirstDerivLogLikLogNormal(y_data, location_par));
+			}
+			else if (likelihood_type_ == "gamma_zero_inflated") {
+				return(FirstDerivLogLikGammaZeroInflated(y_data, location_par));
 			}
 			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || 
 				likelihood_type_ == "beta_binomial") {
@@ -7728,6 +7948,12 @@ namespace GPBoost {
 				- GPBoost::digamma(w - k + b) + GPBoost::digamma(b);
 			const double s = mu * (1.0 - mu);
 			return phi * s * Delta;
+		}
+
+		inline double FirstDerivLogLikGammaZeroInflated(double y, double location_par) const {
+			if (y <= 0.) return 0.;
+			const double q = 1. / (1. + aux_pars_[1]);
+			return aux_pars_[0] * (q * y * std::exp(-location_par) - 1.);
 		}
 
 		/*!
@@ -7929,6 +8155,13 @@ namespace GPBoost {
 						information_ll[i] = SecondDerivNegLogLikBetaBinomial(y_data[i], location_par[i], weights_[i]);
 					}
 				}
+				else if (likelihood_type_ == "gamma_zero_inflated") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikGammaZeroInflated(y_data[i], location_par[i]);
+					}
+				}
 				else {
 					Log::REFatal("CalcInformationLogLik_DataScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 				}
@@ -8037,6 +8270,9 @@ namespace GPBoost {
 				else if (likelihood_type_ == "lognormal") {
 					return(SecondDerivNegLogLikLogNormal());
 				}
+				else if (likelihood_type_ == "gamma_zero_inflated") {
+					return(SecondDerivNegLogLikGammaZeroInflated(y_data, location_par));
+				}
 				else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 					likelihood_type_ == "beta_binomial") {
 					Log::REFatal("CalcDiagInformationLogLikOneSample: not implemented for likelihood = '%s'. If this error happened during the GPBoost algorithm, use another 'metric' instead of the (default) 'test_neg_log_likelihood' metric ", likelihood_type_.c_str());
@@ -8062,7 +8298,7 @@ namespace GPBoost {
 				}
 				else if (likelihood_type_ == "lognormal") {
 					return(SecondDerivNegLogLikLogNormal());
-				}
+				}				
 				else {
 					Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_.c_str());
@@ -8187,6 +8423,12 @@ namespace GPBoost {
 			const double S2 = GPBoost::trigamma(w - k + b) - GPBoost::trigamma(b);
 			const double s = mu * (1.0 - mu);
 			return -phi * (s * (1.0 - 2.0 * mu) * Delta + phi * s * s * (S1 + S2));
+		}
+
+		inline double SecondDerivNegLogLikGammaZeroInflated(double y, double location_par) const {
+			if (y <= 0.) return 0.;
+			const double q = 1. / (1. + aux_pars_[1]);
+			return q * aux_pars_[0] * y * std::exp(-location_par);
 		}
 
 		/*!
@@ -8381,6 +8623,19 @@ namespace GPBoost {
 						}
 					}
 				} // end "beta_binomial"
+				else if (likelihood_type_ == "gamma_zero_inflated") {
+					const double q = 1.0 / (1.0 + aux_pars_[1]);
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						if (y_data[i] <= 0.0) {
+							deriv_information_diag_loc_par[i] = 0.0;
+						}
+						else {
+							deriv_information_diag_loc_par[i] = w * -q * aux_pars_[0] * y_data[i] * std::exp(-location_par[i]);
+						}
+					}
+				}//end gamma_zero_inflated
 				else {
 					Log::REFatal("CalcFirstDerivInformationLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_.c_str());
@@ -8567,6 +8822,37 @@ namespace GPBoost {
 				}
 				grad[0] = neg_log_grad;
 			}//end "beta_binomial"
+			else if (likelihood_type_ == "gamma_zero_inflated") {
+				CHECK(aux_normalizing_constant_has_been_calculated_);
+				const double r = aux_pars_[1];
+				const double q = 1.0 / (1.0 + r);
+				double Wpos = 0.0, Wzero = 0.0, sum_for_gamma = 0.0;
+#pragma omp parallel for schedule(static) reduction(+:Wpos,Wzero,sum_for_gamma)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					if (y_data[i] > 0.0) {
+						Wpos += w;
+						sum_for_gamma += w * (location_par[i] + q * y_data[i] * std::exp(-location_par[i]));
+					}
+					else {
+						Wzero += w;
+					}
+				}
+				double neg_log_grad_gamma = sum_for_gamma - Wpos * (std::log(aux_pars_[0]) + 1. - GPBoost::digamma(aux_pars_[0]) + std::log(q)) - 
+					aux_log_normalizing_constant_;
+				grad[0] = neg_log_grad_gamma * aux_pars_[0];//grad on log(gamma)
+				// grad on log r
+				double neg_log_grad_r = -q * Wzero;
+#pragma omp parallel for schedule(static) reduction(+:neg_log_grad_r)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					if (y_data[i] > 0.) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double e_m_eta = std::exp(-location_par[i]);
+						neg_log_grad_r += w * (r * q * (1.0 + aux_pars_[0]) - r * aux_pars_[0] * q * q * y_data[i] * e_m_eta);
+					}
+				}
+				grad[1] = neg_log_grad_r;
+			}//end gamma_zero_inflated
 			else if (num_aux_pars_estim_ > 0) {
 				Log::REFatal("CalcGradNegLogLikAuxPars: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
@@ -8616,6 +8902,7 @@ namespace GPBoost {
 					}
 				}
 				else if (likelihood_type_ == "negative_binomial_1") {
+					CHECK(ind_aux_par == 0);
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
@@ -8750,6 +9037,30 @@ namespace GPBoost {
 						}
 					}
 				}//end "beta_binomial"
+				else if (likelihood_type_ == "gamma_zero_inflated") {
+					CHECK(ind_aux_par == 0 || ind_aux_par == 1);
+					const double r = aux_pars_[1];
+					const double q = 1.0 / (1.0 + r);
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						if (y_data[i] <= 0.0) {
+							second_deriv_loc_aux_par[i] = 0.0;
+							deriv_information_aux_par[i] = 0.0;
+							continue;
+						}
+						const double y_exp_neg_loc = y_data[i] * std::exp(-location_par[i]);
+						if (ind_aux_par == 0) { // log gamma
+							second_deriv_loc_aux_par[i] = w * aux_pars_[0] * (q * y_exp_neg_loc - 1.0);
+							deriv_information_aux_par[i] = w * q * aux_pars_[0] * y_exp_neg_loc; // = W_i
+						}
+						else { // log r
+							const double val = -r * aux_pars_[0] * q * q * y_exp_neg_loc;
+							second_deriv_loc_aux_par[i] = w * val;
+							deriv_information_aux_par[i] = w * val;
+						}
+					}
+}
 				else if (num_aux_pars_estim_ > 0) {
 					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_.c_str());
@@ -8833,7 +9144,8 @@ namespace GPBoost {
 				return GPBoost::sigmoid_stable(value);
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || likelihood_type_ == "lognormal") {
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
+				likelihood_type_ == "lognormal" || likelihood_type_ == "gamma_zero_inflated") {
 				return std::exp(value);
 			}
 			else {
@@ -8852,7 +9164,8 @@ namespace GPBoost {
 				return GPBoost::sigmoid_stable(-value);
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || likelihood_type_ == "lognormal") {
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
+				likelihood_type_ == "lognormal" || likelihood_type_ == "gamma_zero_inflated") {
 				return 1.;
 			}
 			else if (likelihood_type_ == "t" || likelihood_type_ == "gaussian") {
@@ -8878,7 +9191,8 @@ namespace GPBoost {
 				//return -exp_x / ((1. + exp_x) * (1. + exp_x));
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || likelihood_type_ == "lognormal") {
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
+				likelihood_type_ == "lognormal" || likelihood_type_ == "gamma_zero_inflated") {
 				return 0.;
 			}
 			else if (likelihood_type_ == "t" || likelihood_type_ == "gaussian") {
@@ -9156,23 +9470,36 @@ namespace GPBoost {
 		}//end CheckConvergenceModeFinding
 
 		bool HasNegativeValueInformationLogLik() const {
+			if (!information_ll_can_be_negative_) return false;
+			const std::size_t n = information_ll_.size();
+			// For small-ish inputs, the serial version is often faster 
+			if (n < 50000) {
+				return std::any_of(information_ll_.begin(), information_ll_.end(),
+					[](double v) { return v < 0.; });
+			}
 			bool has_negative = false;
-			if (information_ll_can_be_negative_) {
-#pragma omp parallel for schedule(static) shared(has_negative)
-				for (int i = 0; i < (int)information_ll_.size(); ++i) {
-					if (has_negative) {
-						continue;
-					}
-					if (information_ll_[i] < 0.) {
-#pragma omp critical
-						{
-							has_negative = true;
-						}
-					}
-				}
+#pragma omp parallel for schedule(static) reduction(||:has_negative)
+			for (int i = 0; i < static_cast<int>(n); ++i) {
+				has_negative = has_negative || (information_ll_[i] < 0.);
 			}
 			return has_negative;
 		}//end HasNegativeValueInformationLogLik
+
+		bool HasZeroValueInformationLogLik() const {
+			if (!information_ll_can_be_zero_) return false;
+			const std::size_t n = information_ll_.size();
+			// For small-ish inputs, the serial version is often faster 
+			if (n < 50000) {
+				return std::any_of(information_ll_.begin(), information_ll_.end(),
+					[](double v) { return v == 0.; });
+			}
+			bool has_zero = false;
+#pragma omp parallel for schedule(static) reduction(||:has_zero)
+			for (int i = 0; i < static_cast<int>(n); ++i) {
+				has_zero = has_zero || (information_ll_[i] == 0.);
+			}
+			return has_zero;
+		}//end HasZeroValueInformationLogLik
 
 		/*!
 		* \brief Set the gradient wrt to additional likelihood parameters that are not estimated to some default values (usually 0.)
@@ -9189,8 +9516,6 @@ namespace GPBoost {
 				CHECK(use_fisher_for_mode_finding_ && !mode_finding_fisher_has_been_continued_);
 			}
 		}//end ChecksBeforeModeFinding
-
-
 
 		/*!
 		* \brief Calculate log|Sigma W + I| using stochastic trace estimation and variance reduction.
@@ -9223,6 +9548,10 @@ namespace GPBoost {
 			std::vector<vec_t> Tsubdiags_W_SigmaI(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
 			if (cg_preconditioner_type_ == "fitc") {
 				const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
+				if (HasZeroValueInformationLogLik()) {
+					Log::REFatal("CalcLogDetStochFSVA: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+						"Cannot have negative values when using the VIF approximation and iterative methods with the '%s' preconditioner ", cg_preconditioner_type_.c_str());
+				}
 				CGTridiagVIFLaplaceSigmaPlusWinv(information_ll_.cwiseInverse(), D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
 					chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rand_vec_trace_I_, Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, SigmaI_plus_W_inv_Z_,
 					has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_);
@@ -9253,7 +9582,7 @@ namespace GPBoost {
 		/*!
 		* \brief Calculate (Sigma^-1 + ZtWZ)^-1 rhs
 		*/
-		void Inv_SigmaI_plus_ZtWZ_iterative(int cg_max_num_it,
+		void Inv_SigmaI_plus_ZtWZ_Vecchia_iterative(int cg_max_num_it,
 			den_mat_t& I_k_plus_Sigma_L_kt_W_Sigma_L_k,
 			const sp_mat_t& SigmaI,
 			sp_mat_t& SigmaI_plus_W,
@@ -9282,6 +9611,10 @@ namespace GPBoost {
 							chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_.compute(I_k_plus_Sigma_L_kt_W_Sigma_L_k);
 						}
 						else if (cg_preconditioner_type_ == "fitc") {
+							if (HasZeroValueInformationLogLik()) {
+								Log::REFatal("Inv_SigmaI_plus_ZtWZ_Vecchia_iterative: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+									"Cannot have negative values when using the Vecchia approximation and iterative methods with the '%s' preconditioner ", cg_preconditioner_type_.c_str());
+							}
 							diagonal_approx_preconditioner_ = information_ll_.cwiseInverse();
 							diagonal_approx_preconditioner_.array() += sigma_ip_stable_.coeffRef(0, 0);
 #pragma omp parallel for schedule(static)
@@ -9296,6 +9629,10 @@ namespace GPBoost {
 						}
 						else if (cg_preconditioner_type_ == "vecchia_response") {
 							sp_mat_t B_vecchia;
+							if (HasZeroValueInformationLogLik()) {
+								Log::REFatal("Inv_SigmaI_plus_ZtWZ_Vecchia_iterative: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+									"Cannot have negative values when using the Vecchia approximation and iterative methods with the '%s' preconditioner ", cg_preconditioner_type_.c_str());
+							}
 							vec_t pseudo_nugget = information_ll_.cwiseInverse();
 							re_model->CalcVecchiaApproxLatentAddDiagonal(cluster_i, B_vecchia, D_inv_vecchia_pc_, pseudo_nugget.data());
 							B_vecchia_pc_rm_ = sp_mat_rm_t(B_vecchia);
@@ -9321,11 +9658,11 @@ namespace GPBoost {
 					cg_max_num_it, initialize_to_zero, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, false);
 			}
 			else {
-				Log::REFatal("Inv_SigmaI_plus_ZtWZ_iterative: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
+				Log::REFatal("Inv_SigmaI_plus_ZtWZ_Vecchia_iterative: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
 			}
-		}//end Inv_SigmaI_plus_ZtWZ_iterative
+		}//end Inv_SigmaI_plus_ZtWZ_Vecchia_iterative
 		// Overload when preconditioners are not calculated
-		void Inv_SigmaI_plus_ZtWZ_iterative_given_PC(int cg_max_num_it,
+		void Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(int cg_max_num_it,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
 			const vec_t& rhs,
 			vec_t& SigmaI_plus_ZtWZ_inv_rhs,
@@ -9334,9 +9671,9 @@ namespace GPBoost {
 			den_mat_t d1{};
 			sp_mat_t  d2{}, d3{}, d4{};
 			REModelTemplate<T_mat, T_chol>* model = nullptr;
-			Inv_SigmaI_plus_ZtWZ_iterative(cg_max_num_it, d1, d2, d3, d4, has_NA_or_Inf, 
+			Inv_SigmaI_plus_ZtWZ_Vecchia_iterative(cg_max_num_it, d1, d2, d3, d4, has_NA_or_Inf, 
 				re_comps_cross_cov_cluster_i, 0, model, rhs, SigmaI_plus_ZtWZ_inv_rhs, initialize_to_zero, false);
-		}//end Inv_SigmaI_plus_ZtWZ_iterative_given_PC
+		}//end Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC
 
 		/*!
 		* \brief Calculate log|Sigma W + I| using stochastic trace estimation and variance reduction.
@@ -9365,6 +9702,10 @@ namespace GPBoost {
 			CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
 			CHECK(rand_vec_trace_P_.cols() == num_rand_vec_trace_);
 			if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
+				if (HasZeroValueInformationLogLik()) {
+					Log::REFatal("CalcLogDetStochVecchia: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+						"Cannot have negative values when using the Vecchia approximation and iterative methods with the '%s' preconditioner ", cg_preconditioner_type_.c_str());
+				}
 				const den_mat_t* cross_cov = nullptr;
 				std::vector<vec_t> Tdiags_PI_WI_plus_Sigma(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
 				std::vector<vec_t> Tsubdiags_PI_WI_plus_Sigma(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
@@ -9522,6 +9863,10 @@ namespace GPBoost {
 				const den_mat_t* cross_cov = nullptr;
 				den_mat_t Z_WI_plus_Sigma_inv_WI_deriv_PI_Z;
 				vec_t tr_WI_plus_Sigma_inv_WI_deriv;
+				if (HasZeroValueInformationLogLik()) {
+					Log::REFatal("CalcLogDetStochDerivModeVecchia: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+						"Cannot have negative values when using the Vecchia approximation and iterative methods with the '%s' preconditioner ", cg_preconditioner_type_.c_str());
+				}
 				diag_WI = information_ll_.cwiseInverse();
 				WI_WI_plus_Sigma_inv_Z = diag_WI.asDiagonal() * WI_plus_Sigma_inv_Z_;
 				if (cg_preconditioner_type_ == "pivoted_cholesky") {
@@ -9927,7 +10272,8 @@ namespace GPBoost {
 		string_t likelihood_type_ = "gaussian";
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit",
-			"poisson", "gamma", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "lognormal", "beta_binomial" };
+			"poisson", "gamma", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "lognormal", "beta_binomial", 
+			"gamma_zero_inflated" };
 		/*! \brief True if response variable has int type */
 		bool has_int_label_;
 		/*! \brief Number of additional parameters for likelihoods */
@@ -9948,6 +10294,8 @@ namespace GPBoost {
 		const std::set<string_t> SUPPORTED_APPROX_TYPE_{ "laplace", "fisher_laplace", "lss_laplace" };
 		/*! \brief If true, 'information_ll_' could contain negative values */
 		bool information_ll_can_be_negative_ = false;
+		/*! \brief If true, 'information_ll_' could contain exact zeros */
+		bool information_ll_can_be_zero_ = false;
 		/*! \brief If true, the (observed or expected) Fisher information ('information_ll_') changes in the mode finding algorithm (usually Newton's method) for the Laplace approximation */
 		bool information_changes_during_mode_finding_ = true;
 		/*! \brief If true, the (observed or expected) Fisher information ('information_ll_') changes after the mode finding algorithm (e.g., if Fisher-Laplace is used for mode finding but Laplace for the final likelihood calculation) */

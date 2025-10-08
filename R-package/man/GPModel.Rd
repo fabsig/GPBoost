@@ -45,6 +45,10 @@ The variance is mu * (1 + phi), mu = mean, phi = dispersion, with this parametri
 \item{ "t": t-distribution (e.g., for robust regression) }
 \item{ "t_fix_df": t-distribution with the degrees-of-freedom (df) held fixed and not estimated. 
 The df can be set via the \code{likelihood_additional_param} parameter }
+\item{ "gamma_zero_inflated": Zero-inflated gamma likelihood with a log link function. 
+The log-transformed mean equals the sum of fixed and random effects, E(y) = mu = exp(F(X) + Zb), 
+and the rate parameter equals (1-p0) * gamma / mu, where p0 is the zero-inflation probability and gamma the shape parameter. 
+I.e., the rate parameter depends on F(X) + Zb and p0 and gamma are constant but estimated }
 \item{ "gaussian_heteroscedastic": Gaussian likelihood where both the mean and the variance 
 are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation }
 \item{ Note: the first lines in the \url{https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h}{likelihoods source file} contain additional comments on the specific parametrizations used }

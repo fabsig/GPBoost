@@ -4129,6 +4129,13 @@ class GPModel(object):
 
                         t-distribution with the degrees-of-freedom (df) held fixed and not estimated. The df can be set via the 'likelihood_additional_param' parameter
 
+                    - "gamma_zero_inflated":
+                    
+                        Zero-inflated gamma likelihood with a log link function. 
+                        The log-transformed mean equals the sum of fixed and random effects, E(y) = mu = exp(F(X) + Zb), 
+                        and the rate parameter equals (1-p0) * gamma / mu, where p0 is the zero-inflation probability and gamma the shape parameter. 
+                        I.e., the rate parameter depends on F(X) + Zb and p0 and gamma are constant but estimated
+                    
                     - "gaussian_heteroscedastic":
 
                         Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation
@@ -5096,7 +5103,7 @@ class GPModel(object):
                 - m_lbfgs : integer, optional (default = 6)
                     Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer
                 - delta_conv_mode_finding : double, optional (default = 1e-8)
-                    Convergence in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods
+                    Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods
 
         offset : numpy 1-D array or None, optional (default=None)
             Additional fixed effects contributions that are added to the linear predictor (= offset).
