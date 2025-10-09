@@ -61,26 +61,48 @@ namespace GPBoost {
 
 	/*! \brief Checking whether a vector contains a zero */
 	template <typename T>//T can be double or float
-	inline bool HasZero(const T* v, data_size_t num_data) {
-		int has_zero = 0;
-#pragma omp parallel for reduction(|:has_zero) schedule(static)
-		for (data_size_t i = 0; i < num_data; ++i) {
-			if (IsZero<T>(v[i])) has_zero = 1;
+	inline bool HasZero(const T* v_ptr, data_size_t num_data) {
+		if (num_data == 0) return false;
+		if (num_data < 50000) {// serial version for small data (often faster)
+			return std::any_of(v_ptr, v_ptr + num_data, [](T v) { return IsZero<T>(v); });
 		}
-		return has_zero != 0;
+		bool has_zero = false;
+#pragma omp parallel for schedule(static) reduction(||:has_zero)
+		for (data_size_t i = 0; i < num_data; ++i) {
+			has_zero = has_zero || (IsZero<T>(v_ptr[i]));
+		}
+		return has_zero;
+	}//end HasZero
+
+	/*! \brief Checking whether a vector contains an exact zero */
+	template <typename T>//T can be double or float
+	inline bool HasExactZero(const T* v_ptr, data_size_t num_data) {
+		if (num_data == 0) return false;
+		if (num_data < 50000) {// serial version for small data (often faster)
+			return std::any_of(v_ptr, v_ptr + num_data, [](T v) { return v == 0.; });
+		}
+		bool has_zero = false;
+#pragma omp parallel for schedule(static) reduction(||:has_zero)
+		for (data_size_t i = 0; i < num_data; ++i) {
+			has_zero = has_zero || (v_ptr[i] == 0.);
+		}
+		return has_zero;
 	}//end HasZero
 
 	/*! \brief Checking whether a vector contains negative values */
 	template <typename T>//T can be double or float
-	inline bool HasNegativeValues(const T* v, data_size_t num_data) {
-		int has_negative = 0;
-#pragma omp parallel for reduction(|:has_negative) schedule(static)
-		for (data_size_t i = 0; i < num_data; ++i) {
-			if (v[i] < 0.0) has_negative = 1;
+	inline bool HasNegativeValues(const T* v_ptr, data_size_t num_data) {
+		if (num_data == 0) return false;
+		if (num_data < 50000) {// serial version for small data (often faster)
+			return std::any_of(v_ptr, v_ptr + num_data, [](T v) { return v < 0.; });
 		}
-		return has_negative != 0;
+		bool has_negative = false;
+#pragma omp parallel for schedule(static) reduction(||:has_negative)
+		for (data_size_t i = 0; i < num_data; ++i) {
+			has_negative = has_negative || (v_ptr[i] < 0.);
+		}
+		return has_negative;
 	}//end HasNegativeValues
-
 
 	/*! \brief Checking whether a number 'a' is smaller than another number 'b' */
 	template <typename T>//T can be double or float

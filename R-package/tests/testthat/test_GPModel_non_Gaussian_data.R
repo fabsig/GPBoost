@@ -4595,5 +4595,75 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lte(cvbst$best_iter, 12)
     
   }) # end gamma_zero_inflated regression
+  
+  test_that("zero_censored_power_transformed_normal regression ", {
+    
+    params <- OPTIM_PARAMS_BFGS
+    likelihood <- "zero_censored_power_transformed_normal"
+    
+    # Single level grouped random effects
+    sd <- 0.5
+    lambda <- 2
+    mu <- Z1 %*% b_gr_1 + 0.5*X%*%beta
+    y <- qnorm(sim_rand_unif(n=n, init_c=0.74), mean = mu, sd = sd)
+    y[y<0] <- 0
+    y <- y^lambda
+    
+    # Evaluate negative log-likelihood
+    gp_model <- GPModel(group_data = group, likelihood = likelihood, 
+                        matrix_inversion_method = "cholesky")
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(sd, lambda))
+    expect_lt(abs(nll-136.3207937),TOLERANCE_STRICT)
+    
+    # Estimation
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
+                                           y = y, X=X, params = params, matrix_inversion_method = "cholesky")
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model$get_cov_pars()-0.2738894685 )),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-c(0.5063065798, 1.9972298651 ))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.02918452696, 0.95297066593 ))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-78.36165785)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 16)
+    # Prediction
+    group_test <- c(1,3,3,9999)
+    X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, 
+                    predict_var=TRUE, predict_response = TRUE)
+    expected_mu <- c(0.08599462901, 0.07688776745, 0.13922635805, 1.47552996906)
+    expected_var <- c(0.05487056257, 0.04984489036, 0.10257857183, 2.63290673343)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
+    
+    ## GPBoost algorithm
+    dtrain <- gpb.Dataset(data = X, label = y)
+    gp_model <- GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = "cholesky")
+    gp_model$set_optim_params(params=OPTIM_PARAMS_BFGS)
+    bst <- gpboost(data = dtrain, gp_model = gp_model,
+                   nrounds = 30, learning_rate = 0.1, max_depth = 6,
+                   min_data_in_leaf = 5, verbose = 0)
+    expect_lt(sum(abs(gp_model$get_cov_pars()-0.3047641331)),TOLERANCE_MEDIUM)
+    # Prediction
+    pred <- predict(bst, data = X_test, group_data_pred = group_test,
+                    predict_var = TRUE, pred_latent = TRUE)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(-0.4260247436 , 0.2043827603 , 0.2090345882,  1.0115233651))),TOLERANCE_MEDIUM)
+    # Predict response
+    pred <- predict(bst, data = X_test, group_data_pred = group_test,
+                    predict_var = TRUE, pred_latent = FALSE)
+    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.11534197663, 0.04550468671, 0.04639397358, 1.48125303588))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.05708915850, 0.01948457638, 0.01993822146, 2.39133346057))), TOLERANCE_MEDIUM)
+    
+    # cv function
+    dtrain <- gpb.Dataset(data = X, label = y)
+    gp_model <- GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = "cholesky")
+    output <- capture.output( cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model,
+                                              nrounds = 100, early_stopping_rounds = 5,
+                                              use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
+                                              deterministic = TRUE) )
+    expect_lte(cvbst$best_score,0.994939322978013*(1+TOLERANCE_LOOSE))
+    expect_gte(cvbst$best_score,0.959148190337891*(1-TOLERANCE_LOOSE))
+    expect_lte(cvbst$best_iter, 20)
+    expect_gte(cvbst$best_iter, 18)
+    
+  }) # end zero_censored_power_transformed_normal regression
 }
 

@@ -50,6 +50,11 @@ The log-transformed mean of the response variable equals the sum of fixed and ra
 and the rate parameter equals (1-p0) * gamma / mu, where p0 is the zero-inflation probability and gamma the shape parameter. 
 I.e., the rate parameter depends on F(X) + Zb, and p0 and gamma are (univariate auxiliary) parameters that are estimated. 
 Note that E(y) = mu above refers the the mean of the entire distribution and not just the positive part }
+\item{ "zero_censored_power_transformed_normal": Likelihood of a censored and power-transformed normal variable 
+for modeling data with a point mass at 0 and a continuous distribution for y > 0. 
+The model used is Y = max(0,X)^lambda, X ~ N(mu, sigma^2), where mu = F(X) + Zb, 
+and sigma and lambda are (auxiliary) parameters that are estimated. 
+For more details on this model, see Sigrist et al. (2012, AOAS) "A dynamic nonstationary spatio-temporal model for short term prediction of precipitation" }
 \item{ "gaussian_heteroscedastic": Gaussian likelihood where both the mean and the variance 
 are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation }
 \item{ Note: the first lines in the \url{https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h}{likelihoods source file} contain additional comments on the specific parametrizations used }
