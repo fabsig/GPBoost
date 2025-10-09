@@ -54,7 +54,7 @@
 *		- mu = mean(p) = 1 / (1 + exp(-location_par)), phi \in (0,\infty) (= aux_pars_[0])
 *		- Note: phi = precision
 * 
-* For a "gamma_zero_inflated" likelihood, the following density is used:
+* For a "zero_inflated_gamma" likelihood, the following density is used:
 *   f(y) = p0 * 1_{y=0} + (1-p0) * (1-1_{y=0}) * lambda^gamma / Gamma(gamma) * y^(gamma - 1) * exp(-lambda * y)
 *       - mu = mean(y) = exp(location_par), lambda = (1-p0) * gamma / mu, gamma \in (0,\infty) (= aux_pars_[0]), p0 \in (0,1) (= aux_pars_[1] / (aux_pars_[1] + 1) )
 *		- Note: lambda = rate, gamma = shape, p0 = zero-inflation probability
@@ -178,7 +178,7 @@ namespace GPBoost {
 				num_aux_pars_ = 1;
 				num_aux_pars_estim_ = 1;
 			}//end "gamma"
-			else if (likelihood_type_ == "gamma_zero_inflated") {
+			else if (likelihood_type_ == "zero_inflated_gamma") {
 				if (approximation_type_ != "laplace") {
 					Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood_type_.c_str());
 				}
@@ -188,7 +188,7 @@ namespace GPBoost {
 				num_aux_pars_estim_ = 2;
 				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
 				information_ll_can_be_zero_ = true;
-			}//end "gamma_zero_inflated"
+			}//end "zero_inflated_gamma"
 			else if (likelihood_type_ == "negative_binomial") {
 				if (approximation_type_ != "laplace") {
 					Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood_type_.c_str());
@@ -383,13 +383,13 @@ namespace GPBoost {
 		*/
 		void TransformAuxPars(const double* aux_pars_orig,
 			double* aux_pars_trans) {
-			if (likelihood_type_ == "gamma_zero_inflated") {
+			if (likelihood_type_ == "zero_inflated_gamma") {
 				if (!(aux_pars_orig[1] > 0. && aux_pars_orig[1] < 1.)) {
 					Log::REFatal("The '%s' parameter (= %g) needs to be larger than 0 and smaller than 1 ", names_aux_pars_[1].c_str(), aux_pars_orig[1]);
 				}
 				aux_pars_trans[1] = aux_pars_orig[1] / (1. - aux_pars_orig[1]);
 				aux_pars_trans[0] = aux_pars_orig[0];
-			}//end likelihood_type_ == "gamma_zero_inflated"
+			}//end likelihood_type_ == "zero_inflated_gamma"
 			else {//nothing to transform
 				for (int i = 0; i < num_aux_pars_; ++i) {
 					aux_pars_trans[i] = aux_pars_orig[i];
@@ -404,13 +404,13 @@ namespace GPBoost {
 		*/
 		void BackTransformAuxPars(const double* aux_pars_trans,
 			double* aux_pars_orig) {
-			if (likelihood_type_ == "gamma_zero_inflated") {
+			if (likelihood_type_ == "zero_inflated_gamma") {
 				if (!(aux_pars_trans[1] > 0.)) {
 					Log::REFatal("BackTransformAuxPars: the transformed '%s' parameter (= %g) needs to be larger than 0 ", names_aux_pars_[1].c_str(), aux_pars_trans[1]);
 				}
 				aux_pars_orig[1] = aux_pars_trans[1] / (1. + aux_pars_trans[1]);
 				aux_pars_orig[0] = aux_pars_trans[0];
-			}//end likelihood_type_ == "gamma_zero_inflated"
+			}//end likelihood_type_ == "zero_inflated_gamma"
 			else {//nothing to transform
 				for (int i = 0; i < num_aux_pars_; ++i) {
 					aux_pars_orig[i] = aux_pars_trans[i];
@@ -461,7 +461,7 @@ namespace GPBoost {
 		void DetermineWhetherToCapChangeModeNewton() {
 			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
-				likelihood_type_ == "lognormal" || likelihood_type_ == "gamma_zero_inflated") {
+				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				cap_change_mode_newton_ = true;
 			}
 			else {
@@ -638,7 +638,7 @@ namespace GPBoost {
 					}
 				}
 			}
-			else if (likelihood_type_ == "gamma_zero_inflated") {
+			else if (likelihood_type_ == "zero_inflated_gamma") {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (y_data[i] < 0) {
 						Log::REFatal(" Must have y >= 0 for the response variable ('y') for likelihood = '%s', found %g ", likelihood_type_.c_str(), y_data[i]);
@@ -699,7 +699,7 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
-				likelihood_type_ == "lognormal" || likelihood_type_ == "gamma_zero_inflated") {
+				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				double sw = 0.0, avg = 0.;
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:avg, sw)
@@ -807,7 +807,7 @@ namespace GPBoost {
 			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
 				likelihood_type_ == "gaussian_heteroscedastic" || likelihood_type_ == "lognormal" || 
-				likelihood_type_ == "gamma_zero_inflated") {
+				likelihood_type_ == "zero_inflated_gamma") {
 				ret_val = true;
 			}
 			else {
@@ -1048,7 +1048,7 @@ namespace GPBoost {
 				}
 				aux_pars_[0] = phi_init;
 			}//end "beta_binomial"
-			else if (likelihood_type_ == "gamma_zero_inflated") {
+			else if (likelihood_type_ == "zero_inflated_gamma") {
 				sw = 0.0;
 				double log_avg = 0., avg_log = 0., avg_zero = 0.;
 				if (fixed_effects == nullptr) {
@@ -1094,7 +1094,7 @@ namespace GPBoost {
 				if (GPBoost::IsZero<double>(avg_zero)) {
 					Log::REFatal("No 0's in the response variable data ");
 				}
-			}//end likelihood_type_ == "gamma_zero_inflated"
+			}//end likelihood_type_ == "zero_inflated_gamma"
 			else if (likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 				likelihood_type_ != "binomial_probit" && likelihood_type_ != "binomial_logit" && 
 				likelihood_type_ != "poisson" && likelihood_type_ != "gaussian_heteroscedastic") {
@@ -1124,7 +1124,7 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
-				likelihood_type_ == "lognormal" || likelihood_type_ == "gamma_zero_inflated") {
+				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				double sw = 0.0, mean = 0., sec_mom = 0;
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
 				for (data_size_t i = 0; i < num_data; ++i) {
@@ -1244,7 +1244,7 @@ namespace GPBoost {
 			if (likelihood_type_ == "gaussian" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
 				likelihood_type_ == "beta" || likelihood_type_ == "t" || likelihood_type_ == "lognormal" || 
-				likelihood_type_ == "beta_binomial" || likelihood_type_ == "gamma_zero_inflated") {
+				likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_inflated_gamma") {
 				for (int i = 0; i < num_aux_pars_estim_; ++i) {
 					if (!(aux_pars[i] > 0.)) {
 						Log::REFatal("The '%s' parameter (= %g) is not > 0. This might be due to a problem when estimating the '%s' parameter (e.g., a numerical overflow). "
@@ -6827,7 +6827,7 @@ namespace GPBoost {
 					}
 				}
 			}//end "beta_binomial"
-			else if (likelihood_type_ == "gamma_zero_inflated") {
+			else if (likelihood_type_ == "zero_inflated_gamma") {
 				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
@@ -6852,7 +6852,7 @@ namespace GPBoost {
 					}
 					pred_mean[i] = pm;
 				}
-			}//end gamma_zero_inflated
+			}//end zero_inflated_gamma
 			else {
 				Log::REFatal("PredictResponse: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
@@ -7008,6 +7008,10 @@ namespace GPBoost {
 			else if (likelihood == string_t("beta-binomial") || likelihood == string_t("betabinomial")) {
 				return "beta_binomial";
 			}
+			else if (likelihood == string_t("gamma_zero_inflated") || likelihood == string_t("gamma-zero-inflated") || 
+				likelihood == string_t("zero-inflated-gamma")) {
+				return "zero_inflated_gamma";
+			}
 			return likelihood;
 		}
 
@@ -7159,7 +7163,7 @@ namespace GPBoost {
 					}
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
-				else if (likelihood_type_ == "gamma_zero_inflated") {
+				else if (likelihood_type_ == "zero_inflated_gamma") {
 					double log_aux_normalizing_constant = 0.0;
 #pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -7241,7 +7245,7 @@ namespace GPBoost {
 				else if (likelihood_type_ == "lognormal") {
 					log_normalizing_constant_ = aux_log_normalizing_constant_ - (double)num_data_ * (M_LOGSQRT2PI + 0.5 * std::log(aux_pars_[0]));
 				}
-				else if (likelihood_type_ == "gamma_zero_inflated") {
+				else if (likelihood_type_ == "zero_inflated_gamma") {
 					const double r = aux_pars_[1];
 					const double q = 1.0 / (1.0 + r);// = 1 - p0
 					const double log_q = std::log(q);
@@ -7443,7 +7447,7 @@ namespace GPBoost {
 					ll += LogLikBetaBinomial(y_data[i], location_par[i], weights_[i]);
 				}
 			}
-			else if (likelihood_type_ == "gamma_zero_inflated") {
+			else if (likelihood_type_ == "zero_inflated_gamma") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					const double w = has_weights_ ? weights_[i] : 1.0;
@@ -7498,7 +7502,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "lognormal") {
 				return(LogLikLogNormal(y_data, location_par, true));
 			}
-			else if (likelihood_type_ == "gamma_zero_inflated") {
+			else if (likelihood_type_ == "zero_inflated_gamma") {
 				return(LogLikGammaZeroInflated(y_data, location_par, true));
 			}
 			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || 
@@ -7798,7 +7802,7 @@ namespace GPBoost {
 					first_deriv_ll[i] = FirstDerivLogLikBetaBinomial(y_data[i], location_par[i], weights_[i]);
 				}
 			}
-			else if (likelihood_type_ == "gamma_zero_inflated") {
+			else if (likelihood_type_ == "zero_inflated_gamma") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					first_deriv_ll[i] = FirstDerivLogLikGammaZeroInflated(y_data[i], location_par[i]);
@@ -7849,7 +7853,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "lognormal") {
 				return(FirstDerivLogLikLogNormal(y_data, location_par));
 			}
-			else if (likelihood_type_ == "gamma_zero_inflated") {
+			else if (likelihood_type_ == "zero_inflated_gamma") {
 				return(FirstDerivLogLikGammaZeroInflated(y_data, location_par));
 			}
 			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || 
@@ -8155,7 +8159,7 @@ namespace GPBoost {
 						information_ll[i] = SecondDerivNegLogLikBetaBinomial(y_data[i], location_par[i], weights_[i]);
 					}
 				}
-				else if (likelihood_type_ == "gamma_zero_inflated") {
+				else if (likelihood_type_ == "zero_inflated_gamma") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
@@ -8270,7 +8274,7 @@ namespace GPBoost {
 				else if (likelihood_type_ == "lognormal") {
 					return(SecondDerivNegLogLikLogNormal());
 				}
-				else if (likelihood_type_ == "gamma_zero_inflated") {
+				else if (likelihood_type_ == "zero_inflated_gamma") {
 					return(SecondDerivNegLogLikGammaZeroInflated(y_data, location_par));
 				}
 				else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
@@ -8623,7 +8627,7 @@ namespace GPBoost {
 						}
 					}
 				} // end "beta_binomial"
-				else if (likelihood_type_ == "gamma_zero_inflated") {
+				else if (likelihood_type_ == "zero_inflated_gamma") {
 					const double q = 1.0 / (1.0 + aux_pars_[1]);
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -8635,7 +8639,7 @@ namespace GPBoost {
 							deriv_information_diag_loc_par[i] = w * -q * aux_pars_[0] * y_data[i] * std::exp(-location_par[i]);
 						}
 					}
-				}//end gamma_zero_inflated
+				}//end zero_inflated_gamma
 				else {
 					Log::REFatal("CalcFirstDerivInformationLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_.c_str());
@@ -8822,7 +8826,7 @@ namespace GPBoost {
 				}
 				grad[0] = neg_log_grad;
 			}//end "beta_binomial"
-			else if (likelihood_type_ == "gamma_zero_inflated") {
+			else if (likelihood_type_ == "zero_inflated_gamma") {
 				CHECK(aux_normalizing_constant_has_been_calculated_);
 				const double r = aux_pars_[1];
 				const double q = 1.0 / (1.0 + r);
@@ -8852,7 +8856,7 @@ namespace GPBoost {
 					}
 				}
 				grad[1] = neg_log_grad_r;
-			}//end gamma_zero_inflated
+			}//end zero_inflated_gamma
 			else if (num_aux_pars_estim_ > 0) {
 				Log::REFatal("CalcGradNegLogLikAuxPars: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
@@ -9037,7 +9041,7 @@ namespace GPBoost {
 						}
 					}
 				}//end "beta_binomial"
-				else if (likelihood_type_ == "gamma_zero_inflated") {
+				else if (likelihood_type_ == "zero_inflated_gamma") {
 					CHECK(ind_aux_par == 0 || ind_aux_par == 1);
 					const double r = aux_pars_[1];
 					const double q = 1.0 / (1.0 + r);
@@ -9145,7 +9149,7 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
-				likelihood_type_ == "lognormal" || likelihood_type_ == "gamma_zero_inflated") {
+				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return std::exp(value);
 			}
 			else {
@@ -9165,7 +9169,7 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
-				likelihood_type_ == "lognormal" || likelihood_type_ == "gamma_zero_inflated") {
+				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return 1.;
 			}
 			else if (likelihood_type_ == "t" || likelihood_type_ == "gaussian") {
@@ -9192,7 +9196,7 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
-				likelihood_type_ == "lognormal" || likelihood_type_ == "gamma_zero_inflated") {
+				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return 0.;
 			}
 			else if (likelihood_type_ == "t" || likelihood_type_ == "gaussian") {
@@ -10273,7 +10277,7 @@ namespace GPBoost {
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit",
 			"poisson", "gamma", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "lognormal", "beta_binomial", 
-			"gamma_zero_inflated" };
+			"zero_inflated_gamma" };
 		/*! \brief True if response variable has int type */
 		bool has_int_label_;
 		/*! \brief Number of additional parameters for likelihoods */

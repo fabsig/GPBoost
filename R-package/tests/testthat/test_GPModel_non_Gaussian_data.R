@@ -4520,8 +4520,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
                                            y = y, X=X, params = params, matrix_inversion_method = "cholesky")
                     , file='NUL')
-    expect_lt(sum(abs(gp_model$get_cov_pars()-0.3200318902 )),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.09419103268, 1.14114390871  ))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_cov_pars()-0.3200318902)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-c(2.4483553239, 0.4097899503))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-c(0.09419103268, 1.14114390871))),TOLERANCE_STRICT)
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-179.8795333)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 12)
     # Prediction
@@ -4531,6 +4532,36 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     predict_var=TRUE, predict_response = TRUE)
     expected_mu <- c(0.8268865387, 0.8119288828, 1.0200853052, 4.0363906391)
     expected_var <- c(1.052020624, 1.107172318, 1.747640980, 37.250886842)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
+    
+    # Setting initial values and saving to file
+    params_init <- params
+    params_init$init_aux_pars <- c(shape, p0)
+    params_init$init_cov_pars <- 1
+    params_init$init_coef <- beta
+    params_init$maxit <- 0
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
+                                           y = y, X=X, params = params_init, matrix_inversion_method = "cholesky")
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model$get_cov_pars()-1)),TOLERANCE_STRICT)  
+    expect_lt(sum(abs(gp_model$get_aux_pars()-c(shape, p0))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-beta)),TOLERANCE_STRICT)
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, 
+                    predict_var=TRUE, predict_response = TRUE)
+    expected_mu <- c(0.5306641671, 0.4454187734, 0.6644867269, 13.4637380350)
+    expected_var <- c(0.4880227930, 0.3945299769, 0.8780426111, 1050.6003608580)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
+    filename <- tempfile(fileext = ".json")
+    saveGPModel(gp_model,filename = filename)
+    rm(gp_model)
+    gp_model_loaded <- loadGPModel(filename = filename)
+    expect_lt(sum(abs(gp_model_loaded$get_cov_pars()-1)),TOLERANCE_STRICT)  
+    expect_lt(sum(abs(gp_model_loaded$get_aux_pars()-c(shape, p0))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model_loaded$get_coef())-beta)),TOLERANCE_STRICT)
+    pred <- predict(gp_model_loaded, y=y, group_data_pred = group_test, X_pred = X_test, 
+                    predict_var=TRUE, predict_response = TRUE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
     
