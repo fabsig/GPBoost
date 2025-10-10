@@ -9,9 +9,9 @@ Main parameters for GPBoost
     :local:
     :backlinks: none
 
-Likelihood / response variable distribution
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The likelihood, i.e., the distribution of the response variable (=label) conditional on fixed and random effects, is set through the ``likelihood`` parameter of the random effects / Gaussian process model (= 'GPModel' in R / Python) for both the GPBoost algorithm and (generalized) linear mixed effects and Gaussian process models. See the `likelihood <likelihood_>`__ documentation below for a list of currently supported likelihoods.
+Response variable distribution (`likelihood <likelihood_>`__) and covariance function (`cov_function <cov_function_>`__, for GPs only)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The likelihood, i.e., the distribution of the response variable (=label) conditional on fixed and random effects, is set through the ``likelihood`` parameter of the random effects / Gaussian process model (= 'GPModel' in R / Python) for both the GPBoost algorithm and (generalized) linear mixed effects and Gaussian process models. See the `likelihood <likelihood_>`__ documentation below for a list of currently supported likelihoods. For Gaussian processes, the ``cov_function`` parameter determines the covariance function. See the `cov_function <cov_function_>`__ documentation below for a list of currently supported covariance functions.
 
 Metrics for parameter tuning
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -122,9 +122,7 @@ Below is a list of important parameters for the tree-boosting part. `A comprehen
 Gaussian process and random effects parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Below is a list of parameters for specifying ``GPModel`` objects for modeling Gaussian processes and grouped random effects
-and for specifying how these models are trained. These parameters are documented in a generic manner in the form they are
-used in the R and Python package. The C API works slightly different.
+Below is a list of parameters for specifying ``GPModel`` objects for modeling Gaussian processes and grouped random effects and for specifying how these models are trained. These parameters are documented in a generic manner in the form they are used in the R and Python package. The C API works slightly different.
 
 Model specification parameters
 ------------------------------
@@ -195,6 +193,8 @@ Model specification parameters
 
    -  Covariate data for Gaussian process random coefficients
 
+.. _cov_function:
+
 -  ``cov_function`` : string, (default = ``exponential``)
 
    -  Covariance function for the Gaussian process. Available options: 
@@ -206,6 +206,12 @@ Model specification parameters
       - ``matern_space_time`` : Spatio-temporal Matern covariance function with different range parameters for space and time
 
          - Note that the first column in ``gp_coords`` must correspond to the time dimension
+
+      - ``space_time_gneiting`` : Spatio-temporal covariance function given in Eq. (16) of Gneiting (2002)
+
+         - Note that the first column in ``gp_coords`` must correspond to the time dimension
+
+         - This covariance has seven parameters (in the following order: sigma2, a, c, alpha, nu, beta, delta) which are all estimated by default. You can disable the estimation of some of these parameter using the ``estimate_cov_par_index`` argument of the ``params`` argument in either the ``fit`` function of a ``gp_model`` object or the ``set_optim_params`` function prior to estimation
 
       - ``matern_ard``: Anisotropic Matern covariance function with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate dimension / column of ``gp_coords``
 
@@ -339,13 +345,43 @@ Optimization parameters
 
 The following list shows options for the optimization of the variance and covariance parameters of ``gp_model`` objects which contain Gaussian process and/or grouped random effects models. These parameters are passed to either the ``fit`` function of a ``gp_model`` object in Python and R or to the ``set_optim_params`` function prior to running the GPBoost algorithm.
 
+-  ``trace`` : bool, optional (default = False)
+
+   -  If True, information on the progress of the parameter optimization is printed.
+
+-  ``std_dev`` : bool, optional (default = False)
+
+   -  If True, (asymptotic) standard deviations are calculated for the covariance parameters
+
+-  ``init_cov_pars`` : numeric vector / array of doubles, optional (default = Null)
+
+   -  Initial values for covariance parameters of Gaussian process and random effects (can be Null). The order it the same as the order of the parameters in the summary function: first is the error variance (only for ``gaussian`` likelihood), next follow the variances of the grouped random effects (if there are any, in the order provided in 'group_data'), and then follow the marginal variance and the range of the Gaussian process. If there are multiple Gaussian processes, then the variances and ranges follow alternatingly.  If 'init_cov_pars = Null', an internatl choice is used that depends on the likelihood and the random effects type and covariance function. If you select the option 'trace = true' in the 'params' argument, you will see the first initial covariance parameters in iteration 0.
+
+-  ``init_coef`` : numeric vector / array of doubles, optional (default = Null)
+
+   -  Initial values for the regression coefficients (if there are any, can be Null)
+
+-  ``init_aux_pars`` : numeric vector / array of doubles, optional (default = Null)
+
+   -  Initial values for additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
+
+-  ``estimate_cov_par_index`` : numeric vector / array of integers or NULL, optional (default = -1)
+
+   - This allows for disabling the estimation of some (or all) covariance parameters if estimate_cov_par_index != -1. 'estimate_cov_par_index' should then be a vector with length equal to the number of covariance parameters, and estimate_cov_par_index[i] should be of bool type indicating whether parameter number i is estimated or not. For instance, "estimate_cov_par_index": [1,1,0] means that the first two covariance parameters are estimated and the last one not. 
+
+- ``estimate_aux_pars``: bool, (default = True)
+
+   - If True, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of a gamma or negative binomial likelihood)
+
 -  ``optimizer_cov`` : string, optional (default = ``lbfgs`` for linear mixed effects models and ``gradient_descent`` for the GPBoost algorithm)
 
    -  Optimizer used for estimating covariance parameters
 
-   -  Options: ``gradient_descent``, ``lbfgs``, ``fisher_scoring``, ``nelder_mead``
+   -  Options: "lbfgs", "gradient_descent", "fisher_scoring", "newton" ,"nelder_mead"
 
--  ``optimizer_coef`` : string, optional (default = ``wls`` for Gaussian data and ``gradient_descent`` for other likelihoods)
+   - If there are additional auxiliary parameters for non-Gaussian likelihoods, 'optimizer_cov' is also used for those
+
+-  ``optimizer_coef`` : string, optional (default = ``wls`` for Gaussian data and ``lbfgs`` for other likelihoods)
 
    -  Optimizer used for estimating linear regression coefficients, if there are any (for the GPBoost algorithm there are usually none)
 
@@ -363,52 +399,3 @@ The following list shows options for the optimization of the variance and covari
 
    -  If < 0, internal default values are used (= 1e-6 except for ``nelder_mead`` for which the default is 1e-8)
 
--  ``convergence_criterion`` : string, optional (default = ``relative_change_in_log_likelihood``)
-
-   -  The convergence criterion used for terminating the optimization algorithm. Options: ``relative_change_in_log_likelihood`` or ``relative_change_in_parameters``
-
--  ``init_cov_pars`` : numeric vector / array of doubles, optional (default = Null)
-
-   -  Initial values for covariance parameters of Gaussian process and random effects (can be Null). The order it the same as the order of the parameters in the summary function: first is the error variance (only for ``gaussian`` likelihood), next follow the variances of the grouped random effects (if there are any, in the order provided in 'group_data'), and then follow the marginal variance and the range of the Gaussian process. If there are multiple Gaussian processes, then the variances and ranges follow alternatingly.  If 'init_cov_pars = Null', an internatl choice is used that depends on the likelihood and the random effects type and covariance function. If you select the option 'trace = true' in the 'params' argument, you will see the first initial covariance parameters in iteration 0.
-
--  ``init_coef`` : numeric vector / array of doubles, optional (default = Null)
-
-   -  Initial values for the regression coefficients (if there are any, can be Null)
-
--  ``lr_cov`` : double, optional (default = 0.1 for ``gradient_descent`` and 1. otherwise)
-
-   -  Initial Learning rate for covariance parameters if a gradient-based optimization method is used
-   
-   -  If < 0, internal default values are used (0.1 for ``gradient_descent`` and 1. otherwise)
-
-   - If there are additional auxiliary parameters for non-Gaussian likelihoods, ``lr_cov`` is also used for those
-
-   - For ``lbfgs``, this is divided by the norm of the gradient in the first iteration
-
--  ``lr_coef`` : double, optional (default = 0.1)
-
-   -  Learning rate for fixed effect regression coefficients
-
--  ``use_nesterov_acc`` : bool, optional (default = True)
-
-   -  If True Nesterov acceleration is used (only for gradient descent)
-
--  ``acc_rate_cov`` : double, optional (default = 0.5)
-
-   -  Acceleration rate for covariance parameters for Nesterov acceleration
-
--  ``acc_rate_coef`` : double, optional (default = 0.5)
-
-   -  Acceleration rate for coefficients for Nesterov acceleration
-
--  ``momentum_offset`` : integer, optional (default = 2)
-
-   -  Number of iterations for which no mometum is applied in the beginning
-
--  ``trace`` : bool, optional (default = False)
-
-   -  If True, information on the progress of the parameter optimization is printed.
-
--  ``std_dev`` : bool, optional (default = False)
-
-   -  If True, (asymptotic) standard deviations are calculated for the covariance parameters

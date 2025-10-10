@@ -4192,6 +4192,14 @@ class GPModel(object):
                     Spatio-temporal Matern covariance function with different range parameters for space and time.
                     Note that the first column in 'gp_coords' must correspond to the time dimension
 
+                - "space_time_gneiting":
+
+                    Spatio-temporal covariance function given in Eq. (16) of Gneiting (2002). 
+                    Note that the first column in 'gp_coords' must correspond to the time dimension.
+                    This covariance has seven parameters (in the following order: sigma2, a, c, alpha, nu, beta, delta) which are all estimated by default.
+                    You can disable the estimation of some of these parameter using the 'estimate_cov_par_index' argument of the 'params' argument in either 
+                    the 'fit' function of a 'gp_model' object or the 'set_optim_params' function prior to estimation.
+
                 - "matern_ard":
 
                     Anisotropic Matern covariance function with Automatic Relevance Determination (ARD), i.e., with a
