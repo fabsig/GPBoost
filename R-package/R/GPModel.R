@@ -43,7 +43,7 @@
 #' For more details on this model, see Sigrist et al. (2012, AOAS) "A dynamic nonstationary spatio-temporal model for short term prediction of precipitation" }
 #' \item{ "gaussian_heteroscedastic": Gaussian likelihood where both the mean and the variance 
 #' are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation }
-#' \item{ Note: the first lines in the \url{https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h}{likelihoods source file} contain additional comments on the specific parametrizations used }
+#' \item{ Note: the first lines in the \href{https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h}{likelihoods source file} contain additional comments on the specific parametrizations used }
 #' \item{ Note: other likelihoods can be implemented upon request }
 #' }
 #' @param likelihood_additional_param A \code{numeric} specifying an additional parameter for the \code{likelihood} 
