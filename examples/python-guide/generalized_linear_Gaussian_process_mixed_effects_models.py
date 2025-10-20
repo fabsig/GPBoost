@@ -1,11 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Examples on how to do inference and prediction for generalized linear 
-mixed effects models with various likelihoods:
-    - "gaussian" (=regression)
-    - "bernoulli" (=classification)
-    - "poisson", "gamma", "negative_binomial" (= Poisson, gamma, and negative binomial regression)
-and various random effects models:
+mixed effects models with various likelihoods and different random effects models:
     - grouped (aka clustered) random effects models including random slopes
     - Gaussian process (GP) models
     - combined GP and grouped random effects
