@@ -4,8 +4,8 @@
 \alias{gpb.plot.part.dep.interact}
 \title{Plot interaction partial dependence plots}
 \usage{
-gpb.plot.part.dep.interact(model, data, variables, n.pt.per.var = 20,
-  subsample = pmin(1, n.pt.per.var^2 * 100/nrow(data)),
+gpb.plot.part.dep.interact(model, data, variables, latent_scale = TRUE,
+  n.pt.per.var = 20, subsample = pmin(1, n.pt.per.var^2 * 100/nrow(data)),
   discrete.variables = c(FALSE, FALSE), which.class = NULL,
   type = "filled.contour", nlevels = 20, xlab = variables[1],
   ylab = variables[2], zlab = "", main = "", return_plot_data = FALSE,
@@ -19,6 +19,10 @@ gpb.plot.part.dep.interact(model, data, variables, n.pt.per.var = 20,
 \item{variables}{A \code{vector} of length two of type \code{string} with 
 names of the columns or \code{integer} with indices of the columns in 
 \code{data} for which an interaction dependence plot is created}
+
+\item{latent_scale}{If TRUE, the plot is done on the scale of the tree-ensemble. 
+If FALSE, the plot is done on the (potentially transformed) response variable scale 
+(e.g. probabilities for classification)}
 
 \item{n.pt.per.var}{Number of grid points per variable (used only if a variable is not discrete)
 For continuous variables, the two-dimensional grid for the interaction plot 

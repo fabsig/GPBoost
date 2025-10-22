@@ -4,11 +4,11 @@
 \alias{gpb.plot.partial.dependence}
 \title{Plot partial dependence plots}
 \usage{
-gpb.plot.partial.dependence(model, data, variable, n.pt = 100,
-  subsample = pmin(1, n.pt * 100/nrow(data)), discrete.x = FALSE,
-  which.class = NULL, xlab = deparse(substitute(variable)), ylab = "",
-  type = if (discrete.x) "p" else "b", main = "",
-  return_plot_data = FALSE, ...)
+gpb.plot.partial.dependence(model, data, variable, latent_scale = TRUE,
+  n.pt = 100, subsample = pmin(1, n.pt * 100/nrow(data)),
+  discrete.x = FALSE, which.class = NULL,
+  xlab = deparse(substitute(variable)), ylab = "", type = if (discrete.x)
+  "p" else "b", main = "", return_plot_data = FALSE, ...)
 }
 \arguments{
 \item{model}{A \code{gpb.Booster} model object}
@@ -17,6 +17,10 @@ gpb.plot.partial.dependence(model, data, variable, n.pt = 100,
 
 \item{variable}{A \code{string} with a name of the column or an \code{integer} 
 with an index of the column in \code{data} for which a dependence plot is created}
+
+\item{latent_scale}{If TRUE, the plot is done on the scale of the tree-ensemble. 
+If FALSE, the plot is done on the (potentially transformed) response variable scale 
+(e.g. probabilities for classification)}
 
 \item{n.pt}{Evaluation grid size (used only if x is not discrete)}
 

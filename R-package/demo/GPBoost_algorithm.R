@@ -245,9 +245,9 @@ bst <- gpboost(data = X, label = y, gp_model = gp_model, nrounds = nrounds,
 feature_importances <- gpb.importance(bst, percentage = TRUE)
 gpb.plot.importance(feature_importances, top_n = 5L, measure = "Gain")
 # Partial dependence plot
-gpb.plot.partial.dependence(bst, X, variable = 1)
+gpb.plot.partial.dependence(bst, X, variable = 1, latent_scale = TRUE)
 # Interaction plot
-gpb.plot.part.dep.interact(bst, X, variables = c(1,2))
+gpb.plot.part.dep.interact(bst, X, variables = c(1,2), latent_scale = TRUE)
 # H-statistic for interactions
 package_to_load <- "flashlight" # load required package (non-standard way of loading to avoid CRAN warnings)
 do.call(require,list(package_to_load, character.only=TRUE))

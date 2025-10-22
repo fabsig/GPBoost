@@ -6,6 +6,9 @@
 #' @param data A \code{matrix} with data for creating partial dependence plots
 #' @param variable A \code{string} with a name of the column or an \code{integer} 
 #' with an index of the column in \code{data} for which a dependence plot is created
+#' @param latent_scale If TRUE, the plot is done on the scale of the tree-ensemble. 
+#' If FALSE, the plot is done on the (potentially transformed) response variable scale 
+#' (e.g. probabilities for classification)
 #' @param subsample Fraction of random samples in \code{data} to be used for calculating the partial dependence plot
 #' @param n.pt Evaluation grid size (used only if x is not discrete)
 #' @param discrete.x A \code{boolean}. If TRUE, the evaluation grid is set to the unique values of x
@@ -37,7 +40,8 @@
 #' gpb.plot.partial.dependence(gpboost_model, X, variable = 1)
 #' }
 #' @export
-gpb.plot.partial.dependence <- function(model, data, variable, n.pt = 100,
+gpb.plot.partial.dependence <- function(model, data, variable, 
+                                        latent_scale = TRUE, n.pt = 100,
                                         subsample = pmin(1, n.pt * 100 / nrow(data)), 
                                         discrete.x = FALSE, which.class = NULL,
                                         xlab = deparse(substitute(variable)), 
@@ -61,9 +65,10 @@ gpb.plot.partial.dependence <- function(model, data, variable, n.pt = 100,
     data[, variable] <- x[i]
     
     if (!is.null(which.class)) {
-      preds <- model$predict(data = data, reshape = TRUE, ignore_gp_model=TRUE)[, which.class + 1] 
+      preds <- model$predict(data = data, pred_latent = latent_scale, 
+                             reshape = TRUE, ignore_gp_model=TRUE)[, which.class + 1] 
     } else {
-      preds <- model$predict(data = data, ignore_gp_model=TRUE)
+      preds <- model$predict(data = data, pred_latent = latent_scale, ignore_gp_model=TRUE)
     }
     
     y[i] <- mean(preds)
@@ -88,6 +93,9 @@ gpb.plot.partial.dependence <- function(model, data, variable, n.pt = 100,
 #' @param variables A \code{vector} of length two of type \code{string} with 
 #' names of the columns or \code{integer} with indices of the columns in 
 #' \code{data} for which an interaction dependence plot is created
+#' @param latent_scale If TRUE, the plot is done on the scale of the tree-ensemble. 
+#' If FALSE, the plot is done on the (potentially transformed) response variable scale 
+#' (e.g. probabilities for classification)
 #' @param subsample Fraction of random samples in \code{data} to be used for calculating the partial dependence plot
 #' @param n.pt.per.var Number of grid points per variable (used only if a variable is not discrete)
 #' For continuous variables, the two-dimensional grid for the interaction plot 
@@ -127,7 +135,8 @@ gpb.plot.partial.dependence <- function(model, data, variable, n.pt = 100,
 #' gpb.plot.part.dep.interact(gpboost_model, X, variables = c(1,2))
 #' }
 #' @export
-gpb.plot.part.dep.interact <- function(model, data, variables, n.pt.per.var = 20,
+gpb.plot.part.dep.interact <- function(model, data, variables, 
+                                       latent_scale = TRUE, n.pt.per.var = 20,
                                        subsample = pmin(1, n.pt.per.var^2 * 100 / nrow(data)), 
                                        discrete.variables = c(FALSE, FALSE), which.class = NULL,
                                        type = "filled.contour", nlevels = 20, 
@@ -170,9 +179,10 @@ gpb.plot.part.dep.interact <- function(model, data, variables, n.pt.per.var = 20
       data[, variables[2]] <- y[j]
       
       if (!is.null(which.class)) {
-        preds <- model$predict(data = data, reshape = TRUE, ignore_gp_model=TRUE)[, which.class + 1] 
+        preds <- model$predict(data = data, pred_latent = latent_scale, 
+                               reshape = TRUE, ignore_gp_model=TRUE)[, which.class + 1] 
       } else {
-        preds <- model$predict(data = data, ignore_gp_model=TRUE)
+        preds <- model$predict(data = data, pred_latent = latent_scale, ignore_gp_model=TRUE)
       }
       
       z[i,j] <- mean(preds)
