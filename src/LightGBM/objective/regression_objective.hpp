@@ -206,25 +206,7 @@ namespace LightGBM {
 
 		void ConvertOutput(const double* input, double* output) const override {
 			if (has_gp_model_) {
-				// Note: this is needed for calculation/evaluation of metrics
-				// This is done directly here and not via the re_model_ and its likelihood to avoid overhead
-				if (likelihood_type_ == std::string("gaussian") || likelihood_type_ == std::string("t")) {
-					output[0] = input[0];
-				}
-				else if (likelihood_type_ == std::string("bernoulli_probit")) {
-					output[0] = GPBoost::normalCDF(input[0]);
-				}
-				else if (likelihood_type_ == std::string("bernoulli_logit")) {
-					output[0] = 1. / (1. + std::exp(-input[0]));
-				}
-				else if (likelihood_type_ == std::string("poisson") ||
-					likelihood_type_ == std::string("gamma") ||
-					likelihood_type_ == std::string("negative_binomial")) {
-					output[0] = std::exp(input[0]);
-				}
-				else {
-					Log::Fatal("ConvertOutput: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-				}
+				output[0] = re_model_->TransformToReponseScale(input[0]);
 			}
 			else {
 				if (sqrt_) {

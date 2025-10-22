@@ -123,6 +123,12 @@ namespace GPBoost {
 		*/
 		void SetLikelihood(const string_t& likelihood);
 
+		/*!
+		* \brief Transform from the latent to the response variable scale (often this is the inverse link function)
+		*			This is only used by the 'ConvertOutput()' function in regression_objective.hpp
+		*/
+		double TransformToReponseScale(const double value) const;
+
 		string_t GetOptimizerCovPars() const;
 
 		string_t GetOptimizerCoef() const;

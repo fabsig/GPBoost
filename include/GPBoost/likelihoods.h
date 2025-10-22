@@ -7389,6 +7389,40 @@ namespace GPBoost {
 			return likelihood;
 		}
 
+		/*!
+		* \brief Transform from the latent to the response variable scale (often this is the inverse link function)
+		*			This is only used by the 'ConvertOutput()' function in regression_objective.hpp
+		*/
+		double TransformToReponseScale(const double value) const {
+			if (likelihood_type_ == "gaussian" || likelihood_type_ == "t") {
+				return value;
+			}
+			else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit") {
+				return GPBoost::normalCDF(value);
+			}
+			else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" ||
+				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial") {
+				return GPBoost::sigmoid_stable(value);
+			}
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
+				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
+				return std::exp(value);
+			}
+			else if (likelihood_type_ == "zero_censored_power_transformed_normal") {
+				if (value <= 0.) {
+					return 0.;
+				}
+				else {
+					return std::exp(aux_pars_[1] * std::log(value));
+				}
+			}
+			else {
+				Log::REFatal("TransformReponseScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				return 0.;
+			}
+		}//end TransformToReponseScale
+
 	private:
 
 		/*!
@@ -7987,12 +8021,12 @@ namespace GPBoost {
 
 		inline double LogLikZeroCensPowNorm(double y, double location_par, bool incl_norm_const) const {
 			const double sigma = aux_pars_[0];
-			const double lambda = aux_pars_[1];
 			if (y <= 0.0) {				
 				const double a0 = -location_par / sigma;
 				return GPBoost::normalLogCDF(a0);// log Phi(a0)
 			}
 			else {
+				const double lambda = aux_pars_[1];
 				const double u = std::exp((1.0 / lambda) * std::log(y)); // y^(1/lambda)
 				const double z = (u - location_par) / sigma;
 				double ll = -0.5 * z * z;

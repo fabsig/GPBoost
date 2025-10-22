@@ -437,6 +437,14 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Transform from the latent to the response variable scale (often this is the inverse link function)
+		*			This is only used by the 'ConvertOutput()' function in regression_objective.hpp
+		*/
+		double TransformToReponseScale(const double value) {
+			return(likelihood_[unique_clusters_[0]]->TransformToReponseScale(value));
+		}
+
+		/*!
 		* \brief Returns the type of covariance function
 		*/
 		string_t CovFunctionName() {

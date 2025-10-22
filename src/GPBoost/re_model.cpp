@@ -158,6 +158,18 @@ namespace GPBoost {
 		}
 	}
 
+	double REModel::TransformToReponseScale(const double value) const {
+		if (matrix_format_ == "sp_mat_t") {
+			return(re_model_sp_->TransformToReponseScale(value));
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			return(re_model_sp_rm_->TransformToReponseScale(value));
+		}
+		else {
+			return(re_model_den_->TransformToReponseScale(value));
+		}
+	}
+
 	string_t REModel::GetOptimizerCovPars() const {
 		if (matrix_format_ == "sp_mat_t") {
 			return(re_model_sp_->optimizer_cov_pars_);
