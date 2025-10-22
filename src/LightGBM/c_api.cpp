@@ -178,7 +178,7 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 					Log::Fatal("Bagging cannot be applied for the GPBoost algorithm. Set 'bagging_freq = 0' ");
 				}
 				if (train_data_->metadata().weights() != nullptr) {
-					Log::Fatal("Weighted data is currently not supported for the GPBoost algorithm ");
+					Log::Fatal("Weights need to be provided to the 'GPModel()' constructor for the GPBoost algorithm ");
 				}
 				if (config_.sigmoid != 1.0) {
 					Log::Fatal("The GPBoost algorithm currently does not support a sigmoid != 1.0 ");
