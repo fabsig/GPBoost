@@ -32,7 +32,6 @@ GPBOOST_OPTIONS = [
     ('opencl-library=', None, 'Path to OpenCL library')
 ]
 
-
 def find_lib() -> List[str]:
     libpath_py = CURRENT_DIR / 'gpboost' / 'libpath.py'
     libpath = {'__file__': libpath_py}
@@ -301,6 +300,15 @@ class CustomBdistWheel(bdist_wheel):
         install.precompile = self.precompile
         install.nomp = self.nomp
         install.bit32 = self.bit32
+
+        self.root_is_pure = False
+        self.python_tag = 'py3'
+
+    def get_tag(self):
+        # Force a Python-version-independent, platform-specific wheel:
+        # (py3, none, <platform>)
+        _, _, plat = super().get_tag()
+        return ('py3', 'none', plat)
 
 
 class CustomSdist(sdist):

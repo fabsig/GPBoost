@@ -4277,7 +4277,7 @@ class GPModel(object):
 
             num_parallel_threads : integer, optional (default=None)
                 The number of parallel threads for OMP. If num_parallel_threads=None, all available threads are used
-            matrix_inversion_method : string, optional (default="cholesky")
+            matrix_inversion_method : string, optional (default="default")
                 Method used for inverting covariance matrices. Available options:
 
                     - "default":
@@ -4589,14 +4589,14 @@ class GPModel(object):
                 self.num_parallel_threads = num_parallel_threads
         self.likelihood_additional_param = likelihood_additional_param
         # Define default NULL values for calling C function
-        group_data_c = ctypes.c_void_p()
-        group_rand_coef_data_c = ctypes.c_void_p()
-        ind_effect_group_rand_coef_c = ctypes.c_void_p()
-        drop_intercept_group_rand_effect_c = ctypes.c_void_p()
-        gp_coords_c = ctypes.c_void_p()
-        gp_rand_coef_data_c = ctypes.c_void_p()
-        cluster_ids_c = ctypes.c_void_p()
-        weights_c = ctypes.c_void_p()
+        group_data_c = None # ctypes.c_void_p()
+        group_rand_coef_data_c = None
+        ind_effect_group_rand_coef_c = None
+        drop_intercept_group_rand_effect_c = None
+        gp_coords_c = None
+        gp_rand_coef_data_c = None
+        cluster_ids_c = None
+        weights_c = None
         # Set data for grouped random effects
         if group_data is not None:
             group_data, group_data_names = _format_check_data(data=group_data, get_variable_names=True,
@@ -4843,6 +4843,13 @@ class GPModel(object):
         else:
             likelihood_additional_param_c = self.likelihood_additional_param
 
+        cov_c    = c_str(self.cov_function)
+        gp_c     = c_str(self.gp_approx)
+        ord_c    = c_str(self.vecchia_ordering)
+        ips_c    = c_str(self.ind_points_selection)
+        lik_c    = c_str(likelihood)
+        mim_c    = c_str(self.matrix_inversion_method)
+
         _safe_call(_LIB.GPB_CreateREModel(
             ctypes.c_int(self.num_data),
             cluster_ids_c,
@@ -4857,19 +4864,19 @@ class GPModel(object):
             ctypes.c_int(self.dim_coords),
             gp_rand_coef_data_c,
             ctypes.c_int(self.num_gp_rand_coef),
-            c_str(self.cov_function),
+            cov_c,
             ctypes.c_double(self.cov_fct_shape),
-            c_str(self.gp_approx),
+            gp_c,
             ctypes.c_double(self.cov_fct_taper_range),
             ctypes.c_double(self.cov_fct_taper_shape),
             ctypes.c_int(self.num_neighbors),
-            c_str(self.vecchia_ordering),
+            ord_c,
             ctypes.c_int(self.num_ind_points),
             ctypes.c_double(self.cover_tree_radius),
-            c_str(self.ind_points_selection),
-            c_str(likelihood),
+            ips_c,
+            lik_c,
             ctypes.c_double(likelihood_additional_param_c),
-            c_str(self.matrix_inversion_method),
+            mim_c,
             ctypes.c_int(self.seed),
             ctypes.c_int(self.num_parallel_threads),
             ctypes.c_bool(self.has_weights),
