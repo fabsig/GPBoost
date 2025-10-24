@@ -319,6 +319,8 @@ pred_loaded = bst_loaded.predict(data=Xtest, group_data_pred=group_test,
 print(pred['fixed_effect'] - pred_loaded['fixed_effect'])
 print(pred['random_effect_mean'] - pred_loaded['random_effect_mean'])
 print(pred['random_effect_cov'] - pred_loaded['random_effect_cov'])
+# Accessing the saved gp_model
+bst_loaded.gp_model.summary()
 
 # Note: can also convert to string and load from string
 # model_str = bst.model_to_string()

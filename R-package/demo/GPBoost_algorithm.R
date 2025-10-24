@@ -296,10 +296,12 @@ pred_loaded <- predict(bst_loaded, data = Xtest, group_data_pred = group_test,
 pred$fixed_effect - pred_loaded$fixed_effect
 pred$random_effect_mean - pred_loaded$random_effect_mean
 pred$random_effect_cov - pred_loaded$random_effect_cov
+# Accessing the saved gp_model
+summary(bst_loaded$.__enclos_env__$private$gp_model)
 
 # Note: can also convert to string and load from string
-model_str <- bst$save_model_to_string()
-bst_loaded <- gpb.load(model_str = model_str)
+# model_str <- bst$save_model_to_string()
+# bst_loaded <- gpb.load(model_str = model_str)
 
 #--------------------GPBoostOOS algorithm: Hyperparameters estimated out-of-sample----------------
 # Create random effects model and dataset
