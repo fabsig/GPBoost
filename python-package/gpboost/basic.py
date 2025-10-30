@@ -4491,6 +4491,7 @@ class GPModel(object):
                        "m_lbfgs": -1, # default value is set in C++
                        "delta_conv_mode_finding": -1 # default value is set in C++
                        }
+        self.std_dev_has_been_set = False
         self.num_sets_re = 1
         self.num_sets_fe = 1
 
@@ -4932,6 +4933,8 @@ class GPModel(object):
             if 'piv_chol_rank' in params:
                 raise GPBoostError("The argument 'piv_chol_rank' is discontinued. Use the argument 'fitc_piv_chol_preconditioner_rank' instead ")
             for param in params:
+                if param == "std_dev":
+                    self.std_dev_has_been_set = True
                 if param == "init_cov_pars":
                     if params[param] is not None:
                         params[param] = _format_check_1D_data(params[param], data_name="params['init_cov_pars']",
@@ -5175,6 +5178,11 @@ class GPModel(object):
                                             convert_to_type=np.float64)
             if X.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in X")
+            if not self.std_dev_has_been_set and not (X.shape[1] == 1 and np.all(X[:, 0] == 1)): # not only intercept
+                if params is None:
+                    params = {"std_dev": True}
+                elif "std_dev" not in params:
+                    params["std_dev"] = True
             self.has_covariates = True
             self.num_covariates = X.shape[1]
             self.num_coef = self.num_covariates * self.num_sets_fe

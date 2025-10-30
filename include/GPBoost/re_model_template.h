@@ -5810,14 +5810,14 @@ namespace GPBoost {
 					if (use_woodbury_identity_) {
 						den_mat_t ZtX = Zt_[unique_clusters_[0]] * X;
 						if (matrix_inversion_method_ == "cholesky") {
-						den_mat_t MInvSqrtZtX;
-						if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
-							MInvSqrtZtX = sqrt_diag_SigmaI_plus_ZtZ_[unique_clusters_[0]].array().inverse().matrix().asDiagonal() * ZtX;
-						}
-						else {
-							TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_facts_[unique_clusters_[0]], ZtX, MInvSqrtZtX, false);
-						}
-						XT_psi_inv_X = X.transpose() * X - MInvSqrtZtX.transpose() * MInvSqrtZtX;
+							den_mat_t MInvSqrtZtX;
+							if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
+								MInvSqrtZtX = sqrt_diag_SigmaI_plus_ZtZ_[unique_clusters_[0]].array().inverse().matrix().asDiagonal() * ZtX;
+							}
+							else {
+								TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_facts_[unique_clusters_[0]], ZtX, MInvSqrtZtX, false);
+							}
+							XT_psi_inv_X = X.transpose() * X - MInvSqrtZtX.transpose() * MInvSqrtZtX;
 						}//end cholesky
 						else if (matrix_inversion_method_ == "iterative") {
 							den_mat_t MInvZtX;
@@ -5936,8 +5936,8 @@ namespace GPBoost {
 							}
 						}
 						XT_psi_inv_X += X_cluster_i.transpose() * psi_inv_X;
-					}
-					else {
+					}//end gp_approx_ == "full_scale_tapering" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_vecchia"
+					else {//not gp_approx_ == "vecchia" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_vecchia"
 						if (use_woodbury_identity_) {
 							den_mat_t ZtX = Zt_[cluster_i] * X_cluster_i;
 							if (matrix_inversion_method_ == "cholesky") {
@@ -5984,7 +5984,7 @@ namespace GPBoost {
 							XT_psi_inv_X += MInvSqrtX.transpose() * MInvSqrtX;
 						}
 					}
-				}
+				}//end not gp_approx_ == "vecchia" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_vecchia"
 			}//end more than one cluster
 		}//end CalcXTPsiInvX
 
@@ -8852,7 +8852,6 @@ namespace GPBoost {
 			}
 			FI.setZero();
 			int first_cov_par = include_error_var ? 1 : 0;
-
 			if (use_stochastic_trace_for_Fisher_information_Vecchia_) {
 				if (saved_rand_vec_fisher_info_.size() == 0) {
 					for (const auto& cluster_i : unique_clusters_) {
@@ -8860,7 +8859,6 @@ namespace GPBoost {
 					}
 				}
 			}
-
 			if (gp_approx_ == "vecchia") {
 				CalcFisherInformation_Vecchia(FI, transf_scale, include_error_var, first_cov_par);
 			}//end gp_approx_ == "vecchia"
@@ -9309,15 +9307,13 @@ namespace GPBoost {
 								Zjt_Zk_squaredNorm_[cluster_i].push_back(Zjt_Zk_[cluster_i][counter].squaredNorm());
 							}
 							T_mat LInvZtZj_t_LInvZtZk = LInvZtZj_[cluster_i][j].transpose() * LInvZtZj_[cluster_i][k];
-							double FI_jk = Zjt_Zk_squaredNorm_[cluster_i][counter] +
-								LInvZtZj_t_LInvZtZk.squaredNorm() -
+							double FI_jk = Zjt_Zk_squaredNorm_[cluster_i][counter] + LInvZtZj_t_LInvZtZk.squaredNorm() -
 								2. * (double)(Zjt_Zk_[cluster_i][counter].cwiseProduct(LInvZtZj_t_LInvZtZk)).sum();
 							if (transf_scale) {
 								FI_jk *= cov_pars[j + 1] * cov_pars[k + 1];
 							}
 							else {
 								FI_jk /= cov_pars[0] * cov_pars[0];
-								Zjt_Zk_[cluster_i][counter].resize(0, 0);//can be released as it is not used anylonger
 							}
 							FI(j + first_cov_par, k + first_cov_par) += FI_jk / 2.;
 							counter++;

@@ -89,17 +89,14 @@ gp_model$get_cov_pars()
 gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = likelihood,
                        params = list(std_dev = TRUE))
 summary(gp_model)
-
 # Optional arguments for the 'params' argument of the 'fit' function:
-# - monitoring convergence: 'trace = TRUE'
-# - calculate standard deviations: 'std_dev = TRUE'
-# - change optimization algorithm options (see below)
-# For available optimization options, see
+# - monitoring convergence: trace = TRUE
+# - turning off calculation of standard deviations: std_dev = FALSE
+# - change optimization algorithm options
+# - manually set initial values for parameters
+# - choose which parameters are estimates
+# For more information, see
 #   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
-# gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = likelihood,
-#                        params = list(trace = TRUE, std_dev = TRUE,
-#                                      optimizer_cov = "gradient_descent",
-#                                      lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 100))
 
 # --------------------Prediction----------------
 group_test <- c(1,2,-1)
@@ -239,10 +236,10 @@ ntrain <- 500 # number of training samples
 set.seed(1)
 # training and test locations (=features) for Gaussian process
 coords_train <- matrix(runif(2)/2,ncol=2)
-# exclude upper right corner
 while (dim(coords_train)[1]<ntrain) {
   coord_i <- runif(2) 
-  if (!(coord_i[1]>=0.6 & coord_i[2]>=0.6)) {
+  # less data in one area
+  if (!(coord_i[1]>=0.3 & coord_i[1]<=0.7 & coord_i[2]>=0.3 & coord_i[2]<=0.7 & runif(1)>0.1)) {
     coords_train <- rbind(coords_train,coord_i)
   }
 }
@@ -288,25 +285,14 @@ y_svc <- simulate_response_variable(lp=0, rand_eff=rand_eff, likelihood=likeliho
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                        likelihood = likelihood, y = y_train)
 summary(gp_model)
-
-## Other covariance functions:
-# gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "gaussian",
-#                        likelihood = likelihood, y = y_train)
-# gp_model <- fitGPModel(gp_coords = coords_train,
-#                        cov_function = "matern", cov_fct_shape=1.,
-#                        likelihood = likelihood, y = y_train)
-# gp_model <- fitGPModel(gp_coords = coords_train,
-#                        cov_function = "powered_exponential", cov_fct_shape=1.1,
-#                        likelihood = likelihood, y = y_train)
-
 # Optional arguments for the 'params' argument of the 'fit' function:
 # - monitoring convergence: trace = TRUE
-# - obtain standard deviations: std_dev = TRUE
-# - change optimization algorithm options (see below)
-# For available optimization options, see
+# - turning off calculation of standard deviations: std_dev = FALSE
+# - change optimization algorithm options
+# - manually set initial values for parameters
+# - choose which parameters are estimates
+# For more information, see
 #   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
-# gp_model <- fitGPModel(gp_coords = coords_train, y = y_train, X = X,
-#                        params = list(trace = TRUE, std_dev = TRUE))
 
 #--------------------Prediction----------------
 # Prediction of latent variable
@@ -328,14 +314,14 @@ packakes_to_load <- c("ggplot2", "viridis", "gridExtra") # load required package
 for (package in packakes_to_load) do.call(require,list(package, character.only=TRUE))
 plot1 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=b_1_test),aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + 
-  ggtitle("True latent GP and training locations") + 
+  ggtitle("True GP and training locations") + 
   geom_point(data = data.frame(s_1=coords_train[,1], s_2=coords_train[,2],y=y_train), 
              aes(x=s_1,y=s_2), size=3, col="white", alpha=1, shape=43)
 plot2 <- ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2], b=pred$mu), aes(x=s_1,y=s_2,color=b)) +
-  geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + ggtitle("Predicted latent GP mean")
+  geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + ggtitle("Predictive mean")
 plot3 <- ggplot(data = data.frame(s_1=coords_test[,1] ,s_2=coords_test[,2], b=sqrt(pred$var)), aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + 
-  labs(title="Predicted latent GP standard deviation", subtitle=" = prediction uncertainty")
+  labs(title="Predictive standard deviations", subtitle=" = prediction uncertainty")
 grid.arrange(plot1, plot2, plot3, ncol=2)
 
 # Predict latent GP at training data locations (=smoothing)

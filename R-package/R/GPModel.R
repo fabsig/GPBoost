@@ -520,9 +520,9 @@ gpb.GPModel <- R6::R6Class(
           if (private$num_coef != private$num_covariates * private$num_sets_fe) stop("incorrect 'num_coef'")
           private$X_loaded_from_file = model_list[["X"]]
           if (is.null(colnames(private$X_loaded_from_file))) {
-            private$coef_names <- c(private$coef_names,paste0("Covariate_",1:private$num_covariates))
+            private$coef_names <- paste0("Covariate_", 1:private$num_covariates)
           } else {
-            private$coef_names <- c(private$coef_names,colnames(private$X_loaded_from_file))
+            private$coef_names <- colnames(private$X_loaded_from_file)
           }
           if (private$num_sets_fe == 2) {
             private$coef_names <- c(private$coef_names, paste0(private$coef_names,"_scale"))
@@ -1020,13 +1020,18 @@ gpb.GPModel <- R6::R6Class(
         if (dim(X)[1] != private$num_data) {
           stop("fit.GPModel: Number of data points in ", sQuote("X"), " does not match number of data points of initialized model")
         }
+        if (is.null(params[["std_dev"]]) & !private$std_dev_has_been_set) {
+          if (!(dim(X)[2] == 1 & all(X[,1] == 1))) { # not only intercept
+            params[["std_dev"]] <- TRUE
+          }
+        }
         private$has_covariates <- TRUE
         private$num_covariates <- as.integer(dim(X)[2])
         private$num_coef <- private$num_covariates * private$num_sets_fe
         if (is.null(colnames(X))) {
-          private$coef_names <- c(private$coef_names,paste0("Covariate_",1:private$num_covariates))
+          private$coef_names <- paste0("Covariate_", 1:private$num_covariates)
         } else {
-          private$coef_names <- c(private$coef_names,colnames(X))
+          private$coef_names <- colnames(X)
         }
         if (private$num_sets_fe == 2) {
           private$coef_names <- c(private$coef_names, paste0(private$coef_names,"_scale"))
@@ -1870,7 +1875,7 @@ gpb.GPModel <- R6::R6Class(
         implemented for models that have been loaded from a saved file")
       }
       num_re_comps = (private$num_group_re + private$num_group_rand_coef + 
-        private$num_gp + private$num_gp_rand_coef) * private$num_sets_re
+                        private$num_gp + private$num_gp_rand_coef) * private$num_sets_re
       if (!is.null(private$drop_intercept_group_rand_effect)) {
         num_re_comps <- num_re_comps - sum(private$drop_intercept_group_rand_effect)
       }
@@ -2277,10 +2282,11 @@ gpb.GPModel <- R6::R6Class(
                   estimate_cov_par_index = -1L,
                   m_lbfgs = -1L, # default value is set in C++
                   delta_conv_mode_finding = -1 # default value is set in C++
-                  ),
+    ),
+    std_dev_has_been_set = FALSE,
     num_sets_re = 1,
     num_sets_fe = 1,
-
+    
     # Finalize will free up the handles
     finalize = function() {
       .Call(
@@ -2384,6 +2390,9 @@ gpb.GPModel <- R6::R6Class(
       }
       ## Update private$params
       for (param in names(params)) {
+        if (param == "std_dev") { 
+          private$std_dev_has_been_set <- TRUE
+        }
         if (param == "estimate_cov_par_index") {
           if (params[["estimate_cov_par_index"]][[1]] >= 0 & 
               length(params[["estimate_cov_par_index"]]) != private$num_cov_pars) {

@@ -101,17 +101,19 @@ gp_model.get_cov_pars()
 # Obtaining standard deviations and p-values for fixed effects coefficients ('std_dev = TRUE')
 gp_model.fit(y=y, X=X, params={"std_dev": True})
 gp_model.summary()
-
 # Optional arguments for the 'params' argument of the 'fit' function:
 # - monitoring convergence: "trace": True
-# - calculate standard deviations: "std_dev": True
-# - change optimization algorithm options (see below)
-# For available optimization options, see
+# - turning off calculation of standard deviations: "std_dev": False
+# - change optimization algorithm options
+# - manually set initial values for parameters
+# - choose which parameters are estimates
+# For more information, see
 #   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
-#gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-#gp_model.fit(y=y, X=X, params={"trace": True, "std_dev": True,
-#                               "optimizer_cov": "gradient_descent", "lr_cov": 0.1,
-#                               "use_nesterov_acc": True, "maxit": 100})
+
+gp_model.fit(y=y, X=X, params={"std_dev": False})
+gp_model.summary()
+
+
 
 # --------------------Prediction----------------
 group_test = np.array([1,2,-1])
@@ -237,8 +239,9 @@ ntrain = 600 # number of training samples
 np.random.seed(2)
 # training and test locations (=features) for Gaussian process
 coords_train = np.column_stack((np.random.uniform(size=ntrain), np.random.uniform(size=ntrain)))
-# exclude upper right corner
-excl = ((coords_train[:, 0] >= 0.6) & (coords_train[:, 1] >= 0.6))
+# less data in one area
+excl = ((coords_train[:, 0] >= 0.3) & (coords_train[:, 0] <= 0.7) & (coords_train[:, 1] >= 0.3) & 
+        (coords_train[:, 1] <= 0.7) & (np.random.uniform(size=ntrain) > 0.1))
 coords_train = coords_train[~excl, :]
 ntrain = coords_train.shape[0]
 nx = 30  # test data: number of grid points on each axis
@@ -287,21 +290,15 @@ gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_sh
                        likelihood=likelihood)
 gp_model.fit(y=y_train)
 gp_model.summary()
-
-# Other covariance functions:
-# gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="gaussian", likelihood=likelihood)
-# gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1., likelihood=likelihood)
-# gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="powered_exponential", cov_fct_shape=1.1, likelihood=likelihood)
-
 # Optional arguments for the 'params' argument of the 'fit' function:
 # - monitoring convergence: "trace": True
-# - obtain standard deviations: "std_dev": True
-# - change optimization algorithm options (see below)
-# For available optimization options, see
+# - turning off calculation of standard deviations: "std_dev": False
+# - change optimization algorithm options
+# - manually set initial values for parameters
+# - choose which parameters are estimates
+# For more information, see
 #   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
-#gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5, 
-#                       likelihood=likelihood)
-#gp_model.fit(y=y, X=X, params={"trace": True, "std_dev": True})
+
 
 #--------------------Prediction----------------
 # Prediction of latent variable
@@ -326,15 +323,15 @@ b_test_plot = b_test.reshape((nx, nx))
 CS = axs[0, 0].contourf(coords_test_x1, coords_test_x2, b_test_plot)
 axs[0, 0].plot(coords_train[:, 0], coords_train[:, 1], '+', color="white", 
    markersize = 4)
-axs[0, 0].set_title("True latent GP and training locations")
+axs[0, 0].set_title("True GP and training locations")
 # predicted latent mean
 pred_mu_plot = pred['mu'].reshape((nx, nx))
 CS = axs[0, 1].contourf(coords_test_x1, coords_test_x2, pred_mu_plot)
-axs[0, 1].set_title("Predicted latent GP mean")
+axs[0, 1].set_title("Predictive mean")
 # prediction uncertainty
 pred_var_plot = pred['var'].reshape((nx, nx))
 CS = axs[1, 0].contourf(coords_test_x1, coords_test_x2, pred_var_plot)
-axs[1, 0].set_title("Predicted latent GP standard deviation")
+axs[1, 0].set_title("Predictive standard deviations")
 plt.show(block=False)
 
 # Predict latent GP at training data locations (=smoothing)
