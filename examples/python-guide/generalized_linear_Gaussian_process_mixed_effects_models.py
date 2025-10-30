@@ -110,10 +110,6 @@ gp_model.summary()
 # For more information, see
 #   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
 
-gp_model.fit(y=y, X=X, params={"std_dev": False})
-gp_model.summary()
-
-
 
 # --------------------Prediction----------------
 group_test = np.array([1,2,-1])

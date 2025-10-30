@@ -257,11 +257,7 @@ namespace GPBoost {
 		// Initial linear regression coefficients
 		if (init_coef != nullptr) {
 			coef_ = Eigen::Map<const vec_t>(init_coef, num_sets_fixed_effects_ * num_covariates);
-			init_coef_given_ = true;
 			coef_given_or_estimated_ = true;
-		}
-		else {
-			init_coef_given_ = false;
 		}
 		// Initial aux_pars
 		if (init_aux_pars != nullptr) {
@@ -400,7 +396,7 @@ namespace GPBoost {
 		const double* fixed_effects) {
 		InitializeCovParsIfNotDefined(y_data, fixed_effects);
 		double* init_coef_ptr;;
-		if (init_coef_given_) {
+		if ((int)coef_.size() == num_covariates) {
 			init_coef_ptr = coef_.data();
 		}
 		else {
