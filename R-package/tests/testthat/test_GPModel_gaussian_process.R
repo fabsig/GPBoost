@@ -15,19 +15,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                convergence_criterion = "relative_change_in_log_likelihood",
                                cg_delta_conv = 1E-6, cg_preconditioner_type = "predictive_process_plus_diagonal",
                                cg_max_num_it = 1000, cg_max_num_it_tridiag = 1000,
-                               num_rand_vec_trace = 1000, reuse_rand_vec_trace = TRUE)
-  DEFAULT_OPTIM_PARAMS_STD <- c(DEFAULT_OPTIM_PARAMS, list(std_dev = TRUE))
+                               num_rand_vec_trace = 1000, reuse_rand_vec_trace = TRUE,
+                               std_dev = FALSE)
+  DEFAULT_OPTIM_PARAMS_STD <- DEFAULT_OPTIM_PARAMS
+  DEFAULT_OPTIM_PARAMS_STD$std_dev = TRUE
   DEFAULT_OPTIM_PARAMS_FISHER <- list(optimizer_cov = "fisher_scoring", delta_rel_conv = 1E-6,
                                       optimizer_coef = "gradient_descent", lr_coef = 0.1,
                                       convergence_criterion = "relative_change_in_log_likelihood",
                                       cg_delta_conv = 1E-6, cg_preconditioner_type = "predictive_process_plus_diagonal",
                                       cg_max_num_it = 1000, cg_max_num_it_tridiag = 1000,
                                       num_rand_vec_trace = 1000, reuse_rand_vec_trace = TRUE,
-                                      seed_rand_vec_trace = 1)
-  DEFAULT_OPTIM_PARAMS_FISHER_STD <- c(DEFAULT_OPTIM_PARAMS_FISHER, list(std_dev = TRUE))
-  OPTIM_PARAMS_BFGS <- list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", maxit = 1000)
-  OPTIM_PARAMS_BFGS_STD <- c(OPTIM_PARAMS_BFGS, list(std_dev = TRUE))
-  
+                                      seed_rand_vec_trace = 1, std_dev = FALSE)
+  DEFAULT_OPTIM_PARAMS_FISHER_STD <- DEFAULT_OPTIM_PARAMS_FISHER
+  DEFAULT_OPTIM_PARAMS_FISHER_STD$std_dev = TRUE
+  OPTIM_PARAMS_BFGS <- list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", maxit = 1000, std_dev = FALSE)
+  OPTIM_PARAMS_BFGS_STD <- OPTIM_PARAMS_BFGS
+  OPTIM_PARAMS_BFGS_STD$std_dev = TRUE
   
   # Function that simulates uniform random variables
   sim_rand_unif <- function(n, init_c=0.1){
@@ -474,7 +477,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Nelder-Mead
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                            y = y, X = X, params = list(optimizer_cov = "nelder_mead",
-                                                       optimizer_coef = "nelder_mead",
+                                                       optimizer_coef = "nelder_mead", std_dev = FALSE,
                                                        maxit=1000, delta_rel_conv = 1e-12, init_cov_pars=init_cov_pars))
     cov_pars <- c(0.008459373, 1.001564796, 0.094655964)
     coef <- c(2.307798, 1.899516)
@@ -484,7 +487,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 429)
     # lbfgs
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                           y = y, X = X, params = list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", maxit=1000, init_cov_pars=init_cov_pars))
+                           y = y, X = X, params = list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", 
+                                                       std_dev = FALSE, maxit=1000, init_cov_pars=init_cov_pars))
     cov_pars <- c(0.008993586382, 1.000518636089, 0.094683724304)
     coef <- c(2.309738418, 1.899886232)
     nll <- 121.4824924
@@ -494,13 +498,39 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 15)
     # lbfgs wit wls for coefficients
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                           y = y, X = X, params = list(optimizer_cov = "lbfgs", maxit=1000, optimizer_coef ="wls", init_cov_pars=init_cov_pars))
+                           y = y, X = X, params = list(optimizer_cov = "lbfgs", maxit=1000, optimizer_coef ="wls", 
+                                                       std_dev = FALSE, init_cov_pars=init_cov_pars))
     coef <- c(2.307912121, 1.899505576)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)), TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)), TOLERANCE_MEDIUM)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_MEDIUM)
     expect_equal(gp_model$get_num_optim_iter(), 11)
     
+    # Using init_coef and init_cov_pars
+    params <- OPTIM_PARAMS_BFGS
+    params$maxit <- 0
+    params$init_coef <- c(-1,3)
+    params$init_cov_pars <- c(0.5,0.5,0.5)
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", y = y, X = X, params = params)
+    cov_pars <- c(0.41656029569, 0.19599141062, 0.48878570609, 0.23430447322, 0.09823632211, 0.05904809303)
+    coef <- c(2.2645950057, 0.1696021494, 2.2701341181, 0.1223768465)
+    nll <- 191.1725919
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-params$init_cov_pars)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef())-params$init_coef)), TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_MEDIUM)
+    expect_equal(gp_model$get_num_optim_iter(), 0)
+    
+    # Continue training
+    params <- list(optimizer_cov = "gradient_descent", lr_cov=0.01, maxit = 2, std_dev = FALSE)
+    gp_model_2 <- fitGPModel(gp_coords = coords, cov_function = "exponential", y = y, X = X, params = params)
+    expect_equal(gp_model_2$get_num_optim_iter(), 2)
+    params$maxit <- 1
+    gp_model_1_1 <- fitGPModel(gp_coords = coords, cov_function = "exponential", y = y, X = X, params = params)
+    fit(gp_model_1_1, y = y, X = X, params = params)
+    expect_lt(sum(abs(as.vector(gp_model_1_1$get_cov_pars())-as.vector(gp_model_2$get_cov_pars()))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model_1_1$get_coef())-as.vector(gp_model_2$get_coef()))), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_1_1$get_current_neg_log_likelihood() - gp_model_2$get_current_neg_log_likelihood()), TOLERANCE_MEDIUM)
+    expect_equal(gp_model_1_1$get_num_optim_iter(), 1)
   })
   
   test_that("Gaussian process and two random coefficients ", {

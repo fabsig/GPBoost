@@ -10,8 +10,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                lr_cov = 0.1, use_nesterov_acc = TRUE,
                                acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
                                optimizer_coef = "gradient_descent", lr_coef = 0.1,
-                               convergence_criterion = "relative_change_in_log_likelihood")
-  DEFAULT_OPTIM_PARAMS_STD <- c(DEFAULT_OPTIM_PARAMS, list(std_dev = TRUE))
+                               convergence_criterion = "relative_change_in_log_likelihood",
+                               std_dev = FALSE)
+  DEFAULT_OPTIM_PARAMS_STD <- DEFAULT_OPTIM_PARAMS
+  DEFAULT_OPTIM_PARAMS_STD$std_dev = TRUE
   
   # Function that simulates uniform random variables
   sim_rand_unif <- function(n, init_c=0.1){
@@ -354,7 +356,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood() - 1224957.387)),TOLERANCE_MEDIUM)
     
     gp_model <- fitGPModel(group_data = group_L, y = y_L, X = X_L,
-                           params = list(optimizer_cov = "nelder_mead", maxit=1000, delta_rel_conv=1e-6))
+                           params = list(optimizer_cov = "nelder_mead", maxit=1000, delta_rel_conv=1e-6, std_dev = FALSE))
     cov_pars <- c(0.5004681, 0.9988288)
     coef <- c(2.000747, 1.999343)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
