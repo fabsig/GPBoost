@@ -8521,10 +8521,11 @@ namespace GPBoost {
 					}
 				}
 				else if (likelihood_type_ == "gaussian") {
+					const double FI = SecondDerivNegLogLikGaussian();
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikGaussian();
+						information_ll[i] = w * FI;
 					}
 				}
 				else if (likelihood_type_ == "gaussian_heteroscedastic") {
@@ -8540,10 +8541,11 @@ namespace GPBoost {
 					}
 				}
 				else if (likelihood_type_ == "lognormal") {
+					const double FI = SecondDerivNegLogLikLogNormal();
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikLogNormal();
+						information_ll[i] = w * FI;
 					}
 				}
 				else if (likelihood_type_ == "beta_binomial") {
@@ -8587,17 +8589,19 @@ namespace GPBoost {
 					}
 				}
 				else if (likelihood_type_ == "t") {
+					const double FI = FisherInformationT();
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * FisherInformationT();
+						information_ll[i] = w * FI;
 					}
 				}
 				else if (likelihood_type_ == "gaussian") {
+					const double FI = SecondDerivNegLogLikGaussian();
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikGaussian();
+						information_ll[i] = w * FI;
 					}
 				}
 				else if (likelihood_type_ == "gaussian_heteroscedastic") {
@@ -8611,10 +8615,11 @@ namespace GPBoost {
 					}
 				}
 				else if (likelihood_type_ == "lognormal") {
+					const double FI = SecondDerivNegLogLikLogNormal();
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikLogNormal();
+						information_ll[i] = w * FI;
 					}
 				}
 				else {
