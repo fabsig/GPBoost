@@ -2321,8 +2321,8 @@ namespace GPBoost {
 				mode_has_been_calculated_ = true;
 				na_or_inf_during_last_call_to_find_mode_ = false;
 				if (sample_from_posterior_after_mode_finding_) {
-					Log::REFatal("FindModePostRandEffCalcMLLFSVA: 'Sample_Posterior_LaplaceApprox_FSVA' not yet implemented ");
-					//Sample_Posterior_LaplaceApprox_FSVA();
+					Sample_Posterior_LaplaceApprox_FSVA(cross_cov, Bt_D_inv_B_cross_cov, sigma_woodbury, chol_fact_sigma_woodbury,
+						chol_fact_sigma_ip, chol_fact_sigma_woodbury_2, chol_ip_cross_cov, re_comps_cross_cov_preconditioner_cluster_i);
 				}
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (information_changes_after_mode_finding_) {
@@ -6467,6 +6467,107 @@ namespace GPBoost {
 			SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
 			rand_vec_sim_post_calculated_ = true;
 		}//end SamplePosterior_LaplaceApprox_Vecchia
+
+		/*!
+		* \brief Sampling from the Laplace-approximated posterior when using a Full-scale Vecchia approximation
+		*/
+		void Sample_Posterior_LaplaceApprox_FSVA(const den_mat_t* cross_cov,
+			const den_mat_t Bt_D_inv_B_cross_cov,
+			const den_mat_t sigma_woodbury,
+			const chol_den_mat_t chol_fact_sigma_woodbury,
+			const chol_den_mat_t chol_fact_sigma_ip,
+			const chol_den_mat_t chol_fact_sigma_woodbury_2,
+			const den_mat_t chol_ip_cross_cov,
+			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_preconditioner_cluster_i) {
+			CHECK(num_sets_re_ == 1);
+			int num_ip = (int)(*cross_cov).cols();
+			//sample iid normal random vectors
+			if (!sampled_rand_vec_I_sim_post_) {
+				rand_vec_I_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+				GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_sim_post_);
+				rand_vec_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+				rand_vec_I_2_sim_post_.resize(num_ip, num_rand_vec_sim_post_);
+				GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_2_sim_post_);
+				if (matrix_inversion_method_ == "iterative") {
+					rand_vec_I_3_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+					GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_3_sim_post_);
+				}
+				if (reuse_rand_vec_I_sim_post_) {
+					sampled_rand_vec_I_sim_post_ = true;
+				}
+			}//end !sampled_rand_vec_I_sim_post_
+			CHECK(rand_vec_I_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_I_sim_post_.rows() == dim_mode_);
+			CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_sim_post_.rows() == dim_mode_);
+			CHECK(rand_vec_I_2_sim_post_.cols() == num_rand_vec_sim_post_);
+			CHECK(rand_vec_I_2_sim_post_.rows() == num_ip);
+			if (matrix_inversion_method_ == "cholesky") {
+				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_I_sim_post_, rand_vec_sim_post_, false);
+				den_mat_t rand_vec_aux(num_ip, num_rand_vec_sim_post_);
+				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_2, rand_vec_I_2_sim_post_, rand_vec_aux, false);
+				den_mat_t rand_vec_aux_2 = Bt_D_inv_B_cross_cov * rand_vec_aux;
+				den_mat_t rand_vec_aux_3 = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rand_vec_aux_2);
+				rand_vec_sim_post_ += rand_vec_aux_3;
+			}
+			else if (matrix_inversion_method_ == "iterative") {
+				CHECK(rand_vec_I_3_sim_post_.cols() == num_rand_vec_sim_post_);
+				CHECK(rand_vec_I_3_sim_post_.rows() == dim_mode_);
+				vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
+				vec_t D_sqrt = D_inv_rm_.diagonal().cwiseInverse().cwiseSqrt();
+				vec_t W_D_inv, W_D_inv_inv, information_ll_inv;
+				const den_mat_t* cross_cov_preconditioner;
+				if (cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") {
+					W_D_inv = (information_ll_ + D_inv_rm_.diagonal());
+					W_D_inv_inv = W_D_inv.cwiseInverse();
+					den_mat_t B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov = W_D_inv_inv.cwiseSqrt().asDiagonal() * D_inv_B_cross_cov_;
+					sigma_woodbury_woodbury_ = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose() * B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov;
+					chol_fact_sigma_woodbury_woodbury_.compute(sigma_woodbury_woodbury_);
+					cross_cov_preconditioner = nullptr;
+				} 
+				else if (cg_preconditioner_type_ == "fitc") {
+					information_ll_inv.resize(dim_mode_);
+					information_ll_inv.array() = information_ll_.array().inverse();
+					cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
+				}
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
+					vec_t rand_vec_pred_SigmaI_plus_W_inv;
+					//z_i ~ N(0,Sigma) (not possible to sample directly from Sigma^{-1})
+					vec_t Sigma_sqrt_rand_vec = chol_ip_cross_cov.transpose() * rand_vec_I_2_sim_post_.col(i);
+					Sigma_sqrt_rand_vec += B_rm_.triangularView<Eigen::UpLoType::UnitLower>().solve(D_sqrt.cwiseProduct(rand_vec_I_sim_post_.col(i)));
+					//z_i ~ N(0,Sigma^{-1})
+					vec_t Bt_D_inv_Sigma_sqrt_rand_vec = B_t_D_inv_rm_ * B_rm_ * Sigma_sqrt_rand_vec;
+					vec_t Sigma_inv_Sigma_sqrt_rand_vec = Bt_D_inv_Sigma_sqrt_rand_vec - Bt_D_inv_B_cross_cov * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * Bt_D_inv_Sigma_sqrt_rand_vec);
+					//z_i ~ N(0,(Sigma^{-1} + W))
+					vec_t rand_vec_pred_SigmaI_plus_W = Sigma_inv_Sigma_sqrt_rand_vec + W_diag_sqrt.cwiseProduct(rand_vec_I_3_sim_post_.col(i));
+					//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
+					bool has_NA_or_Inf = false;
+					if (cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") {
+						CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
+							chol_fact_sigma_woodbury_woodbury_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf, cg_max_num_it_,
+							true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true);
+					}
+					else if (cg_preconditioner_type_ == "fitc") {
+						vec_t rand_vec_pred_SigmaI_plus_W_inv_interim(dim_mode_);
+						vec_t rhs_part1 = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rand_vec_pred_SigmaI_plus_W);
+						vec_t rhs_part = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(rhs_part1);
+						vec_t rhs_part2 = (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * rand_vec_pred_SigmaI_plus_W));
+						rand_vec_pred_SigmaI_plus_W = rhs_part + rhs_part2;
+						CGVIFLaplaceSigmaPlusWinvVec(information_ll_inv, D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
+							chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv_interim, has_NA_or_Inf,
+							cg_max_num_it_, true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true);
+						rand_vec_pred_SigmaI_plus_W_inv = information_ll_inv.asDiagonal() * rand_vec_pred_SigmaI_plus_W_inv_interim;
+					}
+					if (has_NA_or_Inf) {
+						Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
+					}
+					rand_vec_sim_post_.col(i) = rand_vec_pred_SigmaI_plus_W_inv;
+				}//end parallel loop
+			}//end matrix_inversion_method_ == "iterative"
+			SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
+			rand_vec_sim_post_calculated_ = true;
+		}//end SamplePosterior_LaplaceApprox_FSVA
 
 		/*!
 		* \brief Sampling from the Laplace-approximated posterior when using an FITC approximation
@@ -10970,6 +11071,8 @@ namespace GPBoost {
 		den_mat_t rand_vec_I_sim_post_;
 		/*! Second set of iid normal random vectors for sampling from the Laplace-approximated posterior (e.g., for iterative methods) */
 		den_mat_t rand_vec_I_2_sim_post_;
+		/*! Second set of iid normal random vectors for sampling from the Laplace-approximated posterior (e.g., for iterative methods) */
+		den_mat_t rand_vec_I_3_sim_post_;
 		/*! If true, the mean is added for sampling from the Laplace-approximated posterior (otherwise the mean of the samples is 0)  */
 		bool add_mean_sim_post_ = true;
 		/*! Constant by whose square the the covariance of the posterior is multiplied with */
