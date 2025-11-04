@@ -257,11 +257,7 @@ namespace GPBoost {
 		// Initial linear regression coefficients
 		if (init_coef != nullptr) {
 			coef_ = Eigen::Map<const vec_t>(init_coef, num_sets_fixed_effects_ * num_covariates);
-			init_coef_given_ = true;
 			coef_given_or_estimated_ = true;
-		}
-		else {
-			init_coef_given_ = false;
 		}
 		// Initial aux_pars
 		if (init_aux_pars != nullptr) {
@@ -399,12 +395,12 @@ namespace GPBoost {
 		int num_covariates,
 		const double* fixed_effects) {
 		InitializeCovParsIfNotDefined(y_data, fixed_effects);
-		double* coef_ptr;;
-		if (init_coef_given_) {
-			coef_ptr = coef_.data();
+		double* init_coef_ptr;;
+		if ((int)coef_.size() == num_covariates) {
+			init_coef_ptr = coef_.data();
 		}
 		else {
-			coef_ptr = nullptr;
+			init_coef_ptr = nullptr;
 			coef_ = vec_t(num_sets_fixed_effects_ * num_covariates);
 		}
 		double* std_dev_cov_par;
@@ -427,7 +423,7 @@ namespace GPBoost {
 				coef_.data(),
 				num_it_,
 				cov_pars_.data(),
-				coef_ptr,
+				init_coef_ptr,
 				std_dev_cov_par,
 				std_dev_coef,
 				calc_std_dev_,
@@ -446,7 +442,7 @@ namespace GPBoost {
 				coef_.data(),
 				num_it_,
 				cov_pars_.data(),
-				coef_ptr,
+				init_coef_ptr,
 				std_dev_cov_par,
 				std_dev_coef,
 				calc_std_dev_,
@@ -465,7 +461,7 @@ namespace GPBoost {
 				coef_.data(),
 				num_it_,
 				cov_pars_.data(),
-				coef_ptr,
+				init_coef_ptr,
 				std_dev_cov_par,
 				std_dev_coef,
 				calc_std_dev_,

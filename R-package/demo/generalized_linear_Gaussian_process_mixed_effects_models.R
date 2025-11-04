@@ -5,6 +5,18 @@
 #   - Gaussian process (GP) models
 #   - combined GP and grouped random effects
 # 
+# - Currently supported likelihoods: 
+#     see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood 
+# - Currently supported covariance functions for GPs 
+#     including ARD, estimating the smoothness parameter, and space-time models: 
+#     see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#cov-function
+# - Large data GP approximations such as "vecchia" and "vif" approximations:
+#     https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#cov-function
+# - Optimization options for the "params" argument of the `fit()' and 'set_optim_params()' functions 
+#     including (i) monitoring convergence, (ii) optimization algorithm options, (iii) manually setting initial values for parameters, 
+#     and (iv) selecting which parameters are estimated can be found here: 
+#     https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
+# 
 # Author: Fabio Sigrist
 #############################################################
 
@@ -80,26 +92,11 @@ rand_eff <- rand_eff - mean(rand_eff)
 y_nested <- simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
 
 # --------------------Training----------------
-gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = likelihood)
+gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = likelihood, params = list(std_dev = TRUE))
 summary(gp_model)
 # Get coefficients and variance/covariance parameters separately
 gp_model$get_coef()
 gp_model$get_cov_pars()
-# Obtaining standard deviations and p-values for fixed effects coefficients ('std_dev = TRUE')
-gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = likelihood,
-                       params = list(std_dev = TRUE))
-summary(gp_model)
-
-# Optional arguments for the 'params' argument of the 'fit' function:
-# - monitoring convergence: 'trace = TRUE'
-# - calculate standard deviations: 'std_dev = TRUE'
-# - change optimization algorithm options (see below)
-# For available optimization options, see
-#   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
-# gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = likelihood,
-#                        params = list(trace = TRUE, std_dev = TRUE,
-#                                      optimizer_cov = "gradient_descent",
-#                                      lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 100))
 
 # --------------------Prediction----------------
 group_test <- c(1,2,-1)
@@ -239,10 +236,10 @@ ntrain <- 500 # number of training samples
 set.seed(1)
 # training and test locations (=features) for Gaussian process
 coords_train <- matrix(runif(2)/2,ncol=2)
-# exclude upper right corner
 while (dim(coords_train)[1]<ntrain) {
   coord_i <- runif(2) 
-  if (!(coord_i[1]>=0.6 & coord_i[2]>=0.6)) {
+  # less data in one area
+  if (!(coord_i[1]>=0.3 & coord_i[1]<=0.7 & coord_i[2]>=0.3 & coord_i[2]<=0.7 & runif(1)>0.1)) {
     coords_train <- rbind(coords_train,coord_i)
   }
 }
@@ -289,25 +286,6 @@ gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fc
                        likelihood = likelihood, y = y_train)
 summary(gp_model)
 
-## Other covariance functions:
-# gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "gaussian",
-#                        likelihood = likelihood, y = y_train)
-# gp_model <- fitGPModel(gp_coords = coords_train,
-#                        cov_function = "matern", cov_fct_shape=1.,
-#                        likelihood = likelihood, y = y_train)
-# gp_model <- fitGPModel(gp_coords = coords_train,
-#                        cov_function = "powered_exponential", cov_fct_shape=1.1,
-#                        likelihood = likelihood, y = y_train)
-
-# Optional arguments for the 'params' argument of the 'fit' function:
-# - monitoring convergence: trace = TRUE
-# - obtain standard deviations: std_dev = TRUE
-# - change optimization algorithm options (see below)
-# For available optimization options, see
-#   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
-# gp_model <- fitGPModel(gp_coords = coords_train, y = y_train, X = X,
-#                        params = list(trace = TRUE, std_dev = TRUE))
-
 #--------------------Prediction----------------
 # Prediction of latent variable
 pred <- predict(gp_model, gp_coords_pred = coords_test,
@@ -328,15 +306,15 @@ packakes_to_load <- c("ggplot2", "viridis", "gridExtra") # load required package
 for (package in packakes_to_load) do.call(require,list(package, character.only=TRUE))
 plot1 <- ggplot(data = data.frame(s_1=coords_test[,1],s_2=coords_test[,2],b=b_1_test),aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + 
-  ggtitle("True latent GP and training locations") + 
+  ggtitle("True GP and training locations") + 
   geom_point(data = data.frame(s_1=coords_train[,1], s_2=coords_train[,2],y=y_train), 
              aes(x=s_1,y=s_2), size=3, col="white", alpha=1, shape=43)
 plot2 <- ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2], b=pred$mu), aes(x=s_1,y=s_2,color=b)) +
-  geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + ggtitle("Predicted latent GP mean")
+  geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + ggtitle("Predictive mean")
 plot3 <- ggplot(data = data.frame(s_1=coords_test[,1] ,s_2=coords_test[,2], b=sqrt(pred$var)), aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=4, shape=15) + scale_color_viridis(option = "B") + 
-  labs(title="Predicted latent GP standard deviation", subtitle=" = prediction uncertainty")
-grid.arrange(plot1, plot2, plot3, ncol=2)
+  labs(title="Predictive standard deviations", subtitle=" = prediction uncertainty")
+grid.arrange(plot2, plot1, plot3, ncol=2)
 
 # Predict latent GP at training data locations (=smoothing)
 GP_smooth <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
@@ -369,7 +347,7 @@ gp_model <- fitGPModel(gp_coords = coords_time_space, cov_function = "matern_spa
                        y = y_train, likelihood = likelihood)
 summary(gp_model)
 
-#--------------------Gaussian process model with Vecchia approximation----------------
+#--------------------Gaussian process model with a Vecchia approximation----------------
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5, 
                        gp_approx = "vecchia", num_neighbors = 20, y = y_train,
                        likelihood = likelihood)
@@ -380,25 +358,19 @@ pred_vecchia <- predict(gp_model, gp_coords_pred = coords_test,
 ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2], 
                          b=pred_vecchia$mu), aes(x=s_1,y=s_2,color=b)) +
   geom_point(size=8, shape=15) + scale_color_viridis(option = "B") + 
-  ggtitle("Predicted latent GP mean with Vecchia approxmation")
+  ggtitle("Predicted latent GP mean with a Vecchia approximation")
 
-# --------------------Gaussian process model with FITC / modified predictive process approximation----------------
+# --------------------Gaussian process model with a VIF approximation----------------
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5, 
-                       gp_approx = "fitc", num_ind_points = 500, y = y_train,
-                       likelihood = likelihood)
-summary(gp_model)
-pred_fitc <- predict(gp_model, gp_coords_pred = coords_test,
-                        predict_var = TRUE, predict_response = FALSE)
-ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2], 
-                         b=pred_fitc$mu), aes(x=s_1,y=s_2,color=b)) +
-  geom_point(size=8, shape=15) + scale_color_viridis(option = "B") + 
-  ggtitle("Predicted latent GP mean with FITC approxmation")
-
-#--------------------Gaussian process model with tapering----------------
-gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5, 
-                       gp_approx = "tapering", cov_fct_taper_shape = 0., cov_fct_taper_range = 0.5, 
+                       gp_approx = "vif", num_ind_points = 200, num_neighbors = 20, 
                        y = y_train, likelihood = likelihood)
 summary(gp_model)
+pred_vif <- predict(gp_model, gp_coords_pred = coords_test,
+                    predict_var = TRUE, predict_response = FALSE)
+ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2], 
+                         b=pred_vif$mu), aes(x=s_1,y=s_2,color=b)) +
+  geom_point(size=8, shape=15) + scale_color_viridis(option = "B") + 
+  ggtitle("Predicted latent GP mean with a VIF approximation")
 
 #--------------------Gaussian process model with random coefficients----------------
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
@@ -407,7 +379,7 @@ gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fc
 summary(gp_model)
 # Note: this is a small sample size for this type of model
 #   -> covariance parameters estimates can have high variance
-GP_smooth <- predict_training_data_random_effects(gp_model, predict_var = TRUE) # predict_var = TRUE gives uncertainty for random effect predictions
+GP_smooth <- predict_training_data_random_effects(gp_model, predict_var = FALSE) # predict_var = TRUE gives uncertainty for random effect predictions
 # Compare true and predicted random effects
 plot(b_1_train, GP_smooth[,1], xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects", lwd=1.5)

@@ -501,7 +501,6 @@ namespace GPBoost {
 		// Linear regression coefficients related variables
 		vec_t coef_;//linear regression coefficients for fixed effects (in case there are any)
 		bool has_covariates_ = false;
-		bool init_coef_given_ = false;
 		bool coef_given_or_estimated_ = false;
 		vec_t std_dev_coef_;
 		// Variables for additional parameters for non-Gaussian likelihoods

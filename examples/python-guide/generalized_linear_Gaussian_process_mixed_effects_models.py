@@ -6,6 +6,18 @@ mixed effects models with various likelihoods and different random effects model
     - Gaussian process (GP) models
     - combined GP and grouped random effects
 
+- Currently supported likelihoods: 
+     see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood 
+- Currently supported covariance functions for GPs 
+     including ARD, estimating the smoothness parameter, and space-time models: 
+     see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#cov-function
+- Large data GP approximations such as "vecchia" and "vif" approximations:
+     https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#cov-function
+- Optimization options for the "params" argument of the `fit()' and 'set_optim_params()' functions 
+     including (i) monitoring convergence, (ii) optimization algorithm options, (iii) manually setting initial values for parameters, 
+     and (iv) selecting which parameters are estimated can be found here: 
+     https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
+
 Author: Fabio Sigrist
 """
 
@@ -93,25 +105,11 @@ y_nested = simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likel
 
 # --------------------Training----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-gp_model.fit(y=y, X=X)
+gp_model.fit(y=y, X=X, params={"std_dev": True})
 gp_model.summary()
 # Get coefficients and variance/covariance parameters separately
 gp_model.get_coef()
 gp_model.get_cov_pars()
-# Obtaining standard deviations and p-values for fixed effects coefficients ('std_dev = TRUE')
-gp_model.fit(y=y, X=X, params={"std_dev": True})
-gp_model.summary()
-
-# Optional arguments for the 'params' argument of the 'fit' function:
-# - monitoring convergence: "trace": True
-# - calculate standard deviations: "std_dev": True
-# - change optimization algorithm options (see below)
-# For available optimization options, see
-#   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
-#gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-#gp_model.fit(y=y, X=X, params={"trace": True, "std_dev": True,
-#                               "optimizer_cov": "gradient_descent", "lr_cov": 0.1,
-#                               "use_nesterov_acc": True, "maxit": 100})
 
 # --------------------Prediction----------------
 group_test = np.array([1,2,-1])
@@ -237,8 +235,9 @@ ntrain = 600 # number of training samples
 np.random.seed(2)
 # training and test locations (=features) for Gaussian process
 coords_train = np.column_stack((np.random.uniform(size=ntrain), np.random.uniform(size=ntrain)))
-# exclude upper right corner
-excl = ((coords_train[:, 0] >= 0.6) & (coords_train[:, 1] >= 0.6))
+# less data in one area
+excl = ((coords_train[:, 0] >= 0.3) & (coords_train[:, 0] <= 0.7) & (coords_train[:, 1] >= 0.3) & 
+        (coords_train[:, 1] <= 0.7) & (np.random.uniform(size=ntrain) > 0.1))
 coords_train = coords_train[~excl, :]
 ntrain = coords_train.shape[0]
 nx = 30  # test data: number of grid points on each axis
@@ -288,21 +287,6 @@ gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_sh
 gp_model.fit(y=y_train)
 gp_model.summary()
 
-# Other covariance functions:
-# gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="gaussian", likelihood=likelihood)
-# gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1., likelihood=likelihood)
-# gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="powered_exponential", cov_fct_shape=1.1, likelihood=likelihood)
-
-# Optional arguments for the 'params' argument of the 'fit' function:
-# - monitoring convergence: "trace": True
-# - obtain standard deviations: "std_dev": True
-# - change optimization algorithm options (see below)
-# For available optimization options, see
-#   https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
-#gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5, 
-#                       likelihood=likelihood)
-#gp_model.fit(y=y, X=X, params={"trace": True, "std_dev": True})
-
 #--------------------Prediction----------------
 # Prediction of latent variable
 pred = gp_model.predict(gp_coords_pred=coords_test,
@@ -323,18 +307,18 @@ else:
 fig, axs = plt.subplots(2, 2, figsize=[10,8])
 # data and true GP
 b_test_plot = b_test.reshape((nx, nx))
-CS = axs[0, 0].contourf(coords_test_x1, coords_test_x2, b_test_plot)
-axs[0, 0].plot(coords_train[:, 0], coords_train[:, 1], '+', color="white", 
+CS = axs[0, 1].contourf(coords_test_x1, coords_test_x2, b_test_plot)
+axs[0, 1].plot(coords_train[:, 0], coords_train[:, 1], '+', color="white", 
    markersize = 4)
-axs[0, 0].set_title("True latent GP and training locations")
+axs[0, 1].set_title("True GP and training locations")
 # predicted latent mean
 pred_mu_plot = pred['mu'].reshape((nx, nx))
-CS = axs[0, 1].contourf(coords_test_x1, coords_test_x2, pred_mu_plot)
-axs[0, 1].set_title("Predicted latent GP mean")
+CS = axs[0, 0].contourf(coords_test_x1, coords_test_x2, pred_mu_plot)
+axs[0, 0].set_title("Predictive mean")
 # prediction uncertainty
 pred_var_plot = pred['var'].reshape((nx, nx))
 CS = axs[1, 0].contourf(coords_test_x1, coords_test_x2, pred_var_plot)
-axs[1, 0].set_title("Predicted latent GP standard deviation")
+axs[1, 0].set_title("Predictive standard deviations")
 plt.show(block=False)
 
 # Predict latent GP at training data locations (=smoothing)
@@ -372,7 +356,7 @@ gp_model = gpb.GPModel(gp_coords=coords_time_space, cov_function="matern_space_t
 gp_model.fit(y=y_train)
 gp_model.summary()
 
-# --------------------Gaussian process model with Vecchia approximation----------------
+# --------------------Gaussian process model with a Vecchia approximation----------------
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
                        gp_approx="vecchia", num_neighbors=20, likelihood=likelihood)
 gp_model.fit(y=y_train)
@@ -382,27 +366,20 @@ pred_vecchia = gp_model.predict(gp_coords_pred=coords_test,
                                 predict_var=True, predict_response=False)
 pred_vecchia = pred_vecchia['mu'].reshape((nx, nx))
 plt.contourf(coords_test_x1, coords_test_x2, pred_vecchia)
-plt.title("Predicted latent GP mean with Vecchia approxmation")
+plt.title("Predicted latent GP mean with a Vecchia approximation")
 plt.show(block=False)
 
-# --------------------Gaussian process model with FITC / modified predictive process approximation----------------
+# --------------------Gaussian process model with a VIF approximation----------------
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
-                       gp_approx="fitc", num_ind_points=500, likelihood=likelihood)
+                       gp_approx="vif", num_ind_points=200, num_neighbors=20, likelihood=likelihood)
 gp_model.fit(y=y_train)
 gp_model.summary()
-pred_fitc = gp_model.predict(gp_coords_pred=coords_test, 
+pred_vif = gp_model.predict(gp_coords_pred=coords_test, 
                                 predict_var=True, predict_response=False)
-pred_fitc = pred_fitc['mu'].reshape((nx, nx))
-plt.contourf(coords_test_x1, coords_test_x2, pred_fitc)
-plt.title("Predicted latent GP mean with FITC approxmation")
+pred_vif = pred_vif['mu'].reshape((nx, nx))
+plt.contourf(coords_test_x1, coords_test_x2, pred_vif)
+plt.title("Predicted latent GP mean with a VIF approximation")
 plt.show(block=False)
-
-#--------------------Gaussian process model with tapering----------------
-gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
-                       gp_approx = "tapering", cov_fct_taper_shape=0., 
-                       cov_fct_taper_range=0.5, likelihood=likelihood)
-gp_model.fit(y=y_train)
-gp_model.summary()
 
 # --------------------Gaussian process model with random coefficents----------------
 # Define and train model
