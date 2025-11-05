@@ -3055,6 +3055,22 @@ int GPB_GetCovariateData(REModelHandle handle,
 	API_END();
 }
 
+int GPB_GetOffsetData(REModelHandle handle,
+	double* fixed_effects) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	ref_remodel->GetOffsetData(fixed_effects);
+	API_END();
+}
+
+int GPB_SetOffsetData(REModelHandle handle,
+	const double* fixed_effects) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	ref_remodel->SetOffsetData(fixed_effects);
+	API_END();
+}
+
 int GPB_GetAuxPars(REModelHandle handle,
 	double* aux_pars,
 	char* out_str) {

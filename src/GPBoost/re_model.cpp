@@ -753,6 +753,30 @@ namespace GPBoost {
 		}
 	}
 
+	void REModel::GetOffsetData(double* fixed_effects) const {
+		if (matrix_format_ == "sp_mat_t") {
+			re_model_sp_->GetOffsetData(fixed_effects);
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			re_model_sp_rm_->GetOffsetData(fixed_effects);
+		}
+		else {
+			re_model_den_->GetOffsetData(fixed_effects);
+		}
+	}
+
+	void REModel::SetOffsetData(const double* fixed_effects) {
+		if (matrix_format_ == "sp_mat_t") {
+			re_model_sp_->SetOffsetData(fixed_effects);
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			re_model_sp_rm_->SetOffsetData(fixed_effects);
+		}
+		else {
+			re_model_den_->SetOffsetData(fixed_effects);
+		}
+	}
+
 	void REModel::GetCovPar(double* cov_par, bool calc_std_dev) const {
 		if (cov_pars_.size() == 0) {
 			Log::REFatal("Covariance parameters have not been estimated or set");

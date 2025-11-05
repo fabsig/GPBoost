@@ -211,7 +211,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-pred_no_offset$mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_no_offset$cov))),TOLERANCE_STRICT)
     expect_lt(sum(abs(pred$mu-pred_offset_not_provided$mu)),TOLERANCE_STRICT)
-    # with lbfgs
+    expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_offset_not_provided$cov))),TOLERANCE_STRICT)
+    # Saving model to file and not providing offset for prediction
+    filename <- tempfile(fileext = ".json")
+    saveGPModel(gp_model, filename = filename)
+    rm(gp_model)
+    gp_model_loaded <- loadGPModel(filename = filename)
+    pred_loaded <- predict(gp_model_loaded, group_data_pred = group_test,
+                           cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
+    expect_lt(sum(abs(pred$mu-pred_loaded$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_loaded$cov))),TOLERANCE_STRICT)
+    # with lbfgs and offset
     params = DEFAULT_OPTIM_PARAMS_STD
     params$optimizer_cov = "lbfgs"
     gp_model_no_offset <- fitGPModel(group_data = group, y = y,  params = params)
@@ -314,12 +324,25 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            offset = offset, params = DEFAULT_OPTIM_PARAMS_STD)
     pred <- predict(gp_model, group_data_pred = group_test, offset = offset,
                     X_pred = X_test, predict_cov_mat = TRUE)
+    pred_offset_not_provided <- predict(gp_model, group_data_pred = group_test, 
+                                        X_pred = X_test, predict_cov_mat = TRUE)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-as.vector(gp_model_no_offset$get_cov_pars()))),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-as.vector(gp_model_no_offset$get_coef()))),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), gp_model_no_offset$get_num_optim_iter())
     expect_lt(sum(abs(pred$mu-pred_no_offset$mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_no_offset$cov))),TOLERANCE_STRICT)
-    # with lbfgs
+    expect_lt(sum(abs(pred$mu-pred_offset_not_provided$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_offset_not_provided$cov))),TOLERANCE_STRICT)
+    # Saving model to file and not providing offset for prediction
+    filename <- tempfile(fileext = ".json")
+    saveGPModel(gp_model, filename = filename)
+    rm(gp_model)
+    gp_model_loaded <- loadGPModel(filename = filename)
+    pred_loaded <- predict(gp_model_loaded, group_data_pred = group_test, 
+                           X_pred = X_test, predict_cov_mat = TRUE)
+    expect_lt(sum(abs(pred_offset_not_provided$mu-pred_loaded$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred_offset_not_provided$cov)-as.vector(pred_loaded$cov))),TOLERANCE_STRICT)
+    # with lbfgs and offset
     params = DEFAULT_OPTIM_PARAMS_STD
     params$optimizer_cov = "lbfgs"
     params$optimizer_coef = "wls"

@@ -457,7 +457,7 @@ gpb.GPModel <- R6::R6Class(
         MAYBE_CONVERT_TO_MATRIX <- c("cov_pars", "group_data", "group_rand_coef_data", 
                                      "gp_coords", "gp_rand_coef_data", 
                                      "ind_effect_group_rand_coef",
-                                     "cluster_ids", "coefs", "X", "weights")
+                                     "cluster_ids", "coefs", "X", "weights", "offset")
         for (feature in MAYBE_CONVERT_TO_MATRIX) {
           if (!is.null(model_list[[feature]])) {
             if (is.list(model_list[[feature]])) {
@@ -532,6 +532,7 @@ gpb.GPModel <- R6::R6Class(
         if (private$model_fitted) {
           private$current_neg_log_likelihood_loaded_from_file <- model_list[["current_neg_log_likelihood"]]
         }
+        private$has_offset = model_list[["has_offset"]]
       }# end !is.null(modelfile) | !is.null(model_list)
       
       if (is.null(group_data) & is.null(gp_coords)) {
@@ -950,6 +951,9 @@ gpb.GPModel <- R6::R6Class(
       }
       if (private$model_has_been_loaded_from_saved_file) {
         self$set_optim_params(params = model_list[["params"]])
+        if (private$has_offset) {
+          self$set_offset_data(offset = model_list[["offset"]])
+        }
       }
     }, # End initialize
     
@@ -988,22 +992,11 @@ gpb.GPModel <- R6::R6Class(
       }# end handling of y
       if (!is.null(offset)) {
         private$has_offset <- TRUE
-        if (!is.vector(offset)) {
-          if (is.matrix(offset)) {
-            if (dim(offset)[2] != 1) {
-              stop("fit.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("offset"))
-            }
-          } else{
-            stop("fit.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("offset"))
-          }
-        }
+        self$check_format_offset_data(offset)
         if (storage.mode(offset) != "double") {
           storage.mode(offset) <- "double"
         }
         offset <- as.vector(offset)
-        if (length(offset) != private$num_data) {
-          stop("fit.GPModel: Number of data points in ", sQuote("offset"), " does not match number of data points of initialized model")
-        }
       } # end handling of offset
       # Set data linear fixed-effects
       if (!is.null(X)) {
@@ -1731,10 +1724,13 @@ gpb.GPModel <- R6::R6Class(
             } else {
               coefs <- private$coefs_loaded_from_file
             }
-            if (is.null(offset)) {
-              offset <- as.vector(private$X_loaded_from_file %*% coefs)
-            } else {
+            if (!is.null(offset)) {
+              self$check_format_offset_data(offset)
               offset <- offset + as.vector(private$X_loaded_from_file %*% coefs)
+            } else if (private$has_offset) {
+              offset <- self$get_offset_data() + as.vector(private$X_loaded_from_file %*% coefs)
+            } else {
+              offset <- as.vector(private$X_loaded_from_file %*% coefs)
             }
             if (is.null(offset_pred)) {
               offset_pred <- as.vector(X_pred %*% coefs)
@@ -1804,17 +1800,11 @@ gpb.GPModel <- R6::R6Class(
         stop("predict.GPModel: Can only use ", sQuote("logical"), " as ", sQuote("predict_response"))
       }
       if (!is.null(offset)) {
-        if (is.vector(offset)) {
-          if (storage.mode(offset) != "double") {
-            storage.mode(offset) <- "double"
-          }
-          offset <- as.vector(offset)
-        } else {
-          stop("predict.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("offset"))
+        self$check_format_offset_data(offset)
+        if (storage.mode(offset) != "double") {
+          storage.mode(offset) <- "double"
         }
-        if (length(offset) != (private$num_data * private$num_sets_fe)) {
-          stop("predict.GPModel: Length of ", sQuote("offset"), " does not match number of observed data points")
-        }
+        offset <- as.vector(offset)
       }# end offset
       if (!is.null(offset_pred)) {
         if (is.vector(offset_pred)) {
@@ -1981,6 +1971,49 @@ gpb.GPModel <- R6::R6Class(
       return(covariate_data)
     },
     
+    check_format_offset_data = function(offset) {
+      if (!is.vector(offset)) {
+        if (is.matrix(offset)) {
+          if (dim(offset)[2] != 1) {
+            stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("offset"))
+          }
+        } else{
+          stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("offset"))
+        }
+      }
+      offset <- as.vector(offset)
+      if (length(offset) != (private$num_data *  private$num_sets_re)) {
+        stop("GPModel: Number of data points in ", sQuote("offset"), " does not match number of data points of initialized model")
+      }
+    },
+    
+    get_offset_data = function() {
+      if (!private$has_offset) {
+        stop("GPModel: Model has no offset ")
+      }
+      offset <- numeric(private$num_data * private$num_sets_re)
+      .Call(
+        GPB_GetOffsetData_R
+        , private$handle
+        , offset
+      )
+      return(offset)
+    },
+    
+    set_offset_data = function(offset) {
+      private$has_offset <- TRUE
+      self$check_format_offset_data(offset)
+      if (storage.mode(offset) != "double") {
+        storage.mode(offset) <- "double"
+      }
+      offset <- as.vector(offset)
+      .Call(
+        GPB_SetOffsetData_R
+        , private$handle
+        , offset
+      )
+    },
+    
     get_num_data = function() {
       return(private$num_data)
     },
@@ -2044,11 +2077,6 @@ gpb.GPModel <- R6::R6Class(
       if (isTRUE(private$free_raw_data)) {
         stop("model_to_list: cannot convert to json when free_raw_data=TRUE has been set")
       }
-      if (private$has_offset) {
-        warning("An 'offset' was provided for estimation / fitting. Saving this 'offset' is currently not 
-                implemented. Please pass the 'offset' again when you call the 'predict()' function 
-                (in addition to a potential 'offset_pred' parameter for prediction points")
-      }
       model_list <- list()
       # Parameters
       model_list[["params"]] <- self$get_optim_params()
@@ -2058,6 +2086,11 @@ gpb.GPModel <- R6::R6Class(
       # Response data
       if (include_response_data) {
         model_list[["y"]] <- self$get_response_data()
+      }
+      # Offset
+      model_list[["has_offset"]] <- private$has_offset
+      if (private$has_offset) {
+        model_list[["offset"]] <- self$get_offset_data()
       }
       # Random effects / GP data
       model_list[["group_data"]] <- self$get_group_data()
@@ -2105,7 +2138,8 @@ gpb.GPModel <- R6::R6Class(
                                    "gp_coords", "gp_rand_coef_data",
                                    "ind_effect_group_rand_coef",
                                    "drop_intercept_group_rand_effect",
-                                   "cluster_ids", "coefs", "X", "nb_groups", "aux_pars", "weights")
+                                   "cluster_ids", "coefs", "X", "nb_groups", "aux_pars", 
+                                   "weights", "offset")
       for (feature in MAYBE_CONVERT_TO_VECTOR) {
         if (!is.null(model_list[[feature]])) {
           if (is.vector(model_list[[feature]])) {

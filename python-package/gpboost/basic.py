@@ -4572,6 +4572,7 @@ class GPModel(object):
             self.model_fitted = model_dict.get("model_fitted")
             if self.model_fitted:
                 self.current_neg_log_likelihood_loaded_from_file = model_dict.get("current_neg_log_likelihood")
+            self.has_offset = model_dict.get("has_offset")
 
         if group_data is None and gp_coords is None:
             raise ValueError("Both group_data and gp_coords are None. Provide at least one of them")
@@ -4901,6 +4902,8 @@ class GPModel(object):
             if model_dict["params"]['init_aux_pars'] is not None:
                 model_dict["params"]['init_aux_pars'] = np.array(model_dict["params"]['init_aux_pars'])
             self.set_optim_params(params=model_dict["params"])
+            if self.has_offset:
+                self._set_offset_data(offset=np.array(model_dict.get("offset")))
 
     def __determine_num_cov_pars(self, likelihood):
         if self.cov_function == "space_time_gneiting":
@@ -5164,12 +5167,7 @@ class GPModel(object):
 
         if offset is not None:  ##TODO: maybe add support for pandas for offset (low prio)
             self.has_offset = True
-            if not isinstance(offset, np.ndarray):
-                raise ValueError("'offset' needs to be a numpy.ndarray")
-            if len(offset.shape) != 1:
-                raise ValueError("'offset' needs to be a vector / one-dimensional numpy.ndarray ")
-            if offset.shape[0] != self.num_data:
-                raise ValueError("Incorrect number of data points in 'offset'")
+            self._check_format_offset_data(offset)
             offset_c = offset.astype(np.float64)
             offset_c = offset_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
@@ -5968,10 +5966,13 @@ class GPModel(object):
                         coefs = self.coefs_loaded_from_file[0]
                     else:
                         coefs = self.coefs_loaded_from_file
-                    if offset is None:
-                        offset = self.X_loaded_from_file.dot(coefs)
-                    else:
+                    if offset is not None:
+                        self._check_format_offset_data(offset)
                         offset = offset + self.X_loaded_from_file.dot(coefs)
+                    elif self.has_offset:
+                        offset = self._get_offset_data() + self.X_loaded_from_file.dot(coefs)
+                    else:
+                        offset = self.X_loaded_from_file.dot(coefs)
                     if offset_pred is None:
                         offset_pred = X_pred.dot(coefs)
                     else:
@@ -5986,14 +5987,9 @@ class GPModel(object):
         offset_c = ctypes.c_void_p()
         offset_pred_c = ctypes.c_void_p()
         if offset is not None:
-            if not isinstance(offset, np.ndarray):
-                raise ValueError("'offset' needs to be a numpy.ndarray")
-            if len(offset.shape) != 1:
-                raise ValueError("'offset' needs to be a vector / one-dimensional numpy.ndarray ")
-            if offset.shape[0] != (self.num_data * self.num_sets_fe):
-                raise ValueError("Incorrect number of data points in 'offset'")
-            offset = offset.astype(np.float64)
-            offset_c = offset.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+            self._check_format_offset_data(offset)
+            offset_c = offset.astype(np.float64)
+            offset_c = offset_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         if offset_pred is not None:
             if not isinstance(offset_pred, np.ndarray):
                 raise ValueError("'offset_pred' needs to be a numpy.ndarray")
@@ -6342,6 +6338,55 @@ class GPModel(object):
         covariate_data = covariate_data.reshape((self.num_data, self.num_covariates), order='F')
         return covariate_data
 
+    def _check_format_offset_data(self, offset):
+        """Checks format of offset data.
+        Parameters
+        ----------
+        offset : numpy 1-D array
+            Additional fixed effects contributions that are added to the linear predictor (= offset).
+            The length of this vector needs to equal the number of training data points.
+        """
+                
+        if not isinstance(offset, np.ndarray):
+                raise ValueError("'offset' needs to be a numpy.ndarray")
+        if len(offset.shape) != 1:
+            raise ValueError("'offset' needs to be a vector / one-dimensional numpy.ndarray ")
+        if offset.shape[0] != (self.num_data * self.num_sets_re):
+            raise ValueError("Incorrect number of data points in 'offset'")
+    
+    def _get_offset_data(self):
+        """Get offset data.
+        Returns
+        -------
+        offset : a numpy array with the offset data
+        """
+
+        if not self.has_offset:
+            raise ValueError("Model has no offset data ")
+        offset = np.zeros(self.num_data * self.num_sets_re, dtype=np.float64)
+        _safe_call(_LIB.GPB_GetOffsetData(
+            self.handle,
+            offset.ctypes.data_as(ctypes.POINTER(ctypes.c_double))))
+        return offset
+
+    def _set_offset_data(self, offset):
+        """Set offset data.
+        Parameters
+        ----------
+        offset : numpy 1-D array
+            Additional fixed effects contributions that are added to the linear predictor (= offset).
+            The length of this vector needs to equal the number of training data points.
+        """
+
+        self.has_offset = True
+        self._check_format_offset_data(offset)
+        offset_c = offset.astype(np.float64)
+        offset_c = offset_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        _safe_call(_LIB.GPB_SetOffsetData(
+            self.handle,
+            offset_c))
+        return offset
+
     def model_to_dict(self, include_response_data=True):
         """Convert a GPModel to a dict for saving.
 
@@ -6358,10 +6403,6 @@ class GPModel(object):
 
         if (self.free_raw_data):
             raise ValueError("cannot convert to json when free_raw_data has been set to True")
-        if self.has_offset:
-            warnings.warn("An 'offset' was provided for estimation / fitting. Saving this 'offset' is currently not "
-                          "implemented. Please pass the 'offset' again when you call the 'predict()' function "
-                              "(in addition to a potential 'offset_pred' parameter for prediction points")
 
         model_dict = {}
         # Parameters
@@ -6372,6 +6413,10 @@ class GPModel(object):
         # Response data
         if include_response_data:
             model_dict["y"] = self._get_response_data()
+        # Offset data
+        model_dict["has_offset"] = self.has_offset
+        if self.has_offset:
+            model_dict["offset"] = self._get_offset_data()
         # Random effects / GP data
         model_dict["group_data"] = self.group_data
         model_dict["nb_groups"] = self.nb_groups

@@ -1262,6 +1262,24 @@ SEXP GPB_GetCovariateData_R(SEXP handle,
 	return R_NilValue;
 }
 
+SEXP GPB_GetOffsetData_R(SEXP handle,
+	SEXP fixed_effects) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetOffsetData(R_ExternalPtrAddr(handle),
+		R_REAL_PTR(fixed_effects)));
+	R_API_END();
+	return R_NilValue;
+}
+
+SEXP GPB_SetOffsetData_R(SEXP handle,
+	SEXP fixed_effects) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_SetOffsetData(R_ExternalPtrAddr(handle),
+		R_REAL_PTR(fixed_effects)));
+	R_API_END();
+	return R_NilValue;
+}
+
 SEXP GPB_GetAuxPars_R(SEXP handle,
 	SEXP aux_pars) {
 	SEXP ret;
@@ -1360,6 +1378,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_SetLikelihood_R"              , (DL_FUNC)&GPB_SetLikelihood_R              , 2},
   {"GPB_GetResponseData_R"            , (DL_FUNC)&GPB_GetResponseData_R            , 2},
   {"GPB_GetCovariateData_R"           , (DL_FUNC)&GPB_GetCovariateData_R           , 2},
+  {"GPB_GetOffsetData_R"              , (DL_FUNC)&GPB_GetOffsetData_R              , 2},
+  {"GPB_SetOffsetData_R"              , (DL_FUNC)&GPB_SetOffsetData_R              , 2},
   {"GPB_GetAuxPars_R"                 , (DL_FUNC)&GPB_GetAuxPars_R                 , 2},
   {"GPB_GetNumAuxPars_R"              , (DL_FUNC)&GPB_GetNumAuxPars_R              , 2},
   {"GPB_GetInitAuxPars_R"             , (DL_FUNC)&GPB_GetInitAuxPars_R             , 2},

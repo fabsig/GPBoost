@@ -1533,19 +1533,19 @@ namespace GPBoost {
 				else {
 					std_dev_cov.setZero();// Calculation of standard deviations for covariance parameters is not supported for non-Gaussian likelihoods
 					if (!has_covariates_) {
-						Log::REWarning("Calculation of standard deviations of covariance parameters for non-Gaussian likelihoods is currently not supported.");
+						Log::REWarning("Calculation of standard deviations of covariance parameters for non-Gaussian likelihoods is currently not supported ");
 					}
 				}
 				if (has_covariates_) {
-					vec_t std_dev_beta(num_covariates);
+					vec_t std_dev_beta(num_covariates_);
 					if (gauss_likelihood_) {
 						CalcStdDevCoef(cov_aux_pars.segment(0, num_cov_par_), X_, std_dev_beta);
 					}
 					else {
 						//Log::REDebug("Standard deviations of linear regression coefficients for non-Gaussian likelihoods can be \"very approximative\". ");
-						CalcStdDevCoefNonGaussian(num_covariates, beta_, cov_aux_pars.segment(0, num_cov_par_), fixed_effects, std_dev_beta);
+						CalcStdDevCoefNonGaussian(num_covariates_, beta_, cov_aux_pars.segment(0, num_cov_par_), fixed_effects, std_dev_beta);
 					}
-					for (int i = 0; i < num_covariates; ++i) {
+					for (int i = 0; i < num_covariates_; ++i) {
 						std_dev_coef[i] = std_dev_beta[i];
 					}
 				}
@@ -3688,7 +3688,7 @@ namespace GPBoost {
 											igp, cluster_i, this);
 									}
 									else {
-										Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
+										Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation ", vecchia_pred_type_.c_str());
 									}
 								}
 							}// end loop over num_gp_pred
@@ -3696,19 +3696,17 @@ namespace GPBoost {
 						if (predict_cov_mat) {
 							ConvertTo_T_mat_FromDense(cov_mat_pred_vecchia_id, cov_mat_pred_id);
 						}
-					}//end gp_approx_ == "vecchia"
-					else {// not gp_approx_ == "vecchia"
-						if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-							CalcPredFITC_FSA(cluster_i, gp_coords_mat_pred, predict_cov_mat,
-								predict_var_or_response, predict_response, mean_pred_id[0], cov_mat_pred_id, var_pred_id[0], nsim_var_pred_, cg_delta_conv_pred_);
-						}
-						else {
-							CalcPred(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
-								re_group_levels_pred, re_group_rand_coef_data_pred, gp_coords_mat_pred, gp_rand_coef_data_pred,
-								predict_cov_mat, predict_var_or_response, predict_response,
-								mean_pred_id[0], cov_mat_pred_id, var_pred_id[0]);
-						}
-					}//end not gp_approx_ == "vecchia"
+					}//end gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia"
+					else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
+						CalcPredFITC_FSA(cluster_i, gp_coords_mat_pred, predict_cov_mat,
+							predict_var_or_response, predict_response, mean_pred_id[0], cov_mat_pred_id, var_pred_id[0], nsim_var_pred_, cg_delta_conv_pred_);
+					}
+					else {
+						CalcPred(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
+							re_group_levels_pred, re_group_rand_coef_data_pred, gp_coords_mat_pred, gp_rand_coef_data_pred,
+							predict_cov_mat, predict_var_or_response, predict_response,
+							mean_pred_id[0], cov_mat_pred_id, var_pred_id[0]);
+					}
 					for (int igp = 0; igp < num_gp_pred; ++igp) {
 						//map from predictions from random effects scale b to "data scale" Zb
 						if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_ ||
@@ -4992,7 +4990,7 @@ namespace GPBoost {
 		vec_t beta_lag1_;
 		/*! \brief If true, there are additional external offsets */
 		bool has_fixed_effects_ = false;
-		/*! \brief Linear regression coefficients */
+		/*! \brief Fixed effects / offset */
 		vec_t fixed_effects_;
 
 		/*! \brief Variance of idiosyncratic error term (nugget effect) */
@@ -5565,7 +5563,7 @@ namespace GPBoost {
 				}
 			}
 			y_has_been_set_ = true;
-		}
+		}//end SetY
 
 		/*!
 		* \brief Return (last used) response variable data
@@ -5575,7 +5573,7 @@ namespace GPBoost {
 			if (!y_has_been_set_) {
 				Log::REFatal("Respone variable data has not been set");
 			}
-			if (has_covariates_ && gauss_likelihood_) {
+			if (gauss_likelihood_) {
 #pragma omp parallel for schedule(static)
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					y[i] = y_vec_[i];
@@ -5597,7 +5595,7 @@ namespace GPBoost {
 					}
 				}
 			}
-		}
+		}//end GetY
 
 		/*!
 		* \brief Return covariate data
@@ -5611,6 +5609,29 @@ namespace GPBoost {
 			for (int i = 0; i < num_data_ * num_covariates_; ++i) {
 				covariate_data[i] = X_.data()[i];
 			}
+		}
+
+		/*!
+		* \brief Return offset data
+		* \param[out] fixed_effects offset data
+		*/
+		void GetOffsetData(double* fixed_effects) {
+			if (!has_fixed_effects_) {
+				Log::REFatal("Model does not have an offset term ");
+			}
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < num_data_ * num_sets_re_; ++i) {
+				fixed_effects[i] = fixed_effects_[i];
+			}
+		}
+
+		/*!
+		* \brief Set offset data
+		* \param fixed_effects offset data
+		*/
+		void SetOffsetData(const double* fixed_effects) {//note 'offset' is otherwise called 'fixed_effects' in this file for historical reasons ...
+			has_fixed_effects_ = true;
+			fixed_effects_ = Eigen::Map<const vec_t>(fixed_effects, num_data_ * num_sets_re_);
 		}
 
 		/*!

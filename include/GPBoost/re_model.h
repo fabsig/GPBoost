@@ -312,6 +312,18 @@ namespace GPBoost {
 		void GetCovariateData(double* covariate_data) const;
 
 		/*!
+		* \brief Return offset data
+		* \param[out] fixed_effects offset data
+		*/
+		void GetOffsetData(double* fixed_effects) const;
+
+		/*!
+		* \brief Set offset data
+		* \param fixed_effects offset data
+		*/
+		void SetOffsetData(const double* fixed_effects);
+
+		/*!
 		* \brief Get covariance parameters
 		* \param[out] cov_par Covariance parameters stored in cov_pars_. This vector needs to be pre-allocated of length number of covariance parameters or twice this if calc_std_dev = true
 		* \param calc_std_dev If true, standard deviations are also exported
@@ -501,6 +513,7 @@ namespace GPBoost {
 		// Linear regression coefficients related variables
 		vec_t coef_;//linear regression coefficients for fixed effects (in case there are any)
 		bool has_covariates_ = false;
+		bool init_coef_given_ = false;
 		bool coef_given_or_estimated_ = false;
 		vec_t std_dev_coef_;
 		// Variables for additional parameters for non-Gaussian likelihoods

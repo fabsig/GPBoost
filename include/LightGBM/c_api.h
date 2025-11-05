@@ -1718,6 +1718,24 @@ GPBOOST_C_EXPORT int GPB_GetCovariateData(REModelHandle handle,
     double* covariate_data);
 
 /*!
+* \brief Return offset data
+* \param handle Handle of REModel
+* \param[out] fixed_effects offset data
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetOffsetData(REModelHandle handle,
+    double* fixed_effects);
+
+/*!
+* \brief Set offset data
+* \param handle Handle of REModel
+* \param fixed_effects offset data
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_SetOffsetData(REModelHandle handle,
+    const double* fixed_effects);
+
+/*!
 * \brief Get additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
 * \param handle Handle of REModel
 * \param[out] aux_pars Additional likelihood parameters (aux_pars_). This vector needs to be pre-allocated

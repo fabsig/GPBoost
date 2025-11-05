@@ -653,6 +653,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred_offset_not_provided <- predict(gp_model, group_data_pred = group_test,
                                         predict_cov_mat = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred$mu-pred_offset_not_provided$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_offset_not_provided$cov))),TOLERANCE_STRICT)
+    # Saving model to file and not providing offset for prediction
+    filename <- tempfile(fileext = ".json")
+    saveGPModel(gp_model, filename = filename)
+    rm(gp_model)
+    gp_model_loaded <- loadGPModel(filename = filename)
+    pred_loaded <- predict(gp_model_loaded, group_data_pred = group_test,
+                           predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-pred_loaded$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_loaded$cov))),TOLERANCE_STRICT)
     
     # With linear predictor and offset
     probs <- pnorm(b_gr[group] + X%*%beta)
@@ -683,6 +693,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), 5)
     expect_lt(sum(abs(pred$mu-expected_mu)),0.15)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),0.05)
+    pred_offset_not_provided <- predict(gp_model, group_data_pred = group_test, X_pred = X_test,
+                                        predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-pred_offset_not_provided$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_offset_not_provided$cov))),TOLERANCE_STRICT)
+    # Saving model to file and not providing offset for prediction
+    filename <- tempfile(fileext = ".json")
+    saveGPModel(gp_model, filename = filename)
+    rm(gp_model)
+    gp_model_loaded <- loadGPModel(filename = filename)
+    pred_loaded <- predict(gp_model_loaded, group_data_pred = group_test, X_pred = X_test,
+                           predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-pred_loaded$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_loaded$cov))),TOLERANCE_STRICT)
     
     #####################
     ## Poisson regression
