@@ -120,8 +120,6 @@ Booster <- R6::R6Class(
             LGBM_BoosterLoadModelFromString_R
             , save_data[["booster_str"]]
           )
-          # create gp_model from list
-          private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
           if (!is.null(save_data[["raw_data"]])) {
             
             private$train_set <- gpb.Dataset(
@@ -129,20 +127,24 @@ Booster <- R6::R6Class(
                             nrow = length(save_data[["raw_data"]]$data),
                             byrow = TRUE),
               label = save_data[["raw_data"]]$label)
+            save_data[["gp_model_str"]][["y"]] <- save_data[["raw_data"]]$label
             
           } else {
             
-            if (private$gp_model$get_likelihood_name() == "gaussian" & 
-                private$gp_model$.__enclos_env__$private$gp_approx != "vecchia_latent") {
+            if (save_data[["gp_model_str"]][["likelihood"]] == "gaussian" & 
+                save_data[["gp_model_str"]][["gp_approx"]] != "vecchia_latent") {
               private$residual_loaded_from_file <- save_data[["residual"]]
+              save_data[["gp_model_str"]][["y"]] <- save_data[["residual"]]
             } else {
               private$fixed_effect_train_loaded_from_file <- save_data[["fixed_effect_train"]]
               private$label_loaded_from_file <- save_data[["label"]]
+              save_data[["gp_model_str"]][["offset"]] <- save_data[["fixed_effect_train"]]
+              save_data[["gp_model_str"]][["y"]] <- save_data[["label"]]
             }
             private$gp_model_prediction_data_loaded_from_file <- TRUE
-            
           }
-          
+          private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
+          private$gp_model$.__enclos_env__$private$model_fitted <- FALSE
           
         } else { # has no gp_model
           
@@ -172,8 +174,6 @@ Booster <- R6::R6Class(
             LGBM_BoosterLoadModelFromString_R
             , save_data[["booster_str"]]
           )
-          # create gp_model from list
-          private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
           if (!is.null(save_data[["raw_data"]])) {
             
             private$train_set <- gpb.Dataset(
@@ -181,19 +181,24 @@ Booster <- R6::R6Class(
                             nrow = length(save_data[["raw_data"]]$data),
                             byrow = TRUE),
               label = save_data[["raw_data"]]$label)
+            save_data[["gp_model_str"]][["y"]] <- save_data[["raw_data"]]$label
             
           } else {
             
-            if (private$gp_model$get_likelihood_name() == "gaussian" & 
-                private$gp_model$.__enclos_env__$private$gp_approx != "vecchia_latent") {
+            if (save_data[["gp_model_str"]][["likelihood"]] == "gaussian" & 
+                save_data[["gp_model_str"]][["gp_approx"]] != "vecchia_latent") {
               private$residual_loaded_from_file <- save_data[["residual"]]
+              save_data[["gp_model_str"]][["y"]] <- save_data[["residual"]]
             } else {
               private$fixed_effect_train_loaded_from_file <- save_data[["fixed_effect_train"]]
               private$label_loaded_from_file <- save_data[["label"]]
+              save_data[["gp_model_str"]][["offset"]] <- save_data[["fixed_effect_train"]]
+              save_data[["gp_model_str"]][["y"]] <- save_data[["label"]]
             }
             private$gp_model_prediction_data_loaded_from_file <- TRUE
-            
           }
+          private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
+          private$gp_model$.__enclos_env__$private$model_fitted <- FALSE
           
         } else { # has no gp_model
           

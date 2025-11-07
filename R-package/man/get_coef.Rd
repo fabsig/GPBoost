@@ -4,13 +4,17 @@
 \alias{get_coef}
 \title{Get (estimated) linear regression coefficients}
 \usage{
-get_coef(gp_model)
+get_coef(gp_model, std_err = FALSE)
 }
 \arguments{
 \item{gp_model}{A \code{GPModel}}
+
+\item{std_err}{A \code{boolean}. If TRUE, (approximate) standard errors are calculated 
+(= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
+square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)}
 }
 \description{
-Get (estimated) linear regression coefficients and standard deviations (if std_dev=TRUE was set in \code{fit})
+Get (estimated) linear regression coefficients and standard errors (if std_err=TRUE)
 }
 \examples{
 \donttest{

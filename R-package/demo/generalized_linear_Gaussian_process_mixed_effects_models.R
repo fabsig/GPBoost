@@ -12,7 +12,7 @@
 #     see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#cov-function
 # - Large data GP approximations such as "vecchia" and "vif" approximations:
 #     https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#cov-function
-# - Optimization options for the "params" argument of the `fit()' and 'set_optim_params()' functions 
+# - Optimization options for the 'params' argument of the `fit()' and 'set_optim_params()' functions 
 #     including (i) monitoring convergence, (ii) optimization algorithm options, (iii) manually setting initial values for parameters, 
 #     and (iv) selecting which parameters are estimated can be found here: 
 #     https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
@@ -92,7 +92,7 @@ rand_eff <- rand_eff - mean(rand_eff)
 y_nested <- simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likelihood)
 
 # --------------------Training----------------
-gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = likelihood, params = list(std_dev = TRUE))
+gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = likelihood)
 summary(gp_model)
 # Get coefficients and variance/covariance parameters separately
 gp_model$get_coef()
@@ -152,7 +152,7 @@ sum(abs(pred_resp$var - pred_resp_loaded$var))
 #--------------------Two crossed random effects and random slopes----------------
 gp_model <- fitGPModel(group_data = cbind(group,group_crossed), group_rand_coef_data = x,
                        ind_effect_group_rand_coef = 1, likelihood = likelihood,
-                       y = y_crossed_random_slope, X = X, params = list(std_dev = TRUE))
+                       y = y_crossed_random_slope, X = X)
 # 'ind_effect_group_rand_coef = 1' indicates that the random slope is for the first random effect
 summary(gp_model)
 # Prediction
@@ -179,8 +179,7 @@ legend(x =  "topleft", legend = c("1. random effects", "Random slopes", "2. cros
 # Random slope model in which an intercept random effect is dropped / not included
 gp_model <- fitGPModel(group_data = cbind(group,group_crossed), group_rand_coef_data = x,
                        ind_effect_group_rand_coef = 1, drop_intercept_group_rand_effect = c(TRUE,FALSE),
-                       likelihood = likelihood, y = y_crossed_random_slope, X = X, 
-                       params = list(std_dev = TRUE))
+                       likelihood = likelihood, y = y_crossed_random_slope, X = X)
 # 'drop_intercept_group_rand_effect = c(TRUE,FALSE)' indicates that the first categorical variable 
 #   in group_data has no intercept random effect
 summary(gp_model)
@@ -190,14 +189,14 @@ summary(gp_model)
 group_nested <- get_nested_categories(group, group_inner)
 group_data <- cbind(group, group_nested)
 gp_model <- fitGPModel(group_data = group_data, y = y_nested, X = X, 
-                       likelihood = likelihood, params = list(std_dev = TRUE))
+                       likelihood = likelihood)
 summary(gp_model)
 
 # --------------------Using cluster_ids for independent realizations of random effects----------------
 cluster_ids = rep(0,n)
 cluster_ids[(n/2+1):n] = 1
 gp_model <- fitGPModel(group_data = group, y = y, cluster_ids = cluster_ids, 
-                       likelihood = likelihood, params = list(std_dev = TRUE))
+                       likelihood = likelihood)
 summary(gp_model)
 #Note: gives sames result in this example as when not using cluster_ids
 #   since the random effects of different groups are independent anyway
@@ -332,7 +331,7 @@ plot(b_1_train, GP_smooth[,1], xlab="truth", ylab="predicted",
 # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"
 # Note: you need to include a column of 1's manually for an intercept term
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
-                       y = y_lin, X = X, likelihood = likelihood, params = list(std_dev = TRUE))
+                       y = y_lin, X = X, likelihood = likelihood)
 summary(gp_model)
 
 #--------------------Gaussian process model anisotropic ARD covariance function----------------

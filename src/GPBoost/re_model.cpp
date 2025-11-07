@@ -217,7 +217,6 @@ namespace GPBoost {
 		const char* optimizer,
 		int momentum_offset,
 		const char* convergence_criterion,
-		bool calc_std_dev, 
 		int num_covariates,
 		double* init_coef,
 		double lr_coef,
@@ -257,6 +256,8 @@ namespace GPBoost {
 		// Initial linear regression coefficients
 		if (init_coef != nullptr) {
 			coef_ = Eigen::Map<const vec_t>(init_coef, num_sets_fixed_effects_ * num_covariates);
+			num_covariates_ = num_covariates;
+			num_coef_ = num_covariates * num_sets_fixed_effects_;
 			coef_given_or_estimated_ = true;
 		}
 		// Initial aux_pars
@@ -285,7 +286,6 @@ namespace GPBoost {
 		else {
 			Log::ResetLogLevelRE(LogLevelRE::Info);
 		}
-		calc_std_dev_ = calc_std_dev;
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
@@ -320,14 +320,6 @@ namespace GPBoost {
 			// Note: y_data can be null_ptr for non-Gaussian data. For non-Gaussian data, the function 'InitializeCovParsIfNotDefined' is called in 'SetY'
 		}
 		CHECK(cov_pars_initialized_);
-		double* std_dev_cov_par;
-		if (calc_std_dev_) {
-			std_dev_cov_pars_ = vec_t(num_cov_pars_);
-			std_dev_cov_par = std_dev_cov_pars_.data();
-		}
-		else {
-			std_dev_cov_par = nullptr;
-		}
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->OptimLinRegrCoefCovPar(y_data,
 				nullptr,
@@ -337,9 +329,6 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				nullptr,
-				std_dev_cov_par,
-				nullptr,
-				calc_std_dev_,
 				fixed_effects,
 				true,
 				called_in_GPBoost_algorithm,
@@ -356,9 +345,6 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				nullptr,
-				std_dev_cov_par,
-				nullptr,
-				calc_std_dev_,
 				fixed_effects,
 				true,
 				called_in_GPBoost_algorithm,
@@ -375,9 +361,6 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				nullptr,
-				std_dev_cov_par,
-				nullptr,
-				calc_std_dev_,
 				fixed_effects,
 				true,
 				called_in_GPBoost_algorithm,
@@ -388,6 +371,8 @@ namespace GPBoost {
 		has_covariates_ = false;
 		covariance_matrix_has_been_factorized_ = true;
 		model_has_been_estimated_ = true;
+		std_dev_cov_pars_calculated_ = false;
+		std_dev_coef_calculated_ = false;
 	}//end OptimCovPar
 
 	void REModel::OptimLinRegrCoefCovPar(const double* y_data,
@@ -395,25 +380,15 @@ namespace GPBoost {
 		int num_covariates,
 		const double* fixed_effects) {
 		InitializeCovParsIfNotDefined(y_data, fixed_effects);
-		double* init_coef_ptr;;
+		double* init_coef_ptr;
+		num_covariates_ = num_covariates;
+		num_coef_ = num_covariates * num_sets_fixed_effects_;
 		if ((int)coef_.size() == num_covariates) {
 			init_coef_ptr = coef_.data();
 		}
 		else {
 			init_coef_ptr = nullptr;
 			coef_ = vec_t(num_sets_fixed_effects_ * num_covariates);
-		}
-		double* std_dev_cov_par;
-		double* std_dev_coef;
-		if (calc_std_dev_) {
-			std_dev_cov_pars_ = vec_t(num_cov_pars_);
-			std_dev_cov_par = std_dev_cov_pars_.data();
-			std_dev_coef_ = vec_t(num_sets_fixed_effects_ * num_covariates);
-			std_dev_coef = std_dev_coef_.data();
-		}
-		else {
-			std_dev_cov_par = nullptr;
-			std_dev_coef = nullptr;
 		}
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->OptimLinRegrCoefCovPar(y_data,
@@ -424,9 +399,6 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				init_coef_ptr,
-				std_dev_cov_par,
-				std_dev_coef,
-				calc_std_dev_,
 				fixed_effects,
 				true,
 				false,
@@ -443,9 +415,6 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				init_coef_ptr,
-				std_dev_cov_par,
-				std_dev_coef,
-				calc_std_dev_,
 				fixed_effects,
 				true,
 				false,
@@ -462,9 +431,6 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				init_coef_ptr,
-				std_dev_cov_par,
-				std_dev_coef,
-				calc_std_dev_,
 				fixed_effects,
 				true,
 				false,
@@ -476,6 +442,8 @@ namespace GPBoost {
 		coef_given_or_estimated_ = true;
 		covariance_matrix_has_been_factorized_ = true;
 		model_has_been_estimated_ = true;
+		std_dev_cov_pars_calculated_ = false;
+		std_dev_coef_calculated_ = false;
 	}//end OptimLinRegrCoefCovPar
 
 	void REModel::FindInitialValueBoosting() {
@@ -496,9 +464,6 @@ namespace GPBoost {
 				cov_pars_.data(),
 				init_score_boosting_.data(),
 				nullptr,
-				nullptr,
-				false,
-				nullptr,
 				false,//learn_covariance_parameters=false
 				true,
 				false,
@@ -515,9 +480,6 @@ namespace GPBoost {
 				cov_pars_.data(),
 				init_score_boosting_.data(),
 				nullptr,
-				nullptr,
-				false,
-				nullptr,
 				false,//learn_covariance_parameters=false
 				true,
 				false,
@@ -533,9 +495,6 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				init_score_boosting_.data(),
-				nullptr,
-				nullptr,
-				false,
 				nullptr,
 				false,//learn_covariance_parameters=false
 				true,
@@ -564,9 +523,6 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				&lr,
-				nullptr,
-				nullptr,
-				false,
 				score,
 				false,//learn_covariance_parameters=false
 				true,
@@ -583,9 +539,6 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				&lr,
-				nullptr,
-				nullptr,
-				false,
 				score,
 				false,//learn_covariance_parameters=false
 				true,
@@ -602,9 +555,6 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				&lr,
-				nullptr,
-				nullptr,
-				false,
 				score,
 				false,//learn_covariance_parameters=false
 				true,
@@ -777,9 +727,21 @@ namespace GPBoost {
 		}
 	}
 
-	void REModel::GetCovPar(double* cov_par, bool calc_std_dev) const {
-		if (cov_pars_.size() == 0) {
-			Log::REFatal("Covariance parameters have not been estimated or set");
+	bool REModel::CanCalculateStandardErrorsCovPars() const {
+		if (matrix_format_ == "sp_mat_t") {
+			return re_model_sp_->CanCalculateStandardErrorsCovPars();
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			return re_model_sp_rm_->CanCalculateStandardErrorsCovPars();
+		}
+		else {
+			return re_model_den_->CanCalculateStandardErrorsCovPars();
+		}
+	}
+
+	void REModel::GetCovPar(double* cov_par, bool calc_std_dev) {
+		if ((int)cov_pars_.size() != num_cov_pars_) {
+			Log::REFatal("Covariance parameters have not been estimated or correctly set ");
 		}
 		//Transform covariance paramters back to original scale
 		vec_t cov_pars_orig(num_cov_pars_);
@@ -796,6 +758,27 @@ namespace GPBoost {
 			cov_par[j] = cov_pars_orig[j];
 		}
 		if (calc_std_dev) {
+			if (!std_dev_cov_pars_calculated_) {
+				if (NumAuxPars() > 0) {
+					if (!AuxParsHaveBeenSetOrEstimated()) {
+						Log::REFatal("Auxiliary parameters have not been estimated or correctly set ");
+					}
+				}
+				std_dev_cov_pars_ = vec_t(num_cov_pars_);
+				if (matrix_format_ == "sp_mat_t") {
+					re_model_sp_->CalculateStandardErrorsCovPars(cov_pars_.data(), std_dev_cov_pars_.data());
+				}
+				else if (matrix_format_ == "sp_mat_rm_t") {
+					re_model_sp_rm_->CalculateStandardErrorsCovPars(cov_pars_.data(), std_dev_cov_pars_.data());
+				}
+				else {
+					re_model_den_->CalculateStandardErrorsCovPars(cov_pars_.data(), std_dev_cov_pars_.data());
+				}
+				std_dev_cov_pars_calculated_ = true;
+			}
+			else {
+				CHECK((int)std_dev_cov_pars_.size() == num_cov_pars_);
+			}
 			for (int j = 0; j < num_cov_pars_; ++j) {
 				cov_par[j + num_cov_pars_] = std_dev_cov_pars_[j];
 			}
@@ -825,14 +808,37 @@ namespace GPBoost {
 		}
 	}
 
-	void REModel::GetCoef(double* coef, bool calc_std_dev) const {
-		int num_coef = (int)coef_.size();
-		for (int j = 0; j < num_coef; ++j) {
+	void REModel::GetCoef(double* coef, bool calc_std_dev) {
+		if ((int)coef_.size() != num_coef_) {
+			Log::REFatal("Regresion coefficients have not been estimated or correctly set ");
+		}
+		for (int j = 0; j < num_coef_; ++j) {
 			coef[j] = coef_[j];
 		}
 		if (calc_std_dev) {
-			for (int j = 0; j < num_coef; ++j) {
-				coef[j + num_coef] = std_dev_coef_[j];
+			if (!std_dev_coef_calculated_) {
+				if (NumAuxPars() > 0) {
+					if (!AuxParsHaveBeenSetOrEstimated()) {
+						Log::REFatal("Auxiliary parameters have not been estimated or correctly set ");
+					}
+				}
+				std_dev_coef_ = vec_t(num_coef_);
+				if (matrix_format_ == "sp_mat_t") {
+					re_model_sp_->CalculateStandardErrorsCoefs(cov_pars_.data(), std_dev_coef_.data());
+				}
+				else if (matrix_format_ == "sp_mat_rm_t") {
+					re_model_sp_rm_->CalculateStandardErrorsCoefs(cov_pars_.data(), std_dev_coef_.data());
+				}
+				else {
+					re_model_den_->CalculateStandardErrorsCoefs(cov_pars_.data(), std_dev_coef_.data());
+				}
+				std_dev_coef_calculated_ = true;
+			}
+			else {
+				CHECK((int)std_dev_coef_.size() == num_coef_);
+			}
+			for (int j = 0; j < num_coef_; ++j) {
+				coef[j + num_coef_] = std_dev_coef_[j];
 			}
 		}
 	}
@@ -1130,6 +1136,20 @@ namespace GPBoost {
 			}
 			cov_pars_initialized_ = true;
 		}
+	}
+
+	bool REModel::AuxParsHaveBeenSetOrEstimated() const {
+		bool aux_pars_estimated;
+		if (matrix_format_ == "sp_mat_t") {
+			aux_pars_estimated = re_model_sp_->AuxParsHaveBeenSetOrEstimated();
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			aux_pars_estimated = re_model_sp_rm_->AuxParsHaveBeenSetOrEstimated();
+		}
+		else {
+			aux_pars_estimated = re_model_den_->AuxParsHaveBeenSetOrEstimated();
+		}
+		return aux_pars_estimated;
 	}
 
 	int REModel::NumAuxPars() const {

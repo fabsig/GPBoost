@@ -14,10 +14,6 @@ set_optim_params(gp_model, params = list())
     \item{trace: \code{boolean} (default = FALSE). 
     If TRUE, information on the progress of the parameter
     optimization is printed}
-    \item{std_dev: \code{boolean} (default = TRUE). 
-    If TRUE, approximate standard deviations are calculated for the covariance and linear regression parameters 
-    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
-    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods) }
     \item{init_cov_pars: \code{vector} with \code{numeric} elements (default = NULL). 
     Initial values for covariance parameters of Gaussian process and 
     random effects (can be NULL). The order is same as the order 

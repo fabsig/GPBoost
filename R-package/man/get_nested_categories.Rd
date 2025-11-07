@@ -26,7 +26,7 @@ chick_nested_diet <- get_nested_categories(ChickWeight$Diet, ChickWeight$Chick)
 fixed_effects_matrix <- model.matrix(weight ~ as.factor(Time), data = ChickWeight)
 mod_gpb <- fitGPModel(X = fixed_effects_matrix, 
                       group_data = cbind(diet=ChickWeight$Diet, chick_nested_diet), 
-                      y = ChickWeight$weight, params = list(std_dev = TRUE))
+                      y = ChickWeight$weight)
 summary(mod_gpb)
 # This does (almost) the same thing as the following code using lme4:
 # mod_lme4 <-  lmer(weight ~ as.factor(Time) + (1 | Diet/Chick), data = ChickWeight, REML = FALSE)

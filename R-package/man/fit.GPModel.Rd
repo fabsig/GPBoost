@@ -20,10 +20,6 @@ fixed effects linear regression term (if there is one)}
     \item{trace: \code{boolean} (default = FALSE). 
     If TRUE, information on the progress of the parameter
     optimization is printed}
-    \item{std_dev: \code{boolean} (default = TRUE). 
-    If TRUE, approximate standard deviations are calculated for the covariance and linear regression parameters 
-    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
-    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods) }
     \item{init_cov_pars: \code{vector} with \code{numeric} elements (default = NULL). 
     Initial values for covariance parameters of Gaussian process and 
     random effects (can be NULL). The order is same as the order 
@@ -176,7 +172,7 @@ X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 
 #--------------------Grouped random effects model: single-level random effect----------------
 gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
-fit(gp_model, y = y, X = X1, params = list(std_dev = TRUE))
+fit(gp_model, y = y, X = X1)
 summary(gp_model)
 # Make predictions
 pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
@@ -192,7 +188,7 @@ pred$cov # Predicted covariance
 #--------------------Gaussian process model----------------
 gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
                     likelihood="gaussian")
-fit(gp_model, y = y, X = X1, params = list(std_dev = TRUE))
+fit(gp_model, y = y, X = X1)
 summary(gp_model)
 # Make predictions
 pred <- predict(gp_model, gp_coords_pred = coords_test, 

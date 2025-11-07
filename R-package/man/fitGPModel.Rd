@@ -229,10 +229,6 @@ fixed effects linear regression term (if there is one)}
     \item{trace: \code{boolean} (default = FALSE). 
     If TRUE, information on the progress of the parameter
     optimization is printed}
-    \item{std_dev: \code{boolean} (default = TRUE). 
-    If TRUE, approximate standard deviations are calculated for the covariance and linear regression parameters 
-    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
-    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods) }
     \item{init_cov_pars: \code{vector} with \code{numeric} elements (default = NULL). 
     Initial values for covariance parameters of Gaussian process and 
     random effects (can be NULL). The order is same as the order 
@@ -403,7 +399,7 @@ X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 
 #--------------------Grouped random effects model: single-level random effect----------------
 gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1,
-                       likelihood="gaussian", params = list(std_dev = TRUE))
+                       likelihood="gaussian")
 summary(gp_model)
 # Make predictions
 pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
@@ -420,12 +416,12 @@ pred$cov # Predicted covariance
 gp_model <- fitGPModel(group_data = group_data, likelihood="gaussian",
                        group_rand_coef_data = X[,2],
                        ind_effect_group_rand_coef = 1,
-                       y = y, X = X1, params = list(std_dev = TRUE))
+                       y = y, X = X1)
 summary(gp_model)
 
 #--------------------Gaussian process model----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                       likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
+                       likelihood="gaussian", y = y, X = X1)
 summary(gp_model)
 # Make predictions
 pred <- predict(gp_model, gp_coords_pred = coords_test, 
@@ -442,13 +438,13 @@ summary(gp_model)
 #--------------------Gaussian process model with random coefficients----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
                        gp_rand_coef_data = X[,2], y=y,
-                       likelihood = "gaussian", params = list(std_dev = TRUE))
+                       likelihood = "gaussian")
 summary(gp_model)
 
 #--------------------Combine Gaussian process with grouped random effects----------------
 gp_model <- fitGPModel(group_data = group_data,
                        gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                       likelihood = "gaussian", y = y, X = X1, params = list(std_dev = TRUE))
+                       likelihood = "gaussian", y = y, X = X1)
 summary(gp_model)
 }
 

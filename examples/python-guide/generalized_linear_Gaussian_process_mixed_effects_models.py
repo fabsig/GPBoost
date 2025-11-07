@@ -13,7 +13,7 @@ mixed effects models with various likelihoods and different random effects model
      see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#cov-function
 - Large data GP approximations such as "vecchia" and "vif" approximations:
      https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#cov-function
-- Optimization options for the "params" argument of the `fit()' and 'set_optim_params()' functions 
+- Optimization options for the 'params' argument of the `fit()' and 'set_optim_params()' functions 
      including (i) monitoring convergence, (ii) optimization algorithm options, (iii) manually setting initial values for parameters, 
      and (iv) selecting which parameters are estimated can be found here: 
      https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#optimization-parameters
@@ -105,7 +105,7 @@ y_nested = simulate_response_variable(lp=lp, rand_eff=rand_eff, likelihood=likel
 
 # --------------------Training----------------
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-gp_model.fit(y=y, X=X, params={"std_dev": True})
+gp_model.fit(y=y, X=X)
 gp_model.summary()
 # Get coefficients and variance/covariance parameters separately
 gp_model.get_coef()
@@ -170,7 +170,7 @@ group_data = np.column_stack((group, group_crossed))
 gp_model = gpb.GPModel(group_data=group_data, group_rand_coef_data=x,
                        ind_effect_group_rand_coef=[1], likelihood=likelihood)
 # 'ind_effect_group_rand_coef=[1]' indicates that the random slope is for the first random effect
-gp_model.fit(y=y_crossed_random_slope, X=X, params={"std_dev": True})
+gp_model.fit(y=y_crossed_random_slope, X=X)
 gp_model.summary()
 # Prediction
 pred = gp_model.predict(group_data_pred=group_data, group_rand_coef_data_pred=x, X_pred=X)
@@ -196,7 +196,7 @@ gp_model = gpb.GPModel(group_data=group_data, group_rand_coef_data=x,
                        drop_intercept_group_rand_effect=[True,False], likelihood=likelihood)
 # 'drop_intercept_group_rand_effect=[True,False]' indicates that the first categorical variable 
 #   in group_data has no intercept random effect
-gp_model.fit(y=y_crossed_random_slope, X=X, params={"std_dev": True})
+gp_model.fit(y=y_crossed_random_slope, X=X)
 gp_model.summary()
 
 # --------------------Two nested random effects----------------
@@ -204,14 +204,14 @@ gp_model.summary()
 group_nested = gpb.get_nested_categories(group, group_inner)
 group_data = np.column_stack((group, group_nested))
 gp_model = gpb.GPModel(group_data=group_data, likelihood=likelihood)
-gp_model.fit(y=y_nested, X=X, params={"std_dev": True})
+gp_model.fit(y=y_nested, X=X)
 gp_model.summary()
 
 # --------------------Using cluster_ids for independent realizations of random effects----------------
 cluster_ids = np.zeros(n)
 cluster_ids[int(n/2):n] = 1
 gp_model = gpb.GPModel(group_data=group, cluster_ids=cluster_ids, likelihood=likelihood)
-gp_model.fit(y=y, X=X, params={"std_dev": True})
+gp_model.fit(y=y, X=X)
 gp_model.summary()
 #Note: gives sames result in this example as when not using cluster_ids
 #   since the random effects of different groups are independent anyway
@@ -339,7 +339,7 @@ plt.show(block=False)
 # Note: you need to include a column of 1's manually for an intercept term
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
                        likelihood=likelihood)
-gp_model.fit(y=y_lin, X=X, params={"std_dev": True})
+gp_model.fit(y=y_lin, X=X)
 gp_model.summary()
 
 #--------------------Gaussian process model anisotropic ARD covariance function----------------

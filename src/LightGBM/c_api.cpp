@@ -2777,7 +2777,6 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	const char* optimizer,
 	int momentum_offset,
 	const char* convergence_criterion,
-	bool calc_std_dev,
 	int num_covariates,
 	double* init_coef,
 	double lr_coef,
@@ -2809,7 +2808,6 @@ int GPB_SetOptimConfig(REModelHandle handle,
 		optimizer,
 		momentum_offset,
 		convergence_criterion, 
-		calc_std_dev,
 		num_covariates,
 		init_coef,
 		lr_coef,
@@ -2867,6 +2865,14 @@ int GPB_GetCurrentNegLogLikelihood(REModelHandle handle,
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->GetCurrentNegLogLikelihood(negll[0]);
+	API_END();
+}
+
+int GPB_CanCalculateStandardErrorsCovPars(REModelHandle handle,
+	int* out) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	out[0] = (int)ref_remodel->CanCalculateStandardErrorsCovPars();
 	API_END();
 }
 

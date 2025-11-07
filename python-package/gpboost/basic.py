@@ -2459,16 +2459,21 @@ class Booster:
                 with open(model_file, "r") as f:
                     save_data = json.load(f)
                 self.model_from_string(save_data['booster_str'], not silent)
-                self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
                 if save_data.get("raw_data") is not None:
                     self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
+                    save_data['gp_model_str']['y'] = np.array(save_data['raw_data']['label'])
                 else:
-                    if self.gp_model._get_likelihood_name() == "gaussian" and self.gp_model.gp_approx != "vecchia_latent":
+                    if save_data['gp_model_str']['likelihood'] == "gaussian" and save_data['gp_model_str']['gp_approx'] != "vecchia_latent":
                         self.residual_loaded_from_file = np.array(save_data['residual'])
+                        save_data['gp_model_str']['y'] = np.array(save_data['residual'])
                     else:
                         self.fixed_effect_train_loaded_from_file = np.array(save_data['fixed_effect_train'])
                         self.label_loaded_from_file = np.array(save_data['label'])
+                        save_data['gp_model_str']['offset'] = np.array(save_data['fixed_effect_train'])
+                        save_data['gp_model_str']['y'] = np.array(save_data['label'])
                     self.gp_model_prediction_data_loaded_from_file = True
+                self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
+                self.gp_model.model_fitted = False
             else:  # has no gp_model
                 out_num_iterations = ctypes.c_int(0)
                 self.handle = ctypes.c_void_p()
@@ -2488,16 +2493,21 @@ class Booster:
                 self.has_gp_model = True
                 save_data = json.loads(model_str)
                 self.model_from_string(save_data['booster_str'], not silent)
-                self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
                 if save_data.get("raw_data") is not None:
                     self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
+                    save_data['gp_model_str']['y'] = np.array(save_data['raw_data']['label'])
                 else:
-                    if self.gp_model._get_likelihood_name() == "gaussian" and self.gp_model.gp_approx != "vecchia_latent":
+                    if save_data['gp_model_str']['likelihood'] == "gaussian" and save_data['gp_model_str']['gp_approx'] != "vecchia_latent":
                         self.residual_loaded_from_file = np.array(save_data['residual'])
+                        save_data['gp_model_str']['y'] = np.array(save_data['residual'])
                     else:
                         self.fixed_effect_train_loaded_from_file = np.array(save_data['fixed_effect_train'])
                         self.label_loaded_from_file = np.array(save_data['label'])
+                        save_data['gp_model_str']['offset'] = np.array(save_data['fixed_effect_train'])
+                        save_data['gp_model_str']['y'] = np.array(save_data['label'])
                     self.gp_model_prediction_data_loaded_from_file = True
+                self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
+                self.gp_model.model_fitted = False
             else:  # has no gp_model
                 self.model_from_string(model_str, not silent)
         else:
@@ -4478,7 +4488,6 @@ class GPModel(object):
                        "momentum_offset": 2,
                        "trace": False,
                        "convergence_criterion": "relative_change_in_log_likelihood",
-                       "std_dev": False,
                        "cg_max_num_it": 1000,
                        "cg_max_num_it_tridiag": 1000,
                        "cg_delta_conv": 1e-2,
@@ -4491,7 +4500,6 @@ class GPModel(object):
                        "m_lbfgs": -1, # default value is set in C++
                        "delta_conv_mode_finding": -1 # default value is set in C++
                        }
-        self.std_dev_has_been_set = False
         self.num_sets_re = 1
         self.num_sets_fe = 1
 
@@ -4901,9 +4909,18 @@ class GPModel(object):
                 model_dict["params"]['init_cov_pars'] = np.array(model_dict["params"]['init_cov_pars'])
             if model_dict["params"]['init_aux_pars'] is not None:
                 model_dict["params"]['init_aux_pars'] = np.array(model_dict["params"]['init_aux_pars'])
-            self.set_optim_params(params=model_dict["params"])
+            if model_dict["params"]['init_coef'] is not None:
+                model_dict["params"]['init_coef'] = np.array(model_dict["params"]['init_coef'])
+            # pseudo call to fit to save things in C++
+            params = model_dict["params"]
+            params['maxit'] = 0
+            offset = None
             if self.has_offset:
-                self._set_offset_data(offset=np.array(model_dict.get("offset")))
+                offset=np.array(model_dict.get("offset"))
+            if self.has_covariates:
+                self.fit(y=self.y_loaded_from_file, X=self.X_loaded_from_file, params=params, offset=offset)
+            else:
+                self.fit(y=self.y_loaded_from_file, params=params, offset=offset)
 
     def __determine_num_cov_pars(self, likelihood):
         if self.cov_function == "space_time_gneiting":
@@ -4935,9 +4952,9 @@ class GPModel(object):
                 raise ValueError("params needs to be a dict")
             if 'piv_chol_rank' in params:
                 raise GPBoostError("The argument 'piv_chol_rank' is discontinued. Use the argument 'fitc_piv_chol_preconditioner_rank' instead ")
+            if 'std_dev' in params:
+                raise GPBoostError("GPModel: The argument 'std_dev' is discontinued. Standard errors are calculated directly in the 'summary()' and 'get_cov_pars()' & 'get_coef()' functions. See the 'std_err' argument of these functions ")
             for param in params:
-                if param == "std_dev":
-                    self.std_dev_has_been_set = True
                 if param == "init_cov_pars":
                     if params[param] is not None:
                         params[param] = _format_check_1D_data(params[param], data_name="params['init_cov_pars']",
@@ -5007,10 +5024,6 @@ class GPModel(object):
 
                 - trace : bool, optional (default = False)
                     If True, information on the progress of the parameter optimization is printed.                
-                - std_dev : bool (default=False)
-                    If True, approximate standard deviations are calculated for the covariance parameters
-                    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
-                    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods).
                 - init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for covariance parameters of Gaussian process and random effects (can be None).
                     The order is the same as the order of the parameters in the summary function: first is the error
@@ -5176,11 +5189,6 @@ class GPModel(object):
                                             convert_to_type=np.float64)
             if X.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in X")
-            if not self.std_dev_has_been_set and not (X.shape[1] == 1 and np.all(X[:, 0] == 1)): # not only intercept
-                if params is None:
-                    params = {"std_dev": True}
-                elif "std_dev" not in params:
-                    params["std_dev"] = True
             self.has_covariates = True
             self.num_covariates = X.shape[1]
             self.num_coef = self.num_covariates * self.num_sets_fe
@@ -5290,10 +5298,6 @@ class GPModel(object):
 
                 - trace : bool, optional (default = False)
                     If True, information on the progress of the parameter optimization is printed.                
-                - std_dev : bool (default=False)
-                    If True, approximate standard deviations are calculated for the covariance parameters
-                    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and
-                    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods).
                 - init_cov_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for covariance parameters of Gaussian process and random effects (can be None).
                     The order is the same as the order of the parameters in the summary function: first is the error
@@ -5461,7 +5465,6 @@ class GPModel(object):
             optimizer_cov_c,
             ctypes.c_int(self.params["momentum_offset"]),
             c_str(self.params["convergence_criterion"]),
-            ctypes.c_bool(self.params["std_dev"]),
             ctypes.c_int(self.num_coef),
             init_coef_c,
             ctypes.c_double(self.params["lr_coef"]),
@@ -5520,18 +5523,20 @@ class GPModel(object):
                 params["init_aux_pars"] = init_aux_pars
         return params
 
-    def get_cov_pars(self, format_pandas=True):
+    def get_cov_pars(self, std_err=False, format_pandas=True):
         """Get (estimated) covariance parameters
 
         Parameters
         ----------
+        std_err : bool (default=False)
+            If True, (approximate) standard errors are calculated 
         format_pandas : bool (default=True)
             If True, a pandas DataFrame is returned, otherwise a numpy array is returned
 
         Returns
         -------
         result : pandas DataFrame
-            (estimated) covariance parameters and standard deviations (if std_dev=True was set in 'fit')
+            (estimated) covariance parameters and standard errors (if std_err=True)
 
         Example
         -------
@@ -5539,42 +5544,43 @@ class GPModel(object):
         >>> gp_model.fit(y=y, X=X)
         >>> gp_model.get_cov_pars()
         """
+        if not self._can_calculate_standard_errors_cov_pars():
+            std_err = False
         self.__update_cov_par_names(self._get_likelihood_name())
-        if self.model_has_been_loaded_from_saved_file:
-            cov_pars = self.cov_pars_loaded_from_file
+        if std_err:
+            optim_pars = np.zeros(2 * self.num_cov_pars, dtype=np.float64)
         else:
-            if self.params["std_dev"]:
-                optim_pars = np.zeros(2 * self.num_cov_pars, dtype=np.float64)
-            else:
-                optim_pars = np.zeros(self.num_cov_pars, dtype=np.float64)
-            _safe_call(_LIB.GPB_GetCovPar(
-                self.handle,
-                optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                ctypes.c_bool(self.params["std_dev"])))
-            if self.params["std_dev"] and self._get_likelihood_name() == "gaussian" and self.gp_approx != "vecchia_latent":
-                cov_pars = np.row_stack((optim_pars[0:self.num_cov_pars],
-                                         optim_pars[self.num_cov_pars:(2 * self.num_cov_pars)]))
-            else:
-                cov_pars = optim_pars[0:self.num_cov_pars]
+            optim_pars = np.zeros(self.num_cov_pars, dtype=np.float64)
+        _safe_call(_LIB.GPB_GetCovPar(
+            self.handle,
+            optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            ctypes.c_bool(std_err)))
+        if std_err:
+            cov_pars = np.row_stack((optim_pars[0:self.num_cov_pars],
+                                        optim_pars[self.num_cov_pars:(2 * self.num_cov_pars)]))
+        else:
+            cov_pars = optim_pars[0:self.num_cov_pars] 
         if format_pandas:
-            if self.params["std_dev"] and self._get_likelihood_name() == "gaussian" and self.gp_approx != "vecchia_latent":
-                cov_pars = pd.DataFrame(cov_pars, columns=self.cov_par_names, index=['Param.', 'Std. dev.'])
+            if std_err:
+                cov_pars = pd.DataFrame(cov_pars, columns=self.cov_par_names, index=['Param.', 'Std. err.'])
             else:
                 cov_pars = pd.DataFrame(cov_pars.reshape((1, -1)), columns=self.cov_par_names, index=['Param.'])
         return cov_pars
 
-    def get_coef(self, format_pandas=True):
+    def get_coef(self, std_err=False, format_pandas=True):
         """Get (estimated) linear regression coefficients
 
         Parameters
         ----------
+        std_err : bool (default=False)
+            If True, (approximate) standard errors are calculated
         format_pandas : bool (default=True)
             If True, a pandas DataFrame is returned, otherwise a numpy array is returned
 
         Returns
         -------
         result : numpy array or pandas DataFrame
-            (estimated) linear regression coefficients and standard deviations (if std_dev=True was set in 'fit')
+            (estimated) linear regression coefficients and standard errors (if std_err=True)
 
         Example
         -------
@@ -5582,27 +5588,24 @@ class GPModel(object):
         >>> gp_model.fit(y=y, X=X)
         >>> gp_model.get_cov_pars()
         """
-        if self.model_has_been_loaded_from_saved_file:
-            coef = self.coefs_loaded_from_file
+        if self.num_covariates is None:
+            raise ValueError("'fit' has not been called")
+        if std_err:
+            optim_pars = np.zeros(2 * self.num_coef, dtype=np.float64)
         else:
-            if self.num_covariates is None:
-                raise ValueError("'fit' has not been called")
-            if self.params["std_dev"]:
-                optim_pars = np.zeros(2 * self.num_coef, dtype=np.float64)
-            else:
-                optim_pars = np.zeros(self.num_coef, dtype=np.float64)
-            _safe_call(_LIB.GPB_GetCoef(
-                self.handle,
-                optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                ctypes.c_bool(self.params["std_dev"])))
-            if self.params["std_dev"]:
-                coef = np.row_stack((optim_pars[0:self.num_coef],
-                                     optim_pars[self.num_coef:(2 * self.num_coef)]))
-            else:
-                coef = optim_pars[0:self.num_coef]
+            optim_pars = np.zeros(self.num_coef, dtype=np.float64)
+        _safe_call(_LIB.GPB_GetCoef(
+            self.handle,
+            optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
+            ctypes.c_bool(std_err)))
+        if std_err:
+            coef = np.row_stack((optim_pars[0:self.num_coef],
+                                    optim_pars[self.num_coef:(2 * self.num_coef)]))
+        else:
+            coef = optim_pars[0:self.num_coef]
         if format_pandas:
-            if self.params["std_dev"]:
-                coef = pd.DataFrame(coef, columns=self.coef_names, index=['Param.', 'Std. dev.'])
+            if std_err:
+                coef = pd.DataFrame(coef, columns=self.coef_names, index=['Param.', 'Std. err.'])
             else:
                 coef = pd.DataFrame(coef.reshape((1, -1)), columns=self.coef_names, index=['Param.'])
         return coef
@@ -5647,8 +5650,13 @@ class GPModel(object):
             aux_pars = None
         return aux_pars
 
-    def summary(self):
+    def summary(self, std_err=True):
         """Print summary of fitted model parameters.
+
+        Parameters
+        ----------
+        std_err : bool (default=False)
+            If True, (approximate) standard errors are calculated 
 
         Example
         -------
@@ -5656,7 +5664,7 @@ class GPModel(object):
         >>> gp_model.fit(y=y, X=X)
         >>> gp_model.summary()
         """
-        cov_pars = self.get_cov_pars(format_pandas=True)
+        cov_pars = self.get_cov_pars(std_err=std_err, format_pandas=True)
         print("=====================================================")
         print("Model summary:")
         print("Nb. observations: " + str(self.num_data))
@@ -5685,8 +5693,8 @@ class GPModel(object):
         if self.has_covariates:
             print("-----------------------------------------------------")
             print("Linear regression coefficients (fixed effects):")
-            coefs = self.get_coef(format_pandas=True)
-            if self.params["std_dev"]:
+            coefs = self.get_coef(std_err=std_err, format_pandas=True)
+            if std_err:
                 z_values = np.array(coefs.iloc[0] / coefs.iloc[1])
                 p_values = 2 * scipy.stats.norm.cdf(-np.abs(z_values))
                 coefs = coefs.transpose()
@@ -5699,9 +5707,10 @@ class GPModel(object):
             print("Additional parameters:")
             aux_pars = self.get_aux_pars(format_pandas=True)
             print(round(aux_pars.transpose(), 4))
-        if self.params["maxit"] == self._get_num_optim_iter() and not self.model_has_been_loaded_from_saved_file:
-            print("-----------------------------------------------------")
-            print("Note: no convergence after the maximal number of iterations")
+        if not self.model_has_been_loaded_from_saved_file:    
+            if self.params["maxit"] == self._get_num_optim_iter() and not self.model_has_been_loaded_from_saved_file:
+                print("-----------------------------------------------------")
+                print("Note: no convergence after the maximal number of iterations")
         print("=====================================================")
         return self
 
@@ -5961,24 +5970,7 @@ class GPModel(object):
                     raise ValueError("Incorrect number of data points in X_pred")
                 if X_pred.shape[1] != self.num_covariates:
                     raise ValueError("Incorrect number of covariates in X_pred")
-                if self.model_has_been_loaded_from_saved_file:
-                    if len(self.coefs_loaded_from_file.shape) == 2:
-                        coefs = self.coefs_loaded_from_file[0]
-                    else:
-                        coefs = self.coefs_loaded_from_file
-                    if offset is not None:
-                        self._check_format_offset_data(offset)
-                        offset = offset + self.X_loaded_from_file.dot(coefs)
-                    elif self.has_offset:
-                        offset = self._get_offset_data() + self.X_loaded_from_file.dot(coefs)
-                    else:
-                        offset = self.X_loaded_from_file.dot(coefs)
-                    if offset_pred is None:
-                        offset_pred = X_pred.dot(coefs)
-                    else:
-                        offset_pred = offset_pred + X_pred.dot(coefs)
-                else:
-                    X_pred_c, _, _ = c_float_array(X_pred.flatten(order='F'))
+                X_pred_c, _, _ = c_float_array(X_pred.flatten(order='F'))
         else:
             if not self.prediction_data_is_set:
                 raise ValueError("No data has been set for making predictions. Call set_prediction_data first")
@@ -6284,8 +6276,7 @@ class GPModel(object):
         >>> training_data_random_effects = all_training_data_random_effects.iloc[first_occurences]
         """
         if self.model_has_been_loaded_from_saved_file:
-            raise ValueError("'predict_training_data_random_effects' is currently not implemented for models that have "
-                             "been loaded from a saved file")
+            raise ValueError("'predict_training_data_random_effects' is currently not implemented for models that have been loaded from a saved file. Use the 'predict' function instead ")
         num_re_comps = (self.num_group_re + self.num_group_rand_coef + self.num_gp + self.num_gp_rand_coef) * self.num_sets_re
         if self.drop_intercept_group_rand_effect is not None:
             num_re_comps = num_re_comps - self.drop_intercept_group_rand_effect.sum()
@@ -6410,6 +6401,7 @@ class GPModel(object):
         model_dict["likelihood"] = self._get_likelihood_name()
         model_dict["likelihood_additional_param"] = self.likelihood_additional_param
         model_dict["cov_pars"] = self.get_cov_pars(format_pandas=False)
+        model_dict["params"]["init_cov_pars"] = model_dict["cov_pars"]
         # Response data
         if include_response_data:
             model_dict["y"] = self._get_response_data()
@@ -6447,6 +6439,7 @@ class GPModel(object):
         model_dict["has_covariates"] = self.has_covariates
         if self.has_covariates:
             model_dict["coefs"] = self.get_coef(format_pandas=False)
+            model_dict["params"]["init_coef"] = model_dict["coefs"]
             model_dict["num_coef"] = self.num_coef
             model_dict["num_covariates"] = self.num_covariates
             model_dict["X"] = self._get_covariate_data()
@@ -6502,6 +6495,13 @@ class GPModel(object):
         _safe_call(_LIB.GPB_SetLikelihood(
             self.handle,
             c_str(likelihood)))
+    
+    def _can_calculate_standard_errors_cov_pars(self):
+        out = ctypes.c_int64(0)
+        _safe_call(_LIB.GPB_CanCalculateStandardErrorsCovPars(
+            self.handle,
+            ctypes.byref(out)))
+        return bool(out.value)
 
     def _get_num_optim_iter(self):
         num_it = ctypes.c_int64(0)

@@ -926,7 +926,6 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 	SEXP optimizer,
 	SEXP momentum_offset,
 	SEXP convergence_criterion,
-	SEXP calc_std_dev,
 	SEXP num_covariates,
 	SEXP init_coef,
 	SEXP lr_coef,
@@ -966,7 +965,6 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 		optimizer_ptr,
 		Rf_asInteger(momentum_offset),
 		convergence_criterion_ptr,
-		Rf_asLogical(calc_std_dev),
 		Rf_asInteger(num_covariates),
 		R_REAL_PTR(init_coef),
 		Rf_asReal(lr_coef),
@@ -1036,6 +1034,16 @@ SEXP GPB_GetCurrentNegLogLikelihood_R(SEXP handle,
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetCurrentNegLogLikelihood(R_ExternalPtrAddr(handle),
 		R_REAL_PTR(negll)));
+	R_API_END();
+	return R_NilValue;
+}
+
+SEXP GPB_CanCalculateStandardErrorsCovPars_R(
+	SEXP handle,
+	SEXP out) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_CanCalculateStandardErrorsCovPars(R_ExternalPtrAddr(handle),
+		R_INT_PTR(out)));
 	R_API_END();
 	return R_NilValue;
 }
@@ -1359,7 +1367,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 3},
   {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 31},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 31},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 30},
+  {"GPB_CanCalculateStandardErrorsCovPars_R", (DL_FUNC)&GPB_CanCalculateStandardErrorsCovPars_R, 2},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},
   {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 5},
   {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 5},

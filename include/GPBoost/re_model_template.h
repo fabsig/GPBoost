@@ -753,9 +753,6 @@ namespace GPBoost {
 		* \param[out] num_it Number of iterations
 		* \param init_cov_pars Initial values for covariance parameters of RE components
 		* \param init_coef Initial values for the regression coefficients (can be nullptr)
-		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters (can be nullptr, used only if calc_std_dev)
-		* \param[out] std_dev_coef Standard deviations for the coefficients (can be nullptr, used only if calc_std_dev and if covariate_data is not nullptr)
-		* \param calc_std_dev If true, asymptotic standard deviations for the MLE of the covariance parameters are calculated as the diagonal of the inverse Fisher information
 		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset) (can be nullptr)
 		* \param learn_covariance_parameters If true, covariance parameters are estimated
 		* \param called_in_GPBoost_algorithm If true, this function is called in the GPBoost algorithm, otherwise for the estimation of a GLMM
@@ -772,9 +769,6 @@ namespace GPBoost {
 			int& num_it,
 			double* init_cov_pars,
 			double* init_coef,
-			double* std_dev_cov_par,
-			double* std_dev_coef,
-			bool calc_std_dev,
 			const double* fixed_effects,
 			bool learn_covariance_parameters,
 			bool called_in_GPBoost_algorithm,
@@ -1122,52 +1116,52 @@ namespace GPBoost {
 			Log::REDebug("GPModel: initial parameters: ");
 			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta_, cov_aux_pars.data() + num_cov_par_, true);
 
-			// Initialize optimizer:
-			// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian likelihoods)
-			// - calculate initial value of objective function
-			// - Note: initial values of aux_pars (additional parameters of likelihood) are set in likelihoods.h
-			if (ShouldRedetermineNearestNeighborsVecchiaInducingPointsFITC(true)) {
-				SetCovParsComps(cov_aux_pars.segment(0, num_cov_par_));
-				RedetermineNearestNeighborsVecchiaInducingPointsFITC(true);//called if gp_approx_ == "vecchia" or  gp_approx_ == "full_scale_vecchia" and neighbors are selected based on correlations and not distances or gp_approx_ == "fitc" with ard kernel
-			}
-			bool na_or_inf_occurred = false;
-			if ((optimizer_cov_pars_ != "lbfgs" && optimizer_cov_pars_ != "lbfgs_linesearch_nocedal_wright") || 
-				max_iter_ == 0 || (gauss_likelihood_ && (profile_out_coef || profile_out_error_variance_))) {
-				//Calculate initial log-likelihood whenever not lbfgs or also when maxit = 0 or some variables are later profiled out
-				CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);
-				// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
-				string_t ll_str;
-				if (gauss_likelihood_) {
-					ll_str = "negative log-likelihood";
+			if (max_iter_ > 0) {
+				// Initialize optimizer:
+				// - factorize the covariance matrix (Gaussian data) or calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian likelihoods)
+				// - calculate initial value of objective function
+				// - Note: initial values of aux_pars (additional parameters of likelihood) are set in likelihoods.h
+				if (ShouldRedetermineNearestNeighborsVecchiaInducingPointsFITC(true)) {
+					SetCovParsComps(cov_aux_pars.segment(0, num_cov_par_));
+					RedetermineNearestNeighborsVecchiaInducingPointsFITC(true);//called if gp_approx_ == "vecchia" or  gp_approx_ == "full_scale_vecchia" and neighbors are selected based on correlations and not distances or gp_approx_ == "fitc" with ard kernel
 				}
-				else {
-					ll_str = "approximate negative marginal log-likelihood";
+				bool na_or_inf_occurred = false;
+				if ((optimizer_cov_pars_ != "lbfgs" && optimizer_cov_pars_ != "lbfgs_linesearch_nocedal_wright") ||
+					(gauss_likelihood_ && (profile_out_coef || profile_out_error_variance_))) {
+					//Calculate initial log-likelihood whenever not lbfgs or also when maxit = 0 or some variables are later profiled out
+					CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);
+					// TODO: for likelihood evaluation we don't need y_aux = Psi^-1 * y but only Psi^-0.5 * y. So, if has_covariates_==true, we might skip this step here and save some time
+					string_t ll_str;
+					if (gauss_likelihood_) {
+						ll_str = "negative log-likelihood";
+					}
+					else {
+						ll_str = "approximate negative marginal log-likelihood";
+					}
+					string_t init_coef_str = "";
+					if (has_covariates_) {
+						init_coef_str = " and 'init_coef'";
+					}
+					string_t problem_str = "none";
+					if (std::isnan(neg_log_likelihood_)) {
+						problem_str = "NaN";
+					}
+					else if (std::isinf(neg_log_likelihood_)) {
+						problem_str = "Inf";
+					}
+					if (problem_str != "none") {
+						Log::REFatal((problem_str + " occurred in initial " + ll_str + ". "
+							"Possible solutions: try other initial values ('init_cov_pars'" + init_coef_str + ") "
+							"or other tuning parameters in case you apply the GPBoost algorithm (e.g., learning_rate)").c_str());
+					}
+					Log::REDebug("Initial %s: %g", ll_str.c_str(), neg_log_likelihood_);
 				}
-				string_t init_coef_str = "";
-				if (has_covariates_) {
-					init_coef_str = " and 'init_coef'";
-				}
-				string_t problem_str = "none";
-				if (std::isnan(neg_log_likelihood_)) {
-					problem_str = "NaN";
-				}
-				else if (std::isinf(neg_log_likelihood_)) {
-					problem_str = "Inf";
-				}
-				if (problem_str != "none") {
-					Log::REFatal((problem_str + " occurred in initial " + ll_str + ". "
-						"Possible solutions: try other initial values ('init_cov_pars'" + init_coef_str + ") "
-						"or other tuning parameters in case you apply the GPBoost algorithm (e.g., learning_rate)").c_str());
-				}
-				Log::REDebug("Initial %s: %g", ll_str.c_str(), neg_log_likelihood_);
-			}
-			if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
-				if (max_iter_ > 0) {
+				if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
 					OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
 						delta_rel_conv_, convergence_criterion_, num_it, learn_covariance_parameters,
 						optimizer_cov_pars_, profile_out_error_variance_, profile_out_coef,
 						neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call,
-						 m_lbfgs_);
+						m_lbfgs_);
 					// Check for NA or Inf
 					if (optimizer_cov_pars_ == "bfgs_optim_lib" || optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
 						if (learn_covariance_parameters) {
@@ -1185,328 +1179,354 @@ namespace GPBoost {
 							}
 						}
 					} // end check for NA or Inf
-				}
-			} // end use of external optimizer
-			else {
-				// Start optimization with internal optimizers such as "gradient_descent" or "fisher_scoring"
-				bool lr_cov_is_small = false, lr_aux_pars_is_small = false, lr_coef_is_small = false;
-				for (num_iter_ = 0; num_iter_ < max_iter_; ++num_iter_) {
-					if (reset_learning_rate_every_iteration_) {
-						InitializeOptimSettings(reuse_learning_rates_from_previous_call);//reset learning rates to their initial values
-					}
-					neg_log_likelihood_lag1_ = neg_log_likelihood_;
-					cov_aux_pars_lag1 = cov_aux_pars;
-					// Update linear regression coefficients using gradient descent or generalized least squares (the latter option only for Gaussian data)
-					if (has_covariates_) {
-						beta_lag1 = beta_;
-						if (optimizer_coef_ == "gradient_descent") {// one step of gradient descent
-							vec_t grad_beta;
-							// Calculate gradient for linear regression coefficients
-							vec_t unused_dummy;
-							CalcGradPars(cov_aux_pars, cov_aux_pars[0], false, true, unused_dummy, grad_beta, false, false, fixed_effects_ptr, false);
-							AvoidTooLargeLearningRateCoef(beta_, grad_beta);
-							CalcDirDerivArmijoAndLearningRateConstChangeCoef(grad_beta, beta_, beta_after_grad_aux, use_nesterov_acc_coef);
-							if (called_in_GPBoost_algorithm && reuse_learning_rates_from_previous_call &&
-								coef_have_been_estimated_once_ && optimizer_coef_ == "gradient_descent") {//potentially increase learning rates again in GPBoost algorithm
-								PotentiallyIncreaseLearningRateCoefForGPBoostAlgorithm();
-							}//end called_in_GPBoost_algorithm / potentially increase learning rates again
-							// Update linear regression coefficients, do learning rate backtracking, and recalculate mode for Laplace approx. (only for non-Gaussian likelihoods)
-							UpdateLinCoef(beta_, grad_beta, cov_aux_pars[0], use_nesterov_acc_coef, num_iter_, beta_after_grad_aux, beta_after_grad_aux_lag1,
-								acc_rate_coef_, nesterov_schedule_version_, momentum_offset_, fixed_effects, fixed_effects_vec);
-							if (num_iter_ == 0) {
-								lr_coef_after_first_iteration_ = lr_coef_;
-								lr_is_small_threshold_coef_ = lr_coef_ / 1e4;
+				} // end use of external optimizer
+				else {
+					// Start optimization with internal optimizers such as "gradient_descent" or "fisher_scoring"
+					bool lr_cov_is_small = false, lr_aux_pars_is_small = false, lr_coef_is_small = false;
+					for (num_iter_ = 0; num_iter_ < max_iter_; ++num_iter_) {
+						if (reset_learning_rate_every_iteration_) {
+							InitializeOptimSettings(reuse_learning_rates_from_previous_call);//reset learning rates to their initial values
+						}
+						neg_log_likelihood_lag1_ = neg_log_likelihood_;
+						cov_aux_pars_lag1 = cov_aux_pars;
+						// Update linear regression coefficients using gradient descent or generalized least squares (the latter option only for Gaussian data)
+						if (has_covariates_) {
+							beta_lag1 = beta_;
+							if (optimizer_coef_ == "gradient_descent") {// one step of gradient descent
+								vec_t grad_beta;
+								// Calculate gradient for linear regression coefficients
+								vec_t unused_dummy;
+								CalcGradPars(cov_aux_pars, cov_aux_pars[0], false, true, unused_dummy, grad_beta, false, false, fixed_effects_ptr, false);
+								AvoidTooLargeLearningRateCoef(beta_, grad_beta);
+								CalcDirDerivArmijoAndLearningRateConstChangeCoef(grad_beta, beta_, beta_after_grad_aux, use_nesterov_acc_coef);
 								if (called_in_GPBoost_algorithm && reuse_learning_rates_from_previous_call &&
-									!coef_have_been_estimated_once_ && optimizer_coef_ == "gradient_descent") {
-									lr_coef_after_first_optim_boosting_iteration_ = lr_coef_;
-								}
-							}
-							fixed_effects_ptr = fixed_effects_vec.data();
-							// In case lr_coef_ is very small, we monitor whether cov_aux_pars continues to change. If it does, we will reset lr_coef_ to its initial value
-							if (lr_coef_ < lr_is_small_threshold_coef_ && learn_covariance_parameters && !lr_coef_is_small) {
-								if ((beta_ - beta_lag1).norm() < LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * beta_lag1.norm()) {//also require that relative change in parameters is small
-									lr_coef_is_small = true;
-									cov_aux_pars_before_lr_coef_small = cov_aux_pars;
-								}
-							}
-						}
-						else if (optimizer_coef_ == "wls") {// coordinate descent using generalized least squares (only for Gaussian data)
-							ProfileOutCoef(fixed_effects, fixed_effects_vec);
-							EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_aux_pars[0], neg_log_likelihood_after_lin_coef_update_);
-						}
-						// Reset lr_cov_ to its initial values in case beta changes substantially after lr_cov_ is very small
-						bool mode_hast_just_been_recalculated = false;
-						if (lr_cov_is_small && learn_covariance_parameters) {
-							if ((beta_ - beta_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * beta_before_lr_cov_small.norm()) {
-								lr_cov_ = lr_cov_after_first_iteration_;
-								lr_cov_is_small = false;
-								RecalculateModeLaplaceApprox(fixed_effects_ptr);
-								mode_hast_just_been_recalculated = true;
-							}
-						}
-						// Reset lr_aux_pars_ to its initial values in case beta changes substantially after lr_aux_pars_ is very small
-						if (lr_aux_pars_is_small && estimate_aux_pars_ && learn_covariance_parameters) {
-							if ((beta_ - beta_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * beta_before_lr_cov_small.norm()) {
-								lr_aux_pars_ = lr_aux_pars_after_first_iteration_;
-								lr_aux_pars_is_small = false;
-								if (!mode_hast_just_been_recalculated) {
-									RecalculateModeLaplaceApprox(fixed_effects_ptr);
-								}
-							}
-						}
-					}//end has_covariates_
-					else {
-						neg_log_likelihood_after_lin_coef_update_ = neg_log_likelihood_lag1_;
-					}// end update regression coefficients
-					// Update covariance parameters using one step of gradient descent or Fisher scoring
-					if (learn_covariance_parameters) {
-						// Calculate gradient or natural gradient = FI^-1 * grad (for Fisher scoring)
-						vec_t grad, neg_step_dir; // gradient and negative step direction. E.g., neg_step_dir = grad for gradient descent and neg_step_dir = FI^-1 * grad for Fisher scoring (="natural" gradient)
-						den_mat_t approx_Hessian;
-						if (profile_out_error_variance_) {
-							cov_aux_pars[0] = ProfileOutSigma2();
-							//EvalNegLogLikelihoodOnlyUpdateNuggetVariance(cov_aux_pars[0], neg_log_likelihood_after_lin_coef_update_);//todo: enable this and change tests
-						}
-						vec_t unused_dummy;
-						if (optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "newton") {
-							CalcGradPars(cov_aux_pars.segment(0, num_cov_par_), 1., true, false, grad, unused_dummy, gradient_contains_error_var, false, fixed_effects_ptr, false);
-							if (optimizer_cov_pars_ == "gradient_descent") {
-								neg_step_dir = grad;
-							}
-							else if (optimizer_cov_pars_ == "newton") {
-								CalcHessianCovParAuxPars(cov_aux_pars, gradient_contains_error_var, fixed_effects_ptr, approx_Hessian);
-								neg_step_dir = approx_Hessian.llt().solve(grad);
-							}
-						}
-						else if (optimizer_cov_pars_ == "fisher_scoring") {
-							CHECK(gauss_likelihood_);
-							// We don't profile out sigma2 since this seems better for Fisher scoring (less iterations)	
-							CalcGradPars(cov_aux_pars.segment(0, num_cov_par_), 1., true, false, grad, unused_dummy, gradient_contains_error_var, true, fixed_effects_ptr, false);
-							CalcFisherInformation(cov_aux_pars.segment(0, num_cov_par_), approx_Hessian, true, gradient_contains_error_var, true);
-							neg_step_dir = approx_Hessian.llt().solve(grad);
-						}
-						if (optimizer_cov_pars_ == "gradient_descent") {
-							AvoidTooLargeLearningRatesCovAuxPars(neg_step_dir);// Avoid too large learning rates for covariance parameters and aux_pars (for fisher_scoring and newton, this is done non-permanently in 'UpdateCovAuxPars')
-						}
-						CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars(grad, neg_step_dir, cov_aux_pars, cov_pars_after_grad_aux, use_nesterov_acc);
-						if (called_in_GPBoost_algorithm && reuse_learning_rates_from_previous_call &&
-							cov_pars_have_been_estimated_once_ && optimizer_cov_pars_ == "gradient_descent") {//potentially increase learning rates again in GPBoost algorithm
-							PotentiallyIncreaseLearningRatesForGPBoostAlgorithm();
-						}//end called_in_GPBoost_algorithm / potentially increase learning rates again
-						// Update covariance and additional likelihood parameters, do learning rate backtracking, factorize covariance matrix, and calculate new value of objective function
-						UpdateCovAuxPars(cov_aux_pars, neg_step_dir, use_nesterov_acc, num_iter_,
-							cov_pars_after_grad_aux, cov_aux_pars_after_grad_aux_lag1, acc_rate_cov_, nesterov_schedule_version_, momentum_offset_, fixed_effects_ptr);
-						if (num_iter_ == 0) {
-							lr_cov_after_first_iteration_ = lr_cov_;
-							lr_is_small_threshold_cov_ = lr_cov_ / 1e4;
-							if (estimate_aux_pars_) {
-								lr_aux_pars_after_first_iteration_ = lr_aux_pars_;
-								lr_is_small_threshold_aux_ = lr_aux_pars_ / 1e4;
-							}
-							if (called_in_GPBoost_algorithm && reuse_learning_rates_from_previous_call &&
-								!cov_pars_have_been_estimated_once_ && optimizer_cov_pars_ == "gradient_descent") {
-								lr_cov_after_first_optim_boosting_iteration_ = lr_cov_;
-								if (estimate_aux_pars_) {
-									lr_aux_pars_after_first_optim_boosting_iteration_ = lr_aux_pars_;
-								}
-							}
-						}
-						// In case lr_cov_ is very small, we monitor whether the other parameters (beta, aux_pars) continue to change. If yes, we will reset lr_cov_ to its initial value
-						if (lr_cov_ < lr_is_small_threshold_cov_ && (has_covariates_ || estimate_aux_pars_) && !lr_cov_is_small) {
-							if ((cov_aux_pars.segment(0, num_cov_par_) - cov_aux_pars_lag1.segment(0, num_cov_par_)).norm() <
-								LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * cov_aux_pars_lag1.segment(0, num_cov_par_).norm()) {//also require that relative change in parameters is small
-								lr_cov_is_small = true;
-								if (has_covariates_) {
-									beta_before_lr_cov_small = beta_;
-								}
-								if (estimate_aux_pars_) {
-									aux_pars_before_lr_cov_small = cov_aux_pars.segment(num_cov_par_, NumAuxPars());
-								}
-							}
-						}
-						// In case lr_aux_pars_ is very small, we monitor whether the other parameters (beta, covariance parameters) continue to change. If yes, we will reset lr_aux_pars_ to its initial value
-						if (estimate_aux_pars_) {
-							if (lr_aux_pars_ < lr_is_small_threshold_aux_ && !lr_cov_is_small) {
-								if ((cov_aux_pars.segment(num_cov_par_, NumAuxPars()) - cov_aux_pars_lag1.segment(num_cov_par_, NumAuxPars())).norm() <
-									LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * cov_aux_pars_lag1.segment(num_cov_par_, NumAuxPars()).norm()) {//also require that relative change in parameters is small
-									lr_aux_pars_is_small = true;
-									if (has_covariates_) {
-										beta_before_lr_aux_pars_small = beta_;
+									coef_have_been_estimated_once_ && optimizer_coef_ == "gradient_descent") {//potentially increase learning rates again in GPBoost algorithm
+									PotentiallyIncreaseLearningRateCoefForGPBoostAlgorithm();
+								}//end called_in_GPBoost_algorithm / potentially increase learning rates again
+								// Update linear regression coefficients, do learning rate backtracking, and recalculate mode for Laplace approx. (only for non-Gaussian likelihoods)
+								UpdateLinCoef(beta_, grad_beta, cov_aux_pars[0], use_nesterov_acc_coef, num_iter_, beta_after_grad_aux, beta_after_grad_aux_lag1,
+									acc_rate_coef_, nesterov_schedule_version_, momentum_offset_, fixed_effects, fixed_effects_vec);
+								if (num_iter_ == 0) {
+									lr_coef_after_first_iteration_ = lr_coef_;
+									lr_is_small_threshold_coef_ = lr_coef_ / 1e4;
+									if (called_in_GPBoost_algorithm && reuse_learning_rates_from_previous_call &&
+										!coef_have_been_estimated_once_ && optimizer_coef_ == "gradient_descent") {
+										lr_coef_after_first_optim_boosting_iteration_ = lr_coef_;
 									}
-									cov_pars_before_lr_aux_pars_small = cov_aux_pars.segment(0, num_cov_par_);
+								}
+								fixed_effects_ptr = fixed_effects_vec.data();
+								// In case lr_coef_ is very small, we monitor whether cov_aux_pars continues to change. If it does, we will reset lr_coef_ to its initial value
+								if (lr_coef_ < lr_is_small_threshold_coef_ && learn_covariance_parameters && !lr_coef_is_small) {
+									if ((beta_ - beta_lag1).norm() < LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * beta_lag1.norm()) {//also require that relative change in parameters is small
+										lr_coef_is_small = true;
+										cov_aux_pars_before_lr_coef_small = cov_aux_pars;
+									}
 								}
 							}
-						}
-						// Reset lr_coef_ to its initial value in case cov_aux_pars changes substantially after lr_coef_ is very small
-						bool mode_hast_just_been_recalculated = false;
-						if (lr_coef_is_small && has_covariates_) {
-							if ((cov_aux_pars - cov_aux_pars_before_lr_coef_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * cov_aux_pars_before_lr_coef_small.norm()) {
-								lr_coef_ = lr_coef_after_first_iteration_;
-								lr_coef_is_small = false;
-								RecalculateModeLaplaceApprox(fixed_effects_ptr);
-								mode_hast_just_been_recalculated = true;
+							else if (optimizer_coef_ == "wls") {// coordinate descent using generalized least squares (only for Gaussian data)
+								ProfileOutCoef(fixed_effects, fixed_effects_vec);
+								EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_aux_pars[0], neg_log_likelihood_after_lin_coef_update_);
 							}
-						}
-						// Reset lr_aux_pars_ to its initial values in case covariance paremeters change substantially after lr_aux_pars_ is very small
-						if (lr_aux_pars_is_small && estimate_aux_pars_) {
-							if ((cov_aux_pars.segment(0, num_cov_par_) - cov_pars_before_lr_aux_pars_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * cov_pars_before_lr_aux_pars_small.norm()) {
-								lr_aux_pars_ = lr_aux_pars_after_first_iteration_;
-								lr_aux_pars_is_small = false;
-								if (!mode_hast_just_been_recalculated) {
+							// Reset lr_cov_ to its initial values in case beta changes substantially after lr_cov_ is very small
+							bool mode_hast_just_been_recalculated = false;
+							if (lr_cov_is_small && learn_covariance_parameters) {
+								if ((beta_ - beta_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * beta_before_lr_cov_small.norm()) {
+									lr_cov_ = lr_cov_after_first_iteration_;
+									lr_cov_is_small = false;
 									RecalculateModeLaplaceApprox(fixed_effects_ptr);
 									mode_hast_just_been_recalculated = true;
 								}
 							}
-						}
-						// Reset lr_cov_ to its initial values in case aux_pars changes substantially after lr_cov_ is very small
-						if (lr_cov_is_small && estimate_aux_pars_) {
-							if ((cov_aux_pars.segment(num_cov_par_, NumAuxPars()) - aux_pars_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * aux_pars_before_lr_cov_small.norm()) {
-								lr_cov_ = lr_cov_after_first_iteration_;
-								lr_cov_is_small = false;
-								if (!mode_hast_just_been_recalculated) {
-									RecalculateModeLaplaceApprox(fixed_effects_ptr);
+							// Reset lr_aux_pars_ to its initial values in case beta changes substantially after lr_aux_pars_ is very small
+							if (lr_aux_pars_is_small && estimate_aux_pars_ && learn_covariance_parameters) {
+								if ((beta_ - beta_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * beta_before_lr_cov_small.norm()) {
+									lr_aux_pars_ = lr_aux_pars_after_first_iteration_;
+									lr_aux_pars_is_small = false;
+									if (!mode_hast_just_been_recalculated) {
+										RecalculateModeLaplaceApprox(fixed_effects_ptr);
+									}
 								}
 							}
-						}
-					}//end if (learn_covariance_parameters)
-					else {
-						neg_log_likelihood_ = neg_log_likelihood_after_lin_coef_update_;
-					}// end update covariance parameters
-					// Check for NA or Inf
-					if (std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_)) {
-						na_or_inf_occurred = true;
-						terminate_optim = true;
-					}
-					else {
+						}//end has_covariates_
+						else {
+							neg_log_likelihood_after_lin_coef_update_ = neg_log_likelihood_lag1_;
+						}// end update regression coefficients
+						// Update covariance parameters using one step of gradient descent or Fisher scoring
 						if (learn_covariance_parameters) {
-							for (int i = 0; i < (int)cov_aux_pars.size(); ++i) {
-								if (std::isnan(cov_aux_pars[i]) || std::isinf(cov_aux_pars[i])) {
-									na_or_inf_occurred = true;
-									terminate_optim = true;
+							// Calculate gradient or natural gradient = FI^-1 * grad (for Fisher scoring)
+							vec_t grad, neg_step_dir; // gradient and negative step direction. E.g., neg_step_dir = grad for gradient descent and neg_step_dir = FI^-1 * grad for Fisher scoring (="natural" gradient)
+							den_mat_t approx_Hessian;
+							if (profile_out_error_variance_) {
+								cov_aux_pars[0] = ProfileOutSigma2();
+								//EvalNegLogLikelihoodOnlyUpdateNuggetVariance(cov_aux_pars[0], neg_log_likelihood_after_lin_coef_update_);//todo: enable this and change tests
+							}
+							vec_t unused_dummy;
+							if (optimizer_cov_pars_ == "gradient_descent" || optimizer_cov_pars_ == "newton") {
+								CalcGradPars(cov_aux_pars.segment(0, num_cov_par_), 1., true, false, grad, unused_dummy, gradient_contains_error_var, false, fixed_effects_ptr, false);
+								if (optimizer_cov_pars_ == "gradient_descent") {
+									neg_step_dir = grad;
+								}
+								else if (optimizer_cov_pars_ == "newton") {
+									CalcHessianCovParAuxPars(cov_aux_pars, gradient_contains_error_var, fixed_effects_ptr, approx_Hessian);
+									neg_step_dir = approx_Hessian.llt().solve(grad);
 								}
 							}
-						}
-					}
-					if (!na_or_inf_occurred) {
-						// Check convergence
-						terminate_optim = CheckOptimizerHasConverged(cov_aux_pars, cov_aux_pars_lag1, beta_lag1);
-						if (learn_covariance_parameters && ShouldRedetermineNearestNeighborsVecchiaInducingPointsFITC(terminate_optim)) {
-							RedetermineNearestNeighborsVecchiaInducingPointsFITC(terminate_optim);//called only in certain iterations if gp_approx_ == "vecchia" and neighbors are selected based on correlations and not distances
-							if (convergence_criterion_ == "relative_change_in_log_likelihood") {
-								//recalculate old and new objective function when neighbors have been redetermined
-								if (has_covariates_) {
-									UpdateFixedEffects(beta_lag1, fixed_effects, fixed_effects_vec);
-									fixed_effects_ptr = fixed_effects_vec.data();
-								}
+							else if (optimizer_cov_pars_ == "fisher_scoring") {
+								CHECK(gauss_likelihood_);
+								// We don't profile out sigma2 since this seems better for Fisher scoring (less iterations)	
+								CalcGradPars(cov_aux_pars.segment(0, num_cov_par_), 1., true, false, grad, unused_dummy, gradient_contains_error_var, true, fixed_effects_ptr, false);
+								CalcFisherInformation(cov_aux_pars.segment(0, num_cov_par_), approx_Hessian, true, gradient_contains_error_var, true);
+								neg_step_dir = approx_Hessian.llt().solve(grad);
+							}
+							if (optimizer_cov_pars_ == "gradient_descent") {
+								AvoidTooLargeLearningRatesCovAuxPars(neg_step_dir);// Avoid too large learning rates for covariance parameters and aux_pars (for fisher_scoring and newton, this is done non-permanently in 'UpdateCovAuxPars')
+							}
+							CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars(grad, neg_step_dir, cov_aux_pars, cov_pars_after_grad_aux, use_nesterov_acc);
+							if (called_in_GPBoost_algorithm && reuse_learning_rates_from_previous_call &&
+								cov_pars_have_been_estimated_once_ && optimizer_cov_pars_ == "gradient_descent") {//potentially increase learning rates again in GPBoost algorithm
+								PotentiallyIncreaseLearningRatesForGPBoostAlgorithm();
+							}//end called_in_GPBoost_algorithm / potentially increase learning rates again
+							// Update covariance and additional likelihood parameters, do learning rate backtracking, factorize covariance matrix, and calculate new value of objective function
+							UpdateCovAuxPars(cov_aux_pars, neg_step_dir, use_nesterov_acc, num_iter_,
+								cov_pars_after_grad_aux, cov_aux_pars_after_grad_aux_lag1, acc_rate_cov_, nesterov_schedule_version_, momentum_offset_, fixed_effects_ptr);
+							if (num_iter_ == 0) {
+								lr_cov_after_first_iteration_ = lr_cov_;
+								lr_is_small_threshold_cov_ = lr_cov_ / 1e4;
 								if (estimate_aux_pars_) {
-									SetAuxPars(cov_aux_pars_lag1.data() + num_cov_par_);
+									lr_aux_pars_after_first_iteration_ = lr_aux_pars_;
+									lr_is_small_threshold_aux_ = lr_aux_pars_ / 1e4;
 								}
-								CalcCovFactorOrModeAndNegLL(cov_aux_pars_lag1.segment(0, num_cov_par_), fixed_effects_ptr);//recalculate old log-likelihood
-								neg_log_likelihood_lag1_ = neg_log_likelihood_;
-								if (has_covariates_) {
-									UpdateFixedEffects(beta_, fixed_effects, fixed_effects_vec);
-									fixed_effects_ptr = fixed_effects_vec.data();
+								if (called_in_GPBoost_algorithm && reuse_learning_rates_from_previous_call &&
+									!cov_pars_have_been_estimated_once_ && optimizer_cov_pars_ == "gradient_descent") {
+									lr_cov_after_first_optim_boosting_iteration_ = lr_cov_;
+									if (estimate_aux_pars_) {
+										lr_aux_pars_after_first_optim_boosting_iteration_ = lr_aux_pars_;
+									}
 								}
-								if (estimate_aux_pars_) {
-									SetAuxPars(cov_aux_pars.data() + num_cov_par_);
+							}
+							// In case lr_cov_ is very small, we monitor whether the other parameters (beta, aux_pars) continue to change. If yes, we will reset lr_cov_ to its initial value
+							if (lr_cov_ < lr_is_small_threshold_cov_ && (has_covariates_ || estimate_aux_pars_) && !lr_cov_is_small) {
+								if ((cov_aux_pars.segment(0, num_cov_par_) - cov_aux_pars_lag1.segment(0, num_cov_par_)).norm() <
+									LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * cov_aux_pars_lag1.segment(0, num_cov_par_).norm()) {//also require that relative change in parameters is small
+									lr_cov_is_small = true;
+									if (has_covariates_) {
+										beta_before_lr_cov_small = beta_;
+									}
+									if (estimate_aux_pars_) {
+										aux_pars_before_lr_cov_small = cov_aux_pars.segment(num_cov_par_, NumAuxPars());
+									}
 								}
-								CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);//recalculate new log-likelihood
-								terminate_optim = CheckOptimizerHasConverged(cov_aux_pars, cov_aux_pars_lag1, beta_lag1);
 							}
-						}
-						// Trace output for convergence monitoring
-						if ((num_iter_ < 10 || ((num_iter_ + 1) % 10 == 0 && (num_iter_ + 1) < 100) || ((num_iter_ + 1) % 100 == 0 && (num_iter_ + 1) < 1000) ||
-							((num_iter_ + 1) % 1000 == 0 && (num_iter_ + 1) < 10000) || ((num_iter_ + 1) % 10000 == 0)) && (num_iter_ != (max_iter_ - 1)) && !terminate_optim) {
-							Log::REDebug("GPModel: parameters after optimization iteration number %d: ", num_iter_ + 1);
-							PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta_, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
-							if (gauss_likelihood_) {
-								Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
-							}
-							else {
-								Log::REDebug("Approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
-							}
-						} // end trace output
-					}// end not na_or_inf_occurred
-					// Check whether to terminate
-					if (terminate_optim) {
-						num_it = num_iter_ + 1;
-						break;
-					}
-					//increase learning rates again
-					else if (increase_learning_rate_again_ && optimizer_cov_pars_ == "gradient_descent" && (num_iter_ + 1) >= 10 &&
-						learning_rate_decreased_first_time_ && !learning_rate_decreased_after_increase_ && !na_or_inf_occurred) {
-						if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < INCREASE_LR_CHANGE_LL_THRESHOLD_ * std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
-							if (has_covariates_) {
-								lr_coef_ /= LR_SHRINKAGE_FACTOR_;
-							}
-							if (learn_covariance_parameters) {
-								lr_cov_ /= LR_SHRINKAGE_FACTOR_;
-							}
+							// In case lr_aux_pars_ is very small, we monitor whether the other parameters (beta, covariance parameters) continue to change. If yes, we will reset lr_aux_pars_ to its initial value
 							if (estimate_aux_pars_) {
-								lr_aux_pars_ /= LR_SHRINKAGE_FACTOR_;
+								if (lr_aux_pars_ < lr_is_small_threshold_aux_ && !lr_cov_is_small) {
+									if ((cov_aux_pars.segment(num_cov_par_, NumAuxPars()) - cov_aux_pars_lag1.segment(num_cov_par_, NumAuxPars())).norm() <
+										LR_IS_SMALL_REL_CHANGE_IN_PARS_THRESHOLD_ * cov_aux_pars_lag1.segment(num_cov_par_, NumAuxPars()).norm()) {//also require that relative change in parameters is small
+										lr_aux_pars_is_small = true;
+										if (has_covariates_) {
+											beta_before_lr_aux_pars_small = beta_;
+										}
+										cov_pars_before_lr_aux_pars_small = cov_aux_pars.segment(0, num_cov_par_);
+									}
+								}
 							}
-							learning_rate_increased_after_descrease_ = true;
-							Log::REDebug("GPModel covariance parameter estimation: The learning rates have been increased in iteration number %d ", num_iter_ + 1);
+							// Reset lr_coef_ to its initial value in case cov_aux_pars changes substantially after lr_coef_ is very small
+							bool mode_hast_just_been_recalculated = false;
+							if (lr_coef_is_small && has_covariates_) {
+								if ((cov_aux_pars - cov_aux_pars_before_lr_coef_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * cov_aux_pars_before_lr_coef_small.norm()) {
+									lr_coef_ = lr_coef_after_first_iteration_;
+									lr_coef_is_small = false;
+									RecalculateModeLaplaceApprox(fixed_effects_ptr);
+									mode_hast_just_been_recalculated = true;
+								}
+							}
+							// Reset lr_aux_pars_ to its initial values in case covariance paremeters change substantially after lr_aux_pars_ is very small
+							if (lr_aux_pars_is_small && estimate_aux_pars_) {
+								if ((cov_aux_pars.segment(0, num_cov_par_) - cov_pars_before_lr_aux_pars_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * cov_pars_before_lr_aux_pars_small.norm()) {
+									lr_aux_pars_ = lr_aux_pars_after_first_iteration_;
+									lr_aux_pars_is_small = false;
+									if (!mode_hast_just_been_recalculated) {
+										RecalculateModeLaplaceApprox(fixed_effects_ptr);
+										mode_hast_just_been_recalculated = true;
+									}
+								}
+							}
+							// Reset lr_cov_ to its initial values in case aux_pars changes substantially after lr_cov_ is very small
+							if (lr_cov_is_small && estimate_aux_pars_) {
+								if ((cov_aux_pars.segment(num_cov_par_, NumAuxPars()) - aux_pars_before_lr_cov_small).norm() > MIN_REL_CHANGE_IN_OTHER_PARS_FOR_RESETTING_LR_ * aux_pars_before_lr_cov_small.norm()) {
+									lr_cov_ = lr_cov_after_first_iteration_;
+									lr_cov_is_small = false;
+									if (!mode_hast_just_been_recalculated) {
+										RecalculateModeLaplaceApprox(fixed_effects_ptr);
+									}
+								}
+							}
+						}//end if (learn_covariance_parameters)
+						else {
+							neg_log_likelihood_ = neg_log_likelihood_after_lin_coef_update_;
+						}// end update covariance parameters
+						// Check for NA or Inf
+						if (std::isnan(neg_log_likelihood_) || std::isinf(neg_log_likelihood_)) {
+							na_or_inf_occurred = true;
+							terminate_optim = true;
+						}
+						else {
+							if (learn_covariance_parameters) {
+								for (int i = 0; i < (int)cov_aux_pars.size(); ++i) {
+									if (std::isnan(cov_aux_pars[i]) || std::isinf(cov_aux_pars[i])) {
+										na_or_inf_occurred = true;
+										terminate_optim = true;
+									}
+								}
+							}
+						}
+						if (!na_or_inf_occurred) {
+							// Check convergence
+							terminate_optim = CheckOptimizerHasConverged(cov_aux_pars, cov_aux_pars_lag1, beta_lag1);
+							if (learn_covariance_parameters && ShouldRedetermineNearestNeighborsVecchiaInducingPointsFITC(terminate_optim)) {
+								RedetermineNearestNeighborsVecchiaInducingPointsFITC(terminate_optim);//called only in certain iterations if gp_approx_ == "vecchia" and neighbors are selected based on correlations and not distances
+								if (convergence_criterion_ == "relative_change_in_log_likelihood") {
+									//recalculate old and new objective function when neighbors have been redetermined
+									if (has_covariates_) {
+										UpdateFixedEffects(beta_lag1, fixed_effects, fixed_effects_vec);
+										fixed_effects_ptr = fixed_effects_vec.data();
+									}
+									if (estimate_aux_pars_) {
+										SetAuxPars(cov_aux_pars_lag1.data() + num_cov_par_);
+									}
+									CalcCovFactorOrModeAndNegLL(cov_aux_pars_lag1.segment(0, num_cov_par_), fixed_effects_ptr);//recalculate old log-likelihood
+									neg_log_likelihood_lag1_ = neg_log_likelihood_;
+									if (has_covariates_) {
+										UpdateFixedEffects(beta_, fixed_effects, fixed_effects_vec);
+										fixed_effects_ptr = fixed_effects_vec.data();
+									}
+									if (estimate_aux_pars_) {
+										SetAuxPars(cov_aux_pars.data() + num_cov_par_);
+									}
+									CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);//recalculate new log-likelihood
+									terminate_optim = CheckOptimizerHasConverged(cov_aux_pars, cov_aux_pars_lag1, beta_lag1);
+								}
+							}
+							// Trace output for convergence monitoring
+							if ((num_iter_ < 10 || ((num_iter_ + 1) % 10 == 0 && (num_iter_ + 1) < 100) || ((num_iter_ + 1) % 100 == 0 && (num_iter_ + 1) < 1000) ||
+								((num_iter_ + 1) % 1000 == 0 && (num_iter_ + 1) < 10000) || ((num_iter_ + 1) % 10000 == 0)) && (num_iter_ != (max_iter_ - 1)) && !terminate_optim) {
+								Log::REDebug("GPModel: parameters after optimization iteration number %d: ", num_iter_ + 1);
+								PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta_, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
+								if (gauss_likelihood_) {
+									Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
+								}
+								else {
+									Log::REDebug("Approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
+								}
+							} // end trace output
+						}// end not na_or_inf_occurred
+						// Check whether to terminate
+						if (terminate_optim) {
+							num_it = num_iter_ + 1;
+							break;
+						}
+						//increase learning rates again
+						else if (increase_learning_rate_again_ && optimizer_cov_pars_ == "gradient_descent" && (num_iter_ + 1) >= 10 &&
+							learning_rate_decreased_first_time_ && !learning_rate_decreased_after_increase_ && !na_or_inf_occurred) {
+							if ((neg_log_likelihood_lag1_ - neg_log_likelihood_) < INCREASE_LR_CHANGE_LL_THRESHOLD_ * std::max(std::abs(neg_log_likelihood_lag1_), 1.)) {
+								if (has_covariates_) {
+									lr_coef_ /= LR_SHRINKAGE_FACTOR_;
+								}
+								if (learn_covariance_parameters) {
+									lr_cov_ /= LR_SHRINKAGE_FACTOR_;
+								}
+								if (estimate_aux_pars_) {
+									lr_aux_pars_ /= LR_SHRINKAGE_FACTOR_;
+								}
+								learning_rate_increased_after_descrease_ = true;
+								Log::REDebug("GPModel covariance parameter estimation: The learning rates have been increased in iteration number %d ", num_iter_ + 1);
+							}
+						}
+					}//end for loop for optimization
+				}//end internal optimizers such as "gradient_descent" or "fisher_scoring"
+				// redo optimization with "nelder_mead" in case NA or Inf occurred
+				if (na_or_inf_occurred && optimizer_cov_pars_ != "nelder_mead") {
+					string_t optimizers = "";
+					for (auto elem : SUPPORTED_OPTIM_COV_PAR_) {
+						if (gauss_likelihood_ || elem != "fisher_scoring") {
+							optimizers += " '" + elem + "'";
 						}
 					}
-				}//end for loop for optimization
-			}//end internal optimizers such as "gradient_descent" or "fisher_scoring"
-			// redo optimization with "nelder_mead" in case NA or Inf occurred
-			if (na_or_inf_occurred && optimizer_cov_pars_ != "nelder_mead") {
-				string_t optimizers = "";
-				for (auto elem : SUPPORTED_OPTIM_COV_PAR_) {
-					if (gauss_likelihood_ || elem != "fisher_scoring") {
-						optimizers += " '" + elem + "'";
+					Log::REWarning("NaN or Inf occurred in covariance parameter optimization using '%s'. "
+						"The optimization will be started a second time using 'nelder_mead'. "
+						"If you want to avoid this, try directly using a different optimizer. "
+						"If you have used 'gradient_descent', you can also consider using a smaller learning rate ", optimizer_cov_pars_.c_str());
+					cov_aux_pars = cov_aux_pars_init;
+					if (has_covariates_) {
+						beta_ = beta_init;
 					}
+					if (!gauss_likelihood_) { // reset the initial modes to 0
+						for (const auto& cluster_i : unique_clusters_) {
+							likelihood_[cluster_i]->InitializeModeAvec();
+						}
+					}
+					delta_rel_conv_ = delta_rel_conv_init_;
+					OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
+						delta_rel_conv_, convergence_criterion_, num_it,
+						learn_covariance_parameters, "nelder_mead", profile_out_error_variance_, false,
+						neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call,
+						m_lbfgs_);
 				}
-				Log::REWarning("NaN or Inf occurred in covariance parameter optimization using '%s'. "
-					"The optimization will be started a second time using 'nelder_mead'. "
-					"If you want to avoid this, try directly using a different optimizer. "
-					"If you have used 'gradient_descent', you can also consider using a smaller learning rate ", optimizer_cov_pars_.c_str());
-				cov_aux_pars = cov_aux_pars_init;
+				if (num_it == max_iter_) {
+					Log::REDebug("GPModel: no convergence after the maximal number of iterations "
+						"(%d, nb. likelihood evaluations = %d) ", max_iter_, num_ll_evaluations_);
+				}
+				else {
+					Log::REDebug("GPModel: parameter estimation finished after %d iteration "
+						"(nb. likelihood evaluations = %d) ", num_it, num_ll_evaluations_);
+				}
+				PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta_, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
+				if (gauss_likelihood_) {
+					Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
+				}
+				else {
+					Log::REDebug("Approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
+				}
+				CovarianceParameterRangeWarning(cov_aux_pars.segment(0, num_cov_par_));
+				vec_t cov_pars_var_const_maybe;
+				MaybeKeepVarianceConstant(cov_aux_pars.segment(0, num_cov_par_), cov_pars_var_const_maybe);
+				for (int i = 0; i < num_cov_par_; ++i) {
+					cov_aux_pars[i] = cov_pars_var_const_maybe[i];
+					optim_cov_pars[i] = cov_aux_pars[i];
+				}
+				if (estimate_aux_pars_) {
+					SetAuxPars(cov_aux_pars.data() + num_cov_par_);
+				}
 				if (has_covariates_) {
-					beta_ = beta_init;
-				}
-				if (!gauss_likelihood_) { // reset the initial modes to 0
-					for (const auto& cluster_i : unique_clusters_) {
-						likelihood_[cluster_i]->InitializeModeAvec();
+					if (scale_covariates_) {
+						// transform coefficients back to original scale
+						TransformBackCoef(beta_, beta_);
+					}
+					for (int i = 0; i < num_covariates_ * num_sets_re_; ++i) {
+						optim_coef[i] = beta_[i];
 					}
 				}
-				delta_rel_conv_ = delta_rel_conv_init_;
-				OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
-					delta_rel_conv_, convergence_criterion_, num_it,
-					learn_covariance_parameters, "nelder_mead", profile_out_error_variance_, false,
-					neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call,
-					m_lbfgs_);
-			}
-			if (num_it == max_iter_) {
-				Log::REDebug("GPModel: no convergence after the maximal number of iterations "
-					"(%d, nb. likelihood evaluations = %d) ", max_iter_, num_ll_evaluations_);
-			}
-			else {
-				Log::REDebug("GPModel: parameter estimation finished after %d iteration "
-					"(nb. likelihood evaluations = %d) ", num_it, num_ll_evaluations_);
-			}
-			PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta_, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
-			if (gauss_likelihood_) {
-				Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
-			}
-			else {
-				Log::REDebug("Approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
-			}
-			vec_t cov_pars_var_const_maybe;
-			MaybeKeepVarianceConstant(cov_aux_pars.segment(0, num_cov_par_), cov_pars_var_const_maybe);
-			for (int i = 0; i < num_cov_par_; ++i) {
-				cov_aux_pars[i] = cov_pars_var_const_maybe[i];
-				optim_cov_pars[i] = cov_aux_pars[i];
-			}
-			if (estimate_aux_pars_) {
-				SetAuxPars(cov_aux_pars.data() + num_cov_par_);
-			}
+				model_has_been_estimated_ = true;
+				if (learn_covariance_parameters) {
+					cov_pars_have_been_estimated_once_ = true;
+					cov_pars_have_been_estimated_during_last_call_ = true;
+				}
+				else {
+					cov_pars_have_been_estimated_during_last_call_ = false;
+				}
+				if (has_covariates_ && !only_intercept_for_GPBoost_algo) {
+					coef_have_been_estimated_once_ = true;
+				}
+			}//end max_iter_ > 0
 			if (has_covariates_) {
+				if (called_in_GPBoost_algorithm) {
+					has_covariates_ = false;
+					// When this function is called in the GPBoost algorithm for finding an intial intercept or a learning rate,
+					//	we set has_covariates_ to false in order to avoid potential problems when making predictions with the GPBoostOOS algorithm,
+					//	since in the second phase of the GPBoostOOS algorithm covariance parameters are not estimated (and thus has_covariates_ is not set to false)
+					//	but this function is called for initialization of the GPBoost algorithm.
+				}
 				if (scale_covariates_) {
-					// transform coefficients back to original scale
-					TransformBackCoef(beta_, beta_);
 					//transform covariates back
 					for (int icol = 0; icol < num_covariates_; ++icol) {
 						if (!has_intercept_ || icol != intercept_col_) {
@@ -1517,61 +1537,69 @@ namespace GPBoost {
 					if (has_intercept_) {
 						X_.col(intercept_col_).array() = 1.;
 					}
-				}
-				for (int i = 0; i < num_covariates_ * num_sets_re_; ++i) {
-					optim_coef[i] = beta_[i];
-				}
-			}
-			if (calc_std_dev) {
-				vec_t std_dev_cov(num_cov_par_);
-				if (gauss_likelihood_) {
-					CalcStdDevCovPar(cov_aux_pars.segment(0, num_cov_par_), std_dev_cov);//TODO: maybe another call to CalcCovFactor can be avoided in CalcStdDevCovPar (need to take care of cov_aux_pars[0])
-					for (int i = 0; i < num_cov_par_; ++i) {
-						std_dev_cov_par[i] = std_dev_cov[i];
-					}
-				}
-				else {
-					std_dev_cov.setZero();// Calculation of standard deviations for covariance parameters is not supported for non-Gaussian likelihoods
-					if (!has_covariates_) {
-						Log::REWarning("Calculation of standard deviations of covariance parameters for non-Gaussian likelihoods is currently not supported ");
-					}
-				}
-				if (has_covariates_) {
-					vec_t std_dev_beta(num_covariates_);
-					if (gauss_likelihood_) {
-						CalcStdDevCoef(cov_aux_pars.segment(0, num_cov_par_), X_, std_dev_beta);
-					}
-					else {
-						//Log::REDebug("Standard deviations of linear regression coefficients for non-Gaussian likelihoods can be \"very approximative\". ");
-						CalcStdDevCoefNonGaussian(num_covariates_, beta_, cov_aux_pars.segment(0, num_cov_par_), fixed_effects, std_dev_beta);
-					}
-					for (int i = 0; i < num_covariates_; ++i) {
-						std_dev_coef[i] = std_dev_beta[i];
-					}
-				}
-			}
-			model_has_been_estimated_ = true;
-			if (learn_covariance_parameters) {
-				cov_pars_have_been_estimated_once_ = true;
-				cov_pars_have_been_estimated_during_last_call_ = true;
-			}
-			else {
-				cov_pars_have_been_estimated_during_last_call_ = false;
-			}
-			if (has_covariates_ && !only_intercept_for_GPBoost_algo) {
-				coef_have_been_estimated_once_ = true;
-			}
-			if (has_covariates_) {
-				if (called_in_GPBoost_algorithm) {
-					has_covariates_ = false;
-					// When this function is called in the GPBoost algorithm for finding an intial intercept or a learning rate,
-					//	we set has_covariates_ to false in order to avoid potential problems when making predictions with the GPBoostOOS algorithm,
-					//	since in the second phase of the GPBoostOOS algorithm covariance parameters are not estimated (and thus has_covariates_ is not set to false)
-					//	but this function is called for initialization of the GPBoost algorithm.
-				}
-			}
+				}//end scale_covariates_
+			}//end has_covariates_
 			optimization_running_currently_ = false;
 		}//end OptimLinRegrCoefCovPar
+
+		bool CanCalculateStandardErrorsCovPars() const {
+			return (gauss_likelihood_ && gp_approx_ != "full_scale_vecchia");
+		}
+
+		/*!
+		* \brief Calculate standard errors of covariance parameters (for Gaussian likelihood only)
+		* \para optim_cov_pars Optimal covariance parameters
+		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters (can be nullptr, used only if calc_std_dev)
+		*/
+		void CalculateStandardErrorsCovPars(const double* optim_cov_pars,
+			double* std_dev_cov_par) {
+			vec_t std_dev_cov(num_cov_par_);
+			vec_t cov_pars(num_cov_par_);
+			for (int i = 0; i < num_cov_par_; ++i) {
+				cov_pars[i] = optim_cov_pars[i];
+			}
+			if (gauss_likelihood_) {
+				if (gp_approx_ == "full_scale_vecchia") {
+					Log::REFatal("Calculation of standard errors of covariance parameters for the approximation '%s' is currently not supported ", gp_approx_.c_str());
+				}
+				CalcStdDevCovPar(cov_pars, std_dev_cov);//TODO: maybe another call to CalcCovFactor can be avoided in CalcStdDevCovPar (need to take care of cov_pars[0])
+			}
+			else {
+				std_dev_cov.setZero();// Calculation of standard deviations for covariance parameters is not supported for non-Gaussian likelihoods
+				Log::REFatal("Calculation of standard errors of covariance parameters for non-Gaussian likelihoods is currently not supported ");
+			}
+			for (int i = 0; i < num_cov_par_; ++i) {
+				std_dev_cov_par[i] = std_dev_cov[i];
+			}
+		}//end CalculateStandardErrorsCovPars
+
+		/*!
+		* \brief Calculate standard errors of regression coefficients
+		* \para optim_cov_pars Optimal covariance parameters
+		* \param[out] std_dev_coef Standard deviations for the coefficients (can be nullptr, used only if calc_std_dev and if covariate_data is not nullptr)
+		*/
+		void CalculateStandardErrorsCoefs(const double* optim_cov_pars,
+			double* std_dev_coef) {
+			vec_t cov_pars(num_cov_par_);
+			for (int i = 0; i < num_cov_par_; ++i) {
+				cov_pars[i] = optim_cov_pars[i];
+			}
+			CHECK(has_covariates_);
+			vec_t std_dev_beta(num_covariates_);
+			if (gauss_likelihood_) {
+				CalcStdDevCoef(cov_pars, X_, std_dev_beta);
+			}
+			else {
+				const double* fixed_effects_ptr = nullptr;
+				if (has_fixed_effects_) {
+					fixed_effects_ptr = fixed_effects_.data();
+				}
+				CalcStdDevCoefNonGaussian(num_covariates_, beta_, cov_pars, fixed_effects_ptr, std_dev_beta);
+			}
+			for (int i = 0; i < num_covariates_; ++i) {
+				std_dev_coef[i] = std_dev_beta[i];
+			}
+		}//end CalculateStandardErrorsCoefs
 
 		bool CheckOptimizerHasConverged(const vec_t& cov_aux_pars,
 			const vec_t& cov_aux_pars_lag1,
@@ -2319,6 +2347,13 @@ namespace GPBoost {
 		*/
 		bool EstimateAuxPars() const {
 			return estimate_aux_pars_;
+		}
+
+		/*!
+		* \brief Return true if aux_pars have been set or estimated
+		*/
+		bool AuxParsHaveBeenSetOrEstimated() {
+			return likelihood_[unique_clusters_[0]]->AuxParsHaveBeenSet();
 		}
 
 		/*!
@@ -5742,7 +5777,7 @@ namespace GPBoost {
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr >
 		void CalcPsiInv(T_mat& psi_inv, data_size_t cluster_i, bool only_at_non_zeros_of_psi) {
 			if (gp_approx_ == "vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
-				Log::REFatal("'CalcPsiInv': no implemented for approximation '%s' ", gp_approx_.c_str());
+				Log::REFatal("'CalcPsiInv': this is not implemented for the approximation '%s' ", gp_approx_.c_str());
 			}
 			if (use_woodbury_identity_) {
 				sp_mat_t MInvSqrtZt;
@@ -5796,7 +5831,7 @@ namespace GPBoost {
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
 		void CalcPsiInv(den_mat_t& psi_inv, data_size_t cluster_i, bool) {
 			if (gp_approx_ == "vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
-				Log::REFatal("'CalcPsiInv': no implemented for approximation '%s' ", gp_approx_.c_str());
+				Log::REFatal("'CalcPsiInv': this is not implemented for the approximation '%s' ", gp_approx_.c_str());
 			}
 			if (use_woodbury_identity_) {//typically currently not called as use_woodbury_identity_ is only true for grouped REs only i.e. sparse matrices
 				den_mat_t MInvSqrtZt;
@@ -7001,6 +7036,28 @@ namespace GPBoost {
 				}
 			}
 		}//end TransformBackCovPars
+
+		/*!
+		* \brief Make a warning of some parameters are e.g. too large
+		* \param cov_pars Covariance parameters (on transformed scale)
+		*/
+		void CovarianceParameterRangeWarning(const vec_t& cov_pars) {
+			CHECK(cov_pars.size() == num_cov_par_);
+			for (int igp = 0; igp < num_sets_re_; ++igp) {
+				for (int j = 0; j < num_comps_total_; ++j) {
+					const vec_t pars = cov_pars.segment(ind_par_[j] + igp * num_cov_par_per_set_re_, ind_par_[j + 1] - ind_par_[j]);
+					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
+						re_comps_ip_[unique_clusters_[0]][igp][j]->CovarianceParameterRangeWarning(pars);
+					}
+					else if (gp_approx_ == "vecchia") {
+						re_comps_vecchia_[unique_clusters_[0]][igp][j]->CovarianceParameterRangeWarning(pars);
+					}
+					else {
+						re_comps_[unique_clusters_[0]][igp][j]->CovarianceParameterRangeWarning(pars);
+					}
+				}
+			}
+		}//end CovarianceParameterRangeWarning
 
 		/*!
 		* \brief Transform the linear regression coefficients to the scale on which the optimization is done
@@ -8886,6 +8943,9 @@ namespace GPBoost {
 			else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 				CalcFisherInformation_FITC_FSA(cov_pars, FI, transf_scale, include_error_var, first_cov_par);
 			}//end gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering"
+			else if (gp_approx_ == "full_scale_vecchia") {
+				Log::REFatal("'CalcFisherInformation': this is not implemented for the approximation '%s' ", gp_approx_.c_str());
+			}
 			else if (use_woodbury_identity_) {
 				CalcFisherInformation_Only_Grouped_REs_Woodbury(cov_pars, FI, transf_scale, include_error_var, use_saved_psi_inv, first_cov_par);
 			}//end use_woodbury_identity_

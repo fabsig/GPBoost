@@ -1408,7 +1408,6 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \param optimizer Optimizer for covariance parameters
 * \param momentum_offset Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc)
 * \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
-* \param calc_std_dev If true, approximate standard deviations are calculated (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
 * \param num_covariates Number of covariates
 * \param init_coef Initial values for the regression coefficients
 * \param lr_coef Learning rate for fixed-effect linear coefficients
@@ -1441,7 +1440,6 @@ GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
     const char* optimizer,
     int momentum_offset,
     const char* convergence_criterion,
-    bool calc_std_dev,
     int num_covariates,
     double* init_coef,
     double lr_coef,
@@ -1511,6 +1509,9 @@ GPBOOST_C_EXPORT int GPB_EvalNegLogLikelihood(REModelHandle handle,
 */
 GPBOOST_C_EXPORT int GPB_GetCurrentNegLogLikelihood(REModelHandle handle,
     double* negll);
+
+GPBOOST_C_EXPORT int GPB_CanCalculateStandardErrorsCovPars(REModelHandle handle,
+    int* out);
 
 /*!
 * \brief Get covariance parameters

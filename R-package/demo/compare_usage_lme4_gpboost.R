@@ -28,11 +28,11 @@ summary(mod_lme4)
 fixed_effects_matrix <- model.matrix(weight ~ Diet + as.factor(Time), data = ChickWeight)
 mod_gpb <- fitGPModel(X = fixed_effects_matrix, 
                       group_data = ChickWeight$Chick, 
-                      y = ChickWeight$weight, params = list(std_dev = TRUE))
+                      y = ChickWeight$weight)
 summary(mod_gpb)
 # Alternative way:
 mod_gpb <- GPModel(group_data = ChickWeight$Chick)
-fit(mod_gpb, X = fixed_effects_matrix, y = ChickWeight$weight, params = list(std_dev = TRUE))
+fit(mod_gpb, X = fixed_effects_matrix, y = ChickWeight$weight)
 
 
 #################################
@@ -52,7 +52,7 @@ chick_nested_diet <- get_nested_categories(ChickWeight$Diet, ChickWeight$Chick)
 fixed_effects_matrix <- model.matrix(weight ~ as.factor(Time), data = ChickWeight)
 mod_gpb <- fitGPModel(X = fixed_effects_matrix, 
                       group_data = cbind(diet=ChickWeight$Diet, chick_nested_diet), 
-                      y = ChickWeight$weight, params = list(std_dev = TRUE))
+                      y = ChickWeight$weight)
 summary(mod_gpb)
 
 
@@ -72,5 +72,5 @@ fixed_effects_matrix <- model.matrix(weight ~ Diet + as.factor(Time), data = Chi
 mod_gpb <- fitGPModel(X = fixed_effects_matrix, 
                       group_data = ChickWeight$Chick, 
                       group_rand_coef_data = ChickWeight$Time, ind_effect_group_rand_coef = c(1),
-                      y = ChickWeight$weight, params = list(std_dev = TRUE))
+                      y = ChickWeight$weight)
 summary(mod_gpb)

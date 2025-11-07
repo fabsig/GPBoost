@@ -27,14 +27,14 @@ X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
 
 #--------------------Grouped random effects model: single-level random effect----------------
 gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1,
-                       likelihood="gaussian", params = list(std_dev = TRUE))
+                       likelihood="gaussian")
 summary(gp_model)
 
 
 \donttest{
 #--------------------Gaussian process model----------------
 gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-                       likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
+                       likelihood="gaussian", y = y, X = X1)
 summary(gp_model)
 }
 

@@ -39,7 +39,7 @@ install.packages("gpboost", repos = "https://cran.r-project.org")
 
 It is much easier to install the package from CRAN. However, the package can also be build from source as described in the following. In short, the **main steps** for installation are the following ones:
 
-* Install [**git**](https://git-scm.com/downloads)
+* Install [**git**](https://git-scm.com/install/)
 * Install [**CMake**](https://cmake.org/)
 * Install [**Rtools**](https://cran.r-project.org/bin/windows/Rtools/) (**for Windows only**). Choose the option 'add rtools to system PATH'.
 * Make sure that you have an appropriate **C++ compiler** (see below for more details). E.g. for Windows, simply download the free [Visual Studio Community Edition](https://visualstudio.microsoft.com/downloads/) and do not forget to select 'Desktop development with C++' when installing it
@@ -54,7 +54,7 @@ Below is a more complete installation guide.
 
 ### Preparation
 
-You need to install [git](https://git-scm.com/downloads) and [CMake](https://cmake.org/) first. Note that 32-bit R/Rtools is not supported for custom installation.
+You need to install [git](https://git-scm.com/install/) and [CMake](https://cmake.org/) first. Note that 32-bit R/Rtools is not supported for custom installation.
 
 #### Windows Preparation
 

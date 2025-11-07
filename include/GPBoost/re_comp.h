@@ -182,6 +182,12 @@ namespace GPBoost {
 			return(cov_pars_);
 		}
 
+		/*!
+		* \brief Make a warning of some parameters are e.g. too large
+		* \param cov_pars Covariance parameters (on transformed scale)
+		*/
+		virtual void CovarianceParameterRangeWarning(const vec_t& pars) = 0;
+
 	protected:
 		/*! \brief Number of data points */
 		data_size_t num_data_;
@@ -696,6 +702,8 @@ namespace GPBoost {
 			return(num_group_);
 		}
 
+		void CovarianceParameterRangeWarning(const vec_t& ) override { }
+
 	private:
 		/*! \brief Number of groups */
 		data_size_t num_group_;
@@ -1183,8 +1191,11 @@ namespace GPBoost {
 		* \brief Function that sets the covariance parameters
 		* \param pars Vector of length 2 with covariance parameters (variance and inverse range)
 		*/
-		void SetCovPars(const vec_t& pars) override {
+		void SetCovPars(const vec_t& pars_in) override {
+			vec_t pars = pars_in;
 			CHECK((int)pars.size() == this->num_cov_par_);
+			cov_function_->CapPars(pars);
+			cov_function_->CheckPars(pars);
 			this->cov_pars_ = pars;
 		}
 
@@ -1691,6 +1702,10 @@ namespace GPBoost {
 		void GetSubSetCoords(std::vector<int> ind, 
 			den_mat_t& coords_sub) const {
 			coords_sub = coords_(ind, Eigen::all);
+		}
+
+		void CovarianceParameterRangeWarning(const vec_t& pars) override { 
+			cov_function_->CovarianceParameterRangeWarning(pars);
 		}
 
 	private:

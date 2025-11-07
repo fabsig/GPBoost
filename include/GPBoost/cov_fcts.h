@@ -321,6 +321,13 @@ namespace GPBoost {
 					CHECK(pars[i] > 0.);
 				}
 			}
+		}//CheckPars
+
+		/*!
+		* \brief Make a warning of some parameters are e.g. too large
+		* \param cov_pars Covariance parameters (on transformed scale)
+		*/
+		void CovarianceParameterRangeWarning(const vec_t& pars) const {
 			if (cov_fct_type_ == "matern_estimate_shape" || cov_fct_type_ == "matern_ard_estimate_shape") {
 				if (pars[num_cov_par_ - 1] > LARGE_SHAPE_WARNING_THRESHOLD_) {
 					Log::REInfo(LARGE_SHAPE_WARNING_);
@@ -331,7 +338,7 @@ namespace GPBoost {
 					Log::REInfo(LARGE_SHAPE_WARNING_);
 				}
 			}
-		}//CheckPars
+		}//CovarianceParameterRangeWarning
 
 		/*!
 		* \brief Cap parameters
@@ -474,14 +481,11 @@ namespace GPBoost {
 		void CalculateCovMat(const T_mat& dist,
 			const den_mat_t& coords,
 			const den_mat_t& coords_pred,
-			const vec_t& pars_in,
+			const vec_t& pars,
 			T_mat& sigma,
 			bool is_symmmetric) const {
 			// some checks
-			CHECK(pars_in.size() == num_cov_par_);
-			vec_t pars = pars_in;
-			CapPars(pars);
-			CheckPars(pars);
+			CHECK(pars.size() == num_cov_par_);
 			if (use_precomputed_dist_for_calc_cov_) {
 				CHECK(dist.rows() > 0);
 				CHECK(dist.cols() > 0);
@@ -595,14 +599,11 @@ namespace GPBoost {
 		void CalculateCovMat(const T_mat& dist,
 			const den_mat_t& coords,
 			const den_mat_t& coords_pred,
-			const vec_t& pars_in,
+			const vec_t& pars,
 			T_mat& sigma,
 			bool is_symmmetric) const {
 			// some checks
-			CHECK(pars_in.size() == num_cov_par_);
-			vec_t pars = pars_in;
-			CapPars(pars);
-			CheckPars(pars);
+			CHECK(pars.size() == num_cov_par_);
 			CHECK(dist.rows() > 0);//dist is used to define sigma
 			CHECK(dist.cols() > 0);
 			if (is_symmmetric) {
@@ -717,12 +718,9 @@ namespace GPBoost {
 		*/
 		void CalculateCovMat(const vec_t& coords,
 			const vec_t& coords_pred,
-			const vec_t& pars_in,
+			const vec_t& pars,
 			double& sigma) const {
-			CHECK(pars_in.size() == num_cov_par_);
-			vec_t pars = pars_in;
-			CapPars(pars);
-			CheckPars(pars);
+			CHECK(pars.size() == num_cov_par_);
 			if (cov_fct_type_ == "space_time_gneiting") {
 				sigma = SpaceTimeGneitingCovariance(coords, coords_pred, pars);
 			}
@@ -738,12 +736,9 @@ namespace GPBoost {
 		* \param[out] sigma Covariance at dist
 		*/
 		void CalculateCovMat(double dist,
-			const vec_t& pars_in,
+			const vec_t& pars,
 			double& sigma) const {
-			CHECK(pars_in.size() == num_cov_par_);
-			vec_t pars = pars_in;
-			CapPars(pars);
-			CheckPars(pars);
+			CHECK(pars.size() == num_cov_par_);
 			if (cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard" || 
 				cov_fct_type_ == "gaussian_ard" || cov_fct_type_ == "linear") {
 				Log::REFatal("'CalculateCovMat()' is not implemented for a single distance when cov_fct_type_ == '%s' ", cov_fct_type_.c_str());
@@ -907,15 +902,13 @@ namespace GPBoost {
 			const den_mat_t& coords,
 			const den_mat_t& coords_pred,
 			const T_mat& sigma,
-			const vec_t& pars_in,
+			const vec_t& pars,
 			T_mat& sigma_grad,
 			bool transf_scale,
 			double nugget_var,
 			int ind_range,
 			bool is_symmmetric) const {
-			CHECK(pars_in.size() == num_cov_par_);
-			vec_t pars = pars_in;
-			CapPars(pars);
+			CHECK(pars.size() == num_cov_par_);
 			if (use_precomputed_dist_for_calc_cov_) {
 				CHECK(sigma.cols() == dist.cols());
 				CHECK(sigma.rows() == dist.rows());
@@ -1011,15 +1004,13 @@ namespace GPBoost {
 			const den_mat_t& coords,
 			const den_mat_t& coords_pred,
 			const T_mat& sigma,
-			const vec_t& pars_in,
+			const vec_t& pars,
 			T_mat& sigma_grad,
 			bool transf_scale,
 			double nugget_var,
 			int ind_range,
 			bool is_symmmetric) const {
-			CHECK(pars_in.size() == num_cov_par_);
-			vec_t pars = pars_in;
-			CapPars(pars);
+			CHECK(pars.size() == num_cov_par_);
 			CHECK(sigma.cols() == sigma.rows());
 			if (use_precomputed_dist_for_calc_cov_) {
 				CHECK(sigma.cols() == dist.cols());

@@ -710,7 +710,6 @@ GPBOOST_C_EXPORT SEXP GPB_REModelFree_R(
 * \param optimizer Options: "gradient_descent" or "fisher_scoring"
 * \param momentum_offset Number of iterations for which no mometum is applied in the beginning
 * \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" (default) or "relative_change_in_parameters"
-* \param calc_std_dev If true, approximate standard deviations are calculated (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
 * \param num_covariates Number of covariates
 * \param init_coef Initial values for the regression coefficients
 * \param lr_coef Learning rate for fixed-effect linear coefficients
@@ -744,7 +743,6 @@ GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
 	SEXP optimizer,
 	SEXP momentum_offset,
 	SEXP convergence_criterion,
-	SEXP calc_std_dev,
 	SEXP num_covariates,
 	SEXP init_coef,
 	SEXP lr_coef,
@@ -822,6 +820,11 @@ GPBOOST_C_EXPORT SEXP GPB_EvalNegLogLikelihood_R(
 GPBOOST_C_EXPORT SEXP GPB_GetCurrentNegLogLikelihood_R(
 	SEXP handle,
 	SEXP negll
+);
+
+GPBOOST_C_EXPORT SEXP GPB_CanCalculateStandardErrorsCovPars_R(
+	SEXP handle,
+	SEXP out
 );
 
 /*!

@@ -259,10 +259,6 @@ fixed effects linear regression term (if there is one)}
     \item{trace: \code{boolean} (default = FALSE). 
     If TRUE, information on the progress of the parameter
     optimization is printed}
-    \item{std_dev: \code{boolean} (default = TRUE). 
-    If TRUE, approximate standard deviations are calculated for the covariance and linear regression parameters 
-    (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
-    square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods) }
     \item{init_cov_pars: \code{vector} with \code{numeric} elements (default = NULL). 
     Initial values for covariance parameters of Gaussian process and 
     random effects (can be NULL). The order is same as the order 
@@ -422,6 +418,10 @@ predictive covariance is calculated in addition to the (posterior) predictive me
 
 \item{predict_var}{A \code{boolean}. If TRUE, the (posterior) 
 predictive variances are calculated}
+
+\item{std_err}{A \code{boolean}. If TRUE, (approximate) standard errors are calculated 
+(= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
+square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)}
 
 \item{vecchia_approx}{Discontinued. Use the argument \code{gp_approx} instead}
 }

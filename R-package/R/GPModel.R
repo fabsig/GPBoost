@@ -228,10 +228,6 @@
 #'                \item{trace: \code{boolean} (default = FALSE). 
 #'                If TRUE, information on the progress of the parameter
 #'                optimization is printed}
-#'                \item{std_dev: \code{boolean} (default = TRUE). 
-#'                If TRUE, approximate standard deviations are calculated for the covariance and linear regression parameters 
-#'                (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
-#'                square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods) }
 #'                \item{init_cov_pars: \code{vector} with \code{numeric} elements (default = NULL). 
 #'                Initial values for covariance parameters of Gaussian process and 
 #'                random effects (can be NULL). The order is same as the order 
@@ -381,6 +377,9 @@
 #' predictive covariance is calculated in addition to the (posterior) predictive mean
 #' @param predict_var A \code{boolean}. If TRUE, the (posterior) 
 #' predictive variances are calculated
+#' @param std_err A \code{boolean}. If TRUE, (approximate) standard errors are calculated 
+#'                (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
+#'                square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
 #' @param vecchia_approx Discontinued. Use the argument \code{gp_approx} instead
 
 
@@ -950,9 +949,14 @@ gpb.GPModel <- R6::R6Class(
         private$weights <- NULL
       }
       if (private$model_has_been_loaded_from_saved_file) {
-        self$set_optim_params(params = model_list[["params"]])
-        if (private$has_offset) {
-          self$set_offset_data(offset = model_list[["offset"]])
+        # pseudo call to fit to save things in C++ 
+        params <- model_list[["params"]]
+        params[["maxit"]] <- 0
+        if (private$has_covariates) {
+          self$fit(y = private$y_loaded_from_file, X = private$X_loaded_from_file, 
+                   params = params, offset = model_list[["offset"]])
+        } else {
+          self$fit(y = private$y_loaded_from_file, params = params, offset = model_list[["offset"]])
         }
       }
     }, # End initialize
@@ -1012,11 +1016,6 @@ gpb.GPModel <- R6::R6Class(
         }
         if (dim(X)[1] != private$num_data) {
           stop("fit.GPModel: Number of data points in ", sQuote("X"), " does not match number of data points of initialized model")
-        }
-        if (is.null(params[["std_dev"]]) & !private$std_dev_has_been_set) {
-          if (!(dim(X)[2] == 1 & all(X[,1] == 1))) { # not only intercept
-            params[["std_dev"]] <- TRUE
-          }
         }
         private$has_covariates <- TRUE
         private$num_covariates <- as.integer(dim(X)[2])
@@ -1170,7 +1169,6 @@ gpb.GPModel <- R6::R6Class(
         , optimizer_cov_c_str
         , private$params[["momentum_offset"]]
         , private$params[["convergence_criterion"]]
-        , private$params[["std_dev"]]
         , private$num_coef
         , private$params[["init_coef"]]
         , private$params[["lr_coef"]]
@@ -1236,58 +1234,59 @@ gpb.GPModel <- R6::R6Class(
       return(params)
     },
     
-    get_cov_pars = function() {
-      if (private$model_has_been_loaded_from_saved_file) {
-        optim_pars <- as.vector(t(private$cov_pars_loaded_from_file))
-      } else {
-        private$update_cov_par_names(self$get_likelihood_name())
-        if (private$params[["std_dev"]]) {
-          optim_pars <- numeric(2 * private$num_cov_pars)
-        } else {
-          optim_pars <- numeric(private$num_cov_pars)
-        }
-        .Call(
-          GPB_GetCovPar_R
-          , private$handle
-          , private$params[["std_dev"]]
-          , optim_pars
-        )
+    get_cov_pars = function(std_err = FALSE) {
+      if (!is.logical(std_err)) {
+        stop("GPModel: ", sQuote("std_err"), " needs to be of boolean type ")
       }
+      if (!self$can_calculate_standard_errors_cov_pars()) {
+        std_err <- FALSE
+      }
+      private$update_cov_par_names(self$get_likelihood_name())
+      if (std_err) {
+        optim_pars <- numeric(2 * private$num_cov_pars)
+      } else {
+        optim_pars <- numeric(private$num_cov_pars)
+      }
+      .Call(
+        GPB_GetCovPar_R
+        , private$handle
+        , std_err
+        , optim_pars
+      )
       cov_pars <- optim_pars[1:private$num_cov_pars]
       names(cov_pars) <- private$cov_par_names
-      if (private$params[["std_dev"]] & self$get_likelihood_name() == "gaussian" & private$gp_approx != "vecchia_latent") {
-        cov_pars_std_dev <- optim_pars[1:private$num_cov_pars + private$num_cov_pars]
-        cov_pars <- rbind(cov_pars, cov_pars_std_dev)
-        rownames(cov_pars) <- c("Param.", "Std. dev.")
+      if (std_err) {
+        cov_pars_std_err <- optim_pars[1:private$num_cov_pars + private$num_cov_pars]
+        cov_pars <- rbind(cov_pars, cov_pars_std_err)
+        rownames(cov_pars) <- c("Param.", "Std. err.")
       }
       return(cov_pars)
     },
     
-    get_coef = function() {
-      if (private$model_has_been_loaded_from_saved_file) {
-        optim_pars <- as.vector(t(private$coefs_loaded_from_file))
-      } else {
-        if (is.null(private$num_covariates)) {
-          stop("GPModel: ", sQuote("fit"), " has not been called")
-        }
-        if (private$params[["std_dev"]]) {
-          optim_pars <- numeric(2 * private$num_coef)
-        } else {
-          optim_pars <- numeric(private$num_coef)
-        }
-        .Call(
-          GPB_GetCoef_R
-          , private$handle
-          , private$params[["std_dev"]]
-          , optim_pars
-        )
+    get_coef = function(std_err = FALSE) {
+      if (!is.logical(std_err)) {
+        stop("GPModel: ", sQuote("std_err"), " needs to be of boolean type ")
       }
+      if (is.null(private$num_covariates)) {
+        stop("GPModel: ", sQuote("fit"), " has not been called")
+      }
+      if (std_err) {
+        optim_pars <- numeric(2 * private$num_coef)
+      } else {
+        optim_pars <- numeric(private$num_coef)
+      }
+      .Call(
+        GPB_GetCoef_R
+        , private$handle
+        , std_err
+        , optim_pars
+      )
       coef <- optim_pars[1:private$num_coef]
       names(coef) <- private$coef_names
-      if (private$params[["std_dev"]]) {
-        coef_std_dev <- optim_pars[1:private$num_coef+private$num_coef]
-        coef <- rbind(coef, coef_std_dev)
-        rownames(coef) <- c("Param.", "Std. dev.")
+      if (std_err) {
+        coef_std_err <- optim_pars[1:private$num_coef+private$num_coef]
+        coef <- rbind(coef, coef_std_err)
+        rownames(coef) <- c("Param.", "Std. err.")
       }
       return(coef)
     },
@@ -1718,29 +1717,7 @@ gpb.GPModel <- R6::R6Class(
           if (dim(X_pred)[2] != private$num_covariates) {
             stop("predict.GPModel: Number of covariates in ", sQuote("X_pred"), " is not correct")
           }
-          if (private$model_has_been_loaded_from_saved_file) {
-            if (is.matrix(private$coefs_loaded_from_file)) {
-              coefs <- private$coefs_loaded_from_file[1,]
-            } else {
-              coefs <- private$coefs_loaded_from_file
-            }
-            if (!is.null(offset)) {
-              self$check_format_offset_data(offset)
-              offset <- offset + as.vector(private$X_loaded_from_file %*% coefs)
-            } else if (private$has_offset) {
-              offset <- self$get_offset_data() + as.vector(private$X_loaded_from_file %*% coefs)
-            } else {
-              offset <- as.vector(private$X_loaded_from_file %*% coefs)
-            }
-            if (is.null(offset_pred)) {
-              offset_pred <- as.vector(X_pred %*% coefs)
-            } else {
-              offset_pred <- offset_pred + as.vector(X_pred %*% coefs)
-            }
-            X_pred <- NULL
-          } else {
-            X_pred <- as.vector(matrix(X_pred))
-          }
+          X_pred <- as.vector(matrix(X_pred))
         } # End set data for linear fixed-effects
         # Set cluster_ids_pred for independent processes
         if (!is.null(cluster_ids_pred)) {
@@ -1861,8 +1838,7 @@ gpb.GPModel <- R6::R6Class(
     
     predict_training_data_random_effects = function(predict_var = FALSE) {
       if(isTRUE(private$model_has_been_loaded_from_saved_file)){
-        stop("GPModel: 'predict_training_data_random_effects' is currently not 
-        implemented for models that have been loaded from a saved file")
+        stop("GPModel: 'predict_training_data_random_effects' is currently not implemented for models that have been loaded from a saved file. Use the 'predict' function instead ")
       }
       num_re_comps = (private$num_group_re + private$num_group_rand_coef + 
                         private$num_gp + private$num_gp_rand_coef) * private$num_sets_re
@@ -2028,6 +2004,16 @@ gpb.GPModel <- R6::R6Class(
       return(num_it)
     },
     
+    can_calculate_standard_errors_cov_pars = function() {
+      out <- integer(1)
+      .Call(
+        GPB_CanCalculateStandardErrorsCovPars_R
+        , private$handle
+        , out
+      )
+      return(as.logical(out))
+    },
+    
     get_num_aux_pars = function() {
       num_aux_pars <- integer(1)
       .Call(
@@ -2083,6 +2069,7 @@ gpb.GPModel <- R6::R6Class(
       model_list[["likelihood"]] <- self$get_likelihood_name()
       model_list[["likelihood_additional_param"]] <- private$likelihood_additional_param
       model_list[["cov_pars"]] <- self$get_cov_pars()
+      model_list[["params"]][["init_cov_pars"]] <- self$get_cov_pars()
       # Response data
       if (include_response_data) {
         model_list[["y"]] <- self$get_response_data()
@@ -2122,6 +2109,7 @@ gpb.GPModel <- R6::R6Class(
       model_list[["has_covariates"]] <- private$has_covariates
       if (private$has_covariates) {
         model_list[["coefs"]] <- self$get_coef()
+        model_list[["params"]][["init_coef"]] <- model_list[["coefs"]]
         model_list[["num_covariates"]] <- private$num_covariates
         model_list[["num_coef"]] <- private$num_coef
         model_list[["X"]] <- self$get_covariate_data()
@@ -2168,8 +2156,8 @@ gpb.GPModel <- R6::R6Class(
       return(invisible(self))
     },
     
-    summary = function() {
-      cov_pars <- self$get_cov_pars()
+    summary = function(std_err = TRUE) {
+      cov_pars <- self$get_cov_pars(std_err = std_err)
       cat("=====================================================\n")
       cat("Model summary:\n")
       cat(paste0("Nb. observations: ", self$get_num_data(),"\n"))
@@ -2205,10 +2193,10 @@ gpb.GPModel <- R6::R6Class(
         print(round(cov_pars,4))
       }
       if (private$has_covariates) {
-        coefs <- self$get_coef()
+        coefs <- self$get_coef(std_err = std_err)
         cat("-----------------------------------------------------\n")
         cat("Linear regression coefficients (fixed effects):\n")
-        if (private$params$std_dev) {
+        if (std_err) {
           z_values <- coefs[1,] / coefs[2,]
           p_values <- 2 * exp(pnorm(-abs(z_values), log.p = TRUE))
           coefs_summary <- cbind(t(coefs),"z value"=z_values,"P(>|z|)"=p_values)
@@ -2227,9 +2215,11 @@ gpb.GPModel <- R6::R6Class(
         cat("Additional parameters:\n")
         print(round(aux_pars,4))
       }
-      if (private$params$maxit == self$get_num_optim_iter()) {
-        cat("-----------------------------------------------------\n")
-        cat("Note: no convergence after the maximal number of iterations\n")
+      if (!private$model_has_been_loaded_from_saved_file) {
+        if (private$params$maxit == self$get_num_optim_iter()) {
+          cat("-----------------------------------------------------\n")
+          cat("Note: no convergence after the maximal number of iterations\n")
+        }
       }
       cat("=====================================================\n")
     }
@@ -2304,7 +2294,6 @@ gpb.GPModel <- R6::R6Class(
                   momentum_offset = 2L,
                   trace = FALSE,
                   convergence_criterion = "relative_change_in_log_likelihood",
-                  std_dev = FALSE,
                   cg_max_num_it = 1000L,
                   cg_max_num_it_tridiag = 1000L,
                   cg_delta_conv = 1e-2,
@@ -2317,7 +2306,6 @@ gpb.GPModel <- R6::R6Class(
                   m_lbfgs = -1L, # default value is set in C++
                   delta_conv_mode_finding = -1 # default value is set in C++
     ),
-    std_dev_has_been_set = FALSE,
     num_sets_re = 1,
     num_sets_fe = 1,
     
@@ -2363,6 +2351,9 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(params[["piv_chol_rank"]])) {
         stop("GPModel: The argument 'piv_chol_rank' is discontinued. Use the argument 'fitc_piv_chol_preconditioner_rank' instead ")
       }
+      if (!is.null(params[["std_dev"]])) {
+        stop("GPModel: The argument 'std_dev' is discontinued. Standard errors are calculated directly in the 'summary()' and 'get_cov_pars()' & 'get_coef()' functions. See the 'std_err' argument of these functions ")
+      }
       ## Check format of parameters
       numeric_params <- c("lr_cov", "acc_rate_cov", "delta_rel_conv",
                           "lr_coef", "acc_rate_coef", "cg_delta_conv", "delta_conv_mode_finding")
@@ -2373,7 +2364,7 @@ gpb.GPModel <- R6::R6Class(
                           "m_lbfgs")
       character_params <- c("optimizer_cov", "convergence_criterion",
                             "optimizer_coef", "cg_preconditioner_type")
-      logical_params <- c("use_nesterov_acc", "trace", "std_dev", 
+      logical_params <- c("use_nesterov_acc", "trace",  
                           "reuse_rand_vec_trace", "estimate_aux_pars")
       if (!is.null(params[["init_cov_pars"]])) {
         if (is.vector(params[["init_cov_pars"]])) {
@@ -2424,9 +2415,6 @@ gpb.GPModel <- R6::R6Class(
       }
       ## Update private$params
       for (param in names(params)) {
-        if (param == "std_dev") { 
-          private$std_dev_has_been_set <- TRUE
-        }
         if (param == "estimate_cov_par_index") {
           if (params[["estimate_cov_par_index"]][[1]] >= 0 & 
               length(params[["estimate_cov_par_index"]]) != private$num_cov_pars) {
@@ -2608,7 +2596,7 @@ fit <- function(gp_model, y, X, params, offset = NULL, fixed_effects = NULL) Use
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
 #' gp_model <- GPModel(group_data = group_data[,1], likelihood="gaussian")
-#' fit(gp_model, y = y, X = X1, params = list(std_dev = TRUE))
+#' fit(gp_model, y = y, X = X1)
 #' summary(gp_model)
 #' # Make predictions
 #' pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
@@ -2624,7 +2612,7 @@ fit <- function(gp_model, y, X, params, offset = NULL, fixed_effects = NULL) Use
 #' #--------------------Gaussian process model----------------
 #' gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
 #'                     likelihood="gaussian")
-#' fit(gp_model, y = y, X = X1, params = list(std_dev = TRUE))
+#' fit(gp_model, y = y, X = X1)
 #' summary(gp_model)
 #' # Make predictions
 #' pred <- predict(gp_model, gp_coords_pred = coords_test, 
@@ -2676,7 +2664,7 @@ fit.GPModel <- function(gp_model,
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
 #' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1,
-#'                        likelihood="gaussian", params = list(std_dev = TRUE))
+#'                        likelihood="gaussian")
 #' summary(gp_model)
 #' # Make predictions
 #' pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
@@ -2693,12 +2681,12 @@ fit.GPModel <- function(gp_model,
 #' gp_model <- fitGPModel(group_data = group_data, likelihood="gaussian",
 #'                        group_rand_coef_data = X[,2],
 #'                        ind_effect_group_rand_coef = 1,
-#'                        y = y, X = X1, params = list(std_dev = TRUE))
+#'                        y = y, X = X1)
 #' summary(gp_model)
 #'
 #' #--------------------Gaussian process model----------------
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-#'                        likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
+#'                        likelihood="gaussian", y = y, X = X1)
 #' summary(gp_model)
 #' # Make predictions
 #' pred <- predict(gp_model, gp_coords_pred = coords_test, 
@@ -2715,13 +2703,13 @@ fit.GPModel <- function(gp_model,
 #' #--------------------Gaussian process model with random coefficients----------------
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
 #'                        gp_rand_coef_data = X[,2], y=y,
-#'                        likelihood = "gaussian", params = list(std_dev = TRUE))
+#'                        likelihood = "gaussian")
 #' summary(gp_model)
 #'
 #' #--------------------Combine Gaussian process with grouped random effects----------------
 #' gp_model <- fitGPModel(group_data = group_data,
 #'                        gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-#'                        likelihood = "gaussian", y = y, X = X1, params = list(std_dev = TRUE))
+#'                        likelihood = "gaussian", y = y, X = X1)
 #' summary(gp_model)
 #' }
 #' 
@@ -2819,14 +2807,14 @@ fitGPModel <- function(likelihood = "gaussian",
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
 #' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1,
-#'                        likelihood="gaussian", params = list(std_dev = TRUE))
+#'                        likelihood="gaussian")
 #' summary(gp_model)
 #'
 #'
 #' \donttest{
 #' #--------------------Gaussian process model----------------
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-#'                        likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
+#'                        likelihood="gaussian", y = y, X = X1)
 #' summary(gp_model)
 #' }
 #' 
@@ -2886,7 +2874,7 @@ summary.GPModel <- function(object, ...){
 #' 
 #' #--------------------Grouped random effects model: single-level random effect----------------
 #' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1,
-#'                        likelihood="gaussian", params = list(std_dev = TRUE))
+#'                        likelihood="gaussian")
 #' summary(gp_model)
 #' # Make predictions
 #' pred <- predict(gp_model, group_data_pred = group_data_test[,1], 
@@ -2902,7 +2890,7 @@ summary.GPModel <- function(object, ...){
 #'
 #' #--------------------Gaussian process model----------------
 #' gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
-#'                        likelihood="gaussian", y = y, X = X1, params = list(std_dev = TRUE))
+#'                        likelihood="gaussian", y = y, X = X1)
 #' summary(gp_model)
 #' # Make predictions
 #' pred <- predict(gp_model, gp_coords_pred = coords_test, 
@@ -3332,7 +3320,7 @@ predict_training_data_random_effects.GPModel <- function(gp_model,
 
 #' Get (estimated) covariance parameters
 #' 
-#' Get (estimated) covariance parameters and standard deviations (if std_dev=TRUE was set in \code{fit})
+#' Get (estimated) covariance parameters and standard error (if std_err=TRUE)
 #' 
 #' @param gp_model A \code{GPModel}
 #' @inheritParams GPModel_shared_params
@@ -3348,11 +3336,11 @@ predict_training_data_random_effects.GPModel <- function(gp_model,
 #' @author Fabio Sigrist
 #' @export 
 #' 
-get_cov_pars <- function(gp_model) UseMethod("get_cov_pars")
+get_cov_pars <- function(gp_model, std_err = FALSE) UseMethod("get_cov_pars")
 
 #' Get (estimated) covariance parameters
 #' 
-#' Get (estimated) covariance parameters and standard deviations (if std_dev=TRUE was set in \code{fit})
+#' Get (estimated) covariance parameters and standard errors (if std_err=TRUE)
 #' 
 #' @param gp_model A \code{GPModel}
 #' @inheritParams GPModel_shared_params
@@ -3371,18 +3359,18 @@ get_cov_pars <- function(gp_model) UseMethod("get_cov_pars")
 #' @author Fabio Sigrist
 #' @export 
 #' 
-get_cov_pars.GPModel <- function(gp_model) {
+get_cov_pars.GPModel <- function(gp_model, std_err = FALSE) {
   
   if (!gpb.check.r6.class(gp_model, "GPModel")) {
     stop("get_cov_pars.GPModel: gp_model needs to be a ", sQuote("GPModel"))
   }
   
-  gp_model$get_cov_pars()
+  gp_model$get_cov_pars(std_err)
 }
 
 #' Get (estimated) linear regression coefficients
 #' 
-#' Get (estimated) linear regression coefficients and standard deviations (if std_dev=TRUE was set in \code{fit})
+#' Get (estimated) linear regression coefficients and standard errors (if std_err=TRUE)
 #' 
 #' @param gp_model A \code{GPModel}
 #' @inheritParams GPModel_shared_params
@@ -3398,11 +3386,11 @@ get_cov_pars.GPModel <- function(gp_model) {
 #' @author Fabio Sigrist
 #' @export 
 #' 
-get_coef <- function(gp_model) UseMethod("get_coef")
+get_coef <- function(gp_model, std_err = FALSE) UseMethod("get_coef")
 
 #' Get (estimated) linear regression coefficients
 #' 
-#' Get (estimated) linear regression coefficients and standard deviations (if std_dev=TRUE was set in \code{fit})
+#' Get (estimated) linear regression coefficients and standard errors (if std_err=TRUE)
 #' 
 #' @param gp_model A \code{GPModel}
 #' @inheritParams GPModel_shared_params
@@ -3421,13 +3409,13 @@ get_coef <- function(gp_model) UseMethod("get_coef")
 #' @author Fabio Sigrist
 #' @export 
 #' 
-get_coef.GPModel <- function(gp_model) {
+get_coef.GPModel <- function(gp_model, std_err = FALSE) {
   
   if (!gpb.check.r6.class(gp_model, "GPModel")) {
     stop("get_coef.GPModel: gp_model needs to be a ", sQuote("GPModel"))
   }
   
-  gp_model$get_coef()
+  gp_model$get_coef(std_err)
 }
 
 #' Get (estimated) auxiliary (additional) parameters of the likelihood
@@ -3502,7 +3490,7 @@ get_aux_pars.GPModel <- function(gp_model) {
 #' fixed_effects_matrix <- model.matrix(weight ~ as.factor(Time), data = ChickWeight)
 #' mod_gpb <- fitGPModel(X = fixed_effects_matrix, 
 #'                       group_data = cbind(diet=ChickWeight$Diet, chick_nested_diet), 
-#'                       y = ChickWeight$weight, params = list(std_dev = TRUE))
+#'                       y = ChickWeight$weight)
 #' summary(mod_gpb)
 #' # This does (almost) the same thing as the following code using lme4:
 #' # mod_lme4 <-  lmer(weight ~ as.factor(Time) + (1 | Diet/Chick), data = ChickWeight, REML = FALSE)
