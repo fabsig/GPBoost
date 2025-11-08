@@ -10,10 +10,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                lr_cov = 0.1, use_nesterov_acc = TRUE,
                                acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
                                optimizer_coef = "gradient_descent", lr_coef = 0.1,
-                               convergence_criterion = "relative_change_in_log_likelihood",
-                               std_dev = FALSE)
-  DEFAULT_OPTIM_PARAMS_STD <- DEFAULT_OPTIM_PARAMS
-  DEFAULT_OPTIM_PARAMS_STD$std_dev = TRUE
+                               convergence_criterion = "relative_change_in_log_likelihood")
   
   # Function that simulates uniform random variables
   sim_rand_unif <- function(n, init_c=0.1){
@@ -55,23 +52,23 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y <- as.vector(Z1 %*% b1) + xi
     # Estimation using Fisher scoring
     gp_model <- GPModel(group_data = group)
-    fit(gp_model, y = y, params = list(std_dev = TRUE, optimizer_cov = "fisher_scoring",
+    fit(gp_model, y = y, params = list(optimizer_cov = "fisher_scoring",
                                        convergence_criterion = "relative_change_in_parameters"))
     cov_pars <- c(0.49348532, 0.02326312, 1.22299521, 0.17995161)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-    expect_equal(dim(gp_model$get_cov_pars())[2], 2)
-    expect_equal(dim(gp_model$get_cov_pars())[1], 2)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_STRICT)
+    expect_equal(dim(gp_model$get_cov_pars(std_err = TRUE))[2], 2)
+    expect_equal(dim(gp_model$get_cov_pars(std_err = TRUE))[1], 2)
     expect_equal(gp_model$get_num_optim_iter(), 5)
     # Can switch between likelihoods
     gp_model <- GPModel(group_data = group)
     gp_model$set_likelihood("gamma")
     gp_model$set_likelihood("gaussian")
-    fit(gp_model, y = y, params = list(std_dev = TRUE, optimizer_cov = "fisher_scoring",
+    fit(gp_model, y = y, params = list( optimizer_cov = "fisher_scoring",
                                        convergence_criterion = "relative_change_in_parameters"))
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_STRICT)
     # Using gradient descent instead of Fisher scoring
     gp_model <- fitGPModel(group_data = group, y = y,
-                           params = list(optimizer_cov = "gradient_descent", std_dev = FALSE,
+                           params = list(optimizer_cov = "gradient_descent",
                                          lr_cov = 0.1, use_nesterov_acc = FALSE, maxit = 1000,
                                          convergence_criterion = "relative_change_in_parameters"))
     cov_pars_est <- as.vector(gp_model$get_cov_pars())
@@ -80,44 +77,44 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(length(cov_pars_est), 2)
     # Using gradient descent with Nesterov acceleration
     gp_model <- fitGPModel(group_data = group, y = y,
-                           params = list(optimizer_cov = "gradient_descent", std_dev = FALSE,
+                           params = list(optimizer_cov = "gradient_descent",
                                          lr_cov = 0.2, use_nesterov_acc = TRUE,
                                          acc_rate_cov = 0.1, maxit = 1000,
                                          convergence_criterion = "relative_change_in_parameters"))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(1,3)])),1E-5)
     # Using gradient descent and a too large learning rate
     gp_model <- fitGPModel(group_data = group, y = y,
-                           params = list(optimizer_cov = "gradient_descent", std_dev = FALSE,
+                           params = list(optimizer_cov = "gradient_descent",
                                          lr_cov = 10, use_nesterov_acc = FALSE,
                                          maxit = 1000, convergence_criterion = "relative_change_in_parameters"))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(1,3)])),TOLERANCE_STRICT)
     # Different termination criterion
     gp_model <- fitGPModel(group_data = group, y = y,
-                           params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
+                           params = list(optimizer_cov = "fisher_scoring", 
                                          convergence_criterion = "relative_change_in_log_likelihood"))
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_STRICT)
     # Nelder-Mead
     gp_model <- fitGPModel(group_data = group, y = y,
-                           params = list(optimizer_cov = "nelder_mead", std_dev = TRUE, delta_rel_conv=1e-6))
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_MEDIUM)
+                           params = list(optimizer_cov = "nelder_mead",  delta_rel_conv=1e-6))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_MEDIUM)
     expect_equal(gp_model$get_num_optim_iter(), 12)
     # Adam
     gp_model <- fitGPModel(group_data = group, y = y,
-                           params = list(optimizer_cov = "adam", std_dev = TRUE))
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_MEDIUM)
+                           params = list(optimizer_cov = "adam"))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_MEDIUM)
     expect_equal(gp_model$get_num_optim_iter(), 275)
     # fix some covariance parameters
-    params_loc <- list(optimizer_cov = "lbfgs", std_dev = TRUE,
+    params_loc <- list(optimizer_cov = "lbfgs", 
                        estimate_cov_par_index = c(1,0), init_cov_pars=c(0.23, 0.45))
     gp_model_fix <- fitGPModel(group_data = group, y = y, params = params_loc)
     nll_opt_fix <- 1229.514733
     cov_pars_fix <- c(0.50600551128, 0.02385332856, 0.45000000000, 0.07083578226)
-    expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars())-cov_pars_fix)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(gp_model_fix$get_cov_pars()[1,2]-params_loc$init_cov_pars[2])),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE))-cov_pars_fix)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model_fix$get_cov_pars(std_err = TRUE)[1,2]-params_loc$init_cov_pars[2])),TOLERANCE_STRICT)
     expect_lt(abs(gp_model_fix$get_current_neg_log_likelihood()-nll_opt_fix), TOLERANCE_STRICT)
     
     # Evaluation of likelihood
-    ll <- gp_model$neg_log_likelihood(y=y,cov_pars=gp_model$get_cov_pars()[1,])
+    ll <- gp_model$neg_log_likelihood(y=y,cov_pars=gp_model$get_cov_pars())
     expect_lt(abs(ll-(1228.293)),1E-2)
     
     # Prediction 
@@ -183,9 +180,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     set.seed(1)
     shuffle_ind <- sample.int(n=n,size=n,replace=FALSE)
     gp_model <- GPModel(group_data = group[shuffle_ind])
-    fit(gp_model, y = y[shuffle_ind], params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE,
+    fit(gp_model, y = y[shuffle_ind], params = list(optimizer_cov = "fisher_scoring", 
                                                     convergence_criterion = "relative_change_in_parameters"))
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_STRICT)
     
     # Inf in response variable data gives error
     y_Inf <- y
@@ -197,11 +194,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y_o <- y + offset
     cov_pars_pred = c(0.5,1.5)
     gp_model_no_offset <- fitGPModel(group_data = group,
-                                     y = y,  params = DEFAULT_OPTIM_PARAMS_STD)
+                                     y = y,  params = DEFAULT_OPTIM_PARAMS)
     pred_no_offset <- predict(gp_model_no_offset, group_data_pred = group_test,
                               cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
     gp_model <- fitGPModel(group_data = group, y = y_o, offset = offset,
-                           params = DEFAULT_OPTIM_PARAMS_STD)
+                           params = DEFAULT_OPTIM_PARAMS)
     pred <- predict(gp_model, group_data_pred = group_test, offset = offset,
                     cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
     pred_offset_not_provided <- predict(gp_model, group_data_pred = group_test,
@@ -213,6 +210,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-pred_offset_not_provided$mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_offset_not_provided$cov))),TOLERANCE_STRICT)
     # Saving model to file and not providing offset for prediction
+    cov_pars_before_save <- as.vector(gp_model$get_cov_pars(std_err = TRUE))
     filename <- tempfile(fileext = ".json")
     saveGPModel(gp_model, filename = filename)
     rm(gp_model)
@@ -221,8 +219,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
     expect_lt(sum(abs(pred$mu-pred_loaded$mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_loaded$cov))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(cov_pars_before_save - as.vector(gp_model_loaded$get_cov_pars(std_err = TRUE)))),TOLERANCE_STRICT)
     # with lbfgs and offset
-    params = DEFAULT_OPTIM_PARAMS_STD
+    params = DEFAULT_OPTIM_PARAMS
     params$optimizer_cov = "lbfgs"
     gp_model_no_offset <- fitGPModel(group_data = group, y = y,  params = params)
     pred_no_offset <- predict(gp_model_no_offset, group_data_pred = group_test,
@@ -242,19 +241,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Fitting with trace = TRUE works
     expect_error( capture.output( 
       gp_model <- fitGPModel(group_data = group, y = y, X = X,
-                             params = list(std_dev = TRUE, maxit = 1, trace = TRUE))
+                             params = list( maxit = 1, trace = TRUE))
       , file='NUL'), NA)
     # Fit model
     gp_model <- fitGPModel(group_data = group,
                            y = y, X = X,
                            params = list(optimizer_cov = "fisher_scoring",
-                                         optimizer_coef = "wls", std_dev = TRUE,
+                                         optimizer_coef = "wls", 
                                          convergence_criterion = "relative_change_in_parameters"))
     cov_pars <- c(0.49205230, 0.02319557, 1.22064076, 0.17959832)
     coef <- c(2.07499902, 0.11269252, 1.94766255, 0.03382472)
     nll <- 1226.885947
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_STRICT)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 6)
     
@@ -282,16 +281,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Fit model using gradient descent instead of wls for regression coefficients
     gp_model <- fitGPModel(group_data = group,
                            y = y, X = X,
-                           params = list(optimizer_cov = "gradient_descent", maxit=1000, std_dev = TRUE,
+                           params = list(optimizer_cov = "gradient_descent", maxit=1000, 
                                          optimizer_coef = "gradient_descent", lr_coef=1, use_nesterov_acc=TRUE))
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_LOOSE)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_LOOSE)
     # Fit model using Nelder-Mead
     gp_model <- fitGPModel(group_data = group,
                            y = y, X = X,
                            params = list(optimizer_cov = "nelder_mead",
-                                         optimizer_coef = "nelder_mead", std_dev = FALSE, delta_rel_conv=1e-6))
+                                         optimizer_coef = "nelder_mead", delta_rel_conv=1e-6))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(1,3)])),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef[c(1,3)])),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 125)
@@ -299,7 +298,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Fit model using Adam
     gp_model <- fitGPModel(group_data = group,
                            y = y, X = X,
-                           params = list(optimizer_cov = "adam", std_dev = FALSE, delta_rel_conv=1e-6))
+                           params = list(optimizer_cov = "adam", delta_rel_conv=1e-6))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars[c(1,3)])),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef[c(1,3)])),TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 354)
@@ -307,9 +306,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Fit model using lbfgs
     gp_model <- fitGPModel(group_data = group,
                            y = y, X = X,
-                           params = list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", std_dev = TRUE))
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_LOOSE)
+                           params = list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs"))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_LOOSE)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_LOOSE)
     
     # With offset / fixed_effects
@@ -317,11 +316,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y_o <- y + offset
     group_test <- c(1,2,m+1)
     X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
-    gp_model_no_offset <- fitGPModel(group_data = group, y = y, X = X, params = DEFAULT_OPTIM_PARAMS_STD)
+    gp_model_no_offset <- fitGPModel(group_data = group, y = y, X = X, params = DEFAULT_OPTIM_PARAMS)
     pred_no_offset <- predict(gp_model_no_offset, group_data_pred = group_test,
                               X_pred = X_test, predict_cov_mat = TRUE)
     gp_model <- fitGPModel(group_data = group, y = y_o, X = X, 
-                           offset = offset, params = DEFAULT_OPTIM_PARAMS_STD)
+                           offset = offset, params = DEFAULT_OPTIM_PARAMS)
     pred <- predict(gp_model, group_data_pred = group_test, offset = offset,
                     X_pred = X_test, predict_cov_mat = TRUE)
     pred_offset_not_provided <- predict(gp_model, group_data_pred = group_test, 
@@ -334,6 +333,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-pred_offset_not_provided$mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_offset_not_provided$cov))),TOLERANCE_STRICT)
     # Saving model to file and not providing offset for prediction
+    cov_pars_before_save <- as.vector(gp_model$get_cov_pars(std_err = TRUE))
+    coef_before_save <- as.vector(gp_model$get_coef(std_err = TRUE))
     filename <- tempfile(fileext = ".json")
     saveGPModel(gp_model, filename = filename)
     rm(gp_model)
@@ -342,8 +343,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            X_pred = X_test, predict_cov_mat = TRUE)
     expect_lt(sum(abs(pred_offset_not_provided$mu-pred_loaded$mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred_offset_not_provided$cov)-as.vector(pred_loaded$cov))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(cov_pars_before_save - as.vector(gp_model_loaded$get_cov_pars(std_err = TRUE)))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(coef_before_save - as.vector(gp_model_loaded$get_coef(std_err = TRUE)))),TOLERANCE_STRICT)
     # with lbfgs and offset
-    params = DEFAULT_OPTIM_PARAMS_STD
+    params = DEFAULT_OPTIM_PARAMS
     params$optimizer_cov = "lbfgs"
     params$optimizer_coef = "wls"
     gp_model_no_offset <- fitGPModel(group_data = group, y = y, X = X, params = params)
@@ -371,15 +374,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y_L <- b1_L[group_L] + X_L%*%beta + xi_L
     # Fit model using gradient descent instead of wls for regression coefficients
     gp_model <- fitGPModel(group_data = group_L,
-                           y = y_L, X = X_L, params = DEFAULT_OPTIM_PARAMS_STD)
+                           y = y_L, X = X_L, params = DEFAULT_OPTIM_PARAMS)
     cov_pars <- c(0.5004967636668, 0.0007460965241, 0.9983817688906, 0.0046893215444)
     coef <- c(1.995473876130, 0.003484883983, 2.001625713274, 0.002577124175)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef())-coef)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_STRICT)
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood() - 1224957.387)),TOLERANCE_MEDIUM)
     
     gp_model <- fitGPModel(group_data = group_L, y = y_L, X = X_L,
-                           params = list(optimizer_cov = "nelder_mead", maxit=1000, delta_rel_conv=1e-6, std_dev = FALSE))
+                           params = list(optimizer_cov = "nelder_mead", maxit=1000, delta_rel_conv=1e-6))
     cov_pars <- c(0.5004681, 0.9988288)
     coef <- c(2.000747, 1.999343)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
@@ -413,28 +416,28 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         
         # Fisher scoring
         gp_model <- fitGPModel(group_data = cbind(group,group2), y = y, matrix_inversion_method = inv_method,
-                               params = list(optimizer_cov = "fisher_scoring", std_dev = TRUE, 
+                               params = list(optimizer_cov = "fisher_scoring",  
                                              cg_preconditioner_type=cg_preconditioner_type, num_rand_vec_trace=100))
         expected_values <- c(0.49792062, 0.02408196, 1.21972166, 0.18357646, 1.06962710, 0.22567292)
-        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),tolerance_loc_1)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-expected_values)),tolerance_loc_1)
         expect_lte(gp_model$get_num_optim_iter(), 6)
         expect_gte(gp_model$get_num_optim_iter(), 4)
         
         # fix some covariance parameters
-        params_loc <- list(optimizer_cov = "lbfgs", std_dev = TRUE, 
+        params_loc <- list(optimizer_cov = "lbfgs",  
                            cg_preconditioner_type=cg_preconditioner_type, num_rand_vec_trace=100, 
                            init_cov_pars=c(0.23, 0.1, 0.5), estimate_cov_par_index = c(1,1,0))
         gp_model_fix <- fitGPModel(group_data = cbind(group,group2), y = y, matrix_inversion_method = inv_method,
                                    params = params_loc)
         nll_opt_fix <- 1328.897384
         cov_pars_fix <- c(0.52972794645, 0.02562029714, 1.21929637610, 0.18314784671, 0.50000000000, 0.10972005168)
-        expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars())-cov_pars_fix)),tolerance_loc_1)
-        expect_lt(sum(abs(gp_model_fix$get_cov_pars()[1,3]-params_loc$init_cov_pars[3])),TOLERANCE_STRICT)
+        expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE))-cov_pars_fix)),tolerance_loc_1)
+        expect_lt(sum(abs(gp_model_fix$get_cov_pars(std_err = TRUE)[1,3]-params_loc$init_cov_pars[3])),TOLERANCE_STRICT)
         expect_lt(abs(gp_model_fix$get_current_neg_log_likelihood()-nll_opt_fix), tolerance_loc_4)
         
         # Predict training data random effects
         if(inv_method == "cholesky"){
-          cov_pars <- gp_model$get_cov_pars()[1,]
+          cov_pars <- gp_model$get_cov_pars()
           all_training_data_random_effects <- predict_training_data_random_effects(gp_model, 
                                                                                    predict_var = TRUE)
           first_occurences_1 <- match(unique(group), group)
@@ -497,13 +500,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            group_rand_coef_data = x,
                            ind_effect_group_rand_coef = 1,
                            y = y, matrix_inversion_method = "cholesky",
-                           params = list(optimizer_cov = "fisher_scoring", maxit=5, std_dev = TRUE))
+                           params = list(optimizer_cov = "fisher_scoring", maxit=5))
     expected_values <- c(0.49554952, 0.02546769, 1.24880860, 0.18983953, 1.05505134, 0.22337199, 1.13840014, 0.17950490)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-expected_values)),TOLERANCE_MEDIUM)
     expect_equal(gp_model$get_num_optim_iter(), 5)
     
     # Predict training data random effects
-    cov_pars <- gp_model$get_cov_pars()[1,]
+    cov_pars <- gp_model$get_cov_pars()
     all_training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
     first_occurences_1 <- match(unique(group), group)
     first_occurences_2 <- match(unique(group2), group2)
@@ -559,7 +562,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            group_rand_coef_data = x,
                            ind_effect_group_rand_coef = 1,
                            y = y, matrix_inversion_method = "cholesky",
-                           params = list(optimizer_cov = "gradient_descent", std_dev = FALSE, init_cov_pars=init_cov_pars))
+                           params = list(optimizer_cov = "gradient_descent", init_cov_pars=init_cov_pars))
     cov_pars <- c(0.4958303, 1.2493181, 1.0543343, 1.1388604 )
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(),8)
@@ -569,19 +572,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            group_rand_coef_data = x,
                            ind_effect_group_rand_coef = 1,
                            y = y, matrix_inversion_method = "cholesky",
-                           params = list(optimizer_cov = "nelder_mead", std_dev = FALSE, delta_rel_conv=1e-6))
+                           params = list(optimizer_cov = "nelder_mead", delta_rel_conv=1e-6))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOL_VERY_LOOSE)
     # lbfgs
     gp_model <- fitGPModel(group_data = cbind(group,group2),  group_rand_coef_data = x,
                            ind_effect_group_rand_coef = 1, y = y, matrix_inversion_method = "cholesky",
-                           params = list(optimizer_cov = "lbfgs", std_dev = FALSE))
+                           params = list(optimizer_cov = "lbfgs"))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
     # Adam
     gp_model <- fitGPModel(group_data = cbind(group,group2),
                            group_rand_coef_data = x,
                            ind_effect_group_rand_coef = 1,
                            y = y, matrix_inversion_method = "cholesky",
-                           params = list(optimizer_cov = "adam", std_dev = FALSE))
+                           params = list(optimizer_cov = "adam"))
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars)),TOLERANCE_LOOSE)
     
     # Evaluate negative log-likelihood
@@ -654,21 +657,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y <- Z1 %*% b1 + xi
     capture.output( gp_model <- fitGPModel(group_data = group, cluster_ids = cluster_ids,
                                            y = y,
-                                           params = list(optimizer_cov = "fisher_scoring", maxit=100, std_dev = TRUE,
+                                           params = list(optimizer_cov = "fisher_scoring", maxit=100, 
                                                          convergence_criterion = "relative_change_in_parameters"))
                     , file='NUL')
     expected_values <- c(0.49348532, 0.02326312, 1.22299521, 0.17995161)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-expected_values)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-expected_values)),TOLERANCE_STRICT)
     
     # gradient descent
     capture.output( gp_model <- fitGPModel(group_data = group, cluster_ids = cluster_ids,
                                            y = y,
-                                           params = list(optimizer_cov = "gradient_descent", std_dev = TRUE,
+                                           params = list(optimizer_cov = "gradient_descent", 
                                                          lr_cov = 0.1, use_nesterov_acc = FALSE, maxit = 1000,
                                                          convergence_criterion = "relative_change_in_parameters"))
                     , file='NUL')
     cov_pars_expected <- c(0.49348532, 0.02326312, 1.22299520, 0.17995161)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_expected)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_expected)),TOLERANCE_STRICT)
     
     # Predict training data random effects
     all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
@@ -698,10 +701,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cluster_ids_string <- paste0(as.character(cluster_ids),"_s")
     capture.output( gp_model <- fitGPModel(group_data = group, cluster_ids = cluster_ids_string,
                                            y = y,
-                                           params = list(optimizer_cov = "fisher_scoring", maxit=100, std_dev = TRUE,
+                                           params = list(optimizer_cov = "fisher_scoring", maxit=100, 
                                                          convergence_criterion = "relative_change_in_parameters"))
                     , file='NUL')
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_expected)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_expected)),TOLERANCE_STRICT)
     # Prediction
     group_data_pred = c(1,1,m+1)
     cluster_ids_pred_string = paste0(as.character(c(1,3,1)),"_s")
@@ -740,7 +743,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            group_rand_coef_data = x,
                                            ind_effect_group_rand_coef = 1,
                                            y = y, matrix_inversion_method = "cholesky",
-                                           params = list(optimizer_cov = "gradient_descent", std_dev = FALSE,
+                                           params = list(optimizer_cov = "gradient_descent",
                                                          lr_cov = 0.1, use_nesterov_acc = TRUE, maxit = 1000, init_cov_pars=init_cov_pars,
                                                          convergence_criterion = "relative_change_in_parameters"))
                     , file='NUL')

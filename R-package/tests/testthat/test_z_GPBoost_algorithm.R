@@ -1465,6 +1465,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       filename_save_raw_data <- tempfile(fileext = ".model")
       gpb.save(bst, filename=filename_save_raw_data, save_raw_data = TRUE)
       # finalize and destroy models
+      cov_pars_before_save <- as.vector(gp_model$get_cov_pars(std_err = TRUE))
       bst$.__enclos_env__$private$finalize()
       expect_null(bst$.__enclos_env__$private$handle)
       rm(bst)
@@ -1475,6 +1476,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_equal(pred$fixed_effect, pred_loaded$fixed_effect)
       expect_equal(pred$random_effect_mean, pred_loaded$random_effect_mean)
       expect_equal(pred$random_effect_cov, pred_loaded$random_effect_cov)
+      expect_lt(sum(abs(cov_pars_before_save - as.vector(bst_loaded$.__enclos_env__$private$gp_model$get_cov_pars(std_err = TRUE)))),TOLERANCE_STRICT)
       # Set num_iteration and start_iteration
       bst_loaded <- gpb.load(filename = filename_num_it)
       pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test, predict_var= TRUE, pred_latent = TRUE)
@@ -1486,12 +1488,13 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                predict_var= TRUE, start_iteration=5, pred_latent = TRUE)
       })
       # Load from file and make predictions again with save_raw_data = TRUE option
-      bst_loaded <- gpb.load(filename = filename_save_raw_data)
+      capture.output( bst_loaded <- gpb.load(filename = filename_save_raw_data), file='NUL')
       pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
                              predict_var= TRUE, pred_latent = TRUE)
       expect_equal(pred$fixed_effect, pred_loaded$fixed_effect)
       expect_equal(pred$random_effect_mean, pred_loaded$random_effect_mean)
       expect_equal(pred$random_effect_cov, pred_loaded$random_effect_cov)
+      expect_lt(sum(abs(cov_pars_before_save - as.vector(bst_loaded$.__enclos_env__$private$gp_model$get_cov_pars(std_err = TRUE)))),TOLERANCE_STRICT)
       # Set num_iteration and start_iteration
       pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
                              predict_var= TRUE, num_iteration = num_iteration, start_iteration = start_iteration, pred_latent = TRUE)
@@ -1572,7 +1575,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                predict_var= TRUE, start_iteration=5, pred_latent = TRUE)
       })
       # Load from file and make predictions again with save_raw_data = TRUE option
-      bst_loaded <- gpb.load(model_str = model_str_raw_data)
+      capture.output( bst_loaded <- gpb.load(model_str = model_str_raw_data), file='NUL')
       pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
                              predict_var= TRUE, pred_latent = TRUE)
       expect_equal(pred$fixed_effect, pred_loaded$fixed_effect)

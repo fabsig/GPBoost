@@ -2,6 +2,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
   
   context("generalized_GPBoost_combined_boosting_GP_random_effects")
   
+  TOLERANCE_STRICT <- 1e-6
   TOLERANCE <- 1E-3
   TOLERANCE_LOOSE <- 1E-2
   DEFAULT_OPTIM_PARAMS <- list(optimizer_cov="gradient_descent", use_nesterov_acc=TRUE,
@@ -1858,6 +1859,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       filename2 <- tempfile(fileext = ".model")
       gpb.save(bst, filename=filename2, save_raw_data = TRUE)
       # finalize and destroy models
+      cov_pars_before_save <- as.vector(gp_model$get_cov_pars(std_err = FALSE))
       bst$.__enclos_env__$private$finalize()
       expect_null(bst$.__enclos_env__$private$handle)
       rm(bst)
@@ -1873,6 +1875,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_equal(pred$random_effect_cov, pred_loaded$random_effect_cov)
       expect_equal(pred_resp$response_mean, pred_resp_loaded$response_mean)
       expect_equal(pred_resp$response_var, pred_resp_loaded$response_var)
+      expect_lt(sum(abs(cov_pars_before_save - as.vector(bst_loaded$.__enclos_env__$private$gp_model$get_cov_pars(std_err = FALSE)))),TOLERANCE_STRICT)
       # Different num_iteration when saving
       bst_loaded <- gpb.load(filename = filename_num_it)
       pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
@@ -1899,6 +1902,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_equal(pred$random_effect_cov, pred_loaded$random_effect_cov)
       expect_equal(pred_resp$response_mean, pred_resp_loaded$response_mean)
       expect_equal(pred_resp$response_var, pred_resp_loaded$response_var)
+      expect_lt(sum(abs(cov_pars_before_save - as.vector(bst_loaded$.__enclos_env__$private$gp_model$get_cov_pars(std_err = FALSE)))),TOLERANCE_STRICT)
       # Same num_iteration when saving but different one for prediction
       pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
                              predict_var = TRUE, pred_latent = TRUE, num_iteration = 22, start_iteration = 0)
