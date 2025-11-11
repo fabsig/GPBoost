@@ -3036,6 +3036,14 @@ int GPB_GetCGPreconditionerType(REModelHandle handle,
 	API_END();
 }
 
+int GPB_GetNumCGSteps(BoosterHandle handle,
+	int* num_cg_steps) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	num_cg_steps[0] = ref_remodel->GetNumCGSteps();
+	API_END();
+}
+
 int GPB_SetLikelihood(REModelHandle handle,
 	const char* likelihood) {
 	API_BEGIN();

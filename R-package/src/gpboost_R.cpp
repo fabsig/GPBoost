@@ -1240,6 +1240,15 @@ SEXP GPB_GetCGPreconditionerType_R(SEXP handle) {
 	return ret;
 }
 
+SEXP GPB_GetNumCGSteps_R(SEXP handle,
+	SEXP num_cg_steps) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetNumCGSteps(R_ExternalPtrAddr(handle),
+		R_INT_PTR(num_cg_steps)));
+	R_API_END();
+	return R_NilValue;
+}
+
 SEXP GPB_SetLikelihood_R(SEXP handle,
 	SEXP likelihood) {
 	SEXP likelihood_aux = PROTECT(Rf_asChar(likelihood));
@@ -1384,6 +1393,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetOptimizerCovPars_R"        , (DL_FUNC)&GPB_GetOptimizerCovPars_R        , 1},
   {"GPB_GetOptimizerCoef_R"           , (DL_FUNC)&GPB_GetOptimizerCoef_R           , 1},
   {"GPB_GetCGPreconditionerType_R"    , (DL_FUNC)&GPB_GetCGPreconditionerType_R    , 1},
+  {"GPB_GetNumCGSteps_R"              , (DL_FUNC)&GPB_GetNumCGSteps_R              , 2},
   {"GPB_SetLikelihood_R"              , (DL_FUNC)&GPB_SetLikelihood_R              , 2},
   {"GPB_GetResponseData_R"            , (DL_FUNC)&GPB_GetResponseData_R            , 2},
   {"GPB_GetCovariateData_R"           , (DL_FUNC)&GPB_GetCovariateData_R           , 2},

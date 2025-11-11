@@ -206,6 +206,18 @@ namespace GPBoost {
 		}
 	}
 
+	int REModel::GetNumCGSteps() const {
+		if (matrix_format_ == "sp_mat_t") {
+			return(re_model_sp_->GetNumCGSteps());
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			return(re_model_sp_rm_->GetNumCGSteps());
+		}
+		else {
+			return(re_model_den_->GetNumCGSteps());
+		}
+	}
+
 	void REModel::SetOptimConfig(double* init_cov_pars,
 		double lr,
 		double acc_rate_cov,

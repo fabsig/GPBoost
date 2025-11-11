@@ -1692,6 +1692,15 @@ GPBOOST_C_EXPORT int GPB_GetCGPreconditionerType(REModelHandle handle,
     int* num_char);
 
 /*!
+* \brief  Returns the number of CG steps when the CG method was last run
+* \param handle Handle of booster
+* \param[out] num_cg_steps Number of CG steps
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetNumCGSteps(BoosterHandle handle,
+    int* num_cg_steps);
+
+/*!
 * \brief Set the type of likelihood
 * \param handle Handle of REModel
 * \param likelihood Likelihood name

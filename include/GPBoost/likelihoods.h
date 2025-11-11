@@ -598,6 +598,13 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Returns the number of CG steps when the CG method was last run
+		*/
+		int GetNumCGSteps() const {
+			return(num_cg_steps_last_);
+		}
+
+		/*!
 		* \brief Returns a pointer to mode_
 		*/
 		const vec_t* GetMode() const {
@@ -1748,9 +1755,13 @@ namespace GPBoost {
 							SigmaI_plus_ZtWZ_inv_diag_ = SigmaI_plus_ZtWZ_rm_.diagonal().cwiseInverse();
 						}
 					}
+					int num_cg_steps;
 					CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rhs, mode_update, has_NA_or_Inf,
 						cg_max_num_it, cg_delta_conv_, it == 0, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
-						L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
+						L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps);
+					if (it == 0) {
+						num_cg_steps_last_ = num_cg_steps;
+					}
 					if (has_NA_or_Inf) {
 						approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
 						Log::REDebug(NA_OR_INF_WARNING_);
@@ -3214,9 +3225,10 @@ namespace GPBoost {
 					//For implicit derivatives: calculate (Sigma^(-1) + Z^T W Z)^(-1) d_mll_d_mode
 					bool has_NA_or_Inf = false;
 					SigmaI_plus_ZtWZ_inv_d_mll_d_mode = vec_t(dim_mode_);
+					int num_cg_steps_dummy;
 					CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, d_mll_d_mode, SigmaI_plus_ZtWZ_inv_d_mll_d_mode, has_NA_or_Inf,
 						cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
-						L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
+						L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
 					if (has_NA_or_Inf) {
 						Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
 					}
@@ -5284,9 +5296,10 @@ namespace GPBoost {
 							//Part 2: (Sigma^(-1) + Z^T W Z)^(-1) Z_po^T RV
 							vec_t MInv_Ztilde_t_RV(dim_mode_);
 							bool has_NA_or_Inf = false;
+							int num_cg_steps_dummy;
 							CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, Z_tilde_t_RV, MInv_Ztilde_t_RV, has_NA_or_Inf,
 								cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
-								L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
+								L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
 							if (has_NA_or_Inf) {
 								Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
 							}
@@ -5383,8 +5396,9 @@ namespace GPBoost {
 							vec_t rand_vec_pred_SigmaI_plus_ZtWZ_inv(dim_mode_);
 							//z_i ~ N(0,(Sigma^(-1) + Z^T W Z)^(-1))
 							bool has_NA_or_Inf = false;
+							int num_cg_steps_dummy;
 							CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
-								true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
+								true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
 							if (has_NA_or_Inf) {
 								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 							}
@@ -6375,8 +6389,9 @@ namespace GPBoost {
 					}
 					//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
 					bool has_NA_or_Inf = false;
+					int num_cg_steps_dummy;
 					CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
-						true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
+						true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
 					if (has_NA_or_Inf) {
 						Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
 					}
@@ -6842,9 +6857,10 @@ namespace GPBoost {
 						//Part 2: (Sigma^(-1) + Z^T W Z)^(-1) RV
 						vec_t MInv_RV(dim_mode_);
 						bool has_NA_or_Inf = false;
+						int num_cg_steps_dummy;
 						CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_init, MInv_RV, has_NA_or_Inf,
 							cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
-							L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
+							L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
 						if (has_NA_or_Inf) {
 							Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
 						}
@@ -10983,6 +10999,8 @@ namespace GPBoost {
 		int nsim_var_pred_;
 		/*! \brief If true, cg_max_num_it and cg_max_num_it_tridiag are reduced by 2/3 (multiplied by 1/3) for the mode finding of the Laplace approximation in the first gradient step when finding a learning rate that reduces the ll */
 		bool reduce_cg_max_num_it_first_optim_step_ = true;
+		/*! \brief Number of CG steps when the CG method was last run */
+		int num_cg_steps_last_ = 0;
 
 		//ITERATIVE MATRIX INVERSION + VECCIA APPROXIMATION
 		//A) ROW-MAJOR MATRICES OF VECCIA APPROXIMATION

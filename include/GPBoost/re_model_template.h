@@ -470,6 +470,21 @@ namespace GPBoost {
 		}//end CovFunctionName
 
 		/*!
+		* \brief Returns the number of CG steps when the CG method was last run
+		*/
+		int GetNumCGSteps() {
+			if (!(num_re_group_total_ > 1 && num_re_group_total_ == num_comps_total_ && matrix_inversion_method_ == "iterative")) {
+				Log::REFatal("GetNumCGStepLast: this function is currently only implemented when having multiple grouped random effects and iterative methods are used ");
+			}
+			if (gauss_likelihood_) {
+				return(num_cg_steps_last_);
+			}
+			else {
+				return(likelihood_[unique_clusters_[0]]->GetNumCGSteps());
+			}
+		}
+
+		/*!
 		* \brief Set / change the type of likelihood
 		* \param likelihood Likelihood name
 		*/
@@ -5279,6 +5294,8 @@ namespace GPBoost {
 		int default_piv_chol_preconditioner_rank_ = 50;
 		/*! \brief Rank of the matrix for approximating predictive covariances obtained using the Lanczos algorithm */
 		int rank_pred_approx_matrix_lanczos_ = 1000;
+		/*! \brief Number of CG steps when the CG method was last run */
+		int num_cg_steps_last_ = 0;
 
 		// WOODBURY IDENTITY FOR GROUPED RANDOM EFFECTS ONLY
 		/*! \brief Collects matrices Z^T (only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */
@@ -8758,7 +8775,7 @@ namespace GPBoost {
 								cg_max_num_it = (int)round(cg_max_num_it_ / 3);
 							}
 							CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], Zty_[cluster_i], MInvZty, NaN_found, cg_max_num_it, cg_delta_conv_, false, THRESHOLD_ZERO_RHS_CG_, false, cg_preconditioner_type_,
-								L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]);
+								L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i], num_cg_steps_last_);
 							last_MInvZty_[cluster_i] = MInvZty;
 							if (NaN_found) {
 								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
@@ -10060,8 +10077,9 @@ namespace GPBoost {
 										vec_t rand_vec_pred_SigmaI_plus_ZtZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_pred_I_1 + Zt_[cluster_i] * rand_vec_pred_I_2;
 										vec_t rand_vec_pred_SigmaI_plus_ZtZ_inv(cum_num_rand_eff_[cluster_i][num_comps_total_]);
 										//z_i ~ N(0,(Sigma^(-1) + Z^T Z)^(-1))
+										int num_cg_steps_dummy;
 										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], rand_vec_pred_SigmaI_plus_ZtZ, rand_vec_pred_SigmaI_plus_ZtZ_inv, NaN_found, cg_max_num_it_, cg_delta_conv_pred_, true, THRESHOLD_ZERO_RHS_CG_,
-											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]
+											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i], num_cg_steps_dummy
 											//cum_num_rand_eff_[cluster_i], num_comps_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
 										);
 										if (NaN_found) {
@@ -10187,8 +10205,9 @@ namespace GPBoost {
 										vec_t Z_tilde_t_RV = Ztilde.transpose() * rand_vec_init;
 										//Part 2: (Sigma^(-1) + Z^T Z)^(-1) Z_po^T RV
 										vec_t MInv_Ztilde_t_RV(cum_num_rand_eff_[cluster_i][num_comps_total_]);
+										int num_cg_steps_dummy;
 										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], Z_tilde_t_RV, MInv_Ztilde_t_RV, NaN_found, cg_max_num_it_, cg_delta_conv_pred_, true, THRESHOLD_ZERO_RHS_CG_,
-											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]
+											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i], num_cg_steps_dummy
 											//cum_num_rand_eff_[cluster_i], num_comps_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
 										);
 										if (NaN_found) {
