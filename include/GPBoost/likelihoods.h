@@ -605,6 +605,13 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Returns the number of CG steps when the CG method was last run for the SLQ method
+		*/
+		int GetNumCGStepsTridiag() const {
+			return(num_cg_steps_tridiag_last_);
+		}
+
+		/*!
 		* \brief Returns a pointer to mode_
 		*/
 		const vec_t* GetMode() const {
@@ -1878,7 +1885,7 @@ namespace GPBoost {
 						std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_ZtWZ(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
 						CGTridiagRandomEffects(SigmaI_plus_ZtWZ_rm_, rand_vec_trace_P_, Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ,
 							SigmaI_plus_ZtWZ_inv_RV_, has_NA_or_Inf, dim_mode_, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
-							L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_);
+							L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_tridiag_last_);
 						if (!has_NA_or_Inf) {
 							LogDetStochTridiag(Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ, log_det_SigmaI_plus_ZtWZ, dim_mode_, num_rand_vec_trace_);
 							approx_marginal_ll += 0.5 * (SigmaI.diagonal().array().log().sum() - log_det_SigmaI_plus_ZtWZ);
@@ -11001,6 +11008,8 @@ namespace GPBoost {
 		bool reduce_cg_max_num_it_first_optim_step_ = true;
 		/*! \brief Number of CG steps when the CG method was last run */
 		int num_cg_steps_last_ = 0;
+		/*! \brief Number of CG steps when the CG method was last run for SLQ */
+		int num_cg_steps_tridiag_last_ = 0;
 
 		//ITERATIVE MATRIX INVERSION + VECCIA APPROXIMATION
 		//A) ROW-MAJOR MATRICES OF VECCIA APPROXIMATION

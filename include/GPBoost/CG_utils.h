@@ -969,12 +969,12 @@ namespace GPBoost {
 	* \param L_SigmaI_plus_ZtWZ_rm ZIC preconditioner: sparse cholesky factor L of matrix L L^T = (Sigma^-1 + Z^T W Z)
 	* \param P_SSOR_L_D_sqrt_inv SSOR preconditioner: lower.triangular(Sigma^-1 + Z^T W Z) times diag(Sigma^-1 + Z^T W Z)^(-0.5)
 	* \param SigmaI_plus_ZtWZ_inv_diag Diagonal preconditioner: diag(Sigma^-1 + Z^T W Z)^(-1)
+	* \param[out] num_cg_steps Number of CG steps
 	* \param cum_num_rand_eff Cumulative number of random effects for components (used when K=2)
 	* \param num_re_group_total Total number of grouped random effects components (used when K=2)
 	* \param P_SSOR_D1_inv SSOR preconditioner for K=2: diag(Sigma^-1 + Z^T W Z)^(-1)[1:n_1]
 	* \param P_SSOR_D2_inv SSOR preconditioner for K=2: diag(Sigma^-1 + Z^T W Z)^(-1)[(n_1+1):n_2]
 	* \param P_SSOR_B_rm SSOR preconditioner for K=2: (Sigma^-1 + Z^T W Z)[(n_1+1):n_2,1:n_1]
-	* \param[out] num_cg_steps Number of CG steps
 	*/
 	void CGRandomEffectsVec(const sp_mat_rm_t& SigmaI_plus_ZtWZ_rm,
 		const vec_t& rhs,
@@ -1017,6 +1017,7 @@ namespace GPBoost {
 	* \param L_SigmaI_plus_ZtWZ_rm ZIC preconditioner: sparse cholesky factor L of matrix L L^T = (Sigma^-1 + Z^T W Z)
 	* \param P_SSOR_L_D_sqrt_inv SSOR preconditioner: lower.triangular(Sigma^-1 + Z^T W Z) times diag(Sigma^-1 + Z^T W Z)^(-0.5)
 	* \param SigmaI_plus_ZtWZ_inv_diag Diagonal preconditioner: diag(Sigma^-1 + Z^T W Z)^(-1)
+	* \param[out] num_cg_steps Number of CG steps
 	* \param cum_num_rand_eff Cumulative number of random effects for components (used when K=2)
 	* \param num_re_group_total Total number of grouped random effects components (used when K=2)
 	* \param P_SSOR_D1_inv SSOR preconditioner for K=2: diag(Sigma^-1 + Z^T Z)^(-1)[1:n_1]
@@ -1036,7 +1037,8 @@ namespace GPBoost {
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
 		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm,
-		const vec_t& SigmaI_plus_ZtWZ_inv_diag
+		const vec_t& SigmaI_plus_ZtWZ_inv_diag,
+		int& num_cg_steps
 		//const std::vector<data_size_t>& cum_num_rand_eff,
 		//const data_size_t& num_re_group_total,
 		//const vec_t& P_SSOR_D1_inv,

@@ -1246,7 +1246,8 @@ namespace GPBoost {
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
 		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm,
-		const vec_t& SigmaI_plus_ZtWZ_inv_diag
+		const vec_t& SigmaI_plus_ZtWZ_inv_diag,
+		int& num_cg_steps
 		//const std::vector<data_size_t>& cum_num_rand_eff,
 		//const data_size_t& num_re_group_total,
 		//const vec_t& P_SSOR_D1_inv,
@@ -1335,6 +1336,7 @@ namespace GPBoost {
 				return;
 			}
 			if (mean_R_norm < delta_conv) {
+				num_cg_steps = j + 1;
 				early_stop_alg = true;
 				//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
 			}
@@ -1406,6 +1408,7 @@ namespace GPBoost {
 				return;
 			}
 		}
+		num_cg_steps = p;
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGTridiagRandomEffects

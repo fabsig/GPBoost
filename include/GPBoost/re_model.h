@@ -141,6 +141,11 @@ namespace GPBoost {
 		int GetNumCGSteps() const;
 
 		/*!
+		* \brief Returns the number of CG steps when the CG method was last run for the SLQ method
+		*/
+		int GetNumCGStepsTridiag() const;
+
+		/*!
 		* \brief Set configuration parameters for the optimizer
 		* \param init_cov_pars Initial values for covariance parameters of RE components
 		* \param lr Learning rate for covariance parameters. If lr<= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring")

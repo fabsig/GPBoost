@@ -485,6 +485,21 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Returns the number of CG steps when the CG method was last run for the SLQ method
+		*/
+		int GetNumCGStepsTridiag() {
+			if (!(num_re_group_total_ > 1 && num_re_group_total_ == num_comps_total_ && matrix_inversion_method_ == "iterative")) {
+				Log::REFatal("GetNumCGStepLast: this function is currently only implemented when having multiple grouped random effects and iterative methods are used ");
+			}
+			if (gauss_likelihood_) {
+				return(num_cg_steps_tridiag_last_);
+			}
+			else {
+				return(likelihood_[unique_clusters_[0]]->GetNumCGStepsTridiag());
+			}
+		}
+
+		/*!
 		* \brief Set / change the type of likelihood
 		* \param likelihood Likelihood name
 		*/
@@ -2704,7 +2719,7 @@ namespace GPBoost {
 									CGTridiagRandomEffects(SigmaI_plus_ZtZ_rm_[cluster_i], rand_vec_probe_P_[cluster_i],
 										Tdiags_, Tsubdiags_, solution_for_trace_[cluster_i], NaN_found, cum_num_rand_eff_[cluster_i][num_comps_total_],
 										num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
-										L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i]);
+										L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i], num_cg_steps_tridiag_last_);
 									if (NaN_found) {
 										Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 									}
@@ -5296,6 +5311,8 @@ namespace GPBoost {
 		int rank_pred_approx_matrix_lanczos_ = 1000;
 		/*! \brief Number of CG steps when the CG method was last run */
 		int num_cg_steps_last_ = 0;
+		/*! \brief Number of CG steps when the CG method was last run for SLQ */
+		int num_cg_steps_tridiag_last_ = 0;
 
 		// WOODBURY IDENTITY FOR GROUPED RANDOM EFFECTS ONLY
 		/*! \brief Collects matrices Z^T (only saved when use_woodbury_identity_=true i.e. when there are only grouped random effects, otherwise these matrices are saved only in the indepedent RE components) */

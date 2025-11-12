@@ -2014,6 +2014,16 @@ gpb.GPModel <- R6::R6Class(
       return(num_it)
     },
     
+    get_num_cg_steps_tridiag = function() {
+      num_it <- integer(1)
+      .Call(
+        GPB_GetNumCGStepsTridiag_R
+        , private$handle
+        , num_it
+      )
+      return(num_it)
+    },
+    
     can_calculate_standard_errors_cov_pars = function() {
       out <- integer(1)
       .Call(
