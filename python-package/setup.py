@@ -354,6 +354,7 @@ if __name__ == "__main__":
           description='GPBoost Python Package',
           long_description=readme,
           long_description_content_type='text/markdown',
+          python_requires=">=3.7",
           install_requires=[
               'wheel',
               'numpy',
@@ -397,4 +398,8 @@ if __name__ == "__main__":
                        'Programming Language :: Python :: 3.7',
                        'Programming Language :: Python :: 3.8',
                        'Programming Language :: Python :: 3.9',
+                       'Programming Language :: Python :: 3.10',
+                       'Programming Language :: Python :: 3.11',
+                       'Programming Language :: Python :: 3.12',
+                       'Programming Language :: Python :: 3.13',
                        'Topic :: Scientific/Engineering :: Artificial Intelligence'])
