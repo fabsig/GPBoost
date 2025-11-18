@@ -97,31 +97,25 @@ pip install gpboost --install-option=--mingw
 * [CMake](https://cmake.org/) and [MinGW-w64](https://www.mingw-w64.org/) should be installed first.
 
 
-##### Build 32-bit version with 32-bit Python
-
-```sh
-pip install gpboost --install-option=--bit32
-```
-
-By default, installation in an environment with 32-bit Python is prohibited. However, you can remove this prohibition on your own risk by passing the ``bit32`` option (not recommended).
-
-
 #### Installation from source from GitHub
 
 ```sh
 git clone --recursive https://github.com/fabsig/GPBoost.git
 cd GPBoost/python-package
 # export CXX=g++-7 CC=gcc-7  # macOS users, if you decided to compile with gcc, don't forget to specify compilers (replace "7" with version of gcc installed on your machine)
-python setup.py install
+python -m pip install .
 ```
 
-Note: ``sudo`` (or administrator rights in **Windows**) may be needed to perform the command.
+* [CMake](https://cmake.org/) and [MinGW-w64](https://www.mingw-w64.org/) should be installed first.
+
 
 ##### Build with MinGW-w64 on Windows
 
 ```sh
 python setup.py install --mingw
 ```
-* [CMake](https://cmake.org/) and [MinGW-w64](https://www.mingw-w64.org/) should be installed first.
 
+
+<!--  
 If you get any errors during installation or due to any other reasons, you may want to build a dynamic library from source by any method you prefer and then just run ``python setup.py install --precompile``.
+-->
