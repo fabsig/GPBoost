@@ -30,6 +30,10 @@ namespace GPBoost {
 	static const double M_SQRT2PI = std::sqrt(2. * M_PI);
 	static const double M_LOGSQRT2PI = 0.5 * std::log(2. * M_PI);//0.91893853320467274178
 
+	inline double logit(double x) {
+		return std::log(x) - std::log1p(-x);
+	}
+
 	inline double sigmoid_stable(double x) {
 		if (x >= 0.0) {
 			const double t = std::exp(-x);
