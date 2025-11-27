@@ -64,6 +64,12 @@
 *       - mu = location_par, a_0 = -mu / sigma, sigma \in (0,\infty) (= aux_pars_[0]), lambda \in (0,\infty) (= aux_pars_[1])
 *		- Phi() and phi() denote the standard normal cumulative distribution and density functions 
 *		- This corresponds to the model Y = max(0,X)^lambda, X ~ N(mu, sigma^2)
+* 
+* For a "zero_one_censored_transformed_beta" likelihood, the following density is used:* 
+*	P(Y = 0)   = F_B( t0 ; a, b ),     t0 = u / (1 + 2u)
+*	f_Y(y)     = f_B( t ; a, b ) / (1 + 2u)   for y in (0,1)
+*	P(Y = 1)   = 1 - F_B( t1 ; a, b ), t1 = (1 + u) / (1 + 2u)
+*	where f_B and F_B are the Beta(a, b) density and CDF with a = mu * phi, b = (1 - mu) * phi, mu = 1 / (1 + exp(-location_par)), phi > 0, u > 0
 *
 */
 #ifndef GPB_LIKELIHOODS_
@@ -301,7 +307,15 @@ namespace GPBoost {
 				names_aux_pars_ = { "sigma", "asymmetry", "skewness" };
 				num_aux_pars_ = 3;
 				num_aux_pars_estim_ = 3;
-				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;//DELETE: ToDo double check again
+				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
+			}
+			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+				aux_pars_ = { 20., 0.01};//phi and u
+				names_aux_pars_ = { "precision", "u"};
+				num_aux_pars_ = 2;
+				num_aux_pars_estim_ = 2;
+				information_ll_can_be_exact_zero_ = true;
+				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
 			}
 			aux_pars_original_ = aux_pars_;
 			BackTransformAuxPars(aux_pars_.data(), aux_pars_original_.data());
@@ -616,7 +630,7 @@ namespace GPBoost {
 		template <typename T>//T can be double or float
 		void CheckY(const T* y_data, data_size_t num_data) const {
 			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit") {
-				//#pragma omp parallel for schedule(static)//problematic with error message below... 
+				//#pragma omp parallel for schedule(static)//problematic with error message below, not worth parallelizing as other overheads (e.g. model construction) dominate
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (fabs(y_data[i]) >= EPSILON_NUMBERS && !TwoNumbersAreEqual<T>(y_data[i], 1.)) {
 						Log::REFatal("The response variable ('y') needs to be 0 or 1 for likelihood = '%s' ", likelihood_type_.c_str());
@@ -624,7 +638,7 @@ namespace GPBoost {
 				}
 			}
 			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || likelihood_type_ == "beta_binomial") {
-				for (data_size_t i = 0; i < num_data; ++i) {
+				for (data_size_t i = 0; i < num_data; ++i) {// not worth parallelizing as other overheads (e.g. model construction) dominate
 					if (y_data[i] < 0. || y_data[i] > 1.) {
 						Log::REFatal(" Must have 0 <= y <= 1 for the response variable ('y') for likelihood = '%s', found %g. Note that the response variable should be the proportion of successes / trials ", likelihood_type_.c_str(), y_data[i]);
 					}
@@ -665,7 +679,7 @@ namespace GPBoost {
 				}
 				avg_zero /= sw;
 				if (GPBoost::IsZero<double>(avg_zero)) {
-					Log::REFatal("No 0's in the response variable 'y' but used likelihood = '%s ", likelihood_type_.c_str());
+					Log::REWarning("No 0's in the response variable 'y' but used likelihood = '%s ", likelihood_type_.c_str());
 				}
 				if (TwoNumbersAreEqual<double>(avg_zero, 1.)) {
 					Log::REFatal("Only 0's in the response variable 'y' but used likelihood = '%s' ", likelihood_type_.c_str());
@@ -678,11 +692,34 @@ namespace GPBoost {
 					}
 				}
 			}
-			else if (likelihood_type_ == "zoctn") {
+			else if (likelihood_type_ == "zoctn" || likelihood_type_ == "zero_one_censored_transformed_beta") {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (y_data[i] < 0. || y_data[i] > 1.) {
 						Log::REFatal(" Must have 0 <= y <= 1 for the response variable ('y') for likelihood = '%s', found %g ", likelihood_type_.c_str(), y_data[i]);
 					}
+				}
+				double sw = 0., avg_zero = 0., avg_one = 0.;
+#pragma omp parallel for schedule(static) reduction(+:sw, avg_zero, avg_one)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					if (y_data[i] <= 0.) {
+						avg_zero += w;
+					}
+					if (y_data[i] >= 1.) {
+						avg_one += w;
+					}
+					sw += w;
+				}
+				avg_zero /= sw;
+				avg_one /= sw;
+				if (TwoNumbersAreEqual<double>(avg_zero, 1.)) {
+					Log::REFatal("Only 0's in the response variable 'y' but used likelihood = '%s' ", likelihood_type_.c_str());
+				}
+				if (TwoNumbersAreEqual<double>(avg_one, 1.)) {
+					Log::REFatal("Only 1's in the response variable 'y' but used likelihood = '%s' ", likelihood_type_.c_str());
+				}
+				if (GPBoost::IsZero<double>(avg_zero) && GPBoost::IsZero<double>(avg_one)) {
+					Log::REWarning("No 0's and 1's in the response variable 'y' but used likelihood = '%s ", likelihood_type_.c_str());
 				}
 			}
 			else if (likelihood_type_ != "gaussian" && likelihood_type_ != "t" && likelihood_type_ != "gaussian_heteroscedastic") {
@@ -707,7 +744,7 @@ namespace GPBoost {
 			double init_intercept = 0.;
 			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" || 
 				likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || 
-				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial") {
+				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_one_censored_transformed_beta") {
 				double sw = 0.0, swy = 0.0;
 #pragma omp parallel for schedule(static) reduction(+:sw,swy)
 				for (data_size_t i = 0; i < num_data; ++i) {
@@ -719,8 +756,8 @@ namespace GPBoost {
 				const double eps = 1e-12;
 				pavg = std::min(std::max(pavg, eps), 1.0 - eps);
 				if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" || 
-					likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial") {
-					init_intercept = std::log(pavg) - std::log1p(-pavg);
+					likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_one_censored_transformed_beta") {
+					init_intercept = GPBoost::logit(pavg);
 				}
 				else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit") {
 					init_intercept = GPBoost::normalQF(pavg);
@@ -989,7 +1026,7 @@ namespace GPBoost {
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
 				likelihood_type_ == "gaussian_heteroscedastic" || likelihood_type_ == "lognormal" || 
 				likelihood_type_ == "zero_inflated_gamma" || likelihood_type_ == "zero_censored_power_transformed_normal" || 
-				likelihood_type_ == "zoctn") {
+				likelihood_type_ == "zoctn" || likelihood_type_ == "zero_one_censored_transformed_beta") {
 				ret_val = true;
 			}
 			else {
@@ -1456,6 +1493,40 @@ namespace GPBoost {
 				aux_pars_[1] = 1.0;   // a
 				aux_pars_[2] = 1.0;   // b
 			}//end "zoctn"
+			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+				double swi = 0.0, sum = 0.0, sumsq = 0.0, W0 = 0.0, W1 = 0.0;
+#pragma omp parallel for schedule(static) reduction(+:swi,sum,sumsq,W0,W1)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					const double yi = y_data[i];
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					if (yi > 0.0 && yi < 1.0) {
+						swi += w; sum += w * yi;
+						sumsq += w * yi * yi;
+					}
+					else if (yi <= 0.0) {
+						W0 += w;
+					}
+					else {
+						W1 += w;
+					}
+				}
+				double phi = 20.; 
+				if (swi > 1.0) {
+					double m = sum / swi;
+					double v = std::max(sumsq / swi - m*m, 1e-6);
+					phi = std::max(m * (1.0 - m) / v - 1.0, 0.1);
+					phi = std::min(phi, 100.0);
+				}
+				double u; 
+				if (W0 + W1 > 0.0) { 
+					u = 0.05; 
+				}
+				else {
+					u = 1e-3;
+				}
+				aux_pars_[0] = phi; 
+				aux_pars_[1] = u;
+			}//end "zero_one_censored_transformed_beta"
 			else if (likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 				likelihood_type_ != "binomial_probit" && likelihood_type_ != "binomial_logit" && 
 				likelihood_type_ != "poisson" && likelihood_type_ != "gaussian_heteroscedastic") {
@@ -1481,7 +1552,8 @@ namespace GPBoost {
 			double& C_sigma2) const {
 			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" || 
 				likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || 
-				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zoctn") {
+				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zoctn" || 
+				likelihood_type_ == "zero_one_censored_transformed_beta") {
 				C_mu = 1.;
 				C_sigma2 = 1.;
 			}
@@ -1608,7 +1680,8 @@ namespace GPBoost {
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
 				likelihood_type_ == "beta" || likelihood_type_ == "t" || likelihood_type_ == "lognormal" || 
 				likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_inflated_gamma" || 
-				likelihood_type_ == "zero_censored_power_transformed_normal" || likelihood_type_ == "zoctn") {
+				likelihood_type_ == "zero_censored_power_transformed_normal" || likelihood_type_ == "zoctn" || 
+				likelihood_type_ == "zero_one_censored_transformed_beta") {
 				for (int i = 0; i < num_aux_pars_estim_; ++i) {
 					if (!(aux_pars[i] > 0.)) {
 						Log::REFatal("The '%s' parameter (= %g) is not > 0. This might be due to a problem when estimating the '%s' parameter (e.g., a numerical overflow). "
@@ -7252,12 +7325,12 @@ namespace GPBoost {
 		}//end CalcVarLaplaceApproxVecchia
 
 		/*!
-		* \brief Make predictions for the response variable (label) based on predictions for the mean and variance of the latent random effects
+		* \brief Make predictions for the response variable (label) based on predictions for the mean and variance of the latent random effects (the latent predictive didstribution is marginalized out)
 		* \param pred_mean[in & out] Predictive mean of latent random effects for mean. The Predictive mean for the response variables is written on this
 		* \param pred_var[in & out] Predictive variances of latent random effects for mean. The predicted variance for the response variables is written on this
 		* \param pred_var_mean Predictive mean of latent random effects for variance parameter in heteroscedastic models
 		* \param pred_var_var Predictive variances of latent random effects for variance parameter in heteroscedastic models
-		* \param predict_var If true, predictive variances are also calculated
+		* \param predict_var If true, predictive reponse variances are also calculated
 		*/
 		void PredictResponse(vec_t& pred_mean,
 			vec_t& pred_var,
@@ -7509,7 +7582,41 @@ namespace GPBoost {
 					}
 					pred_mean[i] = pm;
 				}
-			}
+			}//end "zoctn"
+			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+				CHECK(need_pred_latent_var_for_response_mean_);
+				// Predictive response mean/var via Gauss–Hermite 
+				const double phi = aux_pars_[0];
+				const double u = aux_pars_[1];
+				const double inv_sqrt_pi = 1.0 / std::sqrt(3.14159265358979323846);
+				for (int i = 0; i < (int)pred_mean.size(); ++i) {
+					CHECK(std::isfinite(pred_mean[i]));
+					CHECK(std::isfinite(pred_var[i]) && pred_var[i] > 0.0);
+				}
+				const size_t K = GH_nodes_.size();
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < (int)pred_mean.size(); ++i) {
+					const double m = pred_mean[i];
+					const double v = pred_var[i];
+					const double sc = std::sqrt(2.0 * v);
+					double Ey = 0.0, Ey2 = 0.0;
+					for (size_t k = 0; k < K; ++k) {
+						const double wk = GH_weights_[k] * inv_sqrt_pi;
+						const double eta_k = m + sc * GH_nodes_[k];
+						const double mu_k = GPBoost::sigmoid_stable(eta_k);
+						const double m1_k = XB_FirstMoment_(mu_k, phi, u);
+						Ey += wk * m1_k;
+						if (predict_var) {
+							const double m2_k = XB_SecondMoment_(mu_k, phi, u);
+							Ey2 += wk * m2_k;
+						}
+					}
+					pred_mean[i] = Ey;
+					if (predict_var) {
+						pred_var[i] = std::max(0.0, Ey2 - Ey * Ey);
+					}
+				}
+			} // end "zero_one_censored_transformed_beta"
 			else {
 				Log::REFatal("PredictResponse: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
@@ -7794,18 +7901,23 @@ namespace GPBoost {
 					return std::exp(aux_pars_[1] * std::log(value));
 				}
 			}
-			else if (likelihood_type_ == "zoctn") {
+			else if (likelihood_type_ == "zoctn" || likelihood_type_ == "zero_one_censored_transformed_beta") {
 				if (value <= 0.) {
 					return 0.;
 				}
 				else if(value >= 1.) {
 					return 1.;
 				} else {
-					const double a = aux_pars_original_[1];
-					const double b = aux_pars_[2];
-					return GPBoost::sigmoid_stable(a + b * GPBoost::logit(value));
+					if (likelihood_type_ == "zoctn") {
+						const double a = aux_pars_original_[1];
+						const double b = aux_pars_[2];
+						return GPBoost::sigmoid_stable(a + b * GPBoost::logit(value));
+					}
+					else {
+						return GPBoost::sigmoid_stable(value);
+					}
 				}
-			}//end likelihood_type_ == "zoctn"
+			}//end likelihood_type_ == "zoctn"  || likelihood_type_ == "zero_one_censored_transformed_beta"
 			else {
 				Log::REFatal("TransformReponseScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 				return 0.;
@@ -7906,7 +8018,8 @@ namespace GPBoost {
 				}
 				else if (likelihood_type_ != "gaussian" && likelihood_type_ != "gaussian_heteroscedastic" &&
 					likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
-					likelihood_type_ != "poisson" && likelihood_type_ != "t" && likelihood_type_ != "beta") {
+					likelihood_type_ != "poisson" && likelihood_type_ != "t" && likelihood_type_ != "beta" && 
+					likelihood_type_ != "zero_one_censored_transformed_beta") {
 					Log::REFatal("CalculateAuxQuantLogNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 				}
 				aux_normalizing_constant_has_been_calculated_ = true;
@@ -8020,6 +8133,12 @@ namespace GPBoost {
 					}
 					log_normalizing_constant_ = csum + w_pos * (-std::log(sigma) - std::log(b) - M_LOGSQRT2PI) + 
 						aux_log_normalizing_constant_;
+				}
+				else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+					double w_int = 0.0;
+#pragma omp parallel for schedule(static) reduction(+:w_int)
+					for (data_size_t i = 0; i < num_data_; ++i) { const double yi = y_data[i]; if (yi > 0.0 && yi < 1.0) { const double w = has_weights_ ? weights_[i] : 1.0; w_int += w; } }
+					log_normalizing_constant_ = -w_int * std::log(1.0 + 2.0 * aux_pars_[1]);
 				}
 				else {
 					Log::REFatal("CalculateLogNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
@@ -8230,6 +8349,13 @@ namespace GPBoost {
 					ll += w * LogLikZeroOneCensTransfNorm(y_data[i], location_par[i], false);
 				}
 			}
+			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) { 
+					const double w = has_weights_ ? weights_[i] : 1.0; 
+					ll += w * LogLikZeroOneCensTransfBeta(y_data[i], location_par[i], false); 
+				}
+			}
 			else {
 				Log::REFatal("LogLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
@@ -8286,6 +8412,9 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "zoctn") {
 				return LogLikZeroOneCensTransfNorm(y_data, location_par, true);
+			}
+			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+				return LogLikZeroOneCensTransfBeta(y_data, location_par, true);
 			}
 			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || 
 				likelihood_type_ == "beta_binomial") {
@@ -8492,6 +8621,31 @@ namespace GPBoost {
 			}
 		}
 
+		inline double LogLikZeroOneCensTransfBeta(double y, double location_par, bool incl_norm_const) const {
+			const double phi = std::max(aux_pars_[0], 1e-12); 
+			const double u = std::max(aux_pars_[1], 1e-12);
+			return LogLikZeroOneCensTransfBeta_at(y, location_par, phi, u, incl_norm_const);
+		}
+		inline double LogLikZeroOneCensTransfBeta_at(double y, double location_par, double phi, double u, bool incl_norm_const) const {
+			const double mu = GPBoost::sigmoid_stable_clamped(location_par);
+			const double a = mu * phi, b = (1. - mu) * phi;
+			const double onep2u = 1. + 2. * u;
+			if (TwoNumbersAreEqual(y, 0.)) {
+				const double t0 = u / onep2u;
+				return GPBoost::log_beta_cdf(t0, a, b);
+			}
+			else if (TwoNumbersAreEqual(y, 1.)) {
+				const double t1 = (1. + u) / onep2u;
+				return GPBoost::log1m_beta_cdf(t1, a, b);
+			}
+			else {
+				const double t = (y + u) / onep2u;
+				double ll = GPBoost::log_beta_pdf(t, a, b);
+				if (incl_norm_const) ll += -std::log(onep2u);
+				return ll;
+			}
+		}
+
 		/*!
 		* \brief Calculate the first derivative of the log-likelihood with respect to the location parameter
 		* \param y_data Response variable data if response variable is continuous
@@ -8646,6 +8800,13 @@ namespace GPBoost {
 					first_deriv_ll[i] = w * FirstDerivLogLikZeroOneCensTransfNorm(y_data[i], location_par[i]);
 				}
 			}
+			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					first_deriv_ll[i] = w * FirstDerivLogLikZeroOneCensTransfBeta(y_data[i], location_par[i]);
+				}
+			}
 			else {
 				Log::REFatal("CalcFirstDerivLogLik_DataScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
@@ -8699,6 +8860,9 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "zoctn") {
 				return FirstDerivLogLikZeroOneCensTransfNorm(y_data, location_par);
+			}
+			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+				return FirstDerivLogLikZeroOneCensTransfBeta(y_data, location_par);
 			}
 			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || 
 				likelihood_type_ == "beta_binomial") {
@@ -8836,6 +9000,60 @@ namespace GPBoost {
 				const double x = GPBoost::sigmoid_stable(s_arg);
 				const double z = (x - location_par) / sigma;
 				return z / sigma;
+			}
+		}
+
+		inline double FirstDerivLogLikZeroOneCensTransfBeta(double y, double eta) const {
+			const double phi = std::max(aux_pars_[0], 1e-12);
+			const double u = std::max(aux_pars_[1], 1e-12);
+			return FirstDerivLogLikZeroOneCensTransfBeta_at(y, eta, phi, u);
+		}
+		inline double FirstDerivLogLikZeroOneCensTransfBeta_at(double y, double eta,
+			double phi, double u) const {
+			const double eps_mu = 1e-12;
+			const double eps_ab = 1e-12;
+			const double eps_t = 1e-15;
+			const double eps_u = 1e-12;
+			const double tinyP = 1e-300;
+			if (TwoNumbersAreEqual(y, 0.0) || TwoNumbersAreEqual(y, 1.0)) {
+				const double h = 1e-6 * std::max(1.0, std::abs(eta));
+				const double eta_m = eta - h, eta_p = eta + h;
+				// Use probabilities (not log-likelihood for robustness): P = BetaCDF(t0;a,b) if y=0, and P = 1 - BetaCDF(t1;a,b) if y=1.
+				auto prob_at = [&](double eta_arg) {
+					const double mu = GPBoost::sigmoid_stable_clamped(eta_arg);
+					const double a = std::max(mu * phi, eps_ab);
+					const double b = std::max((1.0 - mu) * phi, eps_ab);
+					const double uu = std::max(u, eps_u);
+					const double onep2u = 1.0 + 2.0 * uu;
+					if (TwoNumbersAreEqual(y, 0.0)) {
+						const double t0 = std::min(std::max(uu / onep2u, eps_t), 1.0 - eps_t);
+						const double llP = GPBoost::log_beta_cdf(t0, a, b);
+						return std::exp(std::max(llP, std::log(tinyP)));
+					}
+					else { // y == 1.0
+						const double t1 = std::min(std::max((1.0 + uu) / onep2u, eps_t), 1.0 - eps_t);
+						const double llQ = GPBoost::log1m_beta_cdf(t1, a, b);
+						return std::exp(std::max(llQ, std::log(tinyP)));
+					}
+				};
+				const double Pm = prob_at(eta_m);
+				const double P0 = std::max(prob_at(eta), tinyP);
+				const double Pp = prob_at(eta_p);
+				const double dP_deta = (Pp - Pm) / (2.0 * h);
+				const double score = dP_deta / P0;
+				return std::isfinite(score) ? score : 0.0;
+			}
+			else { // Interior: analytic score
+				const double mu = std::min(std::max(GPBoost::sigmoid_stable_clamped(eta), eps_mu), 1.0 - eps_mu);
+				const double s = mu * (1.0 - mu);
+				const double a = std::max(mu * phi, eps_ab);
+				const double b = std::max((1.0 - mu) * phi, eps_ab);
+				const double c = 1.0 + 2.0 * std::max(u, eps_u);
+				double t = (y + u) / c;
+				t = std::min(std::max(t, eps_t), 1.0 - eps_t);
+				const double G = std::log(t) - std::log1p(-t) - GPBoost::digamma(a) + GPBoost::digamma(b);
+				const double score = phi * s * G;
+				return std::isfinite(score) ? score : 0.0;
 			}
 		}
 
@@ -9061,6 +9279,13 @@ namespace GPBoost {
 						information_ll[i] = w * SecondDerivNegLogLikZeroOneCensTransfNorm(y_data[i], location_par[i]);
 					}
 				}
+				else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikZeroOneCensTransfBeta(y_data[i], location_par[i]);
+					}
+				}
 				else {
 					Log::REFatal("CalcInformationLogLik_DataScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 				}
@@ -9180,6 +9405,9 @@ namespace GPBoost {
 				}
 				else if (likelihood_type_ == "zoctn") {
 					return SecondDerivNegLogLikZeroOneCensTransfNorm(y_data, location_par);
+				}
+				else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+					return SecondDerivNegLogLikZeroOneCensTransfBeta(y_data, location_par);
 				}				
 				else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 					likelihood_type_ == "beta_binomial") {
@@ -9366,6 +9594,65 @@ namespace GPBoost {
 			}
 			else {
 				return 1.0 / (sigma * sigma);
+			}
+		}
+
+		inline double SecondDerivNegLogLikZeroOneCensTransfBeta(double y, double eta) const {
+			const double phi = std::max(aux_pars_[0], 1e-12);
+			const double u = std::max(aux_pars_[1], 1e-12);
+			return SecondDerivNegLogLikZeroOneCensTransfBeta_at(y, eta, phi, u);
+		}
+		inline double SecondDerivNegLogLikZeroOneCensTransfBeta_at(double y, double eta,
+			double phi, double u) const {
+			const double eps_mu = 1e-12;
+			const double eps_ab = 1e-12;
+			const double eps_t = 1e-15;
+			const double eps_u = 1e-12;
+			const double tinyP = 1e-300;
+			if (TwoNumbersAreEqual(y, 0.0) || TwoNumbersAreEqual(y, 1.0)) {
+				//Boundaries: build from P, P', P'' as  H = - ( P''/P - (P'/P)^2 )
+				const double h = 1e-5 * std::max(1.0, std::abs(eta));
+				const double eta_m = eta - h, eta_p = eta + h;
+				auto prob_at = [&](double eta_arg) {
+					const double mu = GPBoost::sigmoid_stable_clamped(eta_arg);
+					const double a = std::max(mu * phi, eps_ab);
+					const double b = std::max((1.0 - mu) * phi, eps_ab);
+					const double uu = std::max(u, eps_u);
+					const double onep2u = 1.0 + 2.0 * uu;
+					if (TwoNumbersAreEqual(y, 0.0)) {
+						const double t0 = std::min(std::max(uu / onep2u, eps_t), 1.0 - eps_t);
+						const double llP = GPBoost::log_beta_cdf(t0, a, b);
+						return std::exp(std::max(llP, std::log(tinyP)));
+					}
+					else {
+						const double t1 = std::min(std::max((1.0 + uu) / onep2u, eps_t), 1.0 - eps_t);
+						const double llQ = GPBoost::log1m_beta_cdf(t1, a, b);
+						return std::exp(std::max(llQ, std::log(tinyP)));
+					}
+				};
+				const double Pm = prob_at(eta_m);
+				const double P0 = std::max(prob_at(eta), tinyP);
+				const double Pp = prob_at(eta_p);
+				const double dP = (Pp - Pm) / (2.0 * h);
+				const double d2P = (Pp - 2.0 * P0 + Pm) / (h * h);
+				const double H = -(d2P / P0 - (dP / P0) * (dP / P0));
+				return std::isfinite(H) ? H : 0.0;
+			}
+			else {// Interior: analytic expression			
+				const double mu = std::min(std::max(GPBoost::sigmoid_stable_clamped(eta), eps_mu), 1.0 - eps_mu);
+				const double s = mu * (1.0 - mu);
+				const double sp = s * (1.0 - 2.0 * mu);
+				const double a = std::max(mu * phi, eps_ab);
+				const double b = std::max((1.0 - mu) * phi, eps_ab);
+				const double c = 1.0 + 2.0 * std::max(u, eps_u);
+				double t = (y + u) / c;
+				t = std::min(std::max(t, eps_t), 1.0 - eps_t);
+				const double G = std::log(t) - std::log1p(-t) - GPBoost::digamma(a) + GPBoost::digamma(b);
+				const double psi1a = GPBoost::trigamma(a);
+				const double psi1b = GPBoost::trigamma(b);
+				const double G_eta = -phi * s * (psi1a + psi1b);
+				const double H = -phi * (sp * G + s * G_eta);
+				return std::isfinite(H) ? H : 0.0;
 			}
 		}
 
@@ -9618,6 +9905,19 @@ namespace GPBoost {
 						}
 					}
 				}//end "zoctn"
+				else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double yi = y_data[i];
+						const double eta = location_par[i];
+						const double h = 1e-4; // numeric derivative
+						const double Hm = SecondDerivNegLogLikZeroOneCensTransfBeta(yi, eta - h);
+						const double Hp = SecondDerivNegLogLikZeroOneCensTransfBeta(yi, eta + h);
+						const double dI = (Hp - Hm) / (2.0 * h);
+						deriv_information_diag_loc_par[i] = w * dI;
+					}
+				}//end "zero_one_censored_transformed_beta"
 				else {
 					Log::REFatal("CalcFirstDerivInformationLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_.c_str());
@@ -9903,16 +10203,63 @@ namespace GPBoost {
 				grad[1] = -grad_log_a;
 				grad[2] = -grad_log_b;
 			}//end "zoctn"
+			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+				// Interior y in (0,1): use analytic derivative for log-phi.
+				// Boundaries (y==0 or y==1): use central differences in log-space.
+				// For u: use central differences in log-space everywhere.
+				const double phi0 = aux_pars_[0];
+				const double u0 = aux_pars_[1];				
+				const double h_log_phi = 1e-4;// log-space step sizes
+				const double h_log_u = 1e-4;
+				const double phi_base = std::max(phi0, 1e-300);
+				const double u_base = std::max(u0, 1e-300);
+				const double phi_minus = phi_base * std::exp(-h_log_phi);
+				const double phi_plus = phi_base * std::exp(+h_log_phi);
+				const double u_minus = u_base * std::exp(-h_log_u);
+				const double u_plus = u_base * std::exp(+h_log_u);
+				double dlogL_dlogphi = 0.0;
+				double dlogL_dlogu = 0.0;
+#pragma omp parallel for schedule(static) reduction(+:dlogL_dlogphi,dlogL_dlogu)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					const double yi = y_data[i];
+					const double eta = location_par[i];
+					double d_ll_d_logphi_i = 0.0;
+					if (yi > 0.0 && yi < 1.0) { // analytic interior derivative
+						const double mu = GPBoost::sigmoid_stable_clamped(eta);
+						const double a = mu * phi0;
+						const double b = (1.0 - mu) * phi0;
+						const double c = 1.0 + 2.0 * u0;
+						const double t = (yi + u0) / c; 
+						const double d_ll_d_phi = GPBoost::digamma(phi0) - mu * GPBoost::digamma(a)
+							- (1.0 - mu) * GPBoost::digamma(b) + mu * std::log(t) + (1.0 - mu) * std::log1p(-t);
+						d_ll_d_logphi_i = phi0 * d_ll_d_phi;
+					}
+					else {
+						// boundary points: use central FD directly in log(phi)
+						const double ll_m = LogLikZeroOneCensTransfBeta_at(yi, eta, phi_minus, u0, true);
+						const double ll_p = LogLikZeroOneCensTransfBeta_at(yi, eta, phi_plus, u0, true);
+						d_ll_d_logphi_i = (ll_p - ll_m) / (2.0 * h_log_phi);
+					}
+					dlogL_dlogphi += w * d_ll_d_logphi_i;
+					const double ll_u_m = LogLikZeroOneCensTransfBeta_at(yi, eta, phi0, u_minus, true);
+					const double ll_u_p = LogLikZeroOneCensTransfBeta_at(yi, eta, phi0, u_plus, true);
+					const double d_ll_d_logu_i = (ll_u_p - ll_u_m) / (2.0 * h_log_u);
+					dlogL_dlogu += w * d_ll_d_logu_i;
+				}
+				grad[0] = -dlogL_dlogphi;
+				grad[1] = -dlogL_dlogu;
+			} // end "zero_one_censored_transformed_beta"
 			else if (num_aux_pars_estim_ > 0) {
 				Log::REFatal("CalcGradNegLogLikAuxPars: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 			}
 		}//end CalcGradNegLogLikAuxPars
 
 		/*!
-		* \brief Calculates (i) the second derivative of the log-likelihood wrt the location parameter and an additional parameter of the likelihood
-		*			and (ii) the first derivative of the diagonal of the Fisher information of the likelihood wrt an additional parameter of the likelihood.
+		* \brief Calculates (i) the second derivative of the log-likelihood wrt the location parameter and an additional parameter (aux_pars_) of the likelihood
+		*			and (ii) the first derivative of the diagonal of the Fisher information of the likelihood wrt an additional parameter (aux_pars_) of the likelihood.
 		*			The latter (ii) is ususally negative third derivative of the log-likelihood wrt twice the location parameter and an additional parameter of the likelihood.
-		*			The gradient wrt to the additional parameter is usually calculated on the log-scale.
+		*			The gradient wrt to the additional parameter (aux_pars_) is usually calculated on the log-scale.
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param location_par Location parameter (random plus fixed effects)
@@ -10221,6 +10568,65 @@ namespace GPBoost {
 						deriv_information_aux_par[i] = w * dinfo;
 					}
 				}//end "zoctn"
+				else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
+					CHECK(ind_aux_par == 0 || ind_aux_par == 1);
+					const double phi0 = aux_pars_[0];
+					const double u0 = aux_pars_[1];
+					const double h_log_phi = 1e-4;
+					const double h_log_u = 1e-4;
+					const double phi_base = std::max(phi0, 1e-300);
+					const double u_base = std::max(u0, 1e-300);
+					const double phi_minus = phi_base * std::exp(-h_log_phi);
+					const double phi_plus = phi_base * std::exp(+h_log_phi);
+					const double u_minus = u_base * std::exp(-h_log_u);
+					const double u_plus = u_base * std::exp(+h_log_u);
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double yi = y_data[i];
+						const double eta = location_par[i];
+						if (ind_aux_par == 0) {// derivatives w.r.t. log(phi)
+							if (yi > 0.0 && yi < 1.0) {
+								// explicit interior formulas
+								const double mu = GPBoost::sigmoid_stable_clamped(eta);
+								const double s = mu * (1.0 - mu);
+								const double sp = s * (1.0 - 2.0 * mu);
+								const double a = mu * phi0, b = (1.0 - mu) * phi0;
+								const double c = 1.0 + 2.0 * u0;
+								const double t = (yi + u0) / c;
+								const double G = std::log(t) - std::log1p(-t) - GPBoost::digamma(a) + GPBoost::digamma(b);
+								const double psi1a = GPBoost::trigamma(a), psi1b = GPBoost::trigamma(b);
+								const double psi2a = GPBoost::tetragamma(a), psi2b = GPBoost::tetragamma(b);
+								const double cross_logphi = -phi0 * s * G - phi0 * phi0 * s * (-mu * psi1a + (1.0 - mu) * psi1b);
+								const double H_logphi = -phi0 * sp * G - phi0 * phi0 * sp * (-mu * psi1a + (1.0 - mu) * psi1b)
+									+ 2.0 * phi0 * phi0 * s * s * (psi1a + psi1b) + phi0 * phi0 * phi0 * s * s * (mu * psi2a + (1.0 - mu) * psi2b);
+								second_deriv_loc_aux_par[i] = w * cross_logphi;
+								deriv_information_aux_par[i] = w * H_logphi;
+							}
+							else {
+								// boundaries: central differences in log(phi)
+								const double neg_score_m = -FirstDerivLogLikZeroOneCensTransfBeta_at(yi, eta, phi_minus, u0);
+								const double neg_score_p = -FirstDerivLogLikZeroOneCensTransfBeta_at(yi, eta, phi_plus, u0);
+								const double cross_logphi = (neg_score_p - neg_score_m) / (2.0 * h_log_phi);
+								const double H_m = SecondDerivNegLogLikZeroOneCensTransfBeta_at(yi, eta, phi_minus, u0);
+								const double H_p = SecondDerivNegLogLikZeroOneCensTransfBeta_at(yi, eta, phi_plus, u0);
+								const double dH_dlogphi = (H_p - H_m) / (2.0 * h_log_phi);
+								second_deriv_loc_aux_par[i] = w * cross_logphi;
+								deriv_information_aux_par[i] = w * dH_dlogphi;
+							}
+						}
+						else {
+							const double neg_score_m = -FirstDerivLogLikZeroOneCensTransfBeta_at(yi, eta, phi0, u_minus);
+							const double neg_score_p = -FirstDerivLogLikZeroOneCensTransfBeta_at(yi, eta, phi0, u_plus);
+							const double cross_logu = (neg_score_p - neg_score_m) / (2.0 * h_log_u);
+							const double H_m = SecondDerivNegLogLikZeroOneCensTransfBeta_at(yi, eta, phi0, u_minus);
+							const double H_p = SecondDerivNegLogLikZeroOneCensTransfBeta_at(yi, eta, phi0, u_plus);
+							const double dH_dlogu = (H_p - H_m) / (2.0 * h_log_u);
+							second_deriv_loc_aux_par[i] = w * cross_logu;
+							deriv_information_aux_par[i] = w * dH_dlogu;
+						}
+					}
+				} // end "zero_one_censored_transformed_beta"
 				else if (num_aux_pars_estim_ > 0) {
 					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_.c_str());
@@ -10456,6 +10862,72 @@ namespace GPBoost {
 				sum += GH_weights_[j] * y;
 			}
 			return sum / std::sqrt(M_PI);
+		}
+
+		inline double XB_FirstMoment_(double mu, double phi, double u) const {
+			double a = mu * phi;
+			double b = (1.0 - mu) * phi;
+			// guard against edge a,b
+			const double tiny = 1e-12;
+			if (!(a > 0.0) || !std::isfinite(a)) a = tiny;
+			if (!(b > 0.0) || !std::isfinite(b)) b = tiny;
+			const double c = 1.0 + 2.0 * u;
+			const double eps = 1e-15;
+			double t0 = u / c;
+			double t1 = (1.0 + u) / c;
+			if (t0 <= eps) t0 = eps;
+			if (t0 >= 1.0 - eps) t0 = 1.0 - eps;
+			if (t1 <= eps) t1 = eps;
+			if (t1 >= 1.0 - eps) t1 = 1.0 - eps;
+			// regularized CDFs
+			const double F0 = GPBoost::reg_incbeta(a, b, t0);
+			const double F1 = GPBoost::reg_incbeta(a, b, t1);
+			const double Pmid = F1 - F0;
+			const double P1 = 1.0 - F1;
+			// E[Z * 1(t0<Z<t1)] = [a/(a+b)] * ( I_{t1}(a+1,b) - I_{t0}(a+1,b) )
+			const double Iz1_t1 = GPBoost::reg_incbeta(a + 1.0, b, t1);
+			const double Iz1_t0 = GPBoost::reg_incbeta(a + 1.0, b, t0);
+			const double Ez1 = (a / (a + b)) * (Iz1_t1 - Iz1_t0);
+			// E[Y] = (1+2u) * E[Z 1(mid)] - u * P(mid) + P(Y=1)
+			double m1 = (1.0 + 2.0 * u) * Ez1 - u * Pmid + P1;
+			if (!(m1 >= 0.0) || !std::isfinite(m1)) m1 = 0.0;
+			if (m1 > 1.0) m1 = 1.0;
+			return m1;
+		}
+
+		inline double XB_SecondMoment_(double mu, double phi, double u) const {
+			double a = mu * phi;
+			double b = (1.0 - mu) * phi;
+			const double tiny = 1e-12;
+			if (!(a > 0.0) || !std::isfinite(a)) a = tiny;
+			if (!(b > 0.0) || !std::isfinite(b)) b = tiny;
+			const double c = 1.0 + 2.0 * u;
+			const double eps = 1e-15;
+			double t0 = u / c;
+			double t1 = (1.0 + u) / c;
+			if (t0 <= eps) t0 = eps;
+			if (t0 >= 1.0 - eps) t0 = 1.0 - eps;
+			if (t1 <= eps) t1 = eps;
+			if (t1 >= 1.0 - eps) t1 = 1.0 - eps;
+			const double F0 = GPBoost::reg_incbeta(a, b, t0);
+			const double F1 = GPBoost::reg_incbeta(a, b, t1);
+			const double Pmid = F1 - F0;
+			const double P1 = 1.0 - F1;
+			// E[Z^2 * 1(t0<Z<t1)] = [a(a+1)/((a+b)(a+b+1))] * ( I_{t1}(a+2,b) - I_{t0}(a+2,b) )
+			const double Iz2_t1 = GPBoost::reg_incbeta(a + 2.0, b, t1);
+			const double Iz2_t0 = GPBoost::reg_incbeta(a + 2.0, b, t0);
+			const double coeff2 = (a * (a + 1.0)) / ((a + b) * (a + b + 1.0));
+			const double Ez2 = coeff2 * (Iz2_t1 - Iz2_t0);
+			// need E[Z * 1(mid)] for the cross term
+			const double Iz1_t1 = GPBoost::reg_incbeta(a + 1.0, b, t1);
+			const double Iz1_t0 = GPBoost::reg_incbeta(a + 1.0, b, t0);
+			const double Ez1 = (a / (a + b)) * (Iz1_t1 - Iz1_t0);
+			const double onep2u = 1.0 + 2.0 * u;
+			double term_mid = (onep2u * onep2u) * Ez2 - 2.0 * u * onep2u * Ez1 + u * u * Pmid;
+			double m2 = term_mid + P1;
+			if (!(m2 >= 0.0) || !std::isfinite(m2)) m2 = 0.0;
+			if (m2 > 1.0) m2 = 1.0;
+			return m2;
 		}
 
 		/*!
@@ -11461,10 +11933,10 @@ namespace GPBoost {
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit",
 			"poisson", "gamma", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "lognormal", "beta_binomial", 
-			"zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn" };
+			"zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta" };
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> LIKELIHOODS_ONLY_LAPLACE_{ "binomial_probit", "binomial_logit", "gamma", "negative_binomial", "negative_binomial_1", 
-			"beta", "beta_binomial", "zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn" };
+			"beta", "beta_binomial", "zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta" };
 		/*! \brief True if response variable has int type */
 		bool has_int_label_;
 		/*! \brief Number of additional parameters for likelihoods */

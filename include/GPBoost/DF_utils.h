@@ -110,7 +110,66 @@ namespace GPBoost {
 	//    if (denom > 0.0) return pdf / denom;
 	//    const double u = std::fabs(x);
 	//    return u + 1.0 / u + 2.0 / (u * u * u); // phi/denom approx u + 1/u + 2/u^3  with u = |x|
-	//}
+	
+	inline double log_beta_pdf(double t, double a, double b) { 
+		if (t <= 0. || t >= 1.) {
+			return -INFINITY;
+		}
+		return (a - 1.) * std::log(t) + (b - 1.) * std::log1p(-t) - std::lgamma(a) - std::lgamma(b) + std::lgamma(a + b);
+	}
+	// Regularized incomplete beta I_x(a,b). Lentz continued fraction for betacf; mirror for x>(a+1)/(a+b+2)
+	inline double reg_incbeta(double a, double b, double x) {
+		if (x <= 0.0) return 0.0;
+		if (x >= 1.0) return 1.0;
+		const double EPS = 1e-14, FPMIN = 1e-300;
+		auto betacf = [&](double aa, double bb, double xx) {
+			double qab = aa + bb, qap = aa + 1.0, qam = aa - 1.0;
+			double c = 1.0, d = 1.0 - qab * xx / qap; if (std::abs(d) < FPMIN) d = FPMIN;
+			d = 1.0 / d; double h = d;
+			for (int m = 1; m <= 200; ++m) {
+				int m2 = 2 * m;
+				double aa1 = m * (bb - m) * xx / ((qam + m2) * (aa + m2));
+				d = 1.0 + aa1 * d; if (std::abs(d) < FPMIN) d = FPMIN;
+				c = 1.0 + aa1 / c; if (std::abs(c) < FPMIN) c = FPMIN;
+				h *= d * (1.0 / c);
+				double aa2 = -(aa + m) * (qab + m) * xx / ((aa + m2) * (qap + m2));
+				d = 1.0 + aa2 * d; if (std::abs(d) < FPMIN) d = FPMIN;
+				c = 1.0 + aa2 / c; if (std::abs(c) < FPMIN) c = FPMIN;
+				double del = d * (1.0 / c);
+				h *= del;
+				if (std::abs(del - 1.0) < EPS) break;
+			}
+			return h;
+		};
+		const double lnB = std::lgamma(a) + std::lgamma(b) - std::lgamma(a + b);
+		const double front = std::exp(a * std::log(x) + b * std::log1p(-x) - lnB) / a;
+		const bool flip = (x > (a + 1.0) / (a + b + 2.0));
+		if (!flip) return front * betacf(a, b, x);
+		// symmetry: I_x(a,b) = 1 - I_{1-x}(b,a)
+		const double front2 = std::exp(b * std::log1p(-x) + a * std::log(x) - lnB) / b;
+		return 1.0 - front2 * betacf(b, a, 1.0 - x);
+	}
+	// Safe log of CDF and log(1-CDF) of Beta distributin
+	inline double log_beta_cdf(double x, double a, double b) {
+		// clip x into open interval and evaluate regularized incomplete beta
+		if (x <= 0.0) return std::log(1e-300);   // floor instead of -INFINITY
+		if (x >= 1.0) return 0.0;                // log(1) = 0
+		double F = reg_incbeta(a, b, x);
+		// numeric safety: floor extremely small probabilities
+		const double tiny = 1e-300;
+		if (!(F > 0.0) || !std::isfinite(F)) F = 0.0;
+		return std::log(std::max(F, tiny));
+	}
+
+	inline double log1m_beta_cdf(double x, double a, double b) {
+		if (x <= 0.0) return 0.0;                // log(1) = 0
+		if (x >= 1.0) return std::log(1e-300);   // floor instead of -INFINITY
+		double F = reg_incbeta(a, b, x);
+		const double tiny = 1e-300;
+		double one_minus = 1.0 - F;
+		if (!(one_minus > 0.0) || !std::isfinite(one_minus)) one_minus = 0.0;
+		return std::log(std::max(one_minus, tiny));
+	}
 
 	/*!
 	* \brief Quantile function of a normal distribution
