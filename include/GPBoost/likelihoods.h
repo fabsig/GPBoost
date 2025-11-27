@@ -3075,7 +3075,7 @@ namespace GPBoost {
 				if (information_changes_after_mode_finding_) CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
 				if (HasZeroValueInformationLogLik()) {
 					Log::REFatal("FindModePostRandEffCalcMLLFITC: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-						"Cannot have negative values when using the FITC approximation ");
+						"This is not permitted when using the FITC approximation ");
 				}
 				if (information_changes_after_mode_finding_) {					
 					D_plus_WI_inv_diag = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
@@ -3809,7 +3809,7 @@ namespace GPBoost {
 			vec_t d_mll_d_mode;
 			if (HasZeroValueInformationLogLik()) {
 				Log::REFatal("CalcGradNegMargLikelihoodLaplaceApproxFSVA: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-					"Cannot have negative values when using the VIF approximation and gradient-based optimization ");
+					"This is not permitted when using the VIF approximation and gradient-based optimization ");
 			}
 			if (matrix_inversion_method_ == "iterative") {
 				double c_opt;
@@ -5257,7 +5257,7 @@ namespace GPBoost {
 			}
 			if (HasZeroValueInformationLogLik()) {
 				Log::REFatal("CalcGradNegMargLikelihoodLaplaceApproxFITC: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-					"Cannot have negative values when using the FITC approximation and gradient-based optimization ");
+					"This is not permitted when using the FITC approximation and gradient-based optimization ");
 			}
 			vec_t WI = information_ll_.cwiseInverse();
 			vec_t DW_plus_I_inv_diag, SigmaI_plus_W_inv_diag, d_mll_d_mode;
@@ -7007,7 +7007,7 @@ namespace GPBoost {
 				sp_mat_t resid_obs_inv_resid_pred_obs_t;
 				if (has_fitc_correction) {
 					if (HasZeroValueInformationLogLik()) {
-						Log::REFatal("PredictLaplaceApproxFITC: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. ");
+						Log::REFatal("PredictLaplaceApproxFITC: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood ");
 					}
 					vec_t D_plus_WI_inv_diag = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
 					resid_obs_inv_resid_pred_obs_t = D_plus_WI_inv_diag.asDiagonal() * (fitc_resid_pred_obs.transpose());
@@ -11210,7 +11210,7 @@ namespace GPBoost {
 				const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
 				if (HasZeroValueInformationLogLik()) {
 					Log::REFatal("CalcLogDetStochFSVA: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-						"Cannot have negative values when using the VIF approximation and iterative methods with the '%s' preconditioner ", cg_preconditioner_type_.c_str());
+						"This is not permitted for the VIF approximation and iterative methods with the '%s' preconditioner. Try using the 'vifdu' preconditioner or the Cholesky decomposition ", cg_preconditioner_type_.c_str());
 				}
 				CGTridiagVIFLaplaceSigmaPlusWinv(information_ll_.cwiseInverse(), D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
 					chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rand_vec_trace_I_, Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, SigmaI_plus_W_inv_Z_,
@@ -11273,7 +11273,7 @@ namespace GPBoost {
 						else if (cg_preconditioner_type_ == "fitc") {
 							if (HasZeroValueInformationLogLik()) {
 								Log::REFatal("Inv_SigmaI_plus_ZtWZ_Vecchia_iterative: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-									"Cannot have negative values when using the Vecchia approximation and iterative methods with the '%s' preconditioner ", cg_preconditioner_type_.c_str());
+									"This is not permitted for the Vecchia approximation and iterative methods with the '%s' preconditioner. Try using another preconditioner (e.g. 'vadu') or the Cholesky decomposition ", cg_preconditioner_type_.c_str());
 							}
 							diagonal_approx_preconditioner_ = information_ll_.cwiseInverse();
 							diagonal_approx_preconditioner_.array() += sigma_ip_stable_.coeffRef(0, 0);
@@ -11291,7 +11291,7 @@ namespace GPBoost {
 							sp_mat_t B_vecchia;
 							if (HasZeroValueInformationLogLik()) {
 								Log::REFatal("Inv_SigmaI_plus_ZtWZ_Vecchia_iterative: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-									"Cannot have negative values when using the Vecchia approximation and iterative methods with the '%s' preconditioner ", cg_preconditioner_type_.c_str());
+									"This is not permitted for the Vecchia approximation and iterative methods with the '%s' preconditioner. Try using another preconditioner (e.g. 'vadu') or the Cholesky decomposition ", cg_preconditioner_type_.c_str());
 							}
 							vec_t pseudo_nugget = information_ll_.cwiseInverse();
 							re_model->CalcVecchiaApproxLatentAddDiagonal(cluster_i, B_vecchia, D_inv_vecchia_pc_, pseudo_nugget.data());
@@ -11364,7 +11364,7 @@ namespace GPBoost {
 			if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
 				if (HasZeroValueInformationLogLik()) {
 					Log::REFatal("CalcLogDetStochVecchia: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-						"Cannot have negative values when using the Vecchia approximation and iterative methods with the '%s' preconditioner ", cg_preconditioner_type_.c_str());
+						"This is not permitted when using the Vecchia approximation and iterative methods with the '%s' preconditioner. Try using another preconditioner (e.g. 'vadu') or the Cholesky decomposition ", cg_preconditioner_type_.c_str());
 				}
 				const den_mat_t* cross_cov = nullptr;
 				std::vector<vec_t> Tdiags_PI_WI_plus_Sigma(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag));
@@ -11525,7 +11525,7 @@ namespace GPBoost {
 				vec_t tr_WI_plus_Sigma_inv_WI_deriv;
 				if (HasZeroValueInformationLogLik()) {
 					Log::REFatal("CalcLogDetStochDerivModeVecchia: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-						"Cannot have negative values when using the Vecchia approximation and iterative methods with the '%s' preconditioner ", cg_preconditioner_type_.c_str());
+						"This is not permitted when using the Vecchia approximation and iterative methods with the '%s' preconditioner. Try using another preconditioner (e.g. 'vadu') or the Cholesky decomposition ", cg_preconditioner_type_.c_str());
 				}
 				diag_WI = information_ll_.cwiseInverse();
 				WI_WI_plus_Sigma_inv_Z = diag_WI.asDiagonal() * WI_plus_Sigma_inv_Z_;
