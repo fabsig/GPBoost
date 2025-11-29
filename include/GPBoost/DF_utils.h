@@ -171,6 +171,64 @@ namespace GPBoost {
 		return std::log(std::max(one_minus, tiny));
 	}
 
+	// regularized lower incomplete gamma P(a,x) = gamma(a,x)/Gamma(a), a>0, x>=0
+	inline double RegLowerGamma(const double a, const double x) {
+		if (x <= 0.0) return 0.0;
+		const double gln = std::lgamma(a);
+		const double ax = a * std::log(x) - x - gln;// for underflow guard for exp()
+		if (x < a + 1.0) {
+			double ap = a;
+			double sum = 1.0 / a;
+			double del = sum;
+			for (int n = 1; n <= 1000; ++n) {
+				ap += 1.0;
+				del *= x / ap;
+				sum += del;
+				if (std::fabs(del) < std::fabs(sum) * 1e-14) break;
+			}
+			if (ax < -700.0) return 0.0;
+			return sum * std::exp(ax);
+		}
+		else {
+			double b = x + 1.0 - a;
+			double c = 1e308;
+			double d = 1.0 / b;
+			double h = d;
+			for (int n = 1; n <= 1000; ++n) {
+				double an = -1.0 * n * (n - a);
+				b += 2.0;
+				d = 1.0 / (an * d + b);
+				c = b + an / c;
+				double del = d * c;
+				h *= del;
+				if (std::fabs(del - 1.0) < 1e-14) break;
+			}
+			if (ax < -700.0) return 1.0;
+			double Q = std::exp(ax) * h;
+			if (Q < 0.0) Q = 0.0;
+			if (Q > 1.0) Q = 1.0;
+			return 1.0 - Q;
+		}
+	}
+
+	inline double InvRegLowerGamma(const double a, const double p) {
+		if (p <= 0.0) return 0.0;
+		if (p >= 1.0) return 1e8;
+		double lo = 0.0;
+		double hi = std::max(1.0, a + 10.0 * std::sqrt(a + 1.0));
+		double Ghi = RegLowerGamma(a, hi);
+		int expand = 0;
+		while (Ghi < p && hi < 1e8 && expand < 60) { hi *= 2.0; Ghi = RegLowerGamma(a, hi); ++expand; }
+		for (int it = 0; it < 80; ++it) {
+			const double mid = 0.5 * (lo + hi);
+			const double Gm = RegLowerGamma(a, mid);
+			if (Gm < p) { lo = mid; }
+			else { hi = mid; }
+			if (hi - lo <= std::max(1e-12, 1e-10 * (1.0 + lo))) break;
+		}
+		return 0.5 * (lo + hi);
+	}
+
 	/*!
 	* \brief Quantile function of a normal distribution
 	* \param p Probability for which the quantile is calculated
