@@ -312,10 +312,12 @@ namespace GPBoost {
 				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
 			}
 			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") {
-				aux_pars_ = { 1, 0.1 };//shape and shift
+				aux_pars_ = { 1., 0.1 };//shape and shift
 				names_aux_pars_ = { "shape", "xi" };
 				num_aux_pars_ = 2;
 				num_aux_pars_estim_ = 2;
+				information_ll_can_be_exact_zero_ = true;
+				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
 			}
 			aux_pars_original_ = aux_pars_;
 			BackTransformAuxPars(aux_pars_.data(), aux_pars_original_.data());
@@ -8816,19 +8818,27 @@ namespace GPBoost {
 			return LogLikZeroOneCensTransfBeta_at(y, location_par, phi, u, incl_norm_const);
 		}
 		inline double LogLikZeroOneCensTransfBeta_at(double y, double location_par, double phi, double u, bool incl_norm_const) const {
-			const double mu = GPBoost::sigmoid_stable_clamped(location_par);
-			const double a = mu * phi, b = (1. - mu) * phi;
-			const double onep2u = 1. + 2. * u;
+			const double eps_mu = 1e-12;
+			const double eps_ab = 1e-12;
+			const double eps_t = 1e-15;
+			const double eps_u = 1e-12;			
+			const double uu = std::max(u, eps_u);
+			const double onep2u = 1.0 + 2.0 * uu;			
+			const double mu_raw = GPBoost::sigmoid_stable_clamped(location_par);
+			const double mu = std::min(std::max(mu_raw, eps_mu), 1.0 - eps_mu);
+			const double a = std::max(mu * phi, eps_ab);
+			const double b = std::max((1.0 - mu) * phi, eps_ab);
 			if (TwoNumbersAreEqual(y, 0.)) {
-				const double t0 = u / onep2u;
+				const double t0 = std::min(std::max(uu / onep2u, eps_t), 1.0 - eps_t);
 				return GPBoost::log_beta_cdf(t0, a, b);
 			}
 			else if (TwoNumbersAreEqual(y, 1.)) {
-				const double t1 = (1. + u) / onep2u;
+				const double t1 = std::min(std::max((1.0 + uu) / onep2u, eps_t), 1.0 - eps_t);
 				return GPBoost::log1m_beta_cdf(t1, a, b);
 			}
 			else {
-				const double t = (y + u) / onep2u;
+				double t = (y + uu) / onep2u;
+				t = std::min(std::max(t, eps_t), 1.0 - eps_t);
 				double ll = GPBoost::log_beta_pdf(t, a, b);
 				if (incl_norm_const) ll += -std::log(onep2u);
 				return ll;
@@ -8854,6 +8864,10 @@ namespace GPBoost {
 				const double G1 = GPBoost::RegLowerGamma(k, t1);
 				const double H1 = std::max(1.0 - G1, tiny);
 				return std::log(H1);
+				//double G = GPBoost::RegLowerGamma(k, t1); // alternative version, potentially more stable
+				//if (!std::isfinite(G)) return std::log(tiny);
+				//G = std::min(std::max(G, tiny), 1.0 - tiny);
+				//return std::log1p(-G);
 			}
 			else {
 				const double z = y + xi;
@@ -9314,6 +9328,56 @@ namespace GPBoost {
 				return z / th - k; // interior score (k*z/mu - k)
 			}
 		}
+		//alternative version, potentially more stable
+		//inline double FirstDerivLogLikZeroOneCensGamma_at(
+		//  const double y,
+		//  const double location_par,
+		//  const double k,
+		//  const double xi) const {
+		//  const double tiny = 1e-300;
+		//  const double maxAbsGrad = 1e12;
+		//  if (!(k > 0.0) || !std::isfinite(k)) return 0.0;      
+		//  const double eta = std::max(std::min(location_par, 700.0), -700.0);// Safe exp(-eta)
+		//  const double inv_mu = std::exp(-eta);
+		//  auto clipGrad = [&](double g) {
+		//    if (!std::isfinite(g)) return 0.0;
+		//    if (g > maxAbsGrad) return  maxAbsGrad;
+		//    if (g < -maxAbsGrad) return -maxAbsGrad;
+		//    return g;
+		//  };
+		//  if (y <= 0.0) {
+		//    if (xi <= 0.0) return 0.0;
+		//    const double x = k * xi * inv_mu; // = k*xi/mu
+		//    if (!(x > 0.0) || !std::isfinite(x)) return 0.0;
+		//    double G = GPBoost::RegLowerGamma(k, x);
+		//    if (!std::isfinite(G)) return 0.0;
+		//    G = std::min(std::max(G, tiny), 1.0 - tiny);
+		//    const double logG = std::log(G);
+		//    const double logp = -x + (k - 1.0) * std::log(x) - std::lgamma(k); // log pdf Gamma(k,1)
+		//    const double g = -x * std::exp(logp - logG);
+		//    return clipGrad(g);
+		//  }
+		//  else if (y >= 1.0) {
+		//    const double a = 1.0 + xi;
+		//    if (!(a > 0.0)) return 0.0;
+		//    const double x = k * a * inv_mu; // = k*(1+xi)/mu
+		//    if (!(x > 0.0) || !std::isfinite(x)) return 0.0;
+		//    double G = GPBoost::RegLowerGamma(k, x);
+		//    if (!std::isfinite(G)) return 0.0;
+		//    G = std::min(std::max(G, tiny), 1.0 - tiny);
+		//    const double tail = std::max(1.0 - G, tiny);
+		//    const double logTail = std::log(tail);
+		//    const double logp = -x + (k - 1.0) * std::log(x) - std::lgamma(k);
+		//    const double g = x * std::exp(logp - logTail);
+		//    return clipGrad(g);
+		//  }
+		//  else {
+		//    const double z = y + xi;
+		//    if (!(z > 0.0)) return 0.0;       
+		//    const double g = -k + (k * z * inv_mu);// g = -k + z/theta = -k + k*z/mu = -k + k*z*exp(-eta)
+		//    return clipGrad(g);
+		//  }
+		//}   
 
 		/*!
 		* \brief Calculate (usually only the diagonal) the Fisher information aggregated per random effect 
@@ -9906,7 +9970,8 @@ namespace GPBoost {
 				const double dP = (Pp - Pm) / (2.0 * h);
 				const double d2P = (Pp - 2.0 * P0 + Pm) / (h * h);
 				const double H = -(d2P / P0 - (dP / P0) * (dP / P0));
-				return std::isfinite(H) ? H : 0.0;
+				if (!std::isfinite(H) || H < 0.0) return 0.0;
+				return H;
 			}
 			else {// Interior: analytic expression			
 				const double mu = std::min(std::max(GPBoost::sigmoid_stable_clamped(location_par), eps_mu), 1.0 - eps_mu);
@@ -9922,7 +9987,8 @@ namespace GPBoost {
 				const double psi1b = GPBoost::trigamma(b);
 				const double G_eta = -phi * s * (psi1a + psi1b);
 				const double H = -phi * (sp * G + s * G_eta);
-				return std::isfinite(H) ? H : 0.0;
+				if (!std::isfinite(H) || H < 0.0) return 0.0;
+				return H;
 			}
 		}
 
@@ -9931,29 +9997,48 @@ namespace GPBoost {
 		}
 		inline double SecondDerivNegLogLikZeroOneCensGamma_at(const double y, const double location_par, const double k, const double xi) const {
 			const double tiny = 1e-300;
-			const double mu = std::exp(location_par);
-			const double th = mu / k;
+			const double maxW = 1e12; // cap huge curvature to avoid Inf 
+			if (!(k > 0.0) || !std::isfinite(k)) return 0.0;
+			const double eta = std::max(std::min(location_par, 700.0), -700.0);
+			const double inv_mu = std::exp(-eta);  // = 1/mu
+			auto clipW = [&](double W) {
+				if (!std::isfinite(W) || W < 0.0) return 0.0;
+				if (W > maxW) return maxW;
+				return W;
+			};
 			if (y <= 0.0) {
 				if (xi <= 0.0) return 0.0;
-				const double x = xi / th;                 // = k*xi/mu
-				const double G = std::max(GPBoost::RegLowerGamma(k, x), tiny);
-				// pdf of Gamma(k,1):
-				const double p = std::exp(-x + (k - 1.0) * std::log(x) - std::lgamma(k));
-				const double Q = p / G;
-				return x * (x - k) * Q + x * x * Q * Q;
+				const double x = k * xi * inv_mu; // = k*xi/mu
+				if (!(x > 0.0) || !std::isfinite(x)) return 0.0;
+				double G = GPBoost::RegLowerGamma(k, x);
+				if (!std::isfinite(G)) return 0.0;
+				G = std::min(std::max(G, tiny), 1.0 - tiny);
+				const double logG = std::log(G);
+				const double logp = -x + (k - 1.0) * std::log(x) - std::lgamma(k); // log pdf Gamma(k,1)
+				const double Q = std::exp(logp - logG);
+				const double H = x * (x - k) * Q + x * x * Q * Q;
+				return clipW(H);
 			}
 			else if (y >= 1.0) {
 				const double a = 1.0 + xi;
-				const double x = a / th;                  // = k*(1+xi)/mu
-				const double G = GPBoost::RegLowerGamma(k, x);
-				const double H = std::max(1.0 - G, tiny);
-				const double p = std::exp(-x + (k - 1.0) * std::log(x) - std::lgamma(k));
-				const double Q = p / H;
-				return x * (k - x) * Q + x * x * Q * Q;
+				if (!(a > 0.0)) return 0.0;
+				const double x = k * a * inv_mu; // = k*(1+xi)/mu
+				if (!(x > 0.0) || !std::isfinite(x)) return 0.0;
+				double G = GPBoost::RegLowerGamma(k, x);
+				if (!std::isfinite(G)) return 0.0;
+				G = std::min(std::max(G, tiny), 1.0 - tiny);				
+				const double tail = std::max(1.0 - G, tiny);// tail = 1 - G, in a numerically safe way
+				const double logTail = std::log(tail);
+				const double logp = -x + (k - 1.0) * std::log(x) - std::lgamma(k);
+				const double Q = std::exp(logp - logTail);
+				const double H = x * (k - x) * Q + x * x * Q * Q;
+				return clipW(H);
 			}
 			else {
 				const double z = y + xi;
-				return z / th;                            // = k*z/mu
+				if (!(z > 0.0)) return 0.0;
+				const double H = k * z * inv_mu; // = k*z/mu
+				return clipW(H);
 			}
 		}
 

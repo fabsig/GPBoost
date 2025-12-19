@@ -119,6 +119,9 @@ namespace GPBoost {
 	}
 	// Regularized incomplete beta I_x(a,b). Lentz continued fraction for betacf; mirror for x>(a+1)/(a+b+2)
 	inline double reg_incbeta(double a, double b, double x) {
+		const double tiny = 1e-300;
+		a = std::max(a, tiny);
+		b = std::max(b, tiny);
 		if (x <= 0.0) return 0.0;
 		if (x >= 1.0) return 1.0;
 		const double EPS = 1e-14, FPMIN = 1e-300;

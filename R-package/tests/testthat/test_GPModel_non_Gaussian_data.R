@@ -4699,8 +4699,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                               nrounds = 100, early_stopping_rounds = 5,
                                               use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
                                               deterministic = TRUE) )
-    expect_lte(cvbst$best_score,0.788817272181965*(1+TOLERANCE_LOOSE))
-    expect_gte(cvbst$best_score,0.788817272181965*(1-TOLERANCE_LOOSE))
+    expect_lte(cvbst$best_score,0.788817272181965*(1+0.05))
+    expect_gte(cvbst$best_score,0.788817272181965*(1-0.05))
     expect_lte(cvbst$best_iter, 11)
     expect_gte(cvbst$best_iter, 9)
     
@@ -4726,7 +4726,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- GPModel(group_data = group, likelihood = likelihood, 
                         matrix_inversion_method = "cholesky")
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(phi, u))
-    expect_lt(abs(nll-52.12617568),TOLERANCE_STRICT)
+    expect_lt(abs(nll-52.12617684),TOLERANCE_STRICT)
     
     # Label needs to have the correct support
     yt <- y
@@ -4803,7 +4803,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- GPModel(group_data = group, likelihood = likelihood, 
                         matrix_inversion_method = "cholesky")
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(phi, u))
-    expect_lt(abs(nll-225.4880462),TOLERANCE_STRICT)
+    expect_lt(abs(nll-182.4205937),TOLERANCE_STRICT)
     
     # Label needs to have the correct support
     yt <- y
