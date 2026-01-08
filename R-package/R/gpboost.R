@@ -1,5 +1,5 @@
 # Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
-# Modified work Copyright (c) 2020 - 2024 Fabio Sigrist. All rights reserved.
+# Modified work Copyright (c) 2020 - 2026 Fabio Sigrist. All rights reserved.
 # Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 
 #' @name gpb_shared_params
@@ -9,10 +9,11 @@
 #' @param data a \code{gpb.Dataset} object, used for training. Some functions, such as \code{\link{gpb.cv}},
 #'             may allow you to pass other types of data like \code{matrix} and then separately supply
 #'             \code{label} as a keyword argument.
-#' @param folds \code{list} provides a possibility to use a list of pre-defined CV folds
-#'              (each element must be a vector of test fold's indices). When folds are supplied,
+#' @param folds (\code{list}) This provides the possibility to use a list of pre-defined CV folds
+#'              (each element must be a vector of test fold's indices). When \code{folds} are supplied,
 #'              the \code{nfold} and \code{stratified} parameters are ignored.
-#' @param nfold the original dataset is randomly partitioned into \code{nfold} equal size subsamples.
+#' @param nfold The original dataset is randomly partitioned into \code{nfold} equal-sized subsamples. 
+#' This allows for doing nfold-CV
 #' @param cv_seed Seed for generating folds when doing \code{nfold} CV
 #' @param early_stopping_rounds int. Activates early stopping. Requires at least one validation data
 #'                              and one metric. When this parameter is non-null,

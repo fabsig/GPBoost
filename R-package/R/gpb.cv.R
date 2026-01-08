@@ -401,7 +401,7 @@ gpb.cv <- function(params = list()
         if (!is.null(data$.__enclos_env__$private$info$init_score)) {
           init_score_train = data$.__enclos_env__$private$info$init_score[train_indexDT$indices]
         }
-        dtrain <- gpb.Dataset(data = as.matrix(data$.__enclos_env__$private$raw_data[train_indexDT$indices,]),
+        dtrain <- gpb.Dataset(data = as.matrix(data$.__enclos_env__$private$raw_data[train_indexDT$indices,,drop=FALSE]),
                               label = data$.__enclos_env__$private$info$label[train_indexDT$indices],
                               weight = weight_train,
                               init_score = init_score_train,
@@ -418,7 +418,7 @@ gpb.cv <- function(params = list()
         if (!is.null(data$.__enclos_env__$private$info$init_score)) {
           init_score_test = data$.__enclos_env__$private$info$init_score[test_indexDT$indices]
         }
-        dtest <- gpb.Dataset(data = as.matrix(data$.__enclos_env__$private$raw_data[test_indexDT$indices,]), 
+        dtest <- gpb.Dataset(data = as.matrix(data$.__enclos_env__$private$raw_data[test_indexDT$indices,,drop=FALSE]), 
                              label = data$.__enclos_env__$private$info$label[test_indexDT$indices],
                              weight = weight_test,
                              init_score = init_score_test,
@@ -440,29 +440,29 @@ gpb.cv <- function(params = list()
         group_data_pred <- NULL
         group_data <- gp_model$get_group_data()
         if (!is.null(group_data)) {
-          group_data_pred <- group_data[test_indexDT$indices,]
-          group_data <- group_data[train_indexDT$indices,]
+          group_data_pred <- group_data[test_indexDT$indices,,drop=FALSE]
+          group_data <- group_data[train_indexDT$indices,,drop=FALSE]
         }
         
         group_rand_coef_data_pred <- NULL
         group_rand_coef_data <- gp_model$get_group_rand_coef_data()
         if (!is.null(group_rand_coef_data)) {
-          group_rand_coef_data_pred <- group_rand_coef_data[test_indexDT$indices,]
-          group_rand_coef_data <- group_rand_coef_data[train_indexDT$indices,]
+          group_rand_coef_data_pred <- group_rand_coef_data[test_indexDT$indices,,drop=FALSE]
+          group_rand_coef_data <- group_rand_coef_data[train_indexDT$indices,,drop=FALSE]
         }
         
         gp_coords_pred <- NULL
         gp_coords <- gp_model$get_gp_coords()
         if (!is.null(gp_coords)) {
-          gp_coords_pred <- gp_coords[test_indexDT$indices,]
-          gp_coords <- gp_coords[train_indexDT$indices,]
+          gp_coords_pred <- gp_coords[test_indexDT$indices,,drop=FALSE]
+          gp_coords <- gp_coords[train_indexDT$indices,,drop=FALSE]
         }
         
         gp_rand_coef_data_pred <- NULL
         gp_rand_coef_data <- gp_model$get_gp_rand_coef_data()
         if (!is.null(gp_rand_coef_data)) {
-          gp_rand_coef_data_pred <- gp_rand_coef_data[test_indexDT$indices,]
-          gp_rand_coef_data <- gp_rand_coef_data[train_indexDT$indices,]
+          gp_rand_coef_data_pred <- gp_rand_coef_data[test_indexDT$indices,,drop=FALSE]
+          gp_rand_coef_data <- gp_rand_coef_data[train_indexDT$indices,,drop=FALSE]
         }
         
         cluster_ids_pred <- NULL

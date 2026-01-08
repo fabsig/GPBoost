@@ -10,11 +10,12 @@
 may allow you to pass other types of data like \code{matrix} and then separately supply
 \code{label} as a keyword argument.}
 
-\item{folds}{\code{list} provides a possibility to use a list of pre-defined CV folds
-(each element must be a vector of test fold's indices). When folds are supplied,
+\item{folds}{(\code{list}) This provides the possibility to use a list of pre-defined CV folds
+(each element must be a vector of test fold's indices). When \code{folds} are supplied,
 the \code{nfold} and \code{stratified} parameters are ignored.}
 
-\item{nfold}{the original dataset is randomly partitioned into \code{nfold} equal size subsamples.}
+\item{nfold}{The original dataset is randomly partitioned into \code{nfold} equal-sized subsamples. 
+This allows for doing nfold-CV}
 
 \item{cv_seed}{Seed for generating folds when doing \code{nfold} CV}
 

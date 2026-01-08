@@ -35,11 +35,12 @@ fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
 If training stops early, the returned model will have attribute \code{best_iter}
 set to the iteration number of the best iteration.}
 
-\item{folds}{\code{list} provides a possibility to use a list of pre-defined CV folds
-(each element must be a vector of test fold's indices). When folds are supplied,
+\item{folds}{(\code{list}) This provides the possibility to use a list of pre-defined CV folds
+(each element must be a vector of test fold's indices). When \code{folds} are supplied,
 the \code{nfold} and \code{stratified} parameters are ignored.}
 
-\item{nfold}{the original dataset is randomly partitioned into \code{nfold} equal size subsamples.}
+\item{nfold}{The original dataset is randomly partitioned into \code{nfold} equal-sized subsamples. 
+This allows for doing nfold-CV}
 
 \item{metric}{Evaluation metric to be monitored when doing CV and parameter tuning. 
 Can be a \code{character} string or vector of \code{character} strings.
