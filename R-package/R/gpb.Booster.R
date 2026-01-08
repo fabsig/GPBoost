@@ -1,12 +1,12 @@
 # Original work Copyright (c) 2016 Microsoft Corporation. All rights reserved.
-# Modified work Copyright (c) 2020 Fabio Sigrist. All rights reserved.
+# Modified work Copyright (c) 2020 - 2026 Fabio Sigrist. All rights reserved.
 # Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 
 #' @importFrom R6 R6Class
 Booster <- R6::R6Class(
   # Class for boosting model in GPBoost
   # Authors: Authors of the LightGBM R package, Fabio Sigrist
-  classname = "gpb.Booster",
+  classname = c("gpb.Booster","lgb.Booster"),
   cloneable = FALSE,
   public = list(
     
@@ -717,8 +717,13 @@ Booster <- R6::R6Class(
                        rawscore = NULL,
                        vecchia_pred_type = NULL,
                        num_neighbors_pred = NULL,
+                       type = NULL,
                        ...) {
       
+      if (!is.null(type)) {
+        if (type != "contrib") stop("only type = 'contrib' is currently supported ")
+        predcontrib = TRUE
+      }
       if (!is.null(rawscore)) {
         stop("predict: The argument 'raw_score' is discontinued. 
              Use the renamed equivalent argument 'pred_latent' instead")
