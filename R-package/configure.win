@@ -117,9 +117,6 @@ then
 fi
 
 # Generate Makevars.win from Makevars.win.in
-sed -e \
-    "s/@CXX_STD@/$CXX_STD/" \
-    < src/Makevars.win.in > src/Makevars.win
-sed -e \
-    "s/@LGB_CPPFLAGS@/$LGB_CPPFLAGS/" \
-    < src/Makevars.win.in > src/Makevars.win
+sed -e "s|@CXX_STD@|${CXX_STD}|g" \
+    -e "s|@LGB_CPPFLAGS@|${LGB_CPPFLAGS}|g" \
+    src/Makevars.win.in > src/Makevars.win
