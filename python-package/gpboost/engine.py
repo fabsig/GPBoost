@@ -1049,6 +1049,13 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
     if metrics is not None:
         raise GPBoostError("The argument 'metrics' is discontinued. "
                            "Use the renamed equivalent argument 'metric' instead")
+    if 'max_bin' in param_grid:
+        if train_set.handle is not None:
+            raise ValueError("'train_set' cannot be constructed already when 'max_bin' is in 'param_grid'. "
+                             "Redefine your 'train_set' again by calling Dataset() first. ")
+        else:
+            train_set_not_constructed = copy.deepcopy(train_set)
+
     if folds is not None:
         for train_idx, test_idx in folds:
             train_set = train_set.construct()
@@ -1117,11 +1124,6 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
     best_params = {}
     best_num_boost_round = num_boost_round
     counter_num_comb = 1
-    if 'max_bin' in param_grid:
-        if train_set.handle is not None:
-            raise ValueError("'train_set' cannot be constructed already when 'max_bin' is in 'param_grid' ")
-        else:
-            train_set_not_constructed = copy.deepcopy(train_set)
 
     for param_comb_number in try_param_combs:
         param_comb = _get_param_combination(param_comb_number=param_comb_number, param_grid=param_grid)
