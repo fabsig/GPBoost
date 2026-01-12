@@ -83,22 +83,22 @@
 #include <vector>
 #include <algorithm>
 
-#if __has_include(<execution>) && defined(__cpp_lib_execution)
-#  include <execution>
-#  if !defined(_LIBCPP_VERSION)
-#    define HAS_PAR_UNSEQ 1
-#  endif
-#endif
-
-#ifndef HAS_PAR_UNSEQ
-#  define HAS_PAR_UNSEQ 0
-#endif
-
-#if HAS_PAR_UNSEQ
-#  define EXEC_POLICY std::execution::par_unseq
-#elif defined(__cpp_lib_execution)
-#  define EXEC_POLICY std::execution::par
-#endif
+// used in 'DetermineGroupsOrderedMode_Inner()'
+// can lead to compiler crashes on some compilers
+//#if __has_include(<execution>) && defined(__cpp_lib_execution)
+//#  include <execution>
+//#  if !defined(_LIBCPP_VERSION)
+//#    define HAS_PAR_UNSEQ 1
+//#  endif
+//#endif
+//#ifndef HAS_PAR_UNSEQ
+//#  define HAS_PAR_UNSEQ 0
+//#endif
+//#if HAS_PAR_UNSEQ
+//#  define EXEC_POLICY std::execution::par_unseq
+//#elif defined(__cpp_lib_execution)
+//#  define EXEC_POLICY std::execution::par
+//#endif
 
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
@@ -11687,11 +11687,13 @@ namespace GPBoost {
 			std::vector<data_size_t> idx(num_data_);
 			std::iota(idx.begin(), idx.end(), 0);// [0,1,2,…,n-1]       
 			auto cmp = [&mode](auto a, auto b) { return mode[a] < mode[b]; };
-#ifdef EXEC_POLICY
-			std::sort(EXEC_POLICY, idx.begin(), idx.end(), cmp);
-#else
+//#ifdef EXEC_POLICY
+//			std::sort(EXEC_POLICY, idx.begin(), idx.end(), cmp);
+//#else
+//			std::sort(idx.begin(), idx.end(), cmp);
+//#endif
+			// the above can lead to compiler crashes on some compilers
 			std::sort(idx.begin(), idx.end(), cmp);
-#endif
 			num_groups_partition_data_ = num_data_ / group_size_;// ceiling division
 			group_indices_data_.resize(num_groups_partition_data_);
 #pragma omp parallel for schedule(static)
