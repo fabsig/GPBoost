@@ -25,12 +25,12 @@ For more information, you may want to have a look at:
 * [**Main parameters**](https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst): the most important parameters / settings for the GPBoost library
 <!-- * [Detailed tree-boosting parameters](https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst): a comprehensive list of all tree-boosting (i.e., not random effects) related parameters -->
 * The following **blog posts**:
-   * [Combine tree-boosting with grouped random effects models in Python](https://towardsdatascience.com/tree-boosted-mixed-effects-models-4df610b624cb?sk=2b43bb9c6188c20ce699e42a46a2ced5)
-   * [GPBoost for High-Cardinality Categorical Variables in Python & R](https://towardsdatascience.com/mixed-effects-machine-learning-for-high-cardinality-categorical-variables-part-ii-gpboost-3bdd9ef74492?sk=c0090356b176ab9b3e704e4392727123)
-   * [GPBoost for grouped and areal spatial econometric data in Python & R](https://towardsdatascience.com/mixed-effects-machine-learning-with-gpboost-for-grouped-and-areal-spatial-econometric-data-b26f8bddd385?sk=87fd6bbb817f4163f22d9a4860ff2b5b)
-   * [Combine tree-boosting with Gaussian processes for spatial data in Python & R](https://towardsdatascience.com/tree-boosting-for-spatial-data-789145d6d97d?sk=4f9924d378dbb517e883fc9c612c34f1)
-   * [GPBoost for Longitudinal & Panel Data in Python & R](https://towardsdatascience.com/mixed-effects-machine-learning-for-longitudinal-panel-data-with-gpboost-part-iii-523bb38effc?sk=491ff65929c3fbdc508211fe4a8c05f4)
-   * [Generalized Linear Mixed Effects Models (GLMMs) in R and Python with GPBoost](https://towardsdatascience.com/generalized-linear-mixed-effects-models-in-r-and-python-with-gpboost-89297622820c?sk=2a4b12edb915d3ff8c86cc01175eea97)
+   * [Combine tree-boosting with grouped random effects models in Python](https://medium.com/data-science/tree-boosted-mixed-effects-models-4df610b624cb)
+   * [GPBoost for High-Cardinality Categorical Variables in Python & R](https://medium.com/data-science/mixed-effects-machine-learning-for-high-cardinality-categorical-variables-part-ii-gpboost-3bdd9ef74492)
+   * [GPBoost for grouped and areal spatial econometric data in Python & R](https://medium.com/data-science/mixed-effects-machine-learning-with-gpboost-for-grouped-and-areal-spatial-econometric-data-b26f8bddd385)
+   * [Combine tree-boosting with Gaussian processes for spatial data in Python & R](https://medium.com/data-science/tree-boosting-for-spatial-data-789145d6d97d)
+   * [GPBoost for Longitudinal & Panel Data in Python & R](https://medium.com/data-science/mixed-effects-machine-learning-for-longitudinal-panel-data-with-gpboost-part-iii-523bb38effc)
+   * [Generalized Linear Mixed Effects Models (GLMMs) in R and Python with GPBoost](https://medium.com/data-science/generalized-linear-mixed-effects-models-in-r-and-python-with-gpboost-89297622820c)
    * [Demo](https://htmlpreview.github.io/?https://github.com/fabsig/GPBoost/blob/master/examples/GPBoost_demo.html) on how GPBoost can be used in R and Python
 
 * The [CLI installation guide](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst) explaining how to install the command line interface (CLI) version
