@@ -4802,8 +4802,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Evaluate negative log-likelihood
     gp_model <- GPModel(group_data = group, likelihood = likelihood, 
                         matrix_inversion_method = "cholesky")
-    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(phi, u))
-    expect_lt(abs(nll-182.4205937),TOLERANCE_STRICT)
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(shape,xi))
+    expect_lt(abs(nll-76.53696381),TOLERANCE_STRICT)
     
     # Label needs to have the correct support
     yt <- y

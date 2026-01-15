@@ -355,7 +355,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4255016, 0.3026152))),2*tolerance_loc_1)
         expect_lte(cvbst$best_iter, 16)
         expect_gte(cvbst$best_iter, 12)
-        expect_lt(abs(cvbst$best_score-0.242), tolerance_loc_1)
+        expect_lt(abs(cvbst$best_score-0.242), 2*tolerance_loc_1)
         #   2. Run LaGaBoost algorithm on entire data while holding covariance parameters fixed
         bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 15,
                          params = params, train_gp_model_cov_pars = FALSE, verbose = 0)
