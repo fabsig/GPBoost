@@ -1135,7 +1135,7 @@ namespace GPBoost {
 			return(cov_function_->UseScaledCoordinates());
 		}
 
-		bool RedetermineVecchiaNeighborsInducingPoints() const {
+		bool RedetermineVecchiaNeighborsInTransformedSpace() const {
 			return(cov_function_->RedetermineVecchiaNeighborsInducingPoints());
 		}
 

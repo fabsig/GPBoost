@@ -339,7 +339,7 @@ namespace GPBoost {
 						entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_, has_duplicates_coords_,
 						vecchia_ordering_, num_neighbors_, vecchia_neighbor_selection_, true, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
 						cov_fct_strg, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_,
-						gp_approx_);
+						gp_approx_, nearest_neighbors_determined_);
 					nearest_neighbors_[cluster_i][0] = nearest_neighbors_cluster_i;
 					dist_obs_neighbors_[cluster_i][0] = dist_obs_neighbors_cluster_i;
 					dist_between_neighbors_[cluster_i][0] = dist_between_neighbors_cluster_i;
@@ -3233,22 +3233,22 @@ namespace GPBoost {
 								entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_, has_duplicates_coords_,
 								"none", num_neighbors_pred_, vecchia_neighbor_selection_, false, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
 								re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
-								gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_, gp_approx_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
+								gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, nearest_neighbors_determined_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
 							for (int j = 0; j < num_comps_total_; ++j) {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_vecchia_cluster_i[j]->SetCovPars(pars);
 							}
-							if (re_comp_gp_clus0->RedetermineVecchiaNeighborsInducingPoints() || vecchia_neighbor_selection_ == "correlation") {//determine nearest neighbors when using correlation-based approach
+							if (re_comp_gp_clus0->RedetermineVecchiaNeighborsInTransformedSpace() || vecchia_neighbor_selection_ == "correlation") {//determine nearest neighbors when using correlation-based approach
 								UpdateNearestNeighbors(re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i,
 									entries_init_B_cluster_i, num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
 									has_duplicates_coords_, false, gauss_likelihood_, gp_approx_, chol_ip_cross_cov_[cluster_i][0],
 									dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, save_distances_isotropic_cov_fct_Vecchia_);
+								nearest_neighbors_determined_ = true;
 							}
 							// Calculate a Cholesky factor
 							sp_mat_t B_cluster_i;
 							sp_mat_t D_inv_cluster_i;
-							std::vector<sp_mat_t> B_grad_cluster_i;//not used, but needs to be passed to function
-							std::vector<sp_mat_t> D_grad_cluster_i;//not used, but needs to be passed to function
+							std::vector<sp_mat_t> B_grad_cluster_i, D_grad_cluster_i;//not used, but needs to be passed to function
 							CalcCovFactorGradientVecchia(num_data_per_cluster_pred[cluster_i], true, false, re_comps_vecchia_cluster_i,
 								re_comps_cross_cov_[cluster_i][0], re_comps_ip_[cluster_i][0], chol_fact_sigma_ip_[cluster_i][0], chol_ip_cross_cov_[cluster_i][0],
 								nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
@@ -3256,7 +3256,7 @@ namespace GPBoost {
 								B_cluster_i, D_inv_cluster_i, B_grad_cluster_i, D_grad_cluster_i, sigma_ip_inv_cross_cov_T_[cluster_i][0],
 								sigma_ip_grad_sigma_ip_inv_cross_cov_T_[cluster_i][0],
 								true, 1., false, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
-								nullptr, estimate_cov_par_index_);
+								nullptr, estimate_cov_par_index_, nearest_neighbors_determined_);
 							//Calculate Psi
 							sp_mat_t D_sqrt(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
 							D_sqrt.setIdentity();
@@ -3360,22 +3360,22 @@ namespace GPBoost {
 								entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_, has_duplicates_coords_,
 								"none", num_neighbors_pred_, vecchia_neighbor_selection_, false, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
 								re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
-								gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_, gp_approx_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
+								gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, nearest_neighbors_determined_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
 							for (int j = 0; j < num_comps_total_; ++j) {
 								const vec_t pars = cov_pars.segment(ind_par_[j], ind_par_[j + 1] - ind_par_[j]);
 								re_comps_vecchia_cluster_i[j]->SetCovPars(pars);
 							}
-							if (re_comp_gp_clus0->RedetermineVecchiaNeighborsInducingPoints() || vecchia_neighbor_selection_ == "residual_correlation") {//determine nearest neighbors when using correlation-based approach
+							if (re_comp_gp_clus0->RedetermineVecchiaNeighborsInTransformedSpace() || vecchia_neighbor_selection_ == "residual_correlation") {//determine nearest neighbors when using correlation-based approach
 								UpdateNearestNeighbors(re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i,
 									entries_init_B_cluster_i, num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
 									has_duplicates_coords_, false, gauss_likelihood_, gp_approx_, chol_ip_cross_cov_[cluster_i][0],
 									dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, save_distances_isotropic_cov_fct_Vecchia_);
+								nearest_neighbors_determined_ = true;
 							}
 							// Calculate a Cholesky factor
 							sp_mat_t B_cluster_i;
 							sp_mat_t D_inv_cluster_i;
-							std::vector<sp_mat_t> B_grad_cluster_i;//not used, but needs to be passed to function
-							std::vector<sp_mat_t> D_grad_cluster_i;//not used, but needs to be passed to function
+							std::vector<sp_mat_t> B_grad_cluster_i, D_grad_cluster_i;//not used, but needs to be passed to function
 							CalcCovFactorGradientVecchia(num_data_per_cluster_pred[cluster_i], true, false, re_comps_vecchia_cluster_i,
 								re_comps_cross_cov_[cluster_i][0], re_comps_ip_[cluster_i][0], chol_fact_sigma_ip_[cluster_i][0], chol_ip_cross_cov_[cluster_i][0],
 								nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
@@ -3383,7 +3383,7 @@ namespace GPBoost {
 								B_cluster_i, D_inv_cluster_i, B_grad_cluster_i, D_grad_cluster_i, sigma_ip_inv_cross_cov_T_[cluster_i][0],
 								sigma_ip_grad_sigma_ip_inv_cross_cov_T_[cluster_i][0],
 								true, 1., false, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
-								nullptr, estimate_cov_par_index_);
+								nullptr, estimate_cov_par_index_, nearest_neighbors_determined_);
 							//Calculate Psi
 							sp_mat_t D_sqrt(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
 							D_sqrt.setIdentity();
@@ -4509,35 +4509,32 @@ namespace GPBoost {
 		* \return redetermine_nn True, if inducing points/nearest neighbors have been redetermined
 		*/
 		bool ShouldRedetermineNearestNeighborsVecchiaInducingPointsFITC(bool force_redermination) {
-			redetermine_vecchia_neighbors_inducing_points_ = false;
+			redetermine_vecchia_neighbors_ = false;
+			redetermine_inducing_points_ = false;
+			bool num_iter_redetermine = (((num_iter_ + 1) & num_iter_) == 0) || num_iter_ == 0 || force_redermination;//(num_iter_ + 1) is power of 2 or 0 
+			// Note that convergence of internal optimizers is not checked in iterations with redetermine_nn if convergence_criterion_ == "relative_change_in_log_likelihood"
 			if (gp_approx_ == "vecchia") {
 				std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia_[unique_clusters_[0]][0][ind_intercept_gp_];
-				if (re_comp->RedetermineVecchiaNeighborsInducingPoints() || vecchia_neighbor_selection_ == "correlation") {
-					if ((((num_iter_ + 1) & num_iter_) == 0) || num_iter_ == 0 || force_redermination) {//(num_iter_ + 1) is power of 2 or 0. 
-						// Note that convergence of internal optimizers is not checked in iterations with redetermine_nn if convergence_criterion_ == "relative_change_in_log_likelihood"
-						redetermine_vecchia_neighbors_inducing_points_ = true;
-					}
+				if ((re_comp->RedetermineVecchiaNeighborsInTransformedSpace() || vecchia_neighbor_selection_ == "correlation") && num_iter_redetermine) {
+					redetermine_vecchia_neighbors_ = true;
 				}
 			}
 			else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 				std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_cross_cov_[unique_clusters_[0]][0][ind_intercept_gp_];
-				if (re_comp->RedetermineVecchiaNeighborsInducingPoints()) {
-					if ((((num_iter_ + 1) & num_iter_) == 0) || num_iter_ == 0 || force_redermination) {//(num_iter_ + 1) is power of 2 or 0. 
-						// Note that convergence of internal optimizers is not checked in iterations with redetermine_nn if convergence_criterion_ == "relative_change_in_log_likelihood"
-						redetermine_vecchia_neighbors_inducing_points_ = true;
-					}
+				if (re_comp->UseScaledCoordinates() && num_iter_redetermine) {
+					redetermine_inducing_points_ = true;
 				}
 			}
 			else if (gp_approx_ == "full_scale_vecchia") {
 				std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia_[unique_clusters_[0]][0][ind_intercept_gp_];
-				if (re_comp->RedetermineVecchiaNeighborsInducingPoints() || vecchia_neighbor_selection_ == "residual_correlation") {
-					if ((((num_iter_ + 1) & num_iter_) == 0) || num_iter_ == 0 || force_redermination) {//(num_iter_ + 1) is power of 2 or 0. 
-						// Note that convergence of internal optimizers is not checked in iterations with redetermine_nn if convergence_criterion_ == "relative_change_in_log_likelihood"
-						redetermine_vecchia_neighbors_inducing_points_ = true;
-					}
+				if (re_comp->UseScaledCoordinates() && num_iter_redetermine) {
+					redetermine_inducing_points_ = true;
+				}
+				if ((re_comp->RedetermineVecchiaNeighborsInTransformedSpace() || vecchia_neighbor_selection_ == "residual_correlation") && num_iter_redetermine) {
+					redetermine_vecchia_neighbors_ = true;
 				}
 			}
-			return(redetermine_vecchia_neighbors_inducing_points_);
+			return(redetermine_inducing_points_ || redetermine_vecchia_neighbors_);
 		}//end ShouldRedetermineNearestNeighborsVecchiaInducingPointsFITC
 
 		/*!
@@ -4546,7 +4543,8 @@ namespace GPBoost {
 		*/
 		void RedetermineNearestNeighborsVecchiaInducingPointsFITC(bool force_redermination) {
 			CHECK(ShouldRedetermineNearestNeighborsVecchiaInducingPointsFITC(force_redermination));
-			if (redetermine_vecchia_neighbors_inducing_points_) {
+			// redetermine inducing points
+			if (redetermine_inducing_points_) {				
 				if (gp_approx_ == "full_scale_vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 					int num_ind_points = num_ind_points_;
 					for (const auto& cluster_i : unique_clusters_) {
@@ -4597,25 +4595,13 @@ namespace GPBoost {
 								den_mat_t gp_coords_ip_mat_scaled;
 								// Start with inducing points from last redetermination
 								re_comp->ScaleCoordinates(pars, gp_coords_ip_mat_, gp_coords_ip_mat_scaled);
-								den_mat_t old_means(num_ind_points, gp_coords_all_unique.cols());
-								old_means.setZero();
-								den_mat_t old_old_means = old_means;
-								vec_t clusters_ip(gp_coords_all_unique.rows());
-								vec_t indices_interim(num_ind_points);
-								indices_interim.setZero();
-								// Calculate new means until convergence is reached or we hit the maximum iteration count
-								int count = 0;
-								do {
-									old_old_means = old_means;
-									old_means = gp_coords_ip_mat_scaled;
-									calculate_means(gp_coords_all_unique, clusters_ip, gp_coords_ip_mat_scaled, indices_interim);
-									count += 1;
-								} while ((gp_coords_ip_mat_scaled != old_means && gp_coords_ip_mat_scaled != old_old_means)
-									&& !(max_it_kmeans == count));
+								CHECK((int)gp_coords_ip_mat_scaled.rows() == num_ind_points);
+								CHECK(gp_coords_ip_mat_scaled.cols() == gp_coords_all_unique.cols());
+								kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat_scaled, max_it_kmeans, true);
 								gp_coords_ip_mat = gp_coords_ip_mat_scaled;
 							}
 							else {
-								Log::REFatal("Method '%s' is not supported for redetrmine inducing points. Use '%s' when using an ard kernel/covariance-function! ",
+								Log::REFatal("Method '%s' is not supported for redetrmine inducing points. Use '%s' when using an ARD covariance function ",
 									ind_points_selection_.c_str(), "kmeans++");
 							}
 							den_mat_t coords_ip_rescaled;
@@ -4657,32 +4643,12 @@ namespace GPBoost {
 								Log::REDebug("Inducing points redetermined after iteration number %d ", num_iter_ + 1);
 							}
 						}//end re_comp->UseScaledCoordinates()
-						else if (chol_ip_cross_cov_.empty() && gp_approx_ == "full_scale_vecchia" && vecchia_neighbor_selection_ == "residual_correlation") {
-							CalcSigmaComps();
-						}
-					}
+					}//end loop cluster_i
 				}//end if (gp_approx_ == "full_scale_vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering")
-				if (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") {
-					for (const auto& cluster_i : unique_clusters_) {
-						for (int igp = 0; igp < num_sets_re_; ++igp) {
-							// redetermine nearest neighbors for models for which neighbors are selected based on correlations / scaled distances
-							UpdateNearestNeighbors(re_comps_vecchia_[cluster_i][igp], nearest_neighbors_[cluster_i][igp],
-								entries_init_B_[cluster_i][igp], num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
-								has_duplicates_coords_, true, gauss_likelihood_,
-								gp_approx_, chol_ip_cross_cov_[cluster_i][0],
-								dist_obs_neighbors_[cluster_i][0], dist_between_neighbors_[cluster_i][0], save_distances_isotropic_cov_fct_Vecchia_);
-							if (!gauss_likelihood_) {
-								likelihood_[cluster_i]->SetCholFactPatternAnalyzedFalse();
-							}
-						}
-					}
-					if (num_ll_evaluations_ > 0) {
-						Log::REDebug("Nearest neighbors redetermined after iteration number %d ", num_iter_ + 1);
-					}
-				}
 				if (cg_preconditioner_type_ == "fitc" && matrix_inversion_method_ == "iterative") {
+					// redetermine inducing points for FITC preconditioner
 					if (gp_approx_ == "fitc" || ((gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") && (gauss_likelihood_ && !vecchia_latent_approx_gaussian_))) {
-						Log::REFatal("'iterative' methods are not implemented for gp_approx = '%s'. Use 'cholesky' ", gp_approx_.c_str());
+						Log::REFatal("'iterative' methods are not implemented for gp_approx = '%s' and the chosen likelihood ", gp_approx_.c_str());
 					}
 					int num_ind_points = fitc_piv_chol_preconditioner_rank_;
 					if (gp_approx_ == "full_scale_tapering" || (fitc_piv_chol_preconditioner_rank_ == num_ind_points_ && gp_approx_ != "vecchia")) {
@@ -4749,33 +4715,21 @@ namespace GPBoost {
 									else {
 										gp_coords_ip_mat_scaled = gp_coords_ip_mat_preconditioner_;
 									}
-									den_mat_t old_means(num_ind_points, gp_coords_all_unique.cols());
-									old_means.setZero();
-									den_mat_t old_old_means = old_means;
-									vec_t clusters_ip(gp_coords_all_unique.rows());
-									vec_t indices_interim(num_ind_points);
-									indices_interim.setZero();
-									// Calculate new means until convergence is reached or we hit the maximum iteration count
-									int count = 0;
-									do {
-										old_old_means = old_means;
-										old_means = gp_coords_ip_mat_scaled;
-										calculate_means(gp_coords_all_unique, clusters_ip, gp_coords_ip_mat_scaled, indices_interim);
-										count += 1;
-									} while ((gp_coords_ip_mat_scaled != old_means && gp_coords_ip_mat_scaled != old_old_means)
-										&& !(max_it_kmeans == count));
+									CHECK((int)gp_coords_ip_mat_scaled.rows() == num_ind_points);
+									CHECK(gp_coords_ip_mat_scaled.cols() == gp_coords_all_unique.cols());
+									kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat_scaled, max_it_kmeans, true);
 									gp_coords_ip_mat = gp_coords_ip_mat_scaled;
 								}
 								else {
 									gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_unique.cols());
 									Log::REDebug("Starting kmeans++ algorithm for determining inducing points ");
-									kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans);
+									kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans, false);
 									Log::REDebug("Inducing points have been determined ");
 									ind_points_determined_for_preconditioner_ = true;
 								}
 							}
 							else {
-								Log::REFatal("Method '%s' is not supported for redetrmine inducing points. Use '%s' when using an ard kernel/covariance-function! ",
+								Log::REFatal("Method '%s' is not supported for redetrmine inducing points. Use '%s' when using an ARD covariance function ",
 									ind_points_selection_.c_str(), "kmeans++");
 							}
 							den_mat_t coords_ip_rescaled;
@@ -4820,8 +4774,33 @@ namespace GPBoost {
 						Log::REDebug("Inducing points for preconditioner redetermined after iteration number %d ", num_iter_ + 1);
 					}
 				}//end if (cg_preconditioner_type_ == "fitc" && matrix_inversion_method_ == "iterative")
-				redetermine_vecchia_neighbors_inducing_points_ = false;
-			}//end if redetermine_vecchia_neighbors_inducing_points_
+			}//end redetermine inducing points
+			if (redetermine_vecchia_neighbors_) { // redetermine Vecchia neighbors
+				if (chol_ip_cross_cov_.empty() && gp_approx_ == "full_scale_vecchia" && vecchia_neighbor_selection_ == "residual_correlation") {
+					CalcSigmaComps();
+				}
+				if (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") {
+					for (const auto& cluster_i : unique_clusters_) {
+						for (int igp = 0; igp < num_sets_re_; ++igp) {
+							// redetermine nearest neighbors for models for which neighbors are selected based on correlations / scaled distances
+							UpdateNearestNeighbors(re_comps_vecchia_[cluster_i][igp], nearest_neighbors_[cluster_i][igp],
+								entries_init_B_[cluster_i][igp], num_neighbors_, vecchia_neighbor_selection_, rng_, ind_intercept_gp_,
+								has_duplicates_coords_, true, gauss_likelihood_,
+								gp_approx_, chol_ip_cross_cov_[cluster_i][0],
+								dist_obs_neighbors_[cluster_i][0], dist_between_neighbors_[cluster_i][0], save_distances_isotropic_cov_fct_Vecchia_);
+							nearest_neighbors_determined_ = true;
+							if (!gauss_likelihood_) {
+								likelihood_[cluster_i]->SetCholFactPatternAnalyzedFalse();
+							}
+						}
+					}
+					if (num_ll_evaluations_ > 0) {
+						Log::REDebug("Nearest neighbors redetermined after iteration number %d ", num_iter_ + 1);
+					}
+				}
+			}//end redetermine_vecchia_neighbors_
+			redetermine_vecchia_neighbors_ = false;
+			redetermine_inducing_points_ = false;
 		}//end RedetermineNearestNeighborsVecchiaInducingPointsFITC
 
 		/*!
@@ -4891,8 +4870,7 @@ namespace GPBoost {
 			CHECK(!gauss_likelihood_);
 			int igp = 0;
 			data_size_t num_re_cluster_i = re_comps_vecchia_[cluster_i][igp][ind_intercept_gp_]->GetNumUniqueREs();
-			std::vector<sp_mat_t> B_grad_cluster_i;//not used, but needs to be passed to function
-			std::vector<sp_mat_t> D_grad_cluster_i;//not used, but needs to be passed to function
+			std::vector<sp_mat_t> B_grad_cluster_i, D_grad_cluster_i;//not used, but needs to be passed to function
 			CalcCovFactorGradientVecchia(num_re_cluster_i, true, false, re_comps_vecchia_[cluster_i][igp],
 				re_comps_cross_cov_[cluster_i][0], re_comps_ip_[cluster_i][0], chol_fact_sigma_ip_[cluster_i][0], chol_ip_cross_cov_[cluster_i][0], nearest_neighbors_[cluster_i][igp],
 				dist_obs_neighbors_[cluster_i][igp], dist_between_neighbors_[cluster_i][igp],
@@ -4900,7 +4878,7 @@ namespace GPBoost {
 				B_vecchia, D_inv_vecchia, B_grad_cluster_i, D_grad_cluster_i, 
 				sigma_ip_inv_cross_cov_T_[cluster_i][0], sigma_ip_grad_sigma_ip_inv_cross_cov_T_[cluster_i][0], true, 1.,
 				true, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
-				add_diagonal, estimate_cov_par_index_);
+				add_diagonal, estimate_cov_par_index_, nearest_neighbors_determined_);
 		}//end CalcVecchiaApproxLatentAddDiagonal
 
 
@@ -5402,6 +5380,8 @@ namespace GPBoost {
 			"latent_order_obs_first_cond_all", "order_obs_first_cond_obs_only", "order_obs_first_cond_all" };
 		/*! \brief Collects indices of nearest neighbors (used for Vecchia approximation) */
 		std::map<int, std::map<int, std::vector<std::vector<int>>>> nearest_neighbors_;
+		// True, if nearest neighbors have been determined
+		bool nearest_neighbors_determined_ = false;
 		/*! \brief Distances between locations and their nearest neighbors (this is used only if the Vecchia approximation is used, otherwise the distances are saved directly in the base GP component) */
 		std::map<int, std::map<int, std::vector<den_mat_t>>> dist_obs_neighbors_;
 		/*! \brief Distances between nearest neighbors for all locations (this is used only if the Vecchia approximation is used, otherwise the distances are saved directly in the base GP component) */
@@ -5444,8 +5424,11 @@ namespace GPBoost {
 		std::map<int, std::map<int, den_mat_t>> sigma_ip_inv_cross_cov_T_;
 		/*! \brief Matrix of grad(Sigma_m) Sigma_m^(-1) Sigma_mn*/
 		std::map<int, std::map<int, std::vector<den_mat_t>>> sigma_ip_grad_sigma_ip_inv_cross_cov_T_;
-		/*! \brief If true, inducing points or/and correlation-based nearest neighbors for Vecchia approximation are updated */
-		bool redetermine_vecchia_neighbors_inducing_points_ = false;
+		/*! \brief If true, correlation-based nearest neighbors for Vecchia approximation are updated */
+		bool redetermine_vecchia_neighbors_ = false;
+		/*! \brief If true, inducing points are updated */
+		bool redetermine_inducing_points_ = false;
+
 
 		// PREDICTIVE PROCESS AND FULL SCALE APPROXIMATION FOR GP
 		/*! \brief Method for choosing inducing points */
@@ -6874,7 +6857,7 @@ namespace GPBoost {
 				gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
 				int max_it_kmeans = 1000;
 				Log::REDebug("Starting kmeans++ algorithm for determining inducing points ");
-				kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans);
+				kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans, false);
 				Log::REDebug("Inducing points have been determined ");
 			}
 			else {
@@ -8459,7 +8442,7 @@ namespace GPBoost {
 						B_[cluster_i][igp], D_inv_[cluster_i][igp], B_grad_[cluster_i][igp], D_grad_[cluster_i][igp], sigma_ip_inv_cross_cov_T_[cluster_i][0],
 						sigma_ip_grad_sigma_ip_inv_cross_cov_T_[cluster_i][0], transf_scale, nugget_var,
 						gauss_likelihood_, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
-						nullptr, estimate_cov_par_index_);
+						nullptr, estimate_cov_par_index_, nearest_neighbors_determined_);
 					if (gp_approx_ == "full_scale_vecchia") {
 						//Convert to row-major for parallelization
 						B_rm_[cluster_i][0] = sp_mat_rm_t(B_[cluster_i][0]);
@@ -8522,7 +8505,7 @@ namespace GPBoost {
 						gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_mat.cols());
 						int max_it_kmeans = 1000;
 						Log::REDebug("Starting kmeans++ algorithm for determining inducing points ");
-						kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans);
+						kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans, false);
 						Log::REDebug("Inducing points have been determined ");
 					}
 					else {
@@ -8581,7 +8564,7 @@ namespace GPBoost {
 						B_[cluster_i][igp], D_inv_[cluster_i][igp], B_grad_[cluster_i][igp], D_grad_[cluster_i][igp], sigma_ip_inv_cross_cov_T_[cluster_i][0],
 						sigma_ip_grad_sigma_ip_inv_cross_cov_T_[cluster_i][0], transf_scale, nugget_var,
 						calc_gradient_nugget, num_gp_total_, ind_intercept_gp_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
-						nullptr, estimate_cov_par_index_);
+						nullptr, estimate_cov_par_index_, nearest_neighbors_determined_);
 				}
 			}
 		}//end CalcGradientVecchia

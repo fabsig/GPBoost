@@ -129,10 +129,13 @@ namespace GPBoost {
 		int k,
 		RNG_t& gen,
 		den_mat_t& means,
-		int max_it) {
+		int max_it,
+		bool initial_means_provided) {
 		CHECK(k <= (int)data.rows());
 		// Initialization
-		random_plusplus(data, k, gen, means);
+		if (!initial_means_provided) {
+			random_plusplus(data, k, gen, means);
+		}
 		den_mat_t old_means(k, data.cols());
 		old_means.setZero();
 		den_mat_t old_old_means = old_means;

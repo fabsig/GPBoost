@@ -206,6 +206,7 @@ namespace GPBoost {
 	* \param apply_tapering If true, tapering is applied to the covariance function (element-wise multiplication with a compactly supported Wendland correlation function)
 	* \param save_distances_isotropic_cov_fct If true, distances among points and neighbors are saved for Vecchia approximations for isotropic covariance functions
 	* \param gp_approx Gaussian process approximation
+	* \param[out] nearest_neighbors_determined True, if nearest neighbors are determined in this function 
 	*/
 	void CreateREComponentsVecchia(data_size_t num_data,
 		int dim_gp_coords,
@@ -237,7 +238,8 @@ namespace GPBoost {
 		double cov_fct_taper_shape,
 		bool apply_tapering,
 		bool save_distances_isotropic_cov_fct,
-		string_t& gp_approx);
+		string_t& gp_approx,
+		bool& nearest_neighbors_determined);
 
 	/*!
 	* \brief Update the nearest neighbors based on scaled coorrdinates
@@ -304,6 +306,7 @@ namespace GPBoost {
 	* \param gp_approx Gaussian process approximation
 	* \param add_diagonal Vector of (additional) observation specific nugget / error variance added to the diagonal
 	* \param estimate_cov_par_index Indicates which parameters are estimated (>0) and which not (<= 0)
+	* \param nearest_neighbors_determined True, if nearest neighbors have been determined
 	*/
 	void CalcCovFactorGradientVecchia(data_size_t num_re_cluster_i,
 		bool calc_cov_factor,
@@ -333,7 +336,8 @@ namespace GPBoost {
 		bool save_distances_isotropic_cov_fct,
 		string_t& gp_approx,
 		const double* add_diagonal,
-		const std::vector<int>& estimate_cov_par_index);
+		const std::vector<int>& estimate_cov_par_index,
+		bool nearest_neighbors_determined);
 
 	/*!
 	* \brief Calculate predictions (conditional mean and covariance matrix) using the Vecchia approximation for the covariance matrix of the observable process when observed locations appear first in the ordering

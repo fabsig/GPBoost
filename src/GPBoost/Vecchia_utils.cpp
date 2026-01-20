@@ -914,7 +914,8 @@ namespace GPBoost {
 		double cov_fct_taper_shape,
 		bool apply_tapering,
 		bool save_distances_isotropic_cov_fct,
-		string_t& gp_approx) {
+		string_t& gp_approx,
+		bool& nearest_neighbors_determined) {
 		int ind_intercept_gp = (int)re_comps_vecchia_cluster_i.size();
 		if ((vecchia_ordering == "random" || vecchia_ordering == "time_random_space") && gp_approx != "full_scale_vecchia") {
 			std::shuffle(data_indices_per_cluster[cluster_i].begin(), data_indices_per_cluster[cluster_i].end(), rng);//Note: shuffling has been already done if gp_approx == "full_scale_vecchia"
@@ -965,7 +966,7 @@ namespace GPBoost {
 		nearest_neighbors_cluster_i = std::vector<std::vector<int>>(re_comp->GetNumUniqueREs());
 		dist_obs_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
 		dist_between_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
-		if (!(re_comp->RedetermineVecchiaNeighborsInducingPoints()) && vecchia_neighbor_selection != "residual_correlation" && vecchia_neighbor_selection != "correlation") {
+		if (!(re_comp->RedetermineVecchiaNeighborsInTransformedSpace()) && vecchia_neighbor_selection != "residual_correlation" && vecchia_neighbor_selection != "correlation") {
 			Log::REDebug("Starting nearest neighbor search for Vecchia approximation");
 			find_nearest_neighbors_Vecchia_fast(re_comp->GetCoords(), re_comp->GetNumUniqueREs(), num_neighbors,
 				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates,
@@ -984,6 +985,7 @@ namespace GPBoost {
 				}
 				entries_init_B_cluster_i.push_back(Triplet_t(i, i, 1.));//Put 1's on the diagonal since B = I - A
 			}
+			nearest_neighbors_determined = true;
 		}
 		if (vecchia_neighbor_selection == "residual_correlation" || vecchia_neighbor_selection == "correlation") {
 			has_duplicates = false;
@@ -1019,7 +1021,7 @@ namespace GPBoost {
 		}
 		//Random coefficients
 		if (num_gp_rand_coef > 0) {
-			if (re_comp->RedetermineVecchiaNeighborsInducingPoints()) {
+			if (re_comp->RedetermineVecchiaNeighborsInTransformedSpace()) {
 				Log::REFatal("Random coefficient processes are not supported for covariance functions "
 					"for which the neighbors are dynamically determined based on correlations ");
 			}
@@ -1068,7 +1070,7 @@ namespace GPBoost {
 		std::vector<den_mat_t>& dist_between_neighbors_cluster_i,
 		bool save_distances_isotropic_cov_fct) {
 		std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia_cluster_i[ind_intercept_gp];
-		CHECK(re_comp->RedetermineVecchiaNeighborsInducingPoints() || vecchia_neighbor_selection == "residual_correlation" || vecchia_neighbor_selection == "correlation");
+		CHECK(re_comp->RedetermineVecchiaNeighborsInTransformedSpace() || vecchia_neighbor_selection == "residual_correlation" || vecchia_neighbor_selection == "correlation");
 		int num_re = re_comp->GetNumUniqueREs();
 		CHECK((int)nearest_neighbors_cluster_i.size() == num_re);
 		// find correlation-based nearest neighbors
@@ -1155,7 +1157,11 @@ namespace GPBoost {
 		bool save_distances_isotropic_cov_fct,
 		string_t& gp_approx,
 		const double* add_diagonal,
-		const std::vector<int>& estimate_cov_par_index) {
+		const std::vector<int>& estimate_cov_par_index,
+		bool nearest_neighbors_determined) {
+		if (!nearest_neighbors_determined) {
+			Log::REFatal("CalcCovFactorGradientVecchia: Nearest neighbors for the Vecchia approximation have not been determined ");
+		}
 		int num_par_comp = re_comps_vecchia_cluster_i[ind_intercept_gp]->NumCovPar();
 		int num_par_gp = num_par_comp * num_gp_total + calc_gradient_nugget;
 		int nugget_offset_ind_est = (gauss_likelihood && !calc_gradient_nugget) ? 1 : 0;

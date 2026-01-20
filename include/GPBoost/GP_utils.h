@@ -516,12 +516,14 @@ namespace GPBoost {
 	* \param gen RNG
 	* \param[out] means data cluster means that determine the inducing points
 	* \param[out] max_int maximal number of iterations
+	* \params initial_means_provided If true, means contains intial values for the means
 	*/
 	void kmeans_plusplus(const den_mat_t& data,
 		int k,
 		RNG_t& gen,
 		den_mat_t& means,
-		int max_it);
+		int max_it,
+		bool initial_means_provided);
 
 	/*
 	Determines indices of data which is inside a ball with given radius around given point
