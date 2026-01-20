@@ -2813,7 +2813,7 @@ fitGPModel <- function(likelihood = "gaussian",
 #' Summary for a \code{GPModel}
 #'
 #' @param object a \code{GPModel}
-#' @param ... (not used, ignore this, simply here that there is no CRAN warning)
+#' @inheritParams GPModel_shared_params
 #'
 #' @return Summary of a (fitted) \code{GPModel}
 #'
@@ -2842,8 +2842,8 @@ fitGPModel <- function(likelihood = "gaussian",
 #' @rdname summary.GPModel
 #' @author Fabio Sigrist
 #' @export
-summary.GPModel <- function(object, ...){
-  object$summary()
+summary.GPModel <- function(object, std_err = TRUE){
+  object$summary(std_err = std_err)
   return(invisible(object))
 }
 

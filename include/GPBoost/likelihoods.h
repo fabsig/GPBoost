@@ -10327,8 +10327,7 @@ namespace GPBoost {
 								// p = Gamma(k,1) pdf at t
 								const double p = std::exp(-t + (k - 1.0) * std::log(t) - std::lgamma(k));
 								const double Q = p / G;                         // lower-tail ratio
-								const double inv_t = 1.0 / t;
-								const double Qprime = Q * ((k - 1.0) * inv_t - 1.0) - (Q * Q); // dQ/dt for Q=p/G
+								const double Qprime = Q * ((k - 1.0) / t - 1.0) - (Q * Q); // dQ/dt for Q=p/G
 								// dI/dt (lower mass)
 								const double dIdt = (2.0 * t - k) * Q + 2.0 * t * Q * Q + Qprime * (t * (t - k) + 2.0 * t * t * Q);
 								const double dIdmu = -(a * k / (mu * mu)) * dIdt;  // dt/dmu = -(k*a)/mu^2
@@ -10342,8 +10341,7 @@ namespace GPBoost {
 							const double H = std::max(1.0 - G, tiny);
 							const double p = std::exp(-t + (k - 1.0) * std::log(t) - std::lgamma(k));
 							const double Q = p / H;                           // upper-tail ratio
-							const double inv_t = 1.0 / t;
-							const double Qprime = Q * ((k - 1.0) * inv_t - 1.0) + (Q * Q); // dQ/dt for Q=p/H
+							const double Qprime = Q * ((k - 1.0) / t - 1.0) + (Q * Q); // dQ/dt for Q=p/H
 							// dI/dt (upper mass)
 							const double dIdt = (k - 2.0 * t) * Q + 2.0 * t * Q * Q + Qprime * (t * (k - t) + 2.0 * t * t * Q);
 							const double dIdmu = -(a * k / (mu * mu)) * dIdt;  // dt/dmu = -(k*a)/mu^2
@@ -11153,8 +11151,7 @@ namespace GPBoost {
 								const double G = std::max(GPBoost::RegLowerGamma(k0, t), tiny);
 								// pdf p(t;k) = exp(-t + (k-1) log t - lgamma(k))
 								const double p = std::exp(-t + (k0 - 1.0) * std::log(t) - std::lgamma(k0));
-								const double Q = p / G;                 // lower mass ratio
-								const double inv_t = 1.0 / t;								
+								const double Q = p / G;                 // lower mass ratio							
 								const double Qprime = Q * ((k0 - 1.0) / t - 1.0) - Q * Q;// Q' = Q*((k-1)/t - 1) - Q^2
 								if (ind_aux_par == 1) { // log(xi)
 									const double dt_dlogxi = t; // dt/d log xi

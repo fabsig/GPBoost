@@ -171,7 +171,8 @@ namespace GPBoost {
 					Log::REFatal("Approximation '%s' is currently not supported for non-Gaussian likelihoods ", gp_approx_.c_str());
 				}
 				if (gp_approx_ == "full_scale_vecchia_correlation_based" || 
-					gp_approx_ == "vif_correlation_based" || gp_approx_ == "VIF_correlation_based") {
+					gp_approx_ == "vif_correlation_based" || gp_approx_ == "VIF_correlation_based" || 
+					gp_approx_ == "full_scale_vecchia_correlation" || gp_approx_ == "vif_correlation" || gp_approx_ == "VIF_correlation") {
 					gp_approx_ = "full_scale_vecchia";
 					vecchia_neighbor_selection_ = "residual_correlation";
 				}
@@ -184,7 +185,7 @@ namespace GPBoost {
 					vecchia_latent_approx_gaussian_ = true;
 					gauss_likelihood_ = false;
 				}
-				if (gp_approx_ == "vecchia_correlation_based") {
+				if (gp_approx_ == "vecchia_correlation_based" || gp_approx_ == "vecchia_correlation") {
 					gp_approx_ = "vecchia";
 					vecchia_neighbor_selection_ = "correlation";
 				}
@@ -2149,6 +2150,7 @@ namespace GPBoost {
 					if (estimate_cov_par_index_[ind_par_[j]] > 0) {
 						vec_t y_tilde_j, y_tilde2_j;
 						if (linear_kernel_use_woodbury_identity_) {
+							CHECK(num_comps_total_ == 1);
 							y_tilde_j = Zt_[cluster_i] * y_[cluster_i];
 							y_tilde2_j = Zt_[cluster_i] * y_tilde2_[cluster_i];
 						}
@@ -6347,6 +6349,9 @@ namespace GPBoost {
 					cov_fct = "linear";
 				}
 			}
+			if (cov_fct == "linear_no_woodbury" && gp_approx_ != "none") {
+				Log::REFatal("cov_fct = '%s' is currently not supported if gp_approx = '%s' ", cov_fct.c_str(), gp_approx_.c_str());//often crashes with vecchia approximation
+			}
 			if (matrix_inversion_method_user_provided_ == "default") {
 				if (CanUseIterative()) {
 					matrix_inversion_method_ = "iterative";
@@ -9417,12 +9422,22 @@ namespace GPBoost {
 					//Remaining covariance parameters
 					int counter = 0;
 					for (int j = 0; j < num_comps_total_; ++j) {
-						sp_mat_t* Z_j = re_comps_[cluster_i][0][j]->GetZ();
+						sp_mat_t* Z_j = nullptr;
+						if (!linear_kernel_use_woodbury_identity_) {
+							Z_j = re_comps_[cluster_i][0][j]->GetZ();
+						}					
 						for (int k = j; k < num_comps_total_; ++k) {
 							// if used for Fisher scoring, this is repeatedly done -> save quantities that do not change over iterations
 							if (!Zjt_Zk_saved_) {
-								sp_mat_t* Z_k = re_comps_[cluster_i][0][k]->GetZ();
-								Zjt_Zk_[cluster_i].push_back((T_mat)((*Z_j).transpose() * (*Z_k)));
+								if (linear_kernel_use_woodbury_identity_) {
+									CHECK(num_comps_total_ == 1);
+									Zjt_Zk_[cluster_i].push_back(ZtZ_[cluster_i]);
+								}
+								else {
+									CHECK(Z_j != nullptr);
+									sp_mat_t* Z_k = re_comps_[cluster_i][0][k]->GetZ();
+									Zjt_Zk_[cluster_i].push_back((T_mat)((*Z_j).transpose() * (*Z_k)));
+								}
 								Zjt_Zk_squaredNorm_[cluster_i].push_back(Zjt_Zk_[cluster_i][counter].squaredNorm());
 							}
 							T_mat LInvZtZj_t_LInvZtZk = LInvZtZj_[cluster_i][j].transpose() * LInvZtZj_[cluster_i][k];
