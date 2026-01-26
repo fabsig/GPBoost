@@ -140,6 +140,7 @@ search_space <- list("learning_rate" = c(0.001, 10),
                      "num_leaves" = c(2, 2^10),
                      "lambda_l2" = c(0, 100),
                      "max_bin" = c(63, min(n,10000)),
+                     "feature_fraction" = c(0.5, 1),
                      "line_search_step_length" = c(TRUE, FALSE))
 metric = "mse" # Define metric
 if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
@@ -177,6 +178,7 @@ param_grid <- list("learning_rate" = c(0.001, 0.01, 0.1, 1, 10),
                    "num_leaves" = 2^(1:10),
                    "lambda_l2" = c(0, 1, 10, 100),
                    "max_bin" = c(250, 500, 1000, min(n,10000)),
+                   "feature_fraction" = c(0.5, 0.75, 1),
                    "line_search_step_length" = c(TRUE, FALSE))
 metric = "mse" # Define metric
 if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {

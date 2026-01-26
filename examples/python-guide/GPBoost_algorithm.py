@@ -157,7 +157,8 @@ search_space = { 'learning_rate': [0.001, 10],
                 'max_depth': [-1,-1], # -1 means no depth limit as we tune 'num_leaves'. Can also additionally tune 'max_depth', e.g., 'max_depth': [-1,10]
                 'num_leaves': [2, 1024],
                 'lambda_l2': [0, 100],
-                'max_bin': [63, np.min([10000,n])],
+                'max_bin': [63, np.min([10000,n])],             
+                'feature_fraction': [0.5, 1],
                 'line_search_step_length': [True, False] }
 metric = "mse" # Define metric
 if likelihood in ("bernoulli_probit", "bernoulli_logit"):
@@ -194,7 +195,8 @@ param_grid = { 'learning_rate': [0.001, 0.01, 0.1, 1, 10],
               'max_depth': [-1], # -1 means no depth limit as we tune 'num_leaves'. Can also additionally tune 'max_depth', e.g., 'max_depth': [-1, 1, 2, 3, 5, 10]
               'num_leaves': 2**np.arange(1,10),
               'lambda_l2': [0, 1, 10, 100],
-              'max_bin': [250, 500, 1000, np.min([10000,n])],
+              'max_bin': [250, 500, 1000, np.min([10000,n])],              
+              'feature_fraction': [0.5, 0.75, 1],
               'line_search_step_length': [True, False]}
 other_params = {'verbose': 0} # avoid trace information when training models
 metric = "mse" # Define metric
