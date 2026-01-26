@@ -4248,6 +4248,18 @@ class GPModel(object):
                     on the coefficients with a constant variance diagonal prior covariance, 
                     and the prior variance is estimated using empirical Bayes.
 
+                - "hurst": 
+                
+                    Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ). 
+                    For H = 0.5, this corresponds to Brownian motion (-> see the 'estimate_cov_par_index' argument)
+
+                - "hurst_ard": 
+                
+                    Hurst covariance function with with Automatic Relevance Determination (ARD), 
+                    i.e., with a different range parameter for every coordinate of ``gp_coords`` except 
+                    for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: 
+                    cov(s, s') = (sigma2 / 2) * ( (s_1^2 + sum_{k=2}^d (s_k / l_k)^2)^H + (s'_1^2 + sum_{k=2}^d (s'_k / l_k)^2)^H - ((s_1 - s'_1)^2 + sum_{k=2}^d ((s_k - s'_k) / l_k)^2)^H )
+
             cov_fct_shape : float, optional (default=0.)
                 Shape parameter of the covariance function (e.g., smoothness parameter for Matern and Wendland covariance).
                 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
@@ -4588,7 +4600,7 @@ class GPModel(object):
             self.num_sets_re = 2
             self.num_sets_fe = 2
         if likelihood == "gaussian" and gp_approx != "vecchia_latent":
-            self.cov_par_names = ["Error_term"]
+            self.cov_par_names = ["Error_var"]
         else:
             self.cov_par_names = []
 
@@ -4739,6 +4751,10 @@ class GPModel(object):
                 self.cov_par_names.extend(["GP_var", "GP_range", "GP_smoothness"])
             elif self.cov_function == "matern_ard_estimate_shape":
                 self.cov_par_names.extend(["GP_var"] + ["GP_range_" + str(i+1) for i in range(0,self.dim_coords)] + ["GP_smoothness"])
+            elif self.cov_function == "hurst" or self.cov_function == "hurst_ard":
+                self.cov_par_names.extend(["GP_var", "H"])
+                if self.cov_function == "hurst_ard":
+                    self.cov_par_names.extend(["GP_range_" + str(i+1) for i in range(1,self.dim_coords)])
             else:
                 self.cov_par_names.extend(["GP_var", "GP_range"])
             self.re_comp_names.append("GP")
@@ -4781,6 +4797,10 @@ class GPModel(object):
                                 ["GP_rand_coef_nb_" + str(ii + 1) + "_var"] +
                                  ["GP_rand_coef_nb_" + str(ii + 1) + str(i+1) for i in range(0,self.dim_coords)] + 
                                  ["GP_rand_coef_nb_" + str(ii + 1) + "_smoothness"])
+                        elif self.cov_function == "hurst"  or self.cov_function == "hurst_ard":
+                            self.cov_par_names.extend(["GP_rand_coef_nb_" + str(ii + 1) + "_var"] + ["GP_rand_coef_nb_" + str(ii + 1) + "_H"])
+                            if self.cov_function == "hurst_ard":
+                                 self.cov_par_names.extend(["GP_rand_coef_nb_" + str(ii + 1) + str(i+1) for i in range(1,self.dim_coords)])
                         else:
                             self.cov_par_names.extend(
                                 ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
@@ -4795,8 +4815,8 @@ class GPModel(object):
                         elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard" or \
                                 self.cov_function == "exponential_ard":
                             self.cov_par_names.extend(
-                                ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + "_var"] +
-                                 ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + str(i+1) for i in range(0,self.dim_coords)])
+                                ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"] +
+                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + str(i+1) for i in range(0,self.dim_coords)])
                         elif self.cov_function == "wendland" or self.cov_function == "linear" or self.cov_function == "linear_no_woodbury":
                             self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"])
                         elif self.cov_function == "matern_estimate_shape":
@@ -4806,9 +4826,13 @@ class GPModel(object):
                                  "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_smoothness"])
                         elif self.cov_function == "matern_ard_estimate_shape":
                             self.cov_par_names.extend(
-                                ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + "_var"] +
-                                 ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + str(i+1) for i in range(0,self.dim_coords)] + 
-                                 ["GP_rand_coef_nb_" + gp_rand_coef_data_names[ii] + "_smoothness"])
+                                ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"] +
+                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + str(i+1) for i in range(0,self.dim_coords)] + 
+                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_smoothness"])
+                        elif self.cov_function == "hurst"  or self.cov_function == "hurst_ard":
+                            self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"] + ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_H"])
+                            if self.cov_function == "hurst_ard":
+                                 self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + str(i+1) for i in range(1,self.dim_coords)])
                         else:
                             self.cov_par_names.extend(
                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
@@ -4929,7 +4953,7 @@ class GPModel(object):
             self.cov_function == "matern_estimate_shape":
             num_par_per_GP = 3
         elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard" or \
-                self.cov_function == "exponential_ard":
+                self.cov_function == "exponential_ard" or self.cov_function == "hurst_ard":
             num_par_per_GP = 1 + self.dim_coords
         elif self.cov_function == "matern_ard_estimate_shape":
             num_par_per_GP = 2 + self.dim_coords
@@ -4998,10 +5022,10 @@ class GPModel(object):
 
     def __update_cov_par_names(self, likelihood):
         self.__determine_num_cov_pars(likelihood)
-        if likelihood != "gaussian" and "Error_term" in self.cov_par_names:
-            self.cov_par_names.remove("Error_term")
-        if likelihood == "gaussian" and self.gp_approx != "vecchia_latent" and "Error_term" not in self.cov_par_names:
-            self.cov_par_names.insert(0, "Error_term")
+        if likelihood != "gaussian" and "Error_var" in self.cov_par_names:
+            self.cov_par_names.remove("Error_var")
+        if likelihood == "gaussian" and self.gp_approx != "vecchia_latent" and "Error_var" not in self.cov_par_names:
+            self.cov_par_names.insert(0, "Error_var")
 
     def __del__(self):
         try:
@@ -5040,10 +5064,12 @@ class GPModel(object):
                     Initial values for additional parameters for non-Gaussian likelihoods
                     (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
                 - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1) 
-                    This allows for disabling the estimation of some (or all) covariance parameters if estimate_cov_par_index != -1. 
-                    'estimate_cov_par_index' should then be a vector with length equal to the number of covariance parameters, 
+                    This allows for disabling the estimation of some (or all) covariance parameters.
+                    If estimate_cov_par_index = -1, all covariance parameters are estimated.
+                    If estimate_cov_par_index != -1, this should be a vector with length equal to the number of covariance parameters, 
                     and estimate_cov_par_index[i] should be of bool type indicating whether parameter number i is estimated or not. 
                     For instance, "estimate_cov_par_index": [1,1,0] means that the first two covariance parameters are estimated and the last one not. 
+                    Parameters that are not estimated are kept at their initial values (see 'init_cov_pars').
                 - estimate_aux_pars : bool, (default = True)
                     If True, any additional parameters for non-Gaussian likelihoods are also estimated
                     (e.g., shape parameter of a gamma or negative binomial likelihood).

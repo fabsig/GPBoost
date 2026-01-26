@@ -32,11 +32,13 @@ set_optim_params(gp_model, params = list())
     Initial values for additional parameters for non-Gaussian likelihoods 
     (e.g., shape parameter of a gamma or negative_binomial likelihood) }
     \item{estimate_cov_par_index: \code{vector} with \code{integer} (default = -1). 
-    This allows for disabling the estimation of some (or all) covariance parameters if estimate_cov_par_index != -1. 
-    'estimate_cov_par_index' should then be a vector with length equal to the number of covariance parameters, 
+    This allows for disabling the estimation of some (or all) covariance parameters. 
+    If 'estimate_cov_par_index' = -1, all covariance parameters are estimated. 
+    If estimate_cov_par_index != -1, this should be a vector with length equal to the number of covariance parameters, 
     and estimate_cov_par_index[i] should be of bool type indicating whether parameter number i is estimated or not. 
     For instance, estimate_cov_par_index = c(1,1,0) means that the first two covariance parameters 
-    are estimated and the last one not.}  
+    are estimated and the last one not. 
+    Parameters that are not estimated are kept at their initial values (see 'init_cov_pars'). }  
     \item{estimate_aux_pars: \code{boolean} (default = TRUE). 
     If TRUE, additional parameters for non-Gaussian likelihoods 
     are also estimated (e.g., shape parameter of a gamma or negative_binomial likelihood) }

@@ -117,7 +117,7 @@ Model specification parameters
 
          - This covariance has seven parameters (in the following order: sigma2, a, c, alpha, nu, beta, delta) which are all estimated by default. You can disable the estimation of some of these parameter using the ``estimate_cov_par_index`` argument of the ``params`` argument in either the ``fit`` function of a ``gp_model`` object or the ``set_optim_params`` function prior to estimation
 
-      - ``matern_ard``: Anisotropic Matern covariance function with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate dimension / column of ``gp_coords``
+      - ``matern_ard``: Anisotropic Matern covariance function with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate of ``gp_coords``
 
       - ``matern_ard_estimate_shape`` : same as ``matern_ard`` but the smoothness parameter is also estimated
 
@@ -125,13 +125,17 @@ Model specification parameters
 
       - ``gaussian`` : Gaussian, aka squared exponential, covariance function (using the parametrization of Diggle and Ribeiro, 2007)
 
-      - ``gaussian_ard``: Anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate dimension / column of ``gp_coords``
+      - ``gaussian_ard``: Anisotropic Gaussian, aka squared exponential, covariance function with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate of ``gp_coords``
 
       - ``powered_exponential`` : Powered exponential covariance function with the exponent specified by ``cov_fct_shape`` parameter (using the parametrization of Diggle and Ribeiro, 2007)
 
       - ``wendland`` : Compactly supported Wendland covariance function (using the parametrization of Bevilacqua et al., 2019, AOS)
 
       - ``linear``: Linear covariance function. This corresponds to a Bayesian linear regression model with a Gaussian prior on the coefficients with a constant variance diagonal prior covariance, and the prior variance is estimated using empirical Bayes.
+
+      - ``hurst``: Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ). For H = 0.5, this corresponds to Brownian motion (-> see the ``estimate_cov_par_index`` argument)
+
+      - ``hurst_ard``: Hurst covariance function with with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate of ``gp_coords`` except for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: cov(s, s') = (sigma2 / 2) * ( (s_1^2 + sum_{k=2}^d (s_k / l_k)^2)^H + (s'_1^2 + sum_{k=2}^d (s'_k / l_k)^2)^H - ((s_1 - s'_1)^2 + sum_{k=2}^d ((s_k - s'_k) / l_k)^2)^H )
 
 -  ``cov_fct_shape`` : double, (default = 1.5)
 
@@ -269,7 +273,9 @@ The following list shows some options for the parameter optimization ``GPModel``
 
 -  ``estimate_cov_par_index`` : numeric vector / array of integers or NULL, optional (default = -1)
 
-   - This allows for disabling the estimation of some (or all) covariance parameters if estimate_cov_par_index != -1. 'estimate_cov_par_index' should then be a vector with length equal to the number of covariance parameters, and estimate_cov_par_index[i] should be of bool type indicating whether parameter number i is estimated or not. For instance, "estimate_cov_par_index": [1,1,0] means that the first two covariance parameters are estimated and the last one not. 
+   - This allows for disabling the estimation of some (or all) covariance parameters. If estimate_cov_par_index = -1, all covariance parameters are estimated. If estimate_cov_par_index != -1, this should be a vector with length equal to the number of covariance parameters, and estimate_cov_par_index[i] should be of bool type indicating whether parameter number i is estimated or not. For instance, estimate_cov_par_index = [1,1,0] means that the first two covariance parameters are estimated and the last one not.
+
+   - Parameters that are not estimated are kept at their initial values (see ``init_cov_pars``).
 
 - ``estimate_aux_pars``: bool, (default = True)
 

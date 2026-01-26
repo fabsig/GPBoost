@@ -411,6 +411,14 @@ namespace GPBoost {
 			InitializeDefaultSettings();
 			CheckCompatibilitySpecialOptions();
 			SetPropertiesLikelihood();
+			string_t cov_fct_name = CovFunctionName();
+			if (cov_fct_name == "hurst" || cov_fct_name == "hurst_ard") {
+				string_t range_msg = cov_fct_name == "hurst" ? "" : " and the range parameter for the first coordinate is 1 (due to identifiability with the marginal variance)";
+				string_t stdz_msg = cov_fct_name == "hurst" ? "" : "and standardize ";
+				string_t msg = "For the '" + cov_fct_name + "' covariance, the GP is anchored at 0 (i.e., b(0) = 0 a.s.)" + range_msg + 
+					". In general, it is thus recommened to mean-center " + stdz_msg + " the coordinates first (in case you have not done this already) ";
+				Log::REInfo(msg.c_str());
+			}
 		}//end REModelTemplate
 
 		/*! \brief Destructor */
@@ -935,10 +943,7 @@ namespace GPBoost {
 						intercept_col_ = icol;
 						break;
 					}
-				}
-				if (!has_intercept_ && !find_learning_rate_for_GPBoost_algo) {
-					Log::REDebug("The covariate data contains no column of ones, i.e., no intercept is included ");
-				}
+				}				
 				if (num_covariates_ > 1) {
 					Eigen::ColPivHouseholderQR<den_mat_t> qr_decomp(X_);
 					int rank = (int)qr_decomp.rank();
@@ -1092,13 +1097,27 @@ namespace GPBoost {
 					likelihood_[unique_clusters_[0]]->FindConstantsCapTooLargeLearningRateCoef(y_data, num_data_, fixed_effects, C_mu_, C_sigma2_);
 				}
 			}//end if has_covariates_
-			else if (!called_in_GPBoost_algorithm && fixed_effects == nullptr) {//!has_covariates_ && !called_in_GPBoost_algorithm && fixed_effects == nullptr
+			if (!has_intercept_ && !called_in_GPBoost_algorithm && !find_learning_rate_for_GPBoost_algo && fixed_effects == nullptr) {
 				CHECK(y_data != nullptr);
-				double tot_var = GetTotalVarComps(cov_aux_pars.segment(0, num_cov_par_), 0);
-				if (likelihood_[unique_clusters_[0]]->ShouldHaveIntercept(y_data, num_data_, tot_var, fixed_effects)) {
-					Log::REWarning("There is no intercept for modeling a possibly non-zero mean of the random effects. "
-						"Consider including an intercept (= a column of 1's) in the covariates 'X' ");
+				string_t cov_function_name = CovFunctionName();
+				if (cov_function_name == "hurst" || cov_function_name == "hurst_ard") {
+					Log::REWarning("There is no intercept (= a column of 1's) included in the covariates 'X'. For the '%s' covariance, it is recommended to include an intercept since the GP is anchored at 0 (i.e., b(0) = 0 a.s.) ", cov_function_name.c_str());
 				}
+				else {
+					double tot_var = GetTotalVarComps(cov_aux_pars.segment(0, num_cov_par_), 0);
+					if (likelihood_[unique_clusters_[0]]->ShouldHaveIntercept(y_data, num_data_, tot_var, fixed_effects)) {
+						string_t msg = "There is no intercept (= a column of 1's) included in the covariates 'X'. Consider including one ";
+						if (has_covariates_) {
+							Log::REWarning(msg.c_str());
+						}
+						else {
+							Log::REDebug(msg.c_str());
+						}
+					}
+				}
+			}//end intercept message
+			if (!has_intercept_ && !find_learning_rate_for_GPBoost_algo) {
+				Log::REDebug("The covariate data contains no column of ones, i.e., no intercept is included ");
 			}
 			if (!has_covariates_ && fixed_effects != nullptr && gauss_likelihood_) {
 				vec_t resid = y_vec_;
@@ -2090,8 +2109,17 @@ namespace GPBoost {
 						else { // fitc
 							// Derivative of diagonal part
 							vec_t FITC_Diag_grad = vec_t::Zero(num_data_per_cluster_[cluster_i]);
-							FITC_Diag_grad.array() += sigma_ip_stable_grad.coeffRef(0, 0);
-							den_mat_t sigma_ip_inv_sigma_cross_cov = chol_fact_sigma_ip_[cluster_i][0].solve((*cross_cov).transpose());
+							if (re_comps_cross_cov_[cluster_i][0][0]->VarianceOnDiagonal()) {
+								FITC_Diag_grad.array() += sigma_ip_stable_grad.coeffRef(0, 0);
+							}
+							else {
+								CHECK(num_data_per_cluster_[cluster_i] == re_comps_cross_cov_[cluster_i][0][j]->GetNumUniqueREs());
+#pragma omp parallel for schedule(static)
+								for (int ii = 0; ii < re_comps_cross_cov_[cluster_i][0][j]->GetNumUniqueREs(); ++ii) {
+									FITC_Diag_grad[ii] += re_comps_cross_cov_[cluster_i][0][j]->GetZSigmaZtGradDiagonal_ii(ii, ipar, true, 0.);//uses coords of all data points to calculate Sigma[ii,ii]
+								}
+							}
+							den_mat_t sigma_ip_inv_sigma_cross_cov = chol_fact_sigma_ip_[cluster_i][j].solve((*cross_cov).transpose());
 							den_mat_t sigma_ip_grad_inv_sigma_cross_cov = sigma_ip_stable_grad * sigma_ip_inv_sigma_cross_cov;
 #pragma omp parallel for schedule(static)
 							for (int ii = 0; ii < num_data_per_cluster_[cluster_i]; ++ii) {
@@ -3292,21 +3320,26 @@ namespace GPBoost {
 								chol_fact_sigma_ip.compute(sigma_ip_stable);
 								den_mat_t cross_cov = *(re_comps_cross_cov_cluster_i[j]->GetZSigmaZt());
 								den_mat_t sigma_interim = cross_cov * chol_fact_sigma_ip.solve(cross_cov.transpose());
-								ConvertTo_T_mat_FromDense<T_mat>(sigma_interim, psi); // for all T_mat? see ConvertTo_T_mat_FromDense from Pascal
+								ConvertTo_T_mat_FromDense<T_mat>(sigma_interim, psi);
 								//psi = cross_cov * chol_fact_sigma_ip.solve(cross_cov.transpose());
 								if (gp_approx_ == "full_scale_tapering") {
 									re_comps_resid_cluster_i[j]->SetCovPars(pars);
 									re_comps_resid_cluster_i[j]->CalcSigma();
-									// Subtract predictive process covariance
-									re_comps_resid_cluster_i[j]->SubtractMatFromSigmaForResidInFullScale(psi);
-									// Apply Taper
+									re_comps_resid_cluster_i[j]->SubtractMatFromSigmaForResidInFullScale(psi);// Subtract predictive process covariance
 									re_comps_resid_cluster_i[j]->ApplyTaper();
-
 									psi += *(re_comps_resid_cluster_i[j]->GetZSigmaZt());
 								}
 								else {
 									vec_t FITC_Diag = vec_t::Zero(cross_cov.rows());
-									FITC_Diag = FITC_Diag.array() + sigma_ip_stable.coeffRef(0, 0);
+									if (re_comps_cross_cov_[cluster_i][0][j]->VarianceOnDiagonal()) {
+										FITC_Diag.array() += sigma_ip_stable.coeffRef(0, 0);
+									}
+									else {
+#pragma omp parallel for schedule(static)
+										for (int ii = 0; ii < re_comps_cross_cov_cluster_i[j]->GetNumUniqueREs(); ++ii) {
+											FITC_Diag[ii] += re_comps_cross_cov_cluster_i[j]->GetZSigmaZtij(ii, ii);//uses coords of all data points (not IPs) to calculate Sigma[ii,ii]
+										}
+									}
 									FITC_Diag -= psi.diagonal();
 									psi += FITC_Diag.asDiagonal();
 								}
@@ -5024,7 +5057,7 @@ namespace GPBoost {
 		/*! \brief Number of coefficients that are printed out when trace / logging is activated */
 		const int NUM_COEF_PRINT_TRACE_ = 5;
 		/*! \brief True if X_ contains an intercept column */
-		bool has_intercept_;
+		bool has_intercept_ = false;
 		/*! \brief Index of the intercept column in X_ */
 		int intercept_col_;
 		/*! \brief If true, X_ and the linear regression covariates are scaled */
@@ -6322,8 +6355,8 @@ namespace GPBoost {
 			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && gp_approx_ == "none";//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (only for non-Gaussian likelihoods)
 			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods)
 			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && gauss_likelihood_;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods)
-			if (num_gp_total_ == 1 && num_comps_total_ == 1 && gp_approx_ == "none") {
-				if (cov_fct == "linear") {
+			if (num_gp_total_ == 1 && num_comps_total_ == 1) {
+				if (cov_fct == "linear" && gp_approx_ == "none") {
 					use_woodbury_identity_ = true;
 					linear_kernel_use_woodbury_identity_ = true;
 					only_one_GP_calculations_on_RE_scale_ = false;
@@ -6332,11 +6365,9 @@ namespace GPBoost {
 					cov_fct = "linear";
 				}
 			}
-			if (cov_fct == "linear_no_woodbury" && gp_approx_ != "none") {
-				Log::REFatal("cov_fct = '%s' is currently not supported if gp_approx = '%s' ", cov_fct.c_str(), gp_approx_.c_str());//often crashes with vecchia approximation
-			}
 			if (matrix_inversion_method_user_provided_ == "default") {
-				if (CanUseIterative()) {
+				if (UseIterativeByDefault()) {
+					CHECK(CanUseIterative());
 					matrix_inversion_method_ = "iterative";
 				}
 				else {
@@ -6584,6 +6615,13 @@ namespace GPBoost {
 				(gp_approx_ == "full_scale_tapering" && gauss_likelihood_) ||
 				(use_woodbury_identity_ && (num_re_group_total_ > 1 || linear_kernel_use_woodbury_identity_));
 			return can_use_iter;
+		}
+
+		bool UseIterativeByDefault() const {
+			bool use_iter = ((gp_approx_ == "full_scale_vecchia" || gp_approx_ == "vecchia") && !gauss_likelihood_) ||
+				(gp_approx_ == "full_scale_tapering" && gauss_likelihood_) ||
+				(use_woodbury_identity_ && num_re_group_total_ > 1);// do not use iterative method for a linear kernel (linear_kernel_use_woodbury_identity_) by default as there are quite some differences to exact calculations
+			return use_iter;
 		}
 
 		/*! \brief Check whether preconditioner is supported */
@@ -7179,7 +7217,16 @@ namespace GPBoost {
 							else {
 								fitc_resid_diag_[cluster_i] = vec_t::Zero(re_comps_cross_cov_[cluster_i][0][0]->GetNumUniqueREs());
 							}
-							fitc_resid_diag_[cluster_i].array() += sigma_ip_stable.coeffRef(0, 0);
+							//add marginal variance
+							if (re_comps_cross_cov_[cluster_i][0][j]->VarianceOnDiagonal()) {
+								fitc_resid_diag_[cluster_i].array() += sigma_ip_stable.coeffRef(0, 0);
+							}
+							else {
+#pragma omp parallel for schedule(static)
+								for (int ii = 0; ii < re_comps_cross_cov_[cluster_i][0][j]->GetNumUniqueREs(); ++ii) {
+									fitc_resid_diag_[cluster_i][ii] += re_comps_cross_cov_[cluster_i][0][j]->GetZSigmaZtij(ii, ii);//uses coords of all data points (not IPs) to calculate Sigma[ii,ii]
+								}
+							}
 #pragma omp parallel for schedule(static)
 							for (int ii = 0; ii < re_comps_cross_cov_[cluster_i][0][0]->GetNumUniqueREs(); ++ii) {
 								fitc_resid_diag_[cluster_i][ii] -= sigma_ip_Ihalf_sigma_cross_covT.col(ii).array().square().sum();
@@ -7193,7 +7240,6 @@ namespace GPBoost {
 							if (gp_approx_ == "full_scale_tapering") {
 								re_comps_resid_[cluster_i][0][j]->CalcSigma();
 								re_comps_resid_[cluster_i][0][j]->SubtractPredProcFromSigmaForResidInFullScale(chol_ip_cross_cov_[cluster_i][0], true);
-								// Apply Taper
 								re_comps_resid_[cluster_i][0][j]->ApplyTaper();
 								if (gauss_likelihood_) {
 									re_comps_resid_[cluster_i][0][j]->AddConstantToDiagonalSigma(1.);//add nugget effect variance
@@ -9276,7 +9322,16 @@ namespace GPBoost {
 						else if (gp_approx_ == "fitc") {
 							den_mat_t sigma_ip_stable_grad_nugget = *(re_comps_ip_[cluster_i][0][j]->GetZSigmaZtGrad(jpar, transf_scale, 1.));
 							vec_t FITC_Diag_grad = vec_t::Zero(num_data_per_cluster_[cluster_i]);
-							FITC_Diag_grad = FITC_Diag_grad.array() + sigma_ip_stable_grad_nugget.coeffRef(0, 0);
+							if (re_comps_cross_cov_[cluster_i][0][0]->VarianceOnDiagonal()) {
+								FITC_Diag_grad.array() += sigma_ip_stable_grad_nugget.coeffRef(0, 0);
+							}
+							else {
+								CHECK(num_data_per_cluster_[cluster_i] == re_comps_cross_cov_[cluster_i][0][j]->GetNumUniqueREs());
+#pragma omp parallel for schedule(static)
+								for (int ii = 0; ii < re_comps_cross_cov_[cluster_i][0][j]->GetNumUniqueREs(); ++ii) {
+									FITC_Diag_grad[ii] += re_comps_cross_cov_[cluster_i][0][j]->GetZSigmaZtGradDiagonal_ii(ii, jpar, transf_scale, 1.);//uses coords of all data points to calculate Sigma[ii,ii]
+								}
+							}
 #pragma omp parallel for schedule(static)
 							for (int ii = 0; ii < num_data_per_cluster_[cluster_i]; ++ii) {
 								FITC_Diag_grad[ii] -= 2 * sigma_ip_inv_sigma_cross_cov.col(ii).dot((*cross_cov_grad).row(ii))
@@ -10425,6 +10480,14 @@ namespace GPBoost {
 				den_mat_t sigma_ip_inv_cross_cov_T;
 #pragma omp parallel for schedule(static)
 				for (int ii = 0; ii < num_REs_pred; ++ii) {
+					double Sigma_ii;
+					if (re_comps_cross_cov_[cluster_i][0][0]->VarianceOnDiagonal()) {
+						Sigma_ii = sigma2;
+					}
+					else {
+						vec_t coord_pred_i = gp_coords_mat_pred.row(ii);
+						Sigma_ii = re_comps_cross_cov_[cluster_i][0][0]->CalculateCovarianceOneEntry(coord_pred_i, coord_pred_i);
+					}
 					for (int jj = 0; jj < num_REs_obs; ++jj) {
 						if (TwoNumbersAreEqual<double>(coords_pred_sum[ii], coords_sum[jj])) {
 							bool are_the_same = true;
@@ -10439,7 +10502,7 @@ namespace GPBoost {
 										sigma_ip_inv_cross_cov_T = chol_fact_sigma_ip_[cluster_i][0].solve((*cross_cov).transpose());
 									}
 								}
-								double fitc_corr_ij = sigma2 - (cross_cov_pred_ip.row(ii)).dot(sigma_ip_inv_cross_cov_T.col(jj));
+								double fitc_corr_ij = Sigma_ii - (cross_cov_pred_ip.row(ii)).dot(sigma_ip_inv_cross_cov_T.col(jj));
 #pragma omp critical
 								triplets.push_back(Triplet_t(ii, jj, fitc_corr_ij));
 							}
@@ -10502,7 +10565,16 @@ namespace GPBoost {
 				vec_t resid_diag_pred;
 				if (calc_diag_resid_var_pred) {
 					resid_diag_pred = vec_t::Zero(num_REs_pred);
-					resid_diag_pred = resid_diag_pred.array() + sigma_ip_stable.coeffRef(0, 0);
+					if (re_comps_cross_cov_[cluster_i][0][0]->VarianceOnDiagonal()) {
+						resid_diag_pred.array() += sigma_ip_stable.coeffRef(0, 0);
+					}
+					else {
+#pragma omp parallel for schedule(static)
+						for (int ii = 0; ii < num_REs_pred; ++ii) {
+							vec_t coord_pred_i = gp_coords_mat_pred.row(ii);
+							resid_diag_pred[ii] += re_comps_cross_cov_[cluster_i][0][0]->CalculateCovarianceOneEntry(coord_pred_i, coord_pred_i);
+						}
+					}
 #pragma omp parallel for schedule(static)
 					for (int ii = 0; ii < num_REs_pred; ++ii) {
 						resid_diag_pred[ii] -= chol_ip_cross_cov_ip_pred.col(ii).array().square().sum();

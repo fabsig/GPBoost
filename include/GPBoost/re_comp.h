@@ -1136,7 +1136,7 @@ namespace GPBoost {
 		}
 
 		bool RedetermineVecchiaNeighborsInTransformedSpace() const {
-			return(cov_function_->RedetermineVecchiaNeighborsInducingPoints());
+			return(cov_function_->RedetermineVecchiaNeighborsInTransformedSpace());
 		}
 
 		bool IsSpaceTimeModel() const {
@@ -1340,9 +1340,6 @@ namespace GPBoost {
 		* \return Entry (i,j) of the covariance matrix Z*Sigma*Z^T of this component
 		*/
 		double GetZSigmaZtij(int i, int j) const override {
-			if (!this->coord_saved_) {
-				Log::REFatal("The function 'GetZSigmaZtij' is currently only implemented when 'coords_' are saved (i.e. for the Vecchia approximation).");
-			}
 			if (this->has_Z_) {
 				Log::REFatal("The function 'GetZSigmaZtij' is currently not implemented when 'has_Z_' is true.");
 			}
@@ -1351,10 +1348,35 @@ namespace GPBoost {
 			CHECK(j >= 0);
 			CHECK(i < num_random_effects_);
 			CHECK(j < num_random_effects_);
-			double dij = (this->coords_(i, Eigen::all) - this->coords_(j, Eigen::all)).template lpNorm<2>();
-			double covij;
-			cov_function_->CalculateCovMat(dij, this->cov_pars_, covij);
-			return(covij);
+			if (i == j && cov_function_->variance_on_the_diagonal_) {
+				return (this->cov_pars_)[0];
+			}
+			else {
+				double dij = 0.;
+				vec_t coords, coords_pred;
+				if (this->coord_saved_) {
+					coords = this->coords_.row(i);
+					coords_pred = this->coords_.row(j);
+				}
+				else if (dist_saved_) {
+					dij = (*(this->dist_)).coeffRef(i, j);
+				}
+				else {
+					Log::REFatal("The function 'GetZSigmaZtij' is currently only implemented when 'coord_saved_' or 'dist_saved_' ");
+				}
+				const double covij = cov_function_->CalculateCovarianceOneEntry(dij, coords, coords_pred, this->cov_pars_);
+				return(covij);
+			}
+		} // end GetZSigmaZtij
+
+		double CalculateCovarianceOneEntry(const vec_t& coords,
+			const vec_t& coords_pred) const {
+			const double dist = 0.;
+			return cov_function_->CalculateCovarianceOneEntry(dist, coords, coords_pred, this->cov_pars_);
+		}
+
+		bool VarianceOnDiagonal() {
+			return cov_function_->variance_on_the_diagonal_;
 		}
 
 		/*!
@@ -1386,7 +1408,7 @@ namespace GPBoost {
 					}
 				}
 			}
-			else {//inverse range parameters
+			else {//other parameters
 				CHECK(cov_function_->num_cov_par_ > 1);
 				T_mat Z_sigma_grad_Zt;
 				if (this->has_Z_) {
@@ -1467,6 +1489,56 @@ namespace GPBoost {
 				cov_mat *= nugget_var;//transform back to original scale
 			}
 		}//end CalcSigmaAndSigmaGradVecchia
+
+		/*!
+		* \brief Function that calculates a diagonal entry (i,i) of the gradient of the covariance matrix Z*Sigma*Z^T
+		* \param transf_scale If true, the derivative is taken on the transformed scale otherwise on the original scale. Default = true
+		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale = false to transform back)
+		* \return Entry (i,i) of the gradient of the covariance matrix Z*Sigma*Z^T of this component
+		*/
+		double GetZSigmaZtGradDiagonal_ii(int i, int ind_par, bool transf_scale, double nugget_var) const {
+			if (this->has_Z_) {
+				Log::REFatal("The function 'GetZSigmaZtGradij' is currently not implemented when 'has_Z_' is true.");
+			}
+			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
+			CHECK(i >= 0);
+			CHECK(i < num_random_effects_);
+			if (ind_par == 0) {//variance
+				if (cov_function_->variance_on_the_diagonal_) {
+					if (transf_scale) {
+						return (this->cov_pars_)[0];
+					}
+					else {
+						return 1.;
+					}
+				}//end variance_on_the_diagonal_
+				else {//!variance_on_the_diagonal_
+					if (transf_scale) {
+						return GetZSigmaZtij(i, i);
+					}
+					else {
+						return GetZSigmaZtij(i, i) / (this->cov_pars_)[0];
+					}
+				}//end !variance_on_the_diagonal_
+			}//end ind_par == 0
+			else {//other parameters
+				if (cov_function_->variance_on_the_diagonal_) {
+					return 0.;
+				}
+				else {//!variance_on_the_diagonal_
+					double dii = 0.;
+					vec_t coords;
+					if (this->coord_saved_) {
+						coords = this->coords_.row(i);
+					}
+					else {
+						Log::REFatal("The function 'GetZSigmaZtGradDiagonal_ii' is currently only implemented when 'coord_saved_' or 'dist_saved_' ");
+					}
+					const double gradii = cov_function_->CalculateGradientCovarianceOneEntry(dii, coords, coords, this->cov_pars_, transf_scale, nugget_var, ind_par - 1);
+					return(gradii);
+				}//end !variance_on_the_diagonal_
+			}//end other parameters
+		}//end GetZSigmaZtGradDiagonal_ii
 
 		/*!
 		* \brief Function that returns the matrix Z
@@ -1675,7 +1747,7 @@ namespace GPBoost {
 					if (has_duplicates) continue;
 					for (int j = i + 1; j < (int)coords_.rows(); ++j) {
 						if (has_duplicates) continue;
-						if ((coords_.row(i) - coords_.row(j)).squaredNorm() < EPSILON_NUMBERS) {
+						if ((coords_.row(i) - coords_.row(j)).norm() < EPSILON_NUMBERS) {
 #pragma omp critical
 							{
 								has_duplicates = true;
