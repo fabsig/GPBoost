@@ -2549,13 +2549,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Evaluate negative log-likelihood
     num_neighbors <- 50
     capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
-                                        gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
+                                        gp_approx = "vecchia_euclidean_based", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
     expect_lt(abs(nll-603.189168889409),TOLERANCE_STRICT)
     # Fit model
     capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
-                                           gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none",
+                                           gp_approx = "vecchia_euclidean_based", num_neighbors = num_neighbors, vecchia_ordering = "none",
                                            y = y, X = X, params = params_ST), 
                     file='NUL')
     cov_pars_nn <- c(1.920056e-03, 4.520834e-02, 1.015382e+00, 1.594250e-01, 1.156587e+00, 
@@ -2581,7 +2581,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         gp_approx = "vecchia_correlation_based", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
                     file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
-    expect_lt(abs(nll-602.88672043745),TOLERANCE_STRICT)
+    nll_exp <- 602.88672043745
+    expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
+    # Default should be correlation-based
+    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                        gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
+                    file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+    expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     # Fit model
     capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
                                            gp_approx = "vecchia_correlation_based", num_neighbors = num_neighbors, vecchia_ordering = "none",

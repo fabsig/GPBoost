@@ -146,7 +146,7 @@ namespace GPBoost {
 			if (matrix_inversion_method != nullptr) {
 				matrix_inversion_method_user_provided_ = std::string(matrix_inversion_method);
 			}
-			std::string cov_fct_strg = "";
+			std::string cov_fct_strg = (cov_fct != nullptr) ? std::string(cov_fct) : "";
 			//Set up GP approximation
 			if (gp_approx == nullptr) {
 				gp_approx_ = "none";
@@ -188,6 +188,16 @@ namespace GPBoost {
 				if (gp_approx_ == "vecchia_correlation_based" || gp_approx_ == "vecchia_correlation") {
 					gp_approx_ = "vecchia";
 					vecchia_neighbor_selection_ = "correlation";
+				}
+				if (cov_fct_strg == "space_time_gneiting") {
+					if (gp_approx_ == "vecchia") {
+						vecchia_neighbor_selection_ = "correlation";//default is correlation-based neighbor search
+					}
+					else if (gp_approx_ == "vecchia_not_correlation" || gp_approx_ == "vecchia_not_correlation_based" ||
+						gp_approx_ == "vecchia_euclidean" || gp_approx_ == "vecchia_euclidean_based") {
+						gp_approx_ = "vecchia";
+						vecchia_neighbor_selection_ = "nearest";
+					}
 				}
 			}
 			if (SUPPORTED_GP_APPROX_.find(gp_approx_) == SUPPORTED_GP_APPROX_.end()) {
@@ -239,8 +249,7 @@ namespace GPBoost {
 				}
 			}
 			//Do some checks for GP components and set meta data (number of components etc.)
-			if (num_gp > 0) {
-				cov_fct_strg = std::string(cov_fct);
+			if (num_gp > 0) {				
 				if (num_gp > 1) {
 					Log::REFatal("num_gp can only be either 0 or 1 in the current implementation");
 				}
@@ -5391,7 +5400,7 @@ namespace GPBoost {
 		/*! \brief List of supported options for orderings of the Vecchia approximation */
 		const std::set<string_t> SUPPORTED_VECCHIA_ORDERING_{ "none", "random", "time", "time_random_space" };
 		/*! \brief The way how neighbors are selected */
-		string_t vecchia_neighbor_selection_ = "nearest";
+		string_t vecchia_neighbor_selection_ = "nearest";//nearest, correlation, residual_correlation
 		/*! \brief The number of neighbors used in the Vecchia approximation for making predictions */
 		int num_neighbors_pred_;
 		/*!
