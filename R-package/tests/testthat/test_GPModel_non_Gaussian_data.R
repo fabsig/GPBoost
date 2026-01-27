@@ -4873,18 +4873,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
                                         gp_approx = gp_approx, num_neighbors = num_neighbors) , file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
-    # expect_lt(abs(nll-1069.348),10) # some randomness
+    expect_lt(abs(nll-2512.097),0.5)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood,  cov_function = cov_function,
                                            matrix_inversion_method = matrix_inversion_method, X=X, y = y, params = params,
                                            gp_approx = gp_approx, num_neighbors = num_neighbors) , file='NUL')
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),1)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),0.03)
-    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),2)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),0.3)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),0.01)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),0.1)
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test, 
                                     predict_var=TRUE, predict_response = FALSE) , file='NUL')
-    expect_lt(sum(abs(pred$mu-expected_mu)),0.2)
-    expect_lt(sum(abs(pred$var-expected_var)),0.02)
+    expect_lt(sum(abs(pred$mu-expected_mu)),0.01)
+    expect_lt(sum(abs(pred$var-expected_var)),0.01)
     
     gp_approx <- "fitc"
     ind_points_selection <- "random"
