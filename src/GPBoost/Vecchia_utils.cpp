@@ -1361,7 +1361,9 @@ namespace GPBoost {
 					if (!(re_comps_vecchia_cluster_i[0]->VarianceOnDiagonal())){// add derivative of the covariance function wrt to other parameters (e.g. range) if it is non-zero on the diagonal
 						int ind_first_par = j * num_par_comp;
 						for (int ipar = 1; ipar < num_par_comp; ++ipar) {
-							D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) = re_comps_vecchia_cluster_i[ind_intercept_gp + j]->GetZSigmaZtGradDiagonal_ii(i, ipar, transf_scale, nugget_var);
+							if (!(exclude_marg_var_grad && ipar == 0) && estimate_cov_par_index[ipar + nugget_offset_ind_est] > 0) {
+								D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) = re_comps_vecchia_cluster_i[ind_intercept_gp + j]->GetZSigmaZtGradDiagonal_ii(i, ipar, transf_scale, nugget_var);
+							}
 						}
 					}
 				}

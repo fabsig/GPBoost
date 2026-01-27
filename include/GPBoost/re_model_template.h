@@ -4554,7 +4554,7 @@ namespace GPBoost {
 			}
 			else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 				std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_cross_cov_[unique_clusters_[0]][0][ind_intercept_gp_];
-				if (re_comp->UseScaledCoordinates() && num_iter_redetermine) {
+				if (re_comp->UseScaledCoordinates() && num_iter_redetermine) {//note: it is usually better to always redetermine inducing points in the transformed space due to numerical instabilities
 					redetermine_inducing_points_ = true;
 				}
 			}
@@ -4614,7 +4614,7 @@ namespace GPBoost {
 							}
 							else if (ind_points_selection_ == "random") {
 								if (gp_approx_ == "full_scale_vecchia" && !gauss_likelihood_) {
-									Log::REFatal("Method '%s' is not supported for finding inducing points in the full-scale-vecchia approximation for non-Gaussian data", ind_points_selection_.c_str());
+									Log::REFatal("Method '%s' is not supported for finding inducing points in the full-scale-vecchia approximation for non-Gaussian data", ind_points_selection_.c_str());//due to numerical instabilities for non-Gaussian likelihoods
 								}
 								SampleIntNoReplaceSort((int)gp_coords_all_unique.rows(), num_ind_points, rng_, indices);
 								gp_coords_ip_mat.resize(num_ind_points, gp_coords_all_unique.cols());
