@@ -322,7 +322,7 @@ namespace GPBoost {
 		}
 		else {
 #pragma omp parallel for schedule(static)
-			for (int i = 0; i < (int)chol_ip_cross_cov.cols(); ++i) {
+			for (int i = 0; i < num_data; ++i) {
 				std::vector<int> indii{ i };
 				den_mat_t corr_mat_i;
 				den_mat_t coords_ii = coords(indii, Eigen::all);
