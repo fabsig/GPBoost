@@ -247,6 +247,7 @@ data_eval = gpb.Dataset(X[test_ind, :], y[test_ind], reference=data_train)
 gp_model = gpb.GPModel(group_data=group[train_ind], likelihood=likelihood)
 gp_model.set_prediction_data(group_data_pred=group[test_ind])
 evals_result = {}  # record eval results for plotting
+params['metric'] = metric
 bst = gpb.train(params=params, train_set=data_train, num_boost_round=1000,
                 gp_model=gp_model, valid_sets=data_eval, 
                 early_stopping_rounds=20, evals_result=evals_result)
@@ -346,6 +347,22 @@ print(pred['random_effect_mean'] - pred_cont['random_effect_mean'])
 print(pred['random_effect_cov'] - pred_cont['random_effect_cov'])
 gp_model.summary()
 gp_model_cont.summary()
+
+#--------------------Custom validation loss for choosing the number of iterations----------------
+def l4_loss(preds, data):
+    y = data.get_label()
+    loss = np.sum((preds - y) ** 4)/ len(y)
+    return ("l4_loss", float(loss), False)  # False => lower is better
+gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+data_train = gpb.Dataset(data=X, label=y)
+params_cust = dict(params)
+params_cust["first_metric_only"] = True # early stop only on the first metric
+cvbst = gpb.cv(params=params_cust, train_set=data_train, gp_model=gp_model, 
+               num_boost_round=1000, early_stopping_rounds=20,
+               nfold=5, verbose_eval=True, show_stdv=False, seed=1, metric=metric,
+               feval=l4_loss, use_gp_model_for_validation=False) # Currently, only use_gp_model_for_validation = False is supported
+metric_name = list(cvbst.keys())[2]
+print("Best number of iterations for custom loss: " + str(np.argmin(cvbst[metric_name]) + 1))
 
 
 """

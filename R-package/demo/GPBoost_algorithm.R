@@ -213,8 +213,9 @@ opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
 #--------------------Cross-validation for determining number of iterations----------------
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
 dataset <- gpb.Dataset(data = X, label = y)
+set.seed(1)
 bst <- gpb.cv(data = dataset, gp_model = gp_model, params = params,
-              nrounds = 1000, nfold = 5, early_stopping_rounds = 20)
+              nrounds = 1000, nfold = 5, early_stopping_rounds = 20, metric = metric)
 print(paste0("Optimal number of iterations: ", bst$best_iter))
 
 #--------------------Using a validation set for finding number of iterations----------------
@@ -228,7 +229,7 @@ gp_model <- GPModel(group_data = group[train_ind], likelihood = likelihood)
 gp_model$set_prediction_data(group_data_pred = group[-train_ind])
 bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 1000,
                  params = params, verbose = 1, valids = valids,
-                 early_stopping_rounds = 20)
+                 early_stopping_rounds = 20, metric = metric)
 print(paste0("Optimal number of iterations: ", bst$best_iter,
              ", best test error: ", bst$best_score))
 # Plot validation error
@@ -323,6 +324,26 @@ pred$random_effect_mean - pred_cont$random_effect_mean
 pred$random_effect_cov - pred_cont$random_effect_cov
 summary(gp_model)
 summary(gp_model_cont)
+
+#--------------------Custom validation loss for choosing the number of iterations----------------
+l4_loss <- function(preds, dtrain) {
+  y <- getinfo(dtrain, "label")
+  loss <- sum((preds - y)^4) / length(y)
+  list(name = "l4_loss", value = loss, higher_better = FALSE)
+}
+gp_model <- GPModel(group_data = group, likelihood = likelihood)
+dataset <- gpb.Dataset(data = X, label = y)
+params_cust <- params
+params_cust$first_metric_only <- FALSE  # early stop only on the first metric or not
+set.seed(1)
+bst <- gpb.cv(data = dataset, gp_model = gp_model, params = params_cust,
+              nrounds = 1000, nfold = 5, early_stopping_rounds = 20,
+              eval = list(metric, l4_loss),
+              use_gp_model_for_validation = FALSE) # Currently, only use_gp_model_for_validation = False is supported
+print(paste0("Optimal number of iterations: ", bst$best_iter))
+l4_vals <- bst$record_evals$valid[["l4_loss"]]$eval
+best_iter_l4 <- which.min(l4_vals)
+cat("Best number of iterations for custom loss:", best_iter_l4, "\n")
 
 #--------------------GPBoostOOS algorithm: Hyperparameters estimated out-of-sample----------------
 # Create random effects model and dataset
