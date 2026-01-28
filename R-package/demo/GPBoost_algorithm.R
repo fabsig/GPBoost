@@ -157,8 +157,8 @@ opt_params <- tune.pars.bayesian.optimization(search_space = search_space, n_ite
                                               metric = metric, crit = crit,
                                               cv_seed = 4, verbose_eval = 1)
 print(paste0("Best parameters: ", paste0(unlist(lapply(seq_along(opt_params$best_params), 
-                                  function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params, 
-                                  n=names(opt_params$best_params))), collapse=", ")))
+                                                       function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params, 
+                                                       n=names(opt_params$best_params))), collapse=", ")))
 print(paste0("Best number of iterations: ", opt_params$best_iter))
 print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
 
@@ -196,8 +196,8 @@ opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
                                               nrounds = 1000, early_stopping_rounds = 20,
                                               verbose_eval = 1, metric = metric, cv_seed = 4)
 print(paste0("Best parameters: ", paste0(unlist(lapply(seq_along(opt_params$best_params), 
-                                  function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params, 
-                                  n=names(opt_params$best_params))), collapse=", ")))
+                                                       function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params, 
+                                                       n=names(opt_params$best_params))), collapse=", ")))
 print(paste0("Best number of iterations: ", opt_params$best_iter))
 print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
 
@@ -304,6 +304,25 @@ summary(bst_loaded$.__enclos_env__$private$gp_model)
 # Note: can also convert to string and load from string
 # model_str <- bst$save_model_to_string()
 # bst_loaded <- gpb.load(model_str = model_str)
+
+#--------------------Continue training----------------
+gp_model_cont <- GPModel(group_data = group, likelihood = likelihood)
+dataset <- gpb.Dataset(data = X, label = y)
+# Train for 10 boosting iterations
+bst <- gpb.train(data = dataset, gp_model = gp_model_cont, nrounds = 10,
+                 params = params, verbose = 0)
+# Continue training with more boosting iterations
+bst_cont <- gpb.train(data = dataset, gp_model = gp_model_cont, nrounds = nrounds-10,
+                      params = params, verbose = 0,
+                      init_model = bst)
+pred_cont <- predict(bst_cont, data = Xtest, group_data_pred = group_test, 
+                     predict_var = TRUE, pred_latent = TRUE)
+# Check equality
+pred$fixed_effect - pred_cont$fixed_effect
+pred$random_effect_mean - pred_cont$random_effect_mean
+pred$random_effect_cov - pred_cont$random_effect_cov
+summary(gp_model)
+summary(gp_model_cont)
 
 #--------------------GPBoostOOS algorithm: Hyperparameters estimated out-of-sample----------------
 # Create random effects model and dataset

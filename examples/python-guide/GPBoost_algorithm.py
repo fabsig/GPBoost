@@ -74,7 +74,7 @@ rand_eff = rand_eff - np.mean(rand_eff)
 # Simulate fixed effects
 p = 5 # number of predictor variables
 X = np.random.rand(n, p)
-f = 100*f1d(X[:, 0])
+f = f1d(X[:, 0])
 y = simulate_response_variable(lp=f, rand_eff=rand_eff, likelihood=likelihood)
 hst = plt.hist(y, bins=20)  # visualize response variable
 plt.show(block=False)
@@ -327,6 +327,25 @@ bst_loaded.gp_model.summary()
 # Note: can also convert to string and load from string
 # model_str = bst.model_to_string()
 # bst_loaded = gpb.Booster(model_str = model_str)
+
+#--------------------Continue training----------------
+gp_model_cont = gpb.GPModel(group_data=group, likelihood=likelihood)
+data_train = gpb.Dataset(data=X, label=y)
+# Train for 10 boosting iterations
+bst = gpb.train(params=params, train_set=data_train,
+                gp_model=gp_model_cont, num_boost_round=10, keep_training_booster=True)
+# Continue training with more boosting iterations
+bst_cont = gpb.train(params=params, train_set=data_train,
+                     gp_model=gp_model_cont, num_boost_round=num_boost_round-10,
+                     init_model = bst, keep_training_booster=True)
+pred_cont = bst_cont.predict(data=Xtest, group_data_pred=group_test, 
+                                 predict_var=True, pred_latent=True)
+# Check equality
+print(pred['fixed_effect'] - pred_cont['fixed_effect'])
+print(pred['random_effect_mean'] - pred_cont['random_effect_mean'])
+print(pred['random_effect_cov'] - pred_cont['random_effect_cov'])
+gp_model.summary()
+gp_model_cont.summary()
 
 
 """
