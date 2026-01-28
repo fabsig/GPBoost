@@ -2,7 +2,7 @@
 % Please edit documentation in R/gpb.Booster.R
 \name{gpb.save}
 \alias{gpb.save}
-\title{Save GPBoost model}
+\title{Save GPBoost model (booster and GPModel)}
 \usage{
 gpb.save(booster, filename, start_iteration = NULL, num_iteration = NULL,
   save_raw_data = FALSE, ...)
@@ -30,10 +30,10 @@ the \code{gpb.Booster} object passed to \code{object}.
 This is only used when there is a gp_model and when save_raw_data=FALSE}
 }
 \value{
-gpb.Booster
+gpb.Booster. After loading, the GPModel can be accessed via bst_loaded$.__enclos_env__$private$gp_model
 }
 \description{
-Save GPBoost model
+Save GPBoost model (booster and GPModel)
 }
 \examples{
 \donttest{

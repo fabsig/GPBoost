@@ -3144,7 +3144,7 @@ class Booster:
 
     def save_model(self, filename, num_iteration=None, start_iteration=0, importance_type='split',
                    save_raw_data=False, **kwargs):
-        """Save Booster to file.
+        """Save Booster and GPModel to file.
 
         Parameters
         ----------
@@ -3169,8 +3169,8 @@ class Booster:
 
         Returns
         -------
-        self : Booster
-            Returns self.
+        self : Booster and attached GPModel
+            Returns self. After loading, the GPModel can be accessed via the 'gp_model' attribute.
         """
         if num_iteration is None:
             num_iteration = self.best_iteration
@@ -3254,7 +3254,7 @@ class Booster:
 
     def model_to_string(self, num_iteration=None, start_iteration=0, importance_type='split',
                         save_raw_data=False, **kwargs):
-        """Save Booster to string.
+        """Save Booster and GPmodel to string.
 
         Parameters
         ----------
@@ -3278,7 +3278,7 @@ class Booster:
         Returns
         -------
         str_repr : string
-            String representation of Booster.
+            String representation of Booster and GPmodel.
         """
         if num_iteration is None:
             num_iteration = self.best_iteration

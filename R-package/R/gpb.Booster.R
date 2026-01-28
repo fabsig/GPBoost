@@ -1455,8 +1455,8 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 }
 
 #' @name gpb.save
-#' @title Save GPBoost model
-#' @description Save GPBoost model
+#' @title Save GPBoost model (booster and GPModel)
+#' @description Save GPBoost model (booster and GPModel)
 #' @param booster Object of class \code{gpb.Booster}
 #' @param filename saved filename
 #' @param start_iteration int or NULL, optional (default=NULL)
@@ -1473,7 +1473,7 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #'            the \code{gpb.Booster} object passed to \code{object}. 
 #'            This is only used when there is a gp_model and when save_raw_data=FALSE
 #'
-#' @return gpb.Booster
+#' @return gpb.Booster. After loading, the GPModel can be accessed via bst_loaded$.__enclos_env__$private$gp_model
 #'
 #' @examples
 #' \donttest{
