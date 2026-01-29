@@ -9941,12 +9941,12 @@ namespace GPBoost {
 					std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][0][ind_intercept_gp_]);
 					if (predict_cov_mat) {
 						T_mat cov_mat_pred_id_aux;
-						ConvertTo_T_mat_FromDense<T_mat>(re_comp->GetZSigmaZtii() * gp_coords_mat_pred * gp_coords_mat_pred.transpose(), cov_mat_pred_id_aux);
+						ConvertTo_T_mat_FromDense<T_mat>(re_comp->GetMarginalVariance() * gp_coords_mat_pred * gp_coords_mat_pred.transpose(), cov_mat_pred_id_aux);
 						cov_mat_pred_id += cov_mat_pred_id_aux;
 					}
 					if (predict_var) {
 						if (matrix_inversion_method_ == "cholesky") {
-							var_pred_id += re_comp->GetZSigmaZtii() * gp_coords_mat_pred.rowwise().squaredNorm();
+							var_pred_id += re_comp->GetMarginalVariance() * gp_coords_mat_pred.rowwise().squaredNorm();
 						}
 						//else {//"iterative"
 						//	//nothing to do as there are no "new groups"			
@@ -10050,8 +10050,12 @@ namespace GPBoost {
 						false, cross_dist);
 					dont_add_but_overwrite = false;
 					if (predict_var) {
-						if (re_comp_base->CovFunctionName() == "linear") {
-							var_pred_id += re_comp_base->GetZSigmaZtii() * gp_coords_mat_pred.rowwise().squaredNorm();
+						if (!(re_comp_base->VarianceOnDiagonal())) {
+#pragma omp parallel for schedule(static)
+							for (int ii = 0; ii < (int)gp_coords_mat_pred.rows(); ++ii) {
+								vec_t coord_pred_i = gp_coords_mat_pred.row(ii);
+								var_pred_id[ii] += re_comp_base->CalculateCovarianceOneEntry(coord_pred_i, coord_pred_i);
+							}
 						}
 						else {
 							re_comp_base->AddPredUncondVar(var_pred_id.data(), num_REs_pred, nullptr);
@@ -10071,6 +10075,9 @@ namespace GPBoost {
 								cov_mat_pred_id, true, predict_cov_mat, false, rand_coef_data.data(),
 								false, cross_dist);
 							if (predict_var) {
+								if (!(re_comp->VarianceOnDiagonal())) {
+									Log::REFatal("Predictive variances are currently not yet implemented for this covariance and random GP coefficients ");
+								}
 								re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, rand_coef_data.data());
 							}
 							cn += 1;

@@ -1239,6 +1239,7 @@ namespace GPBoost {
 				}
 			}
 		}
+		bool var_on_diag = re_comps_vecchia_cluster_i[0]->VarianceOnDiagonal();
 #pragma omp parallel for schedule(static)
 		for (data_size_t i = 0; i < num_re_cluster_i; ++i) {
 			if (gp_approx == "full_scale_vecchia" && calc_cov_factor) {
@@ -1333,8 +1334,7 @@ namespace GPBoost {
 			//Calculate matrices B and D as well as their derivatives
 			//1. add first summand of matrix D (ZCZ^T_{ii}) and its derivatives
 			for (int j = 0; j < num_gp_total; ++j) {
-				double d_comp_j = re_comps_vecchia_cluster_i[0]->VarianceOnDiagonal() ? 
-					re_comps_vecchia_cluster_i[ind_intercept_gp + j]->CovPars()[0] : re_comps_vecchia_cluster_i[ind_intercept_gp + j]->GetZSigmaZtij(i, i);
+				double d_comp_j = var_on_diag ? re_comps_vecchia_cluster_i[ind_intercept_gp + j]->GetMarginalVariance() : re_comps_vecchia_cluster_i[ind_intercept_gp + j]->GetZSigmaZtij(i, i);
 				if (!transf_scale && gauss_likelihood) {
 					d_comp_j *= nugget_var;//back-transform
 				}
@@ -1358,7 +1358,7 @@ namespace GPBoost {
 							}
 						}
 					}
-					if (!(re_comps_vecchia_cluster_i[0]->VarianceOnDiagonal())){// add derivative of the covariance function wrt to other parameters (e.g. range) if it is non-zero on the diagonal
+					if (!var_on_diag){// add derivative of the covariance function wrt to other parameters (e.g. range) if it is non-zero on the diagonal
 						int ind_first_par = j * num_par_comp;
 						for (int ipar = 1; ipar < num_par_comp; ++ipar) {
 							if (estimate_cov_par_index[ind_first_par + ipar + nugget_offset_ind_est] > 0) {
@@ -1413,7 +1413,7 @@ namespace GPBoost {
 								for (int inn = 0; inn < num_nn; ++inn) {
 									B_grad_cluster_i[ind_first_par + ipar].coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i_grad(0, inn);
 								}
-								if (ipar == 0 || !(re_comps_vecchia_cluster_i[0]->VarianceOnDiagonal())) {
+								if (ipar == 0 || !var_on_diag) {
 									D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) -= ((A_i_grad * cov_mat_obs_neighbors)(0, 0) +
 										(A_i * cov_grad_mats_obs_neighbors[ind_first_par + ipar])(0, 0));//add to derivative of diagonal elements for marginal variance 
 								}
@@ -1637,7 +1637,8 @@ namespace GPBoost {
 		else {
 			Dp.setZero();
 		}
-		if (!(re_comps_vecchia[ind_intercept_gp]->VarianceOnDiagonal())) {
+		bool var_on_diag = re_comps_vecchia[ind_intercept_gp]->VarianceOnDiagonal();
+		if (!var_on_diag) {
 			CHECK(!distances_saved);
 		}
 #pragma omp parallel for schedule(static)
@@ -1692,8 +1693,14 @@ namespace GPBoost {
 			//Calculate matrices A and D as well as their derivatives
 			//1. add first summand of matrix D (ZCZ^T_{ii})
 			for (int j = 0; j < num_gp_total; ++j) {
-				double d_comp_j = re_comps_vecchia[ind_intercept_gp + j]->VarianceOnDiagonal() ?
-					re_comps_vecchia[ind_intercept_gp + j]->CovPars()[0] : re_comps_vecchia[ind_intercept_gp + j]->CalculateCovarianceOneEntry(coords_i, coords_i);
+				double d_comp_j;
+				if (var_on_diag) {
+					d_comp_j = re_comps_vecchia[ind_intercept_gp + j]->GetMarginalVariance();
+				}
+				else {
+					vec_t coords_i_vec = coords_all.row(num_re_cli + i);
+					d_comp_j = re_comps_vecchia[ind_intercept_gp + j]->CalculateCovarianceOneEntry(coords_i_vec, coords_i_vec);
+				}				
 				if (j > 0) {//random coefficient
 					d_comp_j *= z_outer_z_obs_neighbors_cluster_i[i][j - 1](0, 0);
 				}
@@ -1952,7 +1959,8 @@ namespace GPBoost {
 		vec_t Dp_inv(num_data_pred_cli);
 		Do_inv.setOnes();//Put 1 on the diagonal (for nugget effect)
 		Dp_inv.setOnes();
-		if (!(re_comps_vecchia[ind_intercept_gp]->VarianceOnDiagonal())) {
+		bool var_on_diag = re_comps_vecchia[ind_intercept_gp]->VarianceOnDiagonal();
+		if (!var_on_diag) {
 			CHECK(!distances_saved);
 		}
 #pragma omp parallel for schedule(static)
@@ -1994,8 +2002,14 @@ namespace GPBoost {
 			//Calculate matrices A and D as well as their derivatives
 			//1. add first summand of matrix D (ZCZ^T_{ii})
 			for (int j = 0; j < num_gp_total; ++j) {
-				double d_comp_j = re_comps_vecchia[ind_intercept_gp + j]->VarianceOnDiagonal() ?
-					re_comps_vecchia[ind_intercept_gp + j]->CovPars()[0] : re_comps_vecchia[ind_intercept_gp + j]->CalculateCovarianceOneEntry(coords_i, coords_i);
+				double d_comp_j;
+				if (var_on_diag) {
+					d_comp_j = re_comps_vecchia[ind_intercept_gp + j]->GetMarginalVariance();
+				}
+				else {
+					vec_t coords_i_vec = coords_all.row(i);
+					d_comp_j = re_comps_vecchia[ind_intercept_gp + j]->CalculateCovarianceOneEntry(coords_i_vec, coords_i_vec);
+				}
 				if (j > 0) {//random coefficient
 					d_comp_j *= z_outer_z_obs_neighbors_cluster_i[i][j - 1](0, 0);
 				}
@@ -2165,7 +2179,8 @@ namespace GPBoost {
 		sp_mat_t B(num_coord_unique, num_coord_unique);
 		B.setFromTriplets(entries_init_B.begin(), entries_init_B.end());//initialize matrices (in order that the code below can be run in parallel)
 		vec_t D(num_coord_unique);
-		if (!(re_comps_vecchia[ind_intercept_gp]->VarianceOnDiagonal())) {
+		bool var_on_diag = re_comps_vecchia[ind_intercept_gp]->VarianceOnDiagonal();
+		if (!var_on_diag) {
 			CHECK(!distances_saved);
 		}
 #pragma omp parallel for schedule(static)
@@ -2189,8 +2204,13 @@ namespace GPBoost {
 			}
 			//Calculate matrices A and D as well as their derivatives
 			//1. add first summand of matrix D (ZCZ^T_{ii})
-			D[i] = re_comps_vecchia[ind_intercept_gp]->VarianceOnDiagonal() ?
-				re_comps_vecchia[ind_intercept_gp]->CovPars()[0] : re_comps_vecchia[ind_intercept_gp]->CalculateCovarianceOneEntry(coords_i, coords_i);
+			if (var_on_diag) {
+				D[i] = re_comps_vecchia[ind_intercept_gp]->GetMarginalVariance();
+			}
+			else {
+				vec_t coords_i_vec = coords_all_unique.row(i);
+				D[i] = re_comps_vecchia[ind_intercept_gp]->CalculateCovarianceOneEntry(coords_i_vec, coords_i_vec);
+			}
 			//2. remaining terms
 			if (i > 0) {
 				den_mat_t A_i(1, num_nn);//dim = 1 x nn

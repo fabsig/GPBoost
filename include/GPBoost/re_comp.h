@@ -100,10 +100,10 @@ namespace GPBoost {
 		virtual double GetZSigmaZtij(int i, int j) const = 0;
 
 		/*!
-		* \brief Get diagonal-element of the covariance matrix
-		* \return diagonal-element of the covariance matrix
+		* \brief Get the marginal variance
+		* \return marginal variance
 		*/
-		double GetZSigmaZtii() const {
+		double GetMarginalVariance() const {
 			return(this->cov_pars_[0]);
 		}
 
