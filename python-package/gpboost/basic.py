@@ -4071,6 +4071,7 @@ class GPModel(object):
                  cover_tree_radius=1.,
                  seed=0,
                  cluster_ids=None,
+                 num_data=None,
                  likelihood_additional_param=None,
                  free_raw_data=False,
                  model_file=None,
@@ -4389,6 +4390,8 @@ class GPModel(object):
             cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data or None, optional (default=None)
                 The elements indicate independent realizations of  random effects / Gaussian processes
                 (same values = same process realization)
+            num_data : integer, optional (default=None) 
+                The number of samples. This is only used for iid models. 
             likelihood_additional_param : float, optional (default=1.)
                  Additional parameter for the 'likelihood' which cannot be estimated for this 'likelihood' (e.g., degrees of freedom for 'likelihood = "t_fix_df"'). 
                  This is not to be confused with any auxiliary parameters that can be estimated and 
@@ -4514,6 +4517,7 @@ class GPModel(object):
                        }
         self.num_sets_re = 1
         self.num_sets_fe = 1
+        self.iid_model = False
 
         if (model_file is not None) or (model_dict is not None):
             if model_file is not None:
@@ -4595,7 +4599,11 @@ class GPModel(object):
             self.has_offset = model_dict.get("has_offset")
 
         if group_data is None and gp_coords is None:
-            raise ValueError("Both group_data and gp_coords are None. Provide at least one of them")
+            if num_data is None:
+                raise ValueError("Both group_data and gp_coords are None. Provide at least one of them or provide 'num_data' if you want an iid model ")
+            else:
+                group_data = np.zeros((num_data, 1))
+                self.iid_model = True
         if likelihood == "gaussian_heteroscedastic":
             self.num_sets_re = 2
             self.num_sets_fe = 2
@@ -5714,8 +5722,13 @@ class GPModel(object):
             printout.columns = ["Log-lik", "AIC", "BIC"]
             print(printout.to_string(index=False))            
             print("-----------------------------------------------------")
-        print("Covariance parameters (random effects):")
-        print(round(cov_pars.transpose(), 4))
+        if not self.iid_model:
+            print("Covariance parameters (random effects):")
+            print(round(cov_pars.transpose(), 4))
+        elif self.iid_model and self._get_likelihood_name() == "gaussian":
+            cov_pars_nug = cov_pars.iloc[:, 0:1]
+            cov_pars_nug.rows = ["Error_var"]
+            print(round(cov_pars_nug.transpose(), 4))
         if self.has_covariates:
             print("-----------------------------------------------------")
             print("Linear regression coefficients (fixed effects):")
@@ -5882,6 +5895,19 @@ class GPModel(object):
             if cov_pars.shape[0] != self.num_cov_pars:
                 raise ValueError("cov_pars does not contain the correct number of parameters")
             cov_pars_c = cov_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        # Set data for linear fixed-effects regression term
+        if X_pred is not None and not self.has_covariates:
+            raise ValueError("Covariate data provided in 'X_pred' but model has no linear predictor")
+        if self.has_covariates:
+            if X_pred is None:
+                raise ValueError("No covariate data is provided in 'X_pred' but model has linear predictor")
+            X_pred, not_used = _format_check_data(data=X_pred,
+                                                    get_variable_names=False,
+                                                    data_name="X_pred",
+                                                    check_data_type=True,
+                                                    convert_to_type=np.float64)
+            if self.iid_model:
+                group_data_pred = np.zeros((X_pred.shape[0], 1))
         group_data_pred_c = ctypes.c_void_p()
         group_rand_coef_data_pred_c = ctypes.c_void_p()
         gp_coords_pred_c = ctypes.c_void_p()
@@ -5980,18 +6006,8 @@ class GPModel(object):
                     cluster_ids_pred = np.array([cluster_ids_pred_map_to_int[x] for x in cluster_ids_pred])
                 cluster_ids_pred = cluster_ids_pred.astype(np.int32)
                 cluster_ids_pred_c = cluster_ids_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
-
-            # Set data for linear fixed-effects
-            if X_pred is not None and not self.has_covariates:
-                raise ValueError("Covariate data provided in 'X_pred' but model has no linear predictor")
+            # Set data for linear fixed-effects regression term
             if self.has_covariates:
-                if X_pred is None:
-                    raise ValueError("No covariate data is provided in 'X_pred' but model has linear predictor")
-                X_pred, not_used = _format_check_data(data=X_pred,
-                                                      get_variable_names=False,
-                                                      data_name="X_pred",
-                                                      check_data_type=True,
-                                                      convert_to_type=np.float64)
                 if X_pred.shape[0] != num_data_pred:
                     raise ValueError("Incorrect number of data points in X_pred")
                 if X_pred.shape[1] != self.num_covariates:

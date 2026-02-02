@@ -59,6 +59,11 @@ namespace GPBoost {
 		return std::abs(a) < EPSILON_NUMBERS;
 	}
 
+	template <typename T>
+	inline bool IsExactlyZero(T x) noexcept {
+		return x == T(0);
+	}
+
 	/*! \brief Checking whether a vector contains a zero */
 	template <typename T>//T can be double or float
 	inline bool HasZero(const T* v_ptr, data_size_t num_data) {
@@ -88,6 +93,21 @@ namespace GPBoost {
 		}
 		return has_zero;
 	}//end HasZero
+
+	/*! \brief Checking whether a vector contains only zeros */
+	template <typename T>//T can be double or float
+	inline bool HasOnlyExactZero(const T* v_ptr, data_size_t num_data) {
+		if (num_data == 0) return false;
+		if (num_data < 50000) {// serial version for small data (often faster)
+			return std::all_of(v_ptr, v_ptr + num_data, [](T v) { return IsExactlyZero<T>(v); });
+		}
+		bool has_non_zero = false;
+#pragma omp parallel for schedule(static) reduction(||:has_non_zero)
+		for (data_size_t i = 0; i < num_data; ++i) {
+			has_non_zero = has_non_zero || (!IsExactlyZero<T>(v_ptr[i]));
+		}
+		return !has_non_zero;
+	}//end HasOnlyZero
 
 	/*! \brief Checking whether a vector contains negative values */
 	template <typename T>//T can be double or float

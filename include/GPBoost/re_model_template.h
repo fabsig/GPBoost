@@ -247,7 +247,7 @@ namespace GPBoost {
 				if (num_group_variables_ > 0) {
 					ConvertCharToStringGroupLevels(num_data_, num_group_variables_, re_group_data, re_group_levels);
 				}
-			}
+			}//end num_re_group > 0
 			//Do some checks for GP components and set meta data (number of components etc.)
 			if (num_gp > 0) {				
 				if (num_gp > 1) {
@@ -316,7 +316,7 @@ namespace GPBoost {
 				}
 				num_gp_total_ = num_gp_ + num_gp_rand_coef_;
 				num_comps_total_ += num_gp_total_;
-			}
+			}//end num_gp > 0
 			DetermineSpecialCasesModelsEstimationPrediction(cov_fct_strg);
 			for (const auto& cluster_i : unique_clusters_) {
 				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
@@ -414,6 +414,11 @@ namespace GPBoost {
 			}
 			if (gp_approx_ != "vecchia") {
 				InitializeIdentityMatricesForGaussianData();
+			}
+			if (num_re_group_total_ == 1 && num_comps_total_ == 1) {
+				if (num_clusters_ == 1 && re_comps_[unique_clusters_[0]][0][0]->GetNumUniqueREs() == 1) {
+					iid_model_ = true;
+				}
 			}
 			InitializeLikelihoods(likelihood_strg);
 			DetermineCovarianceParameterIndicesNumCovPars();
@@ -823,6 +828,17 @@ namespace GPBoost {
 			bool reuse_learning_rates_from_previous_call,
 			bool only_intercept_for_GPBoost_algo,
 			bool find_learning_rate_for_GPBoost_algo) {
+			if (iid_model_) {
+				if (gauss_likelihood_) {
+					estimate_cov_par_index_[1] = 0;
+					init_cov_pars[1] = 1e-20 / init_cov_pars[0];
+				}
+				else {
+					estimate_cov_par_index_[0] = 0;
+					init_cov_pars[0] = 1e-20;
+				}
+				estimate_cov_par_index_has_been_set_ = true;
+			}
 			if (NumAuxPars() == 0) {
 				estimate_aux_pars_ = false;
 			}
@@ -5035,6 +5051,8 @@ namespace GPBoost {
 		bool only_one_GP_calculations_on_RE_scale_ = false;
 		/*! \brief If true, the Woodbury formula is used for calculating the inverse of the covariance matrix (only if cov_function = "linear" and there is only one GP) */
 		bool linear_kernel_use_woodbury_identity_ = false;
+		/*! \brief If true, this is an iid model without a random effects / GP component */
+		bool iid_model_ = false;
 
 		// COVARIANCE MATRIX AND CHOLESKY FACTORS OF IT
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Cholesky decomposition of covariance matrices */

@@ -392,6 +392,7 @@
 #'                (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
 #'                square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
 #' @param vecchia_approx Discontinued. Use the argument \code{gp_approx} instead
+#' @param num_data A \code{numeric} with the number of samples. This is only used for iid models
 
 
 NULL
@@ -429,6 +430,7 @@ gpb.GPModel <- R6::R6Class(
                           cover_tree_radius = 1.,
                           seed = 0L,
                           cluster_ids = NULL,
+                          num_data = NULL,
                           likelihood_additional_param = NULL,
                           free_raw_data = FALSE,
                           modelfile = NULL,
@@ -546,8 +548,13 @@ gpb.GPModel <- R6::R6Class(
       }# end !is.null(modelfile) | !is.null(model_list)
       
       if (is.null(group_data) & is.null(gp_coords)) {
-        stop("GPModel: Both ", sQuote("group_data"), " and " , sQuote("gp_coords"),
-             " are NULL. Provide at least one of them.")
+        if (is.null(num_data)) {
+          stop("GPModel: Both ", sQuote("group_data"), " and " , sQuote("gp_coords"),
+               " are NULL. Provide at least one of them or provide 'num_data' if you want an iid model ")
+        } else {
+          group_data <- rep(0, num_data)
+          private$iid_model <- TRUE
+        }
       }
       if (likelihood == "gaussian_heteroscedastic") {
         private$num_sets_re = 2
@@ -1631,6 +1638,28 @@ gpb.GPModel <- R6::R6Class(
           stop("predict.GPModel: Number of parameters in ", sQuote("cov_pars"), " does not correspond to numbers of parameters of model")
         }
       }
+      # Set data for linear fixed-effects
+      if (!is.null(X_pred) & !private$has_covariates) {
+        stop("set_prediction_data: Covariate data provided in ", sQuote("X_pred"), " but model has no linear predictor")
+      }
+      if(private$has_covariates){
+        if (is.null(X_pred)) {
+          stop("predict.GPModel: No covariate data is provided in ", sQuote("X_pred"), " but model has linear predictor")
+        } 
+        if (is.numeric(X_pred)) {
+          X_pred <- as.matrix(X_pred)
+        }
+        if (is.matrix(X_pred)) {
+          if (storage.mode(X_pred) != "double") {
+            storage.mode(X_pred) <- "double"
+          }
+        } else {
+          stop("predict.GPModel: Can only use ", sQuote("matrix"), " as ", sQuote("X_pred"))
+        }
+        if (private$iid_model) {
+          group_data_pred <- rep(0,dim(X_pred)[1])
+        }
+      }# End set data for linear fixed-effects
       if (!use_saved_data) {
         num_data_pred <- 0
         # Set data for grouped random effects
@@ -1737,25 +1766,7 @@ gpb.GPModel <- R6::R6Class(
           }
         } # End set data for GP random coefficients
         # Set data for linear fixed-effects
-        if (!is.null(X_pred)) {
-          if(!private$has_covariates){
-            stop("set_prediction_data: Covariate data provided in ", sQuote("X_pred"), " but model has no linear predictor")
-          }
-        }
-        if(private$has_covariates){
-          if(is.null(X_pred)){
-            stop("predict.GPModel: No covariate data is provided in ", sQuote("X_pred"), " but model has linear predictor")
-          }
-          if (is.numeric(X_pred)) {
-            X_pred <- as.matrix(X_pred)
-          }
-          if (is.matrix(X_pred)) {
-            if (storage.mode(X_pred) != "double") {
-              storage.mode(X_pred) <- "double"
-            }
-          } else {
-            stop("predict.GPModel: Can only use ", sQuote("matrix"), " as ", sQuote("X_pred"))
-          }
+        if (private$has_covariates) {
           if (dim(X_pred)[1] != num_data_pred) {
             stop("predict.GPModel: Number of data points in ", sQuote("X_pred"), " is not correct")
           }
@@ -1763,7 +1774,7 @@ gpb.GPModel <- R6::R6Class(
             stop("predict.GPModel: Number of covariates in ", sQuote("X_pred"), " is not correct")
           }
           X_pred <- as.vector(matrix(X_pred))
-        } # End set data for linear fixed-effects
+        }
         # Set cluster_ids_pred for independent processes
         if (!is.null(cluster_ids_pred)) {
           if (is.vector(cluster_ids_pred)) {
@@ -2249,13 +2260,26 @@ gpb.GPModel <- R6::R6Class(
         print(round(c("Log-lik"=ll, "AIC"=aic, "BIC"=bic),digits=2))
         cat("-----------------------------------------------------\n")
       }
-      cat("Covariance parameters (random effects):\n")
-      if (is.matrix(cov_pars)) {
-        print(round(t(cov_pars),4))
-      } else {
-        cov_pars <- t(t(cov_pars))
-        colnames(cov_pars) <- "Param."
-        print(round(cov_pars,4))
+      if(!private$iid_model) {
+        cat("Covariance parameters (random effects):\n")
+        if (is.matrix(cov_pars)) {
+          print(round(t(cov_pars),4))
+        } else {
+          cov_pars <- t(t(cov_pars))
+          colnames(cov_pars) <- "Param."
+          print(round(cov_pars,4))
+        }
+      } else if (private$iid_model & self$get_likelihood_name() == "gaussian") {
+        if (is.matrix(cov_pars)) {
+          cov_pars_print <- t(cov_pars)
+        }
+        if (!is.matrix(cov_pars)) {
+          cov_pars_print <- t(t(cov_pars))
+          colnames(cov_pars_print) <- "Param."
+        }
+        cov_pars_print <- cov_pars_print[1, , drop = FALSE]
+        rownames(cov_pars_print) <- "Error_var"
+        print(round(cov_pars_print,4))
       }
       if (private$has_covariates) {
         coefs <- self$get_coef(std_err = std_err)
@@ -2373,6 +2397,7 @@ gpb.GPModel <- R6::R6Class(
     ),
     num_sets_re = 1,
     num_sets_fe = 1,
+    iid_model = FALSE,
     
     # Finalize will free up the handles
     finalize = function() {
@@ -2596,6 +2621,7 @@ GPModel <- function(likelihood = "gaussian",
                     seed = 0L,
                     cluster_ids = NULL,
                     likelihood_additional_param = NULL,
+                    num_data = NULL,
                     free_raw_data = FALSE,
                     vecchia_approx = NULL,
                     vecchia_pred_type = NULL,
@@ -2625,6 +2651,7 @@ GPModel <- function(likelihood = "gaussian",
                             , cover_tree_radius = cover_tree_radius
                             , seed = seed
                             , cluster_ids = cluster_ids
+                            , num_data = num_data
                             , free_raw_data = free_raw_data
                             , vecchia_approx = vecchia_approx
                             , vecchia_pred_type = vecchia_pred_type
@@ -2841,6 +2868,7 @@ fitGPModel <- function(likelihood = "gaussian",
                              , cover_tree_radius = cover_tree_radius
                              , seed = seed
                              , cluster_ids = cluster_ids
+                             , num_data = length(y)
                              , free_raw_data = free_raw_data
                              , vecchia_approx = vecchia_approx
                              , vecchia_pred_type = vecchia_pred_type
