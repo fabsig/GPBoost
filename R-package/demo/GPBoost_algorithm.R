@@ -311,7 +311,7 @@ gp_model_cont <- GPModel(group_data = group, likelihood = likelihood)
 dataset <- gpb.Dataset(data = X, label = y)
 # Train for 10 boosting iterations
 bst <- gpb.train(data = dataset, gp_model = gp_model_cont, nrounds = 10,
-                 params = params, verbose = 0)
+                 params = params, verbose = 0) # Note: 'params' is defined above in this demo
 # Continue training with more boosting iterations
 bst_cont <- gpb.train(data = dataset, gp_model = gp_model_cont, nrounds = nrounds-10,
                       params = params, verbose = 0,
@@ -344,6 +344,29 @@ print(paste0("Optimal number of iterations: ", bst$best_iter))
 l4_vals <- bst$record_evals$valid[["l4_loss"]]$eval
 best_iter_l4 <- which.min(l4_vals)
 cat("Best number of iterations for custom loss:", best_iter_l4, "\n")
+
+#--------------------Using offsets in GPBoost models----------------
+gp_model <- GPModel(group_data = group, likelihood = likelihood)
+# 'init_score' corresponds to an offset for training
+dataset <- gpb.Dataset(data = X, label = y, init_score = -0.5*X[,1])
+bst <- gpb.train(data = dataset, gp_model = gp_model, nrounds = nrounds,
+                 params = params, verbose = 0) # Note: 'params' is defined above in this demo
+# Add offset to predictions ('offset_pred'): example when prediction the latent variable
+pred_lat <- predict(bst, data = Xtest, group_data_pred = group_test, 
+                    predict_var = TRUE, pred_latent = TRUE, offset_pred = rep(0.3,dim(Xtest)[1]))
+x <- seq(from=0, to=1, length.out=200)
+ylim <- c(min(c(f1d(x),pred_lat$fixed_effect)),max(c(f1d(x),pred_lat$fixed_effect)))
+plot(x, f1d(x), type="l",lwd=3, col=2, main="True and predicted latent function F", ylim=ylim)
+lines(Xtest[,1], pred_lat$fixed_effect, col=4, lwd=3)
+legend(legend=c("True F","Pred F"), "bottomright", bty="n", lwd=3, col=c(2,4))
+# Interpretation: the offset for training ('init_score') is negatively correlated with y,
+#   and consequently the trained F(x) has larger magnitude at both ends to compensate for this. 
+#   In addition, the offset for prediction ('offset_pred') shifts all predictions up
+# Predict response variable
+pred_resp <- predict(bst, data = Xtest, group_data_pred = group_test_new, 
+                     predict_var = TRUE, pred_latent = FALSE, offset_pred = rep(0.3,dim(Xtest)[1]))
+plot(X[,1], y, col=rgb(0,0,0,alpha=0.1), main="Data and predicted response variable")
+lines(Xtest[,1], pred_resp$response_mean, col=3, lwd=3)
 
 #--------------------GPBoostOOS algorithm: Hyperparameters estimated out-of-sample----------------
 # Create random effects model and dataset

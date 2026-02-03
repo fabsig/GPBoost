@@ -10,8 +10,9 @@
   group_data_pred = NULL, group_rand_coef_data_pred = NULL,
   gp_coords_pred = NULL, gp_rand_coef_data_pred = NULL,
   cluster_ids_pred = NULL, predict_cov_mat = FALSE, predict_var = FALSE,
-  cov_pars = NULL, ignore_gp_model = FALSE, rawscore = NULL,
-  vecchia_pred_type = NULL, num_neighbors_pred = NULL, ...)
+  cov_pars = NULL, offset_pred = NULL, ignore_gp_model = FALSE,
+  rawscore = NULL, vecchia_pred_type = NULL, num_neighbors_pred = NULL,
+  ...)
 }
 \arguments{
 \item{object}{Object of class \code{gpb.Booster}}
@@ -68,6 +69,10 @@ predictive variances are calculated}
 \item{cov_pars}{A \code{vector} containing covariance parameters which are used if the 
 \code{gp_model} has not been trained or if predictions should be made for other 
 parameters than the trained ones}
+
+\item{offset_pred}{A \code{numeric} \code{vector}. 
+Offsets for prediction: additional fixed effects contributions that are added to the predictor for the prediction points. 
+The length of this vector needs to equal the number of prediction points.}
 
 \item{ignore_gp_model}{A \code{boolean}. If TRUE, predictions are only made for the tree ensemble part
 and the \code{gp_model} is ignored}

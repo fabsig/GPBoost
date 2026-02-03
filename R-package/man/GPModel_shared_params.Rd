@@ -435,6 +435,8 @@ predictive variances are calculated}
 square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)}
 
 \item{vecchia_approx}{Discontinued. Use the argument \code{gp_approx} instead}
+
+\item{num_data}{A \code{numeric} with the number of samples. This is only used for iid models}
 }
 \description{
 Documentation for parameters shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}

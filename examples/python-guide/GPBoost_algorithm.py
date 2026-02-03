@@ -333,7 +333,7 @@ bst_loaded.gp_model.summary()
 gp_model_cont = gpb.GPModel(group_data=group, likelihood=likelihood)
 data_train = gpb.Dataset(data=X, label=y)
 # Train for 10 boosting iterations
-bst = gpb.train(params=params, train_set=data_train,
+bst = gpb.train(params=params, train_set=data_train, # Note: 'params' is defined above in this demo
                 gp_model=gp_model_cont, num_boost_round=10, keep_training_booster=True)
 # Continue training with more boosting iterations
 bst_cont = gpb.train(params=params, train_set=data_train,
@@ -363,6 +363,34 @@ cvbst = gpb.cv(params=params_cust, train_set=data_train, gp_model=gp_model,
                feval=l4_loss, use_gp_model_for_validation=False) # Currently, only use_gp_model_for_validation = False is supported
 metric_name = list(cvbst.keys())[2]
 print("Best number of iterations for custom loss: " + str(np.argmin(cvbst[metric_name]) + 1))
+
+#--------------------Using offsets in GPBoost models----------------
+gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+# 'init_score' corresponds to an offset for training
+data_train = gpb.Dataset(data=X, label=y, init_score=-0.5*X[:, 0])
+bst = gpb.train(params=params, train_set=data_train,  gp_model=gp_model,
+                num_boost_round=num_boost_round) # Note: 'params' is defined above in this demo
+# Add offset to predictions ('offset_pred'): example when prediction the latent variable
+pred_lat = bst.predict(data=Xtest, group_data_pred=group_test, 
+                       predict_var=True, pred_latent=True, offset_pred=0.3*np.ones(Xtest.shape[0]))
+fig1, ax1 = plt.subplots()
+ax1.plot(Xtest[:, 0], f1d(Xtest[:, 0]), linewidth=2, label="True F")
+ax1.plot(Xtest[:, 0], pred_lat['fixed_effect'], linewidth=2, label="Pred F")
+ax1.set_title("Tue and predicted latent function F")
+ax1.legend()
+plt.show(block=False)
+# Interpretation: the offset for training ('init_score') is negatively correlated with y,
+#   and consequently the trained F(x) has larger magnitude at both ends to compensate for this. 
+#   In addition, the offset for prediction ('offset_pred') shifts all predictions up
+# Predict response variable
+pred_resp = bst.predict(data=Xtest, group_data_pred=group_test_new,
+                        predict_var=True, pred_latent=False, offset_pred=0.3*np.ones(Xtest.shape[0]))
+fig1, ax1 = plt.subplots()
+ax1.plot(Xtest[:, 0], pred_resp['response_mean'], linewidth=2, label="Pred response")
+ax1.scatter(X[:, 0], y, linewidth=2, color="black", alpha=0.02)
+ax1.set_title("Data and predicted response variable")
+ax1.legend()
+plt.show(block=False)
 
 
 """

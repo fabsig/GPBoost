@@ -3400,7 +3400,7 @@ class Booster:
                 group_data_pred=None, group_rand_coef_data_pred=None,
                 gp_coords_pred=None, gp_rand_coef_data_pred=None,
                 cluster_ids_pred=None, predict_cov_mat=False, predict_var=False,
-                cov_pars=None, ignore_gp_model=False, raw_score=None,
+                cov_pars=None, offset_pred=None, ignore_gp_model=False, raw_score=None,
                 vecchia_pred_type=None, num_neighbors_pred=None, **kwargs):
         """Make a prediction.
 
@@ -3460,6 +3460,9 @@ class Booster:
         cov_pars : numpy array or None, optional (default = None)
             A vector containing covariance parameters which are used if the gp_model has not been trained or
             if predictions should be made for other parameters than the estimated ones
+        offset_pred : numpy array or None, optional (default=None)
+            Offsets for prediction: additional fixed effects contributions that are added to the predictor for the prediction points. 
+            The length of this vector needs to equal the number of prediction points.
         ignore_gp_model : bool, optional (default=False)
             If True, predictions are only made for the tree ensemble part and the gp_model is ignored
         raw_score : bool or None, discontinued (default=None)
@@ -3580,6 +3583,11 @@ class Booster:
                 if len(fixed_effect) != len(random_effect_pred['mu']):
                     warnings.warn("Number of data points in fixed effect (tree ensemble) and random effect "
                                   "are not equal")
+                if offset_pred is not None:
+                    if len(fixed_effect) != len(offset_pred):
+                        raise GPBoostError("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
+                    fixed_effect += offset_pred
+                
                 if pred_latent:
                     if predict_cov_mat:
                         pred_var_cov = random_effect_pred['cov']
@@ -3609,6 +3617,10 @@ class Booster:
                                                  num_iteration=num_iteration, raw_score=True, pred_leaf=False,
                                                  pred_contrib=False, data_has_header=data_has_header,
                                                  is_reshape=False)
+                if offset_pred is not None:
+                    if len(fixed_effect) != len(offset_pred):
+                        raise GPBoostError("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
+                    fixed_effect += offset_pred
                 if self.gp_model.num_sets_fe == 2:
                     fixed_effect_train = np.concatenate((fixed_effect_train[::2], fixed_effect_train[1::2]))
                 if pred_latent:

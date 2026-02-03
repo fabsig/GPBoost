@@ -713,6 +713,7 @@ Booster <- R6::R6Class(
                        predict_cov_mat = FALSE,
                        predict_var = FALSE,
                        cov_pars = NULL,
+                       offset_pred = NULL,
                        ignore_gp_model = FALSE,
                        rawscore = NULL,
                        vecchia_pred_type = NULL,
@@ -819,6 +820,13 @@ Booster <- R6::R6Class(
             warning("Number of data points in fixed effect (tree ensemble) and random effect are not equal")
           }
           
+          if (!is.null(offset_pred)) {
+            if (length(fixed_effect) != length(offset_pred)){
+              stop("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
+            }
+            fixed_effect <- fixed_effect + offset_pred
+          }
+          
           if (pred_latent) {
             if(predict_cov_mat){
               pred_var_cov <- random_effect_pred$cov
@@ -871,6 +879,13 @@ Booster <- R6::R6Class(
                                             , predcontrib = FALSE
                                             , header = header
                                             , reshape = FALSE )
+          
+          if (!is.null(offset_pred)) {
+            if (length(fixed_effect) != length(offset_pred)){
+              stop("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
+            }
+            fixed_effect <- fixed_effect + offset_pred
+          }
 
           if (private$gp_model$.__enclos_env__$private$num_sets_fe == 2) {
             nt <- length(fixed_effect_train) / 2
@@ -1246,6 +1261,9 @@ Booster <- R6::R6Class(
 #' \code{pred_latent} instead
 #' @param ... Additional named arguments passed to the \code{predict()} method of
 #'            the \code{gpb.Booster} object passed to \code{object}. 
+#' @param offset_pred A \code{numeric} \code{vector}. 
+#' Offsets for prediction: additional fixed effects contributions that are added to the predictor for the prediction points. 
+#' The length of this vector needs to equal the number of prediction points.
 #' @return either a list with vectors or a single vector / matrix depending on 
 #' whether there is a \code{gp_model} or not
 #' \itemize{
@@ -1355,6 +1373,7 @@ predict.gpb.Booster <- function(object,
                                 predict_cov_mat = FALSE,
                                 predict_var = FALSE,
                                 cov_pars = NULL,
+                                offset_pred = NULL,
                                 ignore_gp_model = FALSE,
                                 rawscore = NULL,
                                 vecchia_pred_type = NULL,
@@ -1384,6 +1403,7 @@ predict.gpb.Booster <- function(object,
       , predict_cov_mat = predict_cov_mat
       , predict_var = predict_var
       , cov_pars = cov_pars
+      , offset_pred = offset_pred
       , ignore_gp_model = ignore_gp_model
       , rawscore = rawscore
       , vecchia_pred_type = vecchia_pred_type

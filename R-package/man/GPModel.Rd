@@ -14,7 +14,7 @@ GPModel(likelihood = "gaussian", group_data = NULL,
   cov_fct_taper_shape = 1, num_neighbors = NULL,
   vecchia_ordering = "random", ind_points_selection = "kmeans++",
   num_ind_points = NULL, cover_tree_radius = 1, seed = 0L,
-  cluster_ids = NULL, likelihood_additional_param = NULL,
+  cluster_ids = NULL, likelihood_additional_param = NULL, num_data = NULL,
   free_raw_data = FALSE, vecchia_approx = NULL, vecchia_pred_type = NULL,
   num_neighbors_pred = NULL)
 }
@@ -233,6 +233,8 @@ If \code{likelihood_additional_param = NULL}, the following internal default val
 \itemize{
 \item{ df = 2 for likelihood = "t_fix_df"}
 }}
+
+\item{num_data}{A \code{numeric} with the number of samples. This is only used for iid models}
 
 \item{free_raw_data}{A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 is freed in R after initialization}
