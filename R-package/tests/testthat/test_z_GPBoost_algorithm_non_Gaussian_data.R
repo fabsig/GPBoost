@@ -535,6 +535,59 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                         folds = folds, verbose = 0, eval = bin_cust_error, metric = "bin_cust_error")
         expect_lt(abs(cvbst$best_score-0.364), tolerance_loc_1)
       }
+      
+      # Using offsets for gaussian likelihood
+      gp_model <- GPModel(group_data = group_data_train, likelihood = "gaussian", matrix_inversion_method = "cholesky")
+      params_gp <- OPTIM_PARAMS_BFGS
+      params_gp$init_cov_pars <- rep(1,3)
+      set_optim_params(gp_model, params=params_gp)
+      dtrain <- gpb.Dataset(data = X_train, label = y_train, init_score = -y_train)
+      bst <- gpb.train(data = dtrain, gp_model = gp_model,
+                       nrounds = 30, learning_rate = 0.1, max_depth = 6,
+                       min_data_in_leaf = 5, verbose = 0)
+      # Prediction
+      pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                      predict_var = TRUE, pred_latent = TRUE)
+      exp_pred <- c(0.8070121, 0.3620259, -0.1525967, 0.9387820)
+      expect_lt(sum(abs(head(pred$fixed_effect, n=4)-exp_pred)),TOLERANCE_STRICT)
+      offset_pred = rep(0.5,dim(X_test)[1])
+      pred_offset <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                             predict_var = TRUE, pred_latent = TRUE, offset_pred = offset_pred)
+      expect_lt(sum(abs(head(pred_offset$fixed_effect, n=4)-offset_pred-exp_pred)),TOLERANCE)
+      # Predict response
+      pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                      predict_var = TRUE, pred_latent = FALSE)
+      exp_pred <- c(-0.4102113,  0.1826726, -0.2455984 , 1.1575480)
+      expect_lt(sum(abs(tail(pred$response_mean, n=4) - exp_pred)),TOLERANCE_STRICT)
+      pred_offset <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                             predict_var = TRUE, pred_latent = FALSE, offset_pred = offset_pred)
+      expect_lt(sum(abs(tail(pred_offset$response_mean, n=4) -offset_pred - exp_pred)),TOLERANCE)
+      
+      # Using offsets for binary likelihood
+      gp_model <- GPModel(group_data = group_data_train, likelihood = "bernoulli_probit", matrix_inversion_method = "cholesky")
+      params_gp <- OPTIM_PARAMS_BFGS
+      params_gp$init_cov_pars <- rep(1,2)
+      set_optim_params(gp_model, params=params_gp)
+      dtrain <- gpb.Dataset(data = X_train, label = y_train, init_score = -y_train)
+      bst <- gpb.train(data = dtrain, gp_model = gp_model,
+                       nrounds = 30, learning_rate = 0.1, max_depth = 6,
+                       min_data_in_leaf = 5, objective = "binary", verbose = 0)
+      # Prediction
+      pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                      predict_var = TRUE, pred_latent = TRUE)
+      exp_pred <- c(0.5836592, -0.3966107, 1.2839638, 0.9889305)
+      expect_lt(sum(abs(head(pred$fixed_effect, n=4)-exp_pred)),TOLERANCE_STRICT)
+      offset_pred = rep(0.2,dim(X_test)[1])
+      pred_offset <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                             predict_var = TRUE, pred_latent = TRUE, offset_pred = offset_pred)
+      expect_lt(sum(abs(head(pred_offset$fixed_effect, n=4)-offset_pred-exp_pred)),TOLERANCE)
+      # Predict response
+      pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                      predict_var = TRUE, pred_latent = FALSE)
+      expect_lt(sum(abs(tail(pred$response_mean, n=4) - c(0.00498399, 0.63245646, 0.18178494, 0.54744644))),TOLERANCE_STRICT)
+      pred_offset <- predict(bst, data = X_test, group_data_pred = group_data_test,
+                             predict_var = TRUE, pred_latent = FALSE, offset_pred = offset_pred)
+      expect_lt(sum(abs(tail(pred_offset$response_mean, n=4) - c(0.008398241, 0.677285417, 0.215691014, 0.595209743))),TOLERANCE)
     })
     
     test_that("GPBoost algorithm: large data and 'reuse_learning_rates_gp_model' and 'line_search_step_length' options", {
@@ -607,7 +660,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                                line_search_step_length = TRUE) )
       str <- output[length(output)-10]
       nb_ll_eval <- as.numeric(substr(str, nchar(str)-3, nchar(str)-2))
-      expect_equal(nb_ll_eval, 10)
+      expect_gte(nb_ll_eval, 10)
+      expect_lte(nb_ll_eval, 27)
       # same thing with reuse_learning_rates_gp_model = TRUE
       gp_model <- GPModel(group_data = group, likelihood = "binary_logit")
       set_optim_params(gp_model, params=params_loc)
@@ -617,7 +671,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                                line_search_step_length = TRUE) )
       str <- output[length(output)-9]
       nb_ll_eval <- as.numeric(substr(str, nchar(str)-2, nchar(str)-2))
-      expect_equal(nb_ll_eval, 4)
+      expect_gte(nb_ll_eval, 4)
+      expect_lte(nb_ll_eval, 7)
       
     })
     

@@ -2204,7 +2204,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     saveGPModel(gp_model, filename = filename)
     rm(gp_model)
     # Load from file and make predictions again
-    gp_model_loaded <- loadGPModel(filename = filename)
+    capture.output( gp_model_loaded <- loadGPModel(filename = filename), file='NUL')
     pred_loaded <- predict(gp_model_loaded, gp_coords_pred = coord_test, X_pred = coord_test, predict_cov_mat = TRUE)
     expect_equal(pred$mu, pred_loaded$mu)
     expect_equal(pred$cov, pred_loaded$cov)
