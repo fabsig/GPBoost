@@ -15,7 +15,7 @@ It is worth to compile 32-bit version only in very rare special cases of environ
 Windows
 ~~~~~~~
 
-On Windows LightGBM can be built using
+On Windows GPBoost can be built using
 
 - **CMake** and **VS Build Tools** or **Visual Studio**
 
@@ -55,7 +55,7 @@ MinGW-w64
    .. code::
 
      git clone --recursive https://github.com/fabsig/GPBoost
-     cd LightGBM
+     cd GPBoost
      mkdir build
      cd build
      cmake -G "MinGW Makefiles" ..
@@ -147,21 +147,6 @@ gcc
      cmake ..
      make -j4
 
-
-.. _Python-package: https://github.com/fabsig/GPBoost/tree/master/python-package
-
-.. _R-package: https://github.com/fabsig/GPBoost/tree/master/R-package
-
-.. _Visual Studio: https://visualstudio.microsoft.com/downloads/
-
-.. _Git for Windows: https://git-scm.com/download/win
-
-.. _CMake: https://cmake.org/
-
-.. _VS Build Tools: https://visualstudio.microsoft.com/downloads/
-
-.. _MinGW-w64: https://www.mingw-w64.org/downloads/
-
 Build CUDA Version
 ~~~~~~~~~~~~~~~~~~
 
@@ -176,14 +161,13 @@ The CUDA version is not supported on Windows.
 Linux
 ^^^^^
 
-On Linux, a CUDA version of LightGBM can be built using
+On Linux, a CUDA version of GPBoost can be built using
 
 - **CMake**, **gcc** and **CUDA**;
 - **CMake**, **Clang** and **CUDA**.
 
 Please refer to `this detailed guide`_ for **CUDA** libraries installation.
 
-After compilation the executable and ``.so`` files will be in ``LightGBM/`` folder.
 
 gcc
 ***
@@ -222,3 +206,21 @@ macOS
 ^^^^^
 
 The CUDA version is not supported on macOS.
+
+.. _Python-package: https://github.com/fabsig/GPBoost/tree/master/python-package
+
+.. _R-package: https://github.com/fabsig/GPBoost/tree/master/R-package
+
+.. _Visual Studio: https://visualstudio.microsoft.com/downloads/
+
+.. _Git for Windows: https://git-scm.com/download/win
+
+.. _CMake: https://cmake.org/
+
+.. _VS Build Tools: https://visualstudio.microsoft.com/downloads/
+
+.. _MinGW-w64: https://www.mingw-w64.org/downloads/
+
+.. _this detailed guide: https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html
+
+
