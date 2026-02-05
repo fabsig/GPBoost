@@ -2610,6 +2610,34 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
     expected_mu <- c(1.979532, 1.836721, 2.405857)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    
+    ##############
+    ## With FITC approximation (space-time separated kMeans++)
+    ##############
+    # Evaluate negative log-likelihood
+    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                        gp_approx = "fitc", ind_points_selection = "space_time_kmeans++", num_ind_points = 30), 
+                    file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+    expect_lt(abs(nll-339.411253590468),TOLERANCE_STRICT)
+    # Fit model
+    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                           gp_approx = "fitc", ind_points_selection = "space_time_kmeans++", num_ind_points = 30,
+                                           y = y, X = X, params = params_ST), 
+                    file='NUL')
+    cov_pars_nn <- c(0.14666538, 0.82530619, 0.02268084, 101.37316301, 0.17523760, 154.00191351, 0.01261858, 18.64147777)
+    coef_nn <- c(1.9194304, 0.1401412, 2.2149501, 0.1364415)
+    nrounds_nn <- 39
+    nll_opt_nn <- 137.073147464373
+    capture.output( expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_nn)),TOLERANCE_LOOSE), file='NUL')
+    capture.output( expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_nn)),TOLERANCE_STRICT), file='NUL')
+    expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), TOLERANCE_STRICT)
+    # Prediction 
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
+    expected_mu <- c(1.919430, 1.751229, 2.389440)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
   })
   
   test_that("ARD Gaussian process model with linear regression term ", {

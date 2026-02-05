@@ -115,6 +115,16 @@ python -m pip install .
 python setup.py install --mingw
 ```
 
+### Build CUDA Version
+
+```sh
+python setup.py install --cudagp
+```
+
+For **macOS** and **Windows** users, the CUDA version is not supported.
+
+**CUDA** library is needed: details for installation can be found in [Installation Guide](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst#Build-CUDA-Version).
+
 
 <!--  
 If you get any errors during installation or due to any other reasons, you may want to build a dynamic library from source by any method you prefer and then just run ``python setup.py install --precompile``.

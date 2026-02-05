@@ -161,3 +161,64 @@ gcc
 .. _VS Build Tools: https://visualstudio.microsoft.com/downloads/
 
 .. _MinGW-w64: https://www.mingw-w64.org/downloads/
+
+Build CUDA Version
+~~~~~~~~~~~~~~~~~~
+
+Use this version in Linux environments with an NVIDIA GPU.
+This version enables GPU acceleration for computationally intensive linear algebra operations and Vecchia neighbor searches in Gaussian process models.
+
+Windows
+^^^^^^^
+
+The CUDA version is not supported on Windows.
+
+Linux
+^^^^^
+
+On Linux, a CUDA version of LightGBM can be built using
+
+- **CMake**, **gcc** and **CUDA**;
+- **CMake**, **Clang** and **CUDA**.
+
+Please refer to `this detailed guide`_ for **CUDA** libraries installation.
+
+After compilation the executable and ``.so`` files will be in ``LightGBM/`` folder.
+
+gcc
+***
+
+1. Install `CMake`_, **gcc** and **CUDA**.
+
+2. Run the following commands:
+
+   .. code:: sh
+
+     git clone --recursive https://github.com/fabsig/GPBoost
+     cd GPBoost
+     mkdir build
+     cd build
+     cmake .. -DUSE_CUDA_GP=ON
+     make -j4
+
+Clang
+*****
+
+1. Install `CMake`_, **Clang**, **OpenMP** and **CUDA**.
+
+2. Run the following commands:
+
+   .. code:: sh
+
+     git clone --recursive https://github.com/fabsig/GPBoost
+     cd GPBoost
+     export CXX=clang++-14 CC=clang-14  # replace "14" with version of Clang installed on your machine
+     mkdir build
+     cd build
+     cmake .. -DUSE_CUDA_GP=ON
+     make -j4
+
+macOS
+^^^^^
+
+The CUDA version is not supported on macOS.
