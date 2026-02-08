@@ -226,6 +226,11 @@ coef = [0, 0.1]
 fixed_effects = X.dot(coef)
 gp_model.neg_log_likelihood(cov_pars=cov_pars, y=y, fixed_effects=fixed_effects)
 
+# --------------------iid model without random effects or GP----------------
+gp_model = gpb.GPModel(num_data=n, likelihood=likelihood)
+gp_model.fit(y=y, X=X)
+gp_model.summary()
+
 
 """
 Gaussian processes
