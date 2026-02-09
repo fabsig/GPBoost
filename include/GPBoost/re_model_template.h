@@ -6647,7 +6647,7 @@ namespace GPBoost {
 		bool UseIterativeByDefault() const {
 			bool use_iter = ((gp_approx_ == "full_scale_vecchia" || gp_approx_ == "vecchia") && !gauss_likelihood_) ||
 				(gp_approx_ == "full_scale_tapering" && gauss_likelihood_) ||
-				(use_woodbury_identity_ && num_re_group_total_ > 1);// do not use iterative method for a linear kernel (linear_kernel_use_woodbury_identity_) by default as there are quite some differences to exact calculations
+				(use_woodbury_identity_ && num_re_group_total_ > 1);// do not use iterative method for a linear kernel (linear_kernel_use_woodbury_identity_) by default as is can be slower for low-dimensional problems
 			return use_iter;
 		}
 
@@ -9541,7 +9541,7 @@ namespace GPBoost {
 						cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 						L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i]);
 					if (NaN_found) {
-						Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
+						Log::REFatal("CalcFisherInformation_Only_Grouped_REs_Woodbury: Nan or Inf value generated in the conjugate gradient method ");
 					}
 					//Z (Sigma^(-1) + Z^T Z)^(-1) Z^T z_i
 					den_mat_t Z_MInv_Zt_RV(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
@@ -9552,8 +9552,17 @@ namespace GPBoost {
 					std::vector<den_mat_t> Zj_Zjt_RV_minus_Z_MInv_Zt_Zj_Zjt_RV(num_comps_total_, den_mat_t(num_data_per_cluster_[cluster_i], num_rand_vec_trace_));
 					std::vector<den_mat_t> Zj_Zjt_RV_minus_Zj_Zjt_Z_MInv_Zt_RV(num_comps_total_, den_mat_t(num_data_per_cluster_[cluster_i], num_rand_vec_trace_));
 					for (int j = 0; j < num_comps_total_; ++j) {
-						sp_mat_t* Zj = re_comps_[cluster_i][0][j]->GetZ();
-						sp_mat_t Zj_Zjt = ((*Zj) * (*Zj).transpose());
+						//sp_mat_t* Zj = re_comps_[cluster_i][0][j]->GetZ();//DELETE
+						//sp_mat_t Zj_Zjt = ((*Zj) * (*Zj).transpose());//DELETE
+						sp_mat_t Zj_Zjt;
+						if (linear_kernel_use_woodbury_identity_) {
+							CHECK(num_comps_total_ == 1);
+							Zj_Zjt = (Zt_[cluster_i].transpose()) * Zt_[cluster_i];
+						}
+						else {
+							sp_mat_t* Zj = re_comps_[cluster_i][0][j]->GetZ();
+							Zj_Zjt = ((*Zj) * (*Zj).transpose());
+						}
 						//Z_j Z_j^T z_i
 						den_mat_t Zj_Zjt_RV(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
@@ -9573,7 +9582,7 @@ namespace GPBoost {
 							cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
 							L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i]);
 						if (NaN_found) {
-							Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
+							Log::REFatal("CalcFisherInformation_Only_Grouped_REs_Woodbury: Nan or Inf value generated in the conjugate gradient method ");
 						}
 						//Z_j Z_j^T - Z (Sigma^(-1) + Z^T Z)^(-1) Z_j Z_j^T z_i
 #pragma omp parallel for schedule(static)   
@@ -9617,7 +9626,7 @@ namespace GPBoost {
 					}//end loop j
 				}//end iterative
 				else {
-					Log::REFatal("Matrix inversion method '%s' is not supported.", matrix_inversion_method_.c_str());
+					Log::REFatal("Matrix inversion method '%s' is not supported ", matrix_inversion_method_.c_str());
 				}
 			}//end loop over clusters
 			if (transf_scale) {

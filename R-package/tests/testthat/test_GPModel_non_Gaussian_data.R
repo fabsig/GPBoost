@@ -4440,6 +4440,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         # Evaluate negative log-likelihood
         gp_model <- GPModel(gp_coords = coords_lin, likelihood = likelihood, 
                             matrix_inversion_method = matrix_inversion_method, cov_function = cov_function)
+        # gp_model$set_optim_params(params = list(num_rand_vec_trace=500))
         nll <- gp_model$neg_log_likelihood(cov_pars=c(0.5, 0.9),y=y)
         nll_exp <- 268.6641569
         expect_lt(abs(nll-nll_exp),tolerance_loc_1)
@@ -4636,13 +4637,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         # Evaluate negative log-likelihood
         gp_model <- GPModel(gp_coords = coords_lin, likelihood = likelihood, 
                             matrix_inversion_method = matrix_inversion_method, cov_function = cov_function)
+        # gp_model$set_optim_params(params = list(num_rand_vec_trace=500))
         nll <- gp_model$neg_log_likelihood(cov_pars=c(0.5),y=y)
         nll_exp <- 227.5314805
         expect_lt(abs(nll-nll_exp),tolerance_loc_1)
         
         # Estimation 
         if(matrix_inversion_method == "choklesky") {
-          #Estimation is very slow for iterative methods
+          # Estimation is very slow for iterative methods
           capture.output( gp_model <- fitGPModel(gp_coords = coords_lin, likelihood = likelihood, 
                                                  matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
                                                  X=X, y = y, params = params) , file='NUL')
