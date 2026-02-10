@@ -2262,9 +2262,8 @@ gpb.GPModel <- R6::R6Class(
       if (private$model_fitted) {
         ll <- -self$get_current_neg_log_likelihood()
         npar <- private$num_cov_pars
-        if (private$has_covariates) {
-          npar <- npar + private$num_coef
-        }
+        if (private$has_covariates) npar <- npar + private$num_coef
+        if (private$iid_model) npar <- npar - 1 # do not count variance component
         aic <- 2*npar - 2*ll
         bic <- npar*log(self$get_num_data()) - 2*ll
         print(round(c("Log-lik"=ll, "AIC"=aic, "BIC"=bic),digits=2))

@@ -5736,8 +5736,8 @@ class GPModel(object):
         if self.model_fitted:            
             ll = -self.get_current_neg_log_likelihood()
             npar = self.num_cov_pars
-            if self.has_covariates:
-                npar = npar + self.num_coef
+            if self.has_covariates: npar = npar + self.num_coef
+            if self.iid_model: npar = npar - 1 # do not count variance component
             aic = 2 * npar - 2 * ll
             bic = npar * np.log(self.num_data) - 2 * ll
             printout = pd.DataFrame([round(ll, 2), round(aic, 2), round(bic, 2)]).transpose()
@@ -5748,9 +5748,9 @@ class GPModel(object):
             print("Covariance parameters (random effects):")
             print(round(cov_pars.transpose(), 4))
         elif self.iid_model and self._get_likelihood_name() == "gaussian":
-            cov_pars_nug = cov_pars.iloc[:, 0:1]
-            cov_pars_nug.rows = ["Error_var"]
-            print(round(cov_pars_nug.transpose(), 4))
+            cov_pars_nug = cov_pars.transpose().iloc[:, 0:1].transpose()
+            cov_pars_nug.index = ["Error_var"]
+            print(round(cov_pars_nug, 4))
         if self.has_covariates:
             print("-----------------------------------------------------")
             print("Linear regression coefficients (fixed effects):")
