@@ -8,7 +8,7 @@ fitGPModel(likelihood = "gaussian", group_data = NULL,
   group_rand_coef_data = NULL, ind_effect_group_rand_coef = NULL,
   drop_intercept_group_rand_effect = NULL, gp_coords = NULL,
   gp_rand_coef_data = NULL, cov_function = "matern", cov_fct_shape = 1.5,
-  gp_approx = "none", num_parallel_threads = NULL,
+  gp_approx = "none", num_parallel_threads = NULL, GPU_use = FALSE,
   matrix_inversion_method = "default", weights = NULL,
   likelihood_learning_rate = 1, cov_fct_taper_range = 1,
   cov_fct_taper_shape = 1, num_neighbors = NULL,
@@ -148,6 +148,7 @@ for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecch
 
 \item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP. 
 If num_parallel_threads = NULL, all available threads are used}
+\item{GPU_use}{A \code{boolean}. If TRUE, GPU acceleration will be used if supported.}
 
 \item{matrix_inversion_method}{A \code{string} specifying the method used for inverting covariance matrices. 
 Available options:

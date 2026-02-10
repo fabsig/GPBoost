@@ -40,6 +40,10 @@ using LightGBM::LogLevelRE;
 #include <LightGBM/meta.h>
 using LightGBM::label_t;
 
+#ifdef USE_CUDA_GP
+#include <cuda_runtime.h>
+#endif
+
 namespace GPBoost {
 
 	/*!
@@ -83,6 +87,7 @@ namespace GPBoost {
 		* \param matrix_inversion_method Method which is used for matrix inversion
 		* \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
 		* \param num_parallel_threads Number of parallel threads for OMP
+		* \param GPU_use If TRUE, GPU acceleration will be used if supported.
 		* \param has_weights True, if sample weights should be used
 		* \param weights Sample weights
 		* \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
@@ -115,9 +120,34 @@ namespace GPBoost {
 			const char* matrix_inversion_method,
 			int seed,
 			int num_parallel_threads,
+			bool GPU_use,
 			bool has_weights,
 			const double* weights,
 			double likelihood_learning_rate) {
+			// Check if cuda device is available
+			bool can_use_cuda = false;
+			if (GPU_use) {
+#ifdef USE_CUDA_GP
+				int device_count = 0;
+				cudaError_t err = cudaGetDeviceCount(&device_count);
+
+				if (err == cudaSuccess && device_count > 0) {
+					can_use_cuda = true;
+					Log::REInfo("CUDA device detected ({} device(s)). "
+						"GPU acceleration will be used where supported.",
+						device_count);
+				}
+				else {
+					Log::REWarning("CUDA requested but no compatible device found "
+						"(error: {}). Falling back to CPU.",
+						cudaGetErrorString(err));
+				}
+#else
+				Log::REWarning("CUDA requested but this build was compiled without CUDA support. "
+					"Falling back to CPU.");
+#endif
+			}
+			GPU_use_ = can_use_cuda;
 			if (num_parallel_threads > 0) {
 				Eigen::setNbThreads(num_parallel_threads);
 				omp_set_num_threads(num_parallel_threads);

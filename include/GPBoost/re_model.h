@@ -60,6 +60,7 @@ namespace GPBoost {
 		* \param matrix_inversion_method Method which is used for matrix inversion
 		* \param seed Seed used for model creation (e.g., random ordering in Vecchia approximation)
 		* \param num_parallel_threads Number of parallel threads for OMP
+		* \param GPU_use If TRUE, GPU acceleration will be used if supported.
 		* \param has_weights True, if sample weights should be used
 		* \param weights Sample weights
 		* \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
@@ -92,6 +93,7 @@ namespace GPBoost {
 			const char* matrix_inversion_method,
 			int seed,
 			int num_parallel_threads,
+			bool GPU_use,
 			bool has_weights,
 			const double* weights,
 			double likelihood_learning_rate);
