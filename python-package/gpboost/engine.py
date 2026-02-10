@@ -481,6 +481,7 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                      cov_fct_shape=gp_model.cov_fct_shape,
                                      gp_approx=gp_model.gp_approx,
                                      num_parallel_threads=gp_model.num_parallel_threads,
+                                     GPU_use=gp_model.GPU_use,
                                      matrix_inversion_method=gp_model.matrix_inversion_method,
                                      weights=weights,
                                      likelihood_learning_rate=gp_model.likelihood_learning_rate,

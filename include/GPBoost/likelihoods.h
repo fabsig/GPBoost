@@ -9,14 +9,14 @@
 *
 *  EXPLANATIONS ON PARAMETERIZATIONS USED
 *
-*  The following notation is used below: 
+*  The following notation is used below:
 *		- location_par = random + fixed effects
-* 
+*
 * For a "gamma" likelihood, the following density is used:
 *   f(y) = lambda^gamma / Gamma(gamma) * y^(gamma - 1) * exp(-lambda * y)
 *       - mu = mean(y) = exp(location_par), lambda = gamma / mu, gamma \in (0,\infty) (= aux_pars_[0])
 *		- Note: var(y) = mu^2 / gamma, lambda = rate, gamma = shape
-* 
+*
 * For a "lognormal" likelihood, the following density is used:
 *   f(y) = 1 / ( y * sqrt(2*pi*sigma2) ) * exp( - ( log(y) - (eta - 0.5*sigma2) )^2 / (2*sigma2) ),  for y > 0
 *       - mu = mean(y) = exp(location_par) = exp(eta)
@@ -27,42 +27,42 @@
 *   f(y) = Gamma((nu+1)/2) / sigma / sqrt(pi) / sqrt(nu) / Gamma(nu/2) * (1 + (y - mu)^2/nu/sigma^2)^(-(nu+1)/2)
 *       - mu = location_par, sigma \in (0,\infty) (= aux_pars_[0]), nu \in (0,\infty) (= aux_pars_[1])
 *		- Note: sigma = scale, nu = degrees of freedom
-* 
+*
 * For a "beta" likelihood, the following parametrization of Ferrari and Cribari-Neto (2004) is used:
 *	f(y) = Gamma(mu*phi) / Gamma((1−mu)*phi) / Gamma(phi) * ​y^(mu*phi−1) * (1−y)^((1−mu)*phi−1)
 *		- mu = mean(y) = 1 / (1 + exp(-location_par)), phi \in (0,\infty) (= aux_pars_[0])
 *		- Note: phi = precision
-* 
+*
 * For a "poisson" likelihood, the following density is used:
 *   f(y) = mu^y * exp(-mu) / Gamma(y)
 *       - mu = mean(y) = exp(location_par)
 *       - Note: var(y) = mu
-* 
+*
 * For a "negative_binomial" likelihood, the following density is used:
 *   f(y) = Gamma(y + r) / Gamma(y + 1) / Gamma(r) * (1 - p)^y * p^r
 *       - mu = mean(y) = exp(location_par), p = r / (mu + r), r \in (0,\infty) (= aux_pars_[0])
 *       - Note: var(y) = mu * (mu + r) / r, p = success probability, r = shape (aka size, theta, or "number of successes")
-* 
+*
 * For a "negative_binomial_1" likelihood, the following density is used:
 *   f(y) = Gamma(y + r) / Gamma(y + 1) / Gamma(r) * (1 - p)^y * p^r
 *       - mu = mean(y) = exp(location_par), r = mu / phi, p = 1 / (1 + phi), phi \in (0,\infty) (= aux_pars_[0])
 *       - Note: var(y) = mu * (1 + phi), p = success probability, r = shape, phi = dispersion
-* 
+*
 * For a "beta-binomial" likelihood, the following density is used:
 *	f(y) = C(n, y * n) * Beta(y * n + mu * phi, n - y * n + (1-mu) * phi) / Beta(mu * phi, (1-mu) * phi)
 *		- y = (number of successes) / (number of trials), n = number of trials
 *		- mu = mean(p) = 1 / (1 + exp(-location_par)), phi \in (0,\infty) (= aux_pars_[0])
 *		- Note: phi = precision
-* 
+*
 * For a "zero_inflated_gamma" likelihood, the following density is used:
 *   f(y) = p0 * 1_{y=0} + (1-p0) * 1_{y>0} * lambda^gamma / Gamma(gamma) * y^(gamma - 1) * exp(-lambda * y)
 *       - mu = mean(y) = exp(location_par), lambda = (1-p0) * gamma / mu, gamma \in (0,\infty) (= aux_pars_[0]), p0 \in (0,1) (= aux_pars_[1] / (aux_pars_[1] + 1) )
 *		- Note: lambda = rate, gamma = shape, p0 = zero-inflation probability
-* 
+*
 * For a "zero_censored_power_transformed_normal" likelihood, the following density is used:
 *   f(y) = Phi(a_0) * 1_{y=0} + 1_{y>0} * 1 / sigma * phi((y^(1/lambda) - mu) / sigma) * 1 / lambda * y^(1/lambda - 1)
 *       - mu = location_par, a_0 = -mu / sigma, sigma \in (0,\infty) (= aux_pars_[0]), lambda \in (0,\infty) (= aux_pars_[1])
-*		- Phi() and phi() denote the standard normal cumulative distribution and density functions 
+*		- Phi() and phi() denote the standard normal cumulative distribution and density functions
 *		- This corresponds to the model Y = max(0,X)^lambda, X ~ N(mu, sigma^2)
 *
 */
@@ -302,7 +302,7 @@ namespace GPBoost {
 				num_aux_pars_ = 3;
 				num_aux_pars_estim_ = 3;
 				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
-			}
+				}
 			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
 				aux_pars_ = { 20., 0.01};//phi and u
 				names_aux_pars_ = { "precision", "u"};
@@ -332,7 +332,7 @@ namespace GPBoost {
 				if (Zt != nullptr) {
 					use_Z_ = true;
 					Zt_ = Zt;
-				}				
+				}
 			}
 			only_one_grouped_RE_ = only_one_grouped_RE;
 			if (only_one_grouped_RE_) {
@@ -356,7 +356,7 @@ namespace GPBoost {
 			}
 			if (!(use_random_effects_indices_of_data_ || use_Z_)) {
 				CHECK(num_data_ == num_re)
-			}			
+			}
 			DetermineWhetherToCapChangeModeNewton();
 			if (SUPPORTED_APPROX_TYPE_.find(approximation_type_) == SUPPORTED_APPROX_TYPE_.end()) {
 				Log::REFatal("'approximation_type' = '%s' is not supported ", approximation_type_.c_str());
@@ -412,8 +412,8 @@ namespace GPBoost {
 			}//end likelihood_type_ == "zero_inflated_gamma"
 			else if (likelihood_type_ == "zoctn") {
 				aux_pars_trans[1] = std::exp(aux_pars_orig[1]);
+				}
 			}
-		}
 
 		/*!
 		* \brief Back-transform aux_pars
@@ -481,7 +481,7 @@ namespace GPBoost {
 		*/
 		void DetermineWhetherToCapChangeModeNewton() {
 			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				cap_change_mode_newton_ = true;
 			}
@@ -751,20 +751,20 @@ namespace GPBoost {
 			int ind_set_re) const {
 			CHECK(rand_eff_var > 0.);
 			double init_intercept = 0.;
-			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" || 
-				likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || 
+			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" ||
+				likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_one_censored_transformed_beta") {
 				double sw = 0.0, swy = 0.0;
 #pragma omp parallel for schedule(static) reduction(+:sw,swy)
 				for (data_size_t i = 0; i < num_data; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;					
+					const double w = has_weights_ ? weights_[i] : 1.0;
 					swy += w * y_data[i];
 					sw += w;
 				}
 				double pavg = (swy > 0.0 && sw > 0.0) ? (swy / sw) : 0.5;
 				const double eps = 1e-12;
 				pavg = std::min(std::max(pavg, eps), 1.0 - eps);
-				if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" || 
+				if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" ||
 					likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_one_censored_transformed_beta") {
 					init_intercept = GPBoost::logit(pavg);
 				}
@@ -777,7 +777,7 @@ namespace GPBoost {
 				init_intercept = std::min(std::max(init_intercept, -3.0), 3.0); // avoid too small / large initial intercepts for better numerical stability
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				double sw = 0.0, avg = 0.;
 				if (fixed_effects == nullptr) {
@@ -962,7 +962,7 @@ namespace GPBoost {
 					else if (yi >= 1.0) {
 						W1 += w;
 					}
-					else {
+			else {
 						const double logit_y = GPBoost::logit(yi);
 						const double t = (logit_y - a) / b;
 						const double x = GPBoost::sigmoid_stable(t); // approx latent Z in (0,1)
@@ -1062,8 +1062,8 @@ namespace GPBoost {
 			const double* fixed_effects) const {
 			bool ret_val = false;
 			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
-				likelihood_type_ == "gaussian_heteroscedastic" || likelihood_type_ == "lognormal" || 
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
+				likelihood_type_ == "gaussian_heteroscedastic" || likelihood_type_ == "lognormal" ||
 				likelihood_type_ == "zero_inflated_gamma" || likelihood_type_ == "zero_censored_power_transformed_normal" || 
 				likelihood_type_ == "zoctn" || likelihood_type_ == "zero_one_censored_transformed_beta" || 
 				likelihood_type_ == "zero_one_censored_shifted_gamma") {
@@ -1375,7 +1375,7 @@ namespace GPBoost {
 						if (yi <= 0.0) W0 += w; else Wpos += w;
 						sw_mu += w * fixed_effects[i];
 					}
-				}				
+				}
 				const double mu_pooled = (fixed_effects == nullptr) ? 0.0 : (sw_mu / W);// Use a pooled mu for the moment-matching step.
 				// 1) Initial sigma from zeros if available: p0 = W0 / W ≈ Phi(a),  a = Phi^{-1}(p0) = -mu / sigma  =>  sigma ≈ -mu / a
 				double sigma_init = 1.0;
@@ -1390,19 +1390,19 @@ namespace GPBoost {
 				}
 				sigma_init = std::max(sigma_init, eps_sigma);
 				// Helpers for tau, E[X|X>0], Var[X|X>0] at given (mu, sigma)
-				auto tau_upper = [](double a)->double {					
+				auto tau_upper = [](double a)->double {
 					const double denom = std::max(1.0 - GPBoost::normalCDF(a), 1e-12);
 					return GPBoost::normalPDF(a) / denom;// tau(a) = phi(a) / (1 - Phi(a))
-				};
+					};
 				auto vpos = [&](double mu_local, double sigma_local)->double {
 					const double a = -mu_local / sigma_local;
 					const double t = tau_upper(a);
 					return sigma_local * sigma_local * (1.0 + a * t - t * t);
-				};
+					};
 				auto mpos = [&](double mu_local, double sigma_local)->double {
 					const double a = -mu_local / sigma_local;
 					return mu_local + sigma_local * tau_upper(a);
-				};
+					};
 				// 2) Small lambda grid: pick lambda that makes the positive u_i match mpos/vpos
 				double mpos_target, vpos_target;
 				double m_sum = 0.0, m2_sum = 0.0, v_sum = 0.0, Wpos_fe = 0.0;
@@ -1452,7 +1452,7 @@ namespace GPBoost {
 					var_u = std::max(sum2 / sumw - mean_u * mean_u, 0.0);
 					const double m3c = (sum3 / sumw) - 3.0 * mean_u * (sum2 / sumw) + 2.0 * mean_u * mean_u * mean_u;
 					skew_u = (var_u > 0.0) ? (m3c / std::pow(var_u, 1.5)) : 0.0;
-				};
+					};
 				double best_lambda = 1.0, best_score = std::numeric_limits<double>::infinity();
 				for (int k = 0; k < nL; ++k) {
 					const double lam = lambda_grid[k];
@@ -1473,7 +1473,7 @@ namespace GPBoost {
 				var_u = std::max(var_u, eps_var);
 				auto vpos_mixture = [&](double sigma_curr)->double {
 					// Returns theoretical mixture variance of X|X>0 at current sigma (weights over positives)
-					if (fixed_effects == nullptr) {						
+					if (fixed_effects == nullptr) {
 						return std::max(vpos(mu_pooled, sigma_curr), eps_var);// Homogeneous mu: just vpos at pooled mu
 					}
 					else {
@@ -1497,7 +1497,7 @@ namespace GPBoost {
 						const double v_between_it = std::max(m2_sum_it / Wpos_it - m_mix_it * m_mix_it, 0.0);
 						return std::max(v_within_it + v_between_it, eps_var);
 					}
-				};
+					};
 				double sigma = sigma_init;
 				for (int it = 0; it < 2; ++it) {
 					const double vth = vpos_mixture(sigma);         // theoretical var at current sigma
@@ -1638,7 +1638,7 @@ namespace GPBoost {
 				aux_pars_[1] = xi_init;
 			}//end "zero_one_censored_shifted_gamma"
 			else if (likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
-				likelihood_type_ != "binomial_probit" && likelihood_type_ != "binomial_logit" && 
+				likelihood_type_ != "binomial_probit" && likelihood_type_ != "binomial_logit" &&
 				likelihood_type_ != "poisson" && likelihood_type_ != "gaussian_heteroscedastic") {
 				Log::REFatal("FindInitialAuxPars: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 			}
@@ -1660,15 +1660,15 @@ namespace GPBoost {
 			const double* fixed_effects,
 			double& C_mu,
 			double& C_sigma2) const {
-			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" || 
-				likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || 
+			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" ||
+				likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zoctn" || 
 				likelihood_type_ == "zero_one_censored_transformed_beta" || likelihood_type_ == "zero_one_censored_shifted_gamma") {
 				C_mu = 1.;
 				C_sigma2 = 1.;
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				double sw = 0.0, mean = 0., sec_mom = 0;
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
@@ -1787,8 +1787,8 @@ namespace GPBoost {
 				}
 			}
 			if (likelihood_type_ == "gaussian" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
-				likelihood_type_ == "beta" || likelihood_type_ == "t" || likelihood_type_ == "lognormal" || 
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
+				likelihood_type_ == "beta" || likelihood_type_ == "t" || likelihood_type_ == "lognormal" ||
 				likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_inflated_gamma" || 
 				likelihood_type_ == "zero_censored_power_transformed_normal" || likelihood_type_ == "zoctn" || 
 				likelihood_type_ == "zero_one_censored_transformed_beta" || likelihood_type_ == "zero_one_censored_shifted_gamma") {
@@ -2226,7 +2226,7 @@ namespace GPBoost {
 				approx_marginal_ll = LogLikelihood(y_data, y_data_int, location_par.data());
 			}
 			else {
-				approx_marginal_ll = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data());
+			approx_marginal_ll = -0.5 / sigma2 * (mode_.dot(mode_)) + LogLikelihood(y_data, y_data_int, location_par.data());
 			}			
 			double approx_marginal_ll_new = approx_marginal_ll;
 			vec_t rhs, mode_update, mode_new;
@@ -2278,11 +2278,11 @@ namespace GPBoost {
 				}
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (!iid_model_) {
-					if (information_changes_after_mode_finding_) {
-						CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
-						diag_SigmaI_plus_ZtWZ_ = (information_ll_.array() + 1. / sigma2).matrix();
-					}
-					approx_marginal_ll -= 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() + 0.5 * dim_mode_ * std::log(sigma2);
+				if (information_changes_after_mode_finding_) {
+					CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
+					diag_SigmaI_plus_ZtWZ_ = (information_ll_.array() + 1. / sigma2).matrix();
+				}
+				approx_marginal_ll -= 0.5 * diag_SigmaI_plus_ZtWZ_.array().log().sum() + 0.5 * dim_mode_ * std::log(sigma2);
 				}
 				mode_has_been_calculated_ = true;
 				na_or_inf_during_last_call_to_find_mode_ = false;
@@ -2332,7 +2332,8 @@ namespace GPBoost {
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_preconditioner_cluster_i,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_preconditioner_cluster_i,
 			const den_mat_t& chol_ip_cross_cov_preconditioner,
-			const chol_den_mat_t& chol_fact_sigma_ip_preconditioner) {
+			const chol_den_mat_t& chol_fact_sigma_ip_preconditioner,
+			bool GPU_use) {
 			ChecksBeforeModeFinding();
 			fixed_effects_ = fixed_effects;
 			const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
@@ -2366,7 +2367,8 @@ namespace GPBoost {
 			if (quasi_newton_for_mode_finding_ && matrix_inversion_method_ == "cholesky") {
 				mode_update_lag1 = mode_;
 				if (quasi_newton_for_mode_finding_) {
-					TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury, Bt_D_inv_B_cross_cov.transpose(), woodbury_cross_cov_Bt_D_inv_B, false);
+					//TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury, Bt_D_inv_B_cross_cov.transpose(), woodbury_cross_cov_Bt_D_inv_B, false);
+					GPBoost::solve_lower_triangular(chol_fact_sigma_woodbury, Bt_D_inv_B_cross_cov.transpose(), woodbury_cross_cov_Bt_D_inv_B, GPU_use);
 				}
 			}
 			// Variables when using iterative methods
@@ -2437,7 +2439,9 @@ namespace GPBoost {
 							W_D_inv_inv = W_D_inv.cwiseInverse();
 							W_D_inv_sqrt = W_D_inv_inv.cwiseSqrt();
 							B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov = W_D_inv_sqrt.asDiagonal() * D_inv_B_cross_cov_;
-							sigma_woodbury_woodbury = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose() * B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov;
+							den_mat_t B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot;
+							GPBoost::matmul(B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose(), B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov, B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot, GPU_use);
+							sigma_woodbury_woodbury = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot;
 							chol_fact_sigma_woodbury_woodbury.compute(sigma_woodbury_woodbury);
 							vec_t grad_aux = W_D_inv_inv.cwiseProduct((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(grad));
 							//grad_aux.array() /= (D_inv.diagonal().array() + information_ll_.array());
@@ -2458,7 +2462,9 @@ namespace GPBoost {
 								}
 							}
 							diagonal_approx_inv_preconditioner_ = diagonal_approx_preconditioner_.cwiseInverse();
-							den_mat_t sigma_woodbury_preconditioner = (*cross_cov_preconditioner).transpose() * (diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner));
+							den_mat_t sigma_woodbury_preconditioner;
+							GPBoost::matmul((*cross_cov_preconditioner).transpose(), (diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner)), sigma_woodbury_preconditioner, GPU_use);
+							//den_mat_t sigma_woodbury_preconditioner = (*cross_cov_preconditioner).transpose() * (diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner));
 							sigma_woodbury_preconditioner += (sigma_ip_preconditioner);
 							chol_fact_woodbury_preconditioner_.compute(sigma_woodbury_preconditioner);
 							mode_update_part = diagonal_approx_inv_preconditioner_.asDiagonal() * grad;
@@ -2516,7 +2522,9 @@ namespace GPBoost {
 								W_D_inv_sqrt = W_D_inv_inv.cwiseSqrt();
 								if (cg_preconditioner_type_ == "vifdu") {
 									B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov = W_D_inv_sqrt.asDiagonal() * D_inv_B_cross_cov_;
-									sigma_woodbury_woodbury = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose() * B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov;
+									den_mat_t B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot;
+									GPBoost::matmul(B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose(), B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov, B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot, GPU_use);
+									sigma_woodbury_woodbury = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot;
 									chol_fact_sigma_woodbury_woodbury.compute(sigma_woodbury_woodbury);
 								}
 							}
@@ -2537,7 +2545,9 @@ namespace GPBoost {
 									diagonal_approx_preconditioner_[i] = diagonal_approx_preconditioner_vecchia[i] + information_ll_inv[i];
 								}
 								diagonal_approx_inv_preconditioner_ = diagonal_approx_preconditioner_.cwiseInverse();
-								den_mat_t sigma_woodbury_preconditioner = ((*cross_cov_preconditioner).transpose() * diagonal_approx_inv_preconditioner_.asDiagonal()) * (*cross_cov_preconditioner);
+								den_mat_t sigma_woodbury_preconditioner;
+								GPBoost::matmul((*cross_cov_preconditioner).transpose(), (diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner)), sigma_woodbury_preconditioner, GPU_use);
+								//den_mat_t sigma_woodbury_preconditioner = ((*cross_cov_preconditioner).transpose() * diagonal_approx_inv_preconditioner_.asDiagonal()) * (*cross_cov_preconditioner);
 								sigma_woodbury_preconditioner += (sigma_ip_preconditioner);
 								chol_fact_woodbury_preconditioner_.compute(sigma_woodbury_preconditioner);
 							}
@@ -2580,8 +2590,8 @@ namespace GPBoost {
 							Log::REFatal("The Armijo condition check is currently not implemented when num_sets_re_ > 1 (=multiple parameters related to GPs) ");
 						}
 						vec_t direction = mode_update - mode_;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
-						vec_t gradient = B.transpose() * (D_inv * (B * direction)) - 
-							Bt_D_inv_B_cross_cov * (chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * direction)) + 
+						vec_t gradient = B.transpose() * (D_inv * (B * direction)) -
+							Bt_D_inv_B_cross_cov * (chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * direction)) +
 							information_ll_.asDiagonal() * direction;//gradient = (Sigma^-1 + W) * direction (Sigma^-1 calculated with Woodbury), direction = (Sigma^-1 + W)^-1 * gradient
 						grad_dot_direction = direction.dot(gradient);
 					}
@@ -2687,7 +2697,9 @@ namespace GPBoost {
 							W_D_inv_sqrt = W_D_inv_inv.cwiseSqrt();
 							if (cg_preconditioner_type_ == "vifdu") {
 								B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov = W_D_inv_sqrt.asDiagonal() * D_inv_B_cross_cov_;
-								sigma_woodbury_woodbury_ = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose() * B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov;
+								den_mat_t B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot;
+								GPBoost::matmul(B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose(), B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov, B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot, GPU_use);
+								sigma_woodbury_woodbury_ = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot;
 								chol_fact_sigma_woodbury_woodbury_.compute(sigma_woodbury_woodbury_);
 							}
 						}
@@ -2912,7 +2924,7 @@ namespace GPBoost {
 					}
 					if (matrix_inversion_method_ == "iterative") {
 						bool calculate_preconditioners = it == 0 || information_changes_during_mode_finding_;
-						Inv_SigmaI_plus_ZtWZ_Vecchia_iterative(cg_max_num_it, I_k_plus_Sigma_L_kt_W_Sigma_L_k, SigmaI, SigmaI_plus_W, B[0], has_NA_or_Inf, 
+						Inv_SigmaI_plus_ZtWZ_Vecchia_iterative(cg_max_num_it, I_k_plus_Sigma_L_kt_W_Sigma_L_k, SigmaI, SigmaI_plus_W, B[0], has_NA_or_Inf,
 							re_comps_cross_cov_cluster_i, cluster_i, re_model, rhs, mode_update, it == 0, calculate_preconditioners);
 						if (has_NA_or_Inf) {
 							approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
@@ -3082,7 +3094,8 @@ namespace GPBoost {
 			const chol_den_mat_t& chol_fact_sigma_ip,
 			const den_mat_t* cross_cov,
 			const vec_t& fitc_resid_diag,
-			double& approx_marginal_ll) {
+			double& approx_marginal_ll,
+			bool GPU_use) {
 			ChecksBeforeModeFinding();
 			fixed_effects_ = fixed_effects;
 			int num_ip = (int)((*sigma_ip).rows());
@@ -3132,8 +3145,12 @@ namespace GPBoost {
 					W_times_DW_plus_I_inv_diag = Wsqrt_diag;
 					W_times_DW_plus_I_inv_diag.array() *= W_times_DW_plus_I_inv_diag.array();
 					W_times_DW_plus_I_inv_diag.array() *= DW_plus_I_inv_diag.array();
-					M_aux_Woodbury += (*cross_cov).transpose() * W_times_DW_plus_I_inv_diag.asDiagonal() * (*cross_cov);// = *sigma_ip + (*cross_cov).transpose() * D_plus_WI_inv_diag.asDiagonal() * (*cross_cov)
-					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm = sigma_ip + Sigma_nm^T * D_plus_WI_inv_diag * Sigma_nm
+					//M_aux_Woodbury += (*cross_cov).transpose() * W_times_DW_plus_I_inv_diag.asDiagonal() * (*cross_cov);// = *sigma_ip + (*cross_cov).transpose() * D_plus_WI_inv_diag.asDiagonal() * (*cross_cov)
+					den_mat_t W_times_DW_plus_I_inv_diag_cross_cov = W_times_DW_plus_I_inv_diag.asDiagonal() * (*cross_cov);
+					den_mat_t cross_cov_t_W_times_DW_plus_I_inv_diag_cross_cov;
+					GPBoost::matmul((*cross_cov).transpose(), W_times_DW_plus_I_inv_diag_cross_cov, cross_cov_t_W_times_DW_plus_I_inv_diag_cross_cov, GPU_use);
+					M_aux_Woodbury += cross_cov_t_W_times_DW_plus_I_inv_diag_cross_cov;
+					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
 				}
 				rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
 				// Update mode and SigmaI_mode_
@@ -3195,11 +3212,15 @@ namespace GPBoost {
 					Log::REFatal("FindModePostRandEffCalcMLLFITC: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
 						"This is not permitted when using the FITC approximation ");
 				}
-				if (information_changes_after_mode_finding_) {					
+				if (information_changes_after_mode_finding_) {
 					D_plus_WI_inv_diag = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
 					M_aux_Woodbury = *sigma_ip;
 					M_aux_Woodbury.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
-					M_aux_Woodbury += (*cross_cov).transpose() * D_plus_WI_inv_diag.asDiagonal() * (*cross_cov);
+					//M_aux_Woodbury += (*cross_cov).transpose() * D_plus_WI_inv_diag.asDiagonal() * (*cross_cov);
+					den_mat_t D_plus_WI_inv_diag_cross_cov = D_plus_WI_inv_diag.asDiagonal() * (*cross_cov);
+					den_mat_t cross_cov_t_D_plus_WI_inv_diag_cross_cov;
+					GPBoost::matmul((*cross_cov).transpose(), D_plus_WI_inv_diag_cross_cov, cross_cov_t_D_plus_WI_inv_diag_cross_cov, GPU_use);
+					M_aux_Woodbury += cross_cov_t_D_plus_WI_inv_diag_cross_cov;
 					chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of (sigma_ip + Sigma_nm^T * D_plus_WI_inv_diag * Sigma_nm)
 				}
 				else {
@@ -3813,12 +3834,12 @@ namespace GPBoost {
 					double d_detmll_d_aux_par = 0., implicit_derivative = 0.;// = implicit derivative = d_mll_d_mode * d_mode_d_aux_par
 					if (!iid_model_) {
 #pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-						for (int i = 0; i < num_data_; ++i) {
-							d_detmll_d_aux_par += deriv_information_aux_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];
-							if (grad_information_wrt_mode_non_zero_) {
-								implicit_derivative += d_mll_d_mode[random_effects_indices_of_data_[i]] * second_deriv_loc_aux_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];
-							}
+					for (int i = 0; i < num_data_; ++i) {
+						d_detmll_d_aux_par += deriv_information_aux_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];
+						if (grad_information_wrt_mode_non_zero_) {
+							implicit_derivative += d_mll_d_mode[random_effects_indices_of_data_[i]] * second_deriv_loc_aux_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];
 						}
+					}
 					}
 					aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par + implicit_derivative;
 					//Equivalent code:
@@ -3890,7 +3911,8 @@ namespace GPBoost {
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_preconditioner_cluster_i,
 			const den_mat_t chol_ip_cross_cov_preconditioner,
 			const chol_den_mat_t chol_fact_sigma_ip_preconditioner,
-			const std::vector<int>& estimate_cov_par_index) {
+			const std::vector<int>& estimate_cov_par_index,
+			bool GPU_use) {
 			const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 			den_mat_t sigma_ip = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
 			int num_ip = (int)(sigma_ip.rows());
@@ -3901,7 +3923,7 @@ namespace GPBoost {
 				FindModePostRandEffCalcMLLFSVA(y_data, y_data_int, fixed_effects, sigma_ip, chol_fact_sigma_ip,
 					chol_fact_sigma_woodbury, chol_ip_cross_cov, re_comps_cross_cov_cluster_i, sigma_woodbury, B, D_inv, Bt_D_inv_B_cross_cov, D_inv_B_cross_cov, false, true, mll,
 					re_comps_ip_preconditioner_cluster_i, re_comps_cross_cov_preconditioner_cluster_i, chol_ip_cross_cov_preconditioner,
-					chol_fact_sigma_ip_preconditioner);
+					chol_fact_sigma_ip_preconditioner, GPU_use);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				if (call_for_std_dev_coef) {
@@ -3964,8 +3986,8 @@ namespace GPBoost {
 						vec_t tr_WI_DI_WI_W_deriv = diag_WI.cwiseProduct(tr_WI_W_deriv.cwiseProduct(diagonal_approx_inv_preconditioner_));
 						vec_t tr_WI_DI_WI_DI_W_deriv = diagonal_approx_inv_preconditioner_.cwiseProduct(tr_WI_DI_WI_W_deriv);
 						den_mat_t chol_wood_cross_cov((*cross_cov_preconditioner).cols(), dim_mode_);
-						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_woodbury_preconditioner_, (*cross_cov_preconditioner).transpose(), chol_wood_cross_cov, false);
-
+						//TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_woodbury_preconditioner_, cross_cov_preconditioner_t, chol_wood_cross_cov, false);
+						GPBoost::solve_lower_triangular(chol_fact_woodbury_preconditioner_, cross_cov_preconditioner_t, chol_wood_cross_cov, GPU_use);
 #pragma omp parallel for schedule(static)  
 						for (int i = 0; i < dim_mode_; ++i) {
 							tr_PI_P_deriv_vec[i] = chol_wood_cross_cov.col(i).array().square().sum() * tr_WI_DI_WI_DI_W_deriv[i];
@@ -3998,7 +4020,9 @@ namespace GPBoost {
 						sp_mat_rm_t SigmaI_deriv_rm, Bt_Dinv_Bgrad_rm, B_t_D_inv_D_grad_D_inv_B_rm;
 						double explicit_derivative, d_log_det_Sigma_W_plus_I_d_cov_pars;
 						int num_par = (int)B_grad.size();
-						den_mat_t sigma_ip_inv_sigma_cross_cov_preconditioner = chol_fact_sigma_ip_preconditioner.solve((*cross_cov_preconditioner).transpose());
+						//den_mat_t sigma_ip_inv_sigma_cross_cov_preconditioner = chol_fact_sigma_ip_preconditioner.solve((*cross_cov_preconditioner).transpose());
+						den_mat_t sigma_ip_inv_sigma_cross_cov_preconditioner;
+						GPBoost::solve_linear_sys(chol_fact_sigma_ip_preconditioner, cross_cov_preconditioner_t, sigma_ip_inv_sigma_cross_cov_preconditioner, GPU_use);
 						den_mat_t sigma_ip_inv_cross_cov_preconditioner_PI_Z = sigma_ip_inv_sigma_cross_cov_preconditioner * PI_Z;
 						den_mat_t sigma_ip_inv_cross_cov_PI_Z = sigma_ip_inv_cross_cov_T_cluster_i * PI_Z;
 						CHECK(re_comps_ip_cluster_i.size() == 1);
@@ -4011,9 +4035,14 @@ namespace GPBoost {
 										SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
 									}
 									else {
-										SigmaI_deriv_rm = sp_mat_rm_t(B_grad[ipar].transpose()) * B_t_D_inv_rm_.transpose();
+										//SigmaI_deriv_rm = sp_mat_rm_t(B_grad[ipar].transpose()) * B_t_D_inv_rm_.transpose();
+										sp_mat_rm_t B_t_D_inv_rm_t = sp_mat_rm_t(B_t_D_inv_rm_.transpose());
+										GPBoost::spmatmul(sp_mat_rm_t(B_grad[ipar].transpose()), B_t_D_inv_rm_t, SigmaI_deriv_rm, GPU_use);
 										Bt_Dinv_Bgrad_rm = SigmaI_deriv_rm.transpose();
-										B_t_D_inv_D_grad_D_inv_B_rm = B_t_D_inv_rm_ * sp_mat_rm_t(D_grad[ipar]) * B_t_D_inv_rm_.transpose();
+										//B_t_D_inv_D_grad_D_inv_B_rm = B_t_D_inv_rm_ * sp_mat_rm_t(D_grad[ipar]) * B_t_D_inv_rm_.transpose();
+										sp_mat_rm_t B_t_D_inv_D_grad_D_inv_B_rm_inter;
+										GPBoost::spmatmul(sp_mat_rm_t(D_grad[ipar]), B_t_D_inv_rm_t, B_t_D_inv_D_grad_D_inv_B_rm_inter, GPU_use);
+										GPBoost::spmatmul(B_t_D_inv_rm_, B_t_D_inv_D_grad_D_inv_B_rm_inter, B_t_D_inv_D_grad_D_inv_B_rm, GPU_use);
 										SigmaI_deriv_rm += Bt_Dinv_Bgrad_rm - B_t_D_inv_D_grad_D_inv_B_rm;
 										Bt_Dinv_Bgrad_rm.resize(0, 0);
 									}
@@ -4024,8 +4053,12 @@ namespace GPBoost {
 									for (int ii = 0; ii < num_ip; ii++) {
 										SigmaI_deriv_rm_cross_cov.col(ii) = SigmaI_deriv_rm * (*cross_cov).col(ii);
 									}
-									sigma_woodbury_grad += (*cross_cov).transpose() * SigmaI_deriv_rm_cross_cov;
-									den_mat_t cross_cov_Bt_D_inv_B_cross_cov_grad = Bt_D_inv_B_cross_cov.transpose() * (*cross_cov_grad);
+									den_mat_t cross_cov_dot;
+									GPBoost::matmul((*cross_cov).transpose(), SigmaI_deriv_rm_cross_cov, cross_cov_dot, GPU_use);
+									sigma_woodbury_grad += cross_cov_dot;
+									//den_mat_t cross_cov_Bt_D_inv_B_cross_cov_grad = Bt_D_inv_B_cross_cov.transpose() * (*cross_cov_grad);
+									den_mat_t cross_cov_Bt_D_inv_B_cross_cov_grad;
+									GPBoost::matmul(Bt_D_inv_B_cross_cov.transpose(), (*cross_cov_grad), cross_cov_Bt_D_inv_B_cross_cov_grad, GPU_use);
 									sigma_woodbury_grad += cross_cov_Bt_D_inv_B_cross_cov_grad + cross_cov_Bt_D_inv_B_cross_cov_grad.transpose();
 
 									vec_t SigmaI_deriv_mode_part = SigmaI_deriv_rm * mode_;
@@ -4058,7 +4091,9 @@ namespace GPBoost {
 										sigma_ip_inv_sigma_cross_cov_preconditioner.transpose() * (sigma_ip_preconditioner_grad * sigma_ip_inv_cross_cov_preconditioner_PI_Z);
 									vec_t diagonal_approx_preconditioner_grad_ = vec_t::Zero(dim_mode_);
 									diagonal_approx_preconditioner_grad_.array() += sigma_ip_preconditioner_grad.coeffRef(0, 0);
-									den_mat_t sigma_ip_grad_inv_sigma_cross_cov_preconditioner = sigma_ip_preconditioner_grad * sigma_ip_inv_sigma_cross_cov_preconditioner;
+									//den_mat_t sigma_ip_grad_inv_sigma_cross_cov_preconditioner = sigma_ip_preconditioner_grad * sigma_ip_inv_sigma_cross_cov_preconditioner;
+									den_mat_t sigma_ip_grad_inv_sigma_cross_cov_preconditioner;
+									GPBoost::matmul(sigma_ip_preconditioner_grad, sigma_ip_inv_sigma_cross_cov_preconditioner, sigma_ip_grad_inv_sigma_cross_cov_preconditioner, GPU_use);
 #pragma omp parallel for schedule(static)
 									for (int ii = 0; ii < dim_mode_; ++ii) {
 										diagonal_approx_preconditioner_grad_[ii] -= 2 * sigma_ip_inv_sigma_cross_cov_preconditioner.col(ii).dot((*cross_cov_preconditioner_grad).row(ii))
@@ -4070,9 +4105,13 @@ namespace GPBoost {
 									// Derivative of Woodbury matrix
 									den_mat_t sigma_woodbury_grad_preconditioner = sigma_ip_preconditioner_grad;
 									den_mat_t D_inv_cross_cov = diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner);
-									den_mat_t cross_cov_grad_D_inv_cross_cov = (*cross_cov_preconditioner_grad).transpose() * D_inv_cross_cov;
+									//den_mat_t cross_cov_grad_D_inv_cross_cov = (*cross_cov_preconditioner_grad).transpose() * D_inv_cross_cov;
+									den_mat_t cross_cov_grad_D_inv_cross_cov;
+									GPBoost::matmul((*cross_cov_preconditioner_grad).transpose(), D_inv_cross_cov, cross_cov_grad_D_inv_cross_cov, GPU_use);
 									sigma_woodbury_grad_preconditioner += cross_cov_grad_D_inv_cross_cov + cross_cov_grad_D_inv_cross_cov.transpose();
-									sigma_woodbury_grad_preconditioner -= D_inv_cross_cov.transpose() * (diagonal_approx_preconditioner_grad_.asDiagonal() * D_inv_cross_cov);
+									den_mat_t cross_cov_D_inv_cross_cov;
+									GPBoost::matmul(D_inv_cross_cov.transpose(), (diagonal_approx_preconditioner_grad_.asDiagonal() * D_inv_cross_cov), cross_cov_D_inv_cross_cov, GPU_use);
+									sigma_woodbury_grad_preconditioner -= cross_cov_D_inv_cross_cov;
 									tr_PI_P_grad += (chol_fact_woodbury_preconditioner_.solve(sigma_woodbury_grad_preconditioner)).trace();
 									vec_t sample_P = (PI_Z.cwiseProduct(P_grad_PI_Z)).colwise().sum();
 									CalcOptimalC(sample_Sigma, sample_P, stoch_tr, tr_PI_P_grad, c_opt);
@@ -4132,8 +4171,10 @@ namespace GPBoost {
 						vec_t d_mode_d_aux_par;
 						CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
 						den_mat_t Preconditioner_PP_inv;
-						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_woodbury_preconditioner_,
-							(diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner)).transpose(), Preconditioner_PP_inv, false);
+						//TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_woodbury_preconditioner_,
+						//	(diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner)).transpose(), Preconditioner_PP_inv, false);
+						GPBoost::solve_lower_triangular(chol_fact_woodbury_preconditioner_,
+							(diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner)).transpose(), Preconditioner_PP_inv, GPU_use);
 						if (grad_information_wrt_mode_non_zero_) {
 							tr_PI_P_deriv_vec = -diagonal_approx_inv_preconditioner_.cwiseProduct(W_deriv_rep.col(0));
 #pragma omp parallel for schedule(static)   
@@ -4303,8 +4344,10 @@ namespace GPBoost {
 							//tr_PI_P_deriv_vec = -1. * W_D_inv_inv.cwiseProduct(deriv_information_diag_loc_par);
 							tr_PI_P_deriv_vec = W_D_inv_inv.cwiseProduct(deriv_information_diag_loc_par);
 							den_mat_t chol_fact_sigma_woodbury_woodbury_D_inv_B_cross_cov;
-							TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_woodbury_,
-								D_inv_B_cross_cov.transpose() * W_D_inv_inv.asDiagonal(), chol_fact_sigma_woodbury_woodbury_D_inv_B_cross_cov, false);
+							//TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_woodbury_,
+							//	D_inv_B_cross_cov.transpose() * W_D_inv_inv.asDiagonal(), chol_fact_sigma_woodbury_woodbury_D_inv_B_cross_cov, false);
+							GPBoost::solve_lower_triangular(chol_fact_sigma_woodbury_woodbury_,
+								D_inv_B_cross_cov.transpose() * W_D_inv_inv.asDiagonal(), chol_fact_sigma_woodbury_woodbury_D_inv_B_cross_cov, GPU_use);
 #pragma omp parallel for schedule(static)   
 							for (int i = 0; i < dim_mode_; ++i) {
 								tr_PI_P_deriv_vec[i] += chol_fact_sigma_woodbury_woodbury_D_inv_B_cross_cov.col(i).array().square().sum() * deriv_information_diag_loc_par[i];
@@ -4360,8 +4403,12 @@ namespace GPBoost {
 									for (int ii = 0; ii < num_ip; ii++) {
 										SigmaI_deriv_rm_cross_cov.col(ii) = SigmaI_deriv_rm * (*cross_cov).col(ii);
 									}
-									sigma_woodbury_grad += (*cross_cov).transpose() * SigmaI_deriv_rm_cross_cov;
-									den_mat_t cross_cov_Bt_D_inv_B_cross_cov_grad = Bt_D_inv_B_cross_cov.transpose() * (*cross_cov_grad);
+									den_mat_t cross_cov_SigmaI_deriv_rm_cross_cov;
+									GPBoost::matmul((*cross_cov).transpose(), SigmaI_deriv_rm_cross_cov, cross_cov_SigmaI_deriv_rm_cross_cov, GPU_use);
+									sigma_woodbury_grad += cross_cov_SigmaI_deriv_rm_cross_cov;
+									//den_mat_t cross_cov_Bt_D_inv_B_cross_cov_grad = Bt_D_inv_B_cross_cov.transpose() * (*cross_cov_grad);
+									den_mat_t cross_cov_Bt_D_inv_B_cross_cov_grad;
+									GPBoost::matmul(Bt_D_inv_B_cross_cov.transpose(), (*cross_cov_grad), cross_cov_Bt_D_inv_B_cross_cov_grad, GPU_use);
 									sigma_woodbury_grad += cross_cov_Bt_D_inv_B_cross_cov_grad + cross_cov_Bt_D_inv_B_cross_cov_grad.transpose();
 
 									vec_t SigmaI_deriv_mode_part = SigmaI_deriv_rm * mode_;
@@ -4448,9 +4495,22 @@ namespace GPBoost {
 										for (int ii = 0; ii < num_ip; ii++) {
 											D_inv_grad_B_cross_cov.col(ii) = -D_inv_D_grad_D_inv.cwiseProduct(B_rm_ * (*cross_cov).col(ii));
 										}
-										den_mat_t D_inv_B_cross_cov_D_inv_B_cross_cov_grad = D_inv_B_cross_cov_.transpose() * (W_D_inv_inv.asDiagonal() * D_inv_B_cross_cov_grad);
-										den_mat_t D_inv_B_cross_cov_D_inv_B_cross_grad_cov = D_inv_B_cross_cov_.transpose() * (W_D_inv_inv.asDiagonal() * D_inv_B_grad_cross_cov);
-										den_mat_t D_inv_grad_B_cross_cov_D_inv_B_cross_cov = D_inv_B_cross_cov_.transpose() * (W_D_inv_inv.asDiagonal() * D_inv_grad_B_cross_cov);
+										//den_mat_t D_inv_B_cross_cov_D_inv_B_cross_cov_grad = D_inv_B_cross_cov_.transpose() * (W_D_inv_inv.asDiagonal() * D_inv_B_cross_cov_grad);
+										den_mat_t D_inv_B_cross_cov_t = D_inv_B_cross_cov_.transpose();
+										den_mat_t W_D_inv_inv_D_inv_B_cross_cov_grad = W_D_inv_inv.asDiagonal() * D_inv_B_cross_cov_grad;
+										den_mat_t D_inv_B_cross_cov_D_inv_B_cross_cov_grad;
+										GPBoost::matmul(D_inv_B_cross_cov_t, W_D_inv_inv_D_inv_B_cross_cov_grad, D_inv_B_cross_cov_D_inv_B_cross_cov_grad, GPU_use);
+										//den_mat_t D_inv_B_cross_cov_D_inv_B_cross_grad_cov = D_inv_B_cross_cov_.transpose() * (W_D_inv_inv.asDiagonal() * D_inv_B_grad_cross_cov);
+										den_mat_t W_D_inv_inv_D_inv_B_grad_cross_cov = W_D_inv_inv.asDiagonal() * D_inv_B_grad_cross_cov;
+										den_mat_t D_inv_B_cross_cov_D_inv_B_cross_grad_cov;
+										GPBoost::matmul(D_inv_B_cross_cov_t, W_D_inv_inv_D_inv_B_grad_cross_cov, D_inv_B_cross_cov_D_inv_B_cross_grad_cov, GPU_use);
+										//den_mat_t D_inv_grad_B_cross_cov_D_inv_B_cross_cov = D_inv_B_cross_cov_.transpose() * (W_D_inv_inv.asDiagonal() * D_inv_grad_B_cross_cov);
+										den_mat_t W_D_inv_inv_D_inv_grad_B_cross_cov = W_D_inv_inv.asDiagonal() * D_inv_grad_B_cross_cov;
+										den_mat_t D_inv_grad_B_cross_cov_D_inv_B_cross_cov;
+										GPBoost::matmul(D_inv_B_cross_cov_t, W_D_inv_inv_D_inv_grad_B_cross_cov, D_inv_grad_B_cross_cov_D_inv_B_cross_cov, GPU_use);
+										den_mat_t W_D_inv_inv_D_inv_D_grad_D_inv_D_inv_B_cross_cov = ((vec_t)((W_D_inv_inv.array().square() * D_inv_D_grad_D_inv.array()).matrix())).asDiagonal() * D_inv_B_cross_cov_;
+										den_mat_t D_inv_B_cross_cov_t_dDiag_D_inv_B_cross_cov;
+										GPBoost::matmul(D_inv_B_cross_cov_t, W_D_inv_inv_D_inv_D_grad_D_inv_D_inv_B_cross_cov, D_inv_B_cross_cov_t_dDiag_D_inv_B_cross_cov, GPU_use);
 										den_mat_t sigma_woodbury_woodbury_grad = sigma_woodbury_grad -
 											D_inv_B_cross_cov_D_inv_B_cross_cov_grad -
 											D_inv_B_cross_cov_D_inv_B_cross_cov_grad.transpose() -
@@ -4458,7 +4518,7 @@ namespace GPBoost {
 											D_inv_B_cross_cov_D_inv_B_cross_grad_cov.transpose() -
 											D_inv_grad_B_cross_cov_D_inv_B_cross_cov -
 											D_inv_grad_B_cross_cov_D_inv_B_cross_cov.transpose() -
-											D_inv_B_cross_cov_.transpose() * (((vec_t)((W_D_inv_inv.array().square() * D_inv_D_grad_D_inv.array()).matrix())).asDiagonal() * D_inv_B_cross_cov_);
+											D_inv_B_cross_cov_t_dDiag_D_inv_B_cross_cov;
 										double tr_PI_P_grad = -(W_D_inv_inv.array() * D_inv_D_grad_D_inv.array()).sum() -
 											(chol_fact_sigma_woodbury.solve(sigma_woodbury_grad)).trace() +
 											(chol_fact_sigma_woodbury_woodbury_.solve(sigma_woodbury_woodbury_grad)).trace();
@@ -4910,7 +4970,8 @@ namespace GPBoost {
 			const chol_den_mat_t chol_fact_sigma_ip,
 			data_size_t cluster_i,
 			REModelTemplate<T_mat, T_chol>* re_model,
-			const std::vector<int>& estimate_cov_par_index) {
+			const std::vector<int>& estimate_cov_par_index,
+			bool GPU_use) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLVecchia(y_data, y_data_int, fixed_effects, B, D_inv, false, Sigma_L_k_, true, mll,
@@ -4952,13 +5013,13 @@ namespace GPBoost {
 					deriv_information_diag_loc_par_all.segment(0, dim_mode_per_set_re_) = deriv_information_diag_loc_par;
 					vec_t d_log_det_Sigma_W_plus_I_d_mode_temp;
 					CalcLogDetStochDerivModeVecchia(deriv_information_diag_loc_par_all, dim_mode_, d_log_det_Sigma_W_plus_I_d_mode_temp, D_inv_plus_W_inv_diag, diag_WI,
-						PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z, re_comps_cross_cov_cluster_i);
+						PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z, re_comps_cross_cov_cluster_i, GPU_use);
 					d_log_det_Sigma_W_plus_I_d_mode = vec_t::Zero(dim_mode_);
 					d_log_det_Sigma_W_plus_I_d_mode.segment(dim_mode_per_set_re_, dim_mode_per_set_re_) = d_log_det_Sigma_W_plus_I_d_mode_temp;
 				}
 				else {
 					CalcLogDetStochDerivModeVecchia(deriv_information_diag_loc_par, dim_mode_, d_log_det_Sigma_W_plus_I_d_mode, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z,
-						WI_WI_plus_Sigma_inv_Z, re_comps_cross_cov_cluster_i);
+						WI_WI_plus_Sigma_inv_Z, re_comps_cross_cov_cluster_i, GPU_use);
 				}
 				//For implicit derivatives: calculate (Sigma^(-1) + W)^(-1) d_mll_d_mode
 				if (grad_information_wrt_mode_non_zero_) {
@@ -4990,9 +5051,14 @@ namespace GPBoost {
 										SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
 									}
 									else {
-										SigmaI_deriv_rm = sp_mat_rm_t(B_grad[0][j].transpose()) * B_t_D_inv_rm_.transpose();
+										//SigmaI_deriv_rm = sp_mat_rm_t(B_grad[0][j].transpose()) * B_t_D_inv_rm_.transpose();
+										sp_mat_rm_t B_t_D_inv_rm_t = sp_mat_rm_t(B_t_D_inv_rm_.transpose());
+										GPBoost::spmatmul(sp_mat_rm_t(B_grad[0][j].transpose()), B_t_D_inv_rm_t, SigmaI_deriv_rm, GPU_use);
 										Bt_Dinv_Bgrad_rm = SigmaI_deriv_rm.transpose();
-										B_t_D_inv_D_grad_D_inv_B_rm = B_t_D_inv_rm_ * sp_mat_rm_t(D_grad[0][j]) * B_t_D_inv_rm_.transpose();
+										//B_t_D_inv_D_grad_D_inv_B_rm = B_t_D_inv_rm_ * sp_mat_rm_t(D_grad[0][j]) * B_t_D_inv_rm_.transpose();
+										sp_mat_rm_t B_t_D_inv_D_grad_D_inv_B_rm_inter;
+										GPBoost::spmatmul(sp_mat_rm_t(D_grad[0][j]), B_t_D_inv_rm_t, B_t_D_inv_D_grad_D_inv_B_rm_inter, GPU_use);
+										GPBoost::spmatmul(B_t_D_inv_rm_, B_t_D_inv_D_grad_D_inv_B_rm_inter, B_t_D_inv_D_grad_D_inv_B_rm, GPU_use);
 										SigmaI_deriv_rm += Bt_Dinv_Bgrad_rm - B_t_D_inv_D_grad_D_inv_B_rm;
 										Bt_Dinv_Bgrad_rm.resize(0, 0);
 									}
@@ -5052,7 +5118,7 @@ namespace GPBoost {
 						vec_t diag_WI_dummy, D_inv_plus_W_inv_dia_dummy;
 						den_mat_t PI_Z_dummy, WI_PI_Z_dummy, WI_WI_plus_Sigma_inv_Z_dummy;
 						CalcLogDetStochDerivModeVecchia(ones, dim_mode_, SigmaI_plus_W_inv_diag, D_inv_plus_W_inv_dia_dummy, diag_WI_dummy, PI_Z_dummy, WI_PI_Z_dummy,
-							WI_WI_plus_Sigma_inv_Z_dummy, re_comps_cross_cov_cluster_i);
+							WI_WI_plus_Sigma_inv_Z_dummy, re_comps_cross_cov_cluster_i, GPU_use);
 					}
 					else {
 						CHECK(num_sets_re_ == 1);
@@ -5345,7 +5411,8 @@ namespace GPBoost {
 			double* aux_par_grad,
 			bool calc_mode,
 			bool call_for_std_dev_coef,
-			const std::vector<int>& estimate_cov_par_index) {
+			const std::vector<int>& estimate_cov_par_index,
+			bool GPU_use) {
 			int num_ip = (int)((*sigma_ip).rows());
 			CHECK((int)((*cross_cov).rows()) == dim_mode_);
 			CHECK((int)((*cross_cov).cols()) == num_ip);
@@ -5353,7 +5420,7 @@ namespace GPBoost {
 			if (calc_mode) {// Calculate mode and Cholesky factor 
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLFITC(y_data, y_data_int, fixed_effects, sigma_ip, chol_fact_sigma_ip,
-					cross_cov, fitc_resid_diag, mll);
+					cross_cov, fitc_resid_diag, mll, GPU_use);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				if (call_for_std_dev_coef) {
@@ -5927,39 +5994,39 @@ namespace GPBoost {
 			pred_mean = vec_t::Zero(num_data_pred);
 			if (!iid_model_) {
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < (int)pred_mean.size(); ++i) {
-					if (random_effects_indices_of_pred[i] >= 0) {
-						pred_mean[i] = mode_[random_effects_indices_of_pred[i]];
-					}
+			for (int i = 0; i < (int)pred_mean.size(); ++i) {
+				if (random_effects_indices_of_pred[i] >= 0) {
+					pred_mean[i] = mode_[random_effects_indices_of_pred[i]];
 				}
-				if (calc_pred_cov || calc_pred_var) {
-					if (use_variance_correction_for_prediction_) {
-						diag_information_variance_correction_for_prediction_ = true;
-						vec_t location_par(num_data_);//location parameter = mode of random effects + fixed effects
-						double* location_par_ptr_dummy;//not used
-						UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
-						CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
-						diag_SigmaI_plus_ZtWZ_ = (information_ll_.array() + 1. / sigma2).matrix();
-						diag_information_variance_correction_for_prediction_ = false;
-					}
-					vec_t minus_diag_Sigma_plus_ZtWZI_inv(dim_mode_);
-					minus_diag_Sigma_plus_ZtWZI_inv.array() = 1. / diag_SigmaI_plus_ZtWZ_.array();
-					minus_diag_Sigma_plus_ZtWZI_inv.array() /= sigma2;
-					minus_diag_Sigma_plus_ZtWZI_inv.array() -= 1.;
-					minus_diag_Sigma_plus_ZtWZI_inv.array() /= sigma2;
-					if (calc_pred_cov) {
-						T_mat Maux = Cross_Cov * minus_diag_Sigma_plus_ZtWZI_inv.asDiagonal() * Cross_Cov.transpose();
-						pred_cov += Maux;
-					}
-					if (calc_pred_var) {
-						double sigma4 = sigma2 * sigma2;
+			}
+			if (calc_pred_cov || calc_pred_var) {
+				if (use_variance_correction_for_prediction_) {
+					diag_information_variance_correction_for_prediction_ = true;
+					vec_t location_par(num_data_);//location parameter = mode of random effects + fixed effects
+					double* location_par_ptr_dummy;//not used
+					UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
+					CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
+					diag_SigmaI_plus_ZtWZ_ = (information_ll_.array() + 1. / sigma2).matrix();
+					diag_information_variance_correction_for_prediction_ = false;
+				}
+				vec_t minus_diag_Sigma_plus_ZtWZI_inv(dim_mode_);
+				minus_diag_Sigma_plus_ZtWZI_inv.array() = 1. / diag_SigmaI_plus_ZtWZ_.array();
+				minus_diag_Sigma_plus_ZtWZI_inv.array() /= sigma2;
+				minus_diag_Sigma_plus_ZtWZI_inv.array() -= 1.;
+				minus_diag_Sigma_plus_ZtWZI_inv.array() /= sigma2;
+				if (calc_pred_cov) {
+					T_mat Maux = Cross_Cov * minus_diag_Sigma_plus_ZtWZI_inv.asDiagonal() * Cross_Cov.transpose();
+					pred_cov += Maux;
+				}
+				if (calc_pred_var) {
+					double sigma4 = sigma2 * sigma2;
 #pragma omp parallel for schedule(static)
-						for (int i = 0; i < (int)pred_mean.size(); ++i) {
-							if (random_effects_indices_of_pred[i] >= 0) {
-								pred_var[i] += sigma4 * minus_diag_Sigma_plus_ZtWZI_inv[random_effects_indices_of_pred[i]];
-							}
+					for (int i = 0; i < (int)pred_mean.size(); ++i) {
+						if (random_effects_indices_of_pred[i] >= 0) {
+							pred_var[i] += sigma4 * minus_diag_Sigma_plus_ZtWZI_inv[random_effects_indices_of_pred[i]];
 						}
 					}
+				}
 				}//end calc_pred_cov || calc_pred_var
 			}//end !iid_model_)
 		}//end PredictLaplaceApproxOnlyOneGroupedRECalculationsOnREScale
@@ -6017,14 +6084,15 @@ namespace GPBoost {
 			bool calc_pred_cov,
 			bool calc_pred_var,
 			bool calc_mode,
-			bool CondObsOnly) {
+			bool CondObsOnly,
+			bool GPU_use) {
 			const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLFSVA(y_data, y_data_int, fixed_effects, *sigma_ip, chol_fact_sigma_ip,
 					chol_fact_sigma_woodbury, chol_ip_cross_cov, re_comps_cross_cov_cluster_i, sigma_woodbury, B, D_inv, Bt_D_inv_B_cross_cov,
 					D_inv_B_cross_cov, false, false, mll, re_comps_ip_preconditioner_cluster_i, re_comps_cross_cov_preconditioner_cluster_i,
-					chol_ip_cross_cov_preconditioner, chol_fact_sigma_ip_preconditioner);
+					chol_ip_cross_cov_preconditioner, chol_fact_sigma_ip_preconditioner, GPU_use);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				Log::REFatal(NA_OR_INF_ERROR_);
@@ -6052,8 +6120,9 @@ namespace GPBoost {
 				}
 				den_mat_t chol_ip_cross_cov_pred;
 				den_mat_t sigma_ip_inv_sigma_cross_cov_pred = chol_fact_sigma_ip.solve(cross_cov_pred_ip.transpose());
-				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip,
-					cross_cov_pred_ip.transpose(), chol_ip_cross_cov_pred, false);
+				//TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip,
+				//	cross_cov_pred_ip.transpose(), chol_ip_cross_cov_pred, false);
+				GPBoost::solve_lower_triangular(chol_fact_sigma_ip, cross_cov_pred_ip.transpose(), chol_ip_cross_cov_pred, GPU_use);
 				sp_mat_rm_t Bpo_rm = sp_mat_rm_t(Bpo);
 				sp_mat_t Bp_inv_Dp;
 				sp_mat_t Bp_inv(Bp.rows(), Bp.cols());
@@ -6859,11 +6928,11 @@ namespace GPBoost {
 			SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
 			rand_vec_sim_post_calculated_ = true;
 		}//end Sample_Posterior_LaplaceApprox_OnlyOneGroupedRE
-		
+
 		/*!
 		* \brief Sampling from the Laplace-approximated posterior when using a Vecchia approximation
 		*/
-		void Sample_Posterior_LaplaceApprox_Vecchia(const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) {			
+		void Sample_Posterior_LaplaceApprox_Vecchia(const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) {
 			CHECK(num_sets_re_ == 1);
 			//sample iid normal random vectors
 			if (!sampled_rand_vec_I_sim_post_) {
@@ -6882,7 +6951,7 @@ namespace GPBoost {
 			CHECK(rand_vec_I_sim_post_.rows() == dim_mode_);
 			CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
 			CHECK(rand_vec_sim_post_.rows() == dim_mode_);
-			if (matrix_inversion_method_ == "cholesky") {				
+			if (matrix_inversion_method_ == "cholesky") {
 				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_I_sim_post_, rand_vec_sim_post_, false);
 			}
 			else if (matrix_inversion_method_ == "iterative") {
@@ -7100,11 +7169,12 @@ namespace GPBoost {
 			vec_t& pred_var,
 			bool calc_pred_cov,
 			bool calc_pred_var,
-			bool calc_mode) {
+			bool calc_mode,
+			bool GPU_use) {
 			if (calc_mode) {// Calculate mode and Cholesky factor 
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 				FindModePostRandEffCalcMLLFITC(y_data, y_data_int, fixed_effects, sigma_ip, chol_fact_sigma_ip,
-					cross_cov, fitc_resid_diag, mll);
+					cross_cov, fitc_resid_diag, mll, GPU_use);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				Log::REFatal(NA_OR_INF_ERROR_);
@@ -7613,7 +7683,7 @@ namespace GPBoost {
 						//const double var_of_mean = (std::exp(v) - 1.0) * std::exp(2.0 * m + v);
 						//const double mean_of_var = (exp_s2 - 1.0) * std::exp(2.0 * m + 2.0 * v);
 						pred_var[i] = var_of_mean + mean_of_var;
-					}					
+					}
 				}
 			}//end "lognormal"
 			else if (likelihood_type_ == "beta_binomial") {
@@ -7782,7 +7852,7 @@ namespace GPBoost {
 		* \brief Adaptive GH quadrature to calculate predictive mean of response variable
 		* \param latent_mean Predictive mean of latent random effects
 		* \param latent_var Predictive variances of latent random effects
-		* \param second_moment If true, the second moment E( E(yp|bp)^2 | y) is calculated 
+		* \param second_moment If true, the second moment E( E(yp|bp)^2 | y) is calculated
 		*/
 		double RespMeanAdaptiveGHQuadrature(const double latent_mean,
 			const double latent_var,
@@ -7928,7 +7998,7 @@ namespace GPBoost {
 			else if (likelihood == string_t("beta-binomial") || likelihood == string_t("betabinomial")) {
 				return "beta_binomial";
 			}
-			else if (likelihood == string_t("gamma_zero_inflated") || likelihood == string_t("gamma-zero-inflated") || 
+			else if (likelihood == string_t("gamma_zero_inflated") || likelihood == string_t("gamma-zero-inflated") ||
 				likelihood == string_t("zero-inflated-gamma")) {
 				return "zero_inflated_gamma";
 			}
@@ -8089,8 +8159,8 @@ namespace GPBoost {
 				}
 				else if (mu >= 1. + aux_pars_[1]) {
 					return 1.;
-				}
-				else {
+			}
+			else {
 					return mu - aux_pars_[1];
 				}
 			}//end "zero_one_censored_shifted_gamma"
@@ -8274,7 +8344,7 @@ namespace GPBoost {
 						if (y_data[i] > 0.0) w_pos += w;
 						else                 w_zero += w;
 					}
-					log_normalizing_constant_ = w_zero * std::log(1.0 - q) + w_pos * (log_q + aux_pars_[0] * std::log(aux_pars_[0] * q) - std::lgamma(aux_pars_[0])) + 
+					log_normalizing_constant_ = w_zero * std::log(1.0 - q) + w_pos * (log_q + aux_pars_[0] * std::log(aux_pars_[0] * q) - std::lgamma(aux_pars_[0])) +
 						(aux_pars_[0] - 1.0) * aux_log_normalizing_constant_;
 				}
 				else if (likelihood_type_ == "zero_censored_power_transformed_normal") {
@@ -8285,7 +8355,7 @@ namespace GPBoost {
 							const double w = has_weights_ ? weights_[i] : 1.0;
 							w_pos += w;
 						}
-					}					
+					}
 					log_normalizing_constant_ = w_pos * (-std::log(aux_pars_[1]) - std::log(aux_pars_[0]) - M_LOGSQRT2PI);// Per positive y: -log(lambda) -log(sigma) - 0.5*log(2*pi)
 					log_normalizing_constant_ += ((1.0 / aux_pars_[1]) - 1.0) * aux_log_normalizing_constant_;// Add the Jacobian term: (1/lambda - 1) * sum_{y>0} w * log(y)
 				}
@@ -8624,7 +8694,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") {
 				return LogLikZeroOneCensGamma(y_data, location_par, true);
 			}
-			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || 
+			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 				likelihood_type_ == "beta_binomial") {
 				Log::REFatal("LogLikelihoodOneSample: not implemented for likelihood = '%s'. If this error happened during the GPBoost algorithm, use another 'metric' instead of the (default) 'test_neg_log_likelihood' metric ", likelihood_type_.c_str());
 				return(0.);
@@ -8651,7 +8721,7 @@ namespace GPBoost {
 		}
 
 		template <typename T>
-		inline double LogLikBernoulliLogit(T y, double location_par) const {			
+		inline double LogLikBernoulliLogit(T y, double location_par) const {
 			return static_cast<double>(y) * location_par - GPBoost::softplus(location_par);
 			// Alternative version (less numerically stable for large location_par
 			//return (y * location_par - std::log(1.0 + std::exp(location_par)));
@@ -8788,7 +8858,7 @@ namespace GPBoost {
 
 		inline double LogLikZeroCensPowNorm(double y, double location_par, bool incl_norm_const) const {
 			const double sigma = aux_pars_[0];
-			if (y <= 0.0) {				
+			if (y <= 0.0) {
 				const double a0 = -location_par / sigma;
 				return GPBoost::normalLogCDF(a0);// log Phi(a0)
 			}
@@ -9124,7 +9194,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") {
 				return FirstDerivLogLikZeroOneCensGamma(y_data, location_par);
 			}
-			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || 
+			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 				likelihood_type_ == "beta_binomial") {
 				Log::REFatal("CalcFirstDerivLogLikOneSample: not implemented for likelihood = '%s'. If this error happened during the GPBoost algorithm, use another 'metric' instead of the (default) 'test_neg_log_likelihood' metric ", likelihood_type_.c_str());
 				return(0.);
@@ -9235,7 +9305,7 @@ namespace GPBoost {
 				const double a0 = -location_par / sigma;
 				return -(1.0 / sigma) * GPBoost::InvMillsRatioNormalPhi(a0);
 			}
-			else {				
+			else {
 				const double lambda = aux_pars_[1];
 				const double u = std::exp((1.0 / lambda) * std::log(y));
 				const double z = (u - location_par) / sigma;
@@ -9785,7 +9855,7 @@ namespace GPBoost {
 				}
 				else if (likelihood_type_ == "lognormal") {
 					return(SecondDerivNegLogLikLogNormal());
-				}				
+				}
 				else {
 					Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
 						likelihood_type_.c_str(), approximation_type_.c_str());
@@ -10123,7 +10193,7 @@ namespace GPBoost {
 						// Alternatice version (less numerically stable)
 						//const double exp_loc_i = std::exp(location_par[i]);
 						//deriv_information_diag_loc_par[i] = w * exp_loc_i * (1. - exp_loc_i) / std::pow(1 + exp_loc_i, 3);
-						
+
 					}
 				}
 				else if (likelihood_type_ == "binomial_probit") {
@@ -10143,7 +10213,7 @@ namespace GPBoost {
 						else {
 							const double pdf_div_cdf = GPBoost::InvMillsRatioNormalPhi(x);//phi(x) / Phi(x)
 							const double pdf_div_omcdf = GPBoost::InvMillsRatioNormalOneMinusPhi(x);//phi(x) / (1 - Phi(x))
-							deriv_information_diag_loc_par[i] = w * (y_data[i] * (-pdf_div_cdf * (x2 - 1.0 + pdf_div_cdf * (3.0 * x + 2.0 * pdf_div_cdf))) + 
+							deriv_information_diag_loc_par[i] = w * (y_data[i] * (-pdf_div_cdf * (x2 - 1.0 + pdf_div_cdf * (3.0 * x + 2.0 * pdf_div_cdf))) +
 								(1.0 - y_data[i]) * (-pdf_div_omcdf * (1.0 - x2 + pdf_div_omcdf * (3.0 * x - 2 * pdf_div_omcdf))));
 						}
 					}
@@ -10305,7 +10375,7 @@ namespace GPBoost {
 							const double term = 1.0 - v * v + 3.0 * v * r2 - 2.0 * r2 * r2;
 							deriv_information_diag_loc_par[i] = w * (r2 / (s * s * s)) * term;
 						}
-						else {							
+						else {
 							deriv_information_diag_loc_par[i] = 0.0;// 0 < y < 1: info(mu) = 1/s^2 (constant in mu) -> derivative 0
 						}
 					}
@@ -10335,8 +10405,8 @@ namespace GPBoost {
 						const double tiny = 1e-300;
 						if (yi <= 0.0) {
 							if (xi <= 0.0) {
-								deriv_information_diag_loc_par[i] = 0.0;
-							}
+							deriv_information_diag_loc_par[i] = 0.0;
+						}
 							else {
 								const double a = xi;
 								const double t = std::max(tiny, (k * a) / std::max(mu, 1e-12));
@@ -10349,7 +10419,7 @@ namespace GPBoost {
 								const double dIdt = (2.0 * t - k) * Q + 2.0 * t * Q * Q + Qprime * (t * (t - k) + 2.0 * t * t * Q);
 								const double dIdmu = -(a * k / (mu * mu)) * dIdt;  // dt/dmu = -(k*a)/mu^2
 								deriv_information_diag_loc_par[i] = w * (mu * dIdmu); // dI/deta = mu * dI/dmu
-							}
+					}
 						}
 						else if (yi >= 1.0) {
 							const double a = 1.0 + xi;
@@ -10572,7 +10642,7 @@ namespace GPBoost {
 						Wzero += w;
 					}
 				}
-				double neg_log_grad_gamma = sum_for_gamma - Wpos * (std::log(aux_pars_[0]) + 1. - GPBoost::digamma(aux_pars_[0]) + std::log(q)) - 
+				double neg_log_grad_gamma = sum_for_gamma - Wpos * (std::log(aux_pars_[0]) + 1. - GPBoost::digamma(aux_pars_[0]) + std::log(q)) -
 					aux_log_normalizing_constant_;
 				grad[0] = neg_log_grad_gamma * aux_pars_[0];//grad on log(gamma)
 				// grad on log r
@@ -10987,7 +11057,7 @@ namespace GPBoost {
 						if (yi <= 0.0) {
 							const double a0 = -mu / s;
 							const double r = GPBoost::InvMillsRatioNormalPhi(a0);
-							if (ind_aux_par == 0) {								
+							if (ind_aux_par == 0) {
 								sdl = r * (1.0 + ((a0 + r) * mu) / s) / s;// d^2/dmu d log(sigma) log f at y=0 								
 								dinfo = r * ((mu * (1.0 - (a0 + r) * (a0 + 2.0 * r))) / (s * s * s)
 									- 2.0 * (a0 + r) / (s * s));// d/d log(sigma) of info(mu) = (1/s^2)*r*(a0 + r)  = r * [ mu * (1 - (a0 + r)*(a0 + 2r)) / s^3 - 2*(a0 + r) / s^2 ]
@@ -11317,12 +11387,12 @@ namespace GPBoost {
 			else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit") {
 				return GPBoost::normalCDF(value);
 			}
-			else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" || 
+			else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" ||
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial") {
 				return GPBoost::sigmoid_stable(value);
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return std::exp(value);
 			}
@@ -11337,12 +11407,12 @@ namespace GPBoost {
 		*           Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
 		*/
 		inline double FirstDerivLogCondMeanLikelihood(const double value) const {
-			if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" || 
+			if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" ||
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial") {
 				return GPBoost::sigmoid_stable(-value);
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return 1.;
 			}
@@ -11360,7 +11430,7 @@ namespace GPBoost {
 		*           Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
 		*/
 		inline double SecondDerivLogCondMeanLikelihood(const double value) const {
-			if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" || 
+			if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" ||
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial") {
 				const double p = GPBoost::sigmoid_stable(value);
 				return -p * (1.0 - p);
@@ -11369,7 +11439,7 @@ namespace GPBoost {
 				//return -exp_x / ((1. + exp_x) * (1. + exp_x));
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
-				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || 
+				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return 0.;
 			}
@@ -11387,8 +11457,8 @@ namespace GPBoost {
 		*           Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable
 		*/
 		inline double CondVarLikelihood(const double value) const {
-			 if (likelihood_type_ == "beta") {
-				 double exp_min_val = std::exp(-value);
+			if (likelihood_type_ == "beta") {
+				double exp_min_val = std::exp(-value);
 				 return exp_min_val / ((1. + exp_min_val) * (1. + exp_min_val)) / ( 1. + aux_pars_[0]);
 			}
 			else {
@@ -11425,7 +11495,7 @@ namespace GPBoost {
 				return 0.;
 			}
 		}
-		
+
 		// Gauss-Hermite quadrature for computing E[f(Z)] with Z~N(0,1): 
 		//		E[f(Z)] = (1/sqrt(pi)) * sum_j w_j * f(sqrt(2) * x_j), F(Z) = (max(0, m + s * Z))^lambda
 		//		This is used for the prediction of the response variable
@@ -11979,7 +12049,7 @@ namespace GPBoost {
 			den_mat_t d1{};
 			sp_mat_t  d2{}, d3{}, d4{};
 			REModelTemplate<T_mat, T_chol>* model = nullptr;
-			Inv_SigmaI_plus_ZtWZ_Vecchia_iterative(cg_max_num_it, d1, d2, d3, d4, has_NA_or_Inf, 
+			Inv_SigmaI_plus_ZtWZ_Vecchia_iterative(cg_max_num_it, d1, d2, d3, d4, has_NA_or_Inf,
 				re_comps_cross_cov_cluster_i, 0, model, rhs, SigmaI_plus_ZtWZ_inv_rhs, initialize_to_zero, false);
 		}//end Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC
 
@@ -12160,7 +12230,8 @@ namespace GPBoost {
 			den_mat_t& PI_Z,
 			den_mat_t& WI_PI_Z,
 			den_mat_t& WI_WI_plus_Sigma_inv_Z,
-			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) const {
+			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
+			bool GPU_use) const {
 			den_mat_t Z_PI_P_deriv_PI_Z;
 			vec_t tr_PI_P_deriv_vec, c_opt;
 			den_mat_t W_deriv_rep;
@@ -12237,7 +12308,8 @@ namespace GPBoost {
 						vec_t tr_WI_DI_WI_W_deriv = diag_WI.cwiseProduct(tr_WI_W_deriv.cwiseProduct(diagonal_approx_inv_preconditioner_));
 						vec_t tr_WI_DI_WI_DI_W_deriv = diagonal_approx_inv_preconditioner_.cwiseProduct(tr_WI_DI_WI_W_deriv);
 						den_mat_t chol_wood_cross_cov((*cross_cov).cols(), num_data);
-						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_woodbury_preconditioner_, (*cross_cov).transpose(), chol_wood_cross_cov, false);
+						//TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_woodbury_preconditioner_, (*cross_cov).transpose(), chol_wood_cross_cov, false);
+						GPBoost::solve_lower_triangular(chol_fact_woodbury_preconditioner_, (*cross_cov).transpose(), chol_wood_cross_cov, GPU_use);
 						vec_t tr_WI_PI_WI_W_deriv(num_data);
 #pragma omp parallel for schedule(static)  
 						for (int i = 0; i < num_data; ++i) {
@@ -12582,7 +12654,7 @@ namespace GPBoost {
 		string_t likelihood_type_ = "gaussian";
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit",
-			"poisson", "gamma", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "lognormal", "beta_binomial", 
+			"poisson", "gamma", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "lognormal", "beta_binomial",
 			"zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma" };
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> LIKELIHOODS_ONLY_LAPLACE_{ "binomial_probit", "binomial_logit", "gamma", "negative_binomial", "negative_binomial_1", 

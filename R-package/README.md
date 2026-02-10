@@ -119,6 +119,38 @@ The `build_r.R` script builds the package in a temporary directory called `gpboo
 
 Note: for the build with Visual Studio/VS Build Tools in Windows, you should use the Windows CMD or PowerShell.
 
+### Build CUDA Version
+
+GPBoost can optionally be built with CUDA support for the Gaussian process (GP) component. CUDA support must be enabled at compile time and requires a working NVIDIA CUDA toolchain.
+
+#### Environment setup (recommended)
+
+Example (Linux):
+
+```bash
+export CUDA_HOME=/usr/local/cuda
+export PATH=$CUDA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=$CUDA_HOME/lib64:$LD_LIBRARY_PATH
+```
+
+If CUDA is installed in a non-standard location:
+
+```bash
+export CUDAToolkit_ROOT=/path/to/cuda
+```
+
+#### Build
+
+```sh
+git clone --recursive https://github.com/fabsig/GPBoost
+cd GPBoost
+Rscript build_r.R --use-cudagp
+```
+
+For **macOS** and **Windows** users, the CUDA version is not supported.
+
+**CUDA** library is needed: details for installation can be found in [Installation Guide](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst#Build-CUDA-Version).
+
 ## Testing
 
 There is currently no integration service set up that automatically runs unit tests. However, any contribution needs to pass all unit tests in the `R-package/tests/testthat` directory. These tests can be run using the [run_tests_coverage_R_package.R](https://github.com/fabsig/GPBoost/blob/master/helpers/run_tests_coverage_R_package.R) file. In any case, make sure that you run the full set of tests by speciying the following environment variable

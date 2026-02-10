@@ -4071,6 +4071,7 @@ class GPModel(object):
                  cov_fct_shape=1.5,
                  gp_approx="none",
                  num_parallel_threads=None,
+                 GPU_use=False,
                  matrix_inversion_method="default",
                  weights=None,
                  likelihood_learning_rate = 1.,
@@ -4312,6 +4313,8 @@ class GPModel(object):
 
             num_parallel_threads : integer, optional (default=None)
                 The number of parallel threads for OMP. If num_parallel_threads=None, all available threads are used
+            GPU_use : bool, optional (default=False). 
+                If TRUE, GPU acceleration will be used if supported.
             matrix_inversion_method : string, optional (default="default")
                 Method used for inverting covariance matrices. Available options:
 
@@ -4471,6 +4474,7 @@ class GPModel(object):
         self.cov_fct_shape = 1.5
         self.gp_approx = "none"
         self.num_parallel_threads = -1
+        self.GPU_use=False
         self.cov_fct_taper_range = 1.
         self.cov_fct_taper_shape = 1.
         self.num_neighbors = -1
@@ -4562,6 +4566,7 @@ class GPModel(object):
             ind_points_selection = model_dict.get("ind_points_selection")
             seed = model_dict.get("seed")
             num_parallel_threads = model_dict.get("num_parallel_threads")
+            GPU_use = model_dict.get("GPU_use")
             if model_dict.get("cluster_ids") is not None:
                 cluster_ids = np.array(model_dict.get("cluster_ids"))
             likelihood = model_dict.get("likelihood")
@@ -4629,6 +4634,10 @@ class GPModel(object):
         if num_parallel_threads is not None:
             if num_parallel_threads > 0:
                 self.num_parallel_threads = num_parallel_threads
+        if GPU_use is None:
+          self.GPU_use = False
+        else: 
+          self.GPU_use = GPU_use
         self.likelihood_additional_param = likelihood_additional_param
         # Define default NULL values for calling C function
         group_data_c = None # ctypes.c_void_p()
@@ -4933,6 +4942,7 @@ class GPModel(object):
             mim_c,
             ctypes.c_int(self.seed),
             ctypes.c_int(self.num_parallel_threads),
+            ctypes.c_bool(self.GPU_use),
             ctypes.c_bool(self.has_weights),
             weights_c,
             ctypes.c_double(self.likelihood_learning_rate),
@@ -6487,6 +6497,7 @@ class GPModel(object):
         model_dict["ind_points_selection"] = self.ind_points_selection
         model_dict["seed"] = self.seed
         model_dict["num_parallel_threads"] = self.num_parallel_threads
+        model_dict["GPU_use"] = self.GPU_use
         model_dict["num_sets_re"] = self.num_sets_re
         model_dict["num_sets_fe"] = self.num_sets_fe
         # Covariate data

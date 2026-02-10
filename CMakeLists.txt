@@ -5,6 +5,7 @@ OPTION(USE_SWIG "Enable SWIG to generate Java API" OFF)
 OPTION(USE_HDFS "Enable HDFS support (EXPERIMENTAL)" OFF)
 OPTION(USE_TIMETAG "Set to ON to output time costs" OFF)
 OPTION(USE_CUDA "Enable CUDA-accelerated training (EXPERIMENTAL)" OFF)
+option(USE_CUDA_GP "Enable CUDA-accelerated training for Gaussian Process parts" OFF)
 OPTION(USE_DEBUG "Set to ON for Debug mode" OFF)
 OPTION(BUILD_STATIC_LIB "Build static library" OFF)
 OPTION(__BUILD_FOR_R "Set to ON if building lib_gpboost for use with the R package" OFF)
@@ -139,6 +140,12 @@ if(USE_CUDA)
     SET(USE_OPENMP ON CACHE BOOL "CUDA requires OpenMP" FORCE)
 endif(USE_CUDA)
 
+if(USE_CUDA_GP)
+    set(CMAKE_CUDA_HOST_COMPILER "${CMAKE_CXX_COMPILER}")
+    enable_language(CUDA)
+    set(USE_OPENMP ON CACHE BOOL "CUDA requires OpenMP" FORCE)
+endif(USE_CUDA_GP)
+
 if(USE_OPENMP)
     find_package(OpenMP REQUIRED)
     if(APPLE)
@@ -249,6 +256,53 @@ if(USE_CUDA)
       add_histogram("${hsize}" "-fulldata_sp" "True" "0" "${FULLDATA_DEFINES}")
     endforeach()
 endif(USE_CUDA)
+
+if(USE_CUDA_GP)
+    find_package(CUDAToolkit 11.0 REQUIRED)
+    #find_library(CUBLAS_LIBRARY cublas HINTS ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
+    #find_library(CUSOLVER_LIBRARY cusolver HINTS ${CUDA_TOOLKIT_ROOT_DIR}/lib64)
+    #include_directories(${CUDAToolkit_INCLUDE_DIRS})
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xcompiler=${OpenMP_CXX_FLAGS} -Xcompiler=-fPIC -Xcompiler=-Wall")
+
+    # reference for mapping of CUDA toolkit component versions to supported architectures ("compute capabilities"):
+    # https://en.wikipedia.org/wiki/CUDA#GPUs_supported
+    set(CUDA_ARCHS "80")
+    if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.0")
+        list(APPEND CUDA_ARCHS "80")
+    endif()
+    if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.1")
+        list(APPEND CUDA_ARCHS "86")
+    endif()
+    if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.5")
+        list(APPEND CUDA_ARCHS "87")
+    endif()
+    if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "11.8")
+        list(APPEND CUDA_ARCHS "89")
+        list(APPEND CUDA_ARCHS "90")
+    endif()
+    if(CUDAToolkit_VERSION VERSION_GREATER_EQUAL "12.8")
+        list(APPEND CUDA_ARCHS "100")
+        list(APPEND CUDA_ARCHS "120")
+    endif()
+    # Generate PTX for the most recent architecture for forwards compatibility
+    list(POP_BACK CUDA_ARCHS CUDA_LAST_SUPPORTED_ARCH)
+    list(TRANSFORM CUDA_ARCHS APPEND "-real")
+    list(APPEND CUDA_ARCHS "${CUDA_LAST_SUPPORTED_ARCH}-real" "${CUDA_LAST_SUPPORTED_ARCH}-virtual")
+    message(STATUS "CUDA_ARCHITECTURES: ${CUDA_ARCHS}")
+    if(USE_DEBUG)
+      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -g")
+    else()
+      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -O3 -lineinfo")
+    endif()
+    message(STATUS "CMAKE_CUDA_FLAGS: ${CMAKE_CUDA_FLAGS}")
+
+    add_definitions(-DUSE_CUDA_GP)
+
+    if(NOT DEFINED CMAKE_CUDA_STANDARD)
+      set(CMAKE_CUDA_STANDARD 11)
+      set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    endif()
+endif(USE_CUDA_GP)
 
 if(USE_HDFS)
     find_package(JNI REQUIRED)
@@ -379,6 +433,9 @@ file(GLOB SOURCES
 if(USE_CUDA)
     src/LightGBM/treelearner/*.cu
 endif(USE_CUDA)
+if(USE_CUDA_GP)
+    src/GPBoost/*.cu
+endif(USE_CUDA_GP)
 )
 
 add_executable(gpboost src/LightGBM/main.cpp src/LightGBM/application/application.cpp ${SOURCES})
@@ -479,6 +536,32 @@ if(USE_CUDA)
     ${histograms}
   )
 endif(USE_CUDA)
+
+if(USE_CUDA_GP)
+
+  set_target_properties(
+    gpboost
+    PROPERTIES
+      CUDA_ARCHITECTURES "${CUDA_ARCHS}"
+      CUDA_SEPARABLE_COMPILATION ON
+  )
+
+  set_target_properties(
+    _gpboost
+    PROPERTIES
+      CUDA_ARCHITECTURES "${CUDA_ARCHS}"
+      CUDA_RESOLVE_DEVICE_SYMBOLS ON
+  )
+
+  TARGET_LINK_LIBRARIES(
+    _gpboost
+    CUDA::cudart
+    CUDA::cublas
+    CUDA::cusparse
+    CUDA::cusolver
+  )
+
+endif(USE_CUDA_GP)
 
 if(USE_HDFS)
   TARGET_LINK_LIBRARIES(gpboost ${HDFS_CXX_LIBRARIES})

@@ -37,6 +37,7 @@ TEMP_SOURCE_DIR <- file.path(TEMP_R_DIR, "src")
 parsed_args <- .parse_args(args)
 
 USING_GPU <- "--use-gpu" %in% parsed_args[["flags"]]
+USING_CUDA_GP <- "--use-cudagp" %in% parsed_args[["flags"]]
 USING_MINGW <- "--use-mingw" %in% parsed_args[["flags"]]
 USING_MSYS2 <- "--use-msys2" %in% parsed_args[["flags"]]
 
@@ -53,6 +54,7 @@ ARGS_TO_DEFINES <- c(
 recognized_args <- c(
   "--skip-install"
   , "--use-gpu"
+  , "--use-cudagp"
   , "--use-mingw"
   , "--use-msys2"
   , names(ARGS_TO_DEFINES)
@@ -85,6 +87,7 @@ install_libs_content <- readLines(
   file.path("R-package", "src", "install.libs.R")
 )
 install_libs_content <- .replace_flag("use_gpu", USING_GPU, install_libs_content)
+install_libs_content <- .replace_flag("use_cudagp", USING_CUDA_GP, install_libs_content)
 install_libs_content <- .replace_flag("use_mingw", USING_MINGW, install_libs_content)
 install_libs_content <- .replace_flag("use_msys2", USING_MSYS2, install_libs_content)
 

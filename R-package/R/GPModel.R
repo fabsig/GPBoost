@@ -132,6 +132,7 @@
 #' }
 #' @param num_parallel_threads An \code{integer} specifying the number of parallel threads for OMP. 
 #' If num_parallel_threads = NULL, all available threads are used
+#' @param GPU_use A \code{boolean}. If TRUE, GPU acceleration will be used if supported 
 #' @param cov_fct_taper_range A \code{numeric} specifying the range parameter 
 #' of the Wendland covariance function and Wendland correlation taper function. 
 #' We follow the notation of Bevilacqua et al. (2019, AOS)
@@ -418,6 +419,7 @@ gpb.GPModel <- R6::R6Class(
                           cov_fct_shape = 1.5,
                           gp_approx = "none",
                           num_parallel_threads = NULL,
+                          GPU_use = FALSE,
                           matrix_inversion_method = "default",
                           weights = NULL,
                           likelihood_learning_rate = 1.,
@@ -505,6 +507,7 @@ gpb.GPModel <- R6::R6Class(
         cover_tree_radius = model_list[["cover_tree_radius"]]
         seed = model_list[["seed"]]
         num_parallel_threads = model_list[["num_parallel_threads"]]
+        GPU_use = model_list[["GPU_use"]]
         cluster_ids = model_list[["cluster_ids"]]
         likelihood = model_list[["likelihood"]]
         likelihood_additional_param = model_list[["likelihood_additional_param"]]
@@ -571,6 +574,11 @@ gpb.GPModel <- R6::R6Class(
         if (num_parallel_threads > 0) {
           private$num_parallel_threads <- as.integer(num_parallel_threads)
         }
+      }
+      if (is.null(GPU_use)) {
+          private$GPU_use = FALSE
+      } else {
+          private$GPU_use = GPU_use
       }
       if (is.null(likelihood_additional_param)) {
         private$likelihood_additional_param <- likelihood_additional_param
@@ -978,6 +986,7 @@ gpb.GPModel <- R6::R6Class(
         , private$matrix_inversion_method
         , private$seed
         , private$num_parallel_threads
+        , private$GPU_use
         , private$has_weights
         , private$weights
         , private$likelihood_learning_rate
@@ -2179,6 +2188,7 @@ gpb.GPModel <- R6::R6Class(
       model_list[["ind_points_selection"]] <- private$ind_points_selection
       model_list[["seed"]] <- private$seed
       model_list[["num_parallel_threads"]] <- private$num_parallel_threads
+      model_list[["GPU_use"]] <- private$GPU_use
       model_list[["num_sets_re"]] <- private$num_sets_re
       model_list[["num_sets_fe"]] <- private$num_sets_fe
       # Covariate data
@@ -2343,6 +2353,7 @@ gpb.GPModel <- R6::R6Class(
     weights = NULL,
     likelihood_learning_rate = 1.,
     num_parallel_threads = -1L,
+    GPU_use = FALSE,
     cov_fct_taper_range = 1.,
     cov_fct_taper_shape = 1.,
     num_neighbors = -1L, # default is set in C++
@@ -2607,6 +2618,7 @@ GPModel <- function(likelihood = "gaussian",
                     cov_fct_shape = 1.5,
                     gp_approx = "none",
                     num_parallel_threads = NULL,
+                    GPU_use = FALSE,
                     matrix_inversion_method = "default",
                     weights = NULL,
                     likelihood_learning_rate = 1.,
@@ -2638,6 +2650,7 @@ GPModel <- function(likelihood = "gaussian",
                             , cov_fct_shape = cov_fct_shape
                             , gp_approx = gp_approx
                             , num_parallel_threads = num_parallel_threads
+                            , GPU_use = GPU_use
                             , matrix_inversion_method = matrix_inversion_method
                             , weights = weights
                             , likelihood_learning_rate = likelihood_learning_rate
@@ -2821,6 +2834,7 @@ fitGPModel <- function(likelihood = "gaussian",
                        cov_fct_shape = 1.5,
                        gp_approx = "none",
                        num_parallel_threads = NULL,
+                       GPU_use = FALSE,
                        matrix_inversion_method = "default",
                        weights = NULL,
                        likelihood_learning_rate = 1.,
@@ -2855,6 +2869,7 @@ fitGPModel <- function(likelihood = "gaussian",
                              , cov_fct_shape = cov_fct_shape
                              , gp_approx = gp_approx
                              , num_parallel_threads = num_parallel_threads
+                             , GPU_use = GPU_use
                              , matrix_inversion_method = matrix_inversion_method
                              , weights = weights
                              , likelihood_learning_rate = likelihood_learning_rate

@@ -2610,6 +2610,34 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
     expected_mu <- c(1.979532, 1.836721, 2.405857)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    
+    ##############
+    ## With FITC approximation (space-time separated kMeans++)
+    ##############
+    # Evaluate negative log-likelihood
+    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                        gp_approx = "fitc", ind_points_selection = "space_time_kmeans++", num_ind_points = 30), 
+                    file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+    expect_lt(abs(nll-339.411253590468),TOLERANCE_STRICT)
+    # Fit model
+    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                           gp_approx = "fitc", ind_points_selection = "space_time_kmeans++", num_ind_points = 30,
+                                           y = y, X = X, params = params_ST), 
+                    file='NUL')
+    cov_pars_nn <- c(0.14666538, 0.82530619, 0.02268084, 101.37316301, 0.17523760, 154.00191351, 0.01261858, 18.64147777)
+    coef_nn <- c(1.9194304, 0.1401412, 2.2149501, 0.1364415)
+    nrounds_nn <- 39
+    nll_opt_nn <- 137.073147464373
+    capture.output( expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_nn)),TOLERANCE_LOOSE), file='NUL')
+    capture.output( expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_nn)),TOLERANCE_STRICT), file='NUL')
+    expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), TOLERANCE_STRICT)
+    # Prediction 
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
+    expected_mu <- c(1.919430, 1.751229, 2.389440)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
   })
   
   test_that("ARD Gaussian process model with linear regression term ", {
@@ -3284,6 +3312,49 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-exp_mu_mult)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-exp_cov_mult[c(1,5,9)])),TOLERANCE_STRICT)
   })## end ARD Gaussian process model with linear regression term
-  
+ 
+  test_that("CUDA GPU", {
+    
+    y <- eps + X%*%beta + xi
+    coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+    X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
+    cov_pars_pred <- c(0.1,1,0.1)
+    init_cov_pars <- c(var(y)/2,var(y)/2,mean(dist(coords))/3)
+    params = OPTIM_PARAMS_BFGS
+    params$init_cov_pars <- init_cov_pars
+    
+    # VIF without GPU
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", GPU_use = F,
+                                           gp_approx = "vif_correlation_based",num_ind_points = 50,num_neighbors = 20,
+                                           y = y, X = X,  matrix_inversion_method = "cholesky",
+                                           params = OPTIM_PARAMS_BFGS), file='NUL')
+    cov_pars_without_GPU <- as.vector(gp_model$get_cov_pars(std_err = FALSE))
+    coefs_without_GPU <- as.vector(gp_model$get_coef(std_err = FALSE))
+    NLL_without_GPU <- gp_model$get_current_neg_log_likelihood()
+    Num_optim_iter_without_GPU <- gp_model$get_num_optim_iter()
+    # Prediction 
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
+    pred_mu_without_GPU <- pred$mu
+    pred_var_without_GPU <- as.vector(pred$var)
+    
+    # VIF with GPU
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", GPU_use = T,
+                                           gp_approx = "vif_correlation_based",num_ind_points = 50,num_neighbors = 20,
+                                           y = y, X = X,  matrix_inversion_method = "cholesky",
+                                           params = OPTIM_PARAMS_BFGS), file='NUL')
+    
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE)) - cov_pars_without_GPU)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE)) - coefs_without_GPU)),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - NLL_without_GPU),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), Num_optim_iter_without_GPU)
+    # Prediction 
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu - pred_mu_without_GPU)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var) - pred_var_without_GPU)),TOLERANCE_STRICT)
+    
+  })
+   
 }
 

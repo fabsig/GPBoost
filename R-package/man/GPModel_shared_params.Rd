@@ -142,6 +142,7 @@ for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecch
 
 \item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP. 
 If num_parallel_threads = NULL, all available threads are used}
+\item{GPU_use}{A \code{boolean}. If TRUE, GPU acceleration will be used if supported.}
 
 \item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter 
 of the Wendland covariance function and Wendland correlation taper function. 

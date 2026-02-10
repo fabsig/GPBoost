@@ -1,5 +1,6 @@
 # User options
 use_gpu <- FALSE
+use_cudagp <- FALSE
 
 # For Windows, the package will be built with Visual Studio
 # unless you set one of these to TRUE
@@ -171,6 +172,9 @@ windows_makefile_generator <- WINDOWS_BUILD_TOOLS[[windows_toolchain]][["makefil
 
 if (use_gpu) {
   cmake_args <- c(cmake_args, "-DUSE_GPU=ON")
+}
+if (use_cudagp) {
+  cmake_args <- c(cmake_args, "-DUSE_CUDA_GP=ON")
 }
 cmake_args <- c(cmake_args, "-D__BUILD_FOR_R=ON")
 
