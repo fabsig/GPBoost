@@ -139,8 +139,7 @@ namespace GPBoost {
 					Log::REWarning("CUDA requested but no compatible device found. Falling back to CPU.");
 				}
 #else
-				Log::REWarning("CUDA requested but this build was compiled without CUDA support. "
-					"Falling back to CPU.");
+				Log::REWarning("CUDA requested but this build was compiled without CUDA support. Falling back to CPU.");
 #endif
 			}
 			GPU_use_ = can_use_cuda;

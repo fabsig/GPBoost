@@ -306,7 +306,7 @@ namespace GPBoost {
         // final safety check: even one warp must fit in shared memory
         size_t shmem_size = shmemNeededForThreads(threads);
 
-        Log::REInfo("Launch %i %i %i", blocks, threads, shmem_size);
+        Log::REDebug("Launch %i %i %i", blocks, threads, shmem_size);
         knn_bruteforce_kernel << <blocks, threads, shmem_size >> > (
             num_data, dim_coords, num_neighbors,
             d_coords, d_corr_diag, d_chol_ip_cross_cov, d_pars,
