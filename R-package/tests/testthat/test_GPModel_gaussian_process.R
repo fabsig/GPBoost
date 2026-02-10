@@ -3312,6 +3312,49 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-exp_mu_mult)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-exp_cov_mult[c(1,5,9)])),TOLERANCE_STRICT)
   })## end ARD Gaussian process model with linear regression term
-  
+ 
+  test_that("CUDA GPU", {
+    
+    y <- eps + X%*%beta + xi
+    coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+    X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
+    cov_pars_pred <- c(0.1,1,0.1)
+    init_cov_pars <- c(var(y)/2,var(y)/2,mean(dist(coords))/3)
+    params = OPTIM_PARAMS_BFGS
+    params$init_cov_pars <- init_cov_pars
+    
+    # VIF without GPU
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", GPU_use = F,
+                                           gp_approx = "vif_correlation_based",num_ind_points = 50,num_neighbors = 20,
+                                           y = y, X = X,  matrix_inversion_method = "cholesky",
+                                           params = OPTIM_PARAMS_BFGS), file='NUL')
+    cov_pars_without_GPU <- as.vector(gp_model$get_cov_pars(std_err = FALSE))
+    coefs_without_GPU <- as.vector(gp_model$get_coef(std_err = FALSE))
+    NLL_without_GPU <- gp_model$get_current_neg_log_likelihood()
+    Num_optim_iter_without_GPU <- gp_model$get_num_optim_iter()
+    # Prediction 
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
+    pred_mu_without_GPU <- pred$mu
+    pred_var_without_GPU <- as.vector(pred$var)
+    
+    # VIF with GPU
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", GPU_use = T,
+                                           gp_approx = "vif_correlation_based",num_ind_points = 50,num_neighbors = 20,
+                                           y = y, X = X,  matrix_inversion_method = "cholesky",
+                                           params = OPTIM_PARAMS_BFGS), file='NUL')
+    
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE)) - cov_pars_without_GPU)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE)) - coefs_without_GPU)),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - NLL_without_GPU),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), Num_optim_iter_without_GPU)
+    # Prediction 
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu - pred_mu_without_GPU)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var) - pred_var_without_GPU)),TOLERANCE_STRICT)
+    
+  })
+   
 }
 
