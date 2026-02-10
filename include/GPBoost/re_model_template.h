@@ -133,14 +133,10 @@ namespace GPBoost {
 
 				if (err == cudaSuccess && device_count > 0) {
 					can_use_cuda = true;
-					Log::REInfo("CUDA device detected ({} device(s)). "
-						"GPU acceleration will be used where supported.",
-						device_count);
+					Log::REInfo("CUDA device detected (%i device(s)). GPU acceleration will be used where supported.",device_count);
 				}
 				else {
-					Log::REWarning("CUDA requested but no compatible device found "
-						"(error: {}). Falling back to CPU.",
-						cudaGetErrorString(err));
+					Log::REWarning("CUDA requested but no compatible device found. Falling back to CPU.");
 				}
 #else
 				Log::REWarning("CUDA requested but this build was compiled without CUDA support. "
