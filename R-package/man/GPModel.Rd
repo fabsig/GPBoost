@@ -147,7 +147,8 @@ for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecch
 
 \item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP. 
 If num_parallel_threads = NULL, all available threads are used}
-\item{GPU_use}{A \code{boolean}. If TRUE, GPU acceleration will be used if supported.}
+
+\item{GPU_use}{A \code{boolean}. If TRUE, GPU acceleration will be used if supported}
 
 \item{matrix_inversion_method}{A \code{string} specifying the method used for inverting covariance matrices. 
 Available options:

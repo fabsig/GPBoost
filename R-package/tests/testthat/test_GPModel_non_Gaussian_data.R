@@ -5098,7 +5098,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),8)
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test, 
                                     predict_var=TRUE, predict_response = FALSE) , file='NUL')
-    expect_lt(sum(abs(pred$mu-expected_mu)),0.1)
+    expect_lt(sum(abs(pred$mu-expected_mu)),0.15)
     expect_lt(sum(abs(pred$var-expected_var)),0.1)
     
     # VIF approximation

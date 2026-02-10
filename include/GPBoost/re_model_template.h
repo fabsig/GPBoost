@@ -5487,7 +5487,7 @@ namespace GPBoost {
 		/*! \brief List of supported options for orderings of the Vecchia approximation */
 		const std::set<string_t> SUPPORTED_VECCHIA_ORDERING_{ "none", "random", "time", "time_random_space" };
 		/*! \brief The way how neighbors are selected */
-		string_t vecchia_neighbor_selection_ = "nearest";
+		string_t vecchia_neighbor_selection_ = "nearest";//"nearest", "correlation", "residual_correlation"
 		/*! \brief The number of neighbors used in the Vecchia approximation for making predictions */
 		int num_neighbors_pred_;
 		/*!
@@ -5531,7 +5531,7 @@ namespace GPBoost {
 		bool vecchia_pred_type_has_been_set_ = false;
 		/*! \brief If true, a stochastic trace approximation is used to calculate the Fisher information for a Vecchia approximation for Gaussian likelihoods */
 		bool use_stochastic_trace_for_Fisher_information_Vecchia_ = true;
-		/*! \brief If true, distances among points and neighbors are saved for Vecchia approximations for isotropic covariance functions */
+		/*! \brief If true, distances among points and neighbors are saved for Vecchia approximations for isotropic covariance functions (currently disables to save memory) */
 		bool save_distances_isotropic_cov_fct_Vecchia_ = false;
 		/*! \brief Outer key: independent realizations of REs/GPs over "clusters", inner key: set index of REs / GPs  for multiple parameters (e.g. for heteroscedastic GP), values: vectors with Vecchia GP components */
 		std::map<int, std::map<int, std::vector<std::shared_ptr<RECompGP<den_mat_t>>>>> re_comps_vecchia_;

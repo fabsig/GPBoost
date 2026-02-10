@@ -62,7 +62,7 @@ namespace GPBoost {
 					std::sqrt(corr_diag_sample * corr_diag[coords_ind_j[j]]))));
 			}
 		}
-		else  if (dist_function == "correlation_Vecchia") {
+		else if (dist_function == "correlation_Vecchia") {
 			den_mat_t corr_mat, coords_i, coords_j;
 			std::vector<den_mat_t> dummy_mat_grad;
 			coords_i = coords(coord_ind_i, Eigen::all);
