@@ -386,7 +386,7 @@ plt.show(block=False)
 #   and consequently the trained F(x) has larger magnitude at both ends to compensate for this. 
 #   In addition, the offset for prediction ('offset_pred') shifts all predictions up
 # Predict response variable
-pred_resp = bst.predict(data=Xtest, group_data_pred=group_test_new,
+pred_resp = bst.predict(data=Xtest, group_data_pred=group_test,
                         predict_var=True, pred_latent=False, offset_pred=0.3*np.ones(Xtest.shape[0]))
 fig1, ax1 = plt.subplots()
 ax1.plot(Xtest[:, 0], pred_resp['response_mean'], linewidth=2, label="Pred response")

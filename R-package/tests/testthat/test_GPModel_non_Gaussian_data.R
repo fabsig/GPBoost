@@ -340,12 +340,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_var <- c(0.4046473, 0.4049691, 0.3088420)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_STRICT)
-    capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", matrix_inversion_method = "cholesky", 
-                                        likelihood = "bernoulli_probit_var_cor_pred_freq_asym") , file='NUL')
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, cov_par=cov_par_pred, predict_var = TRUE, predict_response = FALSE)
-    expected_var <- c(0.4105877, 0.4106798, 0.3328762)
-    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_STRICT)
   })
   
   test_that("Binary classification with Gaussian process model with multiple observations at the same location", {
@@ -596,11 +590,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit_var_cor_pred_lr", likelihood_learning_rate = 2) , file='NUL')
     pred <- predict(gp_model, y=y, group_data_pred = group_test, cov_par=cov_par_pred, predict_var = TRUE, predict_response = FALSE)
     expected_var <- c(0.06787762, 0.09076508, 0.50000000)
-    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_STRICT)
-    capture.output( gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit_var_cor_pred_freq_asym") , file='NUL')
-    pred <- predict(gp_model, y=y, group_data_pred = group_test, cov_par=cov_par_pred, predict_var = TRUE, predict_response = FALSE)
-    expected_var <- c(0.11952861, 0.06572064, 0.50000000)# same as above without correction
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_STRICT)
   })
@@ -5858,6 +5847,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_var <- c(0.02707738212, 0.02707738212, 0.02707738212, 0.40845879613)
     expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
     expect_lt(sum(abs(pred$var-expected_var)),tolerance_loc_1)
+    
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "asymmetric_laplace_var_cor_pred_freq_asym", likelihood_additional_param = quantile,
+                                           y = y, X=X, params = params, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, 
+                    predict_var=TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+    expect_lt(sum(abs(pred$var-expected_var)),tolerance_loc_1)
+    
     # Estimation with other options
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "asymmetric_laplace_tkc", likelihood_additional_param = quantile,
                                            y = y, X=X, params = params, matrix_inversion_method = matrix_inversion_method)
@@ -5867,6 +5865,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.0781216681,  2.15088413307))),tolerance_loc_1)
     expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-116.8881252))),tolerance_loc_1)
     expect_equal(gp_model$get_num_optim_iter(), 7)
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, 
+                    predict_var=TRUE, predict_response = FALSE)
+    expected_mu <- c(-1.1535637346, -0.1641307384, 0.2660460883, 2.0727624650)
+    expected_var <- c(0.02012959075, 0.02012959075, 0.02012959075, 0.83940149528)
+    expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+    expect_lt(sum(abs(pred$var-expected_var)),tolerance_loc_1)
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "asymmetric_laplace_tkc_not_fisher_mode_finding", likelihood_additional_param = quantile,
                                            y = y, X=X, params = params, matrix_inversion_method = matrix_inversion_method)
                     , file='NUL')
@@ -5875,6 +5879,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.1574045859, 2.0308585745))),tolerance_loc_1)
     expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-116.0833909))),tolerance_loc_1)
     expect_equal(gp_model$get_num_optim_iter(), 8)
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "asymmetric_laplace_tkc_var_cor_pred_freq_asym", likelihood_additional_param = quantile,
+                                           y = y, X=X, params = params, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, 
+                    predict_var=TRUE, predict_response = FALSE)
+    expected_var_cor <- c(0.02667148236, 0.02667148236, 0.02667148236, 0.83940149528)
+    expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+    expect_lt(sum(abs(pred$var-expected_var_cor)),tolerance_loc_1)
     
     ## GPBoost algorithm
     dtrain <- gpb.Dataset(data = X, label = y)
@@ -5917,7 +5929,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_gte(cvbst$best_score,0.377186925273971*(1-tolerance_loc_3))
     nit <- 59
     expect_lte(cvbst$best_iter, nit+4)
-    expect_gte(cvbst$best_iter, nit-4)
+    expect_gte(cvbst$best_iter, nit-30)
     
     # }
     

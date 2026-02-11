@@ -366,7 +366,7 @@ legend(legend=c("True F","Pred F"), "bottomright", bty="n", lwd=3, col=c(2,4))
 #   and consequently the trained F(x) has larger magnitude at both ends to compensate for this. 
 #   In addition, the offset for prediction ('offset_pred') shifts all predictions up
 # Predict response variable
-pred_resp <- predict(bst, data = Xtest, group_data_pred = group_test_new, 
+pred_resp <- predict(bst, data = Xtest, group_data_pred = group_test, 
                      predict_var = TRUE, pred_latent = FALSE, offset_pred = rep(0.3,dim(Xtest)[1]))
 plot(X[,1], y, col=rgb(0,0,0,alpha=0.1), main="Data and predicted response variable")
 lines(Xtest[,1], pred_resp$response_mean, col=3, lwd=3)
