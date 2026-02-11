@@ -5,6 +5,7 @@ mixed effects models with various likelihoods and different random effects model
     - grouped (aka clustered) random effects models including random slopes
     - Gaussian process (GP) models
     - combined GP and grouped random effects
+    - iid models without random effects
 
 - Currently supported likelihoods: 
      see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood 

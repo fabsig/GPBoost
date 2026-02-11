@@ -571,10 +571,14 @@ def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_ro
     metric : string, list of strings or None, optional (default=None)
         Evaluation metric to be monitored when doing CV and parameter tuning.
         If not None, the metric in ``params`` will be overridden.
-        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", "crps_gaussian", 
-        "auc", "average_precision", "binary_logloss", "binary_error"
-        See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
-        for a complete list of valid metrics.
+        
+            - Default ="test_neg_log_likelihood" if there is a GPModel
+
+            -   Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", "crps_gaussian", 
+            "auc", "average_precision", "binary_logloss", "binary_error"
+
+            - See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters for a complete list of valid metrics
+
     verbose_eval : bool, int, or None, optional (default=None)
         Whether to display the progress.
         If None, progress will be displayed when np.ndarray is returned.
@@ -904,10 +908,14 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
     metric : string, list of strings or None, optional (default=None)
         Evaluation metric to be monitored when doing parameter tuning.
         If not None, the metric in ``params`` will be overridden.
-        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", "crps_gaussian",
-        "auc", "average_precision", "binary_logloss", "binary_error"
-        See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
-        for a complete list of valid metrics.
+        
+            - Default ="test_neg_log_likelihood" if there is a GPModel
+            
+            -   Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", "crps_gaussian", 
+            "auc", "average_precision", "binary_logloss", "binary_error"
+
+            - See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters for a complete list of valid metrics
+    
     use_gp_model_for_validation : bool, optional (default=True)
         If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
         for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
@@ -1223,10 +1231,14 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
     metric : string, list of strings or None, optional (default=None)
         Evaluation metric to be monitored when doing parameter tuning.
         If not None, the metric in ``params`` will be overridden.
-        Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", "crps_gaussian",
-        "auc", "average_precision", "binary_logloss", "binary_error"
-        See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters
-        for a complete list of valid metrics.
+        
+            - Default ="test_neg_log_likelihood" if there is a GPModel
+            
+            -   Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", "crps_gaussian", 
+            "auc", "average_precision", "binary_logloss", "binary_error"
+
+            - See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters for a complete list of valid metrics
+    
     folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
         If generator or iterator, it should yield the train and test indices for each fold.
         If object, it should be one of the scikit-learn splitter classes

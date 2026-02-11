@@ -43,8 +43,12 @@ The variance is mu * (1 + phi), mu = mean, phi = dispersion, with this parametri
 \item{ "lognormal": Log-normal likelihood with a log link function }
 \item{ "beta" : Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)}
 \item{ "t": t-distribution (e.g., for robust regression) }
-\item{ "t_fix_df": t-distribution with the degrees-of-freedom (df) held fixed and not estimated. 
-The df can be set via the \code{likelihood_additional_param} parameter }
+\item{ "t_fix_df": t-distribution with the degrees-of-freedom (df) held fixed and not estimated
+\itemize{ \item{ The degrees-of-freedom (df) can be set via the \code{likelihood_additional_param} parameter. The default is df = 2 }}
+}
+\item{ "quantile_regression" / "asymmetric_laplace" : an asymmetric Laplace likelihood for quantile regression, aliases: "asymmetric_laplace", "quantile_regression" 
+\itemize{ \item{ The quantile can be set via the \code{likelihood_additional_param} parameter. The default is quantile = 0.5 }}
+}
 \item{ "zero_inflated_gamma": Zero-inflated gamma likelihood. 
 The log-transformed mean of the response variable equals the sum of fixed and random effects, E(y) = mu = exp(F(X) + Zb), 
 and the rate parameter equals (1-p0) * gamma / mu, where p0 is the zero-inflation probability and gamma the shape parameter. 
@@ -233,7 +237,8 @@ the function \code{get_aux_pars} after estimation.
 Note that this \code{likelihood_additional_param} parameter is irrelevant for many likelihoods.
 If \code{likelihood_additional_param = NULL}, the following internal default values are used:
 \itemize{
-\item{ df = 2 for likelihood = "t_fix_df"}
+\item{ df = 2 for likelihood = "t_fix_df" }
+\item{ quantile = 0.5 for likelihood = "asymmetric_laplace" }
 }}
 
 \item{num_data}{A \code{numeric} with the number of samples. This is only used for iid models}

@@ -4791,7 +4791,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Evaluate negative log-likelihood
     cov_pars_eval = c(0.01, sigma2_true, H_true)
     capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, 
-                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function) , file='NUL')
+                                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function) , file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
     nll_exp <- 2508.161111
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
@@ -4818,8 +4818,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_approx <- "vecchia"
     num_neighbors <- n - 1
     capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, 
-                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
-                        gp_approx = gp_approx, num_neighbors = num_neighbors) , file='NUL')
+                                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
+                                        gp_approx = gp_approx, num_neighbors = num_neighbors) , file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood,  cov_function = cov_function,
@@ -4837,8 +4837,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     num_neighbors <- 50
     capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, 
-                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
-                        gp_approx = gp_approx, num_neighbors = num_neighbors) , file='NUL')
+                                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
+                                        gp_approx = gp_approx, num_neighbors = num_neighbors) , file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
     expect_lt(abs(nll-nll_exp),0.5)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood,  cov_function = cov_function,
@@ -4896,8 +4896,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     num_ind_points <- n-1
     tol_fitc <- 0.001
     capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, 
-                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
-                        gp_approx = gp_approx, num_ind_points = num_ind_points, ind_points_selection = ind_points_selection) , file='NUL')
+                                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
+                                        gp_approx = gp_approx, num_ind_points = num_ind_points, ind_points_selection = ind_points_selection) , file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
     expect_lt(abs(nll-nll_exp),tol_fitc)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood,  cov_function = cov_function,
@@ -4914,8 +4914,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     num_ind_points <- 50
     tol_fitc2 <- 0.03
     capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, 
-                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
-                        gp_approx = gp_approx, num_ind_points = num_ind_points, ind_points_selection = ind_points_selection) , file='NUL')
+                                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
+                                        gp_approx = gp_approx, num_ind_points = num_ind_points, ind_points_selection = ind_points_selection) , file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
     expect_lt(abs(nll-nll_exp),300)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood,  cov_function = cov_function,
@@ -4935,9 +4935,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     num_ind_points <- n-1
     num_neighbors <- 20
     capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, 
-                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
-                        gp_approx = gp_approx, num_neighbors = num_neighbors, num_ind_points = num_ind_points, 
-                        ind_points_selection = ind_points_selection) , file='NUL')
+                                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
+                                        gp_approx = gp_approx, num_neighbors = num_neighbors, num_ind_points = num_ind_points, 
+                                        ind_points_selection = ind_points_selection) , file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
     expect_lt(abs(nll-nll_exp),1e-5)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood,  cov_function = cov_function,
@@ -4955,9 +4955,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     num_ind_points <- 50
     tol_vif <- 0.05
     capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, 
-                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
-                        gp_approx = gp_approx, num_neighbors = num_neighbors, num_ind_points = num_ind_points, 
-                        ind_points_selection = ind_points_selection) , file='NUL')
+                                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function,
+                                        gp_approx = gp_approx, num_neighbors = num_neighbors, num_ind_points = num_ind_points, 
+                                        ind_points_selection = ind_points_selection) , file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
     expect_lt(abs(nll-nll_exp),1)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood,  cov_function = cov_function,
@@ -4975,7 +4975,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     ## GPBoost algorithm
     dtrain <- gpb.Dataset(data = X, label = y)
     capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, 
-                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function) , file='NUL')
+                                        matrix_inversion_method = matrix_inversion_method, cov_function = cov_function) , file='NUL')
     gp_model$set_optim_params(params=OPTIM_PARAMS_BFGS)
     bst <- gpboost(data = dtrain, gp_model = gp_model,
                    nrounds = 30, learning_rate = 0.1, max_depth = 6,
@@ -5685,7 +5685,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params <- OPTIM_PARAMS_BFGS
     y <- X %*% beta + qnorm(sim_rand_unif(n=n, init_c=0.91468), sd=sqrt(0.01))
     likelihood <- "gaussian"
-
+    
     # Estimation 
     capture.output( gp_model <- fitGPModel(likelihood = likelihood, X=X, y = y, params = params) , file='NUL')
     cov_pars_exp <- c(7.654507e-03, 1.000000e-20)
@@ -5764,5 +5764,163 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # predict(mod, newdata=data.frame(X_test), type ="response")
     
   }) # end iid model 
+  
+  test_that("asymmetric_laplace likelihood ", {
+    
+    params <- OPTIM_PARAMS_BFGS
+    likelihood <- "asymmetric_laplace"
+    
+    quantile_asym_laplace <- function(q, alpha, lambda) {
+      if (length(q) == 1) {
+        if (q <= alpha) {
+          return(log(q/alpha) * lambda / (1-alpha))
+        } else {
+          return(-log((1-q)/(1-alpha)) * lambda / alpha)
+        }
+      } else {
+        res <- rep(NA,length(q))
+        ind <- q <= alpha
+        res[ind] <- log(q[ind]/alpha) * lambda / (1-alpha)
+        res[!ind] <- -log((1-q[!ind])/(1-alpha)) * lambda / alpha
+        return(res)
+      }
+    }
+    
+    
+    
+    # Single level grouped random effects
+    quantile <- 0.5
+    quantile_up <- 0.975
+    lambda = 0.25
+    error <- quantile_asym_laplace(q=sim_rand_unif(n=n, init_c=0.651), alpha=quantile, lambda = lambda)
+    y <- Z1 %*% b_gr_1 + X%*%beta + error
+    
+    matrix_inversion_method <- "cholesky"
+    # matrix_inversion_method_loop <- c("cholesky", "iterative")
+    # for (matrix_inversion_method in matrix_inversion_method_loop) {
+    if(matrix_inversion_method == "iterative") {
+      tolerance_loc_1 <- TOLERANCE_STRICT
+      tolerance_loc_2 <- TOLERANCE_LOOSE
+      tolerance_loc_3 <- 0.1
+    } else {
+      tolerance_loc_1 <- TOLERANCE_STRICT
+      tolerance_loc_2 <- TOLERANCE_LOOSE
+      tolerance_loc_3 <- 0.1
+    }
+    
+    expect_error( gp_model <- GPModel(group_data = group, likelihood = likelihood, 
+                                      matrix_inversion_method = matrix_inversion_method, likelihood_additional_param=1.1) )
+    expect_error( gp_model <- GPModel(group_data = group, likelihood = likelihood, 
+                                      matrix_inversion_method = matrix_inversion_method, likelihood_additional_param=-0.1) )
+    # Evaluate negative log-likelihood
+    gp_model <- GPModel(group_data = group, likelihood = likelihood, 
+                        matrix_inversion_method = matrix_inversion_method, likelihood_additional_param = quantile)
+    nll_exp <- 273.0138019
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(lambda))
+    expect_lt(abs(nll-nll_exp),tolerance_loc_1)
+    # default value for quantile
+    gp_model <- GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = matrix_inversion_method)
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(lambda))
+    expect_lt(abs(nll-nll_exp),tolerance_loc_1)
+    gp_model <- GPModel(group_data = group, likelihood = likelihood, 
+                        matrix_inversion_method = matrix_inversion_method, likelihood_additional_param = quantile_up)
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(lambda))
+    expect_lt(abs(nll-302.8484089),tolerance_loc_1)
+    gp_model <- GPModel(group_data = group, likelihood = "asymmetric_laplace_tkc", 
+                        matrix_inversion_method = matrix_inversion_method, likelihood_additional_param = quantile)
+    nll_exp2 <- 271.2555943
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(lambda))
+    expect_lt(abs(nll-nll_exp2),tolerance_loc_1)
+    gp_model <- GPModel(group_data = group, likelihood = "asymmetric_laplace_tkc_fisher_mode_finding", 
+                        matrix_inversion_method = matrix_inversion_method, likelihood_additional_param = quantile)
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(lambda))
+    expect_lt(abs(nll-nll_exp2),tolerance_loc_1)
+    gp_model <- GPModel(group_data = group, likelihood = "asymmetric_laplace_tkc_not_fisher_mode_finding", 
+                        matrix_inversion_method = matrix_inversion_method, likelihood_additional_param = quantile)
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(lambda))
+    expect_lt(abs(nll-270.8276752),tolerance_loc_1)
+    
+    # Estimation
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
+                                           y = y, X=X, params = params, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.4084587961)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-0.2692574357 )),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.1244755503, 2.0742575413))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-116.0977714))),tolerance_loc_1)
+    expect_equal(gp_model$get_num_optim_iter(), 26)
+    # Prediction
+    group_test <- c(1,3,3,9999)
+    X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, 
+                    predict_var=TRUE, predict_response = FALSE)
+    expected_mu <- c(-1.1616043209, -0.1975149513, 0.2173365570, 1.9497819910)
+    expected_var <- c(0.02707738212, 0.02707738212, 0.02707738212, 0.40845879613)
+    expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
+    expect_lt(sum(abs(pred$var-expected_var)),tolerance_loc_1)
+    # Estimation with other options
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "asymmetric_laplace_tkc", likelihood_additional_param = quantile,
+                                           y = y, X=X, params = params, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.8394014953)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-0.2624250578  )),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.0781216681,  2.15088413307))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-116.8881252))),tolerance_loc_1)
+    expect_equal(gp_model$get_num_optim_iter(), 7)
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "asymmetric_laplace_tkc_not_fisher_mode_finding", likelihood_additional_param = quantile,
+                                           y = y, X=X, params = params, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.8491388894)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-0.2472040762 )),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.1574045859, 2.0308585745))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-116.0833909))),tolerance_loc_1)
+    expect_equal(gp_model$get_num_optim_iter(), 8)
+    
+    ## GPBoost algorithm
+    dtrain <- gpb.Dataset(data = X, label = y)
+    gp_model <- GPModel(group_data = group, likelihood = likelihood, 
+                        matrix_inversion_method = matrix_inversion_method, likelihood_additional_param = quantile)
+    gp_model$set_optim_params(params=OPTIM_PARAMS_BFGS)
+    bst <- gpboost(data = dtrain, gp_model = gp_model,
+                   nrounds = 30, learning_rate = 0.1, max_depth = 6,
+                   min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.5001946367)),tolerance_loc_2)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-0.2376101798)),tolerance_loc_2)
+    # Prediction
+    pred <- predict(bst, data = X_test, group_data_pred = group_test,
+                    predict_var = TRUE, pred_latent = TRUE)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(-1.0044756435, 0.2829850837, 0.9178465299, 2.0115131704))),tolerance_loc_2)
+    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0.1565934542, -0.3479826551, -0.3479826551, 0.0000000000))), tolerance_loc_2)
+    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c( 0.02160785924, 0.02160785924, 0.02160785924, 0.50019463669))), tolerance_loc_2)
+    
+    # cv function
+    dtrain <- gpb.Dataset(data = X, label = y)
+    gp_model <- GPModel(group_data = group, likelihood = likelihood, 
+                        matrix_inversion_method = matrix_inversion_method, likelihood_additional_param = quantile)
+    set.seed(1)
+    capture.output( cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model,
+                                    nrounds = 100, early_stopping_rounds = 5, metric="test_neg_log_likelihood",
+                                    use_gp_model_for_validation = TRUE, folds = folds, verbose = 0), file='NUL')
+    expect_lte(cvbst$best_score,1.46839423428633*(1+tolerance_loc_3))
+    expect_gte(cvbst$best_score,1.46839423428633*(1-tolerance_loc_3))
+    nit <- 37
+    expect_lte(cvbst$best_iter, nit+4)
+    expect_gte(cvbst$best_iter, nit-4)
+    
+    gp_model <- GPModel(group_data = group, likelihood = likelihood,
+                        matrix_inversion_method = matrix_inversion_method, likelihood_additional_param = quantile)
+    set.seed(1)
+    capture.output( cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model,
+                                    nrounds = 100, early_stopping_rounds = 5, metric="quantile",
+                                    use_gp_model_for_validation = TRUE, folds = folds, verbose = 0), file='NUL')
+    expect_lte(cvbst$best_score,0.377186925273971*(1+tolerance_loc_3))
+    expect_gte(cvbst$best_score,0.377186925273971*(1-tolerance_loc_3))
+    nit <- 59
+    expect_lte(cvbst$best_iter, nit+4)
+    expect_gte(cvbst$best_iter, nit-4)
+    
+    # }
+    
+  }) # end asymmetric_laplace regression
 }
 

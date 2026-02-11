@@ -4151,8 +4151,14 @@ class GPModel(object):
 
                     - "t_fix_df":
 
-                        t-distribution with the degrees-of-freedom (df) held fixed and not estimated. The df can be set via the 'likelihood_additional_param' parameter
+                        t-distribution with the degrees-of-freedom (df) held fixed and not estimated
+                        
+                            - The degrees-of-freedom (df) can be set via the 'likelihood_additional_param' parameter. The default is df = 2
 
+                    - "quantile_regression" / "asymmetric_laplace" : an asymmetric Laplace likelihood for quantile regression, aliases: "asymmetric_laplace", "quantile_regression"
+
+                        - The quantile can be set via the 'likelihood_additional_param' parameter. The default is quantile = 0.5
+                    
                     - "zero_inflated_gamma":
                     
                         Zero-inflated gamma likelihood. 
@@ -4416,6 +4422,8 @@ class GPModel(object):
 
                     - df = 2 for 'likelihood = "t_fix_df"'
 
+                    - quantile = 0.5 for likelihood = "asymmetric_laplace"
+
             free_raw_data : bool, optional (default=False)
                 If True, the data (groups, coordinates, covariate data for random coefficients) is freed in Python
                 after initialization
@@ -4451,7 +4459,7 @@ class GPModel(object):
                                "Use the function 'set_prediction_data' to specify this")
         # Initialize variables with default values
         self.handle = ctypes.c_void_p()
-        self.likelihood_additional_param = None
+        self.likelihood_additional_param = -999 # default value is set in C++
         self.num_data = None
         self.num_group_re = 0
         self.num_group_rand_coef = 0
@@ -4508,10 +4516,10 @@ class GPModel(object):
         self.model_fitted = False
         self.current_neg_log_likelihood_loaded_from_file = None
         self.params = {"maxit": 1000,
-                       "delta_rel_conv": -1,  # default value is set in C++
+                       "delta_rel_conv": -1, # default value is set in C++
                        "init_coef": None,
                        "lr_coef": 0.1,
-                       "lr_cov": -1.,  # default value is set in C++
+                       "lr_cov": -1., # default value is set in C++
                        "use_nesterov_acc": True,
                        "acc_rate_coef": 0.5,
                        "acc_rate_cov": 0.5,
