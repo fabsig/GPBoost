@@ -113,7 +113,7 @@
 #' \item{ "hurst_ard": Hurst covariance function with with Automatic Relevance Determination (ARD), 
 #' i.e., with a different range parameter for every coordinate of ``gp_coords`` except 
 #' for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: 
-#' cov(s, s') = (sigma2 / 2) * ( (s_1^2 + sum_{k=2}^d (s_k / l_k)^2)^H + (s'_1^2 + sum_{k=2}^d (s'_k / l_k)^2)^H - ((s_1 - s'_1)^2 + sum_{k=2}^d ((s_k - s'_k) / l_k)^2)^H ) }
+#' \eqn{ cov(s, s') = (\sigma^2/2)\left[ \left(s_1^2 + \sum_{k=2}^d (s_k/l_k)^2\right)^H + \left({s'}_1^2 + \sum_{k=2}^d ({s'}_k/l_k)^2\right)^H - \left((s_1-{s'}_1)^2 + \sum_{k=2}^d ((s_k-{s'}_k)/l_k)^2\right)^H \right] } }
 #' }
 #' @param cov_fct_shape A \code{numeric} specifying the shape parameter of the covariance function 
 #' (e.g., smoothness parameter for Matern and Wendland covariance)  
