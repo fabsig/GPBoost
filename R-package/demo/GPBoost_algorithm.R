@@ -352,6 +352,9 @@ dataset <- gpb.Dataset(data = X, label = y, init_score = -0.5*X[,1])
 bst <- gpb.train(data = dataset, gp_model = gp_model, nrounds = nrounds,
                  params = params, verbose = 0) # Note: 'params' is defined above in this demo
 # Add offset to predictions ('offset_pred'): example when prediction the latent variable
+group_test <- 1:m # Predictions for existing groups
+x_test <- seq(from=0, to=1, length.out=m)
+Xtest <- cbind(x_test, matrix(0, ncol=p-1 , nrow=m))
 pred_lat <- predict(bst, data = Xtest, group_data_pred = group_test, 
                     predict_var = TRUE, pred_latent = TRUE, offset_pred = rep(0.3,dim(Xtest)[1]))
 x <- seq(from=0, to=1, length.out=200)

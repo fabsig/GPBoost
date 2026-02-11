@@ -371,6 +371,9 @@ data_train = gpb.Dataset(data=X, label=y, init_score=-0.5*X[:, 0])
 bst = gpb.train(params=params, train_set=data_train,  gp_model=gp_model,
                 num_boost_round=num_boost_round) # Note: 'params' is defined above in this demo
 # Add offset to predictions ('offset_pred'): example when prediction the latent variable
+group_test = np.arange(m) # Predictions for existing groups
+Xtest = np.zeros((m, p))
+Xtest[:, 0] = np.linspace(0, 1, m)
 pred_lat = bst.predict(data=Xtest, group_data_pred=group_test, 
                        predict_var=True, pred_latent=True, offset_pred=0.3*np.ones(Xtest.shape[0]))
 fig1, ax1 = plt.subplots()
