@@ -515,7 +515,6 @@ namespace GPBoost {
 		/*! \brief List of covariance functions wtih compact support */
 		const std::set<string_t> COMPACT_SUPPORT_COVS_{ "wendland", "exponential_tapered" };
 		int num_it_ = 0; //Number of iterations done for covariance and linear regression parameter estimation
-		bool calc_std_dev_ = false;
 		// Covariance parameters related variables
 		vec_t cov_pars_; //Covariance parameters
 		vec_t init_cov_pars_; //Initial values for covariance parameters
@@ -531,7 +530,6 @@ namespace GPBoost {
 		// Linear regression coefficients related variables
 		vec_t coef_;//linear regression coefficients for fixed effects (in case there are any)
 		bool has_covariates_ = false;
-		bool init_coef_given_ = false;
 		bool coef_given_or_estimated_ = false;
 		vec_t std_dev_coef_;
 		bool std_dev_coef_calculated_ = false;
@@ -542,7 +540,6 @@ namespace GPBoost {
 		bool init_aux_pars_given_ = false;
 		bool model_has_been_estimated_ = false;
 		std::vector<double> init_score_boosting_;
-		bool init_score_boosting_calculated_ = false;
 	};
 
 }  // namespace GPBoost

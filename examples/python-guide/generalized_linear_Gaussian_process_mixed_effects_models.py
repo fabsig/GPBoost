@@ -12,8 +12,8 @@ mixed effects models with various likelihoods and different random effects model
 - Currently supported covariance functions for GPs 
      including ARD, estimating the smoothness parameter, and space-time models: 
      see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#cov-function
-- Large data GP approximations such as "vecchia" and "vif" approximations:
-     https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#cov-function
+- Scalable GP approximations such as Vecchia and VIF approximations:
+     https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#gp-approx
 - Optimization options for the 'params' argument of the `fit()' and 'set_optim_params()' functions 
      including (i) monitoring convergence, (ii) optimization algorithm options, (iii) manually setting initial values for parameters, 
      and (iv) selecting which parameters are estimated can be found here: 

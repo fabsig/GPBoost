@@ -1576,13 +1576,13 @@ namespace GPBoost {
 
 		void InitializeGetDistanceForCovFct() {
 			if (use_precomputed_dist_for_calc_cov_) {
-				GetDistanceForCovFct_ = [this](const int i, const int j, const T_mat& dist,
+				GetDistanceForCovFct_ = [](const int i, const int j, const T_mat& dist,
 					const den_mat_t* /* coords_ptr */, const den_mat_t* /* coords_pred_ptr */) -> double {
 						return(dist.coeff(i, j));
 					};
 			}
 			else {
-				GetDistanceForCovFct_ = [this](const int i, const int j, const T_mat& /* dist */,
+				GetDistanceForCovFct_ = [](const int i, const int j, const T_mat& /* dist */,
 					const den_mat_t* coords_ptr, const den_mat_t* coords_pred_ptr) -> double {
 						return(((*coords_pred_ptr).row(i) - (*coords_ptr).row(j)).lpNorm<2>());
 					};
@@ -1887,13 +1887,13 @@ namespace GPBoost {
 
 		void InitializeGetDistanceForGradientCovFct() {
 			if (use_precomputed_dist_for_calc_cov_) {
-				GetDistanceForGradientCovFct_ = [this](const int i, const int j, const T_mat& dist,
+				GetDistanceForGradientCovFct_ = [](const int i, const int j, const T_mat& dist,
 					const den_mat_t* /* coords_ptr */, const den_mat_t* /* coords_pred_ptr */) {
 						return static_cast<double>(dist.coeff(i, j));
 					};
 			}
 			else {
-				GetDistanceForGradientCovFct_ = [this](const int i, const int j, const T_mat& /* dist */,
+				GetDistanceForGradientCovFct_ = [](const int i, const int j, const T_mat& /* dist */,
 					const den_mat_t* coords_ptr, const den_mat_t* coords_pred_ptr) {
 						return static_cast<double>(((*coords_pred_ptr).row(i) - (*coords_ptr).row(j)).lpNorm<2>());
 					};
