@@ -139,6 +139,14 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Returns number of data points
+		* \return Number of data points
+		*/
+		int NumData() const {
+			return(num_data_);
+		}
+
+		/*!
 		* \brief Returns has_Z_
 		* \return True if has_Z_
 		*/
@@ -869,6 +877,9 @@ namespace GPBoost {
 					this->has_Z_ = false;
 				}
 				else if (num_random_effects_ != this->num_data_) {// create incidence matrix Z_
+					if (this->num_data_ > 2000) {
+						Log::REWarning("The sparse matrix Z_ is created very inefficiently for this GP. This should be implemented more efficiently if n is large ");
+					}
 					this->Z_ = sp_mat_t(this->num_data_, num_random_effects_);
 					for (int i = 0; i < this->num_data_; ++i) {
 						this->Z_.insert(i, unique_idx[i]) = 1.;
@@ -1095,12 +1106,6 @@ namespace GPBoost {
 		int GetDimCoords() const {
 			CHECK(coord_saved_);
 			return((int)coords_.cols());
-		}
-
-		/*! \brief Dimension of coordinates */
-		int GetNumData() const {
-			CHECK(coord_saved_);
-			return((int)coords_.rows());
 		}
 
 		/*!

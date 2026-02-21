@@ -486,6 +486,7 @@ namespace GPBoost {
 	//T_mat needs to be a sp_mat_t or sp_mat_rm_t
 	template <class T_mat>
 	void CreatSparseBlockDiagonalMartix(const T_mat& A, const T_mat& B, T_mat& BD) {
+		//NOTE: THIS CAN BE MADE FASTER, see the MakeBlockDiag_B_I function below
 		data_size_t nrow_A = (data_size_t)A.rows();
 		data_size_t ncol_A = (data_size_t)A.cols();
 		data_size_t nrow_BD = nrow_A + (data_size_t)B.rows();
@@ -503,17 +504,18 @@ namespace GPBoost {
 #ifdef _OPENMP
 			tid = omp_get_thread_num();
 #else
-			tid = 1;
+			tid = 0;
 #endif
 			auto& localTriplets = threadTriplets[tid];
-
-#pragma omp for
+			const auto approx = static_cast<size_t>(A.nonZeros() + B.nonZeros()) / static_cast<size_t>(num_threads) + 64;
+			localTriplets.reserve(approx);
+#pragma omp for schedule(static)
 			for (int k = 0; k < A.outerSize(); ++k) {
 				for (typename T_mat::InnerIterator it(A, k); it; ++it) {
 					localTriplets.emplace_back(it.row(), it.col(), it.value());
 				}
 			}
-#pragma omp for
+#pragma omp for schedule(static)
 			for (int k = 0; k < B.outerSize(); ++k) {
 				for (typename T_mat::InnerIterator it(B, k); it; ++it) {
 					localTriplets.emplace_back(it.row() + nrow_A, it.col() + ncol_A, it.value());
@@ -521,12 +523,173 @@ namespace GPBoost {
 			}
 		}
 		std::vector<Triplet_t> triplets;
-		for (const auto& local : threadTriplets) {
-			triplets.insert(triplets.end(), local.begin(), local.end());
+		triplets.reserve(A.nonZeros() + B.nonZeros());
+		for (auto& local : threadTriplets) {
+			triplets.insert(triplets.end(), std::make_move_iterator(local.begin()), std::make_move_iterator(local.end()));
 		}
 		BD = T_mat(nrow_BD, ncol_BD);
 		BD.setFromTriplets(triplets.begin(), triplets.end());
 	}//end CreatSparseBlockDiagonalMartix (sparse)
+
+	/*!
+	* \brief Create a sparse block diagonal matrix with the identy or 0 matrix of dimension m x m as upper diaognal block and B as lower diagonal block
+	* \param B Square matrix B
+	* \param m Size of upper block diagonal identity or 0 matrix
+	* \param[out] I_B Matrix ((I,0),(0,B)) or ((0,0),(0,B)) 
+	* \param zero_instead_of_one If true, the upper part is 0 and not the identity
+	*/
+	//T_mat needs to be a sp_mat_t or sp_mat_rm_t
+	template <class T_mat>
+	void MakeBlockDiag_I_B(const T_mat& B, 
+		const data_size_t m,
+		T_mat& I_B,
+		bool zero_instead_of_one) {
+		using SIndex = typename T_mat::StorageIndex;
+		CHECK(B.rows() == B.cols());
+		CHECK(m > 0);
+		const data_size_t n = (data_size_t)B.rows();
+		const data_size_t outer = (data_size_t)B.outerSize();
+		// 1) Count nnz per outer index
+		std::vector<data_size_t> nnz_per_outer(outer, 0);
+#pragma omp parallel for schedule(static)
+		for (data_size_t k = 0; k < outer; ++k) {
+			data_size_t c = 0;
+			for (typename T_mat::InnerIterator it(B, k); it; ++it) ++c;
+			nnz_per_outer[k] = c;
+		}
+		// 2) Prefix sum offsets
+		std::vector<data_size_t> offsets(outer + 1, 0);
+		for (data_size_t k = 0; k < outer; ++k) {
+			offsets[k + 1] = offsets[k] + nnz_per_outer[k];
+		}
+		const data_size_t nnzB = offsets[outer];
+		const data_size_t triplet_B_offset = zero_instead_of_one ? 0 : m;
+		// 3) Allocate triplets: first m for I, then nnzB for shifted B
+		std::vector<Triplet_t> triplets(triplet_B_offset + nnzB);
+		if (!zero_instead_of_one) {
+			// 4) Fill identity in top-left: indices [0, m)
+#pragma omp parallel for schedule(static)
+			for (data_size_t i = 0; i < m; ++i) {
+				triplets[i] = Triplet_t(i, i, 1.);
+			}
+		}
+		// 5) Fill B in bottom-right (shift by m): indices [m, m+nnzB)
+#pragma omp parallel for schedule(static)
+		for (data_size_t k = 0; k < outer; ++k) {
+			data_size_t pos = offsets[k];
+			for (typename T_mat::InnerIterator it(B, k); it; ++it) {
+				triplets[triplet_B_offset + pos++] = Triplet_t(static_cast<SIndex>(it.row()) + m, static_cast<SIndex>(it.col()) + m, it.value());
+			}
+		}
+		I_B.resize(m + n, m + n);
+		I_B.setFromTriplets(triplets.begin(), triplets.end());
+	}//end MakeBlockDiag_I_B
+
+	/*!
+	* \brief Create a sparse block diagonal matrix with a diagonal matrix D as upper diagonal block and B as lower diagonal block
+	* \param D diagonal matrix
+	* \param B Square matrix B
+	* \param[out] D_B Block diagonal matrix ((D,0),(0,B))
+	*/
+	//T_mat needs to be a sp_mat_t or sp_mat_rm_t
+	template <class T_mat>
+	void MakeBlockDiag_D_B(const T_mat& D,
+		const T_mat& B, 
+		T_mat& D_B) {
+		using SIndex = typename T_mat::StorageIndex;
+		CHECK(B.rows() == B.cols());
+		CHECK(D.rows() == D.cols());
+		const data_size_t m = (data_size_t)D.rows();
+		const data_size_t n = (data_size_t)B.rows();
+		const data_size_t outer = (data_size_t)B.outerSize();
+		// 1) Count nnz per outer index
+		std::vector<data_size_t> nnz_per_outer(outer, 0);
+#pragma omp parallel for schedule(static)
+		for (data_size_t k = 0; k < outer; ++k) {
+			data_size_t c = 0;
+			for (typename T_mat::InnerIterator it(B, k); it; ++it) ++c;
+			nnz_per_outer[k] = c;
+		}
+		// 2) Prefix sum offsets
+		std::vector<data_size_t> offsets(outer + 1, 0);
+		for (data_size_t k = 0; k < outer; ++k) {
+			offsets[k + 1] = offsets[k] + nnz_per_outer[k];
+		}
+		const data_size_t nnzB = offsets[outer];
+		// 3) Allocate triplets: first m for D, then nnzB for shifted B
+		std::vector<Triplet_t> triplets(m + nnzB);
+		// 4) Fill identity in top-left: indices [0, m)
+#pragma omp parallel for schedule(static)
+		for (data_size_t i = 0; i < m; ++i) {
+			triplets[i] = Triplet_t(i, i, D.coeff(i, i));
+		}
+		// 5) Fill B in bottom-right (shift by m): indices [m, m+nnzB)
+#pragma omp parallel for schedule(static)
+		for (data_size_t k = 0; k < outer; ++k) {
+			data_size_t pos = offsets[k];
+			for (typename T_mat::InnerIterator it(B, k); it; ++it) {
+				triplets[m + pos++] = Triplet_t(static_cast<SIndex>(it.row()) + m, static_cast<SIndex>(it.col()) + m, it.value());
+			}
+		}
+		D_B.resize(m + n, m + n);
+		D_B.setFromTriplets(triplets.begin(), triplets.end());
+	}//end MakeBlockDiag_D_B
+
+	//old version
+//	//T_mat needs to be a sp_mat_t or sp_mat_rm_t
+//	template <class T_mat>
+//	void MakeBlockDiag_B_I(const T_mat& B, int m, T_mat& B_I) {
+//		const int n = B.rows();
+//		//std::vector<Triplet_t> triplets;
+//		//triplets.reserve(B.nonZeros() + m);
+//		//// Copy B into top-left block
+//		//for (int k = 0; k < B.outerSize(); ++k) {
+//		//	for (typename T_mat::InnerIterator it(B, k); it; ++it) {
+//		//		triplets.emplace_back(it.row(), it.col(), it.value());
+//		//	}
+//		//}
+//		//// Add identity into bottom-right block
+//		//for (int i = 0; i < m; ++i) {
+//		//	triplets.emplace_back(n + i, n + i, 1.0);
+//		//}
+//
+//		int num_threads;
+//#ifdef _OPENMP
+//		num_threads = omp_get_max_threads();
+//#else
+//		num_threads = 1;
+//#endif
+//		std::vector<std::vector<Triplet_t>> threadTriplets(num_threads);
+//#pragma omp parallel
+//		{
+//			int tid;
+//#ifdef _OPENMP
+//			tid = omp_get_thread_num();
+//#else
+//			tid = 0;
+//#endif
+//			auto& localTriplets = threadTriplets[tid];
+//			const auto approx = static_cast<size_t>(B.nonZeros() + m) / static_cast<size_t>(num_threads) + 64;
+//			localTriplets.reserve(approx);
+//#pragma omp for schedule(static)
+//			for (int k = 0; k < B.outerSize(); ++k) {
+//				for (typename T_mat::InnerIterator it(B, k); it; ++it) {
+//					localTriplets.emplace_back(it.row(), it.col(), it.value());
+//				}
+//			}
+//#pragma omp for schedule(static)
+//			for (int i = 0; i < m; ++i) {
+//				localTriplets.emplace_back(n + i, n + i, 1.0);
+//			}
+//		}
+//		std::vector<Triplet_t> triplets;
+//		triplets.reserve(B.nonZeros() + m);
+//		for (auto& local : threadTriplets) {
+//			triplets.insert(triplets.end(), std::make_move_iterator(local.begin()), std::make_move_iterator(local.end()));
+//		}
+//		B_I.resize(n + m, n + m);
+//		B_I.setFromTriplets(triplets.begin(), triplets.end());
+//	}
 
 	/*!
 	* \brief Scalar product of columns i and j of the matrix M

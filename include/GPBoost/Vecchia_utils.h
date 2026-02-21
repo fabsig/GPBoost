@@ -296,6 +296,7 @@ namespace GPBoost {
 	* \param gp_approx Gaussian process approximation
 	* \param[out] nearest_neighbors_determined True, if nearest neighbors are determined in this function 
 	* \param GPU_use If true, try to leverage GPU
+	* \param grouped_RE_and_vecchia_GP  If true, grouped REs are used together with a Vecchia-approximated GP
 	*/
 	void CreateREComponentsVecchia(data_size_t num_data,
 		int dim_gp_coords,
@@ -329,7 +330,8 @@ namespace GPBoost {
 		bool save_distances_isotropic_cov_fct,
 		string_t& gp_approx,
 		bool& nearest_neighbors_determined,
-		bool GPU_use);
+		bool GPU_use,
+		bool grouped_RE_and_vecchia_GP);
 
 	/*!
 	* \brief Update the nearest neighbors based on scaled coorrdinates
@@ -339,7 +341,6 @@ namespace GPBoost {
 	* \param num_neighbors The number of neighbors used in the Vecchia approximation
 	* \param vecchia_neighbor_selection The way how neighbors are selected
 	* \param rng Random number generator
-	* \param ind_intercept_gp Index in the vector of random effect components (in the values of 're_comps_vecchia') of the intercept GP associated with the random coefficient GPs
 	* \param[out] has_duplicates_coords If true, there are duplicates in coords among the neighbors (currently only used for the Vecchia approximation for non-Gaussian likelihoods)
 	* \param check_has_duplicates If true, it is checked whether there are duplicate locations
 	* \param gauss_likelihood If true, the response variables have a Gaussian likelihood, otherwise not
@@ -356,7 +357,6 @@ namespace GPBoost {
 		int num_neighbors,
 		const string_t& vecchia_neighbor_selection,
 		RNG_t& rng,
-		int ind_intercept_gp,
 		bool& has_duplicates_coords,
 		bool check_has_duplicates,
 		bool gauss_likelihood,
@@ -392,13 +392,13 @@ namespace GPBoost {
 	* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale = false to transform back)
 	* \param calc_gradient_nugget If true, derivatives are also taken with respect to the nugget / noise variance
 	* \param num_gp_total Total number of GPs (random intercepts plus random coefficients)
-	* \param ind_intercept_gp Index in the vector of random effect components (in the values of 're_comps_vecchia') of the intercept GP associated with the random coefficient GPs
 	* \param gauss_likelihood If true, the response variables have a Gaussian likelihood, otherwise not
 	* \param save_distances_isotropic_cov_fct If true, distances among points and neighbors are saved for Vecchia approximations for isotropic covariance functions
 	* \param gp_approx Gaussian process approximation
 	* \param add_diagonal Vector of (additional) observation specific nugget / error variance added to the diagonal
 	* \param estimate_cov_par_index Indicates which parameters are estimated (>0) and which not (<= 0)
 	* \param nearest_neighbors_determined True, if nearest neighbors have been determined
+	* \param exclude_marg_var_grad If true, the gradients for the marginal variance are not computed since they are not needed
 	*/
 	void CalcCovFactorGradientVecchia(data_size_t num_re_cluster_i,
 		bool calc_cov_factor,
@@ -423,13 +423,13 @@ namespace GPBoost {
 		double nugget_var,
 		bool calc_gradient_nugget,
 		int num_gp_total,
-		int ind_intercept_gp,
 		bool gauss_likelihood,
 		bool save_distances_isotropic_cov_fct,
 		string_t& gp_approx,
 		const double* add_diagonal,
 		const std::vector<int>& estimate_cov_par_index,
-		bool nearest_neighbors_determined);
+		bool nearest_neighbors_determined,
+		bool exclude_marg_var_grad);
 
 	/*!
 	* \brief Calculate predictions (conditional mean and covariance matrix) using the Vecchia approximation for the covariance matrix of the observable process when observed locations appear first in the ordering
@@ -450,7 +450,6 @@ namespace GPBoost {
 	* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions
 	* \param vecchia_neighbor_selection The way how neighbors are selected
 	* \param re_comps_vecchia Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components
-	* \param ind_intercept_gp Index in the vector of random effect components (in the values of 're_comps_vecchia') of the intercept GP associated with the random coefficient GPs
 	* \param num_gp_rand_coef Number of random coefficient GPs
 	* \param num_gp_total Total number of GPs (random intercepts plus random coefficients)
 	* \param y_cluster_i Reponse variable data
@@ -485,7 +484,6 @@ namespace GPBoost {
 		int num_neighbors_pred,
 		const string_t& vecchia_neighbor_selection,
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia,
-		int ind_intercept_gp,
 		int num_gp_rand_coef,
 		int num_gp_total,
 		const vec_t& y_cluster_i,
@@ -514,7 +512,6 @@ namespace GPBoost {
 	* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions
 	* \param vecchia_neighbor_selection The way how neighbors are selected
 	* \param re_comps_vecchia Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components
-	* \param ind_intercept_gp Index in the vector of random effect components (in the values of 're_comps_vecchia') of the intercept GP associated with the random coefficient GPs
 	* \param num_gp_rand_coef Number of random coefficient GPs
 	* \param num_gp_total Total number of GPs (random intercepts plus random coefficients)
 	* \param y_cluster_i Reponse variable data
@@ -536,7 +533,6 @@ namespace GPBoost {
 		int num_neighbors_pred,
 		const string_t& vecchia_neighbor_selection,
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia,
-		int ind_intercept_gp,
 		int num_gp_rand_coef,
 		int num_gp_total,
 		const vec_t& y_cluster_i,
@@ -558,7 +554,6 @@ namespace GPBoost {
 	* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions
 	* \param vecchia_neighbor_selection The way how neighbors are selected
 	* \param re_comps_vecchia Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components
-	* \param ind_intercept_gp Index in the vector of random effect components (in the values of 're_comps_vecchia') of the intercept GP associated with the random coefficient GPs
 	* \param y_cluster_i Reponse variable data
 	* \param rng Random number generator
 	* \param calc_pred_cov If true, the covariance matrix is also calculated
@@ -576,7 +571,6 @@ namespace GPBoost {
 		int num_neighbors_pred,
 		const string_t& vecchia_neighbor_selection,
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia,
-		int ind_intercept_gp,
 		const vec_t& y_cluster_i,
 		RNG_t& rng,
 		bool calc_pred_cov,

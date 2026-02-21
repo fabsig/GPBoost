@@ -568,11 +568,7 @@ gpb.GPModel <- R6::R6Class(
         private$num_sets_re = 2
         private$num_sets_fe = 2
       }
-      if (likelihood == "gaussian" & gp_approx != "vecchia_latent") {
-        private$cov_par_names <- c("Error_var")
-      } else {
-        private$cov_par_names <- c()
-      }
+      private$cov_par_names <- c()
       private$matrix_inversion_method <- as.character(matrix_inversion_method)
       private$seed <- as.integer(seed)
       if (!is.null(num_parallel_threads)) {
@@ -692,7 +688,7 @@ gpb.GPModel <- R6::R6Class(
           }
           if (!is.null(private$drop_intercept_group_rand_effect)) {
             if (sum(private$drop_intercept_group_rand_effect) > 0) {
-              ind_drop <- ((1:private$num_group_re) + (likelihood == "gaussian" & gp_approx != "vecchia_latent"))[private$drop_intercept_group_rand_effect]
+              ind_drop <- (1:private$num_group_re)[private$drop_intercept_group_rand_effect]
               private$cov_par_names <- private$cov_par_names[-ind_drop]
               private$re_comp_names <- private$re_comp_names[-which(private$drop_intercept_group_rand_effect)]
             }
@@ -702,6 +698,9 @@ gpb.GPModel <- R6::R6Class(
       # Set data for Gaussian process part
       private$cover_tree_radius <- as.numeric(cover_tree_radius)##TODO DELETE: this is a hack for setting the quantile parameter
       if (!is.null(gp_coords)) {
+        if (private$num_group_re > 0 & gp_approx == "vecchia") {
+          gp_approx <- "vecchia_latent"
+        }
         # Check for correct format
         if (!(is.data.frame(gp_coords) | is.matrix(gp_coords) | 
               is.numeric(gp_coords))) {
@@ -909,6 +908,10 @@ gpb.GPModel <- R6::R6Class(
         private$cov_par_names <- c(private$cov_par_names, paste0(private$cov_par_names,"_scale"))
         private$re_comp_names <- c(private$re_comp_names, paste0(private$re_comp_names,"_scale"))
       }
+      if (likelihood == "gaussian" & gp_approx != "vecchia_latent") {
+        private$cov_par_names <- c("Error_var", private$cov_par_names)
+      }
+      
       # Set IDs for independent processes (cluster_ids)
       if (!is.null(cluster_ids)) {
         if (is.vector(cluster_ids)) {
@@ -1147,8 +1150,10 @@ gpb.GPModel <- R6::R6Class(
              sQuote("cov_pars"))
       }
       if (length(cov_pars) != private$num_cov_pars) {
-        stop("GPModel.neg_log_likelihood: Number of parameters in ", sQuote("cov_pars"), 
-             " does not correspond to numbers of parameters")
+        add_message <- ""
+        if (private$gp_approx == "vecchia_latent") add_message <- ". The error variance should be provided via the 'aux_pars' argument"
+        stop("GPModel.neg_log_likelihood: Size of ", sQuote("cov_pars"), 
+             " does not correspond to the number of parameters", add_message)
       }
       if (!is.vector(y)) {
         if (is.matrix(y)) {
@@ -1649,7 +1654,9 @@ gpb.GPModel <- R6::R6Class(
           stop("predict.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("cov_pars"))
         }
         if (length(cov_pars) != private$num_cov_pars) {
-          stop("predict.GPModel: Number of parameters in ", sQuote("cov_pars"), " does not correspond to numbers of parameters of model")
+          add_message <- ""
+          if (private$gp_approx == "vecchia_latent") add_message <- ". The error variance should be provided via the 'aux_pars' argument"
+          stop("predict.GPModel: Size of ", sQuote("cov_pars"), " does not correspond to the number of parameters", add_message)
         }
       }
       # Set data for linear fixed-effects

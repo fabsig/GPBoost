@@ -619,7 +619,7 @@ namespace GPBoost {
 		}
 		if (matrix_format_ == "sp_mat_t") {
 			if (re_model_sp_->gauss_likelihood_) {
-				re_model_sp_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), fixed_effects, 
+				re_model_sp_->EvalNegLogLikelihoodGauss(y_data, cov_pars_trafo.data(), fixed_effects, 
 					negll, false, false, false, true);
 			}
 			else {
@@ -629,7 +629,7 @@ namespace GPBoost {
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			if (re_model_sp_rm_->gauss_likelihood_) {
-				re_model_sp_rm_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), fixed_effects, 
+				re_model_sp_rm_->EvalNegLogLikelihoodGauss(y_data, cov_pars_trafo.data(), fixed_effects, 
 					negll, false, false, false, true);
 			}
 			else {
@@ -639,7 +639,7 @@ namespace GPBoost {
 		}
 		else {
 			if (re_model_den_->gauss_likelihood_) {
-				re_model_den_->EvalNegLogLikelihood(y_data, cov_pars_trafo.data(), fixed_effects, 
+				re_model_den_->EvalNegLogLikelihoodGauss(y_data, cov_pars_trafo.data(), fixed_effects, 
 					negll, false, false, false, true);
 			}
 			else {

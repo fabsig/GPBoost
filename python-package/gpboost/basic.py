@@ -4632,10 +4632,7 @@ class GPModel(object):
         if likelihood == "gaussian_heteroscedastic":
             self.num_sets_re = 2
             self.num_sets_fe = 2
-        if likelihood == "gaussian" and gp_approx != "vecchia_latent":
-            self.cov_par_names = ["Error_var"]
-        else:
-            self.cov_par_names = []
+        self.cov_par_names = []
 
         self.matrix_inversion_method = matrix_inversion_method
         self.seed = seed
@@ -4735,10 +4732,9 @@ class GPModel(object):
                     self.re_comp_names.append(new_name)
                 if self.drop_intercept_group_rand_effect is not None:
                     if self.drop_intercept_group_rand_effect.sum() > 0:
-                        offset = int(likelihood == "gaussian" and gp_approx != "vecchia_latent")
                         for i in np.arange(0, self.num_group_re):
                             if self.drop_intercept_group_rand_effect[i]:
-                                del self.cov_par_names[i + offset]
+                                del self.cov_par_names[i]
                                 del self.re_comp_names[i]
                 group_rand_coef_data_c, _, _ = c_float_array(self.group_rand_coef_data.flatten(order='F'))
                 ind_effect_group_rand_coef_c = self.ind_effect_group_rand_coef.ctypes.data_as(
@@ -4749,6 +4745,8 @@ class GPModel(object):
                         ctypes.POINTER(ctypes.c_int32))
         # Set data for Gaussian process
         if gp_coords is not None:
+            if self.num_group_re > 0 and gp_approx == "vecchia":
+                gp_approx = "vecchia_latent"
             gp_coords, names_not_used = _format_check_data(data=gp_coords, get_variable_names=False,
                                                            data_name="gp_coords", check_data_type=True,
                                                            convert_to_type=np.float64)
@@ -4877,7 +4875,9 @@ class GPModel(object):
                         self.re_comp_names.append("GP_rand_coef_" + gp_rand_coef_data_names[ii])
         if self.num_sets_re == 2:
             self.cov_par_names = self.cov_par_names + [name + "_scale" for name in self.cov_par_names] 
-            self.re_comp_names = self.re_comp_names + [name + "_scale" for name in self.re_comp_names]  
+            self.re_comp_names = self.re_comp_names + [name + "_scale" for name in self.re_comp_names]        
+        if likelihood == "gaussian" and gp_approx != "vecchia_latent":
+            self.cov_par_names = ["Error_var"] + self.re_comp_names
         # Set IDs for independent processes (cluster_ids)
         if cluster_ids is not None:
             cluster_ids = _format_check_1D_data(cluster_ids, data_name="cluster_ids", check_data_type=False,
@@ -5327,7 +5327,10 @@ class GPModel(object):
         cov_pars = _format_check_1D_data(cov_pars, data_name="cov_pars", check_data_type=True, check_must_be_int=False,
                                          convert_to_type=np.float64)
         if cov_pars.shape[0] != self.num_cov_pars:
-            raise ValueError("'cov_pars' does not contain the correct number of parameters")
+            add_message = ""
+            if self.gp_approx == "vecchia_latent":
+                add_message = ". The error variance should be provided via the 'aux_pars' argument"
+            raise ValueError("'cov_pars' does not contain the correct number of parameters" + add_message)
         cov_pars_c = cov_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         fixed_effects_c = ctypes.c_void_p()
         if fixed_effects is not None:
@@ -5357,7 +5360,7 @@ class GPModel(object):
 
         Parameters
         ----------
-        params : dict or None, optional (default=None)
+         params : dict or None, optional (default=None)
             Parameters for the estimation / optimization
 
                 - trace : bool, optional (default = False)
@@ -5378,10 +5381,12 @@ class GPModel(object):
                     Initial values for additional parameters for non-Gaussian likelihoods
                     (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
                 - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1) 
-                    This allows for disabling the estimation of some (or all) covariance parameters if estimate_cov_par_index != -1. 
-                    'estimate_cov_par_index' should then be a vector with length equal to the number of covariance parameters, 
+                    This allows for disabling the estimation of some (or all) covariance parameters.
+                    If estimate_cov_par_index = -1, all covariance parameters are estimated.
+                    If estimate_cov_par_index != -1, this should be a vector with length equal to the number of covariance parameters, 
                     and estimate_cov_par_index[i] should be of bool type indicating whether parameter number i is estimated or not. 
                     For instance, "estimate_cov_par_index": [1,1,0] means that the first two covariance parameters are estimated and the last one not. 
+                    Parameters that are not estimated are kept at their initial values (see 'init_cov_pars').
                 - estimate_aux_pars : bool, (default = True)
                     If True, any additional parameters for non-Gaussian likelihoods are also estimated
                     (e.g., shape parameter of a gamma or negative binomial likelihood).
@@ -5481,6 +5486,10 @@ class GPModel(object):
                     Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration.
                 - momentum_offset : integer, optional (default = 2, only relevant for "gradient_descent")
                     Number of iterations for which no momentum is applied in the beginning.
+                - m_lbfgs : integer, optional (default = 6)
+                    Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer
+                - delta_conv_mode_finding : double, optional (default = 1e-8)
+                    Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods
 
         Example
         -------
@@ -5923,7 +5932,10 @@ class GPModel(object):
                                              check_must_be_int=False,
                                              convert_to_type=np.float64)
             if cov_pars.shape[0] != self.num_cov_pars:
-                raise ValueError("cov_pars does not contain the correct number of parameters")
+                add_message = ""
+                if self.gp_approx == "vecchia_latent":
+                    add_message = ". The error variance should be provided via the 'aux_pars' argument"
+                raise ValueError("'cov_pars' does not contain the correct number of parameters" + add_message)
             cov_pars_c = cov_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         # Set data for linear fixed-effects regression term
         if X_pred is not None and not self.has_covariates:

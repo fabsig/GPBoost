@@ -2092,6 +2092,9 @@ namespace GPBoost {
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param SigmaI Inverse covariance matrix of latent random effect. Currently, this needs to be a diagonal matrix
+		* \param True, if grouped REs are used together with a Vecchia-approximated GP
+		* \param B Matrix B in Vecchia approximation with grouped REs such that Sigma^-1 = B^T D^-1 B ("=" Cholesky factor)
+		* \param D_inv Diagonal matrix D^-1 in Vecchia approximation with grouped REs
 		* \param first_update If true, the covariance parameters or linear regression coefficients are updated for the first time and the max. number of iterations for the CG should be decreased
 		* \param calc_mll If true the marginal log-likelihood is also calculated (only relevant for matrix_inversion_method_ == "iterative")
 		* \param[out] approx_marginal_ll Approximate marginal log-likelihood evaluated at the mode
@@ -2100,6 +2103,9 @@ namespace GPBoost {
 			const int* y_data_int,
 			const double* fixed_effects,
 			const sp_mat_t& SigmaI,
+			bool has_vecchia_gp,
+			const sp_mat_t& B,
+			const sp_mat_t& D_inv,
 			const bool first_update,
 			bool calc_mll,
 			double& approx_marginal_ll) {
@@ -2117,8 +2123,16 @@ namespace GPBoost {
 			vec_t location_par;
 			double* location_par_ptr_dummy;//not used
 			UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
+			const sp_mat_t* SigmaI_ptr = &SigmaI;
+			sp_mat_t SigmaI_re_gp;//precision for grouped REs + Vecchia GP
+			if (has_vecchia_gp) {
+				sp_mat_t SigmaI_gp = B.transpose() * D_inv * B;
+				GPBoost::MakeBlockDiag_D_B<sp_mat_t>(SigmaI, SigmaI_gp, SigmaI_re_gp);
+				SigmaI_ptr = &SigmaI_re_gp;
+			}
+			CHECK((*SigmaI_ptr).rows() == dim_mode_);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
-			approx_marginal_ll = -0.5 * (mode_.dot(SigmaI * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data());
+			approx_marginal_ll = -0.5 * (mode_.dot((*SigmaI_ptr) * mode_)) + LogLikelihood(y_data, y_data_int, location_par.data());
 			double approx_marginal_ll_new = approx_marginal_ll;
 			sp_mat_t SigmaI_plus_ZtWZ;
 			vec_t rhs, mode_update(dim_mode_), mode_new;
@@ -2135,16 +2149,16 @@ namespace GPBoost {
 			bool terminate_optim = false;
 			bool has_NA_or_Inf = false;
 			if (save_SigmaI_mode_) {
-				SigmaI_mode_ = (*Zt_).transpose() * (SigmaI * mode_);
+				SigmaI_mode_ = (*Zt_).transpose() * ((*SigmaI_ptr) * mode_);
 			}
 			for (it = 0; it < maxit_mode_newton_; ++it) {
 				// Calculate first and second derivative of log-likelihood
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());
-				rhs = (*Zt_) * first_deriv_ll_ - SigmaI * mode_;//right hand side for updating mode
+				rhs = (*Zt_) * first_deriv_ll_ - (*SigmaI_ptr) * mode_;//right hand side for updating mode
 				if (matrix_inversion_method_ == "iterative") {
 					if (it == 0 || information_changes_after_mode_finding_) {
 						CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
-						SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t(SigmaI) + sp_mat_rm_t((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
+						SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t((*SigmaI_ptr)) + sp_mat_rm_t((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
 						if (cg_preconditioner_type_ == "incomplete_cholesky") {
 							ZeroFillInIncompleteCholeskyFactorization(SigmaI_plus_ZtWZ_rm_, L_SigmaI_plus_ZtWZ_rm_);
 						}
@@ -2175,7 +2189,7 @@ namespace GPBoost {
 					// Calculate Cholesky factor
 					if (it == 0 || information_changes_during_mode_finding_) {
 						CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
-						SigmaI_plus_ZtWZ = SigmaI + (sp_mat_t)((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
+						SigmaI_plus_ZtWZ = (*SigmaI_ptr) + (sp_mat_t)((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
 						SigmaI_plus_ZtWZ.makeCompressed();
 						if (!chol_fact_pattern_analyzed_) {
 							chol_fact_SigmaI_plus_ZtWZ_grouped_.analyzePattern(SigmaI_plus_ZtWZ);
@@ -2196,7 +2210,7 @@ namespace GPBoost {
 					mode_new = mode_ + lr_mode * mode_update;
 					// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 					UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr_dummy);
-					approx_marginal_ll_new = -0.5 * (mode_new.dot(SigmaI * mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
+					approx_marginal_ll_new = -0.5 * (mode_new.dot((*SigmaI_ptr) * mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
 					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
 						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
 						lr_mode *= 0.5;
@@ -2213,7 +2227,7 @@ namespace GPBoost {
 			}//end mode finding algorithm
 			if (!has_NA_or_Inf) {//calculate determinant
 				if (sample_from_posterior_after_mode_finding_) {
-					Sample_Posterior_LaplaceApprox_GroupedRE(SigmaI);
+					Sample_Posterior_LaplaceApprox_GroupedRE(SigmaI, has_vecchia_gp, B, D_inv);
 				}
 				CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 				if (matrix_inversion_method_ == "iterative") {
@@ -2238,7 +2252,7 @@ namespace GPBoost {
 						if (information_changes_after_mode_finding_) {
 							//upadate with latest W
 							CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
-							SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t(SigmaI) + sp_mat_rm_t((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
+							SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t((*SigmaI_ptr)) + sp_mat_rm_t((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
 							if (cg_preconditioner_type_ == "incomplete_cholesky") {
 								ZeroFillInIncompleteCholeskyFactorization(SigmaI_plus_ZtWZ_rm_, L_SigmaI_plus_ZtWZ_rm_);
 							}
@@ -2285,6 +2299,9 @@ namespace GPBoost {
 						if (!has_NA_or_Inf) {
 							LogDetStochTridiag(Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ, log_det_SigmaI_plus_ZtWZ, dim_mode_, num_rand_vec_trace_);
 							approx_marginal_ll += 0.5 * (SigmaI.diagonal().array().log().sum() - log_det_SigmaI_plus_ZtWZ);
+							if (has_vecchia_gp) {
+								approx_marginal_ll += 0.5 * D_inv.diagonal().array().log().sum();
+							}
 							// Correction for preconditioner
 							if (cg_preconditioner_type_ == "incomplete_cholesky") {
 								approx_marginal_ll -= L_SigmaI_plus_ZtWZ_rm_.diagonal().array().log().sum();//log|P| = log|L| + log|L^T|
@@ -2306,11 +2323,14 @@ namespace GPBoost {
 				else {
 					if (information_changes_after_mode_finding_) {
 						CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
-						SigmaI_plus_ZtWZ = SigmaI + (sp_mat_t)((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
+						SigmaI_plus_ZtWZ = (*SigmaI_ptr) + (sp_mat_t)((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
 						SigmaI_plus_ZtWZ.makeCompressed();
 						chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
 					}
 					approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
+					if (has_vecchia_gp) {
+						approx_marginal_ll += 0.5 * D_inv.diagonal().array().log().sum();
+					}
 				}//end cholesky	
 				mode_has_been_calculated_ = true;
 				na_or_inf_during_last_call_to_find_mode_ = false;
@@ -3485,7 +3505,6 @@ namespace GPBoost {
 				T_mat WI_plus_Sigma_inv;//WI_plus_Sigma_inv = ZtWZsqrt * L^T\(L\ZtWZsqrt) = ((ZtWZ)^-1 + Sigma)^-1 if use_random_effects_indices_of_data_ or Wsqrt * L^T\(L\Wsqrt) = (W^-1 + ZSigmaZt)^-1 if !use_random_effects_indices_of_data_
 				vec_t d_mode_d_par, SigmaDeriv_first_deriv_ll; //auxiliary variable for caclulating d_mode_d_par
 				int par_count = 0;
-				double explicit_derivative;
 				for (int j = 0; j < (int)re_comps_cluster_i.size(); ++j) {
 					for (int ipar = 0; ipar < re_comps_cluster_i[j]->NumCovPar(); ++ipar) {
 						std::shared_ptr<T_mat> SigmaDeriv;
@@ -3500,7 +3519,7 @@ namespace GPBoost {
 						}
 						if (estimate_cov_par_index[par_count] > 0) {
 							// Calculate explicit derivative of approx. mariginal log-likelihood
-							explicit_derivative = -0.5 * (double)(SigmaI_mode_.transpose() * (*SigmaDeriv) * SigmaI_mode_) +
+							double explicit_derivative = -0.5 * (double)(SigmaI_mode_.transpose() * (*SigmaDeriv) * SigmaI_mode_) +
 								0.5 * (WI_plus_Sigma_inv.cwiseProduct(*SigmaDeriv)).sum();
 							cov_grad[par_count] = explicit_derivative;
 							if (grad_information_wrt_mode_non_zero_) {
@@ -3600,6 +3619,11 @@ namespace GPBoost {
 			const int* y_data_int,
 			const double* fixed_effects,
 			const sp_mat_t& SigmaI,
+			bool has_vecchia_gp,
+			const sp_mat_t& B,
+			const sp_mat_t& D_inv,
+			const std::vector<sp_mat_t>& B_grad,
+			const std::vector<sp_mat_t>& D_grad,
 			std::vector<data_size_t> cum_num_rand_eff_cluster_i,
 			bool calc_cov_grad,
 			bool calc_F_grad,
@@ -3610,11 +3634,22 @@ namespace GPBoost {
 			bool calc_mode,
 			bool call_for_std_dev_coef,
 			const std::vector<int>& estimate_cov_par_index) {
-			int num_REs = (int)SigmaI.cols();//number of random effect realizations
-			int num_comps = (int)cum_num_rand_eff_cluster_i.size() - 1;//number of different random effect components
+			CHECK(cum_num_rand_eff_cluster_i.back() == dim_mode_);
+			const data_size_t num_grouped_RE = has_vecchia_gp ? (data_size_t)cum_num_rand_eff_cluster_i.size() - 2 : (data_size_t)cum_num_rand_eff_cluster_i.size() - 1;//number of different grouped random effect components
+			const data_size_t dim_re_group = cum_num_rand_eff_cluster_i[num_grouped_RE];//number of grouped random effects
+			CHECK(SigmaI.cols() == dim_re_group);
+			data_size_t dim_gp = 0;//number of GP random effects
+			if (has_vecchia_gp) {
+				dim_gp = cum_num_rand_eff_cluster_i[num_grouped_RE + 1] - cum_num_rand_eff_cluster_i[num_grouped_RE];
+				CHECK(B.rows() == dim_gp);
+				CHECK(B.cols() == dim_gp);
+				CHECK(D_inv.rows() == dim_gp);
+				CHECK(dim_gp > 0);
+			}
+			CHECK(dim_re_group + dim_gp == dim_mode_);
 			if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
-				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, SigmaI, false, true, mll);
+				double mll_dummy;
+				FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, SigmaI, has_vecchia_gp, B, D_inv, false, true, mll_dummy);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				if (call_for_std_dev_coef) {
@@ -3631,9 +3666,9 @@ namespace GPBoost {
 			UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 			if (matrix_inversion_method_ == "iterative") {
 				// calculate P^(-1) RV
-				den_mat_t PI_RV(num_REs, num_rand_vec_trace_), L_inv_Z, DI_L_plus_D_t_PI_RV;
+				den_mat_t PI_RV(dim_mode_, num_rand_vec_trace_), L_inv_Z, DI_L_plus_D_t_PI_RV;
 				if (cg_preconditioner_type_ == "incomplete_cholesky") {
-					L_inv_Z.resize(num_REs, num_rand_vec_trace_);
+					L_inv_Z.resize(dim_mode_, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
 						L_inv_Z.col(i) = L_SigmaI_plus_ZtWZ_rm_.triangularView<Eigen::Lower>().solve(rand_vec_trace_P_.col(i));
@@ -3644,7 +3679,7 @@ namespace GPBoost {
 					}
 				}
 				else if (cg_preconditioner_type_ == "ssor") {
-					L_inv_Z.resize(num_REs, num_rand_vec_trace_);
+					L_inv_Z.resize(dim_mode_, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
 						L_inv_Z.col(i) = P_SSOR_L_D_sqrt_inv_rm_.triangularView<Eigen::Lower>().solve(rand_vec_trace_P_.col(i));
@@ -3654,8 +3689,8 @@ namespace GPBoost {
 						PI_RV.col(i) = (P_SSOR_L_D_sqrt_inv_rm_.transpose().template triangularView<Eigen::Upper>()).solve(L_inv_Z.col(i));
 					}
 					//For variance reduction
-					DI_L_plus_D_t_PI_RV.resize(num_REs, num_rand_vec_trace_);
-					den_mat_t L_plus_D_t_PI_RV(num_REs, num_rand_vec_trace_);
+					DI_L_plus_D_t_PI_RV.resize(dim_mode_, num_rand_vec_trace_);
+					den_mat_t L_plus_D_t_PI_RV(dim_mode_, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 					for (int i = 0; i < num_rand_vec_trace_; ++i) {
 						L_plus_D_t_PI_RV.col(i) = SigmaI_plus_ZtWZ_rm_.triangularView<Eigen::Upper>() * PI_RV.col(i);
@@ -3675,6 +3710,8 @@ namespace GPBoost {
 					Z_PI_RV.col(i) = (*Zt_).transpose() * PI_RV.col(i);
 				}
 				// calculate Z P^(-1) z_i
+				CHECK(SigmaI_plus_ZtWZ_inv_RV_.rows() == dim_mode_);
+				CHECK(SigmaI_plus_ZtWZ_inv_RV_.cols() == num_rand_vec_trace_);
 				den_mat_t Z_SigmaI_plus_ZtWZ_inv_RV(num_data_, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
@@ -3711,14 +3748,21 @@ namespace GPBoost {
 				// calculate gradient wrt covariance parameters
 				bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
 				if (calc_cov_grad && some_cov_par_estimated) {
-					vec_t SigmaI_mode = SigmaI * mode_;
-					double explicit_derivative;
-					sp_mat_t I_j(num_REs, num_REs);
-					for (int j = 0; j < num_comps; ++j) {
+					vec_t SigmaI_mode;
+					if (has_vecchia_gp) {
+						SigmaI_mode = vec_t(dim_mode_);
+						SigmaI_mode.segment(0, dim_re_group) = SigmaI * mode_.segment(0, dim_re_group);
+						SigmaI_mode.segment(dim_re_group, dim_gp) = B.transpose() * (D_inv * (B * (mode_.segment(dim_re_group, dim_gp))));
+					}
+					else {
+						SigmaI_mode = SigmaI * mode_;
+					}
+					sp_mat_t I_j(dim_mode_, dim_mode_);
+					for (int j = 0; j < num_grouped_RE; ++j) {
 						if (estimate_cov_par_index[j] > 0) {
 							// calculate explicit derivative of approx. mariginal log-likelihood
 							std::vector<Triplet_t> triplets(cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);
-							explicit_derivative = 0.;
+							double explicit_derivative = 0.;
 #pragma omp parallel for schedule(static) reduction(+:explicit_derivative)
 							for (int i = cum_num_rand_eff_cluster_i[j]; i < cum_num_rand_eff_cluster_i[j + 1]; ++i) {
 								triplets[i - cum_num_rand_eff_cluster_i[j]] = Triplet_t(i, i, 1.);
@@ -3730,17 +3774,15 @@ namespace GPBoost {
 							//Stochastic trace: tr((Sigma^(-1) + Z^T W Z)^(-1) dSigma^(-1)/dtheta_j)
 							vec_t RVt_SigmaI_plus_ZtWZ_inv_SigmaI_deriv_PI_RV = -cov_par_inv * ((SigmaI_plus_ZtWZ_inv_RV_.cwiseProduct(I_j * PI_RV)).colwise().sum()).transpose(); //old: -1. * ((SigmaI_plus_ZtWZ_inv_RV_.cwiseProduct((I_j * SigmaI.coeff(cum_num_rand_eff_cluster_i[j], cum_num_rand_eff_cluster_i[j])) * PI_RV)).colwise().sum()).transpose();
 							double trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv = RVt_SigmaI_plus_ZtWZ_inv_SigmaI_deriv_PI_RV.mean();
-							if (cg_preconditioner_type_ == "ssor") {
-								//Variance reduction
+							if (cg_preconditioner_type_ == "ssor" && !has_vecchia_gp) {//Variance reduction								
 								//deterministic tr(D^(-1) dSigma^(-1)/dtheta_j)
 								double tr_D_inv_SigmaI_deriv = -cov_par_inv * (P_SSOR_D_inv_.cwiseProduct(I_j.diagonal())).sum();
 								//stochastic tr(P^(-1) dP/dtheta_j)
 								den_mat_t neg_SigmaI_deriv_DI_L_plus_D_t_PI_RV = cov_par_inv * (I_j * DI_L_plus_D_t_PI_RV);
 								vec_t RVt_PI_P_deriv_PI_RV = -2. * ((PI_RV.cwiseProduct(neg_SigmaI_deriv_DI_L_plus_D_t_PI_RV)).colwise().sum()).transpose();
 								RVt_PI_P_deriv_PI_RV += ((DI_L_plus_D_t_PI_RV.cwiseProduct(neg_SigmaI_deriv_DI_L_plus_D_t_PI_RV)).colwise().sum()).transpose();
-								double tr_PI_P_deriv = RVt_PI_P_deriv_PI_RV.mean();
-								//optimal c
-								double c_opt;
+								double tr_PI_P_deriv = RVt_PI_P_deriv_PI_RV.mean();								
+								double c_opt;//optimal c
 								CalcOptimalC(RVt_SigmaI_plus_ZtWZ_inv_SigmaI_deriv_PI_RV, RVt_PI_P_deriv_PI_RV, trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv, tr_PI_P_deriv, c_opt);
 								trace_SigmaI_plus_ZtWZ_inv_SigmaI_deriv += c_opt * (tr_D_inv_SigmaI_deriv - tr_PI_P_deriv);
 							}
@@ -3751,7 +3793,70 @@ namespace GPBoost {
 								cov_grad[j] += SigmaI_plus_ZtWZ_inv_d_mll_d_mode.dot(I_j * ((*Zt_) * first_deriv_ll_));
 							}
 						}
-					}
+					}//end loop j < num_grouped_RE
+					if (has_vecchia_gp) {
+						CHECK(num_sets_re_ == 1);
+						const int num_par_gp = (int)B_grad.size();
+						CHECK((int)D_grad.size() == num_par_gp);
+						sp_mat_t D_inv_B = D_inv * B;// D_inv_B for GP block
+						den_mat_t SigmaI_deriv_PI_RV(dim_mode_, num_rand_vec_trace_);
+						SigmaI_deriv_PI_RV.setZero();
+						vec_t RVt_trace(num_rand_vec_trace_);// For computing trace estimator: tr(A^{-1} SigmaI_deriv). Hutchinson w/ vectors PI_RV: mean_j ( (A^{-1}PI_RV_j)^T (SigmaI_deriv PI_RV_j) )
+						const vec_t mode_gp = mode_.segment(dim_re_group, dim_gp);// For explicit term: mode^T SigmaI_deriv mode (only GP block)
+						// For implicit term: (A^{-1} d_mll_d_mode)^T (SigmaI_deriv * (Z^T first_deriv_ll_)),  rhs = SigmaI_deriv * (Zt * first_deriv_ll_) efficiently on GP block
+						const vec_t Zt_first = (*Zt_) * first_deriv_ll_;  // dim_mode_
+						vec_t rhs(dim_mode_);
+						rhs.setZero();
+						sp_mat_t SigmaI_deriv_gp;     // dim_gp x dim_gp
+						sp_mat_t Bt_Dinv_Bgrad, BgradT_Dinv_B;
+						for (int p = 0; p < num_par_gp; ++p) {
+							const int cov_ind = (int)num_grouped_RE + p;
+							if (cov_ind >= (int)estimate_cov_par_index.size()) {
+								Log::REFatal("estimate_cov_par_index too short for Vecchia GP params in CalcGradNegMargLikelihoodLaplaceApproxGroupedRE");
+							}
+							if (estimate_cov_par_index[cov_ind] <= 0) {
+								continue;
+							}
+							// Build SigmaI_deriv_gp for GP precision: d(B^T D^{-1} B)/dtheta = B_grad^T D^{-1} B + B^T D^{-1} B_grad - (D^{-1}B)^T D_grad (D^{-1}B)
+							if (p == 0) {
+								SigmaI_deriv_gp = -B.transpose() * D_inv_B;  // Special case: if p==0 is the variance parameter: SigmaI_deriv_gp = -SigmaI_gp
+							}
+							else {
+								BgradT_Dinv_B = B_grad[p].transpose() * D_inv_B;
+								Bt_Dinv_Bgrad = BgradT_Dinv_B.transpose();
+								SigmaI_deriv_gp = BgradT_Dinv_B + Bt_Dinv_Bgrad - D_inv_B.transpose() * D_grad[p] * D_inv_B;
+								Bt_Dinv_Bgrad.resize(0, 0);
+								BgradT_Dinv_B.resize(0, 0);
+							}
+							// Explicit term: 0.5 * mode^T SigmaI_deriv mode
+							const vec_t SigmaI_deriv_mode_gp = SigmaI_deriv_gp * mode_gp;
+							double explicit_derivative = 0.5 * mode_gp.dot(SigmaI_deriv_mode_gp);
+							// Trace term: 0.5 * tr(A^{-1} SigmaI_deriv) via Hutchinson. Compute SigmaI_deriv * PI_RV (only GP block nonzero)
+							SigmaI_deriv_PI_RV.setZero();
+							SigmaI_deriv_PI_RV.block(dim_re_group, 0, dim_gp, num_rand_vec_trace_) = (SigmaI_deriv_gp * PI_RV.block(dim_re_group, 0, dim_gp, num_rand_vec_trace_));
+							// RVt_trace[j] = (A^{-1}PI_RV_j)^T (SigmaI_deriv PI_RV_j)
+							RVt_trace = (SigmaI_plus_ZtWZ_inv_RV_.cwiseProduct(SigmaI_deriv_PI_RV)).colwise().sum().transpose();
+							const double tr_Ainv_SigmaIderiv = RVt_trace.mean();
+							explicit_derivative += 0.5 * tr_Ainv_SigmaIderiv;
+							//  Log-determinant term for +0.5 log|Sigma|
+							if (p == 0) {
+								explicit_derivative += 0.5 * dim_gp;
+							}
+							else {
+								explicit_derivative += 0.5 * (D_inv.diagonal().array() * D_grad[p].diagonal().array()).sum();
+							}
+							cov_grad[cov_ind] = explicit_derivative;
+							// Implicit term through mode
+							// Cholesky version uses: d_mll_d_mode^T * A^{-1} * (SigmaI_deriv * (Zt*first_deriv_ll_))
+							// Iterative: we already computed A^{-1} d_mll_d_mode as SigmaI_plus_ZtWZ_inv_d_mll_d_mode
+							if (grad_information_wrt_mode_non_zero_) {
+								rhs.setZero();
+								rhs.segment(dim_re_group, dim_gp) = SigmaI_deriv_gp * Zt_first.segment(dim_re_group, dim_gp);
+								cov_grad[cov_ind] += SigmaI_plus_ZtWZ_inv_d_mll_d_mode.dot(rhs);
+							}
+							SigmaI_deriv_gp.resize(0, 0);
+						} // end loop over GP params
+					} // end has_vecchia_gp
 				}//end calc_cov_grad
 				// calculate gradient wrt fixed effects
 				if (calc_F_grad) {
@@ -3798,7 +3903,7 @@ namespace GPBoost {
 			}//end iterative
 			else {//Cholesky decomposition
 				// Calculate (Sigma^-1 + Zt*W*Z)^-1
-				sp_mat_t L_inv(num_REs, num_REs);
+				sp_mat_t L_inv(dim_mode_, dim_mode_);
 				L_inv.setIdentity();
 				if (chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().size() > 0) {//Permutation is only used when having an ordering
 					L_inv = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * L_inv;
@@ -3813,38 +3918,60 @@ namespace GPBoost {
 				if (grad_information_wrt_mode_non_zero_) {
 					deriv_information_diag_loc_par = vec_t(num_data_);
 					CalcFirstDerivInformationLocPar_PerSample(y_data, y_data_int, location_par.data(), deriv_information_diag_loc_par);
-					d_mll_d_mode = vec_t(num_REs);
 					sp_mat_t Zt_deriv_information_loc_par = (*Zt_) * deriv_information_diag_loc_par.asDiagonal();//every column of Z multiplied elementwise by deriv_information_diag_loc_par
+					// Note: Z^T * diag(diag_d_W_d_mode_i) * Z = Z^T * diag(Z.col(i) * deriv_information_diag_loc_par) * Z
+					// Precompute || L_inv * Z^T e_i ||^2  (i.e. squared norm of columns of L_inv * Zt)
+					vec_t L_inv_Zt_col_squaredNorm(num_data_);
 #pragma omp parallel for schedule(static)
-					for (int ire = 0; ire < num_REs; ++ire) {
-						//calculate Z^T * diag(diag_d_W_d_mode_i) * Z = Z^T * diag(Z.col(i) * deriv_information_diag_loc_par) * Z
-						d_mll_d_mode[ire] = 0.;
-						double entry_ij;
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							entry_ij = Zt_deriv_information_loc_par.coeff(ire, i);
-							if (std::abs(entry_ij) > EPSILON_NUMBERS) {
-								vec_t L_inv_Zt_col_i = L_inv * (*Zt_).col(i);
-								d_mll_d_mode[ire] += entry_ij * (L_inv_Zt_col_i.squaredNorm());
-							}
-						}
-						d_mll_d_mode[ire] *= 0.5;
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						vec_t L_inv_Zt_col_i = L_inv * (*Zt_).col(i);
+						L_inv_Zt_col_squaredNorm[i] = L_inv_Zt_col_i.squaredNorm();
 					}
+					d_mll_d_mode = 0.5 * (Zt_deriv_information_loc_par * L_inv_Zt_col_squaredNorm);
 				}
+				// old equivalent code
+//				if (grad_information_wrt_mode_non_zero_) {
+//					deriv_information_diag_loc_par = vec_t(num_data_);
+//					CalcFirstDerivInformationLocPar_PerSample(y_data, y_data_int, location_par.data(), deriv_information_diag_loc_par);
+//					d_mll_d_mode = vec_t(dim_mode_);
+//					sp_mat_t Zt_deriv_information_loc_par = (*Zt_) * deriv_information_diag_loc_par.asDiagonal();//every column of Z multiplied elementwise by deriv_information_diag_loc_par
+//#pragma omp parallel for schedule(static)
+//					for (int ire = 0; ire < dim_mode_; ++ire) {
+//						//calculate Z^T * diag(diag_d_W_d_mode_i) * Z = Z^T * diag(Z.col(i) * deriv_information_diag_loc_par) * Z
+//						d_mll_d_mode[ire] = 0.;
+//						double entry_ij;
+//						for (data_size_t i = 0; i < num_data_; ++i) {
+//							entry_ij = Zt_deriv_information_loc_par.coeff(ire, i);
+//							if (std::abs(entry_ij) > EPSILON_NUMBERS) {
+//								vec_t L_inv_Zt_col_i = L_inv * (*Zt_).col(i);
+//								d_mll_d_mode[ire] += entry_ij * (L_inv_Zt_col_i.squaredNorm());
+//							}
+//						}
+//						d_mll_d_mode[ire] *= 0.5;
+//					}
+//				}
 				// calculate gradient wrt covariance parameters
 				bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
 				if (calc_cov_grad && some_cov_par_estimated) {
 					sp_mat_t ZtWZ = (*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose();
 					vec_t d_mode_d_par;//derivative of mode wrt to a covariance parameter
 					vec_t v_aux;//auxiliary variable for caclulating d_mode_d_par
-					vec_t SigmaI_mode = SigmaI * mode_;
-					double explicit_derivative;
-					sp_mat_t I_j(num_REs, num_REs);//Diagonal matrix with 1 on the diagonal for all random effects of component j and 0's otherwise
+					vec_t SigmaI_mode;
+					if (has_vecchia_gp) {
+						SigmaI_mode = vec_t(dim_mode_);
+						SigmaI_mode.segment(0, dim_re_group) = SigmaI * mode_.segment(0, dim_re_group);
+						SigmaI_mode.segment(dim_re_group, dim_gp) = B.transpose() * (D_inv * (B * (mode_.segment(dim_re_group, dim_gp))));
+					}
+					else {
+						SigmaI_mode = SigmaI * mode_;
+					}
+					sp_mat_t I_j(dim_mode_, dim_mode_);//Diagonal matrix with 1 on the diagonal for all random effects of component j and 0's otherwise
 					sp_mat_t I_j_ZtWZ;
-					for (int j = 0; j < num_comps; ++j) {
+					for (int j = 0; j < num_grouped_RE; ++j) {
 						if (estimate_cov_par_index[j] > 0) {
 							// calculate explicit derivative of approx. mariginal log-likelihood
 							std::vector<Triplet_t> triplets(cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);//for constructing I_j
-							explicit_derivative = 0.;
+							double explicit_derivative = 0.;
 #pragma omp parallel for schedule(static) reduction(+:explicit_derivative)
 							for (int i = cum_num_rand_eff_cluster_i[j]; i < cum_num_rand_eff_cluster_i[j + 1]; ++i) {
 								triplets[i - cum_num_rand_eff_cluster_i[j]] = Triplet_t(i, i, 1.);
@@ -3856,6 +3983,7 @@ namespace GPBoost {
 							SigmaI_plus_ZtWZ_inv = I_j_ZtWZ;
 							CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv, false);
 							explicit_derivative += 0.5 * (SigmaI_plus_ZtWZ_inv.cwiseProduct(I_j_ZtWZ)).sum();
+							SigmaI_plus_ZtWZ_inv.resize(0, 0);
 							cov_grad[j] = explicit_derivative;
 							if (grad_information_wrt_mode_non_zero_) {
 								// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
@@ -3864,6 +3992,61 @@ namespace GPBoost {
 							}
 						}
 					}
+					if (has_vecchia_gp) {
+						CHECK(num_sets_re_ == 1);
+						const int num_par_gp = (int)B_grad.size();
+						CHECK((int)D_grad.size() == num_par_gp);						
+						sp_mat_t SigmaI_plus_ZtWZ_inv_on_pattern;// (SigmaI_plus_ZtWZ)^-1 on the sparsity pattern of SigmaI_deriv (GP block), computing the full inverse is too expensive
+						sp_mat_t D_inv_B = D_inv * B;// D_inv_B for GP block
+						sp_mat_t SigmaI_deriv_gp; // dim_gp x dim_gp
+						sp_mat_t SigmaI_deriv_full;// dim_mode_ x dim_mode_ (embedded gp block)
+						sp_mat_t Bt_Dinv_Bgrad, BgradT_Dinv_B;
+						for (int p = 0; p < num_par_gp; ++p) {
+							const int cov_ind = num_grouped_RE + p;
+							if (cov_ind >= (int)estimate_cov_par_index.size()) {
+								Log::REFatal("estimate_cov_par_index too short for Vecchia GP params in CalcGradNegMargLikelihoodLaplaceApproxGroupedRE");
+							}
+							if (estimate_cov_par_index[cov_ind] <= 0) {
+								continue;
+							}
+							// Build SigmaI_deriv_gp for GP precision: d(B^T D^{-1} B)/dtheta = B_grad^T D^{-1} B + B^T D^{-1} B_grad - (D^{-1}B)^T D_grad (D^{-1}B)
+							if (p == 0) {
+								SigmaI_deriv_gp = -B.transpose() * D_inv_B;  // Special case: if p==0 is the variance parameter: SigmaI_deriv_gp = -SigmaI_gp
+							}
+							else {
+								BgradT_Dinv_B = B_grad[p].transpose() * D_inv_B;
+								Bt_Dinv_Bgrad = BgradT_Dinv_B.transpose();
+								SigmaI_deriv_gp = BgradT_Dinv_B + Bt_Dinv_Bgrad - D_inv_B.transpose() * D_grad[p] * D_inv_B;
+								Bt_Dinv_Bgrad.resize(0, 0);
+								BgradT_Dinv_B.resize(0, 0);
+							}
+							//  Embed into full precision derivative (block-diagonal): SigmaI_deriv_full has zeros on grouped RE block and SigmaI_deriv_gp on GP block.
+							GPBoost::MakeBlockDiag_I_B(SigmaI_deriv_gp, dim_re_group, SigmaI_deriv_full, true);
+							const vec_t SigmaI_deriv_mode = SigmaI_deriv_full * mode_;
+							// Compute inverse-on-pattern for trace term:
+							SigmaI_plus_ZtWZ_inv_on_pattern = SigmaI_deriv_full;
+							CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv_on_pattern, false);
+							double explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode) +
+								(SigmaI_deriv_full.cwiseProduct(SigmaI_plus_ZtWZ_inv_on_pattern)).sum());
+							// Add derivative of +0.5*log|Sigma| term (equivalently -0.5*log|Sigma^{-1}|)
+							if (p == 0) {								
+								explicit_derivative += 0.5 * dim_gp;// variance parameter
+							}
+							else {
+								explicit_derivative += 0.5 * (D_inv.diagonal().array() * D_grad[p].diagonal().array()).sum();
+							}
+							cov_grad[cov_ind] = explicit_derivative;
+							// Implicit derivative via mode
+							if (grad_information_wrt_mode_non_zero_) {
+								vec_t rhs = SigmaI_deriv_full * ((*Zt_) * first_deriv_ll_);
+								d_mode_d_par = L_inv.transpose() * (L_inv * rhs);
+								cov_grad[cov_ind] += d_mll_d_mode.dot(d_mode_d_par);
+							}
+							SigmaI_deriv_gp.resize(0, 0);
+							SigmaI_deriv_full.resize(0, 0);
+							SigmaI_plus_ZtWZ_inv_on_pattern.resize(0, 0);
+						} // end loop over GP parameters p
+					} // end has_vecchia_gp
 				}//end calc_cov_grad
 				// calculate gradient wrt fixed effects
 				if (calc_F_grad) {
@@ -5862,6 +6045,13 @@ namespace GPBoost {
 			const int* y_data_int,
 			const double* fixed_effects,
 			const sp_mat_t& SigmaI,
+			bool has_vecchia_gp,
+			const sp_mat_t& B,
+			const sp_mat_t& D_inv,
+			const sp_mat_t& Bpo,
+			sp_mat_t& Bp,
+			const vec_t& Dp,
+			bool VecchiaCondObsOnly,
 			const sp_mat_t& Ztilde,
 			const sp_mat_t& Sigma,
 			vec_t& pred_mean,
@@ -5872,15 +6062,38 @@ namespace GPBoost {
 			bool calc_mode) {
 			if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * ZSigmaZt * Wsqrt) at mode
 				double mll;//approximate marginal likelihood. This is a by-product that is not used here.
-				FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, SigmaI, false, false, mll);
+				FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, SigmaI, has_vecchia_gp, B, D_inv, false, false, mll);
 			}
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				Log::REFatal(NA_OR_INF_ERROR_);
 			}
 			CHECK(mode_has_been_calculated_);
-			pred_mean = Ztilde * mode_;
-			//pred_mean = Ztilde * (Sigma * (Zt * first_deriv_ll_));//equivalent version
+			const data_size_t dim_re_group = (data_size_t)SigmaI.cols();
+			const data_size_t dim_gp = has_vecchia_gp ? (data_size_t)B.rows() : 0;
+			CHECK(dim_gp + dim_re_group == dim_mode_);
+			if (has_vecchia_gp) {				
+				CHECK(dim_gp > 0);
+				CHECK(Ztilde.rows() == Bpo.rows());
+				CHECK(Ztilde.cols() == dim_re_group);
+				CHECK(Bpo.cols() == dim_gp);
+				pred_mean = Ztilde * mode_.segment(0, dim_re_group);
+				if (VecchiaCondObsOnly) {
+					pred_mean += -Bpo * mode_.segment(dim_re_group, dim_gp);
+				}
+				else {
+					vec_t Bpo_mode = Bpo * mode_.segment(dim_re_group, dim_gp);
+					pred_mean += -Bp.triangularView<Eigen::UpLoType::UnitLower>().solve(Bpo_mode);
+				}
+			}
+			else {
+				CHECK(dim_gp == 0);
+				pred_mean = Ztilde * mode_;
+				//pred_mean = Ztilde * (Sigma * (Zt * first_deriv_ll_));//equivalent version
+			}
 			if (calc_pred_cov || calc_pred_var) {
+				if (has_vecchia_gp) {
+					Log::REFatal("Predictive variances and covariances are not yet implemented for grouped random effects and a Vecchia-approximated GP ");
+				}
 				if (use_variance_correction_for_prediction_) {
 					Log::REFatal("The variance correction is not yet implemented when having multiple grouped random effects ");
 				}
@@ -7014,8 +7227,17 @@ namespace GPBoost {
 		/*!
 		* \brief Sampling from the Laplace-approximated posterior when there are multiple levels of grouped random effects
 		*/
-		void Sample_Posterior_LaplaceApprox_GroupedRE(const sp_mat_t& SigmaI) {
+		void Sample_Posterior_LaplaceApprox_GroupedRE(const sp_mat_t& SigmaI,
+			bool has_vecchia_gp,
+			const sp_mat_t& B,
+			const sp_mat_t& D_inv) {
 			CHECK(num_sets_re_ == 1);
+			const data_size_t dim_re_group = (data_size_t)SigmaI.cols();
+			data_size_t dim_gp = 0;
+			if (has_vecchia_gp){
+				dim_gp = (data_size_t)B.cols();
+			}
+			CHECK(dim_gp + dim_re_group == dim_mode_);
 			//sample iid normal random vectors
 			if (!sampled_rand_vec_I_sim_post_) {
 				rand_vec_I_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
@@ -7039,30 +7261,79 @@ namespace GPBoost {
 			else if (matrix_inversion_method_ == "iterative") {
 				CHECK(rand_vec_I_2_sim_post_.cols() == num_rand_vec_sim_post_);
 				CHECK(rand_vec_I_2_sim_post_.rows() == num_data_);
-				vec_t SigmaI_diag_sqrt = SigmaI.diagonal().cwiseSqrt();
+				vec_t SigmaI_diag_sqrt;
+				sp_mat_t B_t_D_inv_sqrt;
+				if (has_vecchia_gp) {
+					B_t_D_inv_sqrt = B.transpose() * (D_inv.cwiseSqrt());
+				}
+				else {
+					SigmaI_diag_sqrt = SigmaI.diagonal().cwiseSqrt();
+				}
 				sp_mat_rm_t Zt_W_sqrt_rm = sp_mat_rm_t((*Zt_) * information_ll_.cwiseSqrt().asDiagonal());
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
-					//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
-					vec_t rand_vec_pred_SigmaI_plus_ZtWZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_I_sim_post_.col(i) + Zt_W_sqrt_rm * rand_vec_I_2_sim_post_.col(i);
-					vec_t rand_vec_pred_SigmaI_plus_ZtWZ_inv;
-					if (rand_vec_sim_post_calculated_ && reuse_rand_vec_I_sim_post_) {
-						rand_vec_pred_SigmaI_plus_ZtWZ_inv = rand_vec_sim_post_.col(i);
-					}
-					else {
-						rand_vec_pred_SigmaI_plus_ZtWZ_inv = vec_t(dim_mode_);
-						rand_vec_pred_SigmaI_plus_ZtWZ_inv.setZero();
-					}
-					//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
-					bool has_NA_or_Inf = false;
-					int num_cg_steps_dummy;
-					CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
-						true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
-					if (has_NA_or_Inf) {
-						Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
-					}
-					rand_vec_sim_post_.col(i) = rand_vec_pred_SigmaI_plus_ZtWZ_inv;
-				}//end parallel loop
+#pragma omp parallel
+				{
+					vec_t rand_vec_pred_SigmaI_plus_ZtWZ(dim_mode_); // allocated once per thread
+					vec_t rand_vec_pred_SigmaI_plus_ZtWZ_inv(dim_mode_);
+#pragma omp for schedule(static)
+					for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
+						//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
+						if (has_vecchia_gp) {
+							rand_vec_pred_SigmaI_plus_ZtWZ.segment(0, dim_re_group) = SigmaI_diag_sqrt.asDiagonal() * rand_vec_I_sim_post_.col(i).segment(0, dim_re_group);
+							rand_vec_pred_SigmaI_plus_ZtWZ.segment(dim_re_group, dim_gp) = B_t_D_inv_sqrt * rand_vec_I_sim_post_.col(i).segment(dim_re_group, dim_gp);
+							rand_vec_pred_SigmaI_plus_ZtWZ.noalias() += Zt_W_sqrt_rm * rand_vec_I_2_sim_post_.col(i);
+						}
+						else {
+							rand_vec_pred_SigmaI_plus_ZtWZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_I_sim_post_.col(i) + Zt_W_sqrt_rm * rand_vec_I_2_sim_post_.col(i);
+						}
+						if (rand_vec_sim_post_calculated_ && reuse_rand_vec_I_sim_post_) {
+							rand_vec_pred_SigmaI_plus_ZtWZ_inv = rand_vec_sim_post_.col(i);
+						}
+						else {
+							rand_vec_pred_SigmaI_plus_ZtWZ_inv.setZero();
+						}
+						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
+						bool has_NA_or_Inf = false;
+						int num_cg_steps_dummy;
+						CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
+							true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
+						if (has_NA_or_Inf) {
+							Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
+						}
+						rand_vec_sim_post_.col(i) = rand_vec_pred_SigmaI_plus_ZtWZ_inv;
+					}//end parallel loop
+				}
+//				//alernative version with multiple memory allocation
+//#pragma omp parallel for schedule(static)
+//				for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
+//					//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
+//					vec_t rand_vec_pred_SigmaI_plus_ZtWZ;
+//					if (has_vecchia_gp) {
+//						rand_vec_pred_SigmaI_plus_ZtWZ = vec_t(dim_mode_);
+//						rand_vec_pred_SigmaI_plus_ZtWZ.segment(0, dim_re_group) = SigmaI_diag_sqrt.asDiagonal() * rand_vec_I_sim_post_.col(i).segment(0, dim_re_group);
+//						rand_vec_pred_SigmaI_plus_ZtWZ.segment(dim_re_group, dim_gp) = B_t_D_inv_sqrt * rand_vec_I_sim_post_.col(i).segment(dim_re_group, dim_gp);
+//						rand_vec_pred_SigmaI_plus_ZtWZ.noalias() += Zt_W_sqrt_rm * rand_vec_I_2_sim_post_.col(i);
+//					}
+//					else {
+//						rand_vec_pred_SigmaI_plus_ZtWZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_I_sim_post_.col(i) + Zt_W_sqrt_rm * rand_vec_I_2_sim_post_.col(i);
+//					}
+//					vec_t rand_vec_pred_SigmaI_plus_ZtWZ_inv;
+//					if (rand_vec_sim_post_calculated_ && reuse_rand_vec_I_sim_post_) {
+//						rand_vec_pred_SigmaI_plus_ZtWZ_inv = rand_vec_sim_post_.col(i);
+//					}
+//					else {
+//						rand_vec_pred_SigmaI_plus_ZtWZ_inv = vec_t(dim_mode_);
+//						rand_vec_pred_SigmaI_plus_ZtWZ_inv.setZero();
+//					}
+//					//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
+//					bool has_NA_or_Inf = false;
+//					int num_cg_steps_dummy;
+//					CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
+//						true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
+//					if (has_NA_or_Inf) {
+//						Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
+//					}
+//					rand_vec_sim_post_.col(i) = rand_vec_pred_SigmaI_plus_ZtWZ_inv;
+//				}//end parallel loop
 			}//end matrix_inversion_method_ == "iterative"
 			SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
 			rand_vec_sim_post_calculated_ = true;
@@ -13419,7 +13690,7 @@ namespace GPBoost {
 		/*! \brief True if group_indices_data_ has been determined for only_one_grouped_RE  */
 		bool group_indices_data_only_one_grouped_RE_found_ = false;
 		/*! \brief For saving fixed_effects pointer */
-		const double* fixed_effects_;
+		const double* fixed_effects_ = nullptr;
 		/*! \brief If true, this is an iid model without a random effects / GP component */
 		bool iid_model_ = false;
 
@@ -13573,7 +13844,7 @@ namespace GPBoost {
 		sp_mat_rm_t P_SSOR_L_D_sqrt_inv_rm_;
 		/*! \brief For SSOR preconditioner - diag(Sigma^-1 + Z^T W Z)^(-1)*/
 		vec_t P_SSOR_D_inv_;
-		/*! \brief For ZIC preconditioner - sparse cholesky factor L of matrix L L^T = (Sigma^-1 + Z^T W Z)*/
+		/*! \brief For ZIC preconditioner - sparse cholesky factor L of matrix L L^T approx (Sigma^-1 + Z^T W Z)*/
 		sp_mat_rm_t L_SigmaI_plus_ZtWZ_rm_;
 		/*! \brief For diagonal preconditioner - diag(Sigma^-1 + Z^T W Z)^(-1)*/
 		vec_t SigmaI_plus_ZtWZ_inv_diag_;
