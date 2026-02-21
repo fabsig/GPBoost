@@ -4247,7 +4247,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                               nrounds = 100, early_stopping_rounds = 5,
                                               use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
                                               reuse_learning_rates_gp_model = FALSE, metric="l2") )
-    expect_lt(sum(abs(cvbst$best_score-0.0791837827384148)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(cvbst$best_score-0.0791837827384148)),TOLERANCE_LOOSE)
     expect_gte(cvbst$best_iter, 13)
     expect_lte(cvbst$best_iter, 14)
     

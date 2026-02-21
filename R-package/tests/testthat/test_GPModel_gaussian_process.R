@@ -1472,6 +1472,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params$init_cov_pars <- init_cov_pars
     
     # No tapering
+    gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
+    nll_exp <- 212.9854341
+    nll <- gp_model$neg_log_likelihood(y=y, cov_pars = init_cov_pars)
+    expect_lt(abs(nll - nll_exp),TOLERANCE_STRICT)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            y = y, X = X, params = params), file='NUL')
     cov_pars <- c(0.01621846, 0.07384498, 0.99717680, 0.21704099, 0.09616230, 0.03034715)
@@ -1490,6 +1494,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     
     # With tapering and very large tapering range
+    capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                        gp_approx = "tapering", cov_fct_taper_shape = 0, cov_fct_taper_range = 1e6), file='NUL')
+    nll <- gp_model$neg_log_likelihood(y=y, cov_pars = init_cov_pars)
+    expect_lt(abs(nll - nll_exp),TOLERANCE_STRICT)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            gp_approx = "tapering", cov_fct_taper_shape = 0, cov_fct_taper_range = 1e6,
                                            y = y, X = X, 
