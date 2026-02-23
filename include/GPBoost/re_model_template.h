@@ -2907,7 +2907,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Calculate the value of the approximate negative marginal log-likelihood obtained when using the Laplace approximation
+		* \brief Calculate the value of the approximate negative marginal log-likelihood obtained when using a Laplace approximation
 		* \param y_data Response variable data
 		* \param cov_pars Values for covariance parameters of RE components
 		* \param[out] negll Approximate negative marginal log-likelihood
@@ -2956,6 +2956,31 @@ namespace GPBoost {
 				negll = -CalcModePostRandEffCalcMLL(fixed_effects, true);
 			}//end not CalcModePostRandEff_already_done
 		}//end EvalLaplaceApproxNegLogLikelihood
+
+		/*!
+		* \brief Calculate the value of the (approximate) negative log-marginal likelihood
+		* \param y_data Response variable data
+		* \param cov_pars Values for covariance parameters of RE components
+		* \param[out] negll Approximate negative marginal log-likelihood
+		* \param fixed_effects Fixed effects component of location parameter
+		* \param InitializeModeCovMat If true, posterior mode is initialized to 0 and the covariance matrix is calculated. Otherwise, existing values are used
+		* \param CalcModePostRandEff_already_done If true, it is assumed that the posterior mode of the random effects has already been calculated
+		*/
+		void EvalNegLogLikelihood(const double* y_data,
+			const double* cov_pars,
+			double& negll,
+			const double* fixed_effects,
+			bool InitializeModeCovMat,
+			bool CalcModePostRandEff_already_done) {
+			if (gauss_likelihood_) {
+				EvalNegLogLikelihoodGauss(y_data, cov_pars, fixed_effects, negll,
+					false, false, false, true);
+			}
+			else {
+				EvalLaplaceApproxNegLogLikelihood(y_data, cov_pars, negll, fixed_effects,
+					InitializeModeCovMat, CalcModePostRandEff_already_done, true);
+			}			
+		}//end EvalNegLogLikelihood
 
 		/*!
 		* \brief Print out current parameters when trace / logging is activated for convergence monitoring
