@@ -636,24 +636,27 @@ namespace GPBoost {
 			std::vector<Triplet_t>& triplets,
 			bool& has_ztilde) const {
 			int num_data_pred = (int)group_data_pred.size();
-			if (this->is_rand_coef_) {
-#pragma omp parallel for schedule(static)
+			int any = 0;
+			if (this->is_rand_coef_) {				
+#pragma omp parallel for schedule(static) reduction(|:any)
 				for (int i = 0; i < num_data_pred; ++i) {
 					if (map_group_label_index_->find(group_data_pred[i]) != map_group_label_index_->end()) {//Group level 'group_data_pred[i]' exists in observed data
 						triplets[i + comp_nb * num_data_pred] = Triplet_t(i, start_ind_col + (*map_group_label_index_)[group_data_pred[i]], rand_coef_data_pred[i]);
-						has_ztilde = true;
+						any |= 1;
 					}
 				}
+				
 			}//end is_rand_coef_
 			else {//not is_rand_coef_
-#pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static) reduction(|:any)
 				for (int i = 0; i < num_data_pred; ++i) {
 					if (map_group_label_index_->find(group_data_pred[i]) != map_group_label_index_->end()) {//Group level 'group_data_pred[i]' exists in observed data
 						triplets[i + comp_nb * num_data_pred] = Triplet_t(i, start_ind_col + (*map_group_label_index_)[group_data_pred[i]], 1.);
-						has_ztilde = true;
+						any |= 1;
 					}
 				}
 			}//end not is_rand_coef_
+			has_ztilde = has_ztilde || (any != 0);
 		}//end CalcInsertZtilde
 
 		/*!

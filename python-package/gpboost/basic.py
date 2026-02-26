@@ -4877,7 +4877,7 @@ class GPModel(object):
             self.cov_par_names = self.cov_par_names + [name + "_scale" for name in self.cov_par_names] 
             self.re_comp_names = self.re_comp_names + [name + "_scale" for name in self.re_comp_names]        
         if likelihood == "gaussian" and gp_approx != "vecchia_latent":
-            self.cov_par_names = ["Error_var"] + self.re_comp_names
+            self.cov_par_names = ["Error_var"] + self.cov_par_names
         # Set IDs for independent processes (cluster_ids)
         if cluster_ids is not None:
             cluster_ids = _format_check_1D_data(cluster_ids, data_name="cluster_ids", check_data_type=False,

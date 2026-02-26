@@ -635,62 +635,6 @@ namespace GPBoost {
 		D_B.setFromTriplets(triplets.begin(), triplets.end());
 	}//end MakeBlockDiag_D_B
 
-	//old version
-//	//T_mat needs to be a sp_mat_t or sp_mat_rm_t
-//	template <class T_mat>
-//	void MakeBlockDiag_B_I(const T_mat& B, int m, T_mat& B_I) {
-//		const int n = B.rows();
-//		//std::vector<Triplet_t> triplets;
-//		//triplets.reserve(B.nonZeros() + m);
-//		//// Copy B into top-left block
-//		//for (int k = 0; k < B.outerSize(); ++k) {
-//		//	for (typename T_mat::InnerIterator it(B, k); it; ++it) {
-//		//		triplets.emplace_back(it.row(), it.col(), it.value());
-//		//	}
-//		//}
-//		//// Add identity into bottom-right block
-//		//for (int i = 0; i < m; ++i) {
-//		//	triplets.emplace_back(n + i, n + i, 1.0);
-//		//}
-//
-//		int num_threads;
-//#ifdef _OPENMP
-//		num_threads = omp_get_max_threads();
-//#else
-//		num_threads = 1;
-//#endif
-//		std::vector<std::vector<Triplet_t>> threadTriplets(num_threads);
-//#pragma omp parallel
-//		{
-//			int tid;
-//#ifdef _OPENMP
-//			tid = omp_get_thread_num();
-//#else
-//			tid = 0;
-//#endif
-//			auto& localTriplets = threadTriplets[tid];
-//			const auto approx = static_cast<size_t>(B.nonZeros() + m) / static_cast<size_t>(num_threads) + 64;
-//			localTriplets.reserve(approx);
-//#pragma omp for schedule(static)
-//			for (int k = 0; k < B.outerSize(); ++k) {
-//				for (typename T_mat::InnerIterator it(B, k); it; ++it) {
-//					localTriplets.emplace_back(it.row(), it.col(), it.value());
-//				}
-//			}
-//#pragma omp for schedule(static)
-//			for (int i = 0; i < m; ++i) {
-//				localTriplets.emplace_back(n + i, n + i, 1.0);
-//			}
-//		}
-//		std::vector<Triplet_t> triplets;
-//		triplets.reserve(B.nonZeros() + m);
-//		for (auto& local : threadTriplets) {
-//			triplets.insert(triplets.end(), std::make_move_iterator(local.begin()), std::make_move_iterator(local.end()));
-//		}
-//		B_I.resize(n + m, n + m);
-//		B_I.setFromTriplets(triplets.begin(), triplets.end());
-//	}
-
 	/*!
 	* \brief Scalar product of columns i and j of the matrix M
 	*/

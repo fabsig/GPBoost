@@ -4020,7 +4020,7 @@ namespace GPBoost {
 								Bt_Dinv_Bgrad.resize(0, 0);
 								BgradT_Dinv_B.resize(0, 0);
 							}
-							//  Embed into full precision derivative (block-diagonal): SigmaI_deriv_full has zeros on grouped RE block and SigmaI_deriv_gp on GP block.
+							//  Embed into full precision derivative (block-diagonal): SigmaI_deriv_full has zeros on grouped RE block and SigmaI_deriv_gp on GP block
 							GPBoost::MakeBlockDiag_I_B(SigmaI_deriv_gp, dim_re_group, SigmaI_deriv_full, true);
 							const vec_t SigmaI_deriv_mode = SigmaI_deriv_full * mode_;
 							// Compute inverse-on-pattern for trace term:
@@ -6069,12 +6069,17 @@ namespace GPBoost {
 			}
 			CHECK(mode_has_been_calculated_);
 			const data_size_t dim_re_group = (data_size_t)SigmaI.cols();
+			CHECK(SigmaI.cols() == SigmaI.rows());
+			CHECK(Ztilde.cols() == dim_re_group);
+			CHECK(Ztilde.rows() == pred_mean.size());
+			if (calc_pred_var) {
+				CHECK(Ztilde.rows() == pred_var.size());
+			}
 			const data_size_t dim_gp = has_vecchia_gp ? (data_size_t)B.rows() : 0;
 			CHECK(dim_gp + dim_re_group == dim_mode_);
-			if (has_vecchia_gp) {				
+			if (has_vecchia_gp) {
 				CHECK(dim_gp > 0);
 				CHECK(Ztilde.rows() == Bpo.rows());
-				CHECK(Ztilde.cols() == dim_re_group);
 				CHECK(Bpo.cols() == dim_gp);
 				pred_mean = Ztilde * mode_.segment(0, dim_re_group);
 				if (VecchiaCondObsOnly) {
@@ -6082,7 +6087,7 @@ namespace GPBoost {
 				}
 				else {
 					vec_t Bpo_mode = Bpo * mode_.segment(dim_re_group, dim_gp);
-					pred_mean += -Bp.triangularView<Eigen::UpLoType::UnitLower>().solve(Bpo_mode);
+					pred_mean -= Bp.triangularView<Eigen::UpLoType::UnitLower>().solve(Bpo_mode);
 				}
 			}
 			else {
@@ -6091,243 +6096,446 @@ namespace GPBoost {
 				//pred_mean = Ztilde * (Sigma * (Zt * first_deriv_ll_));//equivalent version
 			}
 			if (calc_pred_cov || calc_pred_var) {
-				if (has_vecchia_gp) {
-					Log::REFatal("Predictive variances and covariances are not yet implemented for grouped random effects and a Vecchia-approximated GP ");
-				}
 				if (use_variance_correction_for_prediction_) {
 					Log::REFatal("The variance correction is not yet implemented when having multiple grouped random effects ");
 				}
-				if (calc_pred_var && matrix_inversion_method_ == "iterative") {
-					int n_pred = (int)pred_mean.size();
-					vec_t pred_var_global = vec_t::Zero(n_pred);
-					//Variance reduction
-					sp_mat_rm_t Ztilde_P_sqrt_invt_rm;
-					vec_t varred_global, c_cov, c_var;
-					if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
-						varred_global = vec_t::Zero(n_pred);
-						c_cov = vec_t::Zero(n_pred);
-						c_var = vec_t::Zero(n_pred);
-						//Calculate P^(-0.5) explicitly
-						sp_mat_rm_t Identity_rm(dim_mode_, dim_mode_);
-						Identity_rm.setIdentity();
-						sp_mat_rm_t P_sqrt_invt_rm;
-						if (cg_preconditioner_type_ == "incomplete_cholesky") {
-							TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(L_SigmaI_plus_ZtWZ_rm_, Identity_rm, P_sqrt_invt_rm, true);
+				if (matrix_inversion_method_ == "iterative") {
+					if (calc_pred_var) {
+						int n_pred = (int)pred_mean.size();
+						vec_t pred_var_global = vec_t::Zero(n_pred);
+						//Variance reduction
+						sp_mat_rm_t Ztilde_P_sqrt_invt_rm;
+						vec_t varred_global, c_cov, c_var;
+						if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+							varred_global = vec_t::Zero(n_pred);
+							c_cov = vec_t::Zero(n_pred);
+							c_var = vec_t::Zero(n_pred);
+							//Calculate P^(-0.5) explicitly
+							sp_mat_rm_t Identity_rm(dim_mode_, dim_re_group);
+							std::vector<Triplet_t> triplets(dim_re_group);
+							#pragma omp parallel for schedule(static)
+							for (data_size_t i = 0; i < dim_re_group; ++i) {
+								triplets[i] = Triplet_t(i, i, 1.);
+							}
+							Identity_rm.setFromTriplets(triplets.begin(), triplets.end());
+							sp_mat_rm_t P_sqrt_invt_rm;
+							if (cg_preconditioner_type_ == "incomplete_cholesky") {
+								TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(L_SigmaI_plus_ZtWZ_rm_, Identity_rm, P_sqrt_invt_rm, true);
+							}
+							else {
+								TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(P_SSOR_L_D_sqrt_inv_rm_, Identity_rm, P_sqrt_invt_rm, true);
+							}
+							//Z_po P^(-T/2)
+							if (has_vecchia_gp) {
+								Ztilde_P_sqrt_invt_rm = Ztilde * P_sqrt_invt_rm.topRows(dim_re_group);
+							}
+							else {
+								Ztilde_P_sqrt_invt_rm = Ztilde * P_sqrt_invt_rm;
+							}					
 						}
-						else {
-							TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(P_SSOR_L_D_sqrt_inv_rm_, Identity_rm, P_sqrt_invt_rm, true);
-						}
-						//Z_po P^(-T/2)
-						Ztilde_P_sqrt_invt_rm = Ztilde * P_sqrt_invt_rm;
-					}
-					int num_threads;
+						int num_threads;
 #ifdef _OPENMP
-					num_threads = omp_get_max_threads();
+						num_threads = omp_get_max_threads();
 #else
-					num_threads = 1;
+						num_threads = 1;
 #endif
-					std::uniform_int_distribution<> unif(0, 2147483646);
-					std::vector<RNG_t> parallel_rngs;
-					for (int ig = 0; ig < num_threads; ++ig) {
-						int seed_local = unif(cg_generator_);
-						parallel_rngs.push_back(RNG_t(seed_local));
-					}
+						std::uniform_int_distribution<> unif(0, 2147483646);
+						std::vector<RNG_t> parallel_rngs;
+						for (int ig = 0; ig < num_threads; ++ig) {
+							int seed_local = unif(cg_generator_);
+							parallel_rngs.push_back(RNG_t(seed_local));
+						}
 #pragma omp parallel
-					{
-						int thread_nb;
+						{
+							int thread_nb;
 #ifdef _OPENMP
-						thread_nb = omp_get_thread_num();
+							thread_nb = omp_get_thread_num();
 #else
-						thread_nb = 0;
+							thread_nb = 0;
 #endif
-						RNG_t rng_local = parallel_rngs[thread_nb];
-						vec_t pred_var_private = vec_t::Zero(n_pred);
-						vec_t varred_private;
-						vec_t c_cov_private;
-						vec_t c_var_private;
+							RNG_t rng_local = parallel_rngs[thread_nb];
+							vec_t pred_var_private = vec_t::Zero(n_pred);
+							vec_t varred_private;
+							vec_t c_cov_private;
+							vec_t c_var_private;
+							//Variance reduction
+							if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+								varred_private = vec_t::Zero(n_pred);
+								c_cov_private = vec_t::Zero(n_pred);
+								c_var_private = vec_t::Zero(n_pred);
+							}
+#pragma omp for
+							for (int i = 0; i < nsim_var_pred_; ++i) {
+								//RV - Rademacher
+								std::uniform_real_distribution<double> udist(0.0, 1.0);
+								vec_t rand_vec_init(n_pred);
+								double u;
+								for (int j = 0; j < n_pred; j++) {
+									u = udist(rng_local);
+									if (u > 0.5) {
+										rand_vec_init(j) = 1.;
+									}
+									else {
+										rand_vec_init(j) = -1.;
+									}
+								}
+								//Z_po^T RV
+								vec_t Z_tilde_t_RV = Ztilde.transpose() * rand_vec_init;
+								if (has_vecchia_gp) {
+									Z_tilde_t_RV.conservativeResize(dim_re_group + dim_gp);
+									Z_tilde_t_RV.tail(dim_gp).setZero();
+								}
+								//Part 2: (Sigma^(-1) + Z^T W Z)^(-1) Z_po^T RV
+								vec_t MInv_Ztilde_t_RV(dim_mode_);
+								bool has_NA_or_Inf = false;
+								int num_cg_steps_dummy;
+								CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, Z_tilde_t_RV, MInv_Ztilde_t_RV, has_NA_or_Inf,
+									cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
+									L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
+								if (has_vecchia_gp) {
+									MInv_Ztilde_t_RV.conservativeResize(dim_re_group);
+								}
+								if (has_NA_or_Inf) {
+									Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
+								}
+								//Part 2: Z_po (Sigma^(-1) + Z^T W Z)^(-1) Z_po^T RV
+								vec_t rand_vec_final = Ztilde * MInv_Ztilde_t_RV;
+								vec_t pred_var_iter = rand_vec_final.cwiseProduct(rand_vec_init);
+								pred_var_private += pred_var_iter;
+								//Variance reduction
+								if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+									//Stochastic: Z_po P^(-0.5T) P^(-0.5) Z_po^T RV
+									vec_t P_sqrt_inv_Ztilde_t_RV = Ztilde_P_sqrt_invt_rm.transpose() * rand_vec_init;
+									vec_t rand_vec_varred = Ztilde_P_sqrt_invt_rm * P_sqrt_inv_Ztilde_t_RV;
+									vec_t varred_iter = rand_vec_varred.cwiseProduct(rand_vec_init);
+									varred_private += varred_iter;
+									c_cov_private += varred_iter.cwiseProduct(pred_var_iter);
+									c_var_private += varred_iter.cwiseProduct(varred_iter);
+								}
+							} //end for loop
+#pragma omp critical
+							{
+								pred_var_global += pred_var_private;
+								//Variance reduction
+								if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+									varred_global += varred_private;
+									c_cov += c_cov_private;
+									c_var += c_var_private;
+								}
+							}
+						} //end #pragma omp parallel
+						pred_var_global /= nsim_var_pred_;
+						pred_var += pred_var_global;
 						//Variance reduction
 						if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
-							varred_private = vec_t::Zero(n_pred);
-							c_cov_private = vec_t::Zero(n_pred);
-							c_var_private = vec_t::Zero(n_pred);
-						}
-#pragma omp for
-						for (int i = 0; i < nsim_var_pred_; ++i) {
-							//RV - Rademacher
-							std::uniform_real_distribution<double> udist(0.0, 1.0);
-							vec_t rand_vec_init(n_pred);
-							double u;
-							for (int j = 0; j < n_pred; j++) {
-								u = udist(rng_local);
-								if (u > 0.5) {
-									rand_vec_init(j) = 1.;
-								}
-								else {
-									rand_vec_init(j) = -1.;
-								}
-							}
-							//Z_po^T RV
-							vec_t Z_tilde_t_RV = Ztilde.transpose() * rand_vec_init;
-							//Part 2: (Sigma^(-1) + Z^T W Z)^(-1) Z_po^T RV
-							vec_t MInv_Ztilde_t_RV(dim_mode_);
-							bool has_NA_or_Inf = false;
-							int num_cg_steps_dummy;
-							CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, Z_tilde_t_RV, MInv_Ztilde_t_RV, has_NA_or_Inf,
-								cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
-								L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
-							if (has_NA_or_Inf) {
-								Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
-							}
-							//Part 2: Z_po (Sigma^(-1) + Z^T W Z)^(-1) Z_po^T RV
-							vec_t rand_vec_final = Ztilde * MInv_Ztilde_t_RV;
-							pred_var_private += rand_vec_final.cwiseProduct(rand_vec_init);
-							//Variance reduction
-							if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
-								//Stochastic: Z_po P^(-0.5T) P^(-0.5) Z_po^T RV
-								vec_t P_sqrt_inv_Ztilde_t_RV = Ztilde_P_sqrt_invt_rm.transpose() * rand_vec_init;
-								vec_t rand_vec_varred = Ztilde_P_sqrt_invt_rm * P_sqrt_inv_Ztilde_t_RV;
-								varred_private += rand_vec_varred.cwiseProduct(rand_vec_init);
-								c_cov_private += varred_private.cwiseProduct(pred_var_private);
-								c_var_private += varred_private.cwiseProduct(varred_private);
-							}
-						} //end for loop
-#pragma omp critical
-						{
-							pred_var_global += pred_var_private;
-							//Variance reduction
-							if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
-								varred_global += varred_private;
-								c_cov += c_cov_private;
-								c_var += c_var_private;
-							}
-						}
-					} //end #pragma omp parallel
-					pred_var_global /= nsim_var_pred_;
-					pred_var += pred_var_global;
-					//Variance reduction
-					if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
-						varred_global /= nsim_var_pred_;
-						c_cov /= nsim_var_pred_;
-						c_var /= nsim_var_pred_;
-						//Deterministic: diag(Z_po P^(-0.5T) P^(-0.5) Z_po^T)
-						vec_t varred_determ = Ztilde_P_sqrt_invt_rm.cwiseProduct(Ztilde_P_sqrt_invt_rm) * vec_t::Ones(dim_mode_);
-						//optimal c
-						c_cov -= varred_global.cwiseProduct(pred_var_global);
-						c_var -= varred_global.cwiseProduct(varred_global);
-						vec_t c_opt = c_cov.array() / c_var.array();
+							varred_global /= nsim_var_pred_;
+							c_cov /= nsim_var_pred_;
+							c_var /= nsim_var_pred_;
+							//Deterministic: diag(Z_po P^(-0.5T) P^(-0.5) Z_po^T)
+							vec_t varred_determ = Ztilde_P_sqrt_invt_rm.cwiseProduct(Ztilde_P_sqrt_invt_rm) * vec_t::Ones(dim_re_group);
+							//optimal c
+							c_cov -= varred_global.cwiseProduct(pred_var_global);
+							c_var -= varred_global.cwiseProduct(varred_global);
+							vec_t c_opt = c_cov.array() / c_var.array();
 #pragma omp parallel for schedule(static)   
-						for (int i = 0; i < c_opt.size(); ++i) {
-							if (c_var.coeffRef(i) == 0) {
-								c_opt[i] = 1;
+							for (int i = 0; i < c_opt.size(); ++i) {
+								if (c_var.coeffRef(i) == 0) {
+									c_opt[i] = 1;
+								}
 							}
+							pred_var += c_opt.cwiseProduct(varred_determ - varred_global);
 						}
-						pred_var += c_opt.cwiseProduct(varred_determ - varred_global);
-					}
-				} //end calc_pred_var
-				else if (calc_pred_cov && matrix_inversion_method_ == "iterative") {
-					int n_pred = (int)pred_mean.size();
-					den_mat_t pred_cov_global = den_mat_t::Zero(n_pred, n_pred);
-					vec_t SigmaI_diag_sqrt = SigmaI.diagonal().cwiseSqrt();
-					sp_mat_rm_t Zt_W_sqrt_rm = sp_mat_rm_t((*Zt_) * information_ll_.cwiseSqrt().asDiagonal());
-					if (!cg_generator_seeded_) {
-						cg_generator_ = RNG_t(seed_rand_vec_trace_);
-						cg_generator_seeded_ = true;
-					}
-					int num_threads;
-#ifdef _OPENMP
-					num_threads = omp_get_max_threads();
-#else
-					num_threads = 1;
-#endif
-					std::uniform_int_distribution<> unif(0, 2147483646);
-					std::vector<RNG_t> parallel_rngs;
-					for (int ig = 0; ig < num_threads; ++ig) {
-						int seed_local = unif(cg_generator_);
-						parallel_rngs.push_back(RNG_t(seed_local));
-					}
+						if (has_vecchia_gp) {//Add GP part
+							vec_t pred_var_gp = vec_t::Zero(n_pred);
+							sp_mat_t Bp_inv_Dp, Bp_inv, Bp_inv_Bpo;//Bp^(-1) * Bpo
+							if (VecchiaCondObsOnly) {
+								Bp_inv_Bpo = Bpo; //Bp = Id
+							}
+							else {
+								Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
+								Bp_inv.setIdentity();
+								TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
+								Bp_inv_Bpo = Bp_inv * Bpo;
+								Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
+							}
+							if (HasNegativeValueInformationLogLik()) {
+								Log::REFatal("PredictLaplaceApproxVecchia: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+									"Cannot have negative values when using 'iterative' methods for predictive variances in Vecchia-Laplace approximations ");
+							}
+							vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
+							CHECK(W_diag_sqrt.size() == num_data_);
+							sp_mat_t B_t_D_inv_sqrt = B.transpose() * (D_inv.cwiseSqrt());
+							sp_mat_t SigmaI_sqrt = SigmaI.cwiseSqrt();
+							GPBoost::MakeBlockDiag_D_B<sp_mat_t>(SigmaI_sqrt, B_t_D_inv_sqrt, B_t_D_inv_sqrt);
+							CHECK(B_t_D_inv_sqrt.cols() == dim_mode_);
 #pragma omp parallel
-					{
-						int thread_nb;
+							{
+								int thread_nb;
 #ifdef _OPENMP
-						thread_nb = omp_get_thread_num();
+								thread_nb = omp_get_thread_num();
 #else
-						thread_nb = 0;
+								thread_nb = 0;
 #endif
-						RNG_t rng_local = parallel_rngs[thread_nb];
-						den_mat_t pred_cov_private = den_mat_t::Zero(n_pred, n_pred);
+								RNG_t rng_local = parallel_rngs[thread_nb];
+								vec_t pred_var_private = vec_t::Zero(n_pred);
 #pragma omp for
-						for (int i = 0; i < nsim_var_pred_; ++i) {
-							//z_i ~ N(0,I)
-							std::normal_distribution<double> ndist(0.0, 1.0);
-							vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(num_data_);
-							for (int j = 0; j < dim_mode_; j++) {
-								rand_vec_pred_I_1(j) = ndist(rng_local);
-							}
-							for (int j = 0; j < num_data_; j++) {
-								rand_vec_pred_I_2(j) = ndist(rng_local);
-							}
-							//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
-							vec_t rand_vec_pred_SigmaI_plus_ZtWZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_pred_I_1 + Zt_W_sqrt_rm * rand_vec_pred_I_2;
-							vec_t rand_vec_pred_SigmaI_plus_ZtWZ_inv(dim_mode_);
-							//z_i ~ N(0,(Sigma^(-1) + Z^T W Z)^(-1))
-							bool has_NA_or_Inf = false;
-							int num_cg_steps_dummy;
-							CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
-								true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
-							if (has_NA_or_Inf) {
-								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
-							}
-							//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T W Z)^(-1) Z_p^T)
-							vec_t rand_vec_pred = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
-							pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
-						} //end for loop
+								for (int i = 0; i < nsim_var_pred_; ++i) {
+									//z_i ~ N(0,I)
+									std::normal_distribution<double> ndist(0.0, 1.0);
+									vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(num_data_);
+									for (int j = 0; j < dim_mode_; j++) {
+										rand_vec_pred_I_1(j) = ndist(rng_local);
+									}
+									for (int j = 0; j < num_data_; j++) {
+										rand_vec_pred_I_2(j) = ndist(rng_local);
+									}
+									//z_i ~ N(0,(Sigma^{-1} + W))
+									vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt * rand_vec_pred_I_1 + (*Zt_) * (W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2));
+									vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
+									//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
+									bool has_NA_or_Inf = false;
+									int num_cg_steps_dummy;
+									CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
+										cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
+										L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
+									rand_vec_pred_SigmaI_plus_W_inv = rand_vec_pred_SigmaI_plus_W_inv.tail(dim_gp).eval();
+									if (has_NA_or_Inf) {
+										Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
+									}
+									//z_i ~ N(0, Bp^{-1} Bpo (Sigma^{-1} + W)^{-1} Bpo^T Bp^{-1})
+									vec_t rand_vec_pred = Bp_inv_Bpo * rand_vec_pred_SigmaI_plus_W_inv;
+									pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
+								}//end for loop
 #pragma omp critical
+								{
+									pred_var_gp += pred_var_private;
+								}
+							} // end #pragma omp parallel
+							pred_var_gp /= nsim_var_pred_;
+							if (VecchiaCondObsOnly) {
+								pred_var_gp += Dp;
+							}
+							else {
+								pred_var_gp += Bp_inv_Dp.cwiseProduct(Bp_inv) * vec_t::Ones(n_pred);
+							}
+							pred_var += pred_var_gp;
+						}//end has_vecchia_gp adding GP variance
+					} //end calc_pred_var
+					else if (calc_pred_cov) {
+						if (has_vecchia_gp) {
+							Log::REFatal("Predictive covariances are not implemented for grouped random effects and a Vecchia-approximated GP ");
+						}
+						int n_pred = (int)pred_mean.size();
+						den_mat_t pred_cov_global = den_mat_t::Zero(n_pred, n_pred);
+						vec_t SigmaI_diag_sqrt = SigmaI.diagonal().cwiseSqrt();
+						sp_mat_rm_t Zt_W_sqrt_rm = sp_mat_rm_t((*Zt_) * information_ll_.cwiseSqrt().asDiagonal());
+						if (!cg_generator_seeded_) {
+							cg_generator_ = RNG_t(seed_rand_vec_trace_);
+							cg_generator_seeded_ = true;
+						}
+						int num_threads;
+#ifdef _OPENMP
+						num_threads = omp_get_max_threads();
+#else
+						num_threads = 1;
+#endif
+						std::uniform_int_distribution<> unif(0, 2147483646);
+						std::vector<RNG_t> parallel_rngs;
+						for (int ig = 0; ig < num_threads; ++ig) {
+							int seed_local = unif(cg_generator_);
+							parallel_rngs.push_back(RNG_t(seed_local));
+						}
+#pragma omp parallel
 						{
-							pred_cov_global += pred_cov_private;
+							int thread_nb;
+#ifdef _OPENMP
+							thread_nb = omp_get_thread_num();
+#else
+							thread_nb = 0;
+#endif
+							RNG_t rng_local = parallel_rngs[thread_nb];
+							den_mat_t pred_cov_private = den_mat_t::Zero(n_pred, n_pred);
+#pragma omp for
+							for (int i = 0; i < nsim_var_pred_; ++i) {
+								//z_i ~ N(0,I)
+								std::normal_distribution<double> ndist(0.0, 1.0);
+								vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(num_data_);
+								for (int j = 0; j < dim_mode_; j++) {
+									rand_vec_pred_I_1(j) = ndist(rng_local);
+								}
+								for (int j = 0; j < num_data_; j++) {
+									rand_vec_pred_I_2(j) = ndist(rng_local);
+								}
+								//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
+								vec_t rand_vec_pred_SigmaI_plus_ZtWZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_pred_I_1 + Zt_W_sqrt_rm * rand_vec_pred_I_2;
+								vec_t rand_vec_pred_SigmaI_plus_ZtWZ_inv(dim_mode_);
+								//z_i ~ N(0,(Sigma^(-1) + Z^T W Z)^(-1))
+								bool has_NA_or_Inf = false;
+								int num_cg_steps_dummy;
+								CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
+									true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
+								if (has_NA_or_Inf) {
+									Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
+								}
+								//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T W Z)^(-1) Z_p^T)
+								vec_t rand_vec_pred = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
+								pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
+							} //end for loop
+#pragma omp critical
+							{
+								pred_cov_global += pred_cov_private;
+							}
+						} //end #pragma omp parallel
+						pred_cov_global /= nsim_var_pred_;
+						T_mat pred_cov_T_mat;
+						ConvertTo_T_mat_FromDense<T_mat>(pred_cov_global, pred_cov_T_mat);
+						pred_cov -= (T_mat)(Ztilde * Sigma * Ztilde.transpose()); //TODO: create and call AddPredCovMatrices only for new groups and remove this line.
+						pred_cov += pred_cov_T_mat;
+					} //end calc_pred_cov
+				}
+				else if (matrix_inversion_method_ == "cholesky") { //begin cholesky
+					if (has_vecchia_gp) {
+						if (calc_pred_cov) {
+							Log::REFatal("Predictive covariances are not implemented for grouped random effects and a Vecchia-approximated GP ");
+							// Note: the code below is correct, but the corresponding code in re_model_template would have to be changed to add only uconditional covariancs
+							//		for new groups and not for all groups (see re_comp->AddPredCovMatrices)
 						}
-					} //end #pragma omp parallel
-					pred_cov_global /= nsim_var_pred_;
-					T_mat pred_cov_T_mat;
-					ConvertTo_T_mat_FromDense<T_mat>(pred_cov_global, pred_cov_T_mat);
-					pred_cov -= (T_mat)(Ztilde * Sigma * Ztilde.transpose()); //TODO: create and call AddPredCovMatrices only for new groups and remove this line.
-					pred_cov += pred_cov_T_mat;
-				} //end calc_pred_cov
-				else { //begin cholesky
-					sp_mat_t SigmaI_plus_ZtWZ_I(Sigma.cols(), Sigma.cols());
-					SigmaI_plus_ZtWZ_I.setIdentity();
-					TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, false);
-					TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, true);
-					sp_mat_t Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I = (Sigma * ((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose())) * SigmaI_plus_ZtWZ_I;
-					if (calc_pred_cov) {
-						pred_cov -= (T_mat)(Ztilde * Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I * Ztilde.transpose());
-					}
-					if (calc_pred_var) {
-						sp_mat_t Maux = Ztilde;
-						CalcAtimesBGivenSparsityPattern<sp_mat_t>(Ztilde, Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I, Maux);
+						// Grouped random effects part:  pred_cov = Z_pp * Σ_p * Z_pp^T + Z_po * (SigmaI_plus_ZtWZ)^-1 * Z_po^T, Z_po = Ztilde
+						sp_mat_t SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde = Ztilde.transpose();
+						sp_mat_t Mfull_group(dim_mode_, dim_re_group);
+						std::vector<Triplet_t> triplets;
+						triplets.reserve((size_t)SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde.nonZeros());
+						for (int k = 0; k < SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde.outerSize(); ++k) {
+							for (sp_mat_t::InnerIterator it(SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde, k); it; ++it) {
+								triplets.emplace_back(it.row(), it.col(), it.value());
+							}
+						}
+						Mfull_group.setFromTriplets(triplets.begin(), triplets.end());
+						TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Mfull_group, Mfull_group, false);
+						SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde = Mfull_group.topRows((int)dim_re_group);
+						Mfull_group.resize(0, 0);
+						//Alternative approach where SigmaI_plus_ZtWZ_I_group_cols is first calculated
+//						sp_mat_t SigmaI_plus_ZtWZ_I_group_cols(dim_mode_, dim_re_group);
+//						std::vector<Triplet_t> triplets(dim_re_group);
+//#pragma omp parallel for schedule(static)
+//						for (data_size_t i = 0; i < dim_re_group; ++i) {
+//							triplets[i] = Triplet_t(i, i, 1.);
+//						}
+//						SigmaI_plus_ZtWZ_I_group_cols.setFromTriplets(triplets.begin(), triplets.end());//dimension dim_mode_ (=dim_re_group + dim_gp) x dim_re_group with identity on the upper part
+//						TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I_group_cols, SigmaI_plus_ZtWZ_I_group_cols, false);
+//						sp_mat_t SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde = SigmaI_plus_ZtWZ_I_group_cols.topRows((int)dim_re_group) * Ztilde.transpose();
+//						SigmaI_plus_ZtWZ_I_group_cols.resize(0, 0);
+						if (calc_pred_cov) {
+							pred_cov += (T_mat)(SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde.transpose() * SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde);
+						}
+						if (calc_pred_var) {
 #pragma omp parallel for schedule(static)
-						for (int i = 0; i < (int)pred_mean.size(); ++i) {
-							pred_var[i] -= (Ztilde.row(i)).dot(Maux.row(i));
+							for (int i = 0; i < (int)pred_mean.size(); ++i) {
+								pred_var[i] += (SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde.col(i)).dot(SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde.col(i));
+							}
 						}
-					}
-					//Old code (not used anymore)
-	//              // calculate Maux = L\(Z^T * information_ll_.asDiagonal() * Cross_Cov^T)
-	//              sp_mat_t Cross_Cov = Ztilde * Sigma * (*Zt_);
-	//              sp_mat_t Maux = (*Zt_) * information_ll_.asDiagonal() * Cross_Cov.transpose();
-	//              TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Maux, Maux, false);
-	//              if (calc_pred_cov) {
-	//                  pred_cov += (T_mat)(Maux.transpose() * Maux);
-	//                  pred_cov -= (T_mat)(Cross_Cov * information_ll_.asDiagonal() * Cross_Cov.transpose());
-	//              }
-	//              if (calc_pred_var) {
-	//                  sp_mat_t Maux3 = Cross_Cov.cwiseProduct(Cross_Cov * information_ll_.asDiagonal());
-	//                  Maux = Maux.cwiseProduct(Maux);
-	//#pragma omp parallel for schedule(static)
-	//                  for (int i = 0; i < (int)pred_mean.size(); ++i) {
-	//                      pred_var[i] += Maux.col(i).sum() - Maux3.row(i).sum();
-	//                  }
-	//              }
+						// GP part
+						sp_mat_t SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT; //SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT = L\(Bpo^T * Bp^-1), L = Chol(Sigma^-1 + W)
+						sp_mat_t Bp_inv, Bp_inv_Dp;
+						if (VecchiaCondObsOnly) {
+							SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT = Bpo.transpose();//Bp = Id
+						}
+						else {
+							Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
+							Bp_inv.setIdentity();
+							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
+							SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT = Bpo.transpose() * Bp_inv.transpose();
+							Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
+						}
+						sp_mat_t Mfull_gp(dim_mode_, dim_gp);
+						std::vector<Triplet_t> trips;
+						trips.reserve((size_t)SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.nonZeros());
+						for (int k = 0; k < SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.outerSize(); ++k) {
+							for (sp_mat_t::InnerIterator it(SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT, k); it; ++it) {
+								trips.emplace_back(it.row() + (int)dim_re_group, it.col(), it.value());
+							}
+						}
+						Mfull_gp.setFromTriplets(trips.begin(), trips.end());
+						TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Mfull_gp, Mfull_gp, false);
+						SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT = Mfull_gp.bottomRows((int)dim_gp);
+						Mfull_gp.resize(0, 0);
+						if (calc_pred_cov) {
+							if (VecchiaCondObsOnly) {
+								pred_cov += (T_mat)(SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.transpose() * SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT);
+								pred_cov.diagonal().array() += Dp.array();
+							}
+							else {
+								pred_cov += (T_mat)(Bp_inv_Dp * Bp_inv.transpose() + SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.transpose() * SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT);
+							}
+						}//end calc_pred_cov
+						if (calc_pred_var) {
+							SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT = SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.cwiseProduct(SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT);
+							if (VecchiaCondObsOnly) {
+#pragma omp parallel for schedule(static)
+								for (int i = 0; i < (int)pred_mean.size(); ++i) {
+									pred_var[i] += Dp[i] + SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.col(i).sum();
+								}
+							}
+							else {
+#pragma omp parallel for schedule(static)
+								for (int i = 0; i < (int)pred_mean.size(); ++i) {
+									pred_var[i] += (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i)) + SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.col(i).sum();
+								}
+							}
+						}//end calc_pred_var					
+					}//end has_vecchia_gp
+					else {//!has_vecchia_gp
+						//VERSION 1: pred_cov = Z_po * Σ * Z_po^T + Z_pp * Σ_p * Z_pp^T - Z_po * Σ * Z_po^T * (SigmaI_plus_ZtWZ)^-1 * Z * Σ * Z_po^T, Z_po = Ztilde
+						// This VERSION 1 seems slightly faster than VERSION 2 below for predictive variances (two randomly crossed REs, m = 1000, n = 10 * m) (24.02.2026)
+						sp_mat_t SigmaI_plus_ZtWZ_I(dim_re_group, dim_re_group);
+						SigmaI_plus_ZtWZ_I.setIdentity();
+						TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, false);
+						TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, true);
+						sp_mat_t Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I = (Sigma * ((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose())) * SigmaI_plus_ZtWZ_I;
+						if (calc_pred_cov) {
+							pred_cov -= (T_mat)(Ztilde * Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I * Ztilde.transpose());
+						}
+						if (calc_pred_var) {
+							sp_mat_t Maux = Ztilde;
+							CalcAtimesBGivenSparsityPattern<sp_mat_t>(Ztilde, Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I, Maux);
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < (int)pred_mean.size(); ++i) {
+								pred_var[i] -= (Ztilde.row(i)).dot(Maux.row(i));
+							}
+						}
+						//					//VERSION 2: pred_cov = Z_pp * Σ_p * Z_pp^T + Z_po * (SigmaI_plus_ZtWZ)^-1 * Z_po^T, Z_po = Ztilde
+						//					//sp_mat_t SigmaI_plus_ZtWZ_I_Ztilde(dim_mode_, dim_re_group);
+						//					sp_mat_t SigmaI_plus_ZtWZ_Isqrt_Ztilde = Ztilde.transpose();
+						//					TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_Isqrt_Ztilde, SigmaI_plus_ZtWZ_Isqrt_Ztilde, false);
+						//					if (calc_pred_cov) {
+						//						pred_cov += (T_mat)(SigmaI_plus_ZtWZ_Isqrt_Ztilde.transpose() * SigmaI_plus_ZtWZ_Isqrt_Ztilde);
+						//					}
+						//					if (calc_pred_var) {
+						//#pragma omp parallel for schedule(static)
+						//						for (int i = 0; i < (int)pred_mean.size(); ++i) {
+						//							pred_var[i] += (SigmaI_plus_ZtWZ_Isqrt_Ztilde.col(i)).dot(SigmaI_plus_ZtWZ_Isqrt_Ztilde.col(i));
+						//						}
+						//					}
+											//Old code for VERSION 1(not used anymore)
+							//              // calculate Maux = L\(Z^T * information_ll_.asDiagonal() * Cross_Cov^T)
+							//              sp_mat_t Cross_Cov = Ztilde * Sigma * (*Zt_);
+							//              sp_mat_t Maux = (*Zt_) * information_ll_.asDiagonal() * Cross_Cov.transpose();
+							//              TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Maux, Maux, false);
+							//              if (calc_pred_cov) {
+							//                  pred_cov += (T_mat)(Maux.transpose() * Maux);
+							//                  pred_cov -= (T_mat)(Cross_Cov * information_ll_.asDiagonal() * Cross_Cov.transpose());
+							//              }
+							//              if (calc_pred_var) {
+							//                  sp_mat_t Maux3 = Cross_Cov.cwiseProduct(Cross_Cov * information_ll_.asDiagonal());
+							//                  Maux = Maux.cwiseProduct(Maux);
+							//#pragma omp parallel for schedule(static)
+							//                  for (int i = 0; i < (int)pred_mean.size(); ++i) {
+							//                      pred_var[i] += Maux.col(i).sum() - Maux3.row(i).sum();
+							//                  }
+							//              }
+					}//end !has_vecchia_gp			
 				} //end cholesky
-			}
+			}//end calc_pred_cov || calc_pred_var
 		}//end PredictLaplaceApproxGroupedRE
 
 		/*!
@@ -6514,9 +6722,7 @@ namespace GPBoost {
 						B_po_cross_cov.col(i) = Bpo_rm * (*cross_cov).col(i);
 					}
 					den_mat_t cross_cov_PP_Vecchia_woodbury = chol_fact_sigma_woodbury.solve(cross_cov_PP_Vecchia.transpose());
-					sp_mat_rm_t Bp_inv_Dp_rm, Bp_inv_rm;
-					sp_mat_rm_t Bp_rm;
-					sp_mat_rm_t Bp_inv_Bpo_rm; //Bp^(-1) * Bpo 
+					sp_mat_rm_t Bp_inv_Dp_rm, Bp_inv_rm, Bp_rm, Bp_inv_Bpo_rm;//Bp^(-1) * Bpo 
 					if (CondObsOnly) {
 						Bp_inv_Bpo_rm = Bpo_rm; //Bp = Id
 					}
