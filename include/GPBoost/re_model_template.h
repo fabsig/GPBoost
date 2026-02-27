@@ -448,6 +448,7 @@ namespace GPBoost {
 				}
 			}
 			InitializeLikelihoods(likelihood_strg);
+			SetDefaultMatrixInversionMethod();//needs to be run after 'InitializeLikelihoods' since defaults can depend on likelihood
 			DetermineCovarianceParameterIndicesNumCovPars();
 			InitializeDefaultSettings();
 			CheckCompatibilitySpecialOptions();
@@ -523,8 +524,10 @@ namespace GPBoost {
 		* \brief Returns the number of CG steps when the CG method was last run
 		*/
 		int GetNumCGSteps() {
-			if (!(num_re_group_total_ > 1 && num_re_group_total_ == num_comps_total_ && matrix_inversion_method_ == "iterative")) {
-				Log::REFatal("GetNumCGStepLast: this function is currently only implemented when having multiple grouped random effects and iterative methods are used ");
+			bool cg_steps_recorded = ((num_re_group_total_ > 1 && num_re_group_total_ == num_comps_total_) || grouped_RE_and_vecchia_GP_)
+				&& matrix_inversion_method_ == "iterative";
+			if (!cg_steps_recorded) {
+				Log::REWarning("GetNumCGSteps: this function is currently only implemented when having multiple grouped random effects and iterative methods are used ");
 			}
 			if (gauss_likelihood_) {
 				return(num_cg_steps_last_);
@@ -538,8 +541,10 @@ namespace GPBoost {
 		* \brief Returns the number of CG steps when the CG method was last run for the SLQ method
 		*/
 		int GetNumCGStepsTridiag() {
-			if (!(num_re_group_total_ > 1 && num_re_group_total_ == num_comps_total_ && matrix_inversion_method_ == "iterative")) {
-				Log::REFatal("GetNumCGStepLast: this function is currently only implemented when having multiple grouped random effects and iterative methods are used ");
+			bool cg_steps_recorded = ((num_re_group_total_ > 1 && num_re_group_total_ == num_comps_total_) || grouped_RE_and_vecchia_GP_)
+				&& matrix_inversion_method_ == "iterative";
+			if (!cg_steps_recorded) {
+				Log::REWarning("GetNumCGStepsTridiag: this function is currently only implemented when having multiple grouped random effects and iterative methods are used ");
 			}
 			if (gauss_likelihood_) {
 				return(num_cg_steps_tridiag_last_);
@@ -630,6 +635,7 @@ namespace GPBoost {
 				P_Id_ = std::map<data_size_t, T_mat>();
 			}
 			InitializeLikelihoods(likelihood);
+			SetDefaultMatrixInversionMethod();
 			DetermineCovarianceParameterIndicesNumCovPars();
 			InitializeDefaultSettings();
 			CheckPreconditionerType();
@@ -5125,6 +5131,8 @@ namespace GPBoost {
 		string_t gp_approx_ = "none";
 		/*! \brief List of supported optimizers for covariance parameters */
 		const std::set<string_t> SUPPORTED_GP_APPROX_{ "none", "vecchia", "tapering", "fitc", "full_scale_tapering", "full_scale_vecchia" };
+		/*! \brief True if 'gp_approx_' has been changed internally from 'fitc' to 'full_scale_tapering' for handling duplicate coordinates */
+		bool gp_approx_changed_to_FSA_from_FITC_ = false;
 		/*! \brief How to calculate predictive variances and covariances for "full_scale_tapering" when using the cholesky decomposition */
 		string_t calc_pred_cov_var_FSA_cholesky_ = "stochastic_stable";//"exact" (direct calculation), "exact_stable" (using a numerically stable version, but potentially large memory and time footpringt), "stochastic_stable" (using a numerically stable version and simulations to reduce memory and time footpringt)
 		/*! \brief If true, the Vecchia approximation is done for the latent process for Gaussian likelihoods */
@@ -6515,6 +6523,9 @@ namespace GPBoost {
 				grouped_RE_and_vecchia_GP_ = true;
 				gauss_likelihood_ = false;
 			}
+		}//end DetermineSpecialCasesModelsEstimationPrediction
+
+		void SetDefaultMatrixInversionMethod() {
 			if (matrix_inversion_method_user_provided_ == "default") {
 				if (UseIterativeByDefault()) {
 					CHECK(CanUseIterative());
@@ -6527,7 +6538,7 @@ namespace GPBoost {
 			else {
 				matrix_inversion_method_ = matrix_inversion_method_user_provided_;
 			}
-		}//end DetermineSpecialCasesModelsEstimationPrediction
+		}//end SetDefaultMatrixInversionMethod
 
 		/*!
 		* \brief Function that set default values for several parameters if they were not initialized
@@ -6793,10 +6804,18 @@ namespace GPBoost {
 			return can_use_iter;
 		}
 
-		bool UseIterativeByDefault() const {
+		bool UseIterativeByDefault() {
 			bool use_iter = ((gp_approx_ == "full_scale_vecchia" || gp_approx_ == "vecchia") && !gauss_likelihood_) ||
-				(gp_approx_ == "full_scale_tapering" && gauss_likelihood_) ||
-				(use_woodbury_identity_ && num_re_group_total_ > 1);// do not use iterative method for a linear kernel (linear_kernel_use_woodbury_identity_) by default as is can be slower for low-dimensional problems
+				(gp_approx_ == "full_scale_tapering" && gauss_likelihood_ && !gp_approx_changed_to_FSA_from_FITC_) ||
+				(use_woodbury_identity_ && num_re_group_total_ > 1);// note: do not use iterative method for a linear kernel (linear_kernel_use_woodbury_identity_) by default as is can be slower for low-dimensional problems
+			if (likelihood_.size() > 0) {
+				if (likelihood_[unique_clusters_[0]]->GetLikelihood() == "asymmetric_laplace" && likelihood_[unique_clusters_[0]]->UseFisherForModeFinding()) {
+					use_iter = false;// note: iterative methods are slower than Cholesky since mode finding often requires many iterations and the Fisher information is constant and the Cholesky decompostion has to be calculated only once
+				}
+			}
+			if (use_iter) {
+				CHECK(CanUseIterative());
+			}
 			return use_iter;
 		}
 
@@ -7041,6 +7060,7 @@ namespace GPBoost {
 					Log::REWarning("There are duplicate coordinates. Currently, this is not well handled when 'gp_approx = fitc' and 'likelihood = gaussian'. "
 						"For this reason, 'gp_approx' is internally changed to 'full_scale_tapering' with a very small taper range. "
 						"Note that this is just a technical trick that results in an equivalent model and you don't need to do something ");
+					gp_approx_changed_to_FSA_from_FITC_ = true;
 					gp_approx_ = "full_scale_tapering";
 					cov_fct_taper_range = 1e-8;
 				}

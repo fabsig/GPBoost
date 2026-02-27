@@ -626,6 +626,10 @@ namespace GPBoost {
 			DetermineWhetherToCapChangeModeNewton();
 		}
 
+		bool UseFisherForModeFinding() const {
+			return use_fisher_for_mode_finding_ || (approximation_type_  == "fisher_laplace");
+		}
+
 		/*!
 		* \brief Returns the number of sets of random effects / GPs. This is larger than 1, e.g., heteroscedastic models
 		*/
