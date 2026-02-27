@@ -228,8 +228,8 @@ namespace GPBoost {
 			if (SUPPORTED_GP_APPROX_.find(gp_approx_) == SUPPORTED_GP_APPROX_.end()) {
 				Log::REFatal("GP approximation '%s' is currently not supported ", gp_approx_.c_str());
 			}
-			//Set up GP IDs
-			SetUpGPIds(num_data_, cluster_ids_data, num_data_per_cluster_, data_indices_per_cluster_, unique_clusters_, num_clusters_);
+			//Set up cluster IDs
+			SetUpClusterIds(num_data_, cluster_ids_data, num_data_per_cluster_, data_indices_per_cluster_, unique_clusters_, num_clusters_);
 			num_comps_total_ = 0;
 			//Do some checks for grouped RE components and set meta data (number of components etc.)
 			std::vector<std::vector<re_group_t>> re_group_levels;//Matrix with group levels for the grouped random effects (re_group_levels[j] contains the levels for RE number j)
@@ -529,6 +529,9 @@ namespace GPBoost {
 			if (!cg_steps_recorded) {
 				Log::REWarning("GetNumCGSteps: this function is currently only implemented when having multiple grouped random effects and iterative methods are used ");
 			}
+			if (num_clusters_ > 1) {
+				Log::REWarning("GetNumCGSteps: this function is not properly implemented when having multiple 'clusters' ('cluster_ids'). A value is returned for only one cluster ");
+			}
 			if (gauss_likelihood_) {
 				return(num_cg_steps_last_);
 			}
@@ -546,11 +549,30 @@ namespace GPBoost {
 			if (!cg_steps_recorded) {
 				Log::REWarning("GetNumCGStepsTridiag: this function is currently only implemented when having multiple grouped random effects and iterative methods are used ");
 			}
+			if (num_clusters_ > 1) {
+				Log::REWarning("GetNumCGStepsTridiag: this function is not properly implemented when having multiple 'clusters' ('cluster_ids'). A value is returned for only one cluster ");
+			}
 			if (gauss_likelihood_) {
 				return(num_cg_steps_tridiag_last_);
 			}
 			else {
 				return(likelihood_[unique_clusters_[0]]->GetNumCGStepsTridiag());
+			}
+		}
+
+		/*!
+		* \brief Returns the number of mode finding steps from the last mode finding in a Laplace approximation
+		*/
+		int GetNumModeFindingSteps() {
+			if (gauss_likelihood_) {
+				Log::REWarning("Mode is not found for a 'gaussian' likelihood ");
+				return(0);
+			}
+			else {
+				if (num_clusters_ > 1) {
+					Log::REWarning("GetNumModeFindingSteps: this function is not properly implemented when having multiple 'clusters' ('cluster_ids'). A value is returned for only one cluster ");
+				}
+				return(likelihood_[unique_clusters_[0]]->GetNumModeFindingSteps());				
 			}
 		}
 
@@ -3318,7 +3340,7 @@ namespace GPBoost {
 			std::map<data_size_t, std::vector<int>> data_indices_per_cluster_pred;
 			std::vector<data_size_t> unique_clusters_pred;
 			data_size_t num_clusters_pred;
-			SetUpGPIds(num_data_pred, cluster_ids_data_pred, num_data_per_cluster_pred,
+			SetUpClusterIds(num_data_pred, cluster_ids_data_pred, num_data_per_cluster_pred,
 				data_indices_per_cluster_pred, unique_clusters_pred, num_clusters_pred);
 			//Check whether predictions are made for existing clusters or if only for new independet clusters predictions are made
 			bool pred_for_observed_data = false;
@@ -6258,7 +6280,7 @@ namespace GPBoost {
 		* \param[out] unique_clusters Unique labels of independent realizations
 		* \param[out] num_clusters Number of independent clusters
 		*/
-		void SetUpGPIds(data_size_t num_data,
+		void SetUpClusterIds(data_size_t num_data,
 			const data_size_t* cluster_ids_data,
 			std::map<data_size_t, int>& num_data_per_cluster,
 			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster,
@@ -6290,7 +6312,7 @@ namespace GPBoost {
 				}
 				data_indices_per_cluster.insert({ 0, gp_id_vec });
 			}
-		}//end SetUpGPIds
+		}//end SetUpClusterIds
 
 		/*!
 		* \brief Convert characters in 'const char* re_group_data' to matrix (num_re_group x num_data) with strings of group labels

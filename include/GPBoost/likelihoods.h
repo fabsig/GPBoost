@@ -686,6 +686,10 @@ namespace GPBoost {
 			return(num_cg_steps_tridiag_last_);
 		}
 
+		int GetNumModeFindingSteps() const {
+			return(num_it_mode_finding_);
+		}
+
 		/*!
 		* \brief Returns a pointer to mode_
 		*/
@@ -2081,6 +2085,7 @@ namespace GPBoost {
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 			mode_is_zero_ = false;
+			num_it_mode_finding_ = it;
 			//Log::REInfo("FindModePostRandEffCalcMLLStable: finished after %d iterations ", it);//for debugging
 			//Log::REInfo("mode_[0:2] = %g, %g, %g, LogLikelihood = %g", mode_[0], mode_[1], mode_[2], LogLikelihood(y_data, y_data_int, location_par_ptr));//for debugging
 			//Log::REInfo("it = %d, first_deriv_ll_[0:2] = %g, %g, %g, information_ll_[0:2] = %g, %g, %g", it,
@@ -2340,6 +2345,7 @@ namespace GPBoost {
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 			mode_is_zero_ = false;
+			num_it_mode_finding_ = it;
 		}//end FindModePostRandEffCalcMLLGroupedRE
 
 		/*!
@@ -2440,6 +2446,7 @@ namespace GPBoost {
 				na_or_inf_during_last_call_to_find_mode_ = false;
 			}
 			mode_is_zero_ = false;
+			num_it_mode_finding_ = it;
 			//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale: finished after %d iterations ", it);//for debugging
 			//Log::REInfo("mode_[0:2] = %g, %g, %g, LogLikelihood = %g", mode_[0], mode_[1], mode_[2], LogLikelihood(y_data, y_data_int, location_par.data()));//for debugging
 		}//end FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale
@@ -2896,6 +2903,7 @@ namespace GPBoost {
 				}
 			}
 			mode_is_zero_ = false;
+			num_it_mode_finding_ = it;
 			//Log::REInfo("FindModePostRandEffCalcMLLFSVA: finished after %d iterations, mode_[0:2] = %g, %g, %g ", it, mode_[0], mode_[1], mode_[2]);//for debugging
 		}//end FindModePostRandEffCalcMLLFSVA
 
@@ -3235,6 +3243,7 @@ namespace GPBoost {
 				}
 			}
 			mode_is_zero_ = false;
+			num_it_mode_finding_ = it;
 			//Log::REInfo("FindModePostRandEffCalcMLLVecchia: finished after %d iterations ", it);//for debugging
 			//Log::REInfo("mode_[0:1,(last-1):last] = %g, %g, %g, %g, LogLikelihood = %g", mode_[0], mode_[1], mode_[dim_mode_ - 2], mode_[dim_mode_-1], LogLikelihood(y_data, y_data_int, location_par_ptr));//for debugging
 			//Log::REInfo("it = %d, first_deriv_ll_[0:2] = %g, %g, %g, information_ll_[0:2] = %g, %g, %g", it,
@@ -3421,6 +3430,7 @@ namespace GPBoost {
 				approx_marginal_ll -= 0.5 * information_ll_.array().log().sum();
 			}
 			mode_is_zero_ = false;
+			num_it_mode_finding_ = it;
 		}//end FindModePostRandEffCalcMLLFITC
 
 		/*!
@@ -13987,6 +13997,8 @@ namespace GPBoost {
 		// MODE FINDING PROPERTIES
 		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
 		int maxit_mode_newton_ = 1000;
+		/*! \brief Number of iteration done for finding posterior mode in Laplace approximation */
+		int num_it_mode_finding_ = 0;
 		/*! \brief Used for checking convergence in mode finding algorithm (terminate if relative change in Laplace approx. is below this value) */
 		double delta_conv_mode_finding_ = 1e-8;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the ewton method for mode finding in Laplace approximation */

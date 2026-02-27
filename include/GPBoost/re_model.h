@@ -147,6 +147,8 @@ namespace GPBoost {
 		*/
 		int GetNumCGStepsTridiag() const;
 
+		int GetNumModeFindingSteps() const;
+
 		/*!
 		* \brief Set configuration parameters for the optimizer
 		* \param init_cov_pars Initial values for covariance parameters of RE components

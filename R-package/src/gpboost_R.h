@@ -1011,7 +1011,7 @@ GPBOOST_C_EXPORT SEXP GPB_GetCGPreconditionerType_R(
 );
 
 /*!
-* \brief  Returns the number of CG steps when the CG method was last run
+* \brief Returns the number of CG steps when the CG method was last run
 * \param handle Handle of booster
 * \param[out] num_cg_steps Number of CG steps
 * \return 0 when succeed, -1 when failure happens
@@ -1022,12 +1022,23 @@ GPBOOST_C_EXPORT SEXP GPB_GetNumCGSteps_R(
 );
 
 /*!
-* \brief  Returns the number of CG steps when the CG method was last run for the SLQ method
+* \brief Returns the number of CG steps when the CG method was last run for the SLQ method
 * \param handle Handle of booster
 * \param[out] num_cg_steps Number of CG steps
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT SEXP GPB_GetNumCGStepsTridiag_R(
+	SEXP handle,
+	SEXP num_cg_steps
+);
+
+/*!
+* \brief Returns the number of mode finding steps from the last mode finding in a Laplace approximation
+* \param handle Handle of booster
+* \param[out] num_cg_steps Number of steps
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT SEXP GPB_GetNumModeFindingSteps_R(
 	SEXP handle,
 	SEXP num_cg_steps
 );

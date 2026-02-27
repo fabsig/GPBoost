@@ -6609,6 +6609,13 @@ class GPModel(object):
             ctypes.byref(num_it)))
         return num_it.value
 
+    def _get_num_mode_finding_steps(self):
+        num_it = ctypes.c_int64(0)
+        _safe_call(_LIB.GPB_GetNumCGStepsTridiag(
+            self.handle,
+            ctypes.byref(num_it)))
+        return num_it.value
+
     def _get_num_aux_pars(self):
         num_aux_pars = ctypes.c_int64(0)
         _safe_call(_LIB.GPB_GetNumAuxPars(
