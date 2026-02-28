@@ -45,6 +45,10 @@ Model specification parameters
 
       -  ``bernoulli_probit`` : Bernoulli likelihood with a probit link function for binary classification. Aliases: ``binary_probit``
 
+      -  ``quasi_bernoulli_logit`` : quasi-Bernoulli likelihood with a logit link function for y in [0,1]. Aliases: ``quasi_binary``, ``quasi_binary_logit``
+
+      -  ``quasi_bernoulli_probit`` : quasi-Bernoulli likelihood with a probit link function for y in [0,1]. Aliases: ``quasi_binary_probit``
+
       -  ``binomial_logit`` : Binomial likelihood with a logit link function. The response variable ``y`` needs to contain proportions of successes / trials, and the ``weights`` parameter needs to contain the numbers of trials. Aliases: ``binomial``
 
       -  ``binomial_probit`` : Binomial likelihood with a probit link function. The response variable ``y`` needs to contain proportions of successes / trials, and the ``weights`` parameter needs to contain the numbers of trials

@@ -26,6 +26,8 @@ Available options:
 \item{ "gaussian" }
 \item{ "bernoulli_logit": Bernoulli likelihood with a logit link function for binary classification. Aliases: "binary", "binary_logit" }
 \item{ "bernoulli_probit": Bernoulli likelihood with a probit link function for binary classification. Aliases: "binary_probit" }
+\item{ "quasi_bernoulli_logit": quasi-Bernoulli likelihood with a logit link function for y in [0,1]. Aliases: "quasi_binary", "quasi_binary_logit" }
+\item{ "quasi_bernoulli_probit": quasi-Bernoulli likelihood with a probit link function for y in [0,1]. Aliases: "quasi_binary_probit" }
 \item{ "binomial_logit": Binomial likelihood with a logit link function. 
 The response variable \code{y} needs to contain proportions of successes / trials, 
 and the \code{weights} parameter needs to contain the numbers of trials. Aliases: "binomial"}

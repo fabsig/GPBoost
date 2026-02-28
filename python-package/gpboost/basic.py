@@ -4107,7 +4107,15 @@ class GPModel(object):
 
                     - "bernoulli_probit":
 
-                        Bernoulli likelihood with a probit link function for binary classification. Aliases: "binary_probit "
+                        Bernoulli likelihood with a probit link function for binary classification. Aliases: "binary_probit"
+
+                    - "quasi_bernoulli_logit":
+
+                        quasi-Bernoulli likelihood with a logit link function for y in [0,1]. Aliases: "quasi_binary", "quasi_binary_logit"
+
+                    - "quasi_bernoulli_probit":
+
+                        quasi-Bernoulli likelihood with a probit link function for y in [0,1]. Aliases: "quasi_binary_probit"
 
                     - "binomial_logit":
 
@@ -6611,7 +6619,7 @@ class GPModel(object):
 
     def _get_num_mode_finding_steps(self):
         num_it = ctypes.c_int64(0)
-        _safe_call(_LIB.GPB_GetNumCGStepsTridiag(
+        _safe_call(_LIB.GPB_GetNumModeFindingSteps(
             self.handle,
             ctypes.byref(num_it)))
         return num_it.value

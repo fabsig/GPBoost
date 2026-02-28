@@ -428,7 +428,7 @@ namespace GPBoost {
 			else {
 				if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 					likelihood_type_ == "beta_binomial") {
-					Log::REFatal("For the likelihood '%s', 'weights' should contain the number of trials n_i (and 'y' the ratios of successes / trials). If you are sure that the weights are all 1, manually set 'weights' as a vector of 1's ", likelihood_type_.c_str());
+					Log::REFatal("'weights' are missing. For the likelihood '%s', 'weights' should contain the number of trials n_i (and 'y' the ratios of successes / trials). If you are sure that the weights are all 1, manually set 'weights' as a vector of 1's ", likelihood_type_.c_str());
 				}
 				has_weights_ = false;
 			}
@@ -719,7 +719,8 @@ namespace GPBoost {
 					}
 				}
 			}
-			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || likelihood_type_ == "beta_binomial") {
+			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || likelihood_type_ == "beta_binomial" || 
+				likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit") {
 				for (data_size_t i = 0; i < num_data; ++i) {// not worth parallelizing as other overheads (e.g. model construction) dominate
 					if (y_data[i] < 0. || y_data[i] > 1.) {
 						Log::REFatal(" Must have 0 <= y <= 1 for the response variable ('y') for likelihood = '%s', found %g. Note that the response variable should be the proportion of successes / trials ", likelihood_type_.c_str(), y_data[i]);
@@ -828,7 +829,8 @@ namespace GPBoost {
 			double init_intercept = 0.;
 			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" ||
 				likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
-				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_one_censored_transformed_beta") {
+				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_one_censored_transformed_beta" || 
+				likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit") {
 				double sw = 0.0, swy = 0.0;
 #pragma omp parallel for schedule(static) reduction(+:sw,swy)
 				for (data_size_t i = 0; i < num_data; ++i) {
@@ -840,10 +842,12 @@ namespace GPBoost {
 				const double eps = 1e-12;
 				pavg = std::min(std::max(pavg, eps), 1.0 - eps);
 				if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" ||
-					likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_one_censored_transformed_beta") {
+					likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_one_censored_transformed_beta" || 
+					likelihood_type_ == "quasi_bernoulli_logit") {
 					init_intercept = GPBoost::logit(pavg);
 				}
-				else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit") {
+				else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit" || 
+					likelihood_type_ == "quasi_bernoulli_probit") {
 					init_intercept = GPBoost::normalQF(pavg);
 				}
 				else {
@@ -1754,7 +1758,8 @@ namespace GPBoost {
 			}//end "asymmetric_laplace"
 			else if (likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 				likelihood_type_ != "binomial_probit" && likelihood_type_ != "binomial_logit" &&
-				likelihood_type_ != "poisson" && likelihood_type_ != "gaussian_heteroscedastic") {
+				likelihood_type_ != "poisson" && likelihood_type_ != "gaussian_heteroscedastic" && 
+				likelihood_type_ != "quasi_bernoulli_probit" && likelihood_type_ != "quasi_bernoulli_logit") {
 				Log::REFatal("FindInitialAuxPars: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 			}
 			aux_pars_original_ = aux_pars_;
@@ -1778,7 +1783,8 @@ namespace GPBoost {
 			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" ||
 				likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zoctn" ||
-				likelihood_type_ == "zero_one_censored_transformed_beta" || likelihood_type_ == "zero_one_censored_shifted_gamma") {
+				likelihood_type_ == "zero_one_censored_transformed_beta" || likelihood_type_ == "zero_one_censored_shifted_gamma" || 
+				likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit") {
 				C_mu = 1.;
 				C_sigma2 = 1.;
 			}
@@ -8184,7 +8190,7 @@ namespace GPBoost {
 			const vec_t& pred_var_mean,
 			const vec_t& pred_var_var,
 			bool predict_var) {
-			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit") {
+			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
 				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
@@ -8197,7 +8203,7 @@ namespace GPBoost {
 					}
 				}
 			}
-			else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit") {
+			else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") {
 				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
@@ -8640,6 +8646,12 @@ namespace GPBoost {
 			else if (likelihood == string_t("binomial")) {
 				return "binomial_logit";
 			}
+			else if (likelihood == string_t("quasi_binary_probit")) {
+				return "quasi_bernoulli_probit";
+			}
+			else if (likelihood == string_t("quasi_binary") || likelihood == string_t("quasi_binary_logit")) {
+				return "quasi_bernoulli_logit";
+			}
 			else if (likelihood == string_t("regression")) {
 				return "gaussian";
 			}
@@ -8798,11 +8810,11 @@ namespace GPBoost {
 			if (likelihood_type_ == "gaussian" || likelihood_type_ == "t") {
 				return value;
 			}
-			else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit") {
+			else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
 				return GPBoost::normalCDF(value);
 			}
 			else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" ||
-				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial") {
+				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_logit") {
 				return GPBoost::sigmoid_stable(value);
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
@@ -8958,7 +8970,7 @@ namespace GPBoost {
 					likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 					likelihood_type_ != "poisson" && likelihood_type_ != "t" && likelihood_type_ != "beta" &&
 					likelihood_type_ != "zero_one_censored_transformed_beta" && likelihood_type_ != "zero_one_censored_shifted_gamma" &&
-					likelihood_type_ != "asymmetric_laplace") {
+					likelihood_type_ != "asymmetric_laplace" && likelihood_type_ != "quasi_bernoulli_probit" && likelihood_type_ != "quasi_bernoulli_logit") {
 					Log::REFatal("CalculateAuxQuantLogNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 				}
 				aux_normalizing_constant_has_been_calculated_ = true;
@@ -9018,7 +9030,8 @@ namespace GPBoost {
 				else if (likelihood_type_ == "gaussian_heteroscedastic") {
 					log_normalizing_constant_ = -num_data_ * M_LOGSQRT2PI;
 				}
-				else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit") {
+				else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" || 
+					likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit") {
 					log_normalizing_constant_ = 0.;
 				}
 				else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || likelihood_type_ == "beta_binomial") {
@@ -9208,18 +9221,18 @@ namespace GPBoost {
 					ll += w * LogLikBernoulliLogit<int>(y_data_int[i], location_par[i]);
 				}
 			}
-			else if (likelihood_type_ == "binomial_probit") {
-				CHECK(has_weights_);
+			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
 				for (data_size_t i = 0; i < num_data_; ++i) {
-					ll += weights_[i] * LogLikBinomialProbit(y_data[i], location_par[i]);
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					ll += w * LogLikBinomialProbit(y_data[i], location_par[i]);
 				}
 			}
-			else if (likelihood_type_ == "binomial_logit") {
-				CHECK(has_weights_);
+			else if (likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
 				for (data_size_t i = 0; i < num_data_; ++i) {
-					ll += weights_[i] * LogLikBernoulliLogit<double>(y_data[i], location_par[i]);
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					ll += w * LogLikBernoulliLogit<double>(y_data[i], location_par[i]);
 				}
 			}
 			else if (likelihood_type_ == "poisson") {
@@ -9398,7 +9411,7 @@ namespace GPBoost {
 				return LogLikZeroOneCensGamma(y_data, location_par, true);
 			}
 			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
-				likelihood_type_ == "beta_binomial") {
+				likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit") {
 				Log::REFatal("LogLikelihoodOneSample: not implemented for likelihood = '%s'. If this error happened during the GPBoost algorithm, use another 'metric' instead of the (default) 'test_neg_log_likelihood' metric ", likelihood_type_.c_str());
 				return(0.);
 			}
@@ -9729,18 +9742,18 @@ namespace GPBoost {
 					first_deriv_ll[i] = w * FirstDerivLogLikBernoulliLogit<int>(y_data_int[i], location_par[i]);
 				}
 			}
-			else if (likelihood_type_ == "binomial_probit") {
-				CHECK(has_weights_);
+			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 				for (data_size_t i = 0; i < num_data_; ++i) {
-					first_deriv_ll[i] = weights_[i] * FirstDerivLogLikBinomialProbit(y_data[i], location_par[i]);
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					first_deriv_ll[i] = w * FirstDerivLogLikBinomialProbit(y_data[i], location_par[i]);
 				}
 			}
-			else if (likelihood_type_ == "binomial_logit") {
-				CHECK(has_weights_);
+			else if (likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 				for (data_size_t i = 0; i < num_data_; ++i) {
-					first_deriv_ll[i] = weights_[i] * FirstDerivLogLikBernoulliLogit<double>(y_data[i], location_par[i]);
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					first_deriv_ll[i] = w * FirstDerivLogLikBernoulliLogit<double>(y_data[i], location_par[i]);
 				}
 			}
 			else if (likelihood_type_ == "poisson") {
@@ -9928,7 +9941,7 @@ namespace GPBoost {
 				return FirstDerivLogLikZeroOneCensGamma(y_data, location_par);
 			}
 			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
-				likelihood_type_ == "beta_binomial") {
+				likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit") {
 				Log::REFatal("CalcFirstDerivLogLikOneSample: not implemented for likelihood = '%s'. If this error happened during the GPBoost algorithm, use another 'metric' instead of the (default) 'test_neg_log_likelihood' metric ", likelihood_type_.c_str());
 				return(0.);
 			}
@@ -10344,18 +10357,18 @@ namespace GPBoost {
 						information_ll[i] = w * SecondDerivNegLogLikBernoulliProbit(y_data_int[i], location_par[i]);
 					}
 				}
-				else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit") {
+				else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						information_ll[i] = w * SecondDerivNegLogLikBernoulliLogit(location_par[i]);
 					}
 				}
-				else if (likelihood_type_ == "binomial_probit") {
-					CHECK(has_weights_);
+				else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
-						information_ll[i] = weights_[i] * SecondDerivNegLogLikBinomialProbit(y_data[i], location_par[i]);
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikBinomialProbit(y_data[i], location_par[i]);
 					}
 				}
 				else if (likelihood_type_ == "poisson") {
@@ -10610,7 +10623,7 @@ namespace GPBoost {
 					return SecondDerivNegLogLikZeroOneCensGamma(y_data, location_par);
 				}
 				else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
-					likelihood_type_ == "beta_binomial") {
+					likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit") {
 					Log::REFatal("CalcDiagInformationLogLikOneSample: not implemented for likelihood = '%s'. If this error happened during the GPBoost algorithm, use another 'metric' instead of the (default) 'test_neg_log_likelihood' metric ", likelihood_type_.c_str());
 					return(0.);
 				}
@@ -11150,7 +11163,7 @@ namespace GPBoost {
 						}
 					}
 				}
-				else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit") {
+				else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
@@ -11162,7 +11175,7 @@ namespace GPBoost {
 
 					}
 				}
-				else if (likelihood_type_ == "binomial_probit") {
+				else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
@@ -12399,11 +12412,11 @@ namespace GPBoost {
 			if (likelihood_type_ == "gaussian" || likelihood_type_ == "t") {
 				return value;
 			}
-			else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit") {
+			else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
 				return GPBoost::normalCDF(value);
 			}
 			else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" ||
-				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial") {
+				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_logit") {
 				return GPBoost::sigmoid_stable(value);
 			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
@@ -13917,12 +13930,12 @@ namespace GPBoost {
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";
 		/*! \brief List of supported covariance likelihoods */
-		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit",
+		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit",
 			"poisson", "gamma", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "lognormal", "beta_binomial",
 			"zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
 			"asymmetric_laplace" };
 		/*! \brief List of supported covariance likelihoods */
-		const std::set<string_t> LIKELIHOODS_ONLY_LAPLACE_{ "binomial_probit", "binomial_logit", "gamma", "negative_binomial", "negative_binomial_1",
+		const std::set<string_t> LIKELIHOODS_ONLY_LAPLACE_{ "binomial_probit", "binomial_logit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit", "gamma", "negative_binomial", "negative_binomial_1",
 			"beta", "beta_binomial", "zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma" };
 		/*! \brief True if response variable has int type */
 		bool has_int_label_;
