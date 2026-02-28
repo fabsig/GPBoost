@@ -72,8 +72,7 @@ hist(y, breaks=20)  # visualize response variable
 #--------------------Training----------------
 # Define random effects model
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
-# The default optimizer for covariance parameters (hyperparameters) is 
-# Nesterov-accelerated gradient descent.
+# The default optimizer for covariance parameters (hyperparameters) is "lbfgs".
 # This can be changed to, e.g., Nelder-Mead as follows:
 # set_optim_params(gp_model, params=list(optimizer_cov="nelder_mead"))
 # Use the option trace=TRUE to monitor convergence of hyperparameter estimation of the gp_model. E.g.:

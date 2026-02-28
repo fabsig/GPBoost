@@ -98,6 +98,8 @@ summary(gp_model)
 # Get coefficients and variance/covariance parameters separately
 gp_model$get_coef()
 gp_model$get_cov_pars()
+## Monitoring convergence can be done as follows
+# gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = likelihood, params = list(trace =TRUE))
 
 # --------------------Prediction----------------
 group_test <- c(1,2,-1)

@@ -82,7 +82,7 @@ plt.show(block=False)
 #--------------------Training----------------
 # Define random effects model
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-# The default optimizer for covariance parameters (hyperparameters) is Nesterov-accelerated gradient descent.
+# The default optimizer for covariance parameters (hyperparameters) is "lbfgs".
 # This can be changed to, e.g., Nelder-Mead as follows:
 # gp_model.set_optim_params(params={"optimizer_cov": "nelder_mead"})
 # Use the option "trace": true to monitor convergence of hyperparameter estimation of the gp_model. E.g.:

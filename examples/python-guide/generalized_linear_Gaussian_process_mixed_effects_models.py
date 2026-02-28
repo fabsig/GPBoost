@@ -111,6 +111,9 @@ gp_model.summary()
 # Get coefficients and variance/covariance parameters separately
 gp_model.get_coef()
 gp_model.get_cov_pars()
+## Monitoring convergence can be done as follows
+# gp_model.fit(y=y, X=X, params={"trace": True})
+
 
 # --------------------Prediction----------------
 group_test = np.array([1,2,-1])
@@ -458,7 +461,7 @@ rand_eff = Z1.dot(b1) + b2
 rand_eff = rand_eff - np.mean(rand_eff)
 y_comb = simulate_response_variable(lp=0, rand_eff=rand_eff, likelihood=likelihood)
 # Define and train model
-gp_model = gpb.GPModel(group_data=group, gp_coords=coords, 
+gp_model = gpb.GPModel(group_data=group, gp_coords=coords,
                        cov_function="matern", cov_fct_shape=1.5, likelihood=likelihood)
 gp_model.fit(y=y_comb)
 gp_model.summary()
