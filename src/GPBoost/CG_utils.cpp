@@ -930,7 +930,6 @@ namespace GPBoost {
 	void GenRandVecNormalParallel(int base_seed, 
 		uint64_t& run_id,
 		den_mat_t& R) {
-
 		const uint64_t this_run_id = run_id;  // snapshot once
 		const uint32_t b32 = static_cast<uint32_t>(base_seed);
 #pragma omp parallel for schedule(static)

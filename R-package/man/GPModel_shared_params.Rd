@@ -439,6 +439,10 @@ predictive covariance is calculated in addition to the (posterior) predictive me
 \item{predict_var}{A \code{boolean}. If TRUE, the (posterior) 
 predictive variances are calculated}
 
+\item{sample_posterior}{A \code{boolean}. If TRUE, samples from the posterior are drawn (currently very limited support)}
+
+\item{num_post_samples}{A \code{numeric} with the number of posterior samples to draw if 'sample_posterior=TRUE'}
+
 \item{std_err}{A \code{boolean}. If TRUE, (approximate) standard errors are calculated 
 (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
 square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)}

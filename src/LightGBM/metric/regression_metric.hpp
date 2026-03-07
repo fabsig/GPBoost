@@ -92,7 +92,7 @@ namespace LightGBM {
 						REModel* re_model = objective->GetGPModel();
 						if (re_model->GaussLikelihood()) {//Gaussian data
 							std::vector<double> minus_gp_pred(num_data_);
-							re_model->Predict(nullptr, num_data_, minus_gp_pred.data(), false, false,  false, 
+							re_model->Predict(nullptr, num_data_, minus_gp_pred.data(), false, false,  false, false, 0,
 								nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 								true, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 							// Note that the re_model already has the updated response data score - label = F_t - y 
@@ -105,7 +105,7 @@ namespace LightGBM {
 						}//end Gaussian data
 						else {//non-Gaussian data
 							std::vector<double> gp_pred(num_data_);
-							re_model->Predict(nullptr, num_data_, gp_pred.data(), false, false, true,
+							re_model->Predict(nullptr, num_data_, gp_pred.data(), false, false, true, false, 0,
 								nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 								true, nullptr, score, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 							// Note that the re_model already has the updated training score (= F_t)
@@ -427,7 +427,7 @@ namespace LightGBM {
 			if (objective->HasGPModel() && objective->UseGPModelForValidation()) {
 				if (re_model->GaussLikelihood()) {//Gaussian data
 					std::vector<double> re_pred(num_data_ * 2); // the first num_data_ are the negative predictive means followed by num_data_ predictive variances
-					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, true,
+					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, true, false, 0,
 						nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 						true, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 					// Note that the re_model already has the updated response data score - label = F_t - y 
@@ -440,7 +440,7 @@ namespace LightGBM {
 					sum_loss *= 0.5;
 
 					// The following code is equivalent to the above (but slower)
-//					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, false,
+//					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, false, false, 0,
 //						nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 //						true, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 //					// Note that the re_model already has the updated response data score - label = F_t - y 
@@ -455,7 +455,7 @@ namespace LightGBM {
 				}//end Gaussian data
 				else {//non-Gaussian data
 					std::vector<double> re_pred(num_data_ * 2); // the first num_data_ are the predictive means followed by num_data_ predictive variances
-					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, false,
+					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, false, false, 0,
 						nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 						true, nullptr, score, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 					// Note that the re_model already has the updated training score (= F_t)
@@ -550,7 +550,7 @@ namespace LightGBM {
 			if (objective->HasGPModel() && objective->UseGPModelForValidation()) {
 				std::vector<double> re_pred(num_data_ * 2); // the first num_data_ are the negative predictive means followed by num_data_ predictive variances
 				if (re_model->GaussLikelihood()) {//Gaussian data
-					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, true,
+					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, true, false, 0,
 						nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 						true, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 					// Note that the re_model already has the updated response data score - label = F_t - y 
@@ -564,7 +564,7 @@ namespace LightGBM {
 					}
 				}//end Gaussian data
 				else {//non-Gaussian data
-					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, true,
+					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, true, false, 0,
 						nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 						true, nullptr, score, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 #pragma omp parallel for schedule(static) reduction(+:sum_loss)

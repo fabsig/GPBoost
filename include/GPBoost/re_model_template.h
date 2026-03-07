@@ -2,7 +2,7 @@
 * This file is part of GPBoost a C++ library for combining
 *	boosting with Gaussian process and mixed effects models
 *
-* Copyright (c) 2020 - 2025 Fabio Sigrist, Tim Gyger, and Pascal Kuendig. All rights reserved.
+* Copyright (c) 2020 - 2026 Fabio Sigrist, Tim Gyger, and Pascal Kuendig. All rights reserved.
 *
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 */
@@ -152,6 +152,7 @@ namespace GPBoost {
 			//Initialize RNG
 			CHECK(seed >= 0);
 			rng_ = RNG_t(seed);
+			seed_rng_ = seed;
 			//Set up likelihood
 			string_t likelihood_strg;
 			if (likelihood == nullptr) {
@@ -3181,6 +3182,8 @@ namespace GPBoost {
 		* \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 		* \param predict_var If true, the predictive/conditional variances are calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 		* \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects
+		* \param sample_posterior If true, posterior samples are generated
+		* \param num_post_samples Number of posterior samples
 		* \param covariate_data_pred Covariate data (=independent variables, features) for prediction
 		* \param coef_pred Coefficients for linear covariates
 		* \param cluster_ids_data_pred IDs / labels indicating independent realizations of Gaussian processes (same values = same process realization) for which predictions are to be made
@@ -3200,6 +3203,8 @@ namespace GPBoost {
 			bool predict_cov_mat,
 			bool predict_var,
 			bool predict_response,
+			bool sample_posterior,
+			int num_post_samples,
 			const double* covariate_data_pred,
 			const double* coef_pred,
 			const data_size_t* cluster_ids_data_pred,
@@ -3368,10 +3373,13 @@ namespace GPBoost {
 				//Case 1: no data observed for this Gaussian process with ID 'cluster_i'
 				if (std::find(unique_clusters_.begin(), unique_clusters_.end(), cluster_i) == unique_clusters_.end()) {
 					if (num_sets_re_ > 1) {
-						Log::REFatal("Predict: not implemented for making predictons for new clusters for heterodescadistic models ");
+						Log::REFatal("Predict function is not implemented for new clusters (in 'cluster_ids_pred') for heterodescadistic models ");
 					}
 					if (grouped_RE_and_vecchia_GP_) {
-						Log::REFatal("Predict function is not yet implemented for making predictons for new clusters for grouped random effects and a Vecchia-approximated GP ");
+						Log::REFatal("Predict function is not implemented for new clusters (in 'cluster_ids_pred') for grouped random effects and a Vecchia-approximated GP ");
+					}
+					if (sample_posterior) {
+						Log::REFatal("Posterior sampling is not implemented for new clusters (in 'cluster_ids_pred') ");
 					}
 					T_mat psi;
 					std::vector<std::shared_ptr<RECompBase<T_mat>>> re_comps_cluster_i;
@@ -3746,17 +3754,24 @@ namespace GPBoost {
 						}
 					}
 					T_mat cov_mat_pred_id;
-					if (predict_cov_mat) {
-						if (num_sets_re_ > 1) {
-							Log::REFatal("Predictive covariance matrices are not supported");
+					if (num_sets_re_ > 1) {
+						if (predict_cov_mat) {
+							Log::REFatal("Predictive covariance matrices are not supported for num_sets_re_ > 1");
+						}
+						if (sample_posterior) {
+							Log::REFatal("Posterior sampling is not supported for num_sets_re_ > 1");
 						}
 					}
 					std::map<int, vec_t> var_pred_id;//var_pred_id[1] = predictive variance for variance parameter in heteroscedastic models
+					den_mat_t post_samples_id;// sample from posterior without the mean, the mean is added at then end
 					std::map<int, sp_mat_t> Bpo, Bp; // used only if gp_approx_ == "vecchia" && !gauss_likelihood_
 					std::map<int, vec_t> Dp;
 					int num_gp_pred = predict_var_or_response ? num_sets_re_ : 1;
 					// Calculate predictions
 					if (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") {
+						if (sample_posterior) {
+							Log::REFatal("Posterior sampling is not implemented for gp_approx = '%s' ", gp_approx_.c_str());
+						}
 						std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp = re_comps_vecchia_[cluster_i][0][0];
 						den_mat_t cov_mat_pred_vecchia_id;
 						if (gauss_likelihood_) {
@@ -3934,21 +3949,25 @@ namespace GPBoost {
 						if (predict_cov_mat) {
 							ConvertTo_T_mat_FromDense(cov_mat_pred_vecchia_id, cov_mat_pred_id);
 						}
-					}//end (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia")  && !grouped_RE_and_vecchia_GP_
+					}//end (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia")
 					else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
+						if (sample_posterior) {
+							Log::REFatal("Posterior sampling is not implemented for gp_approx = '%s' ", gp_approx_.c_str());
+						}
 						CalcPredFITC_FSA(cluster_i, gp_coords_mat_pred, predict_cov_mat,
 							predict_var_or_response, predict_response, mean_pred_id[0], cov_mat_pred_id, var_pred_id[0], nsim_var_pred_, cg_delta_conv_pred_);
 					}
 					if (gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering" &&
-						gp_approx_ != "full_scale_vecchia" && !(gp_approx_ == "vecchia" && !grouped_RE_and_vecchia_GP_)) {
+						gp_approx_ != "full_scale_vecchia" && gp_approx_ != "vecchia" || grouped_RE_and_vecchia_GP_) {
 						if (grouped_RE_and_vecchia_GP_) {
 							CHECK(num_gp_pred == 1);
+							CHECK(gp_approx_ == "vecchia");
 						}
 						bool VecchiaCondObsOnly = vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only";
 						CalcPred(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 							re_group_levels_pred, re_group_rand_coef_data_pred, gp_coords_mat_pred, gp_rand_coef_data_pred,
-							predict_cov_mat, predict_var_or_response, predict_response,
-							mean_pred_id[0], cov_mat_pred_id, var_pred_id[0], Bpo[0], Bp[0], Dp[0], VecchiaCondObsOnly);
+							predict_cov_mat, predict_var_or_response, predict_response, sample_posterior, num_post_samples,
+							mean_pred_id[0], cov_mat_pred_id, var_pred_id[0], post_samples_id, Bpo[0], Bp[0], Dp[0], VecchiaCondObsOnly);
 					}
 					for (int igp = 0; igp < num_gp_pred; ++igp) {
 						//map from predictions from random effects scale b to "data scale" Zb
@@ -3966,6 +3985,17 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 								for (data_size_t i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 									var_pred_id[igp][i] = var_pred_id_on_RE_scale[random_effects_indices_of_data_pred[i]];
+								}
+							}
+							if (sample_posterior) {
+								den_mat_t post_samples_id_on_RE_scale;
+								post_samples_id_on_RE_scale.swap(post_samples_id);
+								post_samples_id.resize(num_data_per_cluster_pred[cluster_i], num_post_samples);
+#pragma omp parallel for schedule(static)
+								for (int is = 0; is < num_post_samples; ++is) {
+									for (data_size_t i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+										post_samples_id(i, is) = post_samples_id_on_RE_scale(random_effects_indices_of_data_pred[i], is);
+									}
 								}
 							}
 							if (predict_cov_mat) {
@@ -3995,36 +4025,61 @@ namespace GPBoost {
 							}
 						}
 					}//end loop over num_gp_pred
+					if (gauss_likelihood_) {
+						if (predict_var) {
+							var_pred_id[0] *= cov_pars[0];
+						}
+						if (predict_cov_mat) {
+							cov_mat_pred_id *= cov_pars[0];
+						}
+						if (sample_posterior) {
+							post_samples_id *= std::sqrt(cov_pars[0]);							
+						}
+					}
+					if (sample_posterior) {
+						const vec_t& mu_loc = mean_pred_id.at(0);
+						post_samples_id.colwise() += mu_loc;
+					}
 					if (!gauss_likelihood_ && predict_response) {
+						if (sample_posterior) {
+							Log::REFatal("Posterior sampling for the option 'predict_response' is currently not yet implemented for this likelihood, set predict_response = false");
+						}
 						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id[0], var_pred_id[0], mean_pred_id[1], var_pred_id[1], predict_var);
 					}
+
 					// Write on output
+					int idx_start_post_sample = num_data_pred;
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 						out_predict[data_indices_per_cluster_pred[cluster_i][i]] = mean_pred_id[0][i];
 					}
 					// Write covariance / variance on output
 					if (predict_cov_mat) {
-						if (gauss_likelihood_) {
-							cov_mat_pred_id *= cov_pars[0];
-						}
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
 							for (int j = 0; j < num_data_per_cluster_pred[cluster_i]; ++j) {//row index
 								out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred] = cov_mat_pred_id.coeff(j, i);
 							}
 						}
+						idx_start_post_sample += num_data_pred * num_data_pred;
 					}//end predict_cov_mat
 					if (predict_var) {
-						if (gauss_likelihood_) {
-							var_pred_id[0] *= cov_pars[0];
-						}
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 							out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred] = var_pred_id[0][i];
 						}
+						idx_start_post_sample += num_data_pred;
 					}//end predict_var
-					//end write covariance / variance on output
+					if (sample_posterior) {
+						CHECK(post_samples_id.cols() == num_post_samples);
+						CHECK(post_samples_id.rows() == num_data_per_cluster_pred[cluster_i]);
+#pragma omp parallel for schedule(static)
+						for (int is = 0; is < num_post_samples; ++is) {
+							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+								out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * is + idx_start_post_sample] = post_samples_id(i, is);
+							}
+						}
+					}
 				}//end cluster_i with data
 			}//end loop over cluster
 			//Set cross-covariances between different independent clusters to 0
@@ -5449,6 +5504,8 @@ namespace GPBoost {
 		int seed_rand_vec_trace_ = 1;
 		/*! If the seed of the random number generator cg_generator_ is set, cg_generator_seeded_ is set to true*/
 		bool cg_generator_seeded_ = false;
+		/*! \brief General RNG seet */
+		int seed_rng_ = 1;
 		/*! Indicates if we observe a NAN or Inf value in a conjugate gradient iteration */
 		bool NaN_found = false;
 		/*! Random number generator used in iterative methods */
@@ -10176,9 +10233,12 @@ namespace GPBoost {
 			bool predict_cov_mat,
 			bool predict_var,
 			bool predict_response,
+			bool sample_posterior,
+			int num_post_samples,
 			vec_t& mean_pred_id,
 			T_mat& cov_mat_pred_id,
 			vec_t& var_pred_id,
+			den_mat_t& post_samples_id,
 			const sp_mat_t& Bpo,
 			sp_mat_t& Bp,
 			const vec_t& Dp,
@@ -10197,6 +10257,16 @@ namespace GPBoost {
 			else {
 				num_REs_pred = num_data_per_cluster_pred[cluster_i];
 				num_REs_obs = num_data_per_cluster_[cluster_i];
+			}
+			bool cov_mat_only_for_simulation = false;
+			if (sample_posterior) {
+				if (!only_one_grouped_RE_calculations_on_RE_scale_ && !only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ &&
+					!use_woodbury_identity_ && !grouped_RE_and_vecchia_GP_) {
+					if (!predict_cov_mat) {
+						cov_mat_only_for_simulation = true;
+					}
+					predict_cov_mat = true;//currently only classical case without an approximation (except tapering) supported
+				}
 			}
 			if (predict_var) {
 				if (gauss_likelihood_ && predict_response) {
@@ -10223,6 +10293,9 @@ namespace GPBoost {
 			int cn = 0;//component number counter
 			bool dont_add_but_overwrite = true;
 			if (only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
+				if (sample_posterior) {
+					Log::REFatal("Posterior sampling is not implemented for single-level grouped random effects ");
+				}
 				std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][0][0]);
 				if (predict_cov_mat) {
 					re_comp->AddPredCovMatrices(re_group_levels_pred[0], cross_cov, cov_mat_pred_id,
@@ -10240,6 +10313,9 @@ namespace GPBoost {
 				}
 			}
 			else if (use_woodbury_identity_ || grouped_RE_and_vecchia_GP_) {
+				if (sample_posterior) {
+					Log::REFatal("Posterior sampling is not implemented for multi-level grouped random effects ");
+				}
 				Ztilde = sp_mat_t(num_data_per_cluster_pred[cluster_i], cum_num_rand_eff_[cluster_i][num_re_group_total_]);
 				if (linear_kernel_use_woodbury_identity_) {
 					Ztilde = gp_coords_mat_pred.sparseView();
@@ -10312,6 +10388,7 @@ namespace GPBoost {
 				CalcSigmaOrInverseUseWoodbury(Sigma, cluster_i, false);
 			}//end use_woodbury_identity_ || grouped_RE_and_vecchia_GP_
 			else {//!only_one_grouped_RE_calculations_on_RE_scale_ && !use_woodbury_identity_ && ! grouped_RE_and_vecchia_GP_
+				// classical case without any approximation (except tapering)
 				if (num_re_group_ > 0) {//Grouped random effects
 					for (int j = 0; j < num_group_variables_; ++j) {
 						if (!drop_intercept_group_rand_effect_[j]) {
@@ -10708,6 +10785,23 @@ namespace GPBoost {
 						predict_cov_mat, predict_var, false);
 				}
 			}//end not gauss_likelihood_
+			if (sample_posterior) {
+				if (!only_one_grouped_RE_calculations_on_RE_scale_ && !only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ &&
+					!use_woodbury_identity_ && !grouped_RE_and_vecchia_GP_) {
+					CHECK(predict_cov_mat);
+					T_chol chol_fact_cov_mat;
+					chol_fact_cov_mat.compute(cov_mat_pred_id);
+					if (cov_mat_only_for_simulation) {
+						cov_mat_pred_id.resize(0, 0);
+					}
+					post_samples_id = den_mat_t(num_REs_pred, num_post_samples);					
+					GenRandVecNormalParallel(seed_rng_, cg_generator_counter_, post_samples_id);
+					post_samples_id = chol_fact_cov_mat.CholFactMatrix().template triangularView<Eigen::Lower>() * post_samples_id;
+					if (CholeskyHasPermutation<T_chol>(chol_fact_cov_mat)) {
+						ApplyPermutationCholeskyFactor<den_mat_t, T_chol>(chol_fact_cov_mat, post_samples_id, post_samples_id, /*transpose=*/true);
+					}
+				}		
+			}//end sample_posterior
 		}//end CalcPred
 
 		void SetVecchiaPredType(const char* vecchia_pred_type) {

@@ -3400,6 +3400,7 @@ class Booster:
                 group_data_pred=None, group_rand_coef_data_pred=None,
                 gp_coords_pred=None, gp_rand_coef_data_pred=None,
                 cluster_ids_pred=None, predict_cov_mat=False, predict_var=False,
+                sample_posterior=False, num_post_samples=100,
                 cov_pars=None, offset_pred=None, ignore_gp_model=False, raw_score=None,
                 vecchia_pred_type=None, num_neighbors_pred=None, **kwargs):
         """Make a prediction.
@@ -3457,6 +3458,10 @@ class Booster:
         predict_var : bool, optional (default=False)
             If True, (posterior) predictive variances are calculated in addition to the
             (posterior) predictive mean. Used only if the Booster has a gp_model
+        sample_posterior : bool (default=False)
+                If True, samples from the posterior are drawn (currently very limited support)
+        num_post_samples : integer (default=100)
+            Number of posterior samples to draw if 'sample_posterior=True'
         cov_pars : numpy array or None, optional (default = None)
             A vector containing covariance parameters which are used if the gp_model has not been trained or
             if predictions should be made for other parameters than the estimated ones
@@ -3543,6 +3548,7 @@ class Booster:
             pred_var_cov = None
             response_mean = None
             response_var = None
+            posterior_samples = None
             has_raw_data = False
             if hasattr(self, 'train_set'):
                 if hasattr(self.train_set, 'data'):
@@ -3574,6 +3580,7 @@ class Booster:
                                                            cluster_ids_pred=cluster_ids_pred,
                                                            predict_cov_mat=predict_cov_mat,
                                                            predict_var=predict_var,
+                                                           sample_posterior=sample_posterior, num_post_samples=num_post_samples,
                                                            cov_pars=cov_pars,
                                                            predict_response=(not pred_latent))
                 fixed_effect = predictor.predict(data=data, start_iteration=start_iteration,
@@ -3589,17 +3596,21 @@ class Booster:
                     fixed_effect += offset_pred
                 
                 if pred_latent:
+                    random_effect_mean = random_effect_pred['mu']
                     if predict_cov_mat:
                         pred_var_cov = random_effect_pred['cov']
                     elif predict_var:
                         pred_var_cov = random_effect_pred['var']
-                    random_effect_mean = random_effect_pred['mu']
+                    if sample_posterior:
+                        posterior_samples = random_effect_pred['posterior_samples']
                 else:
+                    response_mean = random_effect_pred['mu'] + fixed_effect
                     if predict_cov_mat:
                         response_var = random_effect_pred['cov']
                     elif predict_var:
-                        response_var = random_effect_pred['var']
-                    response_mean = random_effect_pred['mu'] + fixed_effect
+                        response_var = random_effect_pred['var']        
+                    if sample_posterior:
+                        posterior_samples = random_effect_pred['posterior_samples'] + fixed_effect[:, np.newaxis]
                     fixed_effect = None
             else:  # non-Gaussian likelihood
                 y = None
@@ -3636,6 +3647,7 @@ class Booster:
                                                                cluster_ids_pred=cluster_ids_pred,
                                                                predict_cov_mat=predict_cov_mat,
                                                                predict_var=predict_var,
+                                                               sample_posterior=sample_posterior, num_post_samples=num_post_samples,
                                                                cov_pars=cov_pars,
                                                                predict_response=False,
                                                                offset=fixed_effect_train,
@@ -3643,11 +3655,13 @@ class Booster:
                     if len(fixed_effect) != len(random_effect_pred['mu']):
                         warnings.warn("Number of data points in fixed effect (tree ensemble) and random effect "
                                       "are not equal")
+                    random_effect_mean = random_effect_pred['mu']
                     if predict_cov_mat:
                         pred_var_cov = random_effect_pred['cov']
                     elif predict_var:
                         pred_var_cov = random_effect_pred['var']
-                    random_effect_mean = random_effect_pred['mu']
+                    if sample_posterior:
+                        posterior_samples = random_effect_pred['posterior_samples']
                 else:  # predict response variable (not pred_latent)
                     if self.gp_model.num_sets_fe == 2:
                         fixed_effect = np.concatenate((fixed_effect[::2], fixed_effect[1::2])) # fixed effects predictions for mean and variance
@@ -3658,6 +3672,7 @@ class Booster:
                                                       cluster_ids_pred=cluster_ids_pred,
                                                       predict_cov_mat=predict_cov_mat,
                                                       predict_var=predict_var,
+                                                      sample_posterior=sample_posterior, num_post_samples=num_post_samples,
                                                       cov_pars=cov_pars,
                                                       predict_response=True,
                                                       offset=fixed_effect_train,
@@ -3665,12 +3680,16 @@ class Booster:
                                                       y=y)
                     response_mean = pred_resp['mu']
                     response_var = pred_resp['var']
+                    if sample_posterior:
+                        posterior_samples = pred_resp['posterior_samples']
                     fixed_effect = None
             return {"fixed_effect": fixed_effect,
                     "random_effect_mean": random_effect_mean,
                     "random_effect_cov": pred_var_cov,
                     "response_mean": response_mean,
-                    "response_var": response_var} # end GPBoost prediction        
+                    "response_var": response_var,
+                    "posterior_samples": posterior_samples
+                    } # end GPBoost prediction        
         elif self.is_mean_scale_regression:
             preds = predictor.predict(data=data, start_iteration=start_iteration, num_iteration=num_iteration,
                                      raw_score=pred_latent, pred_leaf=pred_leaf, pred_contrib=pred_contrib,
@@ -5804,6 +5823,8 @@ class GPModel(object):
                 predict_response=True,
                 predict_var=False,
                 predict_cov_mat=False,
+                sample_posterior = False,
+                num_post_samples = 100,
                 y=None,
                 cov_pars=None,
                 group_data_pred=None,
@@ -5830,6 +5851,10 @@ class GPModel(object):
             predict_cov_mat : bool (default=False)
                 If True, the (posterior) predictive covariance is calculated in addition to the
                 (posterior) predictive mean
+            sample_posterior : bool (default=False)
+                If True, samples from the posterior are drawn (currently very limited support)
+            num_post_samples : integer (default=100)
+                Number of posterior samples to draw if 'sample_posterior=True'
             y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
                 Observed response variable data (can be None, e.g. when the model has been estimated already and
                 the same data is used for making predictions)
@@ -6084,12 +6109,14 @@ class GPModel(object):
             offset_pred = offset_pred.astype(np.float64)
             offset_pred_c = offset_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
+        size_allocate = num_data_pred
         if predict_var:
-            preds = np.zeros(2 * num_data_pred, dtype=np.float64)
+            size_allocate = size_allocate + num_data_pred
         elif predict_cov_mat:
-            preds = np.zeros(num_data_pred * (1 + num_data_pred), dtype=np.float64)
-        else:
-            preds = np.zeros(num_data_pred, dtype=np.float64)
+            size_allocate = size_allocate + num_data_pred * num_data_pred
+        if sample_posterior:
+            size_allocate = size_allocate + num_post_samples * num_data_pred
+        preds = np.zeros(size_allocate, dtype=np.float64)
 
         _safe_call(_LIB.GPB_PredictREModel(
             self.handle,
@@ -6099,6 +6126,8 @@ class GPModel(object):
             ctypes.c_bool(predict_cov_mat),
             ctypes.c_bool(predict_var),
             ctypes.c_bool(predict_response),
+            ctypes.c_bool(sample_posterior),
+            ctypes.c_int(num_post_samples),
             cluster_ids_pred_c,
             group_data_pred_c,
             group_rand_coef_data_pred_c,
@@ -6113,12 +6142,17 @@ class GPModel(object):
         pred_mean = preds[0:num_data_pred]
         pred_cov_mat = None
         pred_var = None
+        posterior_samples = None
+        idx_start_post_sample = num_data_pred
         if predict_var:
             pred_var = preds[num_data_pred:(2 * num_data_pred)]
+            idx_start_post_sample = idx_start_post_sample + num_data_pred
         elif predict_cov_mat:
-            pred_cov_mat = preds[num_data_pred:(num_data_pred * (num_data_pred + 1))].reshape(
-                (num_data_pred, num_data_pred))
-        return {"mu": pred_mean, "cov": pred_cov_mat, "var": pred_var}
+            pred_cov_mat = preds[num_data_pred:(num_data_pred * (num_data_pred + 1))].reshape((num_data_pred, num_data_pred))
+            idx_start_post_sample = idx_start_post_sample + num_data_pred * num_data_pred
+        if sample_posterior:
+            posterior_samples = preds[idx_start_post_sample : idx_start_post_sample + num_data_pred * num_post_samples].reshape((num_data_pred, num_post_samples), order="F")
+        return {"mu": pred_mean, "cov"  : pred_cov_mat, "var": pred_var, "posterior_samples": posterior_samples}
 
     def set_prediction_data(self,
                             vecchia_pred_type=None,
