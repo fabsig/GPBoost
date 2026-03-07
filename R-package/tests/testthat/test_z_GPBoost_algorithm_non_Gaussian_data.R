@@ -939,7 +939,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Prediction
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                       predict_var = TRUE, pred_latent = TRUE)
-      expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-c(-0.25248234, 0.07336944, 0.19282985, 0.04100225))),TOLERANCE)
+      pred_re <- c(-0.25248234, 0.07336944, 0.19282985, 0.04100225)
+      expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-pred_re)),TOLERANCE)
       expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.09672839, 0.10432856, 0.09164587, 0.09215657))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4087100, -0.5570364, -0.7904685, 0.5055812))),TOLERANCE)
       # Predict response
@@ -947,6 +948,30 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                       predict_var = TRUE, pred_latent = FALSE)
       expect_lt(sum(abs(tail(pred$response_mean,n=4)-c(0.5592939, 0.3226671, 0.2836602, 0.6995181))),TOLERANCE)
       expect_lt(sum(abs(tail(pred$response_var,n=4)-c(0.2464842, 0.2185530, 0.2031971, 0.2101925))),TOLERANCE)
+      # Predictive covariance
+      cov_exp <- c(1.043281e-01, -6.034087e-05, -8.979587e-05, -6.034087e-05, 9.164516e-02, 
+                   4.336540e-03, -8.979587e-05, 4.336540e-03, 9.215582e-02)
+      cov_exp_resp <- cov_exp
+      pred <- predict(bst, data =  tail(X_test,n=3), gp_coords_pred = tail(coords_test,n=3), 
+                      predict_cov_mat=TRUE, pred_latent = TRUE)
+      expect_lt(sum(abs(tail(pred$random_effect_mean, n=3)-tail(pred_re,n=3))),TOLERANCE)
+      expect_lt(sum(abs(as.vector(pred$random_effect_cov)-cov_exp)),TOLERANCE)
+      # pred <- predict(bst, data =  tail(X_test,n=3), gp_coords_pred = tail(coords_test,n=3), 
+      #                 predict_var=TRUE, pred_latent = FALSE)
+      # expect_lt(sum(abs(tail(pred$response_mean, n=4)-tail(pred_re+pred_fe,n=3))),TOLERANCE)
+      # expect_lt(sum(abs(as.vector(pred$response_var)-cov_exp_resp)),TOLERANCE)
+      
+      # Sampling from the posterior
+      pred <- predict(bst, data =  tail(X_test,n=3), gp_coords_pred = tail(coords_test,n=3), 
+                      sample_posterior = TRUE, num_post_samples = 10000, pred_latent = TRUE)
+      tol_mu <- 0.02
+      expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-tail(pred_re,n=3))), tol_mu)
+      expect_lt(sum(abs(cov(t(pred$posterior_samples))-cov_exp)), tol_mu)
+      # not yet implemented
+      # pred <- predict(bst, data =  tail(X_test,n=3), gp_coords_pred = tail(coords_test,n=3), 
+      #                 sample_posterior = TRUE, num_post_samples = 10000, pred_latent = FALSE)
+      # expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-tail(pred_re+pred_fe,n=3))),tol_mu)
+      # expect_lt(sum(abs(cov(t(pred$posterior_samples))-cov_exp_resp)), 0.03)
       
       # Use validation set to determine number of boosting iteration with use_gp_model_for_validation = TRUE
       dtest <- gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test)

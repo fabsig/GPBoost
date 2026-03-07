@@ -292,7 +292,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction using given parameters
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
     cov_pars_pred = c(0.02,1.2,0.9)
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_response = TRUE,
                     cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
     expected_mu <- c(0.08704577, 1.63875604, 0.48513581)
     expected_cov <- c(1.189093e-01, 1.171632e-05, -4.172444e-07, 1.171632e-05,
@@ -302,7 +302,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)), TOLERANCE_STRICT)
     # Prediction of variances only
-    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, 
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_response = TRUE, 
                     cov_pars = cov_pars_pred, predict_var = TRUE)
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])), TOLERANCE_STRICT)
@@ -311,6 +311,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     cov_pars = cov_pars_pred, predict_cov_mat = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-cov_no_nugget)), TOLERANCE_STRICT)
+    # Sampling from posterior
+    pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = TRUE, 
+                    cov_pars = cov_pars_pred, sample_posterior = TRUE, num_post_samples = 100000)
+    tol_mu <- 0.003
+    tol_cov <- 0.003
+    expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-expected_mu)), tol_mu)
+    expect_lt(sum(abs(as.vector(cov(t(pred$posterior_samples)))-expected_cov)), tol_cov)
     
     # Do optimization using optim
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
@@ -446,15 +453,47 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs( as.vector(gp_model$get_coef(std_err = TRUE))-coef)), TOLERANCE_STRICT)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_STRICT)
     # Prediction 
-    coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+    coord_test <- cbind(c(0.1,0.2,0.201),c(0.9,0.4,0.401))
     X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
     pred <- predict(gp_model, gp_coords_pred = coord_test,
-                    X_pred = X_test, predict_cov_mat = TRUE)
-    expected_mu <- c(1.196952, 4.063324, 3.156427)
-    expected_cov <- c(6.305383e-01, 1.358861e-05, 8.317903e-08, 1.358861e-05,
-                      3.469270e-01, 2.686334e-07, 8.317903e-08, 2.686334e-07, 4.255400e-01)
+                    X_pred = X_test, predict_cov_mat = TRUE, predict_response = TRUE)
+    expected_mu <- c(1.196952, 4.063324, 4.446861)
+    expected_cov <- c(6.305383e-01, 1.358861e-05, 1.414550e-05, 1.358861e-05, 
+                      3.469270e-01, 3.282926e-01, 1.414550e-05, 3.282926e-01, 3.561731e-01)
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)), TOLERANCE_STRICT)
+    cov_pars_est <- gp_model$get_cov_pars()
+    expected_cov_lat <- expected_cov
+    expected_cov_lat[c(1,5,9)] <- expected_cov_lat[c(1,5,9)] - cov_pars_est[1]
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_lat)), TOLERANCE_STRICT)
+    # Sampling from posterior
+    pred <- predict(gp_model, gp_coords_pred = coord_test, X_pred = X_test, predict_response = TRUE, 
+                    sample_posterior = TRUE, num_post_samples=100000)
+    tol_mu <- 0.01
+    tol_cov <- 0.03
+    expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-expected_mu)), tol_mu)
+    expect_lt(sum(abs(as.vector(cov(t(pred$posterior_samples)))-expected_cov)), tol_cov)
+    pred <- predict(gp_model, gp_coords_pred = coord_test, X_pred = X_test, predict_response = FALSE, 
+                    sample_posterior = TRUE, num_post_samples=100000)
+    expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-expected_mu)), tol_mu)
+    expect_lt(sum(abs(as.vector(cov(t(pred$posterior_samples)))-expected_cov_lat)), tol_cov)
+    # Sampling and covariance jointly
+    pred <- predict(gp_model, gp_coords_pred = coord_test, X_pred = X_test,
+                    predict_cov_mat = TRUE, sample_posterior = TRUE, num_post_samples=100000)
+    expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-expected_mu)), tol_mu)
+    expect_lt(sum(abs(as.vector(cov(t(pred$posterior_samples)))-expected_cov)), tol_cov)
+    expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)), TOLERANCE_STRICT)
+    # Sampling and predictive variance
+    pred <- predict(gp_model, gp_coords_pred = coord_test, X_pred = X_test, 
+                    predict_var = TRUE, sample_posterior = TRUE, num_post_samples=100000)
+    expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-expected_mu)), tol_mu)
+    expect_lt(sum(abs(as.vector(cov(t(pred$posterior_samples)))-expected_cov)), tol_cov)
+    expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])), TOLERANCE_STRICT)
     
     # Gradient descent
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
@@ -622,11 +661,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
     cluster_ids_pred = c(1,3,1)
+    cov_pars_pred = c(0.1,1,0.15)
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                         cluster_ids = cluster_ids)
     pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
                              cluster_ids_pred = cluster_ids_pred,
-                             cov_pars = c(0.1,1,0.15), predict_cov_mat = TRUE)
+                             cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
     expected_mu <- c(-0.01437506, 0.00000000, 0.93112902)
     expected_cov <- c(0.743055189, 0.000000000, -0.000140644, 0.000000000,
                       1.100000000, 0.000000000, -0.000140644, 0.000000000, 0.565243468)
@@ -635,9 +675,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Predict variances
     pred <- gp_model$predict(y = y, gp_coords_pred = coord_test,
                              cluster_ids_pred = cluster_ids_pred,
-                             cov_pars = c(0.1,1,0.15), predict_var = TRUE)
+                             cov_pars = cov_pars_pred, predict_var = TRUE)
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])), TOLERANCE_STRICT)
+    # Sampling from posterior
+    cluster_ids_pred2 <- c(1,1,2)
+    pred <- predict(gp_model, gp_coords_pred = coord_test, cov_pars = cov_pars_pred,
+                    cluster_ids_pred = cluster_ids_pred2, sample_posterior = TRUE, 
+                    num_post_samples=100000, predict_cov_mat = TRUE)
+    expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-pred$mu)), 0.01)
+    expect_lt(sum(abs(cov(t(pred$posterior_samples))-pred$cov)), 0.02)
   })
   
   test_that("Gaussian process model with multiple observations at the same location ", {
@@ -693,6 +740,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                              cov_pars = c(0.1,1,0.15), predict_var = TRUE)
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])), TOLERANCE_STRICT)
+    # Sampling from posterior
+    pred <- predict(gp_model, gp_coords_pred = coord_test, cov_pars = c(0.1,1,0.15),
+                    sample_posterior = TRUE, num_post_samples=100000, predict_cov_mat = TRUE)
+    expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-pred$mu)), 0.01)
+    expect_lt(sum(abs(cov(t(pred$posterior_samples))-pred$cov)), 0.02)
   })
   
   test_that("Vecchia approximation for Gaussian process model ", {

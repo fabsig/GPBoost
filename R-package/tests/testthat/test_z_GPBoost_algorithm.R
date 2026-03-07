@@ -867,29 +867,53 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                       predict_var=TRUE, pred_latent = TRUE)
       pred_re <- c(0.19200894, 0.08380017, 0.59402383, -0.75484438)
       pred_fe <- c(3.920440, 3.641091, 4.536346, 4.951052)
-      pred_cov <- c(0.3612252, 0.1596113, 0.1664702, 0.2577366)
-      pred_cov_no_nugget <- pred_cov + cov_pars_est[1]
+      pred_var <- c(0.3612252, 0.1596113, 0.1664702, 0.2577366)
+      pred_var_resp <- pred_var + cov_pars_est[1]
       expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-pred_re)),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-pred_cov)),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-pred_var)),TOLERANCE)
       expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-pred_fe)),TOLERANCE)
       expect_lt(abs(sqrt(mean((pred$fixed_effect - f_test)^2))-0.5229658),TOLERANCE)
       expect_lt(abs(sqrt(mean((pred$fixed_effect - y_test)^2))-1.170505),TOLERANCE)
+      # Response prediction
       expect_lt(abs(sqrt(mean((pred$fixed_effect + pred$random_effect_mean - y_test)^2))-0.8304062),TOLERANCE)
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = FALSE)
       expect_lt(sum(abs(tail(pred$response_mean, n=4)-(pred_re+pred_fe))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$response_var, n=4)-pred_cov_no_nugget)),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$response_var, n=4)-pred_var_resp)),TOLERANCE)
+      # Predictive covariance
+      cov_exp <- c(1.596106e-01, -2.333094e-09, -5.746473e-08, -2.333094e-09, 1.664696e-01, 
+                   -1.303500e-05, -5.746473e-08, -1.303500e-05, 2.577362e-01)
+      cov_exp_resp <- cov_exp
+      cov_exp_resp[c(1,5,9)] <- cov_exp_resp[c(1,5,9)] + cov_pars_est[1]
+      pred <- predict(bst, data =  tail(X_test,n=3), gp_coords_pred = tail(coords_test,n=3), 
+                      predict_cov_mat=TRUE, pred_latent = TRUE)
+      expect_lt(sum(abs(tail(pred$random_effect_mean, n=3)-tail(pred_re,n=3))),TOLERANCE)
+      expect_lt(sum(abs(as.vector(pred$random_effect_cov)-cov_exp)),TOLERANCE)
+      pred <- predict(bst, data =  tail(X_test,n=3), gp_coords_pred = tail(coords_test,n=3), 
+                      predict_cov_mat=TRUE, pred_latent = FALSE)
+      expect_lt(sum(abs(tail(pred$response_mean, n=4)-tail(pred_re+pred_fe,n=3))),TOLERANCE)
+      expect_lt(sum(abs(as.vector(pred$response_var)-cov_exp_resp)),TOLERANCE)
+      # Sampling from the posterior
+      pred <- predict(bst, data =  tail(X_test,n=3), gp_coords_pred = tail(coords_test,n=3), 
+                      sample_posterior = TRUE, num_post_samples = 10000, pred_latent = TRUE)
+      tol_mu <- 0.02
+      expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-tail(pred_re,n=3))), tol_mu)
+      expect_lt(sum(abs(cov(t(pred$posterior_samples))-cov_exp)), tol_mu)
+      pred <- predict(bst, data =  tail(X_test,n=3), gp_coords_pred = tail(coords_test,n=3), 
+                      sample_posterior = TRUE, num_post_samples = 10000, pred_latent = FALSE)
+      expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-tail(pred_re+pred_fe,n=3))),tol_mu)
+      expect_lt(sum(abs(cov(t(pred$posterior_samples))-cov_exp_resp)), 0.03)
       # Use other covariance parameters for prediction
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, 
                       predict_var=TRUE, pred_latent = TRUE, cov_pars = c(0.1358229, 0.9099908, 0.1115316))
       expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-pred_re)),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-pred_cov)),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-pred_var)),TOLERANCE)
       expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-pred_fe)),TOLERANCE)
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, 
                       predict_var=TRUE, pred_latent = TRUE, cov_pars = c(0.2, 1.5, 0.2))
       pred_re2 <- c(0.2182825, 0.1131264, 0.5737999, -0.7441675)
-      pred_cov2 <- c(0.3540400, 0.1704857, 0.1720302, 0.2562620)
+      pred_var2 <- c(0.3540400, 0.1704857, 0.1720302, 0.2562620)
       expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-pred_re2)),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-pred_cov2)),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-pred_var2)),TOLERANCE)
       expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-pred_fe)),TOLERANCE)
       
       # Train model using Nelder-Mead

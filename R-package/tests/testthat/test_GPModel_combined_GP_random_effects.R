@@ -131,6 +131,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      predict_var = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),1E-6)
     expect_lt(sum(abs(training_data_random_effects[,3] - (preds$var - cov_pars[3]))),1E-6)
+    # Sampling from posterior
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
+                    group_data_pred = group_test, predict_cov_mat = TRUE, predict_response = FALSE,
+                    sample_posterior = TRUE, num_post_samples=100000)
+    expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-pred$mu)), 0.01)
+    expect_lt(sum(abs(cov(t(pred$posterior_samples))-pred$cov)), 0.2)
     
     # matrix_inversion_method = "cholesky"
     # with Vecchia
@@ -321,6 +327,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     preds <- predict(gp_model, group_data_pred = group, gp_coords_pred = coords + 1e6,
                      predict_var = FALSE, predict_response = FALSE)
     expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),1E-6)
+    # Sampling from posterior
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
+                    group_data_pred = group_test, predict_cov_mat = TRUE, predict_response = FALSE,
+                    sample_posterior = TRUE, num_post_samples=100000)
+    expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-pred$mu)), 0.01)
+    expect_lt(sum(abs(cov(t(pred$posterior_samples))-pred$cov)), 0.3)
     
     # with Vecchia
     # matrix_inversion_method = "cholesky"
