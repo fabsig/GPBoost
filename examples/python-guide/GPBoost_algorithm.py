@@ -55,7 +55,7 @@ def simulate_response_variable(lp, rand_eff, likelihood):
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", "gamma", or "negative_binomial"
 # For a list of all currently supported likelihoods, see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood
-likelihood = "gaussian"
+likelihood = "gamma"
 
 """
 Combine tree-boosting and grouped random effects model
@@ -82,15 +82,17 @@ plt.show(block=False)
 #--------------------Training----------------
 # Define random effects model
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
-# The default optimizer for covariance parameters (hyperparameters) is "lbfgs".
-# This can be changed to, e.g., Nelder-Mead as follows:
-# gp_model.set_optim_params(params={"optimizer_cov": "nelder_mead"})
-# Use the option "trace": true to monitor convergence of hyperparameter estimation of the gp_model. E.g.:
-# gp_model.set_optim_params(params={"trace": True})
+# - Use the option "trace": true to monitor convergence of hyperparameter estimation of the gp_model. E.g.:
+#   gp_model.set_optim_params(params={"trace": True})
+# - iid boosting without random effects or GP: 
+#   gp_model = gpb.GPModel(num_data=n, likelihood=likelihood)
+# - The default optimizer for covariance parameters (hyperparameters) is "lbfgs".
+#   This can be changed to, e.g., Nelder-Mead as follows:
+#   gp_model.set_optim_params(params={"optimizer_cov": "nelder_mead"})
 
 # Specify boosting parameters
 # Note: these parameters are by no means optimal for all data sets but 
-#       need to be chosen appropriately, e.g., using 'gpb.grid.search.tune.parameters'
+#       need to be chosen appropriately (see below)
 num_boost_round = 250
 if likelihood == "gaussian":
     num_boost_round = 50
@@ -113,7 +115,7 @@ gp_model.summary() # Estimated random effects model
 #--------------------Prediction----------------
 group_test = np.arange(m) # Predictions for existing groups
 group_test_new = -np.ones(m) # Can also do predictions for new/unobserved groups
-Xtest = np.zeros((m, p))
+Xtest = np.zeros((m, p)) + 0.5
 Xtest[:, 0] = np.linspace(0, 1, m)
 # 1. Predict latent variable (pred_latent=True) and variance
 pred = bst.predict(data=Xtest, group_data_pred=group_test, 

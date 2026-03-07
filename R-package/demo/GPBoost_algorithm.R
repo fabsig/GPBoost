@@ -47,7 +47,7 @@ simulate_response_variable <- function (lp, rand_eff, likelihood) {
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", "gamma", or "negative_binomial"
 # For a list of all currently supported likelihoods, see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood
-likelihood <- "gaussian"
+likelihood <- "gamma"
 
 #################################
 # Combine tree-boosting and grouped random effects model
@@ -72,15 +72,17 @@ hist(y, breaks=20)  # visualize response variable
 #--------------------Training----------------
 # Define random effects model
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
-# The default optimizer for covariance parameters (hyperparameters) is "lbfgs".
-# This can be changed to, e.g., Nelder-Mead as follows:
-# set_optim_params(gp_model, params=list(optimizer_cov="nelder_mead"))
-# Use the option trace=TRUE to monitor convergence of hyperparameter estimation of the gp_model. E.g.:
-# set_optim_params(gp_model, params=list(trace=TRUE))
+# - Use the option trace=TRUE to monitor convergence of hyperparameter estimation of the gp_model. E.g.:
+#   set_optim_params(gp_model, params=list(trace=TRUE))
+# - iid boosting without random effects or GP: 
+#   gp_model <- GPModel(num_data = n, likelihood = likelihood)
+# - The default optimizer for covariance parameters (hyperparameters) is "lbfgs".
+#   This can be changed to, e.g., Nelder-Mead as follows:
+#   set_optim_params(gp_model, params=list(optimizer_cov="nelder_mead"))
 
 # Specify boosting parameters
 # Note: these parameters are by no means optimal for all data sets but 
-#       need to be chosen appropriately, e.g., using 'gpb.grid.search.tune.parameters'
+#       need to be chosen appropriately (see below)
 nrounds <- 250
 if (likelihood=="gaussian") {
   nrounds <- 50
@@ -101,7 +103,7 @@ bst <- gpb.train(data = dataset, gp_model = gp_model, nrounds = nrounds,
 group_test <- 1:m # Predictions for existing groups
 group_test_new <- rep(-1,m) # Can also do predictions for new/unobserved groups
 x_test <- seq(from=0, to=1, length.out=m)
-Xtest <- cbind(x_test, matrix(0, ncol=p-1 , nrow=m))
+Xtest <- cbind(x_test, matrix(0.5, ncol=p-1 , nrow=m))
 # 1. Predict latent variable (pred_latent=TRUE) and variance
 pred <- predict(bst, data = Xtest, group_data_pred = group_test, 
                 predict_var = TRUE, pred_latent = TRUE)
