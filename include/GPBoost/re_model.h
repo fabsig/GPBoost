@@ -126,6 +126,12 @@ namespace GPBoost {
 		void SetLikelihood(const string_t& likelihood);
 
 		/*!
+		* \brief True if likelihood type is supported
+		* \return True if likelihood type is supported
+		*/
+		bool LikelihoodSupported(const string_t& likelihood) const;
+
+		/*!
 		* \brief Transform from the latent to the response variable scale (often this is the inverse link function)
 		*			This is only used by the 'ConvertOutput()' function in regression_objective.hpp
 		*/

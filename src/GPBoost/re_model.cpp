@@ -159,6 +159,18 @@ namespace GPBoost {
 		}
 	}
 
+	bool REModel::LikelihoodSupported(const string_t& likelihood) const {
+		if (matrix_format_ == "sp_mat_t") {
+			return re_model_sp_->LikelihoodSupported(likelihood);
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			return re_model_sp_rm_->LikelihoodSupported(likelihood);
+		}
+		else {
+			return re_model_den_->LikelihoodSupported(likelihood);
+		}
+	}
+
 	double REModel::TransformToReponseScale(const double value) const {
 		if (matrix_format_ == "sp_mat_t") {
 			return(re_model_sp_->TransformToReponseScale(value));

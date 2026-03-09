@@ -47,7 +47,7 @@ simulate_response_variable <- function (lp, rand_eff, likelihood) {
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", "gamma", or "negative_binomial"
 # For a list of all currently supported likelihoods, see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood
-likelihood <- "gamma"
+likelihood <- "gaussian"
 
 #################################
 # Combine tree-boosting and grouped random effects model
@@ -129,6 +129,14 @@ legend(legend=c("True F","Pred F"), "bottomright", bty="n", lwd=3, col=c(2,4))
 plot(b1, pred$random_effect_mean, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 
+# Define metric for parameter tuning and CV below
+# Can also use metric = "test_neg_log_likelihood" 
+# For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
+metric = "mse"
+if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
+  metric = "binary_logloss"
+}
+
 #--------------------Choosing tuning parameters using Bayesian optimization and the 'mlrMBO' R package ----------------
 packakes_to_load <- c("mlrMBO", "DiceKriging", "rgenoud") # load required packages (non-standard way of loading to avoid CRAN warnings)
 for (package in packakes_to_load) do.call(require,list(package, character.only=TRUE))
@@ -143,11 +151,6 @@ search_space <- list("learning_rate" = c(0.001, 10),
                      "max_bin" = c(63, min(n,10000)),
                      "feature_fraction" = c(0.5, 1),
                      "line_search_step_length" = c(TRUE, FALSE))
-metric = "mse" # Define metric
-if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
-  metric = "binary_logloss"
-}
-# Note: can also use metric = "test_neg_log_likelihood". For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
 data_train <- gpb.Dataset(data = X, label = y)
 # Run parameter optimization using Bayesian optimization and k-fold CV 
@@ -181,11 +184,6 @@ param_grid <- list("learning_rate" = c(0.001, 0.01, 0.1, 1, 10),
                    "max_bin" = c(250, 500, 1000, min(n,10000)),
                    "feature_fraction" = c(0.5, 0.75, 1),
                    "line_search_step_length" = c(TRUE, FALSE))
-metric = "mse" # Define metric
-if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
-  metric = "binary_logloss"
-}
-# Note: can also use metric = "test_neg_log_likelihood". For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
 data_train <- gpb.Dataset(data = X, label = y)
 set.seed(1)

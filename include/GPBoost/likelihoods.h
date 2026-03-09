@@ -414,8 +414,8 @@ namespace GPBoost {
 				dim_deriv_ll_ = dim_mode_;
 				dim_deriv_ll_per_set_re_ = dim_mode_per_set_re_;
 			}
-			if (!(use_random_effects_indices_of_data_ || use_Z_)) {
-				CHECK(num_data_ == num_re)
+			if (!use_random_effects_indices_of_data_ && !use_Z_) {
+				CHECK(num_data_ == num_re);
 			}
 			DetermineWhetherToCapChangeModeNewton();
 			if (SUPPORTED_APPROX_TYPE_.find(approximation_type_) == SUPPORTED_APPROX_TYPE_.end()) {
@@ -624,6 +624,14 @@ namespace GPBoost {
 			likelihood_type_ = likelihood;
 			chol_fact_pattern_analyzed_ = false;
 			DetermineWhetherToCapChangeModeNewton();
+		}
+
+		/*!
+		* \brief True if likelihood type is supported
+		*/
+		bool LikelihoodSupported(const string_t& type) {
+			string_t likelihood = ParseLikelihoodAlias(type);
+			return(SUPPORTED_LIKELIHOODS_.find(likelihood) != SUPPORTED_LIKELIHOODS_.end());
 		}
 
 		bool UseFisherForModeFinding() const {

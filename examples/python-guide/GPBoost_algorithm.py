@@ -55,7 +55,7 @@ def simulate_response_variable(lp, rand_eff, likelihood):
 #                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", "gamma", or "negative_binomial"
 # For a list of all currently supported likelihoods, see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood
-likelihood = "gamma"
+likelihood = "gaussian"
 
 """
 Combine tree-boosting and grouped random effects model
@@ -151,6 +151,13 @@ plt.xlabel("truth")
 plt.ylabel("predicted")
 plt.show(block=False)
 
+# Define metric for parameter tuning and CV below
+metric = "mse" 
+if likelihood in ("bernoulli_probit", "bernoulli_logit"):
+    metric = "binary_logloss"
+# Can also use metric = "test_neg_log_likelihood" 
+# For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
+    
 #--------------------Choosing tuning parameters using the TPESampler from optuna----------------
 # Define search space
 # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
@@ -162,10 +169,6 @@ search_space = { 'learning_rate': [0.001, 10],
                 'max_bin': [63, np.min([10000,n])],             
                 'feature_fraction': [0.5, 1],
                 'line_search_step_length': [True, False] }
-metric = "mse" # Define metric
-if likelihood in ("bernoulli_probit", "bernoulli_logit"):
-    metric = "binary_logloss"
-# Note: can also use metric = "test_neg_log_likelihood". For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 # Run parameter optimization using the TPE algorithm and k-fold CV 
 opt_params = gpb.tune_pars_TPE_algorithm_optuna(search_space=search_space, n_trials=100, 
@@ -201,10 +204,6 @@ param_grid = { 'learning_rate': [0.001, 0.01, 0.1, 1, 10],
               'feature_fraction': [0.5, 0.75, 1],
               'line_search_step_length': [True, False]}
 other_params = {'verbose': 0} # avoid trace information when training models
-metric = "mse" # Define metric
-if likelihood in ("bernoulli_probit", "bernoulli_logit"):
-    metric = "binary_logloss"
-# Note: can also use metric = "test_neg_log_likelihood". For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
 data_train = gpb.Dataset(data=X, label=y)
 # Run parameter optimization using random grid search and k-fold CV

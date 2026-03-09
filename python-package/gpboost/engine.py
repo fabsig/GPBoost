@@ -509,8 +509,7 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                                    nsim_var_pred=gp_model.nsim_var_pred,
                                                    rank_pred_approx_matrix_lanczos=gp_model.rank_pred_approx_matrix_lanczos)
             cvbooster = Booster(params=tparam, train_set=train_set, gp_model=gp_model_train)
-            gp_model._set_likelihood(
-                gp_model_train._get_likelihood_name())  # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
+            gp_model._set_likelihood(gp_model_train._get_likelihood_name()) # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
             gp_model_train.set_optim_params(params=gp_model._get_optim_params())
         else:  # no gp_model
             cvbooster = Booster(tparam, train_set)

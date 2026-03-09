@@ -372,10 +372,11 @@ namespace GPBoost {
 					CreateREComponentsVecchia(num_data_, dim_gp_coords_, data_indices_per_cluster_, cluster_i,
 						num_data_per_cluster_, gp_coords_data, gp_rand_coef_data,
 						re_comps_cluster_i, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
-						entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_, has_duplicates_coords_,
+						entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, Vecchia_calculations_on_RE_scale_, has_duplicates_coords_,
 						vecchia_ordering_, num_neighbors_, vecchia_neighbor_selection_, true, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
 						cov_fct_strg, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_,
 						gp_approx_, nearest_neighbors_determined_, GPU_use_, grouped_RE_and_vecchia_GP_);
+					only_one_GP_calculations_on_RE_scale_ = Vecchia_calculations_on_RE_scale_;
 					nearest_neighbors_[cluster_i][0] = nearest_neighbors_cluster_i;
 					dist_obs_neighbors_[cluster_i][0] = dist_obs_neighbors_cluster_i;
 					dist_between_neighbors_[cluster_i][0] = dist_between_neighbors_cluster_i;
@@ -486,6 +487,10 @@ namespace GPBoost {
 		*/
 		string_t GetLikelihood() {
 			return(likelihood_[unique_clusters_[0]]->GetLikelihood());
+		}
+
+		bool LikelihoodSupported(const string_t& likelihood) {
+			return(likelihood_[unique_clusters_[0]]->LikelihoodSupported(likelihood));
 		}
 
 		/*!
@@ -3400,11 +3405,12 @@ namespace GPBoost {
 							std::vector<Triplet_t> entries_init_B_cluster_i;
 							std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_vecchia_cluster_i;
+							bool only_one_GP_calculations_on_RE_scale_dummy = false;
 							CreateREComponentsVecchia(num_data_pred, dim_gp_coords_, data_indices_per_cluster_pred, cluster_i,
 								num_data_per_cluster_pred, gp_coords_data_pred,
 								gp_rand_coef_data_pred, re_comps_vecchia_cluster_i,
 								nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
-								entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_, has_duplicates_coords_,
+								entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_dummy, has_duplicates_coords_,
 								"none", num_neighbors_pred_, vecchia_neighbor_selection_, false, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
 								re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
 								gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, nearest_neighbors_determined_, GPU_use_, grouped_RE_and_vecchia_GP_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
@@ -3532,11 +3538,12 @@ namespace GPBoost {
 							std::vector<Triplet_t> entries_init_B_cluster_i;
 							std::vector<std::vector<den_mat_t>> z_outer_z_obs_neighbors_cluster_i(num_data_per_cluster_pred[cluster_i]);
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_vecchia_cluster_i;
+							bool only_one_GP_calculations_on_RE_scale_dummy = false;
 							CreateREComponentsVecchia(num_data_pred, dim_gp_coords_, data_indices_per_cluster_pred, cluster_i,
 								num_data_per_cluster_pred, gp_coords_data_pred,
 								gp_rand_coef_data_pred, re_comps_vecchia_cluster_i,
 								nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
-								entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_, has_duplicates_coords_,
+								entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_dummy, has_duplicates_coords_,
 								"none", num_neighbors_pred_, vecchia_neighbor_selection_, false, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
 								re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
 								gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, nearest_neighbors_determined_, GPU_use_, grouped_RE_and_vecchia_GP_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
@@ -5240,6 +5247,8 @@ namespace GPBoost {
 		bool only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = false;
 		/*! \brief True if there is only one GP random effect component, and calculations are done on the b-scale instead of the Zb-scale (only for non-Gaussian likelihoods) */
 		bool only_one_GP_calculations_on_RE_scale_ = false;
+		/*! \brief True if there is only one GP random effect component, and calculations are done on the b-scale instead of the Zb-scale (only for non-Gaussian likelihoods) */
+		bool Vecchia_calculations_on_RE_scale_ = false;
 		/*! \brief If true, the Woodbury formula is used for calculating the inverse of the covariance matrix (only if cov_function = "linear" and there is only one GP) */
 		bool linear_kernel_use_woodbury_identity_ = false;
 		/*! \brief If true, this is an iid model without a random effects / GP component */
@@ -6407,10 +6416,10 @@ namespace GPBoost {
 			for (const auto& cluster_i : unique_clusters_) {
 				if ((gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") && !grouped_RE_and_vecchia_GP_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
-						num_data_per_cluster_[cluster_i],
-						re_comps_vecchia_[cluster_i][0][0]->GetNumUniqueREs(),
-						false,
-						only_one_GP_calculations_on_RE_scale_,
+						/* num_data = */ num_data_per_cluster_[cluster_i],
+						/* num_re = */ re_comps_vecchia_[cluster_i][0][0]->GetNumUniqueREs(),
+						/* has_SigmaI_mode = */ false,
+						/* use_random_effects_indices_of_data = */ only_one_GP_calculations_on_RE_scale_,
 						re_comps_vecchia_[cluster_i][0][0]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
@@ -6418,10 +6427,10 @@ namespace GPBoost {
 				}
 				else if (gp_approx_ == "fitc") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
-						num_data_per_cluster_[cluster_i],
-						re_comps_cross_cov_[cluster_i][0][0]->GetNumUniqueREs(),
-						true,
-						only_one_GP_calculations_on_RE_scale_,
+						/* num_data = */ num_data_per_cluster_[cluster_i],
+						/* num_re = */ re_comps_cross_cov_[cluster_i][0][0]->GetNumUniqueREs(),
+						/* has_SigmaI_mode = */ true,
+						/* use_random_effects_indices_of_data = */ only_one_GP_calculations_on_RE_scale_,
 						re_comps_cross_cov_[cluster_i][0][0]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
@@ -6429,10 +6438,10 @@ namespace GPBoost {
 				}
 				else if ((use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) || grouped_RE_and_vecchia_GP_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
-						num_data_per_cluster_[cluster_i],
-						cum_num_rand_eff_[cluster_i][num_comps_total_],
-						false,
-						false,
+						/* num_data = */ num_data_per_cluster_[cluster_i],
+						/* num_re = */ cum_num_rand_eff_[cluster_i][num_comps_total_],
+						/* has_SigmaI_mode = */ false,
+						/* use_random_effects_indices_of_data = */ false,
 						nullptr,
 						&(Zt_[cluster_i]),
 						likelihood_additional_param_,
@@ -6440,10 +6449,10 @@ namespace GPBoost {
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
-						num_data_per_cluster_[cluster_i],
-						re_comps_[cluster_i][0][0]->GetNumUniqueREs(),
-						false,
-						true,
+						/* num_data = */ num_data_per_cluster_[cluster_i],
+						/* num_re = */ re_comps_[cluster_i][0][0]->GetNumUniqueREs(),
+						/* has_SigmaI_mode = */ false,
+						/* use_random_effects_indices_of_data = */ true,
 						re_comps_[cluster_i][0][0]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
@@ -6451,10 +6460,10 @@ namespace GPBoost {
 				}
 				else if (only_one_GP_calculations_on_RE_scale_ && gp_approx_ != "vecchia" && gp_approx_ != "full_scale_vecchia") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
-						num_data_per_cluster_[cluster_i],
-						re_comps_[cluster_i][0][0]->GetNumUniqueREs(),
-						true,
-						true,
+						/* num_data = */ num_data_per_cluster_[cluster_i],
+						/* num_re = */ re_comps_[cluster_i][0][0]->GetNumUniqueREs(),
+						/* has_SigmaI_mode = */ true,
+						/* use_random_effects_indices_of_data = */ true,
 						re_comps_[cluster_i][0][0]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
@@ -6462,10 +6471,10 @@ namespace GPBoost {
 				}
 				else {//!only_one_GP_calculations_on_RE_scale_ && gp_approx_ == "none"
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
-						num_data_per_cluster_[cluster_i],
-						num_data_per_cluster_[cluster_i],
-						true,
-						false,
+						/* num_data = */ num_data_per_cluster_[cluster_i],
+						/* num_re = */ num_data_per_cluster_[cluster_i],
+						/* has_SigmaI_mode = */ true,
+						/* use_random_effects_indices_of_data = */ false,
 						nullptr,
 						nullptr,
 						likelihood_additional_param_,
@@ -6585,7 +6594,7 @@ namespace GPBoost {
 				use_woodbury_identity_ = false;
 			}
 			// Define options for faster calculations for special cases of RE models (these options depend on the type of likelihood)
-			only_one_GP_calculations_on_RE_scale_ = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && gp_approx_ == "none";//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (only for non-Gaussian likelihoods)
+			only_one_GP_calculations_on_RE_scale_ = (num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && gp_approx_ == "none") || Vecchia_calculations_on_RE_scale_;//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (only for non-Gaussian likelihoods)
 			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods)
 			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && gauss_likelihood_;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods)
 			if (num_gp_total_ == 1 && num_comps_total_ == 1) {
