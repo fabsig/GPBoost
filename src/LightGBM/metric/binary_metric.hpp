@@ -87,7 +87,7 @@ namespace LightGBM {
 						REModel* re_model = objective->GetGPModel();
 						if (re_model->GaussLikelihood()) {//Gaussian data (this is rarely used)
 							std::vector<double> minus_gp_pred(num_data_);
-							re_model->Predict(nullptr, num_data_, minus_gp_pred.data(), false, false, false, false, 0,
+							re_model->Predict(nullptr, num_data_, minus_gp_pred.data(), false, false, false, false, false, 0, 0,
 								nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 								true, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 							// Note that the re_model already has the updated response data score - label = F_t - y 
@@ -100,7 +100,7 @@ namespace LightGBM {
 						}//end Gaussian data
 						else {//non-Gaussian data
 							std::vector<double> gp_pred(num_data_);
-							re_model->Predict(nullptr, num_data_, gp_pred.data(), false, false, true, false, 0,
+							re_model->Predict(nullptr, num_data_, gp_pred.data(), false, false, true, false, false, 0, 0,
 								nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 								true, nullptr, score, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 							// Note that the re_model already has the updated training score (= F_t)

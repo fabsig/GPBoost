@@ -441,7 +441,11 @@ predictive variances are calculated}
 
 \item{sample_posterior}{A \code{boolean}. If TRUE, samples from the posterior are drawn (currently very limited support)}
 
+\item{sample_prior}{A \code{boolean}. If TRUE, samples from the prior are drawn (currently very limited support)}
+
 \item{num_post_samples}{A \code{numeric} with the number of posterior samples to draw if 'sample_posterior=TRUE'}
+
+\item{num_prior_samples}{A \code{numeric} with the number of prior samples to draw if 'sample_prior=TRUE'}
 
 \item{std_err}{A \code{boolean}. If TRUE, (approximate) standard errors are calculated 
 (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 

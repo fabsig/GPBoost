@@ -3188,7 +3188,9 @@ namespace GPBoost {
 		* \param predict_var If true, the predictive/conditional variances are calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 		* \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects
 		* \param sample_posterior If true, posterior samples are generated
+		* \param sample_prior If true, prior samples are generated
 		* \param num_post_samples Number of posterior samples
+		* \param num_prior_samples Number of prior samples
 		* \param covariate_data_pred Covariate data (=independent variables, features) for prediction
 		* \param coef_pred Coefficients for linear covariates
 		* \param cluster_ids_data_pred IDs / labels indicating independent realizations of Gaussian processes (same values = same process realization) for which predictions are to be made
@@ -3209,7 +3211,9 @@ namespace GPBoost {
 			bool predict_var,
 			bool predict_response,
 			bool sample_posterior,
+			bool sample_prior,
 			int num_post_samples,
+			int num_prior_samples,
 			const double* covariate_data_pred,
 			const double* coef_pred,
 			const data_size_t* cluster_ids_data_pred,
@@ -3369,7 +3373,7 @@ namespace GPBoost {
 				else if (has_fixed_effects_) {
 					fixed_effects_ptr = fixed_effects_.data();
 				}
-				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false);
+				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false, sample_prior);
 			}
 			bool predict_var_or_response = predict_var || (!gauss_likelihood_ && predict_response && likelihood_[unique_clusters_[0]]->NeedPredLatentVarForResponseMean()); //variance needs to be available for response prediction for most non-Gaussian likelihoods
 			// Loop over different clusters to calculate predictions
@@ -3768,16 +3772,21 @@ namespace GPBoost {
 						if (sample_posterior) {
 							Log::REFatal("Posterior sampling is not supported for num_sets_re_ > 1");
 						}
+						if (sample_prior) {
+							Log::REFatal("Prior sampling is not supported for num_sets_re_ > 1");
+						}
 					}
 					std::map<int, vec_t> var_pred_id;//var_pred_id[1] = predictive variance for variance parameter in heteroscedastic models
 					den_mat_t post_samples_id;// sample from posterior without the mean, the mean is added at then end
+					den_mat_t prior_samples_id;// sample from prior
 					std::map<int, sp_mat_t> Bpo, Bp; // used only if gp_approx_ == "vecchia" && !gauss_likelihood_
 					std::map<int, vec_t> Dp;
 					int num_gp_pred = predict_var_or_response ? num_sets_re_ : 1;
 					// Calculate predictions
 					if (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") {
-						if (sample_posterior) {
-							Log::REFatal("Posterior sampling is not implemented for gp_approx = '%s' ", gp_approx_.c_str());
+						if (gp_approx_ == "vecchia" && sample_prior) {
+							B_rm_[cluster_i][0] = sp_mat_rm_t(B_[cluster_i][0]);
+							D_inv_rm_[cluster_i][0] = sp_mat_rm_t(D_inv_[cluster_i][0]);
 						}
 						std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp = re_comps_vecchia_[cluster_i][0][0];
 						den_mat_t cov_mat_pred_vecchia_id;
@@ -3799,10 +3808,11 @@ namespace GPBoost {
 								}
 								CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred,
 									re_comps_cross_cov_[cluster_i][0], chol_fact_sigma_ip_[cluster_i][0], chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip,
-									B_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0], data_indices_per_cluster_pred,
+									B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0], data_indices_per_cluster_pred,
 									re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, gp_coords_mat_ip, num_neighbors_pred_, vecchia_neighbor_selection_,
 									re_comps_vecchia_[cluster_i][0], num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
-									predict_cov_mat, predict_var, mean_pred_id[0], cov_mat_pred_vecchia_id, var_pred_id[0], Bpo[0], Bp[0], Dp[0], save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, GPU_use_);
+									predict_cov_mat, predict_var, sample_posterior, sample_prior, num_post_samples, num_prior_samples, post_samples_id, prior_samples_id, seed_rng_, cg_generator_counter_,
+									mean_pred_id[0], cov_mat_pred_vecchia_id, var_pred_id[0], Bpo[0], Bp[0], Dp[0], save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, GPU_use_);
 							}
 							else if (vecchia_pred_type_ == "order_obs_first_cond_all") {
 								if (gp_approx_ == "full_scale_vecchia") {
@@ -3811,14 +3821,21 @@ namespace GPBoost {
 								}
 								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred,
 									re_comps_cross_cov_[cluster_i][0], chol_fact_sigma_ip_[cluster_i][0], chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip,
-									B_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0], data_indices_per_cluster_pred,
+									B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0], data_indices_per_cluster_pred,
 									re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, gp_coords_mat_ip, num_neighbors_pred_, vecchia_neighbor_selection_,
 									re_comps_vecchia_[cluster_i][0], num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
-									predict_cov_mat, predict_var, mean_pred_id[0], cov_mat_pred_vecchia_id, var_pred_id[0], Bpo[0], Bp[0], Dp[0], save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, GPU_use_);
+									predict_cov_mat, predict_var, sample_posterior, sample_prior, num_post_samples, num_prior_samples, post_samples_id, prior_samples_id, seed_rng_, cg_generator_counter_,
+									mean_pred_id[0], cov_mat_pred_vecchia_id, var_pred_id[0], Bpo[0], Bp[0], Dp[0], save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, GPU_use_);
 							}
 							else if (vecchia_pred_type_ == "order_pred_first") {
 								if (gp_approx_ == "full_scale_vecchia") {
 									Log::REFatal("The full-scale Vecchia approximation is currently not implemented when prediction locations appear first in the ordering. Please use vecchia_pred_type = order_obs_first_cond_all or vecchia_pred_type = order_obs_first_cond_obs_only");
+								}
+								if (sample_posterior) {
+									Log::REFatal("Posterior sampling is not implemented when prediction locations appear first in the ordering.");
+								}
+								if (sample_prior) {
+									Log::REFatal("Prior sampling is not implemented when prediction locations appear first in the ordering.");
 								}
 								CalcPredVecchiaPredictedFirstOrder(cluster_i, num_data_pred, data_indices_per_cluster_pred,
 									re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
@@ -3831,6 +3848,12 @@ namespace GPBoost {
 								}
 								if (gp_approx_ == "full_scale_vecchia") {
 									Log::REFatal("The full-scale Vecchia approximation for latent process(es) is currently not implemented");
+								}
+								if (sample_posterior) {
+									Log::REFatal("Posterior sampling is not implemented for latent process(es).");
+								}
+								if (sample_prior) {
+									Log::REFatal("Prior sampling is not implemented for latent process(es).");
 								}
 								CalcPredVecchiaLatentObservedFirstOrder(true,
 									re_comp_gp->coords_, gp_coords_mat_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
@@ -3848,6 +3871,12 @@ namespace GPBoost {
 								}
 								if (gp_approx_ == "full_scale_vecchia") {
 									Log::REFatal("The full-scale Vecchia approximation for latent process(es) is currently not implemented");
+								}
+								if (sample_posterior) {
+									Log::REFatal("Posterior sampling is not implemented for latent process(es).");
+								}
+								if (sample_prior) {
+									Log::REFatal("Prior sampling is not implemented for latent process(es).");
 								}
 								CalcPredVecchiaLatentObservedFirstOrder(false,
 									re_comp_gp->coords_, gp_coords_mat_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
@@ -3890,31 +3919,33 @@ namespace GPBoost {
 									if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
 										CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred,
 											re_comps_cross_cov_[cluster_i][0], chol_fact_sigma_ip_[cluster_i][0],
-											chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip, B_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0],
+											chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip, B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0],
 											data_indices_per_cluster_pred, re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, gp_coords_mat_ip, num_neighbors_pred_, vecchia_neighbor_selection_,
 											re_comps_vecchia_[cluster_i][igp], num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
-											false, false, mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp], Bpo[igp], Bp[igp], Dp[igp], save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, GPU_use_);
+											false, false, sample_posterior, sample_prior, num_post_samples, num_prior_samples, post_samples_id, prior_samples_id, seed_rng_, cg_generator_counter_,
+											mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp], Bpo[igp], Bp[igp], Dp[igp], save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, GPU_use_);
 										likelihood_[cluster_i]->PredictLaplaceApproxFSVA(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
 											B_[cluster_i][0], D_inv_[cluster_i][0], Bpo[igp], Bp[igp], Dp[igp], re_comps_ip_[cluster_i][0][0]->GetZSigmaZt(), re_comps_ip_preconditioner_[cluster_i][0],
 											re_comps_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0],
 											sigma_woodbury_[cluster_i], chol_fact_sigma_woodbury_[cluster_i], chol_ip_cross_cov_[cluster_i][0], chol_ip_cross_cov_preconditioner_[cluster_i][0],
-											re_comps_cross_cov_[cluster_i][0], cross_cov_pred_ip,
-											B_T_D_inv_B_cross_cov_[cluster_i][0], D_inv_B_cross_cov_[cluster_i][0], mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp],
+											re_comps_cross_cov_[cluster_i][0], cross_cov_pred_ip, B_T_D_inv_B_cross_cov_[cluster_i][0], D_inv_B_cross_cov_[cluster_i][0], 
+											sample_posterior, num_post_samples, post_samples_id, mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp],
 											predict_cov_mat, predict_var_or_response, false, true, GPU_use_);
 									}
 									else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
 										CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred,
 											re_comps_cross_cov_[cluster_i][0], chol_fact_sigma_ip_[cluster_i][0], chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip,
-											B_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0],
+											B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0],
 											data_indices_per_cluster_pred, re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, gp_coords_mat_ip, num_neighbors_pred_, vecchia_neighbor_selection_,
 											re_comps_vecchia_[cluster_i][igp], num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
-											false, false, mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp], Bpo[igp], Bp[igp], Dp[igp], save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, GPU_use_);
+											false, false, sample_posterior, sample_prior, num_post_samples, num_prior_samples, post_samples_id, prior_samples_id, seed_rng_, cg_generator_counter_,
+											mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp], Bpo[igp], Bp[igp], Dp[igp], save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, GPU_use_);
 										likelihood_[cluster_i]->PredictLaplaceApproxFSVA(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
 											B_[cluster_i][0], D_inv_[cluster_i][0], Bpo[igp], Bp[igp], Dp[igp], re_comps_ip_[cluster_i][0][0]->GetZSigmaZt(), re_comps_ip_preconditioner_[cluster_i][0],
 											re_comps_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0],
 											sigma_woodbury_[cluster_i], chol_fact_sigma_woodbury_[cluster_i], chol_ip_cross_cov_[cluster_i][0], chol_ip_cross_cov_preconditioner_[cluster_i][0],
-											re_comps_cross_cov_[cluster_i][0], cross_cov_pred_ip,
-											B_T_D_inv_B_cross_cov_[cluster_i][0], D_inv_B_cross_cov_[cluster_i][0], mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp],
+											re_comps_cross_cov_[cluster_i][0], cross_cov_pred_ip, B_T_D_inv_B_cross_cov_[cluster_i][0], D_inv_B_cross_cov_[cluster_i][0], 
+											sample_posterior, num_post_samples, post_samples_id, mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp],
 											predict_cov_mat, predict_var_or_response, false, false, GPU_use_);
 									}
 									else {
@@ -3925,18 +3956,20 @@ namespace GPBoost {
 									if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
 										CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred,
 											re_comps_cross_cov_[cluster_i][0], chol_fact_sigma_ip_[cluster_i][0], chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip,
-											B_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0],
+											B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0],
 											data_indices_per_cluster_pred, re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, gp_coords_mat_ip, num_neighbors_pred_, vecchia_neighbor_selection_,
 											re_comps_vecchia_[cluster_i][igp], num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
-											false, false, mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp], Bpo[igp], Bp[igp], Dp[igp], save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, GPU_use_);
+											false, false, sample_posterior, sample_prior, num_post_samples, num_prior_samples, post_samples_id, prior_samples_id, seed_rng_, cg_generator_counter_,
+											mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp], Bpo[igp], Bp[igp], Dp[igp], save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, GPU_use_);
 									}
 									else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
 										CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred,
 											re_comps_cross_cov_[cluster_i][0], chol_fact_sigma_ip_[cluster_i][0], chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip,
-											B_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0],
+											B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0],
 											data_indices_per_cluster_pred, re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, gp_coords_mat_ip, num_neighbors_pred_, vecchia_neighbor_selection_,
 											re_comps_vecchia_[cluster_i][igp], num_gp_rand_coef_, num_gp_total_, y_[cluster_i], gauss_likelihood_, rng_,
-											false, false, mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp], Bpo[igp], Bp[igp], Dp[igp], save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, GPU_use_);
+											false, false, sample_posterior, sample_prior, num_post_samples, num_prior_samples, post_samples_id, prior_samples_id, seed_rng_, cg_generator_counter_,
+											mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp], Bpo[igp], Bp[igp], Dp[igp], save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, GPU_use_);
 									}
 									else {
 										Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation ", vecchia_pred_type_.c_str());
@@ -3945,6 +3978,7 @@ namespace GPBoost {
 										bool CondObsOnly = vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only";
 										likelihood_[cluster_i]->PredictLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
 											B_[cluster_i], D_inv_[cluster_i], Bpo[igp], Bp[igp], Dp[igp],
+											sample_posterior, num_post_samples, post_samples_id, 
 											mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp],
 											predict_cov_mat, predict_var_or_response, false, CondObsOnly, re_comps_ip_preconditioner_[cluster_i][0],
 											re_comps_cross_cov_preconditioner_[cluster_i][0], chol_ip_cross_cov_preconditioner_[cluster_i][0], chol_fact_sigma_ip_preconditioner_[cluster_i][0],
@@ -3961,6 +3995,9 @@ namespace GPBoost {
 						if (sample_posterior) {
 							Log::REFatal("Posterior sampling is not implemented for gp_approx = '%s' ", gp_approx_.c_str());
 						}
+						if (sample_prior) {
+							Log::REFatal("Prior sampling is not implemented for gp_approx = '%s' ", gp_approx_.c_str());
+						}
 						CalcPredFITC_FSA(cluster_i, gp_coords_mat_pred, predict_cov_mat,
 							predict_var_or_response, predict_response, mean_pred_id[0], cov_mat_pred_id, var_pred_id[0], nsim_var_pred_, cg_delta_conv_pred_);
 					}
@@ -3973,8 +4010,8 @@ namespace GPBoost {
 						bool VecchiaCondObsOnly = vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only";
 						CalcPred(cluster_i, num_data_pred, num_data_per_cluster_pred, data_indices_per_cluster_pred,
 							re_group_levels_pred, re_group_rand_coef_data_pred, gp_coords_mat_pred, gp_rand_coef_data_pred,
-							predict_cov_mat, predict_var_or_response, predict_response, sample_posterior, num_post_samples,
-							mean_pred_id[0], cov_mat_pred_id, var_pred_id[0], post_samples_id, Bpo[0], Bp[0], Dp[0], VecchiaCondObsOnly);
+							predict_cov_mat, predict_var_or_response, predict_response, sample_posterior, sample_prior, num_post_samples, num_prior_samples,
+							mean_pred_id[0], cov_mat_pred_id, var_pred_id[0], post_samples_id, prior_samples_id, Bpo[0], Bp[0], Dp[0], VecchiaCondObsOnly);
 					}
 					for (int igp = 0; igp < num_gp_pred; ++igp) {
 						//map from predictions from random effects scale b to "data scale" Zb
@@ -4002,6 +4039,27 @@ namespace GPBoost {
 								for (int is = 0; is < num_post_samples; ++is) {
 									for (data_size_t i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 										post_samples_id(i, is) = post_samples_id_on_RE_scale(random_effects_indices_of_data_pred[i], is);
+									}
+								}
+							}
+							if (sample_prior) {
+								den_mat_t prior_samples_id_on_RE_scale;
+								prior_samples_id_on_RE_scale.swap(prior_samples_id);
+								prior_samples_id.resize(num_data_per_cluster_[cluster_i], num_prior_samples);
+								if (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") {
+#pragma omp parallel for schedule(static)
+										for (int is = 0; is < num_prior_samples; ++is) {
+											for (data_size_t i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
+												prior_samples_id(i, is) = prior_samples_id_on_RE_scale((re_comps_vecchia_[cluster_i][0][0]->random_effects_indices_of_data_)[i], is);
+											}
+										}
+								}
+								else {
+#pragma omp parallel for schedule(static)
+									for (int is = 0; is < num_prior_samples; ++is) {
+										for (data_size_t i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
+											prior_samples_id(i, is) = prior_samples_id_on_RE_scale((re_comps_[cluster_i][0][0]->random_effects_indices_of_data_)[i], is);
+										}
 									}
 								}
 							}
@@ -4040,7 +4098,10 @@ namespace GPBoost {
 							cov_mat_pred_id *= cov_pars[0];
 						}
 						if (sample_posterior) {
-							post_samples_id *= std::sqrt(cov_pars[0]);							
+							post_samples_id *= std::sqrt(cov_pars[0]);
+						}
+						if (sample_prior) {
+							prior_samples_id *= std::sqrt(cov_pars[0]);
 						}
 					}
 					if (sample_posterior) {
@@ -4050,6 +4111,9 @@ namespace GPBoost {
 					if (!gauss_likelihood_ && predict_response) {
 						if (sample_posterior) {
 							Log::REFatal("Posterior sampling for the option 'predict_response' is currently not yet implemented for this likelihood, set predict_response = false");
+						}
+						if (sample_prior) {
+							Log::REFatal("Prior sampling for the option 'predict_response' is currently not yet implemented for this likelihood, set predict_response = false");
 						}
 						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id[0], var_pred_id[0], mean_pred_id[1], var_pred_id[1], predict_var);
 					}
@@ -4084,6 +4148,16 @@ namespace GPBoost {
 						for (int is = 0; is < num_post_samples; ++is) {
 							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 								out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * is + idx_start_post_sample] = post_samples_id(i, is);
+							}
+						}
+						idx_start_post_sample += num_data_pred * num_post_samples;
+					}
+					if (sample_prior) {
+						CHECK(prior_samples_id.cols() == num_prior_samples);
+#pragma omp parallel for schedule(static)
+						for (int is = 0; is < num_prior_samples; ++is) {
+							for (int i = 0; i < (int)prior_samples_id.rows(); ++i) {
+								out_predict[data_indices_per_cluster_[cluster_i][i] + prior_samples_id.rows() * is + idx_start_post_sample] = prior_samples_id(i, is);
 							}
 						}
 					}
@@ -4154,7 +4228,7 @@ namespace GPBoost {
 			else if (has_fixed_effects_) {
 				fixed_effects_ptr = fixed_effects_.data();
 			}
-			SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, true);
+			SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, true, false);
 			// Loop over different clusters to calculate predictions
 			for (const auto& cluster_i : unique_clusters_) {
 				if (gauss_likelihood_) {
@@ -10128,13 +10202,15 @@ namespace GPBoost {
 		* \param calc_cov_factor If true, the covariance matrix of the observed data is factorized otherwise a previously done factorization is used
 		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian likelihoods)
 		* \param predict_training_data_random_effects If true, the goal is to predict training data random effects
+		* \param sample_prior If true, prior samples are generated
 		 */
 		void SetYCalcCovCalcYAuxForPred(const vec_t& cov_pars,
 			const vec_t& coef,
 			const double* y_obs,
 			bool calc_cov_factor,
 			const double* fixed_effects,
-			bool predict_training_data_random_effects) {
+			bool predict_training_data_random_effects,
+			bool sample_prior) {
 			const double* fixed_effects_ptr = fixed_effects;
 			vec_t fixed_effects_vec;
 			// Set response data and fixed effects
@@ -10186,7 +10262,7 @@ namespace GPBoost {
 			}//end if not gauss_likelihood_
 			//TODO (low prio): the factorization needs to be done only for the GP realizations / clusters for which predictions are made (currently it is done for all)
 			SetCovParsComps(cov_pars);
-			if (!(gp_approx_ == "vecchia" && gauss_likelihood_) || predict_training_data_random_effects) {
+			if (!(gp_approx_ == "vecchia" && gauss_likelihood_) || predict_training_data_random_effects || (sample_prior && gp_approx_ == "vecchia")) {
 				// no need to call CalcCovFactor here for the Vecchia approximation for Gaussian data, this is done in the prediction steps below, 
 				//	but when predicting training data random effects, this is required
 				if (calc_cov_factor) {
@@ -10227,9 +10303,15 @@ namespace GPBoost {
 		 * \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 		 * \param predict_var If true, the predictive/conditional variances are calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 		 * \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects
+		 * \param sample_posterior If true, posterior samples are generated
+		 * \param sample_prior If true, prior samples are generated
+		 * \param num_post_samples Number of posterior samples
+		 * \param num_prior_samples Number of prior samples
 		 * \param[out] mean_pred_id Predictive mean
 		 * \param[out] cov_mat_pred_id Predictive covariance matrix
 		 * \param[out] var_pred_id Predictive variances
+		 * \param[out] post_samples_id Sample from posterior without the mean, the mean is added at then end
+		 * \param[out] prior_samples_id Sample from prior 
 		 */
 		void CalcPred(data_size_t cluster_i,
 			int num_data_pred,
@@ -10243,11 +10325,14 @@ namespace GPBoost {
 			bool predict_var,
 			bool predict_response,
 			bool sample_posterior,
+			bool sample_prior,
 			int num_post_samples,
+			int num_prior_samples,
 			vec_t& mean_pred_id,
 			T_mat& cov_mat_pred_id,
 			vec_t& var_pred_id,
 			den_mat_t& post_samples_id,
+			den_mat_t& prior_samples_id,
 			const sp_mat_t& Bpo,
 			sp_mat_t& Bp,
 			const vec_t& Dp,
@@ -10809,8 +10894,19 @@ namespace GPBoost {
 					if (CholeskyHasPermutation<T_chol>(chol_fact_cov_mat)) {
 						ApplyPermutationCholeskyFactor<den_mat_t, T_chol>(chol_fact_cov_mat, post_samples_id, post_samples_id, /*transpose=*/true);
 					}
-				}		
+				}
 			}//end sample_posterior
+			if (sample_prior) {
+				if (!only_one_grouped_RE_calculations_on_RE_scale_ && !only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ &&
+					!use_woodbury_identity_ && !grouped_RE_and_vecchia_GP_) {
+					prior_samples_id = den_mat_t(num_REs_obs, num_prior_samples);
+					GenRandVecNormalParallel(seed_rng_, cg_generator_counter_, prior_samples_id);
+					prior_samples_id = chol_facts_[cluster_i].CholFactMatrix().template triangularView<Eigen::Lower>() * prior_samples_id;
+					if (CholeskyHasPermutation<T_chol>(chol_facts_[cluster_i])) {
+						ApplyPermutationCholeskyFactor<den_mat_t, T_chol>(chol_facts_[cluster_i], prior_samples_id, prior_samples_id, /*transpose=*/true);
+					}
+				}
+			}//end sample_prior
 		}//end CalcPred
 
 		void SetVecchiaPredType(const char* vecchia_pred_type) {

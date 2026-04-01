@@ -6663,6 +6663,9 @@ namespace GPBoost {
 		* \param chol_fact_sigma_woodbury Cholesky factor of 'sigma_ip + sigma_mn sigma_resid^-1 sigma_mn'
 		* \param cross_cov Cross - covariance matrix between inducing points and all data points
 		* \param cross_cov_pred_ip Cross covariance matrix between prediction points and inducing points
+		* \param sample_posterior If true, posterior samples are generated
+		* \param num_post_samples Number of posterior samples
+		* \param post_samples_id Sample from posterior without the mean, the mean is added at then end
 		* \param pred_mean[out] Predictive mean
 		* \param pred_cov[out] Predictive covariance matrix
 		* \param pred_var[out] Predictive variances
@@ -6692,6 +6695,9 @@ namespace GPBoost {
 			const den_mat_t& cross_cov_pred_ip,
 			const den_mat_t& Bt_D_inv_B_cross_cov,
 			const den_mat_t& D_inv_B_cross_cov,
+			bool sample_posterior,
+			int num_post_samples,
+			den_mat_t& post_samples_id,
 			vec_t& pred_mean,
 			den_mat_t& pred_cov,
 			vec_t& pred_var,
@@ -6728,7 +6734,7 @@ namespace GPBoost {
 			}
 			pred_mean += cross_cov_pred_ip * chol_fact_sigma_ip.solve(Bt_D_inv_B_cross_cov.transpose() * sigma_inv_mode);
 			// Compute predictive (co-)variances
-			if (calc_pred_cov || calc_pred_var) {
+			if (calc_pred_cov || calc_pred_var || sample_posterior) {
 				if (use_variance_correction_for_prediction_) {
 					Log::REFatal("PredictLaplaceApproxFSVA: The variance correction is not yet implemented ");
 				}
@@ -6742,6 +6748,12 @@ namespace GPBoost {
 				sp_mat_t Bp_inv(Bp.rows(), Bp.cols());
 				//Version Simulation
 				if (matrix_inversion_method_ == "iterative") {
+					if (!sample_posterior) {
+						num_post_samples = 0;
+					}
+					if (!calc_pred_cov && !calc_pred_var) {
+						nsim_var_pred_ = 0;
+					}
 					den_mat_t cross_cov_PP_Vecchia = chol_ip_cross_cov_pred.transpose() * (chol_ip_cross_cov * Bt_D_inv_B_cross_cov);
 					den_mat_t cross_cov_pred_obs_pred_inv;
 					den_mat_t B_po_cross_cov(pred_mean.size(), (*cross_cov).cols());
@@ -6894,7 +6906,7 @@ namespace GPBoost {
 #endif
 						RNG_t rng_local = parallel_rngs[thread_nb];
 #pragma omp for
-						for (int i = 0; i < nsim_var_pred_; ++i) {
+						for (int i = 0; i < std::max(nsim_var_pred_, num_post_samples); ++i) {
 							//z_i ~ N(0,I)
 							vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_), rand_vec_pred_I_3((*cross_cov).cols());
 							std::normal_distribution<double> ndist(0.0, 1.0);
@@ -6949,17 +6961,26 @@ namespace GPBoost {
 							vec_t sigmSigmaI_modechiSigmaI_mode = Bp_inv_Bpo_rm * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec);
 							vec_t rand_vec_pred = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
 							if (calc_pred_cov) {
-								den_mat_t pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
+								if (i < nsim_var_pred_) {
+									den_mat_t pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
 #pragma omp critical
-								{
-									pred_cov += pred_cov_private;
+									{
+										pred_cov += pred_cov_private;
+									}
 								}
 							}
 							if (calc_pred_var) {
-								vec_t pred_var_private = rand_vec_pred.cwiseProduct(rand_vec_pred);
+								if (i < nsim_var_pred_) {
+									vec_t pred_var_private = rand_vec_pred.cwiseProduct(rand_vec_pred);
 #pragma omp critical
-								{
-									pred_var += pred_var_private;
+									{
+										pred_var += pred_var_private;
+									}
+								}
+							}
+							if (sample_posterior) {
+								if (i < num_post_samples) {
+									post_samples_id.col(i) += rand_vec_pred;
 								}
 							}
 							// Implementation for Bekas approach
@@ -7089,6 +7110,9 @@ namespace GPBoost {
 					}
 				} //end iterative methods using simulation
 				else {//using Cholesky decomposition
+					if (sample_posterior) {
+						Log::REFatal("Posterior sampling is not implemented for the VIF approximation using Cholesky decomposition.");
+					}
 					den_mat_t sigma_resid_plus_W_inv_cross_cov = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(information_ll_.asDiagonal() * (*cross_cov));
 					den_mat_t sigma_woodbury_2 = (sigma_ip_stable)+Bt_D_inv_B_cross_cov.transpose() * sigma_resid_plus_W_inv_cross_cov;
 					chol_den_mat_t chol_fact_sigma_woodbury_2;
@@ -7159,7 +7183,11 @@ namespace GPBoost {
 						}
 					}
 				}
-			}//end calc_pred_cov || calc_pred_var
+			}//end calc_pred_cov || calc_pred_var || sample_posterior
+			if (sample_posterior) {
+				Log::REInfo("Test %g %g %g %g %g", post_samples_id.mean(), post_samples_id.coeffRef(0, 0), post_samples_id.coeffRef(1, 0),
+					post_samples_id.coeffRef(0, 1), post_samples_id.coeffRef(1, 1));
+			}
 		}//end PredictLaplaceApproxFSVA
 
 		/*!
@@ -7176,6 +7204,9 @@ namespace GPBoost {
 		* \param Bpo Lower left part of matrix B in joint Vecchia approximation for observed and prediction locations with non-zero off-diagonal entries corresponding to the nearest neighbors of the prediction locations among the observed locations
 		* \param Bp Lower right part of matrix B in joint Vecchia approximation for observed and prediction locations with non-zero off-diagonal entries corresponding to the nearest neighbors of the prediction locations among the prediction locations
 		* \param Dp Diagonal matrix with lower right part of matrix D in joint Vecchia approximation for observed and prediction locations
+		* \param sample_posterior If true, posterior samples are generated
+		* \param num_post_samples Number of posterior samples
+		* \param post_samples_id Sample from posterior without the mean, the mean is added at then end
 		* \param pred_mean[out] Predictive mean
 		* \param pred_cov[out] Predictive covariance matrix
 		* \param pred_var[out] Predictive variances
@@ -7193,6 +7224,9 @@ namespace GPBoost {
 			const sp_mat_t& Bpo,
 			sp_mat_t& Bp,
 			const vec_t& Dp,
+			bool sample_posterior,
+			int num_post_samples,
+			den_mat_t& post_samples_id,
 			vec_t& pred_mean,
 			den_mat_t& pred_cov,
 			vec_t& pred_var,
@@ -7226,7 +7260,7 @@ namespace GPBoost {
 				vec_t Bpo_mode = Bpo * mode_.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_);
 				pred_mean = -Bp.triangularView<Eigen::UpLoType::UnitLower>().solve(Bpo_mode);
 			}
-			if (calc_pred_cov || calc_pred_var) {
+			if (calc_pred_cov || calc_pred_var || sample_posterior) {
 				if (use_variance_correction_for_prediction_) {
 					CHECK(num_sets_re_ == 1);
 					diag_information_variance_correction_for_prediction_ = true;
@@ -7245,6 +7279,12 @@ namespace GPBoost {
 				sp_mat_t Bp_inv, Bp_inv_Dp;
 				//Version Simulation
 				if (matrix_inversion_method_ == "iterative") {
+					if (!sample_posterior) {
+						num_post_samples = 0;
+					}
+					if (!calc_pred_cov && !calc_pred_var) {
+						nsim_var_pred_ = 0;
+					}
 					sp_mat_rm_t Bp_inv_Dp_rm, Bp_inv_rm;
 					sp_mat_rm_t Bpo_rm = sp_mat_rm_t(Bpo);
 					sp_mat_rm_t Bp_rm;
@@ -7302,7 +7342,7 @@ namespace GPBoost {
 							pred_var_private = vec_t::Zero(num_pred);
 						}
 #pragma omp for
-						for (int i = 0; i < nsim_var_pred_; ++i) {
+						for (int i = 0; i < std::max(nsim_var_pred_, num_post_samples); ++i) {
 							//z_i ~ N(0,I)
 							std::normal_distribution<double> ndist(0.0, 1.0);
 							vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_);
@@ -7325,10 +7365,19 @@ namespace GPBoost {
 							//z_i ~ N(0, Bp^{-1} Bpo (Sigma^{-1} + W)^{-1} Bpo^T Bp^{-1})
 							vec_t rand_vec_pred = Bp_inv_Bpo_rm * rand_vec_pred_SigmaI_plus_W_inv;
 							if (calc_pred_cov) {
-								pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
+								if (i < nsim_var_pred_) {
+									pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
+								}
 							}
 							if (calc_pred_var) {
-								pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
+								if (i < nsim_var_pred_) {
+									pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
+								}
+							}
+							if (sample_posterior) {
+								if (i < num_post_samples) {
+									post_samples_id.col(i) += rand_vec_pred;
+								}
 							}
 						}//end for loop
 #pragma omp critical
@@ -7361,6 +7410,9 @@ namespace GPBoost {
 					}
 				} //end iterative methods using simulation
 				else {//using Cholesky decomposition
+					if (sample_posterior) {
+						Log::REFatal("Posterior sampling is not implemented for the Vecchia approximation using Cholesky decomposition.");
+					}
 					sp_mat_t Maux; //Maux = L\(Bpo^T * Bp^-1), L = Chol(Sigma^-1 + W)
 					if (CondObsOnly) {
 						Maux = Bpo.transpose();//Bp = Id
@@ -7421,7 +7473,7 @@ namespace GPBoost {
 						}
 					}
 				}
-			}//end calc_pred_cov || calc_pred_var
+			}//end calc_pred_cov || calc_pred_var || sample_posterior
 		}//end PredictLaplaceApproxVecchia
 
 		/*!
