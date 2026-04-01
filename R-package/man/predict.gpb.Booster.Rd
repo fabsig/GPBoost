@@ -10,7 +10,8 @@
   group_data_pred = NULL, group_rand_coef_data_pred = NULL,
   gp_coords_pred = NULL, gp_rand_coef_data_pred = NULL,
   cluster_ids_pred = NULL, predict_cov_mat = FALSE, predict_var = FALSE,
-  sample_posterior = FALSE, num_post_samples = 100, cov_pars = NULL,
+  sample_posterior = FALSE, sample_prior = FALSE, 
+  num_post_samples = 100, num_prior_samples = 100, cov_pars = NULL,
   offset_pred = NULL, ignore_gp_model = FALSE, rawscore = NULL,
   vecchia_pred_type = NULL, num_neighbors_pred = NULL, ...)
 }
@@ -68,7 +69,11 @@ predictive variances are calculated}
 
 \item{sample_posterior}{A \code{boolean}. If TRUE, samples from the posterior are drawn (currently very limited support)}
 
+\item{sample_prior}{A \code{boolean}. If TRUE, samples from the prior are drawn (currently very limited support)}
+
 \item{num_post_samples}{A \code{numeric} with the number of posterior samples to draw if 'sample_posterior=TRUE'}
+
+\item{num_prior_samples}{A \code{numeric} with the number of prior samples to draw if 'sample_prior=TRUE'}
 
 \item{cov_pars}{A \code{vector} containing covariance parameters which are used if the 
 \code{gp_model} has not been trained or if predictions should be made for other 
@@ -106,6 +111,7 @@ whether there is a \code{gp_model} or not
       \item { result["response_var"] are the predictive  covariances or variances of the response variable
   (only if 'predict_var' or 'predict_cov' is TRUE) }
   \item { result["posterior_samples"] samples of the posterior of the response variable (if 'sample_posterior' is TRUE) }
+  \item { result["prior_samples"] samples of the prior of the response variable (if 'sample_prior' is TRUE) }
   }
   }
    \item { 2. If \code{pred_latent} is TRUE, the dict contains the following 3 entries:
@@ -115,6 +121,7 @@ whether there is a \code{gp_model} or not
       \item { result["random_effect_cov"] are the predictive covariances or variances of the \code{gp_model}
   (only if 'predict_var' or 'predict_cov' is TRUE) }
      \item { result["posterior_samples"] samples of the posterior of the \code{gp_model} (if 'sample_posterior' is TRUE) excluding the 'fixed_effect' }
+     \item { result["prior_samples"] samples of the prior of the \code{gp_model} (if 'sample_prior' is TRUE) }
   }
   }
   }

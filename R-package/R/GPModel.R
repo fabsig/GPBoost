@@ -397,7 +397,9 @@
 #' @param predict_var A \code{boolean}. If TRUE, the (posterior) 
 #' predictive variances are calculated
 #' @param sample_posterior A \code{boolean}. If TRUE, samples from the posterior are drawn (currently very limited support)
+#' @param sample_prior A \code{boolean}. If TRUE, samples from the prior are drawn (currently very limited support)
 #' @param num_post_samples A \code{numeric} with the number of posterior samples to draw if 'sample_posterior=TRUE'
+#' @param num_prior_samples A \code{numeric} with the number of prior samples to draw if 'sample_prior=TRUE'
 #' @param std_err A \code{boolean}. If TRUE, (approximate) standard errors are calculated 
 #'                (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
 #'                square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
@@ -1585,7 +1587,9 @@ gpb.GPModel <- R6::R6Class(
                        predict_cov_mat = FALSE,
                        predict_var = FALSE,
                        sample_posterior = FALSE,
+                       sample_prior = FALSE,
                        num_post_samples = 100,
+                       num_prior_samples = 100,
                        cov_pars = NULL,
                        X_pred = NULL,
                        use_saved_data = FALSE,
@@ -1859,6 +1863,9 @@ gpb.GPModel <- R6::R6Class(
       if (storage.mode(sample_posterior) != "logical") {
         stop("predict.GPModel: Can only use ", sQuote("logical"), " as ", sQuote("sample_posterior"))
       }
+      if (storage.mode(sample_prior) != "logical") {
+        stop("predict.GPModel: Can only use ", sQuote("logical"), " as ", sQuote("sample_prior"))
+      }
       if (storage.mode(predict_response) != "logical") {
         stop("predict.GPModel: Can only use ", sQuote("logical"), " as ", sQuote("predict_response"))
       }
@@ -1892,6 +1899,9 @@ gpb.GPModel <- R6::R6Class(
       if (sample_posterior) {
         size_allocate <- size_allocate + num_data_pred * num_post_samples
       }
+      if (sample_prior) {
+        size_allocate <- size_allocate + private$num_data * num_prior_samples
+      }
       preds <- numeric(size_allocate)
       .Call(
         GPB_PredictREModel_R
@@ -1902,7 +1912,9 @@ gpb.GPModel <- R6::R6Class(
         , predict_var
         , predict_response
         , sample_posterior
+        , sample_prior
         , as.integer(num_post_samples)
+        , as.integer(num_prior_samples)
         , cluster_ids_pred
         , group_data_pred_c_str
         , group_rand_coef_data_pred
@@ -1920,6 +1932,7 @@ gpb.GPModel <- R6::R6Class(
       pred_cov_mat <- NA
       pred_var <- NA
       posterior_samples <- NA
+      prior_samples <- NA
       idx_start_post_sample <- num_data_pred
       if (predict_var) {
         pred_var <- preds[1:num_data_pred + num_data_pred]
@@ -1930,8 +1943,12 @@ gpb.GPModel <- R6::R6Class(
       }
       if (sample_posterior) {
         posterior_samples <- matrix(preds[1:(num_data_pred*num_post_samples) + idx_start_post_sample], ncol=num_post_samples)
+        idx_start_post_sample <- idx_start_post_sample + num_data_pred*num_post_samples
       }
-      return(list(mu=pred_mean,cov=pred_cov_mat,var=pred_var,posterior_samples=posterior_samples))
+      if (sample_prior) {
+        prior_samples <- matrix(preds[1:(private$num_data*num_prior_samples) + idx_start_post_sample], ncol=num_prior_samples)
+      }
+      return(list(mu=pred_mean,cov=pred_cov_mat,var=pred_var,posterior_samples=posterior_samples,prior_samples=prior_samples))
     },
     
     predict_training_data_random_effects = function(predict_var = FALSE) {
@@ -3061,7 +3078,9 @@ predict.GPModel <- function(object,
                             predict_var = FALSE,
                             predict_cov_mat = FALSE,
                             sample_posterior = FALSE,
+                            sample_prior = FALSE,
                             num_post_samples = 100,
+                            num_prior_samples = 100,
                             y = NULL,
                             cov_pars = NULL,
                             group_data_pred = NULL,
@@ -3086,7 +3105,9 @@ predict.GPModel <- function(object,
                          , predict_cov_mat = predict_cov_mat
                          , predict_var = predict_var
                          , sample_posterior = sample_posterior
+                         , sample_prior = sample_prior
                          , num_post_samples = num_post_samples
+                         , num_prior_samples = num_prior_samples
                          , cov_pars = cov_pars
                          , X_pred = X_pred
                          , use_saved_data = use_saved_data

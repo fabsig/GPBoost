@@ -713,7 +713,9 @@ Booster <- R6::R6Class(
                        predict_cov_mat = FALSE,
                        predict_var = FALSE,
                        sample_posterior = FALSE,
+                       sample_prior = FALSE,
                        num_post_samples = 100,
+                       num_prior_samples = 100,
                        cov_pars = NULL,
                        offset_pred = NULL,
                        ignore_gp_model = FALSE,
@@ -775,6 +777,7 @@ Booster <- R6::R6Class(
         response_mean <- NA
         response_var <- NA
         posterior_samples <- NA
+        prior_samples <- NA
         
         if(private$gp_model$get_likelihood_name() == "gaussian" & 
            private$gp_model$.__enclos_env__$private$gp_approx != "vecchia_latent"){
@@ -808,7 +811,9 @@ Booster <- R6::R6Class(
                                                          , predict_cov_mat = predict_cov_mat
                                                          , predict_var = predict_var
                                                          , sample_posterior = sample_posterior
+                                                         , sample_prior = sample_prior
                                                          , num_post_samples = num_post_samples
+                                                         , num_prior_samples = num_prior_samples
                                                          , cov_pars = cov_pars
                                                          , X_pred = NULL
                                                          , predict_response = !pred_latent )
@@ -842,6 +847,9 @@ Booster <- R6::R6Class(
             if (sample_posterior) {
               posterior_samples <- random_effect_pred$posterior_samples
             }
+            if (sample_prior) {
+              prior_samples <- random_effect_pred$prior_samples
+            }
           } 
           else {
             response_mean <- random_effect_pred$mu + fixed_effect
@@ -852,6 +860,9 @@ Booster <- R6::R6Class(
             }
             if (sample_posterior) {
               posterior_samples <- random_effect_pred$posterior_samples + fixed_effect
+            }
+            if (sample_prior) {
+              prior_samples <- random_effect_pred$prior_samples #+ fixed_effect
             }
             fixed_effect <- NULL
           }
@@ -921,7 +932,9 @@ Booster <- R6::R6Class(
                                                           , predict_cov_mat = predict_cov_mat
                                                           , predict_var = predict_var
                                                           , sample_posterior = sample_posterior
+                                                          , sample_prior = sample_prior
                                                           , num_post_samples = num_post_samples
+                                                          , num_prior_samples = num_prior_samples
                                                           , cov_pars = cov_pars
                                                           , X_pred = NULL
                                                           , predict_response = FALSE
@@ -941,6 +954,9 @@ Booster <- R6::R6Class(
             if (sample_posterior) {
               posterior_samples <- random_effect_pred$posterior_samples
             }
+            if (sample_prior) {
+              prior_samples <- random_effect_pred$prior_samples
+            }
             
           }# end pred_latent
           else {# predict response variable for non-Gaussian data
@@ -956,7 +972,9 @@ Booster <- R6::R6Class(
                                                   , predict_cov_mat = predict_cov_mat
                                                   , predict_var = predict_var
                                                   , sample_posterior = sample_posterior
+                                                  , sample_prior = sample_prior
                                                   , num_post_samples = num_post_samples
+                                                  , num_prior_samples = num_prior_samples
                                                   , cov_pars = cov_pars
                                                   , X_pred = NULL
                                                   , predict_response = TRUE
@@ -970,6 +988,9 @@ Booster <- R6::R6Class(
             if (sample_posterior) {
               posterior_samples <- random_effect_pred$posterior_samples
             }
+            if (sample_prior) {
+              prior_samples <- random_effect_pred$prior_samples
+            }
             
           }# end not pred_latent
           
@@ -980,7 +1001,8 @@ Booster <- R6::R6Class(
                     random_effect_cov = pred_var_cov,
                     response_mean = response_mean,
                     response_var = response_var,
-                    posterior_samples = posterior_samples))
+                    posterior_samples = posterior_samples,
+                    prior_samples = prior_samples))
         
       }# end GPBoost prediction
       else if (private$is_mean_scale_regression) {
@@ -1298,6 +1320,7 @@ Booster <- R6::R6Class(
 #'       \item { result["response_var"] are the predictive  covariances or variances of the response variable
 #'   (only if 'predict_var' or 'predict_cov' is TRUE) }
 #'   \item { result["posterior_samples"] samples of the posterior of the response variable (if 'sample_posterior' is TRUE) }
+#'   \item { result["prior_samples"] samples of the prior (if 'sample_prior' is TRUE) }
 #'   }
 #'   }
 #'    \item { 2. If \code{pred_latent} is TRUE, the dict contains the following 3 entries:
@@ -1307,6 +1330,7 @@ Booster <- R6::R6Class(
 #'       \item { result["random_effect_cov"] are the predictive covariances or variances of the \code{gp_model}
 #'   (only if 'predict_var' or 'predict_cov' is TRUE) }
 #'      \item { result["posterior_samples"] samples of the posterior of the \code{gp_model} (if 'sample_posterior' is TRUE) excluding the 'fixed_effect' }
+#'      \item { result["prior_samples"] samples of the prior of the \code{gp_model} (if 'sample_prior' is TRUE) }
 #'   }
 #'   }
 #'   }
@@ -1397,7 +1421,9 @@ predict.gpb.Booster <- function(object,
                                 predict_cov_mat = FALSE,
                                 predict_var = FALSE,
                                 sample_posterior = FALSE,
+                                sample_prior = FALSE,
                                 num_post_samples = 100,
+                                num_prior_samples = 100,
                                 cov_pars = NULL,
                                 offset_pred = NULL,
                                 ignore_gp_model = FALSE,
@@ -1429,7 +1455,9 @@ predict.gpb.Booster <- function(object,
       , predict_cov_mat = predict_cov_mat
       , predict_var = predict_var
       , sample_posterior = sample_posterior
+      , sample_prior = sample_prior
       , num_post_samples = num_post_samples
+      , num_prior_samples = num_prior_samples
       , cov_pars = cov_pars
       , offset_pred = offset_pred
       , ignore_gp_model = ignore_gp_model
