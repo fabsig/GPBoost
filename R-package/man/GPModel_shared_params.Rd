@@ -260,7 +260,7 @@ Default value if NULL: 1000}
 random effects / Gaussian processes (same values = same process realization).
 The elements of 'cluster_ids' can be integer, double, or character.}
 
-\item{weights}{A \code{vector} with sample weights}
+\item{weights}{A \code{vector} with sample weights. Note that this affects both the random and fixed effects components.}
 
 \item{likelihood_learning_rate}{A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)}
 

@@ -174,7 +174,7 @@ This is currently only supported for the following cases:
 }
 }}
 
-\item{weights}{A \code{vector} with sample weights}
+\item{weights}{A \code{vector} with sample weights. Note that this affects both the random and fixed effects components.}
 
 \item{likelihood_learning_rate}{A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)}
 
