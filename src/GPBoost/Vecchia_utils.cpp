@@ -9,6 +9,7 @@
 #include <GPBoost/Vecchia_utils.h>
 #include <GPBoost/utils.h>
 #include <GPBoost/GP_utils.h>
+#include <GPBoost/CG_utils.h>
 #include <cmath>
 #include <algorithm> // copy
 #include <LightGBM/utils/log.h>
@@ -1643,6 +1644,7 @@ namespace GPBoost {
 		const chol_den_mat_t& chol_fact_sigma_woodbury_cluster_i,
 		den_mat_t& cross_cov_pred_ip,
 		const sp_mat_rm_t& B_cluster_i,
+		const sp_mat_rm_t& D_inv_cluster_i,
 		const sp_mat_rm_t& Bt_D_inv_cluster_i,
 		std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
 		const den_mat_t& gp_coords_mat_obs,
@@ -1659,6 +1661,14 @@ namespace GPBoost {
 		RNG_t& rng,
 		bool calc_pred_cov,
 		bool calc_pred_var,
+		bool sample_posterior,
+		bool sample_prior,
+		int num_post_samples,
+		int num_prior_samples,
+		den_mat_t& post_samples_id,
+		den_mat_t& prior_samples_id,
+		int base_seed,
+		uint64_t& run_id,
 		vec_t& pred_mean,
 		den_mat_t& pred_cov,
 		vec_t& pred_var,
@@ -2011,11 +2021,113 @@ namespace GPBoost {
 					}
 				}//end calc_pred_cov || calc_pred_var
 			}// end Vecchia
+		}//end if gauss_likelihood
+		den_mat_t samples_id_Vecchia, samples_id_IP, samples_id_obs;
+		if (sample_posterior) {
+			post_samples_id = den_mat_t(num_re_pred_cli, num_post_samples);
+			samples_id_Vecchia.resize(num_re_pred_cli, num_post_samples);
+			GenRandVecNormalParallel(base_seed, run_id, samples_id_Vecchia);
+			sp_mat_t Bp_inv;
+			if (CondObsOnly) {
+				post_samples_id = Dp.cwiseSqrt().asDiagonal() * samples_id_Vecchia;
+			}
+			else {
+				Bp_inv.resize(num_re_pred_cli, num_re_pred_cli);
+				Bp_inv.setIdentity();
+				TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
+				sp_mat_t Bp_inv_Dp_sqrt = Bp_inv * Dp.cwiseSqrt().asDiagonal();
+				sp_mat_rm_t Bp_inv_Dp_sqrt_rm = sp_mat_rm_t(Bp_inv_Dp_sqrt);
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_post_samples; ++i) {
+					post_samples_id.col(i) = Bp_inv_Dp_sqrt_rm * samples_id_Vecchia.col(i);
+				}
+			}
+			if (gp_approx == "full_scale_vecchia") {
+				//// Matheron approach
+				/// Joint samples
+				// IP-Part
+				samples_id_IP.resize((int)chol_ip_cross_cov_obs.rows(), num_post_samples);
+				GenRandVecNormalParallel(base_seed, run_id, samples_id_IP);
+				den_mat_t joint_samples_id_IP_pred = chol_ip_cross_cov_pred.transpose() * samples_id_IP;
+				den_mat_t joint_samples_id_IP_obs = chol_ip_cross_cov_obs.transpose() * samples_id_IP;
+				// Vecchia-Part
+				samples_id_obs.resize((int)chol_ip_cross_cov_obs.cols(), num_post_samples);
+				GenRandVecNormalParallel(base_seed, run_id, samples_id_obs);
+				sp_mat_rm_t B_inv_D_sqrt_rm;
+				sp_mat_rm_t D_sqrt = D_inv_cluster_i;
+				D_sqrt.setIdentity();
+				D_sqrt.diagonal().array() = D_inv_cluster_i.diagonal().array().pow(-0.5);
+				TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(B_cluster_i, D_sqrt, B_inv_D_sqrt_rm, false);
+				den_mat_t joint_samples_id_Vecchia_obs((int)chol_ip_cross_cov_obs.cols(), num_post_samples);
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_post_samples; ++i) {
+					joint_samples_id_Vecchia_obs.col(i) = B_inv_D_sqrt_rm * samples_id_obs.col(i);
+				}
+				den_mat_t joint_samples_id_Vecchia_pred = post_samples_id;
+				den_mat_t B_po_joint_samples_id_Vecchia_obs(num_re_pred_cli, num_post_samples);
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < num_post_samples; ++i) {
+					B_po_joint_samples_id_Vecchia_obs.col(i) = Bpo_rm * joint_samples_id_Vecchia_obs.col(i);
+				}
+				if (CondObsOnly) {
+					joint_samples_id_Vecchia_pred -= B_po_joint_samples_id_Vecchia_obs;
+				}
+				else {
+					sp_mat_rm_t Bp_inv_rm = sp_mat_rm_t(Bp_inv);
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_post_samples; ++i) {
+						joint_samples_id_Vecchia_pred.col(i) -= Bp_inv_rm * B_po_joint_samples_id_Vecchia_obs.col(i);
+					}
+				}
+				// Combined
+				den_mat_t joint_samples_id_obs = joint_samples_id_IP_obs + joint_samples_id_Vecchia_obs;
+				den_mat_t joint_samples_id_pred = joint_samples_id_IP_pred + joint_samples_id_Vecchia_pred;
+				/// Matheron step
+				const den_mat_t* sigma_cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
+				den_mat_t y_minus_joint_samples_id_obs = -joint_samples_id_obs;
+				den_mat_t vecchia_y_minus_joint_samples_id_obs((*sigma_cross_cov).cols(), num_post_samples);
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < num_post_samples; ++i) {
+					vecchia_y_minus_joint_samples_id_obs.col(i) = chol_fact_sigma_woodbury_cluster_i.solve((*sigma_cross_cov).transpose() * (Bt_D_inv_cluster_i * (B_cluster_i * y_minus_joint_samples_id_obs.col(i))));
+				}
+#pragma omp parallel for schedule(static)   
+				for (int i = 0; i < num_post_samples; ++i) {
+					post_samples_id.col(i) = - Bpo_rm * (y_minus_joint_samples_id_obs.col(i) - (*sigma_cross_cov) * vecchia_y_minus_joint_samples_id_obs.col(i));
+				}
+				if (!CondObsOnly) {
+					TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(Bp, post_samples_id, post_samples_id, false);
+				}
+				post_samples_id += cross_cov_pred_ip * vecchia_y_minus_joint_samples_id_obs;
+				post_samples_id += joint_samples_id_pred;
+			}
+		}//end sample_posterior
+		if (sample_prior) {
+			prior_samples_id = den_mat_t(num_re_cli, num_prior_samples);
+			prior_samples_id.setZero();
+			samples_id_obs.resize(num_re_cli, num_prior_samples);
+			GenRandVecNormalParallel(base_seed, run_id, samples_id_obs);
+			sp_mat_rm_t B_inv_D_sqrt_rm;
+			sp_mat_rm_t D_sqrt = D_inv_cluster_i;
+			D_sqrt.setIdentity();
+			D_sqrt.diagonal().array() = D_inv_cluster_i.diagonal().array().pow(-0.5);
+			TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(B_cluster_i, D_sqrt, B_inv_D_sqrt_rm, false);
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < num_prior_samples; ++i) {
+				prior_samples_id.col(i) = B_inv_D_sqrt_rm * samples_id_obs.col(i);
+			}
+			if (gp_approx == "full_scale_vecchia") {
+				// IP-Part
+				samples_id_IP.resize((int)chol_ip_cross_cov_obs.rows(), num_prior_samples);
+				GenRandVecNormalParallel(base_seed, run_id, samples_id_IP);
+				prior_samples_id += chol_ip_cross_cov_obs.transpose() * samples_id_IP;
+			}
+		}//end sample_prior
+		if (gauss_likelihood) {
 			//release matrices that are not needed anymore
 			Bpo.resize(0, 0);
 			Bp.resize(0, 0);
 			Dp.resize(0);
-		}//end if gauss_likelihood
+		}
 	}//end CalcPredVecchiaObservedFirstOrder
 
 	void CalcPredVecchiaPredictedFirstOrder(data_size_t cluster_i,

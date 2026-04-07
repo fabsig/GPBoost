@@ -292,6 +292,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction using given parameters
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
     cov_pars_pred = c(0.02,1.2,0.9)
+    
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_response = TRUE,
                     cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
     expected_mu <- c(0.08704577, 1.63875604, 0.48513581)
@@ -314,10 +315,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Sampling from posterior
     pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = TRUE, 
                     cov_pars = cov_pars_pred, sample_posterior = TRUE, num_post_samples = 100000)
+   
+    Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
     tol_mu <- 0.003
     tol_cov <- 0.003
     expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-expected_mu)), tol_mu)
     expect_lt(sum(abs(as.vector(cov(t(pred$posterior_samples)))-expected_cov)), tol_cov)
+    # Sampling from prior
+    pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = TRUE,
+                    cov_pars = c(1E-20,sigma2_1,rho), sample_prior = TRUE, num_prior_samples = 100000)
+    tol_mean <- 0.001
+    tol_cov <- 0.001
+    expect_lt(mean(abs(apply(pred$prior_samples,1,mean)-rep(0,5))), tol_mean)
+    cov_mat_prior <- cov(t(pred$prior))
+    expect_lt(mean(abs(as.vector(cov_mat_prior[lower.tri(cov_mat_prior)])-as.vector(Sigma[lower.tri(Sigma)]))), tol_cov)
     
     # Do optimization using optim
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
@@ -981,7 +992,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                               0.0000000, 0.0000000, 0.0000000, 0.4199531)
     expect_lt(sum(abs(pred$mu-expected_mu_vecchia)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_vecchia)), TOLERANCE_STRICT)
-    
+    # Sampling from posterior
+    pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = TRUE, 
+                    sample_posterior = TRUE, num_post_samples = 1000000)
+    tol_mu <- 0.01
+    tol_cov <- 0.01
+    expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-expected_mu_vecchia)), tol_mu)
+    expect_lt(sum(abs(as.vector(cov(t(pred$posterior_samples)))-expected_cov_vecchia)), tol_cov)
+    # Sampling from prior
+    pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = TRUE,
+                    cov_pars = c(1E-20,sigma2_1,rho), sample_prior = TRUE, num_prior_samples = 100000)
+    tol_mean <- 0.01
+    tol_cov <- 0.01
+    expect_lt(mean(abs(apply(pred$prior_samples[1:5,],1,mean)-rep(0,5))), tol_mean)
+    cov_mat_prior <- cov(t(pred$prior))
+    expect_lt(mean(abs(as.vector(cov_mat_prior[lower.tri(cov_mat_prior)])-as.vector(Sigma[lower.tri(Sigma)]))), tol_cov)
     # Holding some parameters fix
     params_fix <- params_vecchia
     params_fix$convergence_criterion <- NULL
@@ -1171,6 +1196,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                          cov_pars = cov_pars_pred, predict_var = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred_var$mu - pred_var2$mu)), TOLERANCE_STRICT)
     expect_lt(sum(abs(pred_var$var - cov_pars_pred[1] - pred_var2$var)), TOLERANCE_STRICT)
+    
     
   })
   
@@ -2219,7 +2245,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
       expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
       expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
-      
+      # Sampling from posterior
+      pred <- predict(gp_model, gp_coords_pred = coord_test, X_pred = X_test, predict_response = TRUE, 
+                      sample_posterior = TRUE, num_post_samples = 100000)
+      tol_mu <- 0.01
+      tol_cov <- 0.01
+      expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-expected_mu)), tol_mu)
+      expect_lt(sum(abs(as.vector(diag(cov(t(pred$posterior_samples))))-expected_var)), tol_cov)
+      # Sampling from prior
+      pred <- predict(gp_model, gp_coords_pred = coord_test, X_pred = X_test, predict_response = TRUE,
+                      cov_pars = c(1E-20,sigma2_1,rho), sample_prior = TRUE, num_prior_samples = 100000)
+      tol_mean <- 0.01
+      tol_cov <- 0.01
+      expect_lt(mean(abs(apply(pred$prior_samples[1:5,],1,mean)-rep(0,5))), tol_mean)
+      cov_mat_prior <- cov(t(pred$prior))
+      expect_lt(mean(abs(as.vector(cov_mat_prior[lower.tri(cov_mat_prior)])-as.vector(Sigma[lower.tri(Sigma)]))), tol_cov)
       if (i == "euclidean-based kNN") {
         # Holding some parameters fix
         params_fix <- params

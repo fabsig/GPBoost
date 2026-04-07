@@ -441,6 +441,7 @@ namespace GPBoost {
 	* \param Cholesky factor of Woodbury matrix
 	* \param Cross covariance matrix between inducing points and prediction locations
 	* \param Vecchia matrix B
+	* \param D_inv_cluster_i Diagonal matrices D^{-1} for Vecchia approximation
 	* \param Vecchia matrix B^T D^(-1)
 	* \param data_indices_per_cluster_pred Keys: labels of independent clusters, values: vectors with indices for data points that belong to the every cluster
 	* \param gp_coords_mat_obs Coordinates for observed locations
@@ -457,6 +458,14 @@ namespace GPBoost {
 	* \param rng Random number generator
 	* \param calc_pred_cov If true, the covariance matrix is also calculated
 	* \param calc_pred_var If true, predictive variances are also calculated
+	* \param sample_posterior If true, posterior samples are generated
+	* \param sample_prior If true, prior samples are generated
+	* \param num_post_samples Number of posterior samples
+	* \param num_prior_samples Number of prior samples
+	* \param post_samples_id Sample from posterior without the mean, the mean is added at then end
+	* \param prior_samples_id Sample from prior
+	* \param base_seed Random number generator seed
+	* \param run_id Counter for seeding
 	* \param[out] pred_mean Predictive mean (only for Gaussian likelihoods)
 	* \param[out] pred_cov Predictive covariance matrix (only for Gaussian likelihoods)
 	* \param[out] pred_var Predictive variances (only for Gaussian likelihoods)
@@ -475,6 +484,7 @@ namespace GPBoost {
 		const chol_den_mat_t& chol_fact_sigma_woodbury_cluster_i,
 		den_mat_t& cross_cov_pred_ip,
 		const sp_mat_rm_t& B_cluster_i,
+		const sp_mat_rm_t& D_inv_cluster_i,
 		const sp_mat_rm_t& Bt_D_inv_cluster_i,
 		std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
 		const den_mat_t& gp_coords_mat_obs,
@@ -491,6 +501,14 @@ namespace GPBoost {
 		RNG_t& rng,
 		bool calc_pred_cov,
 		bool calc_pred_var,
+		bool sample_posterior,
+		bool sample_prior,
+		int num_post_samples,
+		int num_prior_samples,
+		den_mat_t& post_samples_id,
+		den_mat_t& prior_samples_id,
+		int base_seed,
+		uint64_t& run_id,
 		vec_t& pred_mean,
 		den_mat_t& pred_cov,
 		vec_t& pred_var,
