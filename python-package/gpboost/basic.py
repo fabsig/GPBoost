@@ -6133,7 +6133,9 @@ class GPModel(object):
             offset_pred = offset_pred.astype(np.float64)
             offset_pred_c = offset_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
-        size_allocate = num_data_pred
+        size_allocate = 0
+        if not sample_prior:
+            size_allocate = size_allocate + num_data_pred
         if predict_var:
             size_allocate = size_allocate + num_data_pred
         elif predict_cov_mat:
@@ -6167,12 +6169,15 @@ class GPModel(object):
             offset_c,
             offset_pred_c))
 
-        pred_mean = preds[0:num_data_pred]
+        pred_mean = None
         pred_cov_mat = None
         pred_var = None
         posterior_samples = None
         prior_samples = None
-        idx_start_post_sample = num_data_pred
+        idx_start_post_sample = 0
+        if not sample_prior:
+            pred_mean = preds[0:num_data_pred]
+            idx_start_post_sample = idx_start_post_sample + num_data_pred
         if predict_var:
             pred_var = preds[num_data_pred:(2 * num_data_pred)]
             idx_start_post_sample = idx_start_post_sample + num_data_pred

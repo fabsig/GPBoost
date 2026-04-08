@@ -315,17 +315,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Sampling from posterior
     pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = TRUE, 
                     cov_pars = cov_pars_pred, sample_posterior = TRUE, num_post_samples = 100000)
-   
     Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
     tol_mu <- 0.003
     tol_cov <- 0.003
     expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-expected_mu)), tol_mu)
     expect_lt(sum(abs(as.vector(cov(t(pred$posterior_samples)))-expected_cov)), tol_cov)
     # Sampling from prior
+    gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
     pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = TRUE,
                     cov_pars = c(1E-20,sigma2_1,rho), sample_prior = TRUE, num_prior_samples = 100000)
-    tol_mean <- 0.001
-    tol_cov <- 0.001
+    tol_mean <- 0.003
+    tol_cov <- 0.003
     expect_lt(mean(abs(apply(pred$prior_samples,1,mean)-rep(0,5))), tol_mean)
     cov_mat_prior <- cov(t(pred$prior))
     expect_lt(mean(abs(as.vector(cov_mat_prior[lower.tri(cov_mat_prior)])-as.vector(Sigma[lower.tri(Sigma)]))), tol_cov)

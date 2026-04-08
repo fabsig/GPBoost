@@ -1890,7 +1890,10 @@ gpb.GPModel <- R6::R6Class(
         }
       }# end offset_pred
       # Pre-allocate empty vector
-      size_allocate <- num_data_pred
+      size_allocate <- 0
+      if (!sample_prior) {
+        size_allocate <- size_allocate + num_data_pred
+      }
       if (predict_var) {
         size_allocate <- size_allocate + num_data_pred
       } else if (predict_cov_mat) {
@@ -1928,12 +1931,16 @@ gpb.GPModel <- R6::R6Class(
         , preds
       )
       # Process C++ output
-      pred_mean <- preds[1:num_data_pred]
+      pred_mean <- NA
       pred_cov_mat <- NA
       pred_var <- NA
       posterior_samples <- NA
       prior_samples <- NA
-      idx_start_post_sample <- num_data_pred
+      idx_start_post_sample <- 0
+      if (!sample_prior) {
+        pred_mean <- preds[1:num_data_pred]
+        idx_start_post_sample <- idx_start_post_sample + num_data_pred
+      }
       if (predict_var) {
         pred_var <- preds[1:num_data_pred + num_data_pred]
         idx_start_post_sample <- idx_start_post_sample + num_data_pred

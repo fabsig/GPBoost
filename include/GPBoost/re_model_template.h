@@ -3321,8 +3321,19 @@ namespace GPBoost {
 					Log::REFatal("Covariate data 'X_pred' provided but model has no linear regresion covariates ");
 				}
 			}
+			if (sample_posterior && sample_prior) {
+				Log::REFatal("Cannot sample from prior and posterior simultaneously ");
+			}
+			vec_t y_zero_dummy;
+			if (sample_prior) {
+				if (predict_cov_mat || predict_var) {
+					Log::REFatal("Cannot calculate predictive (co-)variances if sampling from prior ");
+				}
+				y_zero_dummy = vec_t::Zero(num_data_);
+				y_obs = y_zero_dummy.data();
+			}
 			if (y_obs == nullptr) {
-				if (!y_has_been_set_) {
+				if (!y_has_been_set_ && !(sample_prior && !sample_posterior)) {
 					Log::REFatal("Response variable data is not provided and has not been set before");
 				}
 			}
@@ -4119,10 +4130,13 @@ namespace GPBoost {
 					}
 
 					// Write on output
-					int idx_start_post_sample = num_data_pred;
+					int idx_start_post_sample = 0;
+					if (!sample_prior) {
+						idx_start_post_sample += num_data_pred;
 #pragma omp parallel for schedule(static)
-					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-						out_predict[data_indices_per_cluster_pred[cluster_i][i]] = mean_pred_id[0][i];
+						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+							out_predict[data_indices_per_cluster_pred[cluster_i][i]] = mean_pred_id[0][i];
+						}
 					}
 					// Write covariance / variance on output
 					if (predict_cov_mat) {
