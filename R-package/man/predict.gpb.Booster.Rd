@@ -10,10 +10,10 @@
   group_data_pred = NULL, group_rand_coef_data_pred = NULL,
   gp_coords_pred = NULL, gp_rand_coef_data_pred = NULL,
   cluster_ids_pred = NULL, predict_cov_mat = FALSE, predict_var = FALSE,
-  sample_posterior = FALSE, sample_prior = FALSE, 
-  num_post_samples = 100, num_prior_samples = 100, cov_pars = NULL,
-  offset_pred = NULL, ignore_gp_model = FALSE, rawscore = NULL,
-  vecchia_pred_type = NULL, num_neighbors_pred = NULL, ...)
+  sample_posterior = FALSE, sample_prior = FALSE, num_post_samples = 100,
+  num_prior_samples = 100, cov_pars = NULL, offset_pred = NULL,
+  ignore_gp_model = FALSE, rawscore = NULL, vecchia_pred_type = NULL,
+  num_neighbors_pred = NULL, ...)
 }
 \arguments{
 \item{object}{Object of class \code{gpb.Booster}}
@@ -111,7 +111,7 @@ whether there is a \code{gp_model} or not
       \item { result["response_var"] are the predictive  covariances or variances of the response variable
   (only if 'predict_var' or 'predict_cov' is TRUE) }
   \item { result["posterior_samples"] samples of the posterior of the response variable (if 'sample_posterior' is TRUE) }
-  \item { result["prior_samples"] samples of the prior of the response variable (if 'sample_prior' is TRUE) }
+  \item { result["prior_samples"] samples of the prior (if 'sample_prior' is TRUE) }
   }
   }
    \item { 2. If \code{pred_latent} is TRUE, the dict contains the following 3 entries:

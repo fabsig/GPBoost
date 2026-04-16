@@ -6,14 +6,13 @@
 \usage{
 \method{predict}{GPModel}(object, predict_response = TRUE,
   predict_var = FALSE, predict_cov_mat = FALSE, sample_posterior = FALSE,
-  sample_prior = FALSE, num_post_samples = 100, num_prior_samples = 100, 
-  y = NULL, cov_pars = NULL,
-  group_data_pred = NULL, group_rand_coef_data_pred = NULL,
-  gp_coords_pred = NULL, gp_rand_coef_data_pred = NULL,
-  cluster_ids_pred = NULL, X_pred = NULL, use_saved_data = FALSE,
-  offset = NULL, offset_pred = NULL, fixed_effects = NULL,
-  fixed_effects_pred = NULL, vecchia_pred_type = NULL,
-  num_neighbors_pred = NULL, ...)
+  sample_prior = FALSE, num_post_samples = 100, num_prior_samples = 100,
+  y = NULL, cov_pars = NULL, group_data_pred = NULL,
+  group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
+  gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL, X_pred = NULL,
+  use_saved_data = FALSE, offset = NULL, offset_pred = NULL,
+  fixed_effects = NULL, fixed_effects_pred = NULL,
+  vecchia_pred_type = NULL, num_neighbors_pred = NULL, ...)
 }
 \arguments{
 \item{object}{a \code{GPModel}}
