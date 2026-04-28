@@ -334,12 +334,33 @@ plot(b_1_train, GP_smooth[,1], xlab="truth", ylab="predicted",
 # sum(abs(GP_smooth[,1] - GP_smooth2$mu))
 # sum(abs(GP_smooth[,2] - GP_smooth2$var))
 
+# --------------------Posterior sampling----------------
+sample_post <- predict(gp_model, gp_coords_pred = coords_test,
+                       sample_posterior = TRUE, num_post_samples = 100, predict_response = FALSE)
+# Compare predictive means and variances
+mu_samp <- apply(sample_post$posterior_samples,1,mean)
+var_samp <- apply(sample_post$posterior_samples,1,var)
+plot(pred$mu, mu_samp, xlab ="analytic predictive variance", ylab = "sample predictive variance")
+plot(pred$var, var_samp, xlab ="analytic predictive variance", ylab = "sample predictive variance")
+
 #--------------------Gaussian process model with linear mean function----------------
 # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"
 # Note: you need to include a column of 1's manually for an intercept term
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                        y = y_lin, X = X, likelihood = likelihood)
 summary(gp_model)
+
+# Prediction
+X_pred <- cbind(rep(1,ntest),runif(ntest)-0.5)
+pred <- predict(gp_model, gp_coords_pred = coords_test, X_pred = X_pred,
+                predict_var = TRUE, predict_response = FALSE)
+# Posterior sampling
+sample_post <- predict(gp_model, gp_coords_pred = coords_test, X_pred = X_pred,
+                       sample_posterior = TRUE, num_post_samples = 100, predict_response = FALSE)
+mu_samp <- apply(sample_post$posterior_samples,1,mean)
+var_samp <- apply(sample_post$posterior_samples,1,var)
+plot(pred$mu, mu_samp, xlab ="analytic predictive variance", ylab = "sample predictive variance")
+plot(pred$var, var_samp, xlab ="analytic predictive variance", ylab = "sample predictive variance")
 
 #--------------------Gaussian process model anisotropic ARD covariance function----------------
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern_ard", cov_fct_shape = 1.5,

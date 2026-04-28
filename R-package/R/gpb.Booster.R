@@ -862,7 +862,7 @@ Booster <- R6::R6Class(
               posterior_samples <- random_effect_pred$posterior_samples + fixed_effect
             }
             if (sample_prior) {
-              prior_samples <- random_effect_pred$prior_samples #+ fixed_effect
+              prior_samples <- random_effect_pred$prior_samples
             }
             fixed_effect <- NULL
           }

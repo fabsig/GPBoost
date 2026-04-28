@@ -343,6 +343,21 @@ plt.show(block=False)
 # print(np.sum(np.abs(GP_smooth['GP'] - GP_smooth2['mu'])))
 # print(np.sum(np.abs(GP_smooth['GP_var'] - GP_smooth2['var'])))
 
+# --------------------Posterior sampling----------------
+sample_post = gp_model.predict(gp_coords_pred=coords_test,
+                               sample_posterior=True, num_post_samples=100, predict_response=False)
+# Compare predictive means and variances
+mu_samp = np.mean(sample_post["posterior_samples"], axis=1)
+var_samp = np.var(sample_post["posterior_samples"], axis=1)
+plt.scatter(pred["mu"], mu_samp)
+plt.xlabel("analytic predictive mean")
+plt.ylabel("sample predictive mean")
+plt.show()
+plt.scatter(pred["var"], var_samp)
+plt.xlabel("analytic predictive variance")
+plt.ylabel("sample predictive variance")
+plt.show()
+
 #--------------------Gaussian process model with linear mean function----------------
 # Include a liner regression term instead of assuming a zero-mean a.k.a. "universal Kriging"
 # Note: you need to include a column of 1's manually for an intercept term

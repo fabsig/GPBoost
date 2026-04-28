@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
 """
 Examples on how to do use the GPBoost and LaGaBoost algorithms 
-for various likelihoods:
-    - "gaussian" (=regression)
-    - "bernoulli" (=classification)
-    - "poisson" and "gamma" (=Poisson and gamma regression)
-and various random effects models:
-    - grouped (aka clustered) random effects models
-    - Gaussian process (GP) models
+for various likelihoods and different random effects models:
+  - grouped (aka clustered) random effects models
+  - Gaussian process (GP) models
+
+- Currently supported likelihoods: 
+    see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood 
+- Currently supported covariance functions for GPs 
+    including ARD, estimating the smoothness parameter, and space-time models: 
+    see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#cov-function
+- Scalable GP approximations such as Vecchia and VIF approximations:
+    https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#gp-approx
 
 Author: Fabio Sigrist
 """
@@ -518,6 +522,23 @@ axs[1, 1].plot(X_test[:, 0], f1d(X_test[:, 0]), linewidth=2, label="True F")
 axs[1, 1].plot(X_test[:, 0], pred['fixed_effect'], linewidth=2, label="Pred F")
 axs[1, 1].set_title("Predicted and true F")
 axs[1, 1].legend()
+
+# --------------------Posterior sampling----------------
+sample_post = bst.predict(data=X_test, gp_coords_pred=coords_test,
+                          sample_posterior=True, num_post_samples=100, pred_latent=True)
+# Fixed-effects need to be added manually currently. It is planned to do this internally in future versions
+posterior_samples = sample_post["posterior_samples"] + sample_post["fixed_effect"][:, None]
+# Compare predictive means and variances
+mu_samp = np.mean(posterior_samples, axis=1)
+var_samp = np.var(posterior_samples, axis=1)
+plt.scatter(pred["random_effect_mean"] + pred["fixed_effect"], mu_samp)
+plt.xlabel("analytic predictive mean")
+plt.ylabel("sample predictive mean")
+plt.show()
+plt.scatter(pred["random_effect_cov"], var_samp)
+plt.xlabel("analytic predictive variance")
+plt.ylabel("sample predictive variance")
+plt.show()
 
 #--------------------Choosing tuning parameters----------------
 """
