@@ -522,6 +522,7 @@ axs[1, 1].plot(X_test[:, 0], f1d(X_test[:, 0]), linewidth=2, label="True F")
 axs[1, 1].plot(X_test[:, 0], pred['fixed_effect'], linewidth=2, label="Pred F")
 axs[1, 1].set_title("Predicted and true F")
 axs[1, 1].legend()
+plt.show()
 
 # --------------------Posterior sampling----------------
 sample_post = bst.predict(data=X_test, gp_coords_pred=coords_test,

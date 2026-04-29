@@ -3400,8 +3400,7 @@ class Booster:
                 group_data_pred=None, group_rand_coef_data_pred=None,
                 gp_coords_pred=None, gp_rand_coef_data_pred=None,
                 cluster_ids_pred=None, predict_cov_mat=False, predict_var=False,
-                sample_posterior=False, sample_prior=False,
-                num_post_samples=100, num_prior_samples=100,
+                sample_posterior=False, num_post_samples=100, 
                 cov_pars=None, offset_pred=None, ignore_gp_model=False, raw_score=None,
                 vecchia_pred_type=None, num_neighbors_pred=None, **kwargs):
         """Make a prediction.
@@ -3460,13 +3459,9 @@ class Booster:
             If True, (posterior) predictive variances are calculated in addition to the
             (posterior) predictive mean. Used only if the Booster has a gp_model
         sample_posterior : bool (default=False)
-                If True, samples from the posterior are drawn (currently very limited support)
-        sample_prior : bool (default=False)
-                If True, samples from the prior are drawn (currently very limited support)
+                If True, samples from the posterior are drawn 
         num_post_samples : integer (default=100)
             Number of posterior samples to draw if 'sample_posterior=True'
-        num_prior_samples : integer (default=100)
-            Number of prior samples to draw if 'sample_prior=True'
         cov_pars : numpy array or None, optional (default = None)
             A vector containing covariance parameters which are used if the gp_model has not been trained or
             if predictions should be made for other parameters than the estimated ones
@@ -3554,7 +3549,6 @@ class Booster:
             response_mean = None
             response_var = None
             posterior_samples = None
-            prior_samples = None
             has_raw_data = False
             if hasattr(self, 'train_set'):
                 if hasattr(self.train_set, 'data'):
@@ -3586,8 +3580,7 @@ class Booster:
                                                            cluster_ids_pred=cluster_ids_pred,
                                                            predict_cov_mat=predict_cov_mat,
                                                            predict_var=predict_var,
-                                                           sample_posterior=sample_posterior, sample_prior=sample_prior,
-                                                           num_post_samples=num_post_samples, num_prior_samples=num_prior_samples,
+                                                           sample_posterior=sample_posterior, num_post_samples=num_post_samples, 
                                                            cov_pars=cov_pars,
                                                            predict_response=(not pred_latent))
                 fixed_effect = predictor.predict(data=data, start_iteration=start_iteration,
@@ -3610,8 +3603,6 @@ class Booster:
                         pred_var_cov = random_effect_pred['var']
                     if sample_posterior:
                         posterior_samples = random_effect_pred['posterior_samples']
-                    if sample_prior:
-                        prior_samples = random_effect_pred['prior_samples']
                 else:
                     response_mean = random_effect_pred['mu'] + fixed_effect
                     if predict_cov_mat:
@@ -3620,8 +3611,6 @@ class Booster:
                         response_var = random_effect_pred['var']        
                     if sample_posterior:
                         posterior_samples = random_effect_pred['posterior_samples'] + fixed_effect[:, np.newaxis]
-                    if sample_prior:
-                        prior_samples = random_effect_pred['prior_samples'] #+ fixed_effect[:, np.newaxis]
                     fixed_effect = None
             else:  # non-Gaussian likelihood
                 y = None
@@ -3658,8 +3647,7 @@ class Booster:
                                                                cluster_ids_pred=cluster_ids_pred,
                                                                predict_cov_mat=predict_cov_mat,
                                                                predict_var=predict_var,
-                                                               sample_posterior=sample_posterior, sample_prior=sample_prior,
-                                                               num_post_samples=num_post_samples, num_prior_samples=num_prior_samples,
+                                                               sample_posterior=sample_posterior, num_post_samples=num_post_samples, 
                                                                cov_pars=cov_pars,
                                                                predict_response=False,
                                                                offset=fixed_effect_train,
@@ -3674,8 +3662,6 @@ class Booster:
                         pred_var_cov = random_effect_pred['var']
                     if sample_posterior:
                         posterior_samples = random_effect_pred['posterior_samples']
-                    if sample_prior:
-                        prior_samples = random_effect_pred['prior_samples']
                 else:  # predict response variable (not pred_latent)
                     if self.gp_model.num_sets_fe == 2:
                         fixed_effect = np.concatenate((fixed_effect[::2], fixed_effect[1::2])) # fixed effects predictions for mean and variance
@@ -3686,8 +3672,7 @@ class Booster:
                                                       cluster_ids_pred=cluster_ids_pred,
                                                       predict_cov_mat=predict_cov_mat,
                                                       predict_var=predict_var,
-                                                      sample_posterior=sample_posterior, sample_prior=sample_prior, 
-                                                      num_post_samples=num_post_samples, num_prior_samples=num_prior_samples,
+                                                      sample_posterior=sample_posterior, num_post_samples=num_post_samples, 
                                                       cov_pars=cov_pars,
                                                       predict_response=True,
                                                       offset=fixed_effect_train,
@@ -3697,16 +3682,13 @@ class Booster:
                     response_var = pred_resp['var']
                     if sample_posterior:
                         posterior_samples = pred_resp['posterior_samples']
-                    if sample_prior:
-                        prior_samples = pred_resp['prior_samples']
                     fixed_effect = None
             return {"fixed_effect": fixed_effect,
                     "random_effect_mean": random_effect_mean,
                     "random_effect_cov": pred_var_cov,
                     "response_mean": response_mean,
                     "response_var": response_var,
-                    "posterior_samples": posterior_samples,
-                    "prior_samples": prior_samples
+                    "posterior_samples": posterior_samples
                     } # end GPBoost prediction        
         elif self.is_mean_scale_regression:
             preds = predictor.predict(data=data, start_iteration=start_iteration, num_iteration=num_iteration,
@@ -5872,9 +5854,9 @@ class GPModel(object):
                 If True, the (posterior) predictive covariance is calculated in addition to the
                 (posterior) predictive mean
             sample_posterior : bool (default=False)
-                If True, samples from the posterior are drawn (currently very limited support)
+                If True, samples from the posterior are drawn 
             sample_prior : bool (default=False)
-                If True, samples from the prior are drawn (currently very limited support)
+                If True, samples from the prior are drawn 
             num_post_samples : integer (default=100)
                 Number of posterior samples to draw if 'sample_posterior=True'
             num_prior_samples : integer (default=100)

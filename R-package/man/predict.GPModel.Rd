@@ -26,9 +26,9 @@ predictive variances are calculated}
 \item{predict_cov_mat}{A \code{boolean}. If TRUE, the (posterior) 
 predictive covariance is calculated in addition to the (posterior) predictive mean}
 
-\item{sample_posterior}{A \code{boolean}. If TRUE, samples from the posterior are drawn (currently very limited support)}
+\item{sample_posterior}{A \code{boolean}. If TRUE, samples from the posterior are drawn}
 
-\item{sample_prior}{A \code{boolean}. If TRUE, samples from the prior are drawn (currently very limited support)}
+\item{sample_prior}{A \code{boolean}. If TRUE, samples from the prior are drawn}
 
 \item{num_post_samples}{A \code{numeric} with the number of posterior samples to draw if 'sample_posterior=TRUE'}
 

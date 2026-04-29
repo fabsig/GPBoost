@@ -396,8 +396,8 @@
 #' predictive covariance is calculated in addition to the (posterior) predictive mean
 #' @param predict_var A \code{boolean}. If TRUE, the (posterior) 
 #' predictive variances are calculated
-#' @param sample_posterior A \code{boolean}. If TRUE, samples from the posterior are drawn (currently very limited support)
-#' @param sample_prior A \code{boolean}. If TRUE, samples from the prior are drawn (currently very limited support)
+#' @param sample_posterior A \code{boolean}. If TRUE, samples from the posterior are drawn 
+#' @param sample_prior A \code{boolean}. If TRUE, samples from the prior are drawn 
 #' @param num_post_samples A \code{numeric} with the number of posterior samples to draw if 'sample_posterior=TRUE'
 #' @param num_prior_samples A \code{numeric} with the number of prior samples to draw if 'sample_prior=TRUE'
 #' @param std_err A \code{boolean}. If TRUE, (approximate) standard errors are calculated 
