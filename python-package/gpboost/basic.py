@@ -5312,7 +5312,8 @@ class GPModel(object):
         if self.params["trace"]:
             num_it = self._get_num_optim_iter()
             print("Number of iterations until convergence: " + str(num_it))
-        self.model_fitted = True
+        if self._get_num_optim_iter() > 0:
+            self.model_fitted = True
 
         return self
 

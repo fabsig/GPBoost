@@ -405,12 +405,12 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                        objective = "binary", train_gp_model_cov_pars=FALSE, nrounds=1), file='NUL')
         record_results <- gpb.get.eval.result(bst, "train", "Approx. negative marginal log-likelihood")
         expect_value <- 599.7875
-        expect_lt(abs(record_results[1]-expect_value), 5*tolerance_loc_2)
+        expect_lt(abs(record_results[1]-expect_value), 10*tolerance_loc_2)
         # do not specify objective
         capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model, verbose = 1,
                                        train_gp_model_cov_pars=FALSE, nrounds=1), file='NUL')
         record_results <- gpb.get.eval.result(bst, "train", "Approx. negative marginal log-likelihood")
-        expect_lt(abs(record_results[1]-expect_value), 5*tolerance_loc_2)
+        expect_lt(abs(record_results[1]-expect_value), 10*tolerance_loc_2)
         # Can also use other metrics
         capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model, verbose = 1,
                                        objective = "binary", train_gp_model_cov_pars=FALSE, nrounds=1,

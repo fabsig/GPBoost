@@ -5392,7 +5392,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
     filename <- tempfile(fileext = ".json")
-    saveGPModel(gp_model,filename = filename)
+    saveGPModel(gp_model, filename = filename)
     rm(gp_model)
     gp_model_loaded <- loadGPModel(filename = filename)
     expect_lt(sum(abs(gp_model_loaded$get_cov_pars(std_err = FALSE)-1)),TOLERANCE_STRICT)  

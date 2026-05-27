@@ -660,13 +660,13 @@ namespace GPBoost {
 
 	void REModel::GetCurrentNegLogLikelihood(double& negll) {
 		if (matrix_format_ == "sp_mat_t") {
-			negll = re_model_sp_->neg_log_likelihood_;
+			negll = re_model_sp_->GetCurrentNegLogLikelihood();
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
-			negll = re_model_sp_rm_->neg_log_likelihood_;
+			negll = re_model_sp_rm_->GetCurrentNegLogLikelihood();
 		}
 		else {
-			negll = re_model_den_->neg_log_likelihood_;
+			negll = re_model_den_->GetCurrentNegLogLikelihood();
 		}
 	}
 
