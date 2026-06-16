@@ -586,13 +586,10 @@ namespace GPBoost {
 		* \brief Get the current value of the negative log-likelihood
 		*/
 		double GetCurrentNegLogLikelihood() {
-			if (model_has_been_estimated_) {
-				return(neg_log_likelihood_);
-			}
-			else {
+			if (!model_has_been_estimated_) {
 				Log::REFatal("GetCurrentNegLogLikelihood: model has not been estimated ");
-				return(0.);
 			}
+			return(neg_log_likelihood_);
 		}
 
 		/*!
@@ -5885,18 +5882,13 @@ namespace GPBoost {
 			if (iter < momentum_offset) {
 				return(0.);
 			}
-			else {
-				if (momentum_schedule_version == 0) {
-					return(nesterov_acc_rate);
-				}
-				else if (momentum_schedule_version == 1) {
-					return(1. - (3. / (6. + iter)));
-				}
-				else {
-					Log::REFatal("NesterovSchedule: version = %d is not supported ", momentum_schedule_version);
-				}
+			if (momentum_schedule_version == 0) {
+				return(nesterov_acc_rate);
 			}
-			return(0.);
+			else if (momentum_schedule_version == 1) {
+				return(1. - (3. / (6. + iter)));
+			}
+			Log::REFatal("NesterovSchedule: version = %d is not supported ", momentum_schedule_version);
 		}//end NesterovSchedule
 
 		/*! \brief mutex for threading safe call */
