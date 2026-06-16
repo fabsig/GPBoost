@@ -68,6 +68,29 @@
 * For a "asymmetric_laplace" (aka "quantile_regression") likelihood, the following density is used:
 *	f(y) = q * (1-q) * exp((y - location_par) * (I_{y < location_par} - q)
 *		- q = quantile, location_par = random + fixed effects
+* 
+* For a "zoctn" likelihood (censored logit-transformed normal) (Qiang and Sigrist, 2026):
+*   Z ~ N(mu, sigma^2), W = max(min(Z,1),0), Y = g(W), g(x) = expit(a + b * logit(x)),  x in (0,1),  a \in R, b > 0
+*		- mu = location_par, sigma in (0,inf) (= aux_pars_[0]), a in (-inf,inf) (= log(aux_pars_[1])), b in (0,inf) (= aux_pars_[2])
+*		- expit(t) = 1 / (1 + exp(-t)), logit(u) = log(u) - log(1-u)
+*   The resulting distribution of Y is a mixture:
+*     P(Y=0) = P(Z<=0) = Phi(-mu/sigma)
+*     P(Y=1) = P(Z>=1) = 1 - Phi((1-mu)/sigma) = Phi(-(1-mu)/sigma)
+*     For 0<y<1, let x = g^{-1}(y) = expit((logit(y) - a)/b). Then the density is
+*       f_Y(y) = (1/sigma) * phi((x - mu)/sigma) * x(1-x) / (b * y(1-y)), where Phi and phi are standard normal CDF and PDF
+*
+* For a "zero_one_censored_transformed_beta" likelihood (Kosmidis and Zeileis, 2025):
+*    P(Y = 0)   = F_B( t0 ; a, b ),     t0 = u / (1 + 2u)
+*    f_Y(y)     = f_B( t ; a, b ) / (1 + 2u)   for y in (0,1)
+*    P(Y = 1)   = 1 - F_B( t1 ; a, b ), t1 = (1 + u) / (1 + 2u)
+*        where f_B and F_B are the Beta(a, b) density and CDF, respectively
+*    Parameters: aux_pars_[0] = phi > 0  (precision),  aux_pars_[1] = u > 0 (shift), a = mu * phi, b = (1 - mu) * phi, mu = 1 / (1 + exp(-location_par))
+*
+* For a "zero_one_censored_shifted_gamma" likelihood (Sigrist and Stahel, 2011):
+*     p0 = P(Y=0) = P(Z <= xi) = G(k, xi/theta)
+*     f(y | 0<y<1) = g(y+xi; k, theta) with g(z;k,theta) = z^(k-1)*exp(-z/theta)/(Gamma(k)*theta^k), z>0
+*     p1 = P(Y=1) = P(Z >= 1+xi) = 1 - G(k, (1+xi)/theta)
+*   Parameters:  aux_pars_[0] = k > 0 (shape), aux_pars_[1] = xi > 0 (shift), mu = exp(location_par), theta = mu/k
 *
 */
 #ifndef GPB_LIKELIHOODS_
@@ -358,7 +381,7 @@ namespace GPBoost {
 			}//end "zero_censored_power_transformed_normal"
 			else if (likelihood_type_ == "zoctn") {
 				aux_pars_ = { 1., 1., 1. };//sigma, transformed exp(a) (-> a = 0), and b
-				names_aux_pars_ = { "sigma", "asymmetry", "skewness" };
+				names_aux_pars_ = { "sigma", "a", "b" };
 				num_aux_pars_ = 3;
 				num_aux_pars_estim_ = 3;
 				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
@@ -8913,7 +8936,7 @@ namespace GPBoost {
 					return 1.;
 				}
 				else {
-					return aux_pars_[1] + onep2u * p;
+					return onep2u * p - aux_pars_[1];
 				}
 			}//"zero_one_censored_transformed_beta"
 			if (likelihood_type_ == "zero_one_censored_shifted_gamma") {

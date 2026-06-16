@@ -81,6 +81,12 @@ Model specification parameters
 
       -  ``zero_censored_power_transformed_normal`` : Likelihood of a censored and power-transformed normal variable for modeling data with a point mass at 0 and a continuous distribution for y > 0. The model used is Y = max(0,X)^lambda, X ~ N(mu, sigma^2), where mu = F(X) + Zb, and sigma and lambda are (auxiliary) parameters that are estimated. For more details on this model, see Sigrist et al. (2012, AOAS) "A dynamic nonstationary spatio-temporal model for short term prediction of precipitation"
 
+      -  ``zoctn`` : Zero-one censored transformed normal likelihood for modeling data in [0,1] with point masses at 0 and 1 and a continuous distribution on (0,1). The model used is Z ~ N(mu, sigma^2), W = max(min(Z,1),0), and Y = g(W), where g(x) = expit(a + b * logit(x)) for x in (0,1), mu = F(X) + Zb, and sigma, a, and b are (auxiliary) parameters that are estimated. For more details on this model, see Qiang and Sigrist (2026)
+
+      -  ``zero_one_censored_transformed_beta`` : Zero-one censored transformed beta likelihood for modeling data in [0,1] with point masses at 0 and 1 and a continuous distribution on (0,1). If T follows a beta distribution with mean mu = expit(F(X) + Zb) and precision phi, the observed response is obtained by applying the linear transformation Y = (1 + 2u) * T - u and censoring the result to [0,1]. The precision phi and shift u are (auxiliary) parameters that are estimated. For more details on this model, see Kosmidis and Zeileis (2025)
+
+      -  ``zero_one_censored_shifted_gamma`` : Zero-one censored shifted gamma likelihood for modeling data in [0,1] with point masses at 0 and 1 and a continuous distribution on (0,1). The model used is Y = min(max(Z - xi, 0), 1), where Z follows a gamma distribution with mean mu = exp(F(X) + Zb) and shape k. The shape k and shift xi are (auxiliary) parameters that are estimated. For more details on this model, see Sigrist and Stahel (2011)
+
       - ``gaussian_heteroscedastic`` :  Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a ``vecchia`` approximation
 
       - Note: the first lines in the `likelihoods source file <https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h>`__ contain additional comments on the specific parametrizations used
