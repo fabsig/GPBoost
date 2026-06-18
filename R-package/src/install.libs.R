@@ -65,7 +65,8 @@ if (!(R_int_UUID == "0310d4b8-ccb1-4bb8-ba94-d36a55f60262"
 # try to generate Visual Studio build files
 .generate_vs_makefiles <- function(cmake_args) {
   vs_versions <- c(
-    "Visual Studio 17 2022"
+    "Visual Studio 18 2026"
+    , "Visual Studio 17 2022"
     , "Visual Studio 16 2019"
     , "Visual Studio 15 2017"
     , "Visual Studio 14 2015"
@@ -76,6 +77,9 @@ if (!(R_int_UUID == "0310d4b8-ccb1-4bb8-ba94-d36a55f60262"
     # if the build directory is not empty, clean it
     if (file.exists("CMakeCache.txt")) {
       file.remove("CMakeCache.txt")
+    }
+    if (dir.exists("CMakeFiles")) {
+      unlink("CMakeFiles", recursive = TRUE, force = TRUE)
     }
     vs_cmake_args <- c(
       cmake_args
@@ -204,6 +208,12 @@ if (WINDOWS) {
     visual_studio_succeeded <- .generate_vs_makefiles(cmake_args)
     if (!isTRUE(visual_studio_succeeded)) {
       warning(sprintf("Building with Visual Studio failed. Attempting with %s", windows_toolchain))
+      if (file.exists("CMakeCache.txt")) {
+        file.remove("CMakeCache.txt")
+      }
+      if (dir.exists("CMakeFiles")) {
+        unlink("CMakeFiles", recursive = TRUE, force = TRUE)
+      }
       # Must build twice for Windows due sh.exe in Rtools
       cmake_args <- c(cmake_args, "-G", shQuote(windows_makefile_generator))
       .run_shell_command("cmake", c(cmake_args, ".."), strict = FALSE)

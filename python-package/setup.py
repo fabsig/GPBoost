@@ -189,6 +189,7 @@ def compile_cpp(
             if status != 0 or not lib_path.is_file():
                 arch = "Win32" if bit32 else "x64"
                 vs_versions = (
+                    "Visual Studio 18 2026",
                     "Visual Studio 17 2022",
                     "Visual Studio 16 2019",
                     "Visual Studio 15 2017",
