@@ -81,9 +81,19 @@ end_of_table <- empty_lines[empty_lines > start_index][1L]
 
 # Read the contents of the table
 exported_symbols <- objdump_results[(start_index + 1L):end_of_table]
-exported_symbols <- gsub("\t", "", exported_symbols)
-exported_symbols <- gsub(".*\\] ", "", exported_symbols)
-exported_symbols <- gsub(" ", "", exported_symbols)
+exported_symbols <- grep(
+    pattern = "^\\s*\\[\\s*[0-9]+\\]",
+    x = exported_symbols,
+    value = TRUE
+)
+exported_symbols <- sub(
+    pattern = "^.*\\s([^[:space:]]+)$",
+    replacement = "\\1",
+    x = exported_symbols
+)
+if (!all(c("Rprintf", "Rf_error", "Rf_allocVector") %in% exported_symbols)) {
+    stop("Failed to parse expected R symbols from objdump output")
+}
 
 # Write R.def file
 writeLines(

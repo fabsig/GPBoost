@@ -41,13 +41,6 @@ function(create_rlib_for_msvc)
     message(FATAL_ERROR "LIBR_CORE_LIBRARY, '${LIBR_CORE_LIBRARY}', not found")
   endif()
 
-  find_program(DLLTOOL_EXE dlltool)
-
-  if(NOT DLLTOOL_EXE)
-    message(FATAL_ERROR "dlltool.exe not found!\
-      \nDo you have Rtools installed with its MinGW's bin/ in PATH?")
-  endif()
-
   set(LIBR_MSVC_CORE_LIBRARY "${CMAKE_CURRENT_BINARY_DIR}/R.lib" CACHE PATH "R.lib filepath")
 
   get_filename_component(
@@ -61,11 +54,24 @@ function(create_rlib_for_msvc)
     COMMAND ${LIBR_RSCRIPT_EXECUTABLE}
     "${CMAKE_CURRENT_BINARY_DIR}/make-r-def.R"
     "${LIBR_CORE_LIBRARY}" "${CMAKE_CURRENT_BINARY_DIR}/R.def"
+    RESULT_VARIABLE MAKE_R_DEF_RESULT
   )
-  execute_process(COMMAND ${DLLTOOL_EXE}
-    "--input-def" "${CMAKE_CURRENT_BINARY_DIR}/R.def"
-    "--output-lib" "${LIBR_MSVC_CORE_LIBRARY}"
+
+  if(NOT MAKE_R_DEF_RESULT EQUAL 0)
+    message(FATAL_ERROR "Failed to create R.def from '${LIBR_CORE_LIBRARY}'")
+  endif()
+
+  execute_process(
+    COMMAND "${CMAKE_AR}"
+      "/def:${CMAKE_CURRENT_BINARY_DIR}/R.def"
+      "/out:${LIBR_MSVC_CORE_LIBRARY}"
+      "/machine:x64"
+    RESULT_VARIABLE MAKE_R_LIB_RESULT
   )
+
+  if(NOT MAKE_R_LIB_RESULT EQUAL 0)
+    message(FATAL_ERROR "Failed to create MSVC import library '${LIBR_MSVC_CORE_LIBRARY}'")
+  endif()
 endfunction(create_rlib_for_msvc)
 
 # R version information is used to search for R's libraries in

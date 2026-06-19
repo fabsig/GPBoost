@@ -455,6 +455,10 @@ endif(BUILD_STATIC_LIB)
 
 if(MSVC)
   set_target_properties(_gpboost PROPERTIES OUTPUT_NAME "lib_gpboost")
+  target_compile_options(gpboost PRIVATE /wd4193 /wd4244 /wd4459 /wd4702 /wd4723 /wd4996)
+  target_compile_options(_gpboost PRIVATE /wd4193 /wd4244 /wd4459 /wd4702 /wd4723 /wd4996)
+  target_compile_definitions(gpboost PRIVATE _SILENCE_CXX17_ADAPTOR_TYPEDEFS_DEPRECATION_WARNING)
+  target_compile_definitions(_gpboost PRIVATE _SILENCE_CXX17_ADAPTOR_TYPEDEFS_DEPRECATION_WARNING)
 endif(MSVC)
 
 if(USE_SWIG)
