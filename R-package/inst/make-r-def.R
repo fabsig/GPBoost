@@ -46,7 +46,7 @@ message(sprintf("Creating '%s' from '%s'", OUT_DEF_FILE, IN_DLL_FILE))
         # does such quoting but system2() does not
         exit_code <- system2(
             command = command
-            , args = shoQuote(args)
+            , args = shQuote(args)
             , stdout = out_file
         )
         if (exit_code != 0L) {
