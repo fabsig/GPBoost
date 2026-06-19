@@ -74,6 +74,28 @@ if (!(R_int_UUID == "0310d4b8-ccb1-4bb8-ba94-d36a55f60262"
   return(as.character(max(1L, detected_cores - 1L)))
 }
 
+.filter_available_cmake_generators <- function(generators) {
+  cmake_help <- tryCatch(
+    system2("cmake", "--help", stdout = TRUE, stderr = TRUE)
+    , error = function(e) character(0L)
+  )
+  if (length(cmake_help) == 0L) {
+    return(generators)
+  }
+
+  available <- vapply(
+    generators
+    , function(generator) any(grepl(generator, cmake_help, fixed = TRUE))
+    , logical(1L)
+  )
+  skipped_generators <- generators[!available]
+  for (generator in skipped_generators) {
+    message(sprintf("Skipping unavailable CMake generator '%s'", generator))
+  }
+
+  generators[available]
+}
+
 # try to generate Visual Studio build files
 .generate_vs_makefiles <- function(cmake_args) {
   vs_versions <- c(
@@ -83,6 +105,11 @@ if (!(R_int_UUID == "0310d4b8-ccb1-4bb8-ba94-d36a55f60262"
     , "Visual Studio 15 2017"
     , "Visual Studio 14 2015"
   )
+  vs_versions <- .filter_available_cmake_generators(vs_versions)
+  if (length(vs_versions) == 0L) {
+    warning("No Visual Studio CMake generators are available.")
+    return(invisible(FALSE))
+  }
   working_vs_version <- NULL
   for (vs_version in vs_versions) {
     message(sprintf("Trying '%s'", vs_version))
