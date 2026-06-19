@@ -62,6 +62,18 @@ if (!(R_int_UUID == "0310d4b8-ccb1-4bb8-ba94-d36a55f60262"
     return(invisible(exit_code))
 }
 
+.get_parallel_build_jobs <- function() {
+  env_jobs <- Sys.getenv("CMAKE_BUILD_PARALLEL_LEVEL", unset = NA_character_)
+  if (!is.na(env_jobs) && grepl("^[1-9][0-9]*$", env_jobs)) {
+    return(env_jobs)
+  }
+  detected_cores <- parallel::detectCores(logical = TRUE)
+  if (is.na(detected_cores)) {
+    return("1")
+  }
+  return(as.character(max(1L, detected_cores - 1L)))
+}
+
 # try to generate Visual Studio build files
 .generate_vs_makefiles <- function(cmake_args) {
   vs_versions <- c(
@@ -221,7 +233,12 @@ if (WINDOWS) {
       build_args <- "_gpboost"
     } else {
       build_cmd <- "cmake"
-      build_args <- c("--build", ".", "--target", "_gpboost", "--config", "Release")
+      build_args <- c(
+        "--build", "."
+        , "--target", "_gpboost"
+        , "--config", "Release"
+        , "--parallel", .get_parallel_build_jobs()
+      )
       lib_folder <- file.path(source_dir, "Release", fsep = "/")
       makefiles_already_generated <- TRUE
     }
