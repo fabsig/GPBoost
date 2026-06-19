@@ -41,7 +41,9 @@ It is much easier to install the package from CRAN. However, the package can als
 
 * Install [**git**](https://git-scm.com/install/)
 * Install [**CMake**](https://cmake.org/)
-* Install [**Rtools**](https://cran.r-project.org/bin/windows/Rtools/) (**for Windows only**). Choose the option 'add rtools to system PATH'.
+* Install [**Rtools**](https://cran.r-project.org/bin/windows/Rtools/) (**for Windows only**)
+  * Choose the option 'add rtools to system PATH' or manually add it (-> 'Edit the system environment variables' -> 'Environment Variables' -> add, e.g., "C:\rtools45\usr\bin" to 'Path')
+  * You might want to remove the cmake version that comes with Rtools as this might get priority, but it can be older than the required minimal versions
 * Make sure that you have an appropriate **C++ compiler** (see below for more details). E.g. for Windows, simply download the free [Visual Studio Community Edition](https://visualstudio.microsoft.com/downloads/) and do not forget to select 'Desktop development with C++' when installing it
 * **Install the GPBoost package** from the command line using:
 ```sh
