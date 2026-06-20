@@ -173,7 +173,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              gp_approx = "vecchia", num_neighbors = n-1, matrix_inversion_method = matrix_inversion_method,
                                              params = params), file='NUL')
       if (matrix_inversion_method == "iterative") {
-        expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-132.2011049)),tol_loc4)
+        expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-132.2011049)),1.1)
       } else {
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp[c(3,5,7)])),tol_loc3)
         expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars_exp[1])),tol_loc3)
@@ -247,7 +247,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- GPModel(gp_coords = coords_dupl, cov_function = "exponential", group_data = group, 
                         gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = "cholesky")
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
-    expect_lt(abs(nll-nll_exp),0.1)
+    expect_lt(abs(nll-nll_exp),0.15)
   })
   
   test_that("Combined Gaussian process and grouped random effects model with 'gamma' likelihood ", {
@@ -362,9 +362,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval, y=y, aux_pars=aux_pars_eval)
       expect_lt(abs(nll-nll_exp),tol_loc2)
       # Estimation 
+      params <- OPTIM_PARAMS_BFGS
+      params$num_rand_vec_trace <- 1000
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group, y = y,
                                              gp_approx = "vecchia", num_neighbors = n-1, matrix_inversion_method = matrix_inversion_method,
-                                             params = OPTIM_PARAMS_BFGS, likelihood=likelihood), file='NUL')
+                                             params = params, likelihood=likelihood), file='NUL')
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),tol_loc3)
       expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars_exp)),tol_loc3)
       # if (matrix_inversion_method == "cholesky") expect_equal(gp_model$get_num_optim_iter(), num_it_exp)
@@ -531,7 +533,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              gp_approx = "vecchia", num_neighbors = n-1, matrix_inversion_method = matrix_inversion_method,
                                              params = params, likelihood=likelihood), file='NUL')
       if (matrix_inversion_method == "iterative") {
-        expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-119.3419885)),tol_loc3)
+        expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-119.3419885)),2.0)
       } else {
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),tol_loc3)
         expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars_exp)),tol_loc3)

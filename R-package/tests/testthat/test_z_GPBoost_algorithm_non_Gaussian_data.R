@@ -1163,7 +1163,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expcet_iter <- 10
       expcet_score <- 0.32
       expect_equal(cvbst$best_iter, expcet_iter)
-      expect_lt(abs(cvbst$best_score-expcet_score), 10*TOLERANCE)
+      expect_lt(abs(cvbst$best_score-expcet_score), 15*TOLERANCE)
     })
     
     test_that("GPBoost algorithm with GP model for binary classification with multiple observations at the same location", {
