@@ -7766,7 +7766,7 @@ namespace GPBoost {
 			if (matrix_inversion_method_ == "cholesky") {
 				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_I_sim_post_, rand_vec_sim_post_, false);
 				den_mat_t rand_vec_aux(num_ip, num_rand_vec_sim_post_);
-				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_2, rand_vec_I_2_sim_post_, rand_vec_aux, false);
+				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_2, rand_vec_I_2_sim_post_, rand_vec_aux, true);
 				den_mat_t rand_vec_aux_2 = Bt_D_inv_B_cross_cov * rand_vec_aux;
 				den_mat_t rand_vec_aux_3 = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rand_vec_aux_2);
 				rand_vec_sim_post_ += rand_vec_aux_3;
@@ -7857,7 +7857,7 @@ namespace GPBoost {
 			CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
 			CHECK(rand_vec_sim_post_.rows() == dim_mode_);
 			den_mat_t rand_vec_aux(num_ip, num_rand_vec_sim_post_);
-			TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_dense_Newton_, rand_vec_I_2_sim_post_, rand_vec_aux, false);// ~ sigma_ip + Sigma_nm^T * D_plus_WI_inv_diag * Sigma_nm
+			TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_dense_Newton_, rand_vec_I_2_sim_post_, rand_vec_aux, true);// ~ sigma_ip + Sigma_nm^T * D_plus_WI_inv_diag * Sigma_nm
 			rand_vec_sim_post_ = D_div_DW_plus_I_sqrt.asDiagonal() * rand_vec_I_sim_post_ + DW_plus_I_inv_diag.asDiagonal() * ((*cross_cov) * rand_vec_aux);
 			SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
 			rand_vec_sim_post_calculated_ = true;
