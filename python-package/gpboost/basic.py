@@ -3488,7 +3488,7 @@ class Booster:
         result : either a dict with numpy arrays or a single numpy array depending on whether there is a gp_model or not
             If there is a gp_model, the result dict contains the following entries.
 
-            1. If 'pred_latent' is False (=default), the dict contains the following 2 entries:
+            1. If 'pred_latent' is False (=default), the dict contains the following entries:
 
                 result['response_mean'] : numpy array
                     Predictive means of the response variable (Label) taking into account both the fixed effects
@@ -3496,7 +3496,7 @@ class Booster:
                 result['response_var'] : numpy array
                     Predictive covariances or variances of the response variable (only if 'predict_var' or 'predict_cov' is True)
             
-            2. If 'pred_latent' is True, the dict contains the following 3 entries:
+            2. If 'pred_latent' is True, the dict contains the following entries:
 
                 result['fixed_effect'] : numpy array
                     Predictions from the tree-ensemble.
@@ -3504,6 +3504,9 @@ class Booster:
                     Predictive means of the gp_model.
                 result['random_effect_cov'] : numpy array
                     Predictive covariances or variances of the gp_model (only if 'predict_var' or 'predict_cov' is True)
+                result['posterior_samples'] : numpy array
+                    Samples from the posterior of the latent variable including both fixed effects and random effects
+                    (only if 'sample_posterior' is True)
 
             If there is no gp_model or 'pred_contrib' or 'ignore_gp_model' are True, the result contains
             predictions from the tree-booster only.
@@ -3602,7 +3605,7 @@ class Booster:
                     elif predict_var:
                         pred_var_cov = random_effect_pred['var']
                     if sample_posterior:
-                        posterior_samples = random_effect_pred['posterior_samples']
+                        posterior_samples = random_effect_pred['posterior_samples'] + fixed_effect[:, np.newaxis]
                 else:
                     response_mean = random_effect_pred['mu'] + fixed_effect
                     if predict_cov_mat:
@@ -3661,7 +3664,7 @@ class Booster:
                     elif predict_var:
                         pred_var_cov = random_effect_pred['var']
                     if sample_posterior:
-                        posterior_samples = random_effect_pred['posterior_samples']
+                        posterior_samples = random_effect_pred['posterior_samples'] + fixed_effect[:, np.newaxis]
                 else:  # predict response variable (not pred_latent)
                     if self.gp_model.num_sets_fe == 2:
                         fixed_effect = np.concatenate((fixed_effect[::2], fixed_effect[1::2])) # fixed effects predictions for mean and variance

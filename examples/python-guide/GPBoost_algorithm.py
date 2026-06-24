@@ -406,7 +406,7 @@ Combine tree-boosting and Gaussian process model
 """
 # --------------------Simulate data----------------
 ntrain = 600  # number of samples
-np.random.seed(4)
+np.random.seed(10)
 # training and test locations (=features) for Gaussian process
 coords_train = np.column_stack((np.random.uniform(size=ntrain), np.random.uniform(size=ntrain)))
 # exclude upper right corner
@@ -456,7 +456,7 @@ if likelihood in ("bernoulli_probit", "bernoulli_logit"):
 #--------------------Training----------------
 # Define Gaussian process model
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
-                       likelihood=likelihood)
+                       likelihood=likelihood, gp_approx="vecchia")
 # GPs become slow for large data sets -> use an approximation such as a Vecchia approximation:
 # gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
 #                        likelihood=likelihood, gp_approx="vecchia")
@@ -479,6 +479,8 @@ pred = bst.predict(data=X_test, gp_coords_pred=coords_test,
 # pred['fixed_effect']: predictions for the latent fixed effects / tree ensemble
 # pred['random_effect_mean']: mean predictions for the random effects
 # pred['random_effect_cov']: predictive (co-)variances (if predict_var=True) of the (latent) Gaussian process
+if likelihood == "gaussian":
+    print(np.sum(np.abs(pred_resp['response_mean'] - pred['random_effect_mean'] - pred['fixed_effect'])))
 # 3. Can also calculate predictive covariances
 pred_cov = bst.predict(data=X_test[0:3,], gp_coords_pred=coords_test[0:3,],
                        predict_cov_mat=True, pred_latent=True)
@@ -505,45 +507,49 @@ print(np.sqrt(np.mean((pred['random_effect_mean'] - b_test) ** 2)))
 fig, axs = plt.subplots(2, 2, figsize=[10,8])
 # data and true GP
 b_test_plot = b_test.reshape((nx, nx))
-CS = axs[0, 0].contourf(coords_test_x1, coords_test_x2, b_test_plot)
+true_gp_contour = axs[0, 0].contourf(coords_test_x1, coords_test_x2, b_test_plot)
+fig.colorbar(true_gp_contour, ax=axs[0, 0])
 axs[0, 0].plot(coords_train[:, 0], coords_train[:, 1], '+', color="white", 
    markersize = 4)
 axs[0, 0].set_title("True latent GP and training locations")
 # predicted latent GP mean
 pred_mu_plot = pred['random_effect_mean'].reshape((nx, nx))
-CS = axs[0, 1].contourf(coords_test_x1, coords_test_x2, pred_mu_plot)
+pred_mean_contour = axs[0, 1].contourf(coords_test_x1, coords_test_x2, pred_mu_plot)
+fig.colorbar(pred_mean_contour, ax=axs[0, 1])
 axs[0, 1].set_title("Predicted latent GP mean")
 # prediction uncertainty
 pred_var_plot = pred['random_effect_cov'].reshape((nx, nx))
-CS = axs[1, 0].contourf(coords_test_x1, coords_test_x2, pred_var_plot)
+pred_var_contour = axs[1, 0].contourf(coords_test_x1, coords_test_x2, pred_var_plot)
+fig.colorbar(pred_var_contour, ax=axs[1, 0])
 axs[1, 0].set_title("Predicted latent GP standard deviation")
 # latent predictor function F
 axs[1, 1].plot(X_test[:, 0], f1d(X_test[:, 0]), linewidth=2, label="True F")
 axs[1, 1].plot(X_test[:, 0], pred['fixed_effect'], linewidth=2, label="Pred F")
 axs[1, 1].set_title("Predicted and true F")
 axs[1, 1].legend()
+plt.tight_layout()
 plt.show()
 
 # --------------------Posterior sampling----------------
 sample_post = bst.predict(data=X_test, gp_coords_pred=coords_test,
                           sample_posterior=True, num_post_samples=100, pred_latent=True)
-# Fixed-effects need to be added manually currently. It is planned to do this internally in future versions
-posterior_samples = sample_post["posterior_samples"] + sample_post["fixed_effect"][:, None]
+posterior_samples = sample_post["posterior_samples"]
 # Compare predictive means and variances
 mu_samp = np.mean(posterior_samples, axis=1)
 var_samp = np.var(posterior_samples, axis=1)
-plt.scatter(pred["random_effect_mean"] + pred["fixed_effect"], mu_samp)
-plt.xlabel("analytic predictive mean")
-plt.ylabel("sample predictive mean")
-plt.show()
-plt.scatter(pred["random_effect_cov"], var_samp)
-plt.xlabel("analytic predictive variance")
-plt.ylabel("sample predictive variance")
+fig, axs = plt.subplots(1, 2, figsize=[10, 4])
+axs[0].scatter(pred["random_effect_mean"] + pred["fixed_effect"], mu_samp)
+axs[0].set_xlabel("analytic predictive mean")
+axs[0].set_ylabel("sample predictive mean")
+axs[1].scatter(pred["random_effect_cov"], var_samp)
+axs[1].set_xlabel("analytic predictive variance")
+axs[1].set_ylabel("sample predictive variance")
+plt.tight_layout()
 plt.show()
 
 #--------------------Choosing tuning parameters----------------
 """
-Choosing tuning parameters carefully is important.
+Carefully choosing tuning parameters is important.
 See the above demo code for grouped random effects on how this can be done.
 You just have to replace the gp_model. E.g.,    
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5, likelihood=likelihood)

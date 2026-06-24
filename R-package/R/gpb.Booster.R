@@ -840,7 +840,7 @@ Booster <- R6::R6Class(
               pred_var_cov <- random_effect_pred$var
             }
             if (sample_posterior) {
-              posterior_samples <- random_effect_pred$posterior_samples
+              posterior_samples <- sweep(random_effect_pred$posterior_samples, 1L, fixed_effect, "+")
             }
           } 
           else {
@@ -939,7 +939,7 @@ Booster <- R6::R6Class(
               pred_var_cov <- random_effect_pred$var
             }
             if (sample_posterior) {
-              posterior_samples <- random_effect_pred$posterior_samples
+              posterior_samples <- sweep(random_effect_pred$posterior_samples, 1L, fixed_effect, "+")
             }
             
           }# end pred_latent
@@ -968,7 +968,7 @@ Booster <- R6::R6Class(
             response_var <-  pred_resp$var
             fixed_effect <- NA
             if (sample_posterior) {
-              posterior_samples <- random_effect_pred$posterior_samples
+              posterior_samples <- pred_resp$posterior_samples
             }
             
           }# end not pred_latent
@@ -1291,7 +1291,7 @@ Booster <- R6::R6Class(
 #' \itemize{
 #'   \item {If there is a \code{gp_model}, the result dict contains the following entries.
 #' \itemize{
-#'   \item { 1. If \code{pred_latent} is FALSE (=default), the dict contains the following 2 entries:
+#'   \item { 1. If \code{pred_latent} is FALSE (=default), the dict contains the following entries:
 #' \itemize{
 #'      \item { result["response_mean"] are the predictive means of the response variable (Label) taking into account
 #'     both the fixed effects (tree-ensemble) and the random effects (\code{gp_model}) }
@@ -1300,13 +1300,13 @@ Booster <- R6::R6Class(
 #'   \item { result["posterior_samples"] samples of the posterior of the response variable (if 'sample_posterior' is TRUE) }
 #'   }
 #'   }
-#'    \item { 2. If \code{pred_latent} is TRUE, the dict contains the following 3 entries:
+#'    \item { 2. If \code{pred_latent} is TRUE, the dict contains the following entries:
 #' \itemize{
 #'       \item { result["fixed_effect"] are the predictions from the tree-ensemble }
 #'       \item { result["random_effect_mean"] are the predictive means of the \code{gp_model} excluding the 'fixed_effect' }
 #'       \item { result["random_effect_cov"] are the predictive covariances or variances of the \code{gp_model}
 #'   (only if 'predict_var' or 'predict_cov' is TRUE) }
-#'      \item { result["posterior_samples"] samples of the posterior of the \code{gp_model} (if 'sample_posterior' is TRUE) excluding the 'fixed_effect' }
+#'      \item { result["posterior_samples"] samples of the posterior latent variable including both the fixed effects and the \code{gp_model} (if 'sample_posterior' is TRUE) }
 #'   }
 #'   }
 #'   }

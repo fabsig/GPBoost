@@ -448,7 +448,7 @@ if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
 #--------------------Training----------------
 # Define Gaussian process model
 gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
-                    likelihood = likelihood)
+                    likelihood = likelihood, gp_approx = "vecchia")
 # GPs become slow for large data sets -> use an approximation such as a Vecchia approximation:
 # gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
 #                     likelihood = likelihood, gp_approx = "vecchia")
@@ -472,6 +472,9 @@ pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
 # pred[["fixed_effect"]]: predictions for the latent fixed effects / tree ensemble
 # pred[["random_effect_mean"]]: mean predictions for the random effects
 # pred[["random_effect_cov"]]: predictive (co-)variances (if predict_var=True) of the (latent) Gaussian process
+if (likelihood == "gaussian") {
+  sum(abs(pred_resp$response_mean - pred$random_effect_mean - pred$fixed_effect))
+}
 # 3. Can also calculate predictive covariances
 pred_cov = predict(bst, data=X_test[1:3,], gp_coords_pred=coords_test[1:3,],
                    predict_cov_mat=TRUE, pred_latent=TRUE)
@@ -512,18 +515,19 @@ grid.arrange(plot1, plot2, plot3, plot4, ncol=2)
 # --------------------Posterior sampling----------------
 sample_post <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                        sample_posterior = TRUE, num_post_samples = 100, pred_latent = TRUE)
-# Fixed-effects need to be added manually currently. It is planned to do this internally in future versions
-posterior_samples <- sample_post$posterior_samples + sample_post$fixed_effect
+posterior_samples <- sample_post$posterior_samples
 # Compare predictive means and variances
 mu_samp <- apply(posterior_samples,1,mean)
 var_samp <- apply(posterior_samples,1,var)
+par(mfrow=c(1,2))
 plot(pred$random_effect_mean + pred$fixed_effect, mu_samp, 
      xlab ="analytic predictive mean", ylab = "sample predictive mean")
 plot(pred$random_effect_cov, var_samp, 
      xlab ="analytic predictive variance", ylab = "sample predictive variance")
+par(mfrow=c(1,1))
 
 #--------------------Choosing tuning parameters----------------
-# Choosing tuning parameters carefully is important.
+# Carefully choosing tuning parameters is important.
 # See the above demo code for grouped random effects on how this can be done.
 # You just have to replace the gp_model. E.g.,    
 # gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5, likelihood = likelihood)

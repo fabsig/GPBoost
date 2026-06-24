@@ -896,7 +896,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       pred <- predict(bst, data =  tail(X_test,n=3), gp_coords_pred = tail(coords_test,n=3), 
                       sample_posterior = TRUE, num_post_samples = 10000, pred_latent = TRUE)
       tol_mu <- 0.02
-      expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-tail(pred_re,n=3))), tol_mu)
+      expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-tail(pred_re+pred_fe,n=3))), tol_mu)
       expect_lt(sum(abs(cov(t(pred$posterior_samples))-cov_exp)), tol_mu)
       pred <- predict(bst, data =  tail(X_test,n=3), gp_coords_pred = tail(coords_test,n=3), 
                       sample_posterior = TRUE, num_post_samples = 10000, pred_latent = FALSE)

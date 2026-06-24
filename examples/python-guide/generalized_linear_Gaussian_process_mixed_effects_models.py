@@ -36,11 +36,11 @@ def simulate_response_variable(lp, rand_eff, likelihood):
     if likelihood == "gaussian":
         xi = 0.1**0.5 * np.random.normal(size=n) # error term, variance = 0.1
         y = lp + rand_eff + xi
-    elif likelihood == "binary_probit":
+    elif likelihood == "bernoulli_probit":
         probs = stats.norm.cdf(lp + rand_eff)
         y = np.random.uniform(size=n) < probs
         y = y.astype(np.float64)
-    elif likelihood == "binary_logit":
+    elif likelihood == "bernoulli_logit":
         probs = 1 / (1 + np.exp(-(lp + rand_eff)))
         y = np.random.uniform(size=n) < probs
         y = y.astype(np.float64)
@@ -58,7 +58,7 @@ def simulate_response_variable(lp, rand_eff, likelihood):
     return y
 
 # Choose likelihood: either "gaussian" (=regression), 
-#                     "binary_probit", "binary_logit", (=classification)
+#                     "bernoulli_probit", "bernoulli_logit", (=classification)
 #                     "poisson", "gamma", or "negative_binomial"
 likelihood = "gaussian"
 
@@ -303,11 +303,11 @@ pred = gp_model.predict(gp_coords_pred=coords_test,
 # Predict response variable (label)
 pred_resp = gp_model.predict(gp_coords_pred=coords_test,
                              predict_var=True, predict_response=True)
-if likelihood in ("binary_probit", "binary_logit"):
+if likelihood in ("bernoulli_probit", "bernoulli_logit"):
     print("Test error:")
-    pred_binary = pred_resp['mu'] > 0.5
-    pred_binary = pred_binary.astype(np.float64)
-    print(np.mean(pred_binary != y_test))
+    pred_bernoulli = pred_resp['mu'] > 0.5
+    pred_bernoulli = pred_bernoulli.astype(np.float64)
+    print(np.mean(pred_bernoulli != y_test))
 else:
     print("Test root mean square error:")
     print(np.sqrt(np.mean((pred_resp['mu'] - y_test) ** 2)))
@@ -316,18 +316,22 @@ else:
 fig, axs = plt.subplots(2, 2, figsize=[10,8])
 # data and true GP
 b_test_plot = b_test.reshape((nx, nx))
-CS = axs[0, 1].contourf(coords_test_x1, coords_test_x2, b_test_plot)
+true_gp_contour = axs[0, 1].contourf(coords_test_x1, coords_test_x2, b_test_plot)
+fig.colorbar(true_gp_contour, ax=axs[0, 1])
 axs[0, 1].plot(coords_train[:, 0], coords_train[:, 1], '+', color="white", 
    markersize = 4)
 axs[0, 1].set_title("True GP and training locations")
 # predicted latent mean
 pred_mu_plot = pred['mu'].reshape((nx, nx))
-CS = axs[0, 0].contourf(coords_test_x1, coords_test_x2, pred_mu_plot)
+pred_mean_contour = axs[0, 0].contourf(coords_test_x1, coords_test_x2, pred_mu_plot)
+fig.colorbar(pred_mean_contour, ax=axs[0, 0])
 axs[0, 0].set_title("Predictive mean")
 # prediction uncertainty
 pred_var_plot = pred['var'].reshape((nx, nx))
-CS = axs[1, 0].contourf(coords_test_x1, coords_test_x2, pred_var_plot)
+pred_var_contour = axs[1, 0].contourf(coords_test_x1, coords_test_x2, pred_var_plot)
+fig.colorbar(pred_var_contour, ax=axs[1, 0])
 axs[1, 0].set_title("Predictive standard deviations")
+plt.tight_layout()
 plt.show(block=False)
 
 # Predict latent GP at training data locations (=smoothing)
@@ -349,13 +353,14 @@ sample_post = gp_model.predict(gp_coords_pred=coords_test,
 # Compare predictive means and variances
 mu_samp = np.mean(sample_post["posterior_samples"], axis=1)
 var_samp = np.var(sample_post["posterior_samples"], axis=1)
-plt.scatter(pred["mu"], mu_samp)
-plt.xlabel("analytic predictive mean")
-plt.ylabel("sample predictive mean")
-plt.show()
-plt.scatter(pred["var"], var_samp)
-plt.xlabel("analytic predictive variance")
-plt.ylabel("sample predictive variance")
+fig, axs = plt.subplots(1, 2, figsize=[10, 4])
+axs[0].scatter(pred["mu"], mu_samp)
+axs[0].set_xlabel("analytic predictive mean")
+axs[0].set_ylabel("sample predictive mean")
+axs[1].scatter(pred["var"], var_samp)
+axs[1].set_xlabel("analytic predictive variance")
+axs[1].set_ylabel("sample predictive variance")
+plt.tight_layout()
 plt.show()
 
 #--------------------Gaussian process model with linear mean function----------------

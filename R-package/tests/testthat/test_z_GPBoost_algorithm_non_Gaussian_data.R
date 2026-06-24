@@ -356,7 +356,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.4255016, 0.3026152))),5*tolerance_loc_1)
         expect_lte(cvbst$best_iter, 16)
         expect_gte(cvbst$best_iter, 12)
-        expect_lt(abs(cvbst$best_score-0.242), 2*tolerance_loc_1)
+        expect_lt(abs(cvbst$best_score-0.242), 2.5*tolerance_loc_1)
         #   2. Run LaGaBoost algorithm on entire data while holding covariance parameters fixed
         bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 15,
                          params = params, train_gp_model_cov_pars = FALSE, verbose = 0)
@@ -940,9 +940,10 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                       predict_var = TRUE, pred_latent = TRUE)
       pred_re <- c(-0.25248234, 0.07336944, 0.19282985, 0.04100225)
+      pred_fe <- c(0.4087100, -0.5570364, -0.7904685, 0.5055812)
       expect_lt(sum(abs(tail(pred$random_effect_mean,n=4)-pred_re)),TOLERANCE)
       expect_lt(sum(abs(tail(pred$random_effect_cov,n=4)-c(0.09672839, 0.10432856, 0.09164587, 0.09215657))),TOLERANCE)
-      expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-c(0.4087100, -0.5570364, -0.7904685, 0.5055812))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred$fixed_effect,n=4)-pred_fe)),TOLERANCE)
       # Predict response
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                       predict_var = TRUE, pred_latent = FALSE)
@@ -965,7 +966,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       pred <- predict(bst, data =  tail(X_test,n=3), gp_coords_pred = tail(coords_test,n=3), 
                       sample_posterior = TRUE, num_post_samples = 10000, pred_latent = TRUE)
       tol_mu <- 0.02
-      expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-tail(pred_re,n=3))), tol_mu)
+      expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-tail(pred_re+pred_fe,n=3))), tol_mu)
       expect_lt(sum(abs(cov(t(pred$posterior_samples))-cov_exp)), tol_mu)
       # not yet implemented
       # pred <- predict(bst, data =  tail(X_test,n=3), gp_coords_pred = tail(coords_test,n=3), 

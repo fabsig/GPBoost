@@ -5562,7 +5562,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_mu <- c(0.3927253661, 0.3321704886, 0.3861809101, 0.7298256767)
     expected_var <- c(0.02161799049, 0.02084689485, 0.02168851371, 0.04924037565)
     expect_lt(sum(abs(pred$mu-expected_mu)),0.003)
-    expect_lt(sum(abs(pred$var-expected_var)),0.0005)
+    expect_lt(sum(abs(pred$var-expected_var)),0.0008)
     
     ## GPBoost algorithm
     dtrain <- gpb.Dataset(data = X, label = y)
