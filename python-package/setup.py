@@ -9,10 +9,14 @@ from shutil import copyfile, copytree, rmtree
 from typing import List, Optional, Union
 
 from setuptools import find_packages, setup
-from setuptools.command.install import install
+from setuptools.command.build_py import build_py
+from setuptools.command.egg_info import egg_info
 from setuptools.command.install_lib import install_lib
 from setuptools.command.sdist import sdist
-from wheel.bdist_wheel import bdist_wheel
+try:
+    from setuptools.command.bdist_wheel import bdist_wheel
+except ImportError:  # pragma: no cover - compatibility with older setuptools
+    from wheel.bdist_wheel import bdist_wheel
 
 from setuptools import Distribution
 
@@ -226,12 +230,20 @@ class CustomInstallLib(install_lib):
         return outfiles
 
 
-class CustomInstall(install):
+class CustomEggInfo(egg_info):
 
-    user_options = install.user_options + GPBOOST_OPTIONS
+    def run(self) -> None:
+        if not IS_SOURCE_FLAG_PATH.is_file():
+            copy_files(integrated_opencl=True, use_gpu=True)
+        egg_info.run(self)
+
+
+class CustomBuildPy(build_py):
+
+    user_options = build_py.user_options + GPBOOST_OPTIONS
 
     def initialize_options(self) -> None:
-        install.initialize_options(self)
+        build_py.initialize_options(self)
         self.mingw = False
         self.integrated_opencl = False
         self.gpu = False
@@ -265,7 +277,7 @@ class CustomInstall(install):
                         boost_include_dir=self.boost_include_dir, boost_librarydir=self.boost_librarydir,
                         opencl_include_dir=self.opencl_include_dir, opencl_library=self.opencl_library,
                         nomp=self.nomp, bit32=self.bit32, integrated_opencl=self.integrated_opencl)
-        install.run(self)
+        build_py.run(self)
         if LOG_PATH.is_file():
             LOG_PATH.unlink()
 
@@ -296,24 +308,24 @@ class CustomBdistWheel(bdist_wheel):
     def finalize_options(self) -> None:
         bdist_wheel.finalize_options(self)
 
-        install = self.reinitialize_command('install')
+        build_py = self.reinitialize_command('build_py')
 
-        install.mingw = self.mingw
-        install.integrated_opencl = self.integrated_opencl
-        install.gpu = self.gpu
-        install.cuda = self.cuda
-        install.cudagp = self.cudagp
-        install.boost_root = self.boost_root
-        install.boost_dir = self.boost_dir
-        install.boost_include_dir = self.boost_include_dir
-        install.boost_librarydir = self.boost_librarydir
-        install.opencl_include_dir = self.opencl_include_dir
-        install.opencl_library = self.opencl_library
-        install.mpi = self.mpi
-        install.hdfs = self.hdfs
-        install.precompile = self.precompile
-        install.nomp = self.nomp
-        install.bit32 = self.bit32
+        build_py.mingw = self.mingw
+        build_py.integrated_opencl = self.integrated_opencl
+        build_py.gpu = self.gpu
+        build_py.cuda = self.cuda
+        build_py.cudagp = self.cudagp
+        build_py.boost_root = self.boost_root
+        build_py.boost_dir = self.boost_dir
+        build_py.boost_include_dir = self.boost_include_dir
+        build_py.boost_librarydir = self.boost_librarydir
+        build_py.opencl_include_dir = self.opencl_include_dir
+        build_py.opencl_library = self.opencl_library
+        build_py.mpi = self.mpi
+        build_py.hdfs = self.hdfs
+        build_py.precompile = self.precompile
+        build_py.nomp = self.nomp
+        build_py.bit32 = self.bit32
 
         self.root_is_pure = False
         self.python_tag = 'py3'
@@ -384,7 +396,8 @@ if __name__ == "__main__":
           zip_safe=False,
           distclass=BinaryDistribution,
           cmdclass={
-              'install': CustomInstall,
+              'build_py': CustomBuildPy,
+              'egg_info': CustomEggInfo,
               'install_lib': CustomInstallLib,
               'bdist_wheel': CustomBdistWheel,
               'sdist': CustomSdist,
@@ -392,11 +405,10 @@ if __name__ == "__main__":
           packages=find_packages(),
           include_package_data=True,
           package_data={'gpboost': ['*.so', '*.dll', '*.dylib']},
-          license='Apache License, Version 2.0, + see LICENSE file',
+          license='Apache-2.0',
           url='https://github.com/fabsig/GPBoost',
           classifiers=['Development Status :: 5 - Production/Stable',
                        'Intended Audience :: Science/Research',
-                       'License :: OSI Approved :: Apache Software License',
                        'Natural Language :: English',
                        'Operating System :: MacOS',
                        'Operating System :: Microsoft :: Windows',

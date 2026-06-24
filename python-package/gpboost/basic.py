@@ -5679,8 +5679,8 @@ class GPModel(object):
             optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
             ctypes.c_bool(std_err)))
         if std_err:
-            cov_pars = np.row_stack((optim_pars[0:self.num_cov_pars],
-                                        optim_pars[self.num_cov_pars:(2 * self.num_cov_pars)]))
+            cov_pars = np.vstack((optim_pars[0:self.num_cov_pars],
+                                  optim_pars[self.num_cov_pars:(2 * self.num_cov_pars)]))
         else:
             cov_pars = optim_pars[0:self.num_cov_pars] 
         if format_pandas:
@@ -5722,8 +5722,8 @@ class GPModel(object):
             optim_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
             ctypes.c_bool(std_err)))
         if std_err:
-            coef = np.row_stack((optim_pars[0:self.num_coef],
-                                    optim_pars[self.num_coef:(2 * self.num_coef)]))
+            coef = np.vstack((optim_pars[0:self.num_coef],
+                              optim_pars[self.num_coef:(2 * self.num_coef)]))
         else:
             coef = optim_pars[0:self.num_coef]
         if format_pandas:
