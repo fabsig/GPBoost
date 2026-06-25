@@ -270,7 +270,7 @@ struct sparse_solve_triangular_sparse_selector<Lhs,Rhs,Mode,UpLo,ColMajor>
       }
 
 
-      Index count = 0;
+      [[maybe_unused]] Index count = 0;
       // FIXME compute a reference value to filter zeros
       for (typename AmbiVector<Scalar,StorageIndex>::Iterator it(tempVector/*,1e-12*/); it; ++it)
       {

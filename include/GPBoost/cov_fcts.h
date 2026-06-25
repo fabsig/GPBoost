@@ -2150,10 +2150,10 @@ namespace GPBoost {
 			return(cm * std::pow(dist_ij, shape_) * sigma.coeff(i, j));
 		}
 
-		inline double GradientRangeMaternGeneralShape(double cm,
-			const double dist_ij,
-			double cm_dist,
-			double shape) const {
+		inline double GradientRangeMaternGeneralShape([[maybe_unused]] double cm,
+			[[maybe_unused]] const double dist_ij,
+			[[maybe_unused]] double cm_dist,
+			[[maybe_unused]] double shape) const {
 #if HAS_STD_CYL_BESSEL_K
 			double range_dist = cm_dist * dist_ij;
 			return(cm * std::pow(range_dist, shape) * (2. * shape * std::cyl_bessel_k(shape, range_dist) - range_dist * std::cyl_bessel_k(shape + 1., range_dist)));
@@ -2162,15 +2162,15 @@ namespace GPBoost {
 #endif
 		}//end GradientRangeMaternGeneralShape
 
-		inline double GradientSmoothnessMaternEstimateShapeFiniteDifference(double cm,
-			double cm_num_deriv,
-			double dist_ij,
-			double par_aux,
-			double par_aux_up,
-			double par_aux_down,
-			double pars_2_up,
-			double pars_2_down,
-			double shape) const {
+		inline double GradientSmoothnessMaternEstimateShapeFiniteDifference([[maybe_unused]] double cm,
+			[[maybe_unused]] double cm_num_deriv,
+			[[maybe_unused]] double dist_ij,
+			[[maybe_unused]] double par_aux,
+			[[maybe_unused]] double par_aux_up,
+			[[maybe_unused]] double par_aux_down,
+			[[maybe_unused]] double pars_2_up,
+			[[maybe_unused]] double pars_2_down,
+			[[maybe_unused]] double shape) const {
 #if HAS_STD_CYL_BESSEL_K
 			double z = dist_ij * par_aux;
 			double z_up = dist_ij * par_aux_up;
@@ -2310,13 +2310,13 @@ namespace GPBoost {
 			}
 		}//end GradientRangeMaternSpaceTimeShape2_5
 
-		inline double GradientRangeMaternSpaceTimeGeneralShape(double cm,
-			const double dist_ij,
-			const int ind_range,
-			const int i,
-			const int j,
-			const den_mat_t* coords_ptr,
-			const den_mat_t* coords_pred_ptr) const {
+		inline double GradientRangeMaternSpaceTimeGeneralShape([[maybe_unused]] double cm,
+			[[maybe_unused]] const double dist_ij,
+			[[maybe_unused]] const int ind_range,
+			[[maybe_unused]] const int i,
+			[[maybe_unused]] const int j,
+			[[maybe_unused]] const den_mat_t* coords_ptr,
+			[[maybe_unused]] const den_mat_t* coords_pred_ptr) const {
 #if HAS_STD_CYL_BESSEL_K
 			int dim_space = (int)(*coords_ptr).cols() - 1;
 			if (ind_range == 0) {
@@ -2375,15 +2375,15 @@ namespace GPBoost {
 			return(cm * dist_sq_ij_coord * (1 + dist_ij) * std::exp(-dist_ij));
 		}//end GradientRangeMaternARDShape2_5
 
-		inline double GradientRangeMaternARDGeneralShape(double cm,
-			const double dist_ij,
-			double cm_dist,
-			const int ind_range,
-			const int i,
-			const int j,
-			const den_mat_t* coords_ptr,
-			const den_mat_t* coords_pred_ptr,
-			const double shape) const {
+		inline double GradientRangeMaternARDGeneralShape([[maybe_unused]] double cm,
+			[[maybe_unused]] const double dist_ij,
+			[[maybe_unused]] double cm_dist,
+			[[maybe_unused]] const int ind_range,
+			[[maybe_unused]] const int i,
+			[[maybe_unused]] const int j,
+			[[maybe_unused]] const den_mat_t* coords_ptr,
+			[[maybe_unused]] const den_mat_t* coords_pred_ptr,
+			[[maybe_unused]] const double shape) const {
 #if HAS_STD_CYL_BESSEL_K
 			double range_dist = cm_dist * dist_ij;
 			double dist_sq_ij_coord = ((*coords_pred_ptr).coeff(i, ind_range) - (*coords_ptr).coeff(j, ind_range));

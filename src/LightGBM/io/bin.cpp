@@ -161,9 +161,9 @@ namespace LightGBM {
     std::vector<double> bin_upper_bound;
 
     // get list of distinct values
-    int left_cnt_data = 0;
-    int cnt_zero = 0;
-    int right_cnt_data = 0;
+    [[maybe_unused]] int left_cnt_data = 0;
+    [[maybe_unused]] int cnt_zero = 0;
+    [[maybe_unused]] int right_cnt_data = 0;
     for (int i = 0; i < num_distinct_values; ++i) {
       if (distinct_values[i] <= -kZeroThreshold) {
         left_cnt_data += counts[i];

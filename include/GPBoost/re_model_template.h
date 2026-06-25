@@ -384,7 +384,7 @@ namespace GPBoost {
 					z_outer_z_obs_neighbors_[cluster_i][0] = z_outer_z_obs_neighbors_cluster_i;
 					re_comps_vecchia_[cluster_i][0] = re_comps_cluster_i;
 				}//end gp_approx_ == "vecchia"
-				if (gp_approx_ != "vecchia" && gp_approx_ != "full_scale_vecchia" && gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering" ||
+				if ((gp_approx_ != "vecchia" && gp_approx_ != "full_scale_vecchia" && gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering") ||
 					grouped_RE_and_vecchia_GP_) {
 					data_size_t num_gp_temp = num_gp_;
 					if (grouped_RE_and_vecchia_GP_) num_gp_ = 0;//hack that GP components are not created in 'CreateREComponents' below if grouped_RE_and_vecchia_GP_
@@ -440,7 +440,7 @@ namespace GPBoost {
 			CHECK(likelihood_learning_rate > 0.);
 			likelihood_learning_rate_ = likelihood_learning_rate;
 			//Create matrices Z and ZtZ if Woodbury identity is used (used only if there are only grouped REs and no GPs)
-			if (use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_ || grouped_RE_and_vecchia_GP_) {
+			if ((use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) || grouped_RE_and_vecchia_GP_) {
 				InitializeMatricesForUseWoodburyIdentity();
 			}
 			InitializeIdentityMatricesForGaussianData();// applies only if gauss_likelihood_ && gp_approx_ != "vecchia" && gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering" && gp_approx_ != "full_scale_vecchia"
@@ -4022,8 +4022,8 @@ namespace GPBoost {
 						CalcPredFITC_FSA(cluster_i, gp_coords_mat_pred, predict_cov_mat,
 							predict_var_or_response, predict_response, mean_pred_id[0], cov_mat_pred_id, var_pred_id[0], nsim_var_pred_, cg_delta_conv_pred_);
 					}
-					if (gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering" &&
-						gp_approx_ != "full_scale_vecchia" && gp_approx_ != "vecchia" || grouped_RE_and_vecchia_GP_) {
+					if ((gp_approx_ != "fitc" && gp_approx_ != "full_scale_tapering" &&
+						gp_approx_ != "full_scale_vecchia" && gp_approx_ != "vecchia") || grouped_RE_and_vecchia_GP_) {
 						if (grouped_RE_and_vecchia_GP_) {
 							CHECK(num_gp_pred == 1);
 							CHECK(gp_approx_ == "vecchia");
@@ -6670,7 +6670,7 @@ namespace GPBoost {
 			if (num_sets_re_ > 1) {
 				num_cov_par_ *= num_sets_re_;
 			}
-			CHECK(ind_par_.size() == num_comps_total_ + 1);
+			CHECK(ind_par_.size() == static_cast<size_t>(num_comps_total_ + 1));
 		}//end DetermineCovarianceParameterIndicesNumCovPars
 
 		/*!
@@ -6743,7 +6743,8 @@ namespace GPBoost {
 				}
 			}
 			if (!cg_preconditioner_type_has_been_set_) {
-				if (use_woodbury_identity_ && ((num_re_group_total_ > 1) || linear_kernel_use_woodbury_identity_) || grouped_RE_and_vecchia_GP_) {
+				if ((use_woodbury_identity_ && ((num_re_group_total_ > 1) || linear_kernel_use_woodbury_identity_)) || 
+				grouped_RE_and_vecchia_GP_) {
 					cg_preconditioner_type_ = "ssor";
 				}
 				else if (gauss_likelihood_ && gp_approx_ == "full_scale_tapering") {
@@ -6765,7 +6766,8 @@ namespace GPBoost {
 				}
 			}
 			if (!nsim_var_pred_has_been_set_) {
-				if (use_woodbury_identity_ && ((num_re_group_total_ > 1) || linear_kernel_use_woodbury_identity_) || grouped_RE_and_vecchia_GP_) {
+				if ((use_woodbury_identity_ && ((num_re_group_total_ > 1) || linear_kernel_use_woodbury_identity_)) || 
+				grouped_RE_and_vecchia_GP_) {
 					nsim_var_pred_ = 500;
 				}
 				else if (gauss_likelihood_ && gp_approx_ == "full_scale_tapering") {
@@ -6846,7 +6848,8 @@ namespace GPBoost {
 					}
 					if (grouped_RE_and_vecchia_GP_) {
 						CHECK(num_sets_re_ == 1);
-						CHECK((re_comps_vecchia_[cluster_i][0][0]->random_effects_indices_of_data_).size() == re_comps_vecchia_[cluster_i][0][0]->NumData());
+						CHECK((re_comps_vecchia_[cluster_i][0][0]->random_effects_indices_of_data_).size() ==
+							static_cast<size_t>(re_comps_vecchia_[cluster_i][0][0]->NumData()));
 						for (int i = 0; i < re_comps_vecchia_[cluster_i][0][0]->NumData(); ++i) {
 							triplets.emplace_back(i, ncol_prev + (re_comps_vecchia_[cluster_i][0][0]->random_effects_indices_of_data_)[i], 1.);
 						}						

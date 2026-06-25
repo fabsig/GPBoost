@@ -459,7 +459,7 @@ namespace GPBoost {
 				vec_t pars = re_comp->CovPars();
 				string_t covfct = re_comp->CovFunctionName();
 				double cov_fct_shape;
-				int start_dim = 0;
+				[[maybe_unused]] int start_dim = 0;
 				int dist_funct = 0;
 				if (covfct == "space_time_gneiting") {
 					cov_fct_shape = pars[4];
@@ -1287,7 +1287,8 @@ namespace GPBoost {
 			}
 		}
 		else {
-			int ctr = 0, ctr_grad = 0;
+			int ctr = 0;
+			[[maybe_unused]] int ctr_grad = 0;
 			for (int i = 0; i < std::min(num_re, num_neighbors); ++i) {
 				for (int j = 0; j < (int)nearest_neighbors_cluster_i[i].size(); ++j) {
 					entries_init_B_cluster_i[ctr] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
