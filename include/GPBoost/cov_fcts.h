@@ -187,9 +187,9 @@ namespace GPBoost {
 				}
 			}
 			else if (cov_fct_type_ == "matern_estimate_shape" || cov_fct_type_ == "matern_ard_estimate_shape") {
-#if !defined(HAS_STD_CYL_BESSEL_K)
+#if !HAS_STD_CYL_BESSEL_K
 				// Mathematical special functions are not supported in C++17 by Clang and some other compilers (see https://en.cppreference.com/w/cpp/compiler_support/17#C.2B.2B17_library_features) 
-				Log::REFatal("The covariance function '%s' is not supported when using this compiler (e.g. Clang on Mac). Use another compiler such as gcc or (a newer version of) MSVC instead. ", cov_fct_type_.c_str());
+				Log::REFatal("The covariance function '%s' requires std::cyl_bessel_k, but this compiler (standard library) does not provide C++17 mathematical special functions. Use a compiler (e.g., gcc or MSVC) with std::cyl_bessel_k support, or use a Matern covariance with fixed smoothness 0.5, 1.5, or 2.5. ", cov_fct_type_.c_str());
 #endif
 			}
 			if (cov_fct_type_ == "wendland" || apply_tapering) {
