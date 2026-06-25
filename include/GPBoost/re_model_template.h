@@ -5889,6 +5889,7 @@ namespace GPBoost {
 				return(1. - (3. / (6. + iter)));
 			}
 			Log::REFatal("NesterovSchedule: version = %d is not supported ", momentum_schedule_version);
+			return(0.);
 		}//end NesterovSchedule
 
 		/*! \brief mutex for threading safe call */
