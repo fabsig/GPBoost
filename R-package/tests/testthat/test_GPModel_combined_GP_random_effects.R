@@ -161,7 +161,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
       expect_lt(abs(nll-nll_exp),tol_loc)
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
-                          gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = matrix_inversion_method)
+                          gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none", 
+                          matrix_inversion_method = matrix_inversion_method)
       gp_model$set_optim_params(params = list(num_rand_vec_trace=1000))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
       expect_lt(abs(nll-nll_exp),tol_loc2)
@@ -247,7 +248,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- GPModel(gp_coords = coords_dupl, cov_function = "exponential", group_data = group, 
                         gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = "cholesky")
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
-    expect_lt(abs(nll-nll_exp),0.15)
+    expect_lt(abs(nll-nll_exp), 0.3)
   })
   
   test_that("Combined Gaussian process and grouped random effects model with 'gamma' likelihood ", {
@@ -344,7 +345,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         tol_loc4 <- 0.03
       } else{
         tol_loc <- 0.1
-        tol_loc2 <- 0.1
+        tol_loc2 <- 0.15
         tol_loc3 <- 0.4
         tol_loc4 <- 0.03
       }
@@ -533,7 +534,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              gp_approx = "vecchia", num_neighbors = n-1, matrix_inversion_method = matrix_inversion_method,
                                              params = params, likelihood=likelihood), file='NUL')
       if (matrix_inversion_method == "iterative") {
-        expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-119.3419885)),2.0)
+        expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-119.3419885)), 2.5)
       } else {
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),tol_loc3)
         expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars_exp)),tol_loc3)

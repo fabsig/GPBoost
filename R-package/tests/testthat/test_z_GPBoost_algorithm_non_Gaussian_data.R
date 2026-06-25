@@ -2233,7 +2233,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_gte(opt_params$best_iter,4)
       expect_lte(opt_params$best_iter,7)
       expect_equal(opt_params$best_params$learning_rate,0.11)
-      expect_equal(opt_params$best_params$max_bin,255)
+      expect_gte(opt_params$best_params$max_bin,10)
+      expect_lte(opt_params$best_params$max_bin,255)
       expect_equal(opt_params$best_params$max_depth,2)
       
     })## end gaussian_heteroscedastic

@@ -298,41 +298,43 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         
         # Parameter tuning with 'tune.pars.bayesian.optimization'
         if(inv_method=="cholesky"){
-          suppressWarnings({
-            source("https://raw.githubusercontent.com/fabsig/GPBoost/master/helpers/R_package_tune_pars_bayesian_optimization.R")# Load required function
-          })
-          other_params <- list(objective = "regression_l2", max_depth = 6, num_leaves = 2^10)
-          search_space = list("learning_rate" = c(0.1,1))
-          crit = makeMBOInfillCritCB() # other criterion options: makeMBOInfillCritEI()
-          set.seed(4)
-          opt_params <- tune.pars.bayesian.optimization(search_space = search_space, params = other_params, n_iter = 2,
-                                                        data = dtrain, gp_model = gp_model,
-                                                        nfold = 5, nrounds = 1000, early_stopping_rounds = 10,
-                                                        metric = "l2", crit = crit, cv_seed = 4, verbose_eval = 0)
-          expect_lt(abs(opt_params$best_params$learning_rate-0.1074626), TOLERANCE)
-          expect_equal(opt_params$best_iter, 7)
-          expect_lt(abs(opt_params$best_score-0.09471095), TOLERANCE)
-          # Parameter tuning: can catch errors
-          search_space = list("learning_rate" = c(-1,1))
-          crit = makeMBOInfillCritCB() # other criterion options: makeMBOInfillCritEI()
-          set.seed(4)
-          expect_error({
+          bayes_opt_loaded <- suppressWarnings(
+            try(source("https://raw.githubusercontent.com/fabsig/GPBoost/master/helpers/R_package_tune_pars_bayesian_optimization.R"), silent = TRUE)
+          )
+          if (!inherits(bayes_opt_loaded, "try-error")) {
+            other_params <- list(objective = "regression_l2", max_depth = 6, num_leaves = 2^10)
+            search_space = list("learning_rate" = c(0.1,1))
+            crit = makeMBOInfillCritCB() # other criterion options: makeMBOInfillCritEI()
+            set.seed(4)
             opt_params <- tune.pars.bayesian.optimization(search_space = search_space, params = other_params, n_iter = 2,
                                                           data = dtrain, gp_model = gp_model,
                                                           nfold = 5, nrounds = 1000, early_stopping_rounds = 10,
                                                           metric = "l2", crit = crit, cv_seed = 4, verbose_eval = 0)
-          })
-          # Using 'test_neg_log_likelihood' as metric
-          search_space = list("learning_rate" = c(0.1,1))
-          crit = makeMBOInfillCritCB() # other criterion options: makeMBOInfillCritEI()
-          set.seed(4)
-          opt_params <- tune.pars.bayesian.optimization(search_space = search_space, params = other_params, n_iter = 2,
-                                                        data = dtrain, gp_model = gp_model,
-                                                        nfold = 5, nrounds = 1000, early_stopping_rounds = 10,
-                                                        metric = "test_neg_log_likelihood", crit = crit, cv_seed = 4, verbose_eval = 0)
-          expect_lt(abs(opt_params$best_params$learning_rate-0.1726872), TOLERANCE)
-          expect_equal(opt_params$best_iter, 5)
-          expect_lt(abs(opt_params$best_score-0.3935934), TOLERANCE)
+            expect_lt(abs(opt_params$best_params$learning_rate-0.1074626), TOLERANCE)
+            expect_equal(opt_params$best_iter, 7)
+            expect_lt(abs(opt_params$best_score-0.09471095), TOLERANCE)
+            # Parameter tuning: can catch errors
+            search_space = list("learning_rate" = c(-1,1))
+            crit = makeMBOInfillCritCB() # other criterion options: makeMBOInfillCritEI()
+            set.seed(4)
+            expect_error({
+              opt_params <- tune.pars.bayesian.optimization(search_space = search_space, params = other_params, n_iter = 2,
+                                                            data = dtrain, gp_model = gp_model,
+                                                            nfold = 5, nrounds = 1000, early_stopping_rounds = 10,
+                                                            metric = "l2", crit = crit, cv_seed = 4, verbose_eval = 0)
+            })
+            # Using 'test_neg_log_likelihood' as metric
+            search_space = list("learning_rate" = c(0.1,1))
+            crit = makeMBOInfillCritCB() # other criterion options: makeMBOInfillCritEI()
+            set.seed(4)
+            opt_params <- tune.pars.bayesian.optimization(search_space = search_space, params = other_params, n_iter = 2,
+                                                          data = dtrain, gp_model = gp_model,
+                                                          nfold = 5, nrounds = 1000, early_stopping_rounds = 10,
+                                                          metric = "test_neg_log_likelihood", crit = crit, cv_seed = 4, verbose_eval = 0)
+            expect_lt(abs(opt_params$best_params$learning_rate-0.1726872), TOLERANCE)
+            expect_equal(opt_params$best_iter, 5)
+            expect_lt(abs(opt_params$best_score-0.3935934), TOLERANCE)
+          }
         
           ## Prediction when having only one grouped random effect
           group_1 <- rep(1,ntrain) # grouping variable
