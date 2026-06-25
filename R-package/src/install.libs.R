@@ -177,7 +177,7 @@ if (WINDOWS && use_visual_studio) {
 # Prepare installation steps
 cmake_args <- NULL
 build_cmd <- "make"
-build_args <- "_gpboost"
+build_args <- c("_gpboost", paste0("-j", .get_parallel_build_jobs()))
 lib_folder <- file.path(source_dir, fsep = "/")
 
 # add in command-line arguments

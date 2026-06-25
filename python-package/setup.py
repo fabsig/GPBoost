@@ -2,7 +2,7 @@ import logging
 import struct
 import subprocess
 import sys
-from os import chdir
+from os import chdir, cpu_count, environ
 from pathlib import Path
 from platform import system
 from shutil import copyfile, copytree, rmtree
@@ -108,6 +108,18 @@ def silent_call(cmd: List[str], raise_error: bool = False, error_msg: str = '') 
         return 1
 
 
+def get_parallel_build_jobs() -> str:
+    env_jobs = environ.get("CMAKE_BUILD_PARALLEL_LEVEL")
+    if env_jobs is not None and env_jobs.isdigit() and int(env_jobs) > 0:
+        return env_jobs
+
+    detected_cores = cpu_count()
+    if detected_cores is None:
+        return "1"
+
+    return str(max(1, detected_cores - 1))
+
+
 def compile_cpp(
     use_mingw: bool = False,
     use_gpu: bool = False,
@@ -130,6 +142,7 @@ def compile_cpp(
     build_dir.mkdir(parents=True)
     original_dir = Path.cwd()
     chdir(build_dir)
+    parallel_jobs = get_parallel_build_jobs()
 
     logger.info("Starting to compile the library.")
 
@@ -169,7 +182,7 @@ def compile_cpp(
             logger.info("Starting to compile with CMake and MinGW.")
             silent_call(cmake_cmd + ["-G", "MinGW Makefiles"], raise_error=True,
                         error_msg='Please install CMake and all required dependencies first')
-            silent_call(["mingw32-make.exe", "_gpboost", f"-I{build_dir}", "-j4"], raise_error=True,
+            silent_call(["mingw32-make.exe", "_gpboost", f"-I{build_dir}", f"-j{parallel_jobs}"], raise_error=True,
                         error_msg='Please install MinGW first')
         else:
             status = 1
@@ -209,12 +222,13 @@ def compile_cpp(
                 if status != 0:
                     raise Exception("\n".join(('Please install Visual Studio or MS Build and all required dependencies first',
                                     LOG_NOTICE)))
-                silent_call(["cmake", "--build", str(build_dir), "--target", "_gpboost", "--config", "Release"], raise_error=True,
+                silent_call(["cmake", "--build", str(build_dir), "--target", "_gpboost", "--config", "Release",
+                             "--parallel", parallel_jobs], raise_error=True,
                             error_msg='Please install CMake first')
     else:  # Linux, Darwin (macOS), etc.
         logger.info("Starting to compile with CMake.")
         silent_call(cmake_cmd, raise_error=True, error_msg='Please install CMake and all required dependencies first')
-        silent_call(["make", "_gpboost", f"-I{build_dir}", "-j4"], raise_error=True,
+        silent_call(["make", "_gpboost", f"-I{build_dir}", f"-j{parallel_jobs}"], raise_error=True,
                     error_msg='An error has occurred while building gpboost library file')
     chdir(original_dir)
 
