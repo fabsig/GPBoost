@@ -174,7 +174,7 @@ namespace GPBoost {
 					const_ = std::pow(2., 1 - shape_) / std::tgamma(shape_);
 #else
 					// Mathematical special functions are not supported in C++17 by Clang and some other compilers (see https://en.cppreference.com/w/cpp/compiler_support/17#C.2B.2B17_library_features) 
-					Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g., Clang on Mac). Use another compiler such as gcc or (a newer version of) MSVC instead. ", shape, cov_fct_type_.c_str());
+					Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed smoothness 0.5, 1.5, or 2.5 ", shape, cov_fct_type_.c_str());
 #endif
 				}
 				if (shape > LARGE_SHAPE_WARNING_THRESHOLD_) {
@@ -189,7 +189,7 @@ namespace GPBoost {
 			else if (cov_fct_type_ == "matern_estimate_shape" || cov_fct_type_ == "matern_ard_estimate_shape") {
 #if !HAS_STD_CYL_BESSEL_K
 				// Mathematical special functions are not supported in C++17 by Clang and some other compilers (see https://en.cppreference.com/w/cpp/compiler_support/17#C.2B.2B17_library_features) 
-				Log::REFatal("The covariance function '%s' requires std::cyl_bessel_k, but this compiler (standard library) does not provide C++17 mathematical special functions. Use a compiler (e.g., gcc or MSVC) with std::cyl_bessel_k support, or use a Matern covariance with fixed smoothness 0.5, 1.5, or 2.5. ", cov_fct_type_.c_str());
+				Log::REFatal("The covariance function '%s' requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed smoothness 0.5, 1.5, or 2.5 ", cov_fct_type_.c_str());
 #endif
 			}
 			if (cov_fct_type_ == "wendland" || apply_tapering) {
@@ -1709,6 +1709,7 @@ namespace GPBoost {
 #if HAS_STD_CYL_BESSEL_K
 				return(var * const_ * std::pow(range_dist, shape_) * std::cyl_bessel_k(shape_, range_dist));
 #else
+				Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed smoothness 0.5, 1.5, or 2.5 ", shape_, cov_fct_type_.c_str());
 				return(1.);
 #endif
 			}
@@ -1727,6 +1728,7 @@ namespace GPBoost {
 #if HAS_STD_CYL_BESSEL_K
 				return(var * std::pow(2., 1 - shape) / std::tgamma(shape) * std::pow(range_dist, shape) * std::cyl_bessel_k(shape, range_dist));
 #else
+				Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed smoothness 0.5, 1.5, or 2.5 ", shape_, cov_fct_type_.c_str());
 				return(1.);
 #endif
 			}
@@ -2158,6 +2160,7 @@ namespace GPBoost {
 			double range_dist = cm_dist * dist_ij;
 			return(cm * std::pow(range_dist, shape) * (2. * shape * std::cyl_bessel_k(shape, range_dist) - range_dist * std::cyl_bessel_k(shape + 1., range_dist)));
 #else
+			Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed smoothness 0.5, 1.5, or 2.5 ", shape_, cov_fct_type_.c_str());
 			return(0.);
 #endif
 		}//end GradientRangeMaternGeneralShape
@@ -2176,7 +2179,6 @@ namespace GPBoost {
 			double z_up = dist_ij * par_aux_up;
 			double z_down = dist_ij * par_aux_down;
 			double bessel_num_deriv = (std::cyl_bessel_k(pars_2_up, z_up) - std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step_);
-
 			// for debugging
 			//double grad = std::pow(z, shape) * (cm * std::cyl_bessel_k(shape, z) * (std::log(z / 2.) + 0.5 - GPBoost::digamma(shape)) + cm_num_deriv * bessel_num_deriv);
 			//Log::REDebug("cm = %g, cm_num_deriv = %g, pars_2_up = %g, par_aux = %g, par_aux_up = %g, shape = %g",
@@ -2191,9 +2193,9 @@ namespace GPBoost {
 			//double grad_3 = (std::pow(2., 1 - pars_2_up) / std::tgamma(pars_2_up) * std::pow(z_up, pars_2_up) * std::cyl_bessel_k(pars_2_up, z_up) -
 			//	std::pow(2., 1 - pars_2_down) / std::tgamma(pars_2_down) * std::pow(z_down, pars_2_down) * std::cyl_bessel_k(pars_2_down, z_down)) / (2. * delta_step_);
 			//Log::REDebug("grad = %g, grad_2 = %g, grad_3 = %g ", grad, grad_2, grad_3);//for debugging
-
 			return (std::pow(z, shape) * (cm * std::cyl_bessel_k(shape, z) * (std::log(z / 2.) + 0.5 - GPBoost::digamma(shape)) + cm_num_deriv * bessel_num_deriv));
 #else
+			Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed smoothness 0.5, 1.5, or 2.5 ", shape_, cov_fct_type_.c_str());
 			return(0.);
 #endif
 		}//end GradientSmoothnessMaternEstimateShapeFiniteDifference
@@ -2329,6 +2331,7 @@ namespace GPBoost {
 				return(cm * std::pow(dist_ij, shape_ - 2.) * (2. * shape_ * std::cyl_bessel_k(shape_, dist_ij) - dist_ij * std::cyl_bessel_k(shape_ + 1., dist_ij)) * dist_sq_ij_space);
 			}
 #else
+			Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed smoothness 0.5, 1.5, or 2.5 ", shape_, cov_fct_type_.c_str());
 			return(0.);
 #endif
 		}//end GradientRangeMaternSpaceTimeGeneralShape
@@ -2390,6 +2393,7 @@ namespace GPBoost {
 			dist_sq_ij_coord = dist_sq_ij_coord * dist_sq_ij_coord;
 			return(cm * std::pow(range_dist, shape - 2.) * (2. * shape * std::cyl_bessel_k(shape, range_dist) - range_dist * std::cyl_bessel_k(shape + 1., range_dist)) * dist_sq_ij_coord);
 #else
+			Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed smoothness 0.5, 1.5, or 2.5 ", shape_, cov_fct_type_.c_str());
 			return(0.);
 #endif
 		}//end GradientRangeMaternARDGeneralShape
@@ -2456,7 +2460,7 @@ namespace GPBoost {
 					return(d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux));
 				}
 #else
-				Log::REFatal("'shape' of %g is not supported for the '%s' covariance function (only 0.5, 1.5, and 2.5) when using this compiler (e.g. Clang on Mac). Use gcc or (a newer version of) MSVC instead. ", pars[4], cov_fct_type_.c_str());
+				Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed smoothness 0.5, 1.5, or 2.5 ", pars[4], cov_fct_type_.c_str());
 				return(0.);
 #endif
 			}
@@ -2570,6 +2574,7 @@ namespace GPBoost {
 						grad *= std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]);
 					}
 #else
+					Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed smoothness 0.5, 1.5, or 2.5 ", pars[4], cov_fct_type_.c_str());
 					grad = 0.;
 #endif
 				}
@@ -2600,6 +2605,7 @@ namespace GPBoost {
 							cm_num_deriv * bessel_num_deriv);
 				}
 #else
+				Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed smoothness 0.5, 1.5, or 2.5 ", pars[4], cov_fct_type_.c_str());
 				grad = 0.;
 #endif
 			}
