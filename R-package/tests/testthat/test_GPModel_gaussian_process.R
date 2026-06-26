@@ -7,7 +7,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   TOLERANCE_LOOSE <- 1E-2
   TOLERANCE_MEDIUM <- 1e-3
   TOLERANCE_STRICT <- 1E-5
-  IS_MACOS <- identical(Sys.info()[["sysname"]], "Darwin")
   SKIP_BESSEL_COV_TESTS_ON_MACOS <- identical(Sys.info()[["sysname"]], "Darwin") &&
     Sys.getenv("GPBOOST_RUN_BESSEL_COV_TESTS_ON_MACOS") != "true"
   
@@ -2626,144 +2625,159 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     #####################
     ## Gneiting space-time covariance
     #####################
-    cov_pars_nll_gneiting <- c(0.1,1,0.2,2,0.5,1.5,0.5,2)
+    cov_pars_nll_gneiting_fixed_nu <- c(0.1,1,0.2,2,0.5,1.5,0.5,2)
     nll_exp <- 604.779654987741
-    # Evaluate negative log-likelihood
-    gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5)
-    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+    # Evaluate negative log-likelihood with fixed smoothness
+    gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting")
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting_fixed_nu,y=y)
     expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
-    params_ST$init_cov_pars <- cov_pars_nll_gneiting
-    # Fit model
-    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
-                           y = y, X = X, params = params_ST), 
+    # Fit model without estimating the smoothness parameter. This does not require the Bessel function.
+    params_ST_gneiting_fixed_nu <- OPTIM_PARAMS_BFGS
+    params_ST_gneiting_fixed_nu$init_cov_pars <- cov_pars_nll_gneiting_fixed_nu
+    params_ST_gneiting_fixed_nu$estimate_cov_par_index <- c(1,1,1,1,1,0,1,1)
+    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting",
+                                           y = y, X = X, params = params_ST_gneiting_fixed_nu),
                     file='NUL')
-    cov_pars <- c(0.01118145, 0.07067827, 1.01161075,  0.17122660, 0.60008963,   
-                  4.96597785, 58.12214002, 389.63570115, 4.12563119, 3.31118654,  
-                  11.36187543, 146.57294986, 5.22611159, 6.71388132, 0.24194531, 2.01265616)
-    coef <- c(1.9652662, 0.1455411, 2.1144101, 0.1316155)
-    nrounds <- 26
-    nll_opt <- 137.428674247055
-    if (!IS_MACOS) {
+    expect_equal(as.vector(gp_model$get_cov_pars(std_err = FALSE))[6], 1.5)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-137.2451317867212), TOLERANCE_STRICT)
+    # Prediction
+    pred <- predict(gp_model, gp_coords_pred = coord_test,
+                    X_pred = X_test, cov_pars = cov_pars_nll_gneiting_fixed_nu)
+    expected_mu <- c(1.965547011, 1.856092042, 2.429890300)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+
+    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+      cov_pars_nll_gneiting <- c(0.1,1,0.2,2,0.5,1.5,0.5,2)
+      nll_exp <- 604.779654987741
+      # Evaluate negative log-likelihood
+      gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5)
+      nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+      expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
+      params_ST$init_cov_pars <- cov_pars_nll_gneiting
+      # Fit model
+      capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                             y = y, X = X, params = params_ST), 
+                      file='NUL')
+      cov_pars <- c(0.01118145, 0.07067827, 1.01161075,  0.17122660, 0.60008963,   
+                    4.96597785, 58.12214002, 389.63570115, 4.12563119, 3.31118654,  
+                    11.36187543, 146.57294986, 5.22611159, 6.71388132, 0.24194531, 2.01265616)
+      coef <- c(1.9652662, 0.1455411, 2.1144101, 0.1316155)
+      nrounds <- 26
+      nll_opt <- 137.428674247055
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_MEDIUM)
       expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_STRICT)
       expect_equal(gp_model$get_num_optim_iter(), nrounds)
       expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_STRICT)
-    }
-    # Prediction 
-    pred <- predict(gp_model, gp_coords_pred = coord_test,
-                    X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_nll_gneiting)
-    expected_mu <- c(1.965266, 1.865088, 2.441091)
-    expected_cov <- c(1.100000e+00, -5.406416e-11, -2.934254e-11, 
-                      -5.406416e-11,  1.610924e-01,  5.727994e-05, 
-                      -2.934254e-11,  5.727994e-05, 1.460070e-01)
-    expect_lt(sum(abs(pred$mu-expected_mu)), if (IS_MACOS) 0.03 else TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
-    pred <- predict(gp_model, gp_coords_pred = coord_test,
-                    X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_nll_gneiting)
-    expect_lt(sum(abs(pred$mu-expected_mu)), if (IS_MACOS) 0.03 else TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
-    
-    ##############
-    ## With Vecchia approximation
-    ##############
-    # Evaluate negative log-likelihood
-    num_neighbors <- 50
-    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
-                                        gp_approx = "vecchia_euclidean_based", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
-                    file='NUL')
-    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
-    expect_lt(abs(nll-603.189168889409),TOLERANCE_STRICT)
-    # Fit model
-    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
-                                           gp_approx = "vecchia_euclidean_based", num_neighbors = num_neighbors, vecchia_ordering = "none",
-                                           y = y, X = X, params = params_ST), 
-                    file='NUL')
-    cov_pars_nn <- c(1.920056e-03, 4.520834e-02, 1.015382e+00, 1.594250e-01, 1.156587e+00, 
-                     1.395847e+01, 1.271204e+02, 3.336100e+03, 1.594211e+00, 5.009055e+00, 
-                     6.151755e+01, 3.207035e+03, 1.352374e+01, 8.521652e+00, 1.608769e-01, 1.614280e+00)
-    coef_nn <- c(1.9676559, 0.1448350, 2.1328759, 0.1315564)
-    nrounds_nn <- 29
-    nll_opt_nn <- 137.140644557018
-    if (!IS_MACOS) {
+      # Prediction 
+      pred <- predict(gp_model, gp_coords_pred = coord_test,
+                      X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_nll_gneiting)
+      expected_mu <- c(1.965266, 1.865088, 2.441091)
+      expected_cov <- c(1.100000e+00, -5.406416e-11, -2.934254e-11, 
+                        -5.406416e-11,  1.610924e-01,  5.727994e-05, 
+                        -2.934254e-11,  5.727994e-05, 1.460070e-01)
+      expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
+      pred <- predict(gp_model, gp_coords_pred = coord_test,
+                      X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_nll_gneiting)
+      expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
+      
+      ##############
+      ## With Vecchia approximation
+      ##############
+      # Evaluate negative log-likelihood
+      num_neighbors <- 50
+      capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                          gp_approx = "vecchia_euclidean_based", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
+                      file='NUL')
+      nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+      expect_lt(abs(nll-603.189168889409),TOLERANCE_STRICT)
+      # Fit model
+      capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                             gp_approx = "vecchia_euclidean_based", num_neighbors = num_neighbors, vecchia_ordering = "none",
+                                             y = y, X = X, params = params_ST), 
+                      file='NUL')
+      cov_pars_nn <- c(1.920056e-03, 4.520834e-02, 1.015382e+00, 1.594250e-01, 1.156587e+00, 
+                       1.395847e+01, 1.271204e+02, 3.336100e+03, 1.594211e+00, 5.009055e+00, 
+                       6.151755e+01, 3.207035e+03, 1.352374e+01, 8.521652e+00, 1.608769e-01, 1.614280e+00)
+      coef_nn <- c(1.9676559, 0.1448350, 2.1328759, 0.1315564)
+      nrounds_nn <- 29
+      nll_opt_nn <- 137.140644557018
       capture.output( expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))[c(1,3,5,7)]-cov_pars_nn[c(1,3,5,7)])),TOLERANCE_LOOSE), file='NUL')
       expect_lt(sum(abs(as.vector((gp_model$get_cov_pars(std_err = TRUE))[c(1,3,5,7)+1]-cov_pars_nn[c(1,3,5,7)+1])/cov_pars_nn[c(1,3,5,7)+1])),0.2)
       capture.output( expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_nn)),TOLERANCE_STRICT), file='NUL')
       expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
       expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), TOLERANCE_STRICT)
-    }
-    # Prediction 
-    pred <- predict(gp_model, gp_coords_pred = coord_test,
-                    X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
-    expected_mu <- c(1.967656, 1.860779, 2.435741)
-    expect_lt(sum(abs(pred$mu-expected_mu)), if (IS_MACOS) 0.1 else TOLERANCE_STRICT)
-    
-    ## Correlation-based neighbor search 
-    # Evaluate negative log-likelihood
-    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
-                                        gp_approx = "vecchia_correlation_based", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
-                    file='NUL')
-    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
-    nll_exp <- 602.88672043745
-    expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
-    # Default should be correlation-based
-    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
-                                        gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
-                    file='NUL')
-    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
-    expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
-    # Fit model
-    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
-                                           gp_approx = "vecchia_correlation_based", num_neighbors = num_neighbors, vecchia_ordering = "none",
-                                           y = y, X = X, params = params_ST), 
-                    file='NUL')
-    cov_pars_nn <- c(0.02114328, 0.13753229, 1.00313912,0.20711465,0.23757859,1.20134049,
-                     55.81628146, 262.19884563, 4.63368984, 2.08516175, 6.59072835,
-                     59.30394456, 3.26058292, 4.99080090, 0.25530665, 1.73107678)
-    coef_nn <- c(1.9795317, 0.1424944, 2.2360390, 0.1323973)
-    nrounds_nn <- 23
-    nll_opt_nn <- 138.089095556994
-    if (!IS_MACOS) {
+      # Prediction 
+      pred <- predict(gp_model, gp_coords_pred = coord_test,
+                      X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
+      expected_mu <- c(1.967656, 1.860779, 2.435741)
+      expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
+      
+      ## Correlation-based neighbor search 
+      # Evaluate negative log-likelihood
+      capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                          gp_approx = "vecchia_correlation_based", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
+                      file='NUL')
+      nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+      nll_exp <- 602.88672043745
+      expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
+      # Default should be correlation-based
+      capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                          gp_approx = "vecchia", num_neighbors = num_neighbors, vecchia_ordering = "none"), 
+                      file='NUL')
+      nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+      expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
+      # Fit model
+      capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                             gp_approx = "vecchia_correlation_based", num_neighbors = num_neighbors, vecchia_ordering = "none",
+                                             y = y, X = X, params = params_ST), 
+                      file='NUL')
+      cov_pars_nn <- c(0.02114328, 0.13753229, 1.00313912,0.20711465,0.23757859,1.20134049,
+                       55.81628146, 262.19884563, 4.63368984, 2.08516175, 6.59072835,
+                       59.30394456, 3.26058292, 4.99080090, 0.25530665, 1.73107678)
+      coef_nn <- c(1.9795317, 0.1424944, 2.2360390, 0.1323973)
+      nrounds_nn <- 23
+      nll_opt_nn <- 138.089095556994
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))[c(1,3,5,7)]-cov_pars_nn[c(1,3,5,7)])),TOLERANCE_MEDIUM)
       expect_lt(sum(abs(as.vector((gp_model$get_cov_pars(std_err = TRUE))[c(1,3,5,7)+1]-cov_pars_nn[c(1,3,5,7)+1])/cov_pars_nn[c(1,3,5,7)+1])),0.2)
       expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_nn)),TOLERANCE_STRICT)
       expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
       expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), TOLERANCE_STRICT)
-    }
-    # Prediction 
-    pred <- predict(gp_model, gp_coords_pred = coord_test,
-                    X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
-    expected_mu <- c(1.979532, 1.836721, 2.405857)
-    expect_lt(sum(abs(pred$mu-expected_mu)), if (IS_MACOS) 0.08 else TOLERANCE_STRICT)
-    
-    ##############
-    ## With FITC approximation (space-time separated kMeans++)
-    ##############
-    # Evaluate negative log-likelihood
-    capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
-                                        gp_approx = "fitc", ind_points_selection = "space_time_kmeans++", num_ind_points = 30), 
-                    file='NUL')
-    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
-    expect_lt(abs(nll-339.411253590468),TOLERANCE_STRICT)
-    # Fit model
-    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
-                                           gp_approx = "fitc", ind_points_selection = "space_time_kmeans++", num_ind_points = 30,
-                                           y = y, X = X, params = params_ST), 
-                    file='NUL')
-    cov_pars_nn <- c(0.14666538, 0.82530619, 0.02268084, 101.37316301, 0.17523760, 154.00191351, 0.01261858, 18.64147777)
-    coef_nn <- c(1.9194304, 0.1401412, 2.2149501, 0.1364415)
-    nrounds_nn <- 39
-    nll_opt_nn <- 137.073147464373
-    if (!IS_MACOS) {
+      # Prediction 
+      pred <- predict(gp_model, gp_coords_pred = coord_test,
+                      X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
+      expected_mu <- c(1.979532, 1.836721, 2.405857)
+      expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
+      
+      ##############
+      ## With FITC approximation (space-time separated kMeans++)
+      ##############
+      # Evaluate negative log-likelihood
+      capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                          gp_approx = "fitc", ind_points_selection = "space_time_kmeans++", num_ind_points = 30), 
+                      file='NUL')
+      nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
+      expect_lt(abs(nll-339.411253590468),TOLERANCE_STRICT)
+      # Fit model
+      capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
+                                             gp_approx = "fitc", ind_points_selection = "space_time_kmeans++", num_ind_points = 30,
+                                             y = y, X = X, params = params_ST), 
+                      file='NUL')
+      cov_pars_nn <- c(0.14666538, 0.82530619, 0.02268084, 101.37316301, 0.17523760, 154.00191351, 0.01261858, 18.64147777)
+      coef_nn <- c(1.9194304, 0.1401412, 2.2149501, 0.1364415)
+      nrounds_nn <- 39
+      nll_opt_nn <- 137.073147464373
       capture.output( expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_nn)),0.04), file='NUL')
       capture.output( expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_nn)),0.001), file='NUL')
       expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
       expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), TOLERANCE_STRICT)
+      # Prediction 
+      pred <- predict(gp_model, gp_coords_pred = coord_test,
+                      X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
+      expected_mu <- c(1.919430, 1.751229, 2.389440)
+      expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
     }
-    # Prediction 
-    pred <- predict(gp_model, gp_coords_pred = coord_test,
-                    X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
-    expected_mu <- c(1.919430, 1.751229, 2.389440)
-    expect_lt(sum(abs(pred$mu-expected_mu)), if (IS_MACOS) 0.03 else TOLERANCE_STRICT)
   })
   
   test_that("ARD Gaussian process model with linear regression term ", {
