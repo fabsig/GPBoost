@@ -1301,6 +1301,19 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Add values to the diagonal of the covariance matrix
+		* \param diag Values which are added
+		*/
+		void AddToDiagonalSigma(const vec_t& diag) {
+			CHECK(sigma_defined_);
+			CHECK((int)diag.size() == sigma_.rows());
+			CHECK((int)diag.size() == sigma_.cols());
+			for (int i = 0; i < diag.size(); ++i) {
+				sigma_.coeffRef(i, i) += diag[i];
+			}
+		}
+
+		/*!
 		* \brief Multiply covariance with taper function (only relevant for tapered covariance functions)
 		*/
 		void ApplyTaper() {

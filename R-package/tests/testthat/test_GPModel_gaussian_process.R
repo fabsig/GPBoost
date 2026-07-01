@@ -460,6 +460,318 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
   })
   
+  test_that("Gaussian sample weights work for Gaussian processes ", {
+    coords_w <- cbind(c(0.05, 0.18, 0.31, 0.52, 0.74, 0.91),
+                      c(0.12, 0.44, 0.27, 0.83, 0.35, 0.66))
+    y_w <- c(0.25, -0.40, 1.20, 0.75, -0.15, 1.45)
+    weights_w <- c(1.0, 2.0, 3.0, 1.5, 0.7, 2.2)
+    cov_pars_w <- c(0.45, 1.20, 0.35)
+    D_w <- as.matrix(dist(coords_w))
+    Sigma_w <- cov_pars_w[2] * exp(-D_w / cov_pars_w[3]) +
+      cov_pars_w[1] * diag(1 / weights_w)
+    chol_Sigma_w <- chol(Sigma_w)
+    nll_w_manual <- 0.5 * drop(crossprod(y_w, solve(Sigma_w, y_w))) +
+      sum(log(diag(chol_Sigma_w))) + length(y_w) / 2 * log(2 * pi)
+    
+    capture.output( gp_model_w <- GPModel(gp_coords = coords_w, cov_function = "exponential",
+                                          weights = weights_w) , file='NUL')
+    nll_w <- gp_model_w$neg_log_likelihood(cov_pars = cov_pars_w, y = y_w)
+    expect_lt(abs(nll_w - nll_w_manual), TOLERANCE_STRICT)
+    
+    coords_pred_w <- cbind(c(0.16, 0.60, 0.88), c(0.20, 0.70, 0.40))
+    D_pred_obs_w <- as.matrix(dist(rbind(coords_pred_w, coords_w)))[1:nrow(coords_pred_w),
+                                                                    -(1:nrow(coords_pred_w))]
+    D_pred_w <- as.matrix(dist(coords_pred_w))
+    cross_cov_w <- cov_pars_w[2] * exp(-D_pred_obs_w / cov_pars_w[3])
+    pred_cov_prior_w <- cov_pars_w[2] * exp(-D_pred_w / cov_pars_w[3]) +
+      cov_pars_w[1] * diag(nrow(coords_pred_w))
+    pred_mean_manual_w <- as.vector(cross_cov_w %*% solve(Sigma_w, y_w))
+    pred_cov_manual_w <- pred_cov_prior_w - cross_cov_w %*% solve(Sigma_w, t(cross_cov_w))
+    pred_w <- predict(gp_model_w, y = y_w, gp_coords_pred = coords_pred_w,
+                      cov_pars = cov_pars_w, predict_response = TRUE,
+                      predict_cov_mat = TRUE)
+    expect_lt(sum(abs(pred_w$mu - pred_mean_manual_w)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred_w$cov) - as.vector(pred_cov_manual_w))), TOLERANCE_STRICT)
+    
+    capture.output( gp_model_fitc_w <- GPModel(gp_coords = coords_w, cov_function = "exponential",
+                                               gp_approx = "fitc", num_ind_points = nrow(coords_w),
+                                               ind_points_selection = "random", weights = weights_w) , file='NUL')
+    nll_fitc_w <- gp_model_fitc_w$neg_log_likelihood(cov_pars = cov_pars_w, y = y_w)
+    expect_lt(abs(nll_fitc_w - nll_w_manual), TOLERANCE_STRICT)
+    pred_fitc_w <- predict(gp_model_fitc_w, y = y_w, gp_coords_pred = coords_pred_w,
+                           cov_pars = cov_pars_w, predict_response = TRUE,
+                           predict_cov_mat = TRUE)
+    expect_lt(sum(abs(pred_fitc_w$mu - pred_mean_manual_w)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred_fitc_w$cov) - as.vector(pred_cov_manual_w))),
+              0.05)
+    
+    capture.output( gp_model_vecchia_w <- GPModel(gp_coords = coords_w, cov_function = "exponential",
+                                                  gp_approx = "vecchia", num_neighbors = nrow(coords_w) - 1,
+                                                  vecchia_ordering = "none", weights = weights_w) , file='NUL')
+    nll_vecchia_w <- gp_model_vecchia_w$neg_log_likelihood(cov_pars = cov_pars_w, y = y_w)
+    expect_lt(abs(nll_vecchia_w - nll_w_manual), TOLERANCE_STRICT)
+    gp_model_vecchia_w$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all",
+                                           num_neighbors_pred = nrow(coords_w) + nrow(coords_pred_w) - 1)
+    pred_vecchia_w <- predict(gp_model_vecchia_w, y = y_w, gp_coords_pred = coords_pred_w,
+                              cov_pars = cov_pars_w, predict_response = TRUE,
+                              predict_cov_mat = TRUE)
+    expect_lt(sum(abs(pred_vecchia_w$mu - pred_mean_manual_w)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred_vecchia_w$cov) - as.vector(pred_cov_manual_w))), TOLERANCE_STRICT)
+    gp_model_vecchia_w$set_optim_params(params = list(num_rand_vec_trace = 5000,
+                                                      seed_rand_vec_trace = 1,
+                                                      reuse_rand_vec_trace = TRUE))
+    fit(gp_model_vecchia_w, y = y_w, params = list(maxit = 0,
+                                                   init_cov_pars = cov_pars_w))
+    grad_cov_w <- list(diag(1 / weights_w), exp(-D_w / cov_pars_w[3]),
+                       cov_pars_w[2] * exp(-D_w / cov_pars_w[3]) * D_w / cov_pars_w[3]^2)
+    FI_w <- matrix(0, 3, 3)
+    Sigma_inv_w <- solve(Sigma_w)
+    for (ii in 1:3) {
+      for (jj in ii:3) {
+        FI_w[ii, jj] <- 0.5 * sum(diag(Sigma_inv_w %*% grad_cov_w[[ii]] %*%
+                                         Sigma_inv_w %*% grad_cov_w[[jj]]))
+        FI_w[jj, ii] <- FI_w[ii, jj]
+      }
+    }
+    std_err_vecchia_w <- as.vector(gp_model_vecchia_w$get_cov_pars(std_err = TRUE)["Std. err.", ])
+    std_err_manual_w <- c(2.253217120111, 1.775896266058, 0.621203477659)
+    expect_lt(sum(abs(sqrt(diag(solve(FI_w))) - std_err_manual_w)), TOLERANCE_STRICT)
+    expect_true(all(is.finite(std_err_vecchia_w)))
+    
+    X_w <- cbind(1, c(-1.0, -0.5, 0.2, 0.7, 1.1, -0.2))
+    capture.output( gp_model_w_fit_X <- fitGPModel(gp_coords = coords_w,
+                                                   cov_function = "exponential",
+                                                   y = y_w, X = X_w,
+                                                   weights = weights_w,
+                                                   params = list(optimizer_cov = "lbfgs",
+                                                                 optimizer_coef = "wls")) , file='NUL')
+    cov_pars_fit_X <- as.vector(gp_model_w_fit_X$get_cov_pars())
+    beta_fit_X <- as.vector(gp_model_w_fit_X$get_coef())
+    cov_pars <- c(6.86158387056e-06, 4.57441731777e-01, 1.09279322973e-03)
+    coef <- c(0.5149274586446, 0.0348285983218)
+    expect_lt(sum(abs(cov_pars_fit_X - cov_pars)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(beta_fit_X - coef)), TOLERANCE_STRICT)
+    
+    capture.output( gp_model_vecchia_fit_w <- fitGPModel(gp_coords = coords_w,
+                                                         cov_function = "exponential",
+                                                         gp_approx = "vecchia",
+                                                         num_neighbors = nrow(coords_w) - 1,
+                                                         vecchia_ordering = "none",
+                                                         weights = weights_w,
+                                                         y = y_w,
+                                                         params = list(optimizer_cov = "gradient_descent",
+                                                                       maxit = 1,
+                                                                       init_cov_pars = cov_pars_w)) , file='NUL')
+    expect_true(is.finite(gp_model_vecchia_fit_w$get_current_neg_log_likelihood()))
+    
+    capture.output( gp_model_vif_w <- GPModel(gp_coords = coords_w, cov_function = "exponential",
+                                              gp_approx = "vif", num_neighbors = 2,
+                                              num_ind_points = 3,
+                                              ind_points_selection = "random",
+                                              weights = weights_w) , file='NUL')
+    nll_vif_w <- gp_model_vif_w$neg_log_likelihood(cov_pars = cov_pars_w, y = y_w)
+    expect_true(is.finite(nll_vif_w))
+    capture.output( gp_model_vif_exact_w <- GPModel(gp_coords = coords_w,
+                                                    cov_function = "exponential",
+                                                    gp_approx = "vif",
+                                                    num_neighbors = nrow(coords_w) - 1,
+                                                    num_ind_points = 3,
+                                                    ind_points_selection = "random",
+                                                    vecchia_ordering = "none",
+                                                    weights = weights_w) , file='NUL')
+    nll_vif_exact_w <- gp_model_vif_exact_w$neg_log_likelihood(cov_pars = cov_pars_w,
+                                                               y = y_w)
+    expect_lt(abs(nll_vif_exact_w - nll_w_manual), TOLERANCE_STRICT)
+    gp_model_vif_exact_w$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all",
+                                             num_neighbors_pred = nrow(coords_w) + nrow(coords_pred_w) - 1)
+    pred_vif_exact_w <- predict(gp_model_vif_exact_w, y = y_w,
+                                gp_coords_pred = coords_pred_w,
+                                cov_pars = cov_pars_w, predict_response = TRUE,
+                                predict_cov_mat = TRUE)
+    expect_lt(sum(abs(pred_vif_exact_w$mu - pred_mean_manual_w)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred_vif_exact_w$cov) - as.vector(pred_cov_manual_w))),
+              TOLERANCE_STRICT)
+    capture.output( gp_model_vif_fit_w <- fitGPModel(gp_coords = coords_w,
+                                                     cov_function = "exponential",
+                                                     gp_approx = "vif",
+                                                     num_neighbors = 2,
+                                                     num_ind_points = 3,
+                                                     ind_points_selection = "random",
+                                                     weights = weights_w,
+                                                     y = y_w,
+                                                     params = list(optimizer_cov = "gradient_descent",
+                                                                   maxit = 1,
+                                                                   init_cov_pars = cov_pars_w)) , file='NUL')
+    expect_true(is.finite(gp_model_vif_fit_w$get_current_neg_log_likelihood()))
+    
+    capture.output( gp_model_fst_w <- GPModel(gp_coords = coords_w, cov_function = "exponential",
+                                              gp_approx = "full_scale_tapering",
+                                              num_ind_points = 3,
+                                              ind_points_selection = "random",
+                                              weights = weights_w) , file='NUL')
+    nll_fst_w <- gp_model_fst_w$neg_log_likelihood(cov_pars = cov_pars_w, y = y_w)
+    expect_true(is.finite(nll_fst_w))
+    capture.output( gp_model_fst_exact_w <- GPModel(gp_coords = coords_w,
+                                                    cov_function = "exponential",
+                                                    gp_approx = "full_scale_tapering",
+                                                    num_ind_points = 3,
+                                                    ind_points_selection = "random",
+                                                    cov_fct_taper_range = 1e6,
+                                                    cov_fct_taper_shape = 2,
+                                                    weights = weights_w,
+                                                    matrix_inversion_method = "cholesky") , file='NUL')
+    nll_fst_exact_w <- gp_model_fst_exact_w$neg_log_likelihood(cov_pars = cov_pars_w,
+                                                               y = y_w)
+    expect_lt(abs(nll_fst_exact_w - nll_w_manual), TOLERANCE_STRICT)
+    pred_fst_exact_w <- predict(gp_model_fst_exact_w, y = y_w,
+                                gp_coords_pred = coords_pred_w,
+                                cov_pars = cov_pars_w, predict_response = TRUE,
+                                predict_cov_mat = FALSE)
+    expect_lt(sum(abs(pred_fst_exact_w$mu - pred_mean_manual_w)), TOLERANCE_STRICT)
+    
+    # with fixed effects
+    coords_linear_w <- cbind(1, c(-1.0, -0.3, 0.1, 0.4, 0.9, 1.3))
+    cov_pars_linear_w <- c(0.45, 0.8)
+    Sigma_linear_w <- cov_pars_linear_w[2] * tcrossprod(coords_linear_w) +
+      cov_pars_linear_w[1] * diag(1 / weights_w)
+    chol_Sigma_linear_w <- chol(Sigma_linear_w)
+    nll_linear_manual_w <- 0.5 * drop(crossprod(y_w, solve(Sigma_linear_w, y_w))) +
+      sum(log(diag(chol_Sigma_linear_w))) + length(y_w) / 2 * log(2 * pi)
+    capture.output( gp_model_linear_w <- GPModel(gp_coords = coords_linear_w, cov_function = "linear",
+                                                 weights = weights_w) , file='NUL')
+    nll_linear_w <- gp_model_linear_w$neg_log_likelihood(cov_pars = cov_pars_linear_w,
+                                                         y = y_w)
+    expect_lt(abs(nll_linear_w - nll_linear_manual_w), TOLERANCE_STRICT)
+    
+    coords_dup_w <- cbind(c(0.05, 0.05, 0.31, 0.52, 0.52, 0.91),
+                          c(0.12, 0.12, 0.27, 0.83, 0.83, 0.66))
+    y_dup_w <- c(0.25, -0.40, 1.20, 0.75, -0.15, 1.45)
+    weights_dup_w <- c(1.0, 2.0, 3.0, 1.5, 0.7, 2.2)
+    D_dup_w <- as.matrix(dist(coords_dup_w))
+    Sigma_dup_w <- cov_pars_w[2] * exp(-D_dup_w / cov_pars_w[3]) +
+      cov_pars_w[1] * diag(1 / weights_dup_w)
+    chol_Sigma_dup_w <- chol(Sigma_dup_w)
+    nll_dup_manual_w <- 0.5 * drop(crossprod(y_dup_w, solve(Sigma_dup_w, y_dup_w))) +
+      sum(log(diag(chol_Sigma_dup_w))) + length(y_dup_w) / 2 * log(2 * pi)
+    
+    capture.output( gp_model_dup_w <- GPModel(gp_coords = coords_dup_w, cov_function = "exponential",
+                                              weights = weights_dup_w) , file='NUL')
+    nll_dup_w <- gp_model_dup_w$neg_log_likelihood(cov_pars = cov_pars_w, y = y_dup_w)
+    expect_lt(abs(nll_dup_w - nll_dup_manual_w), TOLERANCE_STRICT)
+    
+    capture.output( gp_model_vecchia_dup_w <- GPModel(gp_coords = coords_dup_w, cov_function = "exponential",
+                                                      gp_approx = "vecchia",
+                                                      num_neighbors = nrow(coords_dup_w) - 1,
+                                                      vecchia_ordering = "none",
+                                                      weights = weights_dup_w) , file='NUL')
+    nll_vecchia_dup_w <- gp_model_vecchia_dup_w$neg_log_likelihood(cov_pars = cov_pars_w,
+                                                                   y = y_dup_w)
+    expect_lt(abs(nll_vecchia_dup_w - nll_dup_manual_w), TOLERANCE_STRICT)
+    coords_pred_dup_w <- cbind(c(0.05, 0.60, 0.91), c(0.12, 0.70, 0.66))
+    gp_model_vecchia_dup_w$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all",
+                                               num_neighbors_pred = nrow(coords_dup_w) + nrow(coords_pred_dup_w) - 1)
+    D_pred_obs_dup_w <- as.matrix(dist(rbind(coords_pred_dup_w, coords_dup_w)))[1:nrow(coords_pred_dup_w),
+                                                                                -(1:nrow(coords_pred_dup_w))]
+    D_pred_dup_w <- as.matrix(dist(coords_pred_dup_w))
+    cross_cov_dup_w <- cov_pars_w[2] * exp(-D_pred_obs_dup_w / cov_pars_w[3])
+    pred_cov_prior_dup_w <- cov_pars_w[2] * exp(-D_pred_dup_w / cov_pars_w[3]) +
+      cov_pars_w[1] * diag(nrow(coords_pred_dup_w))
+    pred_mean_manual_dup_w <- as.vector(cross_cov_dup_w %*% solve(Sigma_dup_w, y_dup_w))
+    pred_cov_manual_dup_w <- pred_cov_prior_dup_w -
+      cross_cov_dup_w %*% solve(Sigma_dup_w, t(cross_cov_dup_w))
+    pred_vecchia_dup_w <- predict(gp_model_vecchia_dup_w, y = y_dup_w,
+                                  gp_coords_pred = coords_pred_dup_w,
+                                  cov_pars = cov_pars_w, predict_response = TRUE,
+                                  predict_cov_mat = TRUE)
+    expect_lt(sum(abs(pred_vecchia_dup_w$mu - pred_mean_manual_dup_w)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred_vecchia_dup_w$cov) - as.vector(pred_cov_manual_dup_w))), TOLERANCE_STRICT)
+    gp_model_vecchia_dup_w$set_optim_params(params = list(num_rand_vec_trace = 5000,
+                                                          seed_rand_vec_trace = 1,
+                                                          reuse_rand_vec_trace = TRUE))
+    fit(gp_model_vecchia_dup_w, y = y_dup_w, params = list(maxit = 0,
+                                                           init_cov_pars = cov_pars_w))
+    grad_cov_dup_w <- list(diag(1 / weights_dup_w), exp(-D_dup_w / cov_pars_w[3]),
+                           cov_pars_w[2] * exp(-D_dup_w / cov_pars_w[3]) * D_dup_w / cov_pars_w[3]^2)
+    FI_dup_w <- matrix(0, 3, 3)
+    Sigma_inv_dup_w <- solve(Sigma_dup_w)
+    for (ii in 1:3) {
+      for (jj in ii:3) {
+        FI_dup_w[ii, jj] <- 0.5 * sum(diag(Sigma_inv_dup_w %*% grad_cov_dup_w[[ii]] %*%
+                                             Sigma_inv_dup_w %*% grad_cov_dup_w[[jj]]))
+        FI_dup_w[jj, ii] <- FI_dup_w[ii, jj]
+      }
+    }
+    std_err_vecchia_dup_w <- as.vector(gp_model_vecchia_dup_w$get_cov_pars(std_err = TRUE)["Std. err.", ])
+    std_err_manual_dup_w <- c(0.449734084032, 1.047062462493, 0.608427345960)
+    expect_lt(sum(abs(sqrt(diag(solve(FI_dup_w))) - std_err_manual_dup_w)), TOLERANCE_STRICT)
+    expect_true(all(is.finite(std_err_vecchia_dup_w)))
+    
+    capture.output( gp_model_fitc_dup_w <- GPModel(gp_coords = coords_dup_w,
+                                                   cov_function = "exponential",
+                                                   gp_approx = "fitc",
+                                                   num_ind_points = 3,
+                                                   ind_points_selection = "random",
+                                                   weights = weights_dup_w) , file='NUL')
+    expect_lt(abs(gp_model_fitc_dup_w$neg_log_likelihood(cov_pars = cov_pars_w,
+                                                         y = y_dup_w) - nll_dup_manual_w),
+              TOLERANCE_STRICT)
+    
+    capture.output( gp_model_full_scale_vecchia_dup_w <- GPModel(gp_coords = coords_dup_w,
+                                                                 cov_function = "exponential",
+                                                                 gp_approx = "full_scale_vecchia",
+                                                                 num_neighbors = 2,
+                                                                 num_ind_points = 3,
+                                                                 ind_points_selection = "random",
+                                                                 weights = weights_dup_w) , file='NUL')
+    expect_true(is.finite(gp_model_full_scale_vecchia_dup_w$neg_log_likelihood(cov_pars = cov_pars_w,
+                                                                               y = y_dup_w)))
+    capture.output( gp_model_full_scale_vecchia_exact_dup_w <- GPModel(gp_coords = coords_dup_w,
+                                                                       cov_function = "exponential",
+                                                                       gp_approx = "full_scale_vecchia",
+                                                                       num_neighbors = nrow(coords_dup_w) - 1,
+                                                                       num_ind_points = 3,
+                                                                       ind_points_selection = "random",
+                                                                       vecchia_ordering = "none",
+                                                                       weights = weights_dup_w) , file='NUL')
+    expect_lt(abs(gp_model_full_scale_vecchia_exact_dup_w$neg_log_likelihood(cov_pars = cov_pars_w,
+                                                                             y = y_dup_w) -
+                    nll_dup_manual_w), TOLERANCE_STRICT)
+    
+    capture.output( gp_model_vif_dup_w <- GPModel(gp_coords = coords_dup_w,
+                                                  cov_function = "exponential",
+                                                  gp_approx = "vif",
+                                                  num_neighbors = 2,
+                                                  num_ind_points = 3,
+                                                  ind_points_selection = "random",
+                                                  weights = weights_dup_w) , file='NUL')
+    expect_true(is.finite(gp_model_vif_dup_w$neg_log_likelihood(cov_pars = cov_pars_w,
+                                                                y = y_dup_w)))
+    capture.output( gp_model_vif_exact_dup_w <- GPModel(gp_coords = coords_dup_w,
+                                                        cov_function = "exponential",
+                                                        gp_approx = "vif",
+                                                        num_neighbors = nrow(coords_dup_w) - 1,
+                                                        num_ind_points = 3,
+                                                        ind_points_selection = "random",
+                                                        vecchia_ordering = "none",
+                                                        weights = weights_dup_w) , file='NUL')
+    expect_lt(abs(gp_model_vif_exact_dup_w$neg_log_likelihood(cov_pars = cov_pars_w,
+                                                              y = y_dup_w) -
+                    nll_dup_manual_w), TOLERANCE_STRICT)
+    
+    capture.output( gp_model_fst_exact_dup_w <- GPModel(gp_coords = coords_dup_w,
+                                                        cov_function = "exponential",
+                                                        gp_approx = "full_scale_tapering",
+                                                        num_ind_points = 3,
+                                                        ind_points_selection = "random",
+                                                        cov_fct_taper_range = 1e6,
+                                                        cov_fct_taper_shape = 2,
+                                                        weights = weights_dup_w,
+                                                        matrix_inversion_method = "cholesky") , file='NUL')
+    expect_lt(abs(gp_model_fst_exact_dup_w$neg_log_likelihood(cov_pars = cov_pars_w,
+                                                              y = y_dup_w) -
+                    nll_dup_manual_w), TOLERANCE_STRICT)
+  })
+  
   test_that("Gaussian process model with linear regression term ", {
     y <- eps + X%*%beta + xi
     init_cov_pars <- c(var(y)/2,var(y)/2,mean(dist(coords))/3)
@@ -791,6 +1103,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         vecchia_ordering = "none"), file='NUL')
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll,y=y)
     expect_lt(abs(nll-exp_nll), TOLERANCE_STRICT)
+    # with weights
+    weights <- rep(1.000000001, length(y))
+    capture.output( gp_model_w <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                        gp_approx = "vecchia", num_neighbors = n-1,
+                                        vecchia_ordering = "none", weights = weights), file='NUL') 
+    expect_lt(abs(gp_model_w$neg_log_likelihood(cov_pars=cov_pars_ll,y=y)-exp_nll), TOLERANCE_STRICT)
     # "vecchia_latent"
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
@@ -822,8 +1140,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia", num_neighbors = 30,
                                         vecchia_ordering = "none"), file='NUL')
-    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll,y=y)
-    expect_lt(abs(nll-exp_nll_less_nn), TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$neg_log_likelihood(cov_pars=cov_pars_ll,y=y)-exp_nll_less_nn), TOLERANCE_STRICT)
+    capture.output( gp_model_w <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                        gp_approx = "vecchia", num_neighbors = 30,
+                                        vecchia_ordering = "none", weights = weights), file='NUL')
+    expect_lt(abs(gp_model_w$neg_log_likelihood(cov_pars=cov_pars_ll,y=y)-exp_nll_less_nn), TOLERANCE_STRICT)
     # "vecchia_latent"
     exp_nll_less_nn_lat <- 124.2549533
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
@@ -996,7 +1317,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE)[c(1,3,5)+1])-cov_pars_vecchia[c(1,3,5)+1])), TOLERANCE_LOOSE)
     expect_equal(gp_model$get_num_optim_iter(), 378)
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_vecchia)), TOLERANCE_STRICT)
-    
     # Prediction from fitted model
     coord_test <- cbind(c(0.1,0.10001,0.7),c(0.9,0.90001,0.55))
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only", num_neighbors_pred = 30)
@@ -1021,6 +1341,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(mean(abs(apply(pred$prior_samples[1:5,],1,mean)-rep(0,5))), tol_mean)
     cov_mat_prior <- cov(t(pred$prior))
     expect_lt(mean(abs(as.vector(cov_mat_prior[lower.tri(cov_mat_prior)])-as.vector(Sigma[lower.tri(Sigma)]))), tol_cov)
+    # with weights
+    capture.output( gp_model_w <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                        gp_approx = "vecchia", num_neighbors = 30,
+                                        vecchia_ordering = "none", weights = weights), file='NUL')
+    capture.output( fit(gp_model_w, y = y, params = params_vecchia) , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model_w$get_cov_pars(std_err = TRUE)[c(1,3,5)])-cov_pars_vecchia[c(1,3,5)])), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model_w$get_cov_pars(std_err = TRUE)[c(1,3,5)+1])-cov_pars_vecchia[c(1,3,5)+1])), TOLERANCE_LOOSE)
+    expect_equal(gp_model_w$get_num_optim_iter(), 378)
+    expect_lt(sum(abs(gp_model_w$get_current_neg_log_likelihood()-nll_vecchia)), TOLERANCE_STRICT)
+    gp_model_w$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only", num_neighbors_pred = 30)
+    pred <- predict(gp_model_w, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE)
+    expect_lt(sum(abs(pred$mu-expected_mu_vecchia)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_vecchia)), TOLERANCE_STRICT)
+    
     # Holding some parameters fix
     params_fix <- params_vecchia
     params_fix$convergence_criterion <- NULL

@@ -641,6 +641,66 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         })
       }
     })
+
+    test_that("GPBoost algorithm supports Gaussian sample weights ", {
+
+      group_w <- c(1, 1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5)
+      X_w <- matrix(c(-1.0, -0.6, -0.2, 0.1, 0.4, 0.7, 1.0, 1.3, -0.8, -0.1, 0.5, 1.1,
+                      0.2, 0.4, 0.6, 0.8, 0.3, 0.5, 0.7, 0.9, 0.1, 0.45, 0.65, 0.85),
+                    ncol = 2)
+      y_w <- c(0.20, -0.35, 0.95, 0.70, -0.10, 1.25, 0.15, -0.55, 0.35, 0.05, 1.05, -0.20)
+      weights_no <- rep(1.000000001, length(y_w))
+      weights_w <- c(1.0, 2.0, 0.8, 1.5, 0.7, 2.2, 1.3, 0.9, 1.8, 0.6, 1.1, 0.5)
+      
+      params <- list(objective = "regression_l2", learning_rate = 0.05,
+                     max_depth = 2,  min_data_in_leaf = 1,
+                     feature_pre_filter = FALSE, optimizer_cov = "lbfgs", trace = FALSE)
+      capture.output( gp_model_w <- GPModel(group_data = group_w,
+                                            weights = weights_no) , file='NUL')
+      capture.output( bst_w <- gpboost(data = X_w, label = y_w, gp_model = gp_model_w,
+                                       nrounds = 5, params = params, verbose = 0) , file='NUL')
+      capture.output( gp_model <- GPModel(group_data = group_w) , file='NUL')
+      capture.output( bst <- gpboost(data = X_w, label = y_w, gp_model = gp_model,
+                                       nrounds = 5, params = params, verbose = 0) , file='NUL')
+      cov_pars <- c(2.028712e-01, 1.053762e-07 )
+      nll <- 7.456163
+      expect_lt(sum(abs(as.vector(gp_model_w$get_cov_pars()) - cov_pars)), TOLERANCE_STRICT)
+      expect_lt(abs(gp_model_w$get_current_neg_log_likelihood() - nll), TOLERANCE_STRICT)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()) - cov_pars)), TOLERANCE_STRICT)
+      expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_STRICT)
+      
+      pred_w <- predict(bst_w, data = X_w, group_data_pred = group_w,
+                        pred_latent = TRUE, predict_var = TRUE)
+      pred <- predict(bst, data = X_w, group_data_pred = group_w,
+                        pred_latent = TRUE, predict_var = TRUE)
+      pred_fe <- c(0.1552112, 0.3873440, 0.4667916, 0.2930946)
+      pred_re <- c(-7.404650e-08, -7.404650e-08, 4.680724e-08, 4.680724e-08)
+      pred_re_var <- c(1.053761e-07, 1.053761e-07, 1.053761e-07, 1.053761e-07)
+      expect_lt(sum(abs(tail(pred_w$fixed_effect, n = 4) - pred_fe)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(tail(pred_w$random_effect_mean, n = 4) - pred_re)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(tail(pred_w$random_effect_cov, n = 4) - pred_re_var)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(tail(pred$fixed_effect, n = 4) - pred_fe)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(tail(pred$random_effect_mean, n = 4) - pred_re)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(tail(pred$random_effect_cov, n = 4) - pred_re_var)), TOLERANCE_STRICT)
+      
+      capture.output( gp_model_w <- GPModel(group_data = group_w,
+                                            weights = weights_w) , file='NUL')
+      capture.output( bst_w <- gpboost(data = X_w, label = y_w, gp_model = gp_model_w,
+                                       nrounds = 5, params = params, verbose = 0) , file='NUL')
+      cov_pars <- c(2.341871e-01, 1.424805e-07)
+      nll <- 7.845767
+      expect_lt(sum(abs(as.vector(gp_model_w$get_cov_pars()) - cov_pars)), TOLERANCE_STRICT)
+      expect_lt(abs(gp_model_w$get_current_neg_log_likelihood() - nll), TOLERANCE_STRICT)
+
+      pred_w <- predict(bst_w, data = X_w, group_data_pred = group_w,
+                        pred_latent = TRUE, predict_var = TRUE)
+      pred_fe <- c(0.2142461, 0.4736939, 0.5318590, 0.5318590)
+      pred_re <- c(-5.998477e-09, -5.998477e-09, 1.241301e-07, 1.241301e-07)
+      pred_re_var <- c(1.424803e-07, 1.424803e-07, 1.424804e-07, 1.424804e-07)
+      expect_lt(sum(abs(tail(pred_w$fixed_effect, n = 4) - pred_fe)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(tail(pred_w$random_effect_mean, n = 4) - pred_re)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(tail(pred_w$random_effect_cov, n = 4) - pred_re_var)), TOLERANCE_STRICT)
+    })
     
     test_that("GPBoost algorithm: large data and 'reuse_learning_rates_gp_model' and 'line_search_step_length' options", {
       

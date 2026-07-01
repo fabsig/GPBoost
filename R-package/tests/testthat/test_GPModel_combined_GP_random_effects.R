@@ -79,9 +79,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
     expect_lt(abs(nll-nll_exp),1E-6)
     # Estimation 
-    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group, y = y,
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                           group_data = group, y = y,
                                            params = OPTIM_PARAMS_BFGS), file='NUL')
-    cov_pars_exp <- c(0.02289067637, 0.09244934369, 0.61508804662, 0.30607202462, 1.02397535406, 0.25670906899, 0.11180921688, 0.04165092072)
+    cov_pars_exp <- c(0.02289067637, 0.09244934369, 0.61508804662, 0.30607202462, 
+                      1.02397535406, 0.25670906899, 0.11180921688, 0.04165092072)
     num_it_exp <- 12
     nll_fit_exp <- 132.4136173
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_exp)),1E-6)
@@ -137,6 +139,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     sample_posterior = TRUE, num_post_samples=100000)
     expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-pred$mu)), 0.01)
     expect_lt(sum(abs(cov(t(pred$posterior_samples))-pred$cov)), 0.2)
+    # with weights being 1
+    weights <- rep(1,length(y))
+    gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, weights=weights)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
+    expect_lt(abs(nll-nll_exp),1E-6)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", 
+                                           group_data = group, y = y, weights=weights,
+                                           params = OPTIM_PARAMS_BFGS), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_exp)),1E-6)
+    expect_equal(gp_model$get_num_optim_iter(), num_it_exp)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_fit_exp)),1E-6)
+    gp_model$set_optim_params(params=list(init_cov_pars=cov_pars_pred))
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
+                    group_data_pred = group_test, predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
     
     # matrix_inversion_method = "cholesky"
     # with Vecchia
@@ -163,6 +181,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none", 
                           matrix_inversion_method = matrix_inversion_method)
+      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000))
+      nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
+      expect_lt(abs(nll-nll_exp),tol_loc2)
+      gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
+                          gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none", 
+                          matrix_inversion_method = matrix_inversion_method, weights=weights)
       gp_model$set_optim_params(params = list(num_rand_vec_trace=1000))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
       expect_lt(abs(nll-nll_exp),tol_loc2)
@@ -249,6 +273,63 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                         gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = "cholesky")
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
     expect_lt(abs(nll-nll_exp), 0.3)
+    
+    # with weights
+    coords_w <- cbind(c(0.05, 0.18, 0.31, 0.52, 0.74, 0.91),
+                      c(0.12, 0.44, 0.27, 0.83, 0.35, 0.66))
+    group_w <- c(1, 1, 2, 2, 3, 3)
+    y_w <- c(0.25, -0.40, 1.20, 0.75, -0.15, 1.45)
+    weights_w <- c(1.0, 2.0, 3.0, 1.5, 0.7, 2.2)
+    cov_pars_w <- c(0.45, 0.80, 1.20, 0.35)
+    capture.output( gp_model_w <- GPModel(gp_coords = coords_w, cov_function = "exponential",
+                                          group_data = group_w, weights = weights_w) , file='NUL')
+    nll_w <- gp_model_w$neg_log_likelihood(cov_pars = cov_pars_w, y = y_w)
+    Z_w <- model.matrix(rep(1, length(group_w)) ~ factor(group_w) - 1)
+    D_w <- as.matrix(dist(coords_w))
+    Sigma_w <- cov_pars_w[2] * tcrossprod(Z_w) +
+      cov_pars_w[3] * exp(-D_w / cov_pars_w[4]) +
+      cov_pars_w[1] * diag(1 / weights_w)
+    chol_Sigma_w <- chol(Sigma_w)
+    nll_w_manual <- 0.5 * drop(crossprod(y_w, solve(Sigma_w, y_w))) +
+      sum(log(diag(chol_Sigma_w))) + length(y_w) / 2 * log(2 * pi)
+    expect_lt(abs(nll_w - nll_w_manual), TOLERANCE_STRICT)
+    
+    coords_pred_w <- cbind(c(0.16, 0.60, 0.88), c(0.20, 0.70, 0.40))
+    group_pred_w <- c(1, 3, 4)
+    pred_w <- predict(gp_model_w, y = y_w, gp_coords_pred = coords_pred_w,
+                      group_data_pred = group_pred_w, cov_pars = cov_pars_w,
+                      predict_response = TRUE, predict_cov_mat = TRUE)
+    D_pred_obs_w <- as.matrix(dist(rbind(coords_pred_w, coords_w)))[1:nrow(coords_pred_w),
+                                                                    -(1:nrow(coords_pred_w))]
+    D_pred_w <- as.matrix(dist(coords_pred_w))
+    Z_pred_w <- model.matrix(rep(1, length(group_pred_w)) ~
+                               factor(group_pred_w, levels = c(sort(unique(group_w)), 4)) - 1)
+    Z_obs_w <- model.matrix(rep(1, length(group_w)) ~
+                              factor(group_w, levels = c(sort(unique(group_w)), 4)) - 1)
+    cross_cov_w <- cov_pars_w[2] * Z_pred_w %*% t(Z_obs_w) +
+      cov_pars_w[3] * exp(-D_pred_obs_w / cov_pars_w[4])
+    pred_cov_prior_w <- cov_pars_w[2] * tcrossprod(Z_pred_w) +
+      cov_pars_w[3] * exp(-D_pred_w / cov_pars_w[4]) +
+      cov_pars_w[1] * diag(length(group_pred_w))
+    pred_mean_manual_w <- as.vector(cross_cov_w %*% solve(Sigma_w, y_w))
+    pred_cov_manual_w <- pred_cov_prior_w - cross_cov_w %*% solve(Sigma_w, t(cross_cov_w))
+    expect_lt(sum(abs(pred_w$mu - pred_mean_manual_w)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred_w$cov) - as.vector(pred_cov_manual_w))), TOLERANCE_STRICT)
+    
+    X_w <- cbind(1, c(-1.0, -0.5, 0.2, 0.7, 1.1, -0.2))
+    capture.output( gp_model_w_fit_X <- fitGPModel(gp_coords = coords_w,
+                                                   cov_function = "exponential",
+                                                   group_data = group_w,
+                                                   y = y_w, X = X_w,
+                                                   weights = weights_w,
+                                                   params = list(optimizer_cov = "lbfgs",
+                                                                 optimizer_coef = "wls")) , file='NUL')
+    cov_pars_fit_X <- as.vector(gp_model_w_fit_X$get_cov_pars())
+    beta_fit_X <- as.vector(gp_model_w_fit_X$get_coef())
+    cov_pars <- c(2.49299439302e-08, 1.21361827019e+00, 4.44355584411e-03, 5.62394305334e-12)
+    coef <- c(0.576402422316, -1.194715383519)
+    expect_lt(sum(abs(cov_pars_fit_X - cov_pars)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(beta_fit_X - coef)), TOLERANCE_STRICT)
   })
   
   test_that("Combined Gaussian process and grouped random effects model with 'gamma' likelihood ", {

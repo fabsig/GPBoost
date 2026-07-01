@@ -1363,9 +1363,6 @@ namespace GPBoost {
 				D_inv_cluster_i.diagonal().array() = 0.;
 			}
 			if (add_diagonal != nullptr) {
-				if (calc_gradient) {
-					Log::REFatal("CalcCovFactorGradientVecchia: 'add_diagonal' can currently not be used when 'calc_gradient' is true ");
-				}
 #pragma omp parallel for schedule(static)
 				for (data_size_t i = 0; i < num_re_cluster_i; ++i) {
 					D_inv_cluster_i.coeffRef(i, i) += add_diagonal[i];
@@ -1537,7 +1534,7 @@ namespace GPBoost {
 				}
 			}
 			if (calc_gradient && calc_gradient_nugget && estimate_cov_par_index[0] > 0) {
-				D_grad_cluster_i[num_par_gp - 1].coeffRef(i, i) = 1.;
+				D_grad_cluster_i[num_par_gp - 1].coeffRef(i, i) = add_diagonal == nullptr ? 1. : 1. + add_diagonal[i] / nugget_var;
 			}
 			//2. remaining terms
 			if (i > 0) {
@@ -1569,7 +1566,13 @@ namespace GPBoost {
 				}
 				if (calc_gradient) {
 					if (calc_gradient_nugget && estimate_cov_par_index[0] > 0) {
-						A_i_grad_sigma2 = -(chol_fact_between_neighbors.solve(A_i.transpose())).transpose();
+						den_mat_t cov_grad_mat_between_neighbors_sigma2 = den_mat_t::Identity(num_nn, num_nn);
+						if (add_diagonal != nullptr) {
+							for (int ii = 0; ii < num_nn; ++ii) {
+								cov_grad_mat_between_neighbors_sigma2(ii, ii) += add_diagonal[nearest_neighbors_cluster_i[i][ii]] / nugget_var;
+							}
+						}
+						A_i_grad_sigma2 = -A_i * ((chol_fact_between_neighbors.solve(cov_grad_mat_between_neighbors_sigma2)).transpose());
 					}
 					den_mat_t A_i_grad(1, num_nn);
 					for (int j = 0; j < num_gp_total; ++j) {
@@ -1658,6 +1661,7 @@ namespace GPBoost {
 		int num_gp_rand_coef,
 		int num_gp_total,
 		const vec_t& y_cluster_i,
+		const double* weights,
 		bool gauss_likelihood,
 		RNG_t& rng,
 		bool calc_pred_cov,
@@ -1888,7 +1892,14 @@ namespace GPBoost {
 			}
 			//2. remaining terms
 			if (gauss_likelihood) {
-				cov_mat_between_neighbors.diagonal().array() += 1.;//add nugget effect
+				for (int ii = 0; ii < num_nn; ++ii) {
+					if (weights != nullptr && nearest_neighbors_cluster_i[i][ii] < num_re_cli) {
+						cov_mat_between_neighbors(ii, ii) += 1. / weights[nearest_neighbors_cluster_i[i][ii]];
+					}
+					else {
+						cov_mat_between_neighbors(ii, ii) += 1.;//add nugget effect
+					}
+				}
 				//Note: we add the nugget effect variance irrespective of 'predict_response' since (i) this is numerically more stable and 
 				//	(ii) otherwise we would have to add it only for the neighbors in the observed training data if predict_response == false
 				//	If predict_response == false, the nugget variance is simply subtracted from the predictive covariance matrix later again.
@@ -2143,6 +2154,7 @@ namespace GPBoost {
 		int num_gp_rand_coef,
 		int num_gp_total,
 		const vec_t& y_cluster_i,
+		const double* weights,
 		RNG_t& rng,
 		bool calc_pred_cov,
 		bool calc_pred_var,
@@ -2236,7 +2248,14 @@ namespace GPBoost {
 		Bp.setFromTriplets(entries_init_Bp.begin(), entries_init_Bp.end());
 		vec_t Do_inv(num_data_cli);
 		vec_t Dp_inv(num_data_pred_cli);
-		Do_inv.setOnes();//Put 1 on the diagonal (for nugget effect)
+		if (weights != nullptr) {
+			for (int i = 0; i < num_data_cli; ++i) {
+				Do_inv[i] = 1. / weights[i];//Put observation-specific nugget on the diagonal
+			}
+		}
+		else {
+			Do_inv.setOnes();//Put 1 on the diagonal (for nugget effect)
+		}
 		Dp_inv.setOnes();
 		bool var_on_diag = re_comps_vecchia[0]->VarianceOnDiagonal();
 		if (!var_on_diag) {
@@ -2301,7 +2320,14 @@ namespace GPBoost {
 			}
 			//2. remaining terms
 			if (i > 0) {
-				cov_mat_between_neighbors.diagonal().array() += 1.;//add nugget effect
+				for (int ii = 0; ii < num_nn; ++ii) {
+					if (weights != nullptr && nearest_neighbors_cluster_i[i][ii] >= num_data_pred_cli) {
+						cov_mat_between_neighbors(ii, ii) += 1. / weights[nearest_neighbors_cluster_i[i][ii] - num_data_pred_cli];
+					}
+					else {
+						cov_mat_between_neighbors(ii, ii) += 1.;//add nugget effect
+					}
+				}
 				den_mat_t A_i(1, num_nn);//dim = 1 x nn
 				A_i = (cov_mat_between_neighbors.llt().solve(cov_mat_obs_neighbors)).transpose();
 				for (int inn = 0; inn < num_nn; ++inn) {
@@ -2360,6 +2386,7 @@ namespace GPBoost {
 		const string_t& vecchia_neighbor_selection,
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia,
 		const vec_t& y_cluster_i,
+		const double* weights,
 		RNG_t& rng,
 		bool calc_pred_cov,
 		bool calc_pred_var,
@@ -2405,6 +2432,12 @@ namespace GPBoost {
 		}
 		Z_o.setFromTriplets(entries_Z_o.begin(), entries_Z_o.end());
 		Z_p.setFromTriplets(entries_Z_p.begin(), entries_Z_p.end());
+		sp_mat_t R_inv_obs(num_data_cli, num_data_cli);
+		std::vector<Triplet_t> entries_R_inv_obs(num_data_cli);
+		for (int i = 0; i < num_data_cli; ++i) {
+			entries_R_inv_obs[i] = Triplet_t(i, i, weights == nullptr ? 1. : weights[i]);
+		}
+		R_inv_obs.setFromTriplets(entries_R_inv_obs.begin(), entries_R_inv_obs.end());
 		std::vector<std::vector<int>> nearest_neighbors_cluster_i(num_coord_unique);
 		std::vector<den_mat_t> dist_obs_neighbors_cluster_i(num_coord_unique);
 		std::vector<den_mat_t> dist_between_neighbors_cluster_i(num_coord_unique);
@@ -2507,19 +2540,18 @@ namespace GPBoost {
 		B_inv.setIdentity();
 		TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B, B_inv, B_inv, false);
 		//Calculate inverse of covariance matrix for observed data using the Woodbury identity
-		sp_mat_t M_aux_Woodbury = B.transpose() * D_inv.asDiagonal() * B + Z_o.transpose() * Z_o;
+		sp_mat_t Z_o_T_R_inv = Z_o.transpose() * R_inv_obs;
+		sp_mat_t M_aux_Woodbury = B.transpose() * D_inv.asDiagonal() * B + Z_o_T_R_inv * Z_o;
 		chol_sp_mat_t CholFac_M_aux_Woodbury;
 		CholFac_M_aux_Woodbury.compute(M_aux_Woodbury);
 		if (calc_pred_cov || calc_pred_var) {
-			sp_mat_t Identity_obs(num_data_cli, num_data_cli);
-			Identity_obs.setIdentity();
 			sp_mat_t MInvSqrtX_Z_o_T;
-			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(CholFac_M_aux_Woodbury, Z_o.transpose(), MInvSqrtX_Z_o_T, false);
-			sp_mat_t ZoSigmaZoT_plusI_Inv = -MInvSqrtX_Z_o_T.transpose() * MInvSqrtX_Z_o_T + Identity_obs;
+			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(CholFac_M_aux_Woodbury, Z_o_T_R_inv, MInvSqrtX_Z_o_T, false);
+			sp_mat_t ZoSigmaZoT_plusR_Inv = -MInvSqrtX_Z_o_T.transpose() * MInvSqrtX_Z_o_T + R_inv_obs;
 			sp_mat_t Z_p_B_inv = Z_p * B_inv;
 			sp_mat_t Z_p_B_inv_D = Z_p_B_inv * D.asDiagonal();
 			sp_mat_t ZpSigmaZoT = Z_p_B_inv_D * (B_inv.transpose() * Z_o.transpose());
-			sp_mat_t M_aux = ZpSigmaZoT * ZoSigmaZoT_plusI_Inv;
+			sp_mat_t M_aux = ZpSigmaZoT * ZoSigmaZoT_plusR_Inv;
 			pred_mean = M_aux * y_cluster_i;
 			if (calc_pred_cov) {
 				pred_cov = den_mat_t(Z_p_B_inv_D * Z_p_B_inv.transpose() - M_aux * ZpSigmaZoT.transpose());
@@ -2548,9 +2580,9 @@ namespace GPBoost {
 			}
 		}//end calc_pred_cov || calc_pred_var
 		else {
-			vec_t resp_aux = Z_o.transpose() * y_cluster_i;
+			vec_t resp_aux = Z_o_T_R_inv * y_cluster_i;
 			vec_t resp_aux2 = CholFac_M_aux_Woodbury.solve(resp_aux);
-			resp_aux = y_cluster_i - Z_o * resp_aux2;
+			resp_aux = R_inv_obs * (y_cluster_i - Z_o * resp_aux2);
 			pred_mean = Z_p * (B_inv * (D.asDiagonal() * (B_inv.transpose() * (Z_o.transpose() * resp_aux))));
 		}
 	}//end CalcPredVecchiaLatentObservedFirstOrder
