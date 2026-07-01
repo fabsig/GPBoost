@@ -281,6 +281,7 @@ namespace GPBoost {
 		int piv_chol_rank,
 		double* init_aux_pars,
 		bool estimate_aux_pars,
+		bool init_coef_aux_pars_from_iid_model,
 		const int* estimate_cov_par_index,
 		int m_lbfgs,
 		double delta_conv_mode_finding) {
@@ -307,7 +308,7 @@ namespace GPBoost {
 			coef_ = Eigen::Map<const vec_t>(init_coef, num_sets_fixed_effects_ * num_covariates);
 			num_covariates_ = num_covariates;
 			num_coef_ = num_covariates * num_sets_fixed_effects_;
-			coef_given_or_estimated_ = true;
+			init_coef_given_ = true;
 		}
 		// Initial aux_pars
 		if (init_aux_pars != nullptr) {
@@ -327,6 +328,10 @@ namespace GPBoost {
 		}
 		else {
 			init_aux_pars_given_ = false;
+		}
+		init_coef_aux_pars_from_iid_model_ = init_coef_aux_pars_from_iid_model;
+		if (init_coef_aux_pars_from_iid_model_ && (init_coef_given_ || init_aux_pars_given_)) {
+			Log::REFatal("The parameter 'init_coef_aux_pars_from_iid_model' cannot be true when 'init_coef' or 'init_aux_pars' are provided.");
 		}
 		// Logging level
 		if (trace) {
@@ -488,7 +493,7 @@ namespace GPBoost {
 				false);
 		}
 		has_covariates_ = true;
-		coef_given_or_estimated_ = true;
+		coef_estimated_ = true;
 		covariance_matrix_has_been_factorized_ = true;
 		model_has_been_estimated_ = true;
 		std_dev_cov_pars_calculated_ = false;
@@ -987,7 +992,7 @@ namespace GPBoost {
 			}
 		}// end use saved cov_pars
 		if (has_covariates_) {
-			CHECK(coef_given_or_estimated_ == true);
+			CHECK(coef_estimated_ || init_coef_given_);
 		}
 		if (suppress_calc_cov_factor) {
 			calc_cov_factor = false;
@@ -1096,7 +1101,7 @@ namespace GPBoost {
 			}
 		}// end use saved cov_pars
 		if (has_covariates_) {
-			CHECK(coef_given_or_estimated_ == true);
+			CHECK(coef_estimated_ || init_coef_given_);
 		}
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->PredictTrainingDataRandomEffects(cov_pars_pred_trans.data(),

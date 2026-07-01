@@ -4587,6 +4587,7 @@ class GPModel(object):
                        "seed_rand_vec_trace": 1,
                        "fitc_piv_chol_preconditioner_rank": -1, # default value is set in C++
                        "estimate_aux_pars": True,
+                       "init_coef_aux_pars_from_iid_model": False,
                        "estimate_cov_par_index": np.array([-1], dtype=np.int32),
                        "m_lbfgs": -1, # default value is set in C++
                        "delta_conv_mode_finding": -1 # default value is set in C++
@@ -5068,6 +5069,13 @@ class GPModel(object):
                 raise GPBoostError("The argument 'piv_chol_rank' is discontinued. Use the argument 'fitc_piv_chol_preconditioner_rank' instead ")
             if 'std_dev' in params:
                 raise GPBoostError("GPModel: The argument 'std_dev' is discontinued. Standard errors are calculated directly in the 'summary()' and 'get_cov_pars()' & 'get_coef()' functions. See the 'std_err' argument of these functions ")
+            if ("init_coef_aux_pars_from_iid_model" in params and
+                    not isinstance(params["init_coef_aux_pars_from_iid_model"], (bool, np.bool_))):
+                raise ValueError("params['init_coef_aux_pars_from_iid_model'] needs to be a bool")
+            if ("init_coef_aux_pars_from_iid_model" in params and params["init_coef_aux_pars_from_iid_model"] and
+                    (params.get("init_coef") is not None or params.get("init_aux_pars") is not None)):
+                raise ValueError("params['init_coef_aux_pars_from_iid_model'] cannot be True when "
+                                 "params['init_coef'] or params['init_aux_pars'] are provided")
             for param in params:
                 if param == "init_cov_pars":
                     if params[param] is not None:
@@ -5153,6 +5161,8 @@ class GPModel(object):
                 - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for additional parameters for non-Gaussian likelihoods
                     (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
+                - init_coef_aux_pars_from_iid_model : bool, optional (default = False)
+                    If True, regression coefficients and auxiliary parameters are initialized from an iid model.
                 - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1) 
                     This allows for disabling the estimation of some (or all) covariance parameters.
                     If estimate_cov_par_index = -1, all covariance parameters are estimated.
@@ -5433,6 +5443,8 @@ class GPModel(object):
                 - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for additional parameters for non-Gaussian likelihoods
                     (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
+                - init_coef_aux_pars_from_iid_model : bool, optional (default = False)
+                    If True, regression coefficients and auxiliary parameters are initialized from an iid model.
                 - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1) 
                     This allows for disabling the estimation of some (or all) covariance parameters.
                     If estimate_cov_par_index = -1, all covariance parameters are estimated.
@@ -5606,6 +5618,7 @@ class GPModel(object):
             ctypes.c_int(self.params["fitc_piv_chol_preconditioner_rank"]),
             init_aux_pars_c,
             ctypes.c_bool(self.params["estimate_aux_pars"]),
+            ctypes.c_bool(self.params["init_coef_aux_pars_from_iid_model"]),
             self.params["estimate_cov_par_index"].ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
             ctypes.c_int(self.params["m_lbfgs"]),
             ctypes.c_double(self.params["delta_conv_mode_finding"])))

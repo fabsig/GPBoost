@@ -275,6 +275,8 @@
 #'                \item{init_aux_pars: \code{vector} with \code{numeric} elements (default = NULL). 
 #'                Initial values for additional parameters for non-Gaussian likelihoods 
 #'                (e.g., shape parameter of a gamma or negative_binomial likelihood) }
+#'                \item{init_coef_aux_pars_from_iid_model: \code{boolean} (default = FALSE).
+#'                If TRUE, regression coefficients and auxiliary parameters are initialized from an iid model. }
 #'                \item{estimate_cov_par_index: \code{vector} with \code{integer} (default = -1). 
 #'                This allows for disabling the estimation of some (or all) covariance parameters. 
 #'                If 'estimate_cov_par_index' = -1, all covariance parameters are estimated. 
@@ -1276,6 +1278,7 @@ gpb.GPModel <- R6::R6Class(
         , private$params[["fitc_piv_chol_preconditioner_rank"]]
         , init_aux_pars
         , private$params[["estimate_aux_pars"]]
+        , private$params[["init_coef_aux_pars_from_iid_model"]]
         , private$params[["estimate_cov_par_index"]]
         , private$params[["m_lbfgs"]]
         , private$params[["delta_conv_mode_finding"]]
@@ -2483,6 +2486,7 @@ gpb.GPModel <- R6::R6Class(
                   seed_rand_vec_trace = 1L,
                   fitc_piv_chol_preconditioner_rank = -1L, # default value is set in C++
                   estimate_aux_pars = TRUE,
+                  init_coef_aux_pars_from_iid_model = FALSE,
                   estimate_cov_par_index = -1L,
                   m_lbfgs = -1L, # default value is set in C++
                   delta_conv_mode_finding = -1 # default value is set in C++
@@ -2550,7 +2554,7 @@ gpb.GPModel <- R6::R6Class(
       character_params <- c("optimizer_cov", "convergence_criterion",
                             "optimizer_coef", "cg_preconditioner_type")
       logical_params <- c("use_nesterov_acc", "trace",  
-                          "reuse_rand_vec_trace", "estimate_aux_pars")
+                          "reuse_rand_vec_trace", "estimate_aux_pars", "init_coef_aux_pars_from_iid_model")
       if (!is.null(params[["init_cov_pars"]])) {
         if (is.vector(params[["init_cov_pars"]])) {
           if (storage.mode(params[["init_cov_pars"]]) != "double") {
