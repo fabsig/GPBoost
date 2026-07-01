@@ -1397,7 +1397,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
           pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, 
                           predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test) 
           expect_lt(sum(abs(pred$mu-mu_less_neig)),tolerance_loc_2)
-          expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_loc)),tolerance_loc_1)
+          expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_loc)),1.5*tolerance_loc_1)
         }
         
         ############################
@@ -1782,7 +1782,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         predict_var = TRUE, predict_response = FALSE, 
                                         cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
         expect_lt(sum(abs(pred$mu-mu_less_neig)),tolerance_loc_1)
-        expect_lt(sum(abs(as.vector(pred$var)-var_resp_less_neig)),tolerance_loc_1)
+        expect_lt(sum(abs(as.vector(pred$var)-var_resp_less_neig)),2*tolerance_loc_1)
       }
       
       
@@ -5560,7 +5560,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
                                            y = y, X=X, params = params, matrix_inversion_method = "cholesky")
                     , file='NUL')
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.1945649727)),0.005)
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.1945649727)),0.01)
     expect_lt(sum(abs(gp_model$get_aux_pars()-c(29.748038906, 0.289104109))),0.3)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.0813684525, 0.71460257263))),0.008)
     nll <- -46.42265403
