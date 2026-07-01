@@ -8,6 +8,7 @@
 */
 #include <GPBoost/re_model.h>
 #include <LightGBM/utils/log.h>
+#include <algorithm>
 using LightGBM::Log;
 using LightGBM::LogLevelRE;
 #include <LightGBM/meta.h>
@@ -50,6 +51,17 @@ namespace GPBoost {
 		bool has_weights,
 		const double* weights,
 		double likelihood_learning_rate) {
+		num_data_ = num_data;
+		likelihood_ = likelihood == nullptr ? "gaussian" : std::string(likelihood);
+		likelihood_additional_param_ = likelihood_additional_param;
+		seed_ = seed;
+		num_parallel_threads_ = num_parallel_threads;
+		GPU_use_ = GPU_use;
+		has_weights_ = has_weights;
+		if (has_weights_ && weights != nullptr) {
+			weights_ = std::vector<double>(weights, weights + num_data);
+		}
+		likelihood_learning_rate_ = likelihood_learning_rate;
 		string_t cov_fct_str = "none";
 		if (cov_fct != nullptr) {
 			cov_fct_str = std::string(cov_fct);
@@ -145,6 +157,7 @@ namespace GPBoost {
 				Log::REFatal("Cannot change likelihood after a model has been estimated ");
 			}
 		}
+		likelihood_ = likelihood;
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->SetLikelihood(likelihood);
 			num_cov_pars_ = re_model_sp_->num_cov_par_;
@@ -334,6 +347,7 @@ namespace GPBoost {
 			Log::REFatal("The parameter 'init_coef_aux_pars_from_iid_model' cannot be true when 'init_coef' or 'init_aux_pars' are provided.");
 		}
 		// Logging level
+		trace_ = trace;
 		if (trace) {
 			Log::ResetLogLevelRE(LogLevelRE::Debug);
 		}
@@ -363,6 +377,103 @@ namespace GPBoost {
 	void REModel::ResetCovPars() {
 		cov_pars_ = vec_t(num_cov_pars_);
 		cov_pars_initialized_ = false;
+	}
+
+	template <typename T_mat, typename T_chol>
+	void REModel::InitCoefAuxParsFromIidModel(REModelTemplate<T_mat, T_chol>* re_model,
+		const double* y_data,
+		const double* covariate_data,
+		int num_covariates,
+		const double* fixed_effects) {
+		vec_t y_data_iid_vec;
+		const double* y_data_iid = y_data;
+		if (y_data == nullptr) {
+			y_data_iid_vec = vec_t(num_data_);
+			re_model->GetY(y_data_iid_vec.data());
+			y_data_iid = y_data_iid_vec.data();
+		}
+		std::vector<char> re_group_data_iid;
+		re_group_data_iid.reserve(2 * static_cast<size_t>(num_data_));
+		for (data_size_t i = 0; i < num_data_; ++i) {
+			re_group_data_iid.push_back('0');
+			re_group_data_iid.push_back('\0');
+		}
+		const double* weights_ptr = (has_weights_ && !weights_.empty()) ? weights_.data() : nullptr;
+		std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>> re_model_iid =
+			std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>>(new REModelTemplate<den_mat_t, chol_den_mat_t>(
+				num_data_, nullptr, re_group_data_iid.data(), 1, nullptr,
+				nullptr, 0, nullptr,
+				0, nullptr, 0, nullptr, 0, nullptr, 1.5, "none",
+				1., 1., -1, "random", -1, 1., "kmeans++",
+				likelihood_.c_str(), likelihood_additional_param_, "cholesky", seed_, num_parallel_threads_, GPU_use_,
+				weights_ptr != nullptr, weights_ptr, likelihood_learning_rate_));
+		const bool estimate_aux_pars_iid = re_model->estimate_aux_pars_ && re_model_iid->NumAuxPars() > 0;
+		const bool learn_cov_aux_pars_iid = estimate_aux_pars_iid;
+		std::vector<int> estimate_cov_par_index_iid(re_model_iid->num_cov_par_, 0);
+		string_t optimizer_cov_iid = (!re_model->gauss_likelihood_ || estimate_aux_pars_iid) ? "lbfgs" : "gradient_descent";
+		string_t optimizer_coef_iid = re_model->gauss_likelihood_ ? "wls" : "lbfgs";
+		const int max_iter_iid = std::max(re_model->max_iter_, 1000);
+		struct LogLevelREGuard {
+			explicit LogLevelREGuard(bool active) : active_(active) {
+				if (active_) {
+					Log::ResetLogLevelRE(LogLevelRE::Info);
+				}
+			}
+			~LogLevelREGuard() {
+				if (active_) {
+					Log::ResetLogLevelRE(LogLevelRE::Debug);
+				}
+			}
+			bool active_;
+		} log_level_re_guard(trace_);
+		re_model_iid->SetOptimConfig(re_model->lr_cov_init_,
+			re_model->acc_rate_cov_,
+			max_iter_iid,
+			re_model->delta_rel_conv_init_,
+			re_model->use_nesterov_acc_,
+			re_model->nesterov_schedule_version_,
+			optimizer_cov_iid.c_str(),
+			re_model->momentum_offset_,
+			re_model->convergence_criterion_.c_str(),
+			re_model->lr_coef_init_,
+			re_model->acc_rate_coef_,
+			optimizer_coef_iid.c_str(),
+			re_model->cg_max_num_it_,
+			re_model->cg_max_num_it_tridiag_,
+			re_model->cg_delta_conv_,
+			re_model->num_rand_vec_trace_,
+			re_model->reuse_rand_vec_trace_,
+			re_model->cg_preconditioner_type_.c_str(),
+			re_model->seed_rand_vec_trace_,
+			re_model->fitc_piv_chol_preconditioner_rank_,
+			estimate_aux_pars_iid,
+			estimate_cov_par_index_iid.data(),
+			re_model->m_lbfgs_,
+			re_model->delta_conv_mode_finding_);
+		vec_t init_cov_pars_iid = vec_t::Ones(re_model_iid->num_cov_par_);
+		vec_t cov_pars_iid(re_model_iid->num_cov_par_);
+		vec_t coef_iid(num_sets_fixed_effects_ * num_covariates);
+		int num_it_iid = 0;
+		re_model_iid->OptimLinRegrCoefCovPar(y_data_iid,
+			covariate_data,
+			num_covariates,
+			cov_pars_iid.data(),
+			coef_iid.data(),
+			num_it_iid,
+			init_cov_pars_iid.data(),
+			nullptr,
+			fixed_effects,
+			learn_cov_aux_pars_iid,
+			false,
+			false,
+			false,
+			false);
+		CHECK((int)coef_iid.size() == num_sets_fixed_effects_ * num_covariates);
+		coef_ = coef_iid;
+		if (NumAuxPars() > 0 && re_model_iid->AuxParsHaveBeenSetOrEstimated()) {
+			CHECK(re_model_iid->NumAuxPars() == NumAuxPars());
+			SetAuxPars(re_model_iid->GetAuxPars());
+		}
 	}
 
 	void REModel::OptimCovPar(const double* y_data,
@@ -437,7 +548,18 @@ namespace GPBoost {
 		double* init_coef_ptr;
 		num_covariates_ = num_covariates;
 		num_coef_ = num_covariates * num_sets_fixed_effects_;
-		if ((int)coef_.size() == num_covariates) {
+		if (init_coef_aux_pars_from_iid_model_) {
+			if (matrix_format_ == "sp_mat_t") {
+				InitCoefAuxParsFromIidModel(re_model_sp_.get(), y_data, covariate_data, num_covariates, fixed_effects);
+			}
+			else if (matrix_format_ == "sp_mat_rm_t") {
+				InitCoefAuxParsFromIidModel(re_model_sp_rm_.get(), y_data, covariate_data, num_covariates, fixed_effects);
+			}
+			else {
+				InitCoefAuxParsFromIidModel(re_model_den_.get(), y_data, covariate_data, num_covariates, fixed_effects);
+			}
+		}
+		if ((int)coef_.size() == num_coef_) {
 			init_coef_ptr = coef_.data();
 		}
 		else {

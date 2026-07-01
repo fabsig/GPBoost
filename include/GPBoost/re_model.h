@@ -507,6 +507,16 @@ namespace GPBoost {
 		void SetAuxPars(const double* aux_pars);
 
 		/*!
+		* \brief Initialize linear regression coefficients and auxiliary likelihood parameters from an iid model
+		*/
+		template <typename T_mat, typename T_chol>
+		void InitCoefAuxParsFromIidModel(REModelTemplate<T_mat, T_chol>* re_model,
+			const double* y_data,
+			const double* covariate_data,
+			int num_covariates,
+			const double* fixed_effects);
+
+		/*!
 		* \brief Get initial values for additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
 		* \param[out] aux_pars Initial additional likelihood parameters stored in init_aux_pars_
 		*/
@@ -532,6 +542,16 @@ namespace GPBoost {
 		std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>> re_model_den_;
 		/*! \brief List of covariance functions wtih compact support */
 		const std::set<string_t> COMPACT_SUPPORT_COVS_{ "wendland", "exponential_tapered" };
+		data_size_t num_data_ = 0;
+		string_t likelihood_ = "gaussian";
+		double likelihood_additional_param_ = -1.;
+		int seed_ = 0;
+		int num_parallel_threads_ = -1;
+		bool GPU_use_ = false;
+		bool has_weights_ = false;
+		std::vector<double> weights_;
+		double likelihood_learning_rate_ = 1.;
+		bool trace_ = false;
 		int num_it_ = 0; //Number of iterations done for covariance and linear regression parameter estimation
 		// Covariance parameters related variables
 		vec_t cov_pars_; //Covariance parameters

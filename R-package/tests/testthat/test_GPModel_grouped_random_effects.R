@@ -478,6 +478,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_LOOSE)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_LOOSE)
+
+    # Initializing coefs from iid model
+    gp_model <- fitGPModel(group_data = group, y = y, X = X,
+                           params = list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs",
+                                         init_coef_aux_pars_from_iid_model=TRUE, maxit=1000))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_LOOSE)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_LOOSE)
+    gp_model <- fitGPModel(group_data = group, y = y, X = X,
+                           params = list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs",
+                                         init_coef_aux_pars_from_iid_model=TRUE, maxit=0))
+    gp_model_iid <- fitGPModel(y = y, X = X)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-gp_model_iid$get_coef(std_err = FALSE))),TOLERANCE_STRICT)
     
     # With offset / fixed_effects
     offset <- 20 * sim_rand_unif(n=n, init_c=0.1354)
