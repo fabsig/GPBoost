@@ -1195,12 +1195,12 @@ namespace GPBoost {
 				CHECK(y_data != nullptr);
 				string_t cov_function_name = CovFunctionName();
 				if (cov_function_name == "hurst" || cov_function_name == "hurst_ard") {
-					Log::REWarning("There is no intercept (= a column of 1's) included in the covariates 'X'. For the '%s' covariance, it is recommended to include an intercept since the GP is anchored at 0 (i.e., b(0) = 0 a.s.) ", cov_function_name.c_str());
+					Log::REWarning("There is no intercept (= a column of 1's) included in the covariates 'X' or there are no covariates. For the '%s' covariance, it is recommended to include an intercept since the GP is anchored at 0 (i.e., b(0) = 0 a.s.) ", cov_function_name.c_str());
 				}
 				else {
 					double tot_var = GetTotalVarComps(cov_aux_pars.segment(0, num_cov_par_), 0);
 					if (likelihood_[unique_clusters_[0]]->ShouldHaveIntercept(y_data, num_data_, tot_var, fixed_effects)) {
-						string_t msg = "There is no intercept (= a column of 1's) included in the covariates 'X'. Consider including one ";
+						string_t msg = "There is no intercept (= a column of 1's) included in the covariates 'X' or there are no covariates. Consider including an intercept ";
 						if (has_covariates_) {
 							Log::REWarning(msg.c_str());
 						}
@@ -1210,9 +1210,6 @@ namespace GPBoost {
 					}
 				}
 			}//end intercept message
-			if (!has_intercept_ && !find_learning_rate_for_GPBoost_algo) {
-				Log::REDebug("The covariate data contains no column of ones, i.e., no intercept is included ");
-			}
 			if (!has_covariates_ && fixed_effects != nullptr && gauss_likelihood_) {
 				vec_t resid = y_vec_;
 #pragma omp parallel for schedule(static)
