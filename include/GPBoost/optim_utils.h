@@ -164,7 +164,7 @@ namespace GPBoost {
 				if (objfn_data->profile_out_error_variance_) {
 					if (objfn_data->learn_cov_aux_pars_) {
 						re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
-						cov_pars[0] = re_model_templ_->ProfileOutSigma2();
+						re_model_templ_->ProfileOutSigma2(cov_pars);
 						re_model_templ_->EvalNegLogLikelihoodOnlyUpdateNuggetVariance(cov_pars[0], neg_log_likelihood);
 					}
 					else {
@@ -308,7 +308,7 @@ namespace GPBoost {
 							else {
 								re_model_templ_->CalcCovFactorOrModeAndNegLL(cov_pars, fixed_effects_ptr);
 							}
-							cov_pars[0] = re_model_templ_->ProfileOutSigma2();
+							re_model_templ_->ProfileOutSigma2(cov_pars);
 							re_model_templ_->EvalNegLogLikelihoodOnlyUpdateNuggetVariance(cov_pars[0], neg_log_likelihood);
 						}//end profile_out_error_variance_
 						else {//!profile_out_error_variance_

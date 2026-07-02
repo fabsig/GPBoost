@@ -1398,7 +1398,7 @@ namespace GPBoost {
 							vec_t grad, neg_step_dir; // gradient and negative step direction. E.g., neg_step_dir = grad for gradient descent and neg_step_dir = FI^-1 * grad for Fisher scoring (="natural" gradient)
 							den_mat_t approx_Hessian;
 							if (profile_out_error_variance_) {
-								cov_aux_pars[0] = ProfileOutSigma2();
+								ProfileOutSigma2(cov_aux_pars);
 								//EvalNegLogLikelihoodOnlyUpdateNuggetVariance(cov_aux_pars[0], neg_log_likelihood_after_lin_coef_update_);//todo: enable this and change tests
 							}
 							vec_t unused_dummy;
@@ -2450,12 +2450,18 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Profile out sigma2 (=use closed-form expression for error / nugget variance)
+		* \brief Profile out sigma2 (=use closed-form expression for error / nugget variance) and enforce its lower bound
+		* \param[in,out] cov_pars Covariance parameters on transformed scale. If provided, cov_pars[0] is updated.
 		* \return sigma2_
 		*/
-		double ProfileOutSigma2() {
+		double ProfileOutSigma2(vec_t& cov_pars) {
 			if (estimate_cov_par_index_[0] > 0) {
 				sigma2_ = yTPsiInvy_ / num_data_;
+			}
+			if ((int)cov_pars.size() == num_cov_par_) {
+				cov_pars[0] = sigma2_;
+				ApplyGaussianNuggetLowerBound(cov_pars, "profiling out the Gaussian nugget variance");
+				sigma2_ = cov_pars[0];
 			}
 			return sigma2_;
 		}
@@ -2632,6 +2638,7 @@ namespace GPBoost {
 			const double* fixed_effects) {
 			vec_t cov_pars;
 			MaybeKeepVarianceConstant(cov_pars_in, cov_pars);
+			ApplyGaussianNuggetLowerBound(cov_pars, "evaluating the Gaussian likelihood");
 			SetCovParsComps(cov_pars);
 			CalcCovFactor(true, 1.);
 			if (gauss_likelihood_) {
@@ -2718,9 +2725,10 @@ namespace GPBoost {
 					SetY(y_data);
 				}
 			}
+			vec_t cov_pars_vec_eval = Eigen::Map<const vec_t>(cov_pars, num_cov_par_);
+			ApplyGaussianNuggetLowerBound(cov_pars_vec_eval, "evaluating the Gaussian likelihood");
 			if (!CalcCovFactor_already_done) {
-				const vec_t cov_pars_vec = Eigen::Map<const vec_t>(cov_pars, num_cov_par_);
-				SetCovParsComps(cov_pars_vec);
+				SetCovParsComps(cov_pars_vec_eval);
 				if (redetermine_neighbors_vecchia) {
 					if (ShouldRedetermineNearestNeighborsVecchiaInducingPointsFITC(true)) {
 						RedetermineNearestNeighborsVecchiaInducingPointsFITC(true);//called if gp_approx_ == "vecchia" or  gp_approx_ == "full_scale_vecchia" and neighbors are selected based on correlations and not distances or gp_approx_ == "fitc" with ard kernel
@@ -2926,7 +2934,7 @@ namespace GPBoost {
 					}
 				}//end not "vecchia"
 			}//end loop cluster_i
-			negll = yTPsiInvy_ / 2. / cov_pars[0] + log_det_Psi_ / 2. + num_data_ / 2. * (std::log(cov_pars[0]) + std::log(2 * M_PI));
+			negll = yTPsiInvy_ / 2. / cov_pars_vec_eval[0] + log_det_Psi_ / 2. + num_data_ / 2. * (std::log(cov_pars_vec_eval[0]) + std::log(2 * M_PI));
 		}//end EvalNegLogLikelihoodGauss
 
 		/*!
@@ -5433,6 +5441,8 @@ namespace GPBoost {
 
 		/*! \brief Variance of idiosyncratic error term (nugget effect) */
 		double sigma2_ = 1.;//initialize with 1. to avoid valgrind false positives in EvalLLforLBFGSpp() in optim_utils.h
+		/*! \brief Minimum share of the Gaussian nugget in the total marginal variance */
+		static constexpr double MIN_NUGGET_VAR_RATIO_ = 1e-10;
 		/*! \brief Previous value of variance of idiosyncratic error term (used only by external optimizers) */
 		double sigma2_lag1_ = 1.;
 		/*! \brief Quadratic form y^T Psi^-1 y (saved for avoiding double computations when profiling out sigma2 for Gaussian data) */
@@ -7570,6 +7580,53 @@ namespace GPBoost {
 		}//end CreateREComponentsFITC_FSA
 
 		/*!
+		* \brief Sum marginal variances of all GP and random-effect components on the original covariance scale
+		* \param cov_pars_orig Covariance parameters on original scale
+		*/
+		double GetTotalRandomEffectMarginalVarianceOriginalScale(const vec_t& cov_pars_orig) const {
+			CHECK(cov_pars_orig.size() == num_cov_par_);
+			double other_var = 0.;
+			for (int igp = 0; igp < num_sets_re_; ++igp) {
+				for (int j = 0; j < num_comps_total_; ++j) {
+					other_var += cov_pars_orig[ind_par_[j] + igp * num_cov_par_per_set_re_];
+				}
+			}
+			return other_var;
+		}
+
+		/*!
+		* \brief Enforce a lower bound on the Gaussian nugget relative to the total marginal variance
+		* \param[in,out] cov_pars Covariance parameters on transformed scale
+		* \param context Text describing where the bound is applied
+		*/
+		void ApplyGaussianNuggetLowerBound(vec_t& cov_pars,
+			const char* context) {
+			if (!gauss_likelihood_ || (int)cov_pars.size() < num_cov_par_) {
+				return;
+			}
+			if ((int)cov_pars.size() != num_cov_par_) {
+				vec_t cov_pars_only = cov_pars.segment(0, num_cov_par_);
+				ApplyGaussianNuggetLowerBound(cov_pars_only, context);
+				cov_pars.segment(0, num_cov_par_) = cov_pars_only;
+				return;
+			}
+			vec_t cov_pars_orig;
+			TransformBackCovPars(cov_pars, cov_pars_orig);
+			const double other_var = GetTotalRandomEffectMarginalVarianceOriginalScale(cov_pars_orig);
+			if (!std::isfinite(other_var) || other_var <= 0.) {
+				return;
+			}
+			const double nugget_min = MIN_NUGGET_VAR_RATIO_ / (1. - MIN_NUGGET_VAR_RATIO_) * other_var;
+			if (std::isfinite(nugget_min) && cov_pars_orig[0] < nugget_min) {
+				Log::REWarning("The Gaussian error (nugget) variance was increased from %g to %g while %s "
+					"to enforce (error variance) / (error variance + marginal variance of random effects) >= %g ",
+					cov_pars_orig[0], nugget_min, context, MIN_NUGGET_VAR_RATIO_);
+				cov_pars_orig[0] = nugget_min;
+				TransformCovPars(cov_pars_orig, cov_pars);
+			}
+		}//end ApplyGaussianNuggetLowerBound
+
+		/*!
 		* \brief Function that makes sure that the marginal variance parameters are held fix when they are not estimated but the nugget effect changes during optimization for gaussian likelihoods
 		* \param cov_pars Covariance parameters
 		* \param[out] cov_pars_out Covariance parameters
@@ -8390,6 +8447,7 @@ namespace GPBoost {
 				else {
 					cov_pars_new = (cov_pars.array().log() - update.array()).exp().matrix();//make update on log-scale
 				}
+				ApplyGaussianNuggetLowerBound(cov_pars_new, "updating Gaussian covariance parameters");
 				// Apply Nesterov acceleration
 				if (use_nesterov_acc) {
 					cov_pars_after_grad_aux = cov_pars_new;
@@ -8401,6 +8459,7 @@ namespace GPBoost {
 					//		(otherwise the covariance matrix needs to be factored twice: once for the gradient step (accelerated parameters) and once for calculating the
 					//		 log-likelihood (non-accelerated parameters after gradient update) when checking for convergence at the end of an iteration. 
 					//		However, performing the acceleration before or after the gradient update gives equivalent algorithms
+					ApplyGaussianNuggetLowerBound(cov_pars_new, "updating Gaussian covariance parameters with Nesterov acceleration");
 				}
 				if (estimate_aux_pars_) {
 					SetAuxPars(cov_pars_new.data() + num_cov_par_);
