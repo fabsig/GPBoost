@@ -4587,7 +4587,7 @@ class GPModel(object):
                        "seed_rand_vec_trace": 1,
                        "fitc_piv_chol_preconditioner_rank": -1, # default value is set in C++
                        "estimate_aux_pars": True,
-                       "init_coef_aux_pars_from_iid_model": False,
+                       "init_coef_aux_pars_from_iid_model": True,
                        "estimate_cov_par_index": np.array([-1], dtype=np.int32),
                        "m_lbfgs": -1, # default value is set in C++
                        "delta_conv_mode_finding": -1 # default value is set in C++
@@ -5072,10 +5072,6 @@ class GPModel(object):
             if ("init_coef_aux_pars_from_iid_model" in params and
                     not isinstance(params["init_coef_aux_pars_from_iid_model"], (bool, np.bool_))):
                 raise ValueError("params['init_coef_aux_pars_from_iid_model'] needs to be a bool")
-            if ("init_coef_aux_pars_from_iid_model" in params and params["init_coef_aux_pars_from_iid_model"] and
-                    (params.get("init_coef") is not None or params.get("init_aux_pars") is not None)):
-                raise ValueError("params['init_coef_aux_pars_from_iid_model'] cannot be True when "
-                                 "params['init_coef'] or params['init_aux_pars'] are provided")
             for param in params:
                 if param == "init_cov_pars":
                     if params[param] is not None:
@@ -5161,8 +5157,11 @@ class GPModel(object):
                 - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for additional parameters for non-Gaussian likelihoods
                     (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
-                - init_coef_aux_pars_from_iid_model : bool, optional (default = False)
-                    If True, regression coefficients and auxiliary parameters are initialized from an iid model.
+                - init_coef_aux_pars_from_iid_model : bool, optional (default = True)
+                    If True, regression coefficients and auxiliary parameters are initialized from an iid model
+                    (only for models with a linear regression term).
+                    This option is ignored if init_coef is provided. If init_aux_pars is provided but init_coef
+                    is not, only regression coefficients are initialized from an iid model.
                 - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1) 
                     This allows for disabling the estimation of some (or all) covariance parameters.
                     If estimate_cov_par_index = -1, all covariance parameters are estimated.
@@ -5443,8 +5442,11 @@ class GPModel(object):
                 - init_aux_pars : numpy array or pandas DataFrame, optional (default = None)
                     Initial values for additional parameters for non-Gaussian likelihoods
                     (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
-                - init_coef_aux_pars_from_iid_model : bool, optional (default = False)
-                    If True, regression coefficients and auxiliary parameters are initialized from an iid model.
+                - init_coef_aux_pars_from_iid_model : bool, optional (default = True)
+                    If True, regression coefficients and auxiliary parameters are initialized from an iid model
+                    (only for models with a linear regression term).
+                    This option is ignored if init_coef is provided. If init_aux_pars is provided but init_coef
+                    is not, only regression coefficients are initialized from an iid model.
                 - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1) 
                     This allows for disabling the estimation of some (or all) covariance parameters.
                     If estimate_cov_par_index = -1, all covariance parameters are estimated.

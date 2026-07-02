@@ -5,7 +5,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
   TOLERANCE_STRICT <- 1e-6
   TOLERANCE <- 1E-3
   TOLERANCE2 <- 1E-2
-  DEFAULT_OPTIM_PARAMS <- list(optimizer_cov="fisher_scoring", delta_rel_conv=1E-6)
+  DEFAULT_OPTIM_PARAMS <- list(optimizer_cov="fisher_scoring", delta_rel_conv=1E-6,
+                               init_coef_aux_pars_from_iid_model = FALSE)
   DEFAULT_OPTIM_PARAMS_iterative <- list(maxit = 10,
                                          delta_rel_conv = 1e-2,
                                          optimizer_cov = "gradient_descent",
@@ -14,12 +15,13 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                          cg_max_num_it = 1000,
                                          cg_max_num_it_tridiag = 1000,
                                          num_rand_vec_trace = 1000,
-                                         reuse_rand_vec_trace = TRUE)
+                                         reuse_rand_vec_trace = TRUE, init_coef_aux_pars_from_iid_model = FALSE)
   OPTIM_PARAMS_GRAD_DESC <- list(optimizer_cov = "gradient_descent",
                                  lr_cov = 0.1, use_nesterov_acc = TRUE,
                                  acc_rate_cov = 0.5, delta_rel_conv = 1E-6,
                                  optimizer_coef = "gradient_descent", lr_coef = 0.1,
-                                 convergence_criterion = "relative_change_in_log_likelihood")
+                                 convergence_criterion = "relative_change_in_log_likelihood",
+                                 init_coef_aux_pars_from_iid_model = FALSE)
   # Function that simulates uniform random variables
   sim_rand_unif <- function(n, init_c=0.1){
     mod_lcg <- 134456 # modulus for linear congruential generator (random0 used)
@@ -402,7 +404,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         # Use Nelder-Mead for training
         gp_model <- GPModel(group_data = group_data_train, matrix_inversion_method = inv_method)
         gp_model$set_optim_params(params = list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6, init_cov_pars = params_gp$init_cov_pars,
-                                                cg_preconditioner_type=PC))
+                                                cg_preconditioner_type=PC, init_coef_aux_pars_from_iid_model = FALSE))
         bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                        nrounds = 62, learning_rate = 0.01, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
@@ -417,7 +419,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         # Use lbfgs for training
         gp_model <- GPModel(group_data = group_data_train, matrix_inversion_method = inv_method)
         gp_model$set_optim_params(params = list(optimizer_cov="lbfgs", optimizer_coef = "lbfgs", init_cov_pars = params_gp$init_cov_pars,
-                                                cg_preconditioner_type=PC))
+                                                cg_preconditioner_type=PC, init_coef_aux_pars_from_iid_model = FALSE))
         capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                                        nrounds = 62, learning_rate = 0.01, max_depth = 6,
                                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0) , file='NUL')
@@ -427,7 +429,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         # same with optimizer_coef = "wls"
         gp_model <- GPModel(group_data = group_data_train, matrix_inversion_method = inv_method)
         gp_model$set_optim_params(params = list(optimizer_cov="lbfgs", optimizer_coef = "wls", init_cov_pars = params_gp$init_cov_pars,
-                                                cg_preconditioner_type=PC))
+                                                cg_preconditioner_type=PC, init_coef_aux_pars_from_iid_model = FALSE))
         capture.output( bst <- gpboost(data = X_train, label = y_train, gp_model = gp_model,
                                        nrounds = 62, learning_rate = 0.01, max_depth = 6,
                                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0) , file='NUL')
@@ -654,7 +656,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       params <- list(objective = "regression_l2", learning_rate = 0.05,
                      max_depth = 2,  min_data_in_leaf = 1,
-                     feature_pre_filter = FALSE, optimizer_cov = "lbfgs", trace = FALSE)
+                     feature_pre_filter = FALSE, optimizer_cov = "lbfgs", trace = FALSE, init_coef_aux_pars_from_iid_model = FALSE)
       capture.output( gp_model_w <- GPModel(group_data = group_w,
                                             weights = weights_no) , file='NUL')
       capture.output( bst_w <- gpboost(data = X_w, label = y_w, gp_model = gp_model_w,
@@ -913,7 +915,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Train model
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
-      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring", init_cov_pars=init_cov_pars))
+      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring", init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
                        nrounds = 20,
@@ -980,7 +982,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Train model using Nelder-Mead
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
-      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6, init_cov_pars=init_cov_pars))
+      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
                        nrounds = 20,
@@ -998,7 +1000,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Use validation set to determine number of boosting iteration
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
-      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring", init_cov_pars=init_cov_pars))
+      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring", init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
                        nrounds = 100,
@@ -1016,7 +1018,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       # Also use GPModel for calculating validation error
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
-      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring", init_cov_pars=init_cov_pars))
+      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring", init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
       gp_model$set_prediction_data(gp_coords_pred = coords_test)
       bst <- gpb.train(data = dtrain,
                        gp_model = gp_model,
@@ -1072,7 +1074,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       init_cov_pars <- c(var(y_train)/2,var(y_train)/2,mean(dist(coords_train))/3)
       
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
-      params_gp <- list(maxit=100, optimizer_cov="gradient_descent", use_nesterov_acc = TRUE, init_cov_pars=init_cov_pars)
+      params_gp <- list(maxit=100, optimizer_cov="gradient_descent", use_nesterov_acc = TRUE, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE)
       gp_model$set_optim_params(params=params_gp)
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
@@ -1123,7 +1125,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                           gp_approx = "vecchia", num_neighbors = ntrain-1,
                                           vecchia_ordering = "none"), file='NUL')
-      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6, init_cov_pars=init_cov_pars))
+      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
@@ -1167,7 +1169,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Same thing with Wendland covariance function
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
                                           cov_fct_taper_shape = 1, cov_fct_taper_range = 0.2), file='NUL')
-      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring"))
+      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring", init_coef_aux_pars_from_iid_model = FALSE))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
@@ -1178,7 +1180,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Wendland covariance and Nelder-Mead
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "wendland",
                                           cov_fct_taper_shape = 1, cov_fct_taper_range = 0.2), file='NUL')
-      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6))
+      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6, init_coef_aux_pars_from_iid_model = FALSE))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
@@ -1191,7 +1193,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                           gp_approx = "tapering",
                                           cov_fct_taper_shape = 1, cov_fct_taper_range = 20), file='NUL')
-      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring", init_cov_pars=init_cov_pars))
+      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring", init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
@@ -1204,7 +1206,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
                                           gp_approx = "tapering",
                                           cov_fct_taper_shape = 1, cov_fct_taper_range = 10), file='NUL')
-      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6, init_cov_pars=init_cov_pars))
+      gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
@@ -1252,7 +1254,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       
       capture.output( gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                                           gp_approx = "fitc",num_ind_points = 50), file='NUL')
-      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="gradient_descent", init_cov_pars=init_cov_pars))
+      gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="gradient_descent", init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6,
                        min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
@@ -1304,7 +1306,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         if(i == "iterative"){
           params <- DEFAULT_OPTIM_PARAMS_iterative
         } else{
-          params <- list(maxit=10, optimizer_cov="gradient_descent", delta_rel_conv = 1e-2)
+          params <- list(maxit=10, optimizer_cov="gradient_descent", delta_rel_conv = 1e-2, init_coef_aux_pars_from_iid_model = FALSE)
         }
         params$init_cov_pars <- init_cov_pars
         

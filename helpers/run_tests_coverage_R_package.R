@@ -1,6 +1,6 @@
 # Set working directory to GPBoost main folder
 
-Sys.setenv(OMP_NUM_THREADS = "8") # can be faster to limit the number of CPU threads
+Sys.setenv(OMP_NUM_THREADS = "10") # can be faster to limit the number of CPU threads
 
 # Run unit tests locally
 library(testthat)

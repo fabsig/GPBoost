@@ -8,7 +8,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   TOLERANCE_MEDIUM <- 1e-3
   TOLERANCE_STRICT <- 1E-5
   
-  OPTIM_PARAMS_BFGS <- list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", maxit = 1000)
+  OPTIM_PARAMS_BFGS <- list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", maxit = 1000,
+                            init_coef_aux_pars_from_iid_model = FALSE)
   
   # Function that simulates uniform random variables
   sim_rand_unif <- function(n, init_c=0.1){
@@ -93,7 +94,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_fit_exp)),1E-6)
     # Prediction
     cov_pars_pred <- c(0.2,1.6,0.8,0.1)
-    gp_model$set_optim_params(params=list(init_cov_pars=cov_pars_pred))
+    gp_model$set_optim_params(params=list(init_cov_pars=cov_pars_pred, init_coef_aux_pars_from_iid_model = FALSE))
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
     group_test <- c(1,2,9999)
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
@@ -150,7 +151,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_exp)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), num_it_exp)
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_fit_exp)),1E-6)
-    gp_model$set_optim_params(params=list(init_cov_pars=cov_pars_pred))
+    gp_model$set_optim_params(params=list(init_cov_pars=cov_pars_pred, init_coef_aux_pars_from_iid_model = FALSE))
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                     group_data_pred = group_test, predict_cov_mat = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
@@ -175,19 +176,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       # Evaluate negative log-likelihood
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = n-1, matrix_inversion_method = matrix_inversion_method)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000))
+      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
       expect_lt(abs(nll-nll_exp),tol_loc)
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none", 
                           matrix_inversion_method = matrix_inversion_method)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000))
+      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
       expect_lt(abs(nll-nll_exp),tol_loc2)
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none", 
                           matrix_inversion_method = matrix_inversion_method, weights=weights)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000))
+      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
       expect_lt(abs(nll-nll_exp),tol_loc2)
       # Estimation 
@@ -207,7 +208,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
       # Prediction
       predict_var <- TRUE
-      gp_model$set_optim_params(params=list(init_cov_pars=cov_pars_pred[-1], init_aux_pars = cov_pars_pred[1]))
+      gp_model$set_optim_params(params=list(init_cov_pars=cov_pars_pred[-1], init_aux_pars = cov_pars_pred[1], init_coef_aux_pars_from_iid_model = FALSE))
       gp_model$set_prediction_data(nsim_var_pred = 1000)
       capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                                       group_data_pred = group_test, predict_var = predict_var, predict_response = FALSE), file='NUL')
@@ -238,7 +239,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Fisher scoring
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group, y = y,
                                            params = list(optimizer_cov = "fisher_scoring", 
-                                                         init_cov_pars=init_cov_pars)), file='NUL')
+                                                         init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE)), file='NUL')
     cov_pars <- c(0.02262645, 0.61471473, 1.02446559, 0.11177327)
     cov_pars_est <- as.vector(gp_model$get_cov_pars(std_err = FALSE))
     expect_lt(sum(abs(cov_pars_est-cov_pars)),TOLERANCE_MEDIUM)
@@ -323,7 +324,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                    y = y_w, X = X_w,
                                                    weights = weights_w,
                                                    params = list(optimizer_cov = "lbfgs",
-                                                                 optimizer_coef = "wls")) , file='NUL')
+                                                                 optimizer_coef = "wls", init_coef_aux_pars_from_iid_model = FALSE)) , file='NUL')
     cov_pars_fit_X <- as.vector(gp_model_w_fit_X$get_cov_pars())
     beta_fit_X <- as.vector(gp_model_w_fit_X$get_coef())
     cov_pars <- c(2.49299439302e-08, 1.21361827019e+00, 4.44355584411e-03, 5.62394305334e-12)
@@ -377,7 +378,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction
     aux_pars_pred <- c(0.6)
     cov_pars_pred <- c(0.8,1.6,0.1)
-    gp_model$set_optim_params(params=list(init_aux_pars=aux_pars_pred, init_cov_pars=cov_pars_pred))
+    gp_model$set_optim_params(params=list(init_aux_pars=aux_pars_pred, init_cov_pars=cov_pars_pred, init_coef_aux_pars_from_iid_model = FALSE))
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
     group_test <- c(1,2,9999)
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
@@ -434,13 +435,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = n-1, matrix_inversion_method = matrix_inversion_method, 
                           likelihood=likelihood)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000))
+      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval, y=y, aux_pars=aux_pars_eval)
       expect_lt(abs(nll-nll_exp),tol_loc)
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = matrix_inversion_method,
                           likelihood=likelihood)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000))
+      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval, y=y, aux_pars=aux_pars_eval)
       expect_lt(abs(nll-nll_exp),tol_loc2)
       # Estimation 
@@ -455,7 +456,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_fit_exp)),tol_loc2)
       # Prediction
       predict_var <- TRUE
-      gp_model$set_optim_params(params=list(init_aux_pars=aux_pars_pred, init_cov_pars=cov_pars_pred))
+      gp_model$set_optim_params(params=list(init_aux_pars=aux_pars_pred, init_cov_pars=cov_pars_pred, init_coef_aux_pars_from_iid_model = FALSE))
       capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                                       group_data_pred = group_test, predict_var = predict_var, predict_response = FALSE), file='NUL')
       expect_lt(sum(abs(pred$mu-expected_mu)),tol_loc4)
@@ -548,7 +549,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction
     aux_pars_pred <- c(0.1,1.5)
     cov_pars_pred <- c(0.8,1.6,0.1)
-    gp_model$set_optim_params(params=list(init_aux_pars=aux_pars_pred, init_cov_pars=cov_pars_pred))
+    gp_model$set_optim_params(params=list(init_aux_pars=aux_pars_pred, init_cov_pars=cov_pars_pred, init_coef_aux_pars_from_iid_model = FALSE))
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
     group_test <- c(1,2,9999)
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
@@ -599,13 +600,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = n-1, matrix_inversion_method = matrix_inversion_method, 
                           likelihood=likelihood)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000))
+      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval, y=y, aux_pars=aux_pars_eval)
       expect_lt(abs(nll-nll_exp),tol_loc)
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = matrix_inversion_method,
                           likelihood=likelihood)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000))
+      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval, y=y, aux_pars=aux_pars_eval)
       expect_lt(abs(nll-nll_exp),tol_loc2)
       # Estimation 
@@ -624,7 +625,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
       # Prediction
       predict_var <- TRUE
-      gp_model$set_optim_params(params=list(init_aux_pars=aux_pars_pred, init_cov_pars=cov_pars_pred))
+      gp_model$set_optim_params(params=list(init_aux_pars=aux_pars_pred, init_cov_pars=cov_pars_pred, init_coef_aux_pars_from_iid_model = FALSE))
       capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                                       group_data_pred = group_test, predict_var = predict_var, predict_response = FALSE), file='NUL')
       expect_lt(sum(abs(pred$mu-expected_mu)),tol_loc4)
@@ -679,7 +680,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Fit model
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group,
                            y = y, X = X,
-                           params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls"))
+                           params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls", init_coef_aux_pars_from_iid_model = FALSE))
     cov_pars <- c(0.02258493, 0.09172947, 0.61704845, 0.30681934, 1.01910740, 0.25561489, 0.11202133, 0.04174140)
     coef <- c(2.06686646, 0.34643130, 1.92847425, 0.09983966)
     nll_opt <- 132.1449371
@@ -709,7 +710,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                            group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
                            params = list(optimizer_cov = "gradient_descent",
                                          lr_cov = 0.1, use_nesterov_acc = TRUE,
-                                         acc_rate_cov = 0.5, maxit=10, init_cov_pars=init_cov_pars))
+                                         acc_rate_cov = 0.5, maxit=10, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
     expected_values <- c(0.4005820, 0.3111155, 0.4564903, 0.2693683, 1.3819153, 0.7034572,
                          1.0378165, 0.5916405, 1.3684672, 0.6861339, 0.1854759, 0.1430030,
                          0.5790945, 0.9748316, 0.2103132, 0.4453663, 0.2639379, 0.8772996, 0.2210313, 0.9282390)
@@ -737,7 +738,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- fitGPModel(y = y, gp_coords = coords, cov_function = "exponential", gp_rand_coef_data = Z_SVC,
                            group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
                            params = list(optimizer_cov = "fisher_scoring", 
-                                         use_nesterov_acc= FALSE, maxit=2, init_cov_pars=init_cov_pars))
+                                         use_nesterov_acc= FALSE, maxit=2, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
     expected_values <- c(0.3522488799, 0.5692314997, 1.4557330868, 1.0711929149, 1.5665274019, 0.1601443490, 0.9923054860, 0.1095828593, 0.2211923864, 0.3846536135)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-expected_values)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), 2)
@@ -753,7 +754,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Fisher scoring
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group,
                                            y = y, cluster_ids = cluster_ids,
-                                           params = list(optimizer_cov = "fisher_scoring")), file='NUL')
+                                           params = list(optimizer_cov = "fisher_scoring", init_coef_aux_pars_from_iid_model = FALSE)), file='NUL')
     cov_pars <- c(0.005306836, 0.087915468, 0.615012714, 0.315022228,
                   1.043024690, 0.228236254, 0.113716679, 0.039839629)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_MEDIUM)
@@ -780,7 +781,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Fit model
     gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group,
                            y = y, X=X,
-                           params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls"))
+                           params = list(optimizer_cov = "fisher_scoring", optimizer_coef = "wls", init_coef_aux_pars_from_iid_model = FALSE))
     
     # Prediction 
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))

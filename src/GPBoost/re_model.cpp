@@ -343,9 +343,6 @@ namespace GPBoost {
 			init_aux_pars_given_ = false;
 		}
 		init_coef_aux_pars_from_iid_model_ = init_coef_aux_pars_from_iid_model;
-		if (init_coef_aux_pars_from_iid_model_ && (init_coef_given_ || init_aux_pars_given_)) {
-			Log::REFatal("The parameter 'init_coef_aux_pars_from_iid_model' cannot be true when 'init_coef' or 'init_aux_pars' are provided.");
-		}
 		// Logging level
 		trace_ = trace;
 		if (trace) {
@@ -407,7 +404,7 @@ namespace GPBoost {
 				1., 1., -1, "random", -1, 1., "kmeans++",
 				likelihood_.c_str(), likelihood_additional_param_, "cholesky", seed_, num_parallel_threads_, GPU_use_,
 				weights_ptr != nullptr, weights_ptr, likelihood_learning_rate_));
-		const bool estimate_aux_pars_iid = re_model->estimate_aux_pars_ && re_model_iid->NumAuxPars() > 0;
+		const bool estimate_aux_pars_iid = !init_aux_pars_given_ && re_model->estimate_aux_pars_ && re_model_iid->NumAuxPars() > 0;
 		const bool learn_cov_aux_pars_iid = estimate_aux_pars_iid;
 		std::vector<int> estimate_cov_par_index_iid(re_model_iid->num_cov_par_, 0);
 		string_t optimizer_cov_iid = (!re_model->gauss_likelihood_ || estimate_aux_pars_iid) ? "lbfgs" : "gradient_descent";
@@ -450,6 +447,10 @@ namespace GPBoost {
 			estimate_cov_par_index_iid.data(),
 			re_model->m_lbfgs_,
 			re_model->delta_conv_mode_finding_);
+		if (init_aux_pars_given_ && NumAuxPars() > 0) {
+			CHECK(re_model_iid->NumAuxPars() == NumAuxPars());
+			re_model_iid->SetAuxPars(re_model->GetAuxPars());
+		}
 		vec_t init_cov_pars_iid = vec_t::Ones(re_model_iid->num_cov_par_);
 		vec_t cov_pars_iid(re_model_iid->num_cov_par_);
 		vec_t coef_iid(num_sets_fixed_effects_ * num_covariates);
@@ -470,7 +471,7 @@ namespace GPBoost {
 			false);
 		CHECK((int)coef_iid.size() == num_sets_fixed_effects_ * num_covariates);
 		coef_ = coef_iid;
-		if (NumAuxPars() > 0 && re_model_iid->AuxParsHaveBeenSetOrEstimated()) {
+		if (!init_aux_pars_given_ && NumAuxPars() > 0 && re_model_iid->AuxParsHaveBeenSetOrEstimated()) {
 			CHECK(re_model_iid->NumAuxPars() == NumAuxPars());
 			SetAuxPars(re_model_iid->GetAuxPars());
 		}
@@ -548,7 +549,7 @@ namespace GPBoost {
 		double* init_coef_ptr;
 		num_covariates_ = num_covariates;
 		num_coef_ = num_covariates * num_sets_fixed_effects_;
-		if (init_coef_aux_pars_from_iid_model_) {
+		if (init_coef_aux_pars_from_iid_model_ && !init_coef_given_) {
 			if (matrix_format_ == "sp_mat_t") {
 				InitCoefAuxParsFromIidModel(re_model_sp_.get(), y_data, covariate_data, num_covariates, fixed_effects);
 			}

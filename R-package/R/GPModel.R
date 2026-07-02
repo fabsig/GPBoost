@@ -275,8 +275,9 @@
 #'                \item{init_aux_pars: \code{vector} with \code{numeric} elements (default = NULL). 
 #'                Initial values for additional parameters for non-Gaussian likelihoods 
 #'                (e.g., shape parameter of a gamma or negative_binomial likelihood) }
-#'                \item{init_coef_aux_pars_from_iid_model: \code{boolean} (default = FALSE).
-#'                If TRUE, regression coefficients and auxiliary parameters are initialized from an iid model. }
+#'                \item{init_coef_aux_pars_from_iid_model: \code{boolean} (default = TRUE).
+#'                If TRUE, regression coefficients and auxiliary parameters are initialized from an iid model (only for models with a linear regression term).
+#'                This option is ignored if init_coef is provided. If init_aux_pars is provided but init_coef is not, only regression coefficients are initialized from an iid model. }
 #'                \item{estimate_cov_par_index: \code{vector} with \code{integer} (default = -1). 
 #'                This allows for disabling the estimation of some (or all) covariance parameters. 
 #'                If 'estimate_cov_par_index' = -1, all covariance parameters are estimated. 
@@ -2486,7 +2487,7 @@ gpb.GPModel <- R6::R6Class(
                   seed_rand_vec_trace = 1L,
                   fitc_piv_chol_preconditioner_rank = -1L, # default value is set in C++
                   estimate_aux_pars = TRUE,
-                  init_coef_aux_pars_from_iid_model = FALSE,
+                  init_coef_aux_pars_from_iid_model = TRUE,
                   estimate_cov_par_index = -1L,
                   m_lbfgs = -1L, # default value is set in C++
                   delta_conv_mode_finding = -1 # default value is set in C++
