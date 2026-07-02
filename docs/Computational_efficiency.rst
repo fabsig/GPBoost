@@ -15,7 +15,7 @@ Estimation and prediction with random effects models and Gaussian process (GP) m
    * ``gp_model.set_optim_params(params={"cg_max_num_it": 10, "cg_max_num_it_tridiag": 10})`` (Python)
    * Do some sensitivity checks (try multiple values) to make sure that this does not distort your results.
 
-* GPBoost automatically does CPU parallelization using OpenMP. By default, all available threads are used. However, for some computers with many fast CPU cores, **it can be advantageous to limit the number of OpenMP threads** to, say, the number of physical cores or even less. This can be done using the ``num_parallel_threads`` argument of the ``GPModel()`` constructor.
+* GPBoost automatically does CPU parallelization using OpenMP. By default, all available threads are used. However, **for some computers with many and different CPU cores, it can be advantageous to limit the number of OpenMP threads** to, say, the number of physical cores, the number of performance cores, or even less. This can be done using the ``num_parallel_threads`` argument of the ``GPModel()`` constructor, or by setting the corresponding environment variable (Sys.setenv(OMP_NUM_THREADS = "ncores") in R and os.environ["OMP_NUM_THREADS"] = "ncores" in Python).
 
 * **Disabling hyperparameter parameter estimation in the GPBoost algorithm** can make training faster. In this case, you should consider them as tuning parameters that are chosen using, e.g., cross-validation. 
 
