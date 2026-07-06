@@ -63,7 +63,7 @@
     \item{delta_rel_conv: \code{numeric} (default = 1E-6 except for "nelder_mead" for which the default is 1E-8). 
     Convergence tolerance. The algorithm stops if the relative change 
     in either the (approximate) log-likelihood or the parameters is below this value. 
-    If < 0, internal default values are used }
+    If delta_rel_conv = -999, internal default values are used }
     \item{cg_max_num_it: \code{integer} (default = 1000). 
     Maximal number of iterations for conjugate gradient algorithms }
     \item{cg_max_num_it_tridiag: \code{integer} (default = 1000). 
@@ -116,7 +116,7 @@
     Rank of the FITC and pivoted Cholesky decomposition preconditioners for 
     iterative methods for Vecchia and VIF approximations 
     (for full_scale_tapering, the same inducing points as in the approximation as used).
-    Internal default values if NULL or < 0: 
+    If fitc_piv_chol_preconditioner_rank = -999, internal default values are used: 
     \itemize{
           \item{ 200 for the FITC preconditioner }
           \item{ 50 for the pivoted Cholesky decomposition preconditioner }
@@ -144,8 +144,8 @@
     Acceleration rate for covariance parameters for Nesterov acceleration }
     \item{momentum_offset: \code{integer} (Default = 2, only relevant for "gradient_descent")}. 
     Number of iterations for which no momentum is applied in the beginning.
-    \item{m_lbfgs: \code{integer} (Default = 6)}. Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer
-    \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8)}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods
+    \item{m_lbfgs: \code{integer} (Default = 6)}. Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer. If m_lbfgs = -999, internal default values are used
+    \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8)}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 }}
 }
 \value{

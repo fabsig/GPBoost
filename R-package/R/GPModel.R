@@ -307,7 +307,7 @@
 #'                \item{delta_rel_conv: \code{numeric} (default = 1E-6 except for "nelder_mead" for which the default is 1E-8). 
 #'                Convergence tolerance. The algorithm stops if the relative change 
 #'                in either the (approximate) log-likelihood or the parameters is below this value. 
-#'                If < 0, internal default values are used }
+#'                If delta_rel_conv = -999, internal default values are used }
 #'                \item{cg_max_num_it: \code{integer} (default = 1000). 
 #'                Maximal number of iterations for conjugate gradient algorithms }
 #'                \item{cg_max_num_it_tridiag: \code{integer} (default = 1000). 
@@ -360,7 +360,7 @@
 #'                Rank of the FITC and pivoted Cholesky decomposition preconditioners for 
 #'                iterative methods for Vecchia and VIF approximations 
 #'                (for full_scale_tapering, the same inducing points as in the approximation as used).
-#'                Internal default values if NULL or < 0: 
+#'                If fitc_piv_chol_preconditioner_rank = -999, internal default values are used: 
 #'                \itemize{
 #'                      \item{ 200 for the FITC preconditioner }
 #'                      \item{ 50 for the pivoted Cholesky decomposition preconditioner }
@@ -388,8 +388,8 @@
 #'                Acceleration rate for covariance parameters for Nesterov acceleration }
 #'                \item{momentum_offset: \code{integer} (Default = 2, only relevant for "gradient_descent")}. 
 #'                Number of iterations for which no momentum is applied in the beginning.
-#'                \item{m_lbfgs: \code{integer} (Default = 6)}. Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer
-#'                \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8)}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods
+#'                \item{m_lbfgs: \code{integer} (Default = 6)}. Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer. If m_lbfgs = -999, internal default values are used
+#'                \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8)}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 #'            }
 #' @param offset A \code{numeric} \code{vector} with 
 #' additional fixed effects contributions that are added to the linear predictor (= offset). 
@@ -2468,10 +2468,10 @@ gpb.GPModel <- R6::R6Class(
     model_fitted = FALSE,
     current_neg_log_likelihood_loaded_from_file = NULL,
     params = list(maxit = 1000L,
-                  delta_rel_conv = -1., # default value is set in C++
+                  delta_rel_conv = -999., # default value is set in C++
                   init_coef = NULL,
                   lr_coef = 0.1,
-                  lr_cov = -1., # default value is set in C++
+                  lr_cov = -999., # default value is set in C++
                   use_nesterov_acc = TRUE,
                   acc_rate_coef = 0.5,
                   acc_rate_cov = 0.5,
@@ -2485,12 +2485,12 @@ gpb.GPModel <- R6::R6Class(
                   num_rand_vec_trace = 50L,
                   reuse_rand_vec_trace = TRUE,
                   seed_rand_vec_trace = 1L,
-                  fitc_piv_chol_preconditioner_rank = -1L, # default value is set in C++
+                  fitc_piv_chol_preconditioner_rank = -999L, # default value is set in C++
                   estimate_aux_pars = TRUE,
                   init_coef_aux_pars_from_iid_model = TRUE,
                   estimate_cov_par_index = -1L,
-                  m_lbfgs = -1L, # default value is set in C++
-                  delta_conv_mode_finding = -1 # default value is set in C++
+                  m_lbfgs = -999L, # default value is set in C++
+                  delta_conv_mode_finding = -999 # default value is set in C++
     ),
     num_sets_re = 1,
     num_sets_fe = 1,

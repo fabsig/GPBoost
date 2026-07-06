@@ -4568,10 +4568,10 @@ class GPModel(object):
         self.model_fitted = False
         self.current_neg_log_likelihood_loaded_from_file = None
         self.params = {"maxit": 1000,
-                       "delta_rel_conv": -1, # default value is set in C++
+                       "delta_rel_conv": -999., # default value is set in C++
                        "init_coef": None,
                        "lr_coef": 0.1,
-                       "lr_cov": -1., # default value is set in C++
+                       "lr_cov": -999., # default value is set in C++
                        "use_nesterov_acc": True,
                        "acc_rate_coef": 0.5,
                        "acc_rate_cov": 0.5,
@@ -4585,12 +4585,12 @@ class GPModel(object):
                        "num_rand_vec_trace": 50,
                        "reuse_rand_vec_trace": True,
                        "seed_rand_vec_trace": 1,
-                       "fitc_piv_chol_preconditioner_rank": -1, # default value is set in C++
+                       "fitc_piv_chol_preconditioner_rank": -999, # default value is set in C++
                        "estimate_aux_pars": True,
                        "init_coef_aux_pars_from_iid_model": True,
                        "estimate_cov_par_index": np.array([-1], dtype=np.int32),
-                       "m_lbfgs": -1, # default value is set in C++
-                       "delta_conv_mode_finding": -1 # default value is set in C++
+                       "m_lbfgs": -999, # default value is set in C++
+                       "delta_conv_mode_finding": -999. # default value is set in C++
                        }
         self.num_sets_re = 1
         self.num_sets_fe = 1
@@ -5189,7 +5189,7 @@ class GPModel(object):
                 - delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
                     log-likelihood or the parameters is below this value. 
-                    If < 0, internal default values are used.
+                    If delta_rel_conv = -999, internal default values are used.
                     Default = 1e-6 except for "nelder_mead" for which the default is 1e-8.
                 - cg_max_num_it: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithms.
@@ -5240,7 +5240,7 @@ class GPModel(object):
                             - "none": no preconditioner
 
                 - fitc_piv_chol_preconditioner_rank: integer, optional 
-                    Rank of the FITC and pivoted Cholesky decomposition preconditioners for iterative methods for Vecchia and VIF approximations (for full_scale_tapering, the same inducing points as in the approximation as used). Internal default values if None or < 0: 
+                    Rank of the FITC and pivoted Cholesky decomposition preconditioners for iterative methods for Vecchia and VIF approximations (for full_scale_tapering, the same inducing points as in the approximation as used). If fitc_piv_chol_preconditioner_rank = -999, internal default values are used: 
                 
                     - 200 for the FITC preconditioner 
 
@@ -5252,7 +5252,7 @@ class GPModel(object):
                 - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. otherwise, only relevant for "gradient_descent", "fisher_scoring", and "newton")
                     Initial learning rate for covariance parameters if a gradient-based optimization method is used.
 
-                        - If lr_cov < 0, internal default values are used (0.1 for "gradient_descent" and 1. otherwise).
+                        - If lr_cov = -999, internal default values are used (0.1 for "gradient_descent" and 1. otherwise).
 
                         - If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those.
 
@@ -5269,9 +5269,11 @@ class GPModel(object):
                 - momentum_offset : integer, optional (default = 2, only relevant for "gradient_descent")
                     Number of iterations for which no momentum is applied in the beginning.
                 - m_lbfgs : integer, optional (default = 6)
-                    Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer
+                    Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer.
+                    If m_lbfgs = -999, internal default values are used.
                 - delta_conv_mode_finding : double, optional (default = 1e-8)
-                    Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods
+                    Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods.
+                    If delta_conv_mode_finding = -999, internal default values are used.
 
         offset : numpy 1-D array or None, optional (default=None)
             Additional fixed effects contributions that are added to the linear predictor (= offset).
@@ -5474,7 +5476,7 @@ class GPModel(object):
                 - delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
                     log-likelihood or the parameters is below this value. 
-                    If < 0, internal default values are used.
+                    If delta_rel_conv = -999, internal default values are used.
                     Default = 1e-6 except for "nelder_mead" for which the default is 1e-8.
                 - cg_max_num_it: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithms.
@@ -5525,7 +5527,7 @@ class GPModel(object):
                             - "none": no preconditioner
 
                 - fitc_piv_chol_preconditioner_rank: integer, optional 
-                    Rank of the FITC and pivoted Cholesky decomposition preconditioners for iterative methods for Vecchia and VIF approximations (for full_scale_tapering, the same inducing points as in the approximation as used). Internal default values if None or < 0: 
+                    Rank of the FITC and pivoted Cholesky decomposition preconditioners for iterative methods for Vecchia and VIF approximations (for full_scale_tapering, the same inducing points as in the approximation as used). If fitc_piv_chol_preconditioner_rank = -999, internal default values are used: 
                 
                     - 200 for the FITC preconditioner 
 
@@ -5537,7 +5539,7 @@ class GPModel(object):
                 - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. otherwise, only relevant for "gradient_descent", "fisher_scoring", and "newton")
                     Initial learning rate for covariance parameters if a gradient-based optimization method is used.
 
-                        - If lr_cov < 0, internal default values are used (0.1 for "gradient_descent" and 1. otherwise).
+                        - If lr_cov = -999, internal default values are used (0.1 for "gradient_descent" and 1. otherwise).
 
                         - If there are additional auxiliary parameters for non-Gaussian likelihoods, 'lr_cov' is also used for those.
 
@@ -5554,9 +5556,11 @@ class GPModel(object):
                 - momentum_offset : integer, optional (default = 2, only relevant for "gradient_descent")
                     Number of iterations for which no momentum is applied in the beginning.
                 - m_lbfgs : integer, optional (default = 6)
-                    Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer
+                    Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer.
+                    If m_lbfgs = -999, internal default values are used.
                 - delta_conv_mode_finding : double, optional (default = 1e-8)
-                    Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods
+                    Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods.
+                    If delta_conv_mode_finding = -999, internal default values are used.
 
         Example
         -------

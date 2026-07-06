@@ -321,7 +321,7 @@ The following list shows some options for the parameter optimization ``GPModel``
 
    -  Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate) log-likelihood or the parameters is below this value. 
 
-   -  If < 0, internal default values are used (= 1e-6 except for ``nelder_mead`` for which the default is 1e-8)
+   -  If ``delta_rel_conv = -999``, internal default values are used (= 1e-6 except for ``nelder_mead`` for which the default is 1e-8)
 
 
 Options for the GPBoost algorithm

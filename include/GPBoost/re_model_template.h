@@ -698,10 +698,10 @@ namespace GPBoost {
 
 		/*!
 		* \brief Set configuration parameters for the optimizer
-		* \param lr Learning rate for covariance parameters. If lr<= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring")
+		* \param lr_cov Learning rate for covariance parameters. If lr_cov = -999, internal default values are used
 		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
 		* \param max_iter Maximal number of iterations
-		* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value
+		* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. If delta_rel_conv = -999, internal default values are used
 		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent")e
 		* \param nesterov_schedule_version Which version of Nesterov schedule should be used (only relevant if use_nesterov_acc)
 		* \param optimizer_cov Optimizer for covariance parameters
@@ -717,13 +717,13 @@ namespace GPBoost {
 		* \param reuse_rand_vec_trace If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated
 		* \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
 		* \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
-		* \param fitc_piv_chol_preconditioner_rank Rank of the FITC and pivoted Cholesky preconditioners of the conjugate gradient algorithm
+		* \param fitc_piv_chol_preconditioner_rank Rank of the FITC and pivoted Cholesky preconditioners of the conjugate gradient algorithm. If fitc_piv_chol_preconditioner_rank = -999, internal default values are used
 		* \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
 		* \param estimate_cov_par_index If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, estimate_cov_par_index[i] is then bool and indicates which ones are estimated
-		* \param m_lbfgs Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer
-		* \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods
+		* \param m_lbfgs Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer. If m_lbfgs = -999, internal default values are used
+		* \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 		*/
-		void SetOptimConfig(double lr,
+		void SetOptimConfig(double lr_cov,
 			double acc_rate_cov,
 			int max_iter,
 			double delta_rel_conv,
@@ -747,12 +747,8 @@ namespace GPBoost {
 			const int* estimate_cov_par_index,
 			int m_lbfgs,
 			double delta_conv_mode_finding) {
-			lr_cov_init_ = lr;
-			lr_cov_after_first_iteration_ = lr;
-			lr_cov_after_first_optim_boosting_iteration_ = lr;
 			acc_rate_cov_ = acc_rate_cov;
 			max_iter_ = max_iter;
-			delta_rel_conv_init_ = delta_rel_conv;
 			use_nesterov_acc_ = use_nesterov_acc;
 			nesterov_schedule_version_ = nesterov_schedule_version;
 			if (optimizer != nullptr) {
@@ -803,6 +799,12 @@ namespace GPBoost {
 			lr_coef_after_first_iteration_ = lr_coef;
 			lr_coef_after_first_optim_boosting_iteration_ = lr_coef;
 			acc_rate_coef_ = acc_rate_coef;
+			if (delta_rel_conv > 0.) {
+				delta_rel_conv_init_ = delta_rel_conv;
+			}
+			else if (!TwoNumbersAreEqual<double>(delta_rel_conv, -999.)) {
+				Log::REFatal("delta_rel_conv is not > 0, found = %g ", delta_rel_conv);
+			}
 			if (optimizer_coef != nullptr) {
 				if (std::string(optimizer_coef) != "") {
 					optimizer_coef_ = std::string(optimizer_coef);
@@ -830,6 +832,9 @@ namespace GPBoost {
 					fitc_piv_chol_preconditioner_rank_ = fitc_piv_chol_preconditioner_rank;
 					fitc_piv_chol_preconditioner_rank_has_been_set_ = true;
 				}
+				else if (fitc_piv_chol_preconditioner_rank != -999) {
+					Log::REFatal("fitc_piv_chol_preconditioner_rank is not > 0, found = %d ", fitc_piv_chol_preconditioner_rank);
+				}
 				else {
 					if (cg_preconditioner_type_ == "fitc") {
 						fitc_piv_chol_preconditioner_rank_ = default_fitc_preconditioner_rank_;
@@ -840,11 +845,17 @@ namespace GPBoost {
 				}
 			}
 
-			estimate_aux_pars_ = estimate_aux_pars;
-			if (lr > 0) {
-				lr_aux_pars_init_ = lr;
-				lr_aux_pars_after_first_iteration_ = lr;
-				lr_aux_pars_after_first_optim_boosting_iteration_ = lr;
+			estimate_aux_pars_ = estimate_aux_pars;			
+			if (lr_cov > 0) {
+				lr_cov_init_ = lr_cov;
+				lr_cov_after_first_iteration_ = lr_cov;
+				lr_cov_after_first_optim_boosting_iteration_ = lr_cov;
+				lr_aux_pars_init_ = lr_cov;
+				lr_aux_pars_after_first_iteration_ = lr_cov;
+				lr_aux_pars_after_first_optim_boosting_iteration_ = lr_cov;
+			}
+			else if (!TwoNumbersAreEqual<double>(lr_cov, -999.)) {
+				Log::REFatal("lr_cov is not > 0, found = %g ", lr_cov);
 			}
 			set_optim_config_has_been_called_ = true;
 			if (estimate_cov_par_index[0] >= 0.) {
@@ -857,8 +868,14 @@ namespace GPBoost {
 			if (m_lbfgs > 0) {
 				m_lbfgs_ = m_lbfgs;
 			}
+			else if (m_lbfgs != -999) {
+				Log::REFatal("m_lbfgs is not > 0, found = %d ", m_lbfgs);
+			}
 			if (delta_conv_mode_finding > 0.) {
 				delta_conv_mode_finding_ = delta_conv_mode_finding;
+			}
+			else if (!TwoNumbersAreEqual<double>(delta_conv_mode_finding, -999.)) {
+				Log::REFatal("delta_conv_mode_finding is not > 0, found = %g ", delta_conv_mode_finding);
 			}
 			SetPropertiesLikelihood();
 		}//end SetOptimConfig
@@ -5472,15 +5489,15 @@ namespace GPBoost {
 		\brief Convergence tolerance for covariance and linear regression coefficient estimation.
 			The algorithm stops if the relative change in either the (approximate) log-likelihood or the parameters is below this value.
 			For "bfgs_optim_lib", the L2 norm of the gradient is used instead of the relative change in the log-likelihood.
-			If delta_rel_conv_init_ < 0, internal default values are set in 'InitializeOptimSettings'
+			If delta_rel_conv_init_ = -999, internal default values are set in 'OptimParamsSetInitialValues'
 		*/
 		double delta_rel_conv_;
 		/*! \brief Initial convergence tolerance (to remember as default values for delta_rel_conv_ are different for 'nelder_mead' vs. other optimizers and the optimization might get restarted) */
-		double delta_rel_conv_init_ = -1;
-		/*! \brief Learning rate for covariance parameters. If lr_cov_init_ < 0, internal default values are set in 'InitializeOptimSettings' */
+		double delta_rel_conv_init_ = -999.;
+		/*! \brief Learning rate for covariance parameters. If lr_cov_init_ = -999, internal default values are set in 'OptimParamsSetInitialValues' */
 		double lr_cov_;
 		/*! \brief Initial learning rate for covariance parameters (to remember as lr_cov_ can be decreased) */
-		double lr_cov_init_ = -1;
+		double lr_cov_init_ = -999;
 		/*! \brief True if 'lr_cov_' and other learning rates have been initialized, i.e., if 'InitializeOptimSettings' has been called */
 		bool lr_have_been_initialized_ = false;
 		/*! \brief Learning rate for covariance parameters after first iteration (to remember as lr_cov_ can be decreased) */
@@ -8065,7 +8082,7 @@ namespace GPBoost {
 
 		/*! * \brief Set initial values 'delta_rel_conv_init_' for delta_rel_conv_ */
 		void SetInitialValueDeltaRelConv() {
-			if (delta_rel_conv_init_ < 0) {
+			if (TwoNumbersAreEqual<double>(delta_rel_conv_init_, -999.)) {
 				if (optimizer_cov_pars_ == "nelder_mead") {
 					delta_rel_conv_init_ = 1e-8;
 				}

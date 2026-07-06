@@ -252,7 +252,7 @@ namespace GPBoost {
 					aux_pars_ = { 1., 2. }; // internal default value for df
 				}
 				else {
-					CHECK(additional_param > 0.);
+					Log::REFatal("The 'likelihood_additional_param' (df) is not > 0, found = %g ", additional_param);
 					aux_pars_ = { 1., additional_param };
 				}
 				names_aux_pars_ = { "scale", "df" };

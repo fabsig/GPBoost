@@ -1400,10 +1400,10 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \brief Set configuration parameters for the optimizer
 * \param handle Handle of REModel
 * \param init_cov_pars Initial values for covariance parameters of RE components
-* \param lr Learning rate for covariance parameters. If lr<= 0, internal default values are used (0.1 for "gradient_descent" and 1. for "fisher_scoring")
+* \param lr Learning rate for covariance parameters. If lr = -999, internal default values are used (0.1 for "gradient_descent" and 1. otherwise)
 * \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0)
 * \param max_iter Maximal number of iterations
-* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood
+* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood. If delta_rel_conv = -999, internal default values are used
 * \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent")
 * \param nesterov_schedule_version Which version of Nesterov schedule should be used (only relevant if use_nesterov_acc)
 * \param trace If true, the value of the gradient is printed for some iterations
@@ -1422,15 +1422,15 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \param reuse_rand_vec_trace If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated
 * \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
 * \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
-* \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm
+* \param piv_chol_rank Rank of the pivoted cholseky decomposition used as preconditioner of the conjugate gradient algorithm. If piv_chol_rank = -999, internal default values are used
 * \param init_aux_pars Initial values for values for aux_pars_ (e.g., shape parameter of gamma likelihood)
 * \param estimate_aux_pars If true, any additional parameters for non-Gaussian likelihoods are also estimated (e.g., shape parameter of gamma likelihood)
 * \param init_coef_aux_pars_from_iid_model If true, initialize regression coefficients and auxiliary parameters from an iid model.
 *        This option is ignored if init_coef is provided. If init_aux_pars is provided but init_coef is not,
 *        only regression coefficients are initialized from an iid model.
 * \param estimate_cov_par_index If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, estimate_cov_par_index[i] is then bool and indicates which ones are estimated
-* \param m_lbfgs Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer
-* \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods
+* \param m_lbfgs Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer. If m_lbfgs = -999, internal default values are used
+* \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
