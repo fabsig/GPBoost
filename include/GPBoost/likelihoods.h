@@ -251,8 +251,10 @@ namespace GPBoost {
 				if (TwoNumbersAreEqual<double>(additional_param, -999.)) {
 					aux_pars_ = { 1., 2. }; // internal default value for df
 				}
-				else {
+				else if (additional_param < 0) {
 					Log::REFatal("The 'likelihood_additional_param' (df) is not > 0, found = %g ", additional_param);
+				}
+				else {
 					aux_pars_ = { 1., additional_param };
 				}
 				names_aux_pars_ = { "scale", "df" };

@@ -342,8 +342,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Do optimization using optim
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
-    opt <- optim(par=c(0.1,2,0.2), fn=gp_model$neg_log_likelihood, 
-                 y=y, method="L-BFGS-B", lower=1E-10)
+    capture.output( opt <- optim(par=c(0.1,2,0.2), fn=gp_model$neg_log_likelihood, 
+                 y=y, method="L-BFGS-B", lower=1E-10) , file='NUL')
     expect_lt(sum(abs(opt$par-cov_pars[c(1,3,5)])),TOLERANCE_LOOSE)
     expect_lt(abs(opt$value-(122.7752694)),1E-5)
     # expect_equal(as.integer(opt$counts[1]), 35)

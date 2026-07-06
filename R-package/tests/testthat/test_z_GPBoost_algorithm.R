@@ -916,14 +916,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Train model
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
       gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring", init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
-      bst <- gpb.train(data = dtrain,
-                       gp_model = gp_model,
-                       nrounds = 20,
-                       learning_rate = 0.05,
-                       max_depth = 6,
-                       min_data_in_leaf = 5,
-                       objective = "regression_l2",
-                       verbose = 0)
+      bst <- gpb.train(data = dtrain, gp_model = gp_model,
+                       nrounds = 20, learning_rate = 0.05, max_depth = 6,
+                       min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
       cov_pars_est <- c(0.1358229, 0.9099908, 0.1115316)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),TOLERANCE)
       # Prediction
@@ -983,14 +978,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Train model using Nelder-Mead
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
       gp_model$set_optim_params(params=list(optimizer_cov="nelder_mead", delta_rel_conv=1e-6, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
-      bst <- gpb.train(data = dtrain,
-                       gp_model = gp_model,
-                       nrounds = 20,
-                       learning_rate = 0.05,
-                       max_depth = 6,
-                       min_data_in_leaf = 5,
-                       objective = "regression_l2",
-                       verbose = 0)
+      bst <- gpb.train(data = dtrain, gp_model = gp_model,
+                       nrounds = 20, learning_rate = 0.05, max_depth = 6,
+                       min_data_in_leaf = 5, objective = "regression_l2", verbose = 0)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-c(0.1286928, 0.9140254, 0.1097192))),TOLERANCE)
       # Prediction
       pred <- predict(bst, data = X_test, gp_coords_pred = coords_test, predict_var=TRUE, pred_latent = TRUE)
@@ -1001,18 +991,11 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Use validation set to determine number of boosting iteration
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
       gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring", init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
-      bst <- gpb.train(data = dtrain,
-                       gp_model = gp_model,
-                       nrounds = 100,
-                       learning_rate = 0.05,
-                       max_depth = 6,
-                       min_data_in_leaf = 5,
-                       objective = "regression_l2",
-                       verbose = 0,
-                       valids = valids,
-                       early_stopping_rounds = 5,
-                       use_gp_model_for_validation = FALSE,
-                       seed = 0, metric = "l2")
+      capture.output( bst <- gpb.train(data = dtrain, gp_model = gp_model,
+                       nrounds = 100, learning_rate = 0.05, max_depth = 6,
+                       min_data_in_leaf = 5, objective = "regression_l2", verbose = 0,
+                       valids = valids, early_stopping_rounds = 5, use_gp_model_for_validation = FALSE,
+                       seed = 0, metric = "l2") , file='NUL')
       expect_equal(bst$best_iter, 27)
       expect_lt(abs(bst$best_score - 1.293498),TOLERANCE)
       
@@ -1020,18 +1003,11 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential")
       gp_model$set_optim_params(params=list(maxit=20, optimizer_cov="fisher_scoring", init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
       gp_model$set_prediction_data(gp_coords_pred = coords_test)
-      bst <- gpb.train(data = dtrain,
-                       gp_model = gp_model,
-                       nrounds = 100,
-                       learning_rate = 0.05,
-                       max_depth = 6,
-                       min_data_in_leaf = 5,
-                       objective = "regression_l2",
-                       verbose = 0,
-                       valids = valids,
-                       early_stopping_rounds = 5,
-                       use_gp_model_for_validation = TRUE,
-                       seed = 0, metric = "l2")
+      capture.output( bst <- gpb.train(data = dtrain, gp_model = gp_model,
+                       nrounds = 100, learning_rate = 0.05, max_depth = 6,
+                       min_data_in_leaf = 5, objective = "regression_l2", verbose = 0,
+                       valids = valids, early_stopping_rounds = 5, use_gp_model_for_validation = TRUE,
+                       seed = 0, metric = "l2") , file='NUL')
       expect_equal(bst$best_iter, 27)
       expect_lt(abs(bst$best_score - 0.5485127),TOLERANCE2)
     })
