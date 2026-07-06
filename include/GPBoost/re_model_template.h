@@ -7586,10 +7586,8 @@ namespace GPBoost {
 		double GetTotalRandomEffectMarginalVarianceOriginalScale(const vec_t& cov_pars_orig) const {
 			CHECK(cov_pars_orig.size() == num_cov_par_);
 			double other_var = 0.;
-			for (int igp = 0; igp < num_sets_re_; ++igp) {
-				for (int j = 0; j < num_comps_total_; ++j) {
-					other_var += cov_pars_orig[ind_par_[j] + igp * num_cov_par_per_set_re_];
-				}
+			for (int j = 0; j < num_comps_total_; ++j) {
+				other_var += cov_pars_orig[ind_par_[j]];
 			}
 			return other_var;
 		}
