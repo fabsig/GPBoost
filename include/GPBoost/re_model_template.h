@@ -699,21 +699,21 @@ namespace GPBoost {
 		/*!
 		* \brief Set configuration parameters for the optimizer
 		* \param lr_cov Learning rate for covariance parameters. If lr_cov = -999, internal default values are used
-		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
-		* \param max_iter Maximal number of iterations
+		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0). If acc_rate_cov = -999, internal default values are used
+		* \param max_iter Maximal number of iterations. If max_iter = -999, internal default values are used
 		* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. If delta_rel_conv = -999, internal default values are used
 		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent")e
-		* \param nesterov_schedule_version Which version of Nesterov schedule should be used (only relevant if use_nesterov_acc)
+		* \param nesterov_schedule_version Which version of Nesterov schedule should be used (only relevant if use_nesterov_acc). If nesterov_schedule_version = -999, internal default values are used
 		* \param optimizer_cov Optimizer for covariance parameters
-		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc)
-		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
-		* \param lr_coef Learning rate for fixed-effect linear coefficients
-		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0)
+		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc). If momentum_offset = -999, internal default values are used
+		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters". If convergence_criterion = "default", internal default values are used
+		* \param lr_coef Learning rate for fixed-effect linear coefficients. If lr_coef = -999, internal default values are used
+		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0). If acc_rate_coef = -999, internal default values are used
 		* \param optimizer_coef Optimizer for linear regression coefficients
-		* \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm
-		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
-		* \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation
-		* \param num_rand_vec_trace Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
+		* \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm. If cg_max_num_it = -999, internal default values are used
+		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization. If cg_max_num_it_tridiag = -999, internal default values are used
+		* \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation. If cg_delta_conv = -999, internal default values are used
+		* \param num_rand_vec_trace Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix. If num_rand_vec_trace = -999, internal default values are used
 		* \param reuse_rand_vec_trace If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated
 		* \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
 		* \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
@@ -747,10 +747,25 @@ namespace GPBoost {
 			const int* estimate_cov_par_index,
 			int m_lbfgs,
 			double delta_conv_mode_finding) {
-			acc_rate_cov_ = acc_rate_cov;
-			max_iter_ = max_iter;
+			if (acc_rate_cov > 0.) {
+				acc_rate_cov_ = acc_rate_cov;
+			}
+			else if (!TwoNumbersAreEqual<double>(acc_rate_cov, -999.)) {
+				Log::REFatal("acc_rate_cov is not > 0, found = %g ", acc_rate_cov);
+			}
+			if (max_iter >= 0) {
+				max_iter_ = max_iter;
+			}
+			else if (max_iter != -999) {
+				Log::REFatal("max_iter is not >= 0, found = %d ", max_iter);
+			}
 			use_nesterov_acc_ = use_nesterov_acc;
-			nesterov_schedule_version_ = nesterov_schedule_version;
+			if (nesterov_schedule_version == 0 || nesterov_schedule_version == 1) {
+				nesterov_schedule_version_ = nesterov_schedule_version;
+			}
+			else if (nesterov_schedule_version != -999) {
+				Log::REFatal("nesterov_schedule_version is not 0 or 1, found = %d ", nesterov_schedule_version);
+			}
 			if (optimizer != nullptr) {
 				if (std::string(optimizer) != "") {
 					optimizer_cov_pars_ = std::string(optimizer);
@@ -788,17 +803,35 @@ namespace GPBoost {
 					}
 				}
 			}
-			momentum_offset_ = momentum_offset;
+			if (momentum_offset >= 0) {
+				momentum_offset_ = momentum_offset;
+			}
+			else if (momentum_offset != -999) {
+				Log::REFatal("momentum_offset is not >= 0, found = %d ", momentum_offset);
+			}
 			if (convergence_criterion != nullptr) {
-				convergence_criterion_ = std::string(convergence_criterion);
-				if (SUPPORTED_CONV_CRIT_.find(convergence_criterion_) == SUPPORTED_CONV_CRIT_.end()) {
-					Log::REFatal("Convergence criterion '%s' is not supported.", convergence_criterion_.c_str());
+				std::string convergence_criterion_str = std::string(convergence_criterion);
+				if (convergence_criterion_str != "default") {
+					convergence_criterion_ = convergence_criterion_str;
+					if (SUPPORTED_CONV_CRIT_.find(convergence_criterion_) == SUPPORTED_CONV_CRIT_.end()) {
+						Log::REFatal("Convergence criterion '%s' is not supported.", convergence_criterion_.c_str());
+					}
 				}
 			}
-			lr_coef_init_ = lr_coef;
-			lr_coef_after_first_iteration_ = lr_coef;
-			lr_coef_after_first_optim_boosting_iteration_ = lr_coef;
-			acc_rate_coef_ = acc_rate_coef;
+			if (lr_coef > 0.) {
+				lr_coef_init_ = lr_coef;
+				lr_coef_after_first_iteration_ = lr_coef;
+				lr_coef_after_first_optim_boosting_iteration_ = lr_coef;
+			}
+			else if (!TwoNumbersAreEqual<double>(lr_coef, -999.)) {
+				Log::REFatal("lr_coef is not > 0, found = %g ", lr_coef);
+			}
+			if (acc_rate_coef > 0.) {
+				acc_rate_coef_ = acc_rate_coef;
+			}
+			else if (!TwoNumbersAreEqual<double>(acc_rate_coef, -999.)) {
+				Log::REFatal("acc_rate_coef is not > 0, found = %g ", acc_rate_coef);
+			}
 			if (delta_rel_conv > 0.) {
 				delta_rel_conv_init_ = delta_rel_conv;
 			}
@@ -811,14 +844,34 @@ namespace GPBoost {
 					coef_optimizer_has_been_set_ = true;
 				}
 			}
-			num_rand_vec_trace_ = num_rand_vec_trace;
+			if (num_rand_vec_trace > 0) {
+				num_rand_vec_trace_ = num_rand_vec_trace;
+			}
+			else if (num_rand_vec_trace != -999) {
+				Log::REFatal("num_rand_vec_trace is not > 0, found = %d ", num_rand_vec_trace);
+			}
 			seed_rand_vec_trace_ = seed_rand_vec_trace;
 			reuse_rand_vec_trace_ = reuse_rand_vec_trace;
 			// Conjugate gradient algorithm related parameters
 			if (matrix_inversion_method_ == "iterative") {
-				cg_max_num_it_ = cg_max_num_it;
-				cg_max_num_it_tridiag_ = cg_max_num_it_tridiag;
-				cg_delta_conv_ = cg_delta_conv;
+				if (cg_max_num_it > 0) {
+					cg_max_num_it_ = cg_max_num_it;
+				}
+				else if (cg_max_num_it != -999) {
+					Log::REFatal("cg_max_num_it is not > 0, found = %d ", cg_max_num_it);
+				}
+				if (cg_max_num_it_tridiag > 0) {
+					cg_max_num_it_tridiag_ = cg_max_num_it_tridiag;
+				}
+				else if (cg_max_num_it_tridiag != -999) {
+					Log::REFatal("cg_max_num_it_tridiag is not > 0, found = %d ", cg_max_num_it_tridiag);
+				}
+				if (cg_delta_conv > 0.) {
+					cg_delta_conv_ = cg_delta_conv;
+				}
+				else if (!TwoNumbersAreEqual<double>(cg_delta_conv, -999.)) {
+					Log::REFatal("cg_delta_conv is not > 0, found = %g ", cg_delta_conv);
+				}
 				if (cg_preconditioner_type != nullptr) {
 					if (cg_preconditioner_type_ != std::string(cg_preconditioner_type) &&
 						model_has_been_estimated_) {

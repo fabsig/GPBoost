@@ -64,21 +64,26 @@ fixed effects linear regression term (if there is one)}
     If 'optimizer_cov' is set to "nelder_mead" or "lbfgs", 
     'optimizer_coef' is automatically also set to the same value.}
     \item{maxit: \code{integer} (default = 1000). 
-    Maximal number of iterations for optimization algorithm }
+    Maximal number of iterations for optimization algorithm.
+    If maxit = -999, internal default values are used }
     \item{delta_rel_conv: \code{numeric} (default = 1E-6 except for "nelder_mead" for which the default is 1E-8). 
     Convergence tolerance. The algorithm stops if the relative change 
     in either the (approximate) log-likelihood or the parameters is below this value. 
     If delta_rel_conv = -999, internal default values are used }
     \item{cg_max_num_it: \code{integer} (default = 1000). 
-    Maximal number of iterations for conjugate gradient algorithms }
+    Maximal number of iterations for conjugate gradient algorithms.
+    If cg_max_num_it = -999, internal default values are used }
     \item{cg_max_num_it_tridiag: \code{integer} (default = 1000). 
     Maximal number of iterations for conjugate gradient algorithm 
-    when being run as Lanczos algorithm for tridiagonalization }
+    when being run as Lanczos algorithm for tridiagonalization.
+    If cg_max_num_it_tridiag = -999, internal default values are used }
     \item{cg_delta_conv: \code{numeric} (default = 1E-2).
     Tolerance level for L2 norm of residuals for checking convergence 
-    in conjugate gradient algorithm when being used for parameter estimation }
+    in conjugate gradient algorithm when being used for parameter estimation.
+    If cg_delta_conv = -999, internal default values are used }
     \item{num_rand_vec_trace: \code{integer} (default = 50). 
-    Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix }
+    Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix.
+    If num_rand_vec_trace = -999, internal default values are used }
     \item{reuse_rand_vec_trace: \code{boolean} (default = TRUE). 
     If true, random vectors (e.g., Rademacher) for stochastic approximations 
     of the trace of a matrix are sampled only once at the beginning of 
@@ -129,26 +134,30 @@ fixed effects linear regression term (if there is one)}
       }
     \item{convergence_criterion: \code{string} (default = "relative_change_in_log_likelihood", only relevant for "gradient_descent", "fisher_scoring", and "newton"). 
     The convergence criterion used for terminating the optimization algorithm.
-    Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters" }
+    Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
+    If convergence_criterion = "default", internal default values are used }
     \item{lr_cov: \code{numeric} (default = 0.1 for "gradient_descent" and 1. otherwise, only relevant for "gradient_descent", "fisher_scoring", and "newton"). 
     Initial learning rate for covariance parameters if a gradient-based optimization method is used 
     \itemize{
-    \item{If lr_cov < 0, internal default values are used (0.1 for "gradient_descent" and 1. otherwise) }
+    \item{If lr_cov = -999, internal default values are used (0.1 for "gradient_descent" and 1. otherwise) }
     \item{If there are additional auxiliary parameters for non-Gaussian likelihoods, 
     'lr_cov' is also used for those }
     \item{For "lbfgs", this is divided by the norm of the gradient in the first iteration }}}
     \item{lr_coef: \code{numeric} (default = 0.1, only relevant for "gradient_descent", "fisher_scoring", and "newton"). 
-    Learning rate for fixed effect regression coefficients if gradient descent is used }
+    Learning rate for fixed effect regression coefficients if gradient descent is used.
+    If lr_coef = -999, internal default values are used }
     \item{use_nesterov_acc: \code{boolean} (default = TRUE, only relevant for "gradient_descent"). 
     If TRUE Nesterov acceleration is used.
     This is used only for gradient descent }
+    \item{nesterov_schedule_version: \code{integer} (Default = 0, only relevant for "gradient_descent")}. 
+    Which version of Nesterov schedule should be used. If nesterov_schedule_version = -999, internal default values are used.
     \item{acc_rate_coef: \code{numeric} (default = 0.5, only relevant for "gradient_descent"). 
     Acceleration rate for regression coefficients (if there are any) 
-    for Nesterov acceleration }
+    for Nesterov acceleration. If acc_rate_coef = -999, internal default values are used }
     \item{acc_rate_cov: \code{numeric} (default = 0.5, only relevant for "gradient_descent"). 
-    Acceleration rate for covariance parameters for Nesterov acceleration }
+    Acceleration rate for covariance parameters for Nesterov acceleration. If acc_rate_cov = -999, internal default values are used }
     \item{momentum_offset: \code{integer} (Default = 2, only relevant for "gradient_descent")}. 
-    Number of iterations for which no momentum is applied in the beginning.
+    Number of iterations for which no momentum is applied in the beginning. If momentum_offset = -999, internal default values are used.
     \item{m_lbfgs: \code{integer} (Default = 6)}. Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer. If m_lbfgs = -999, internal default values are used
     \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8)}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 }}

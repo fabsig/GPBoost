@@ -4567,22 +4567,22 @@ class GPModel(object):
         self.X_loaded_from_file = None
         self.model_fitted = False
         self.current_neg_log_likelihood_loaded_from_file = None
-        self.params = {"maxit": 1000,
+        self.params = {"maxit": -999, # default value is set in C++
                        "delta_rel_conv": -999., # default value is set in C++
                        "init_coef": None,
-                       "lr_coef": 0.1,
+                       "lr_coef": -999., # default value is set in C++
                        "lr_cov": -999., # default value is set in C++
                        "use_nesterov_acc": True,
-                       "acc_rate_coef": 0.5,
-                       "acc_rate_cov": 0.5,
-                       "nesterov_schedule_version": 0,
-                       "momentum_offset": 2,
+                       "acc_rate_coef": -999., # default value is set in C++
+                       "acc_rate_cov": -999., # default value is set in C++
+                       "nesterov_schedule_version": -999, # default value is set in C++
+                       "momentum_offset": -999, # default value is set in C++
                        "trace": False,
-                       "convergence_criterion": "relative_change_in_log_likelihood",
-                       "cg_max_num_it": 1000,
-                       "cg_max_num_it_tridiag": 1000,
-                       "cg_delta_conv": 1e-2,
-                       "num_rand_vec_trace": 50,
+                       "convergence_criterion": "default", # default value is set in C++
+                       "cg_max_num_it": -999, # default value is set in C++
+                       "cg_max_num_it_tridiag": -999, # default value is set in C++
+                       "cg_delta_conv": -999., # default value is set in C++
+                       "num_rand_vec_trace": -999, # default value is set in C++
                        "reuse_rand_vec_trace": True,
                        "seed_rand_vec_trace": 1,
                        "fitc_piv_chol_preconditioner_rank": -999, # default value is set in C++
@@ -5186,6 +5186,7 @@ class GPModel(object):
                     the same value.
                 - maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm.
+                    If maxit = -999, internal default values are used.
                 - delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
                     log-likelihood or the parameters is below this value. 
@@ -5193,14 +5194,18 @@ class GPModel(object):
                     Default = 1e-6 except for "nelder_mead" for which the default is 1e-8.
                 - cg_max_num_it: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithms.
+                    If cg_max_num_it = -999, internal default values are used.
                 - cg_max_num_it_tridiag: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm
                     for tridiagonalization.
+                    If cg_max_num_it_tridiag = -999, internal default values are used.
                 - cg_delta_conv: double, optional (default = 1e-2)
                     Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
                     when being used for parameter estimation.
+                    If cg_delta_conv = -999, internal default values are used.
                 - num_rand_vec_trace: integer, optional (default = 50)
                     Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix.
+                    If num_rand_vec_trace = -999, internal default values are used.
                 - reuse_rand_vec_trace: boolean, optional (default = True)
                     If true, random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix
                     are sampled only once at the beginning of Newton's method for finding the mode in the Laplace
@@ -5249,6 +5254,7 @@ class GPModel(object):
                 - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood", only relevant for "gradient_descent", "fisher_scoring", and "newton")
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
+                    If convergence_criterion = "default", internal default values are used.
                 - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. otherwise, only relevant for "gradient_descent", "fisher_scoring", and "newton")
                     Initial learning rate for covariance parameters if a gradient-based optimization method is used.
 
@@ -5260,14 +5266,21 @@ class GPModel(object):
 
                 - lr_coef : double, optional (default = 0.1, only relevant for "gradient_descent", "fisher_scoring", and "newton")
                     Learning rate for fixed effect regression coefficients.
+                    If lr_coef = -999, internal default values are used.
                 - use_nesterov_acc : bool, optional (default = True, only relevant for "gradient_descent")
                     If True, Nesterov acceleration is used for gradient descent.
+                - nesterov_schedule_version : integer, optional (default = 0, only relevant for "gradient_descent")
+                    Selects the version of the Nesterov schedule (0 or 1).
+                    If nesterov_schedule_version = -999, internal default values are used.
                 - acc_rate_cov : double, optional (default = 0.5, only relevant for "gradient_descent")
                     Acceleration rate for covariance parameters for Nesterov acceleration.
+                    If acc_rate_cov = -999, internal default values are used.
                 - acc_rate_coef : double, optional (default = 0.5, only relevant for "gradient_descent")
                     Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration.
+                    If acc_rate_coef = -999, internal default values are used.
                 - momentum_offset : integer, optional (default = 2, only relevant for "gradient_descent")
                     Number of iterations for which no momentum is applied in the beginning.
+                    If momentum_offset = -999, internal default values are used.
                 - m_lbfgs : integer, optional (default = 6)
                     Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer.
                     If m_lbfgs = -999, internal default values are used.
@@ -5473,6 +5486,7 @@ class GPModel(object):
                     the same value.
                 - maxit : integer, optional (default = 1000)
                     Maximal number of iterations for optimization algorithm.
+                    If maxit = -999, internal default values are used.
                 - delta_rel_conv : double, optional (default = 1e-6 except for "nelder_mead" for which the default is 1e-8)
                     Convergence tolerance. The algorithm stops if the relative change in eiher the (approximate)
                     log-likelihood or the parameters is below this value. 
@@ -5480,14 +5494,18 @@ class GPModel(object):
                     Default = 1e-6 except for "nelder_mead" for which the default is 1e-8.
                 - cg_max_num_it: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithms.
+                    If cg_max_num_it = -999, internal default values are used.
                 - cg_max_num_it_tridiag: integer, optional (default = 1000)
                     Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm
                     for tridiagonalization.
+                    If cg_max_num_it_tridiag = -999, internal default values are used.
                 - cg_delta_conv: double, optional (default = 1e-2)
                     Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
                     when being used for parameter estimation.
+                    If cg_delta_conv = -999, internal default values are used.
                 - num_rand_vec_trace: integer, optional (default = 50)
                     Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix.
+                    If num_rand_vec_trace = -999, internal default values are used.
                 - reuse_rand_vec_trace: boolean, optional (default = True)
                     If true, random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix
                     are sampled only once at the beginning of Newton's method for finding the mode in the Laplace
@@ -5536,6 +5554,7 @@ class GPModel(object):
                 - convergence_criterion : string, optional (default = "relative_change_in_log_likelihood", only relevant for "gradient_descent", "fisher_scoring", and "newton")
                     The convergence criterion used for terminating the optimization algorithm.
                     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
+                    If convergence_criterion = "default", internal default values are used.
                 - lr_cov : double, optional (default = 0.1 for "gradient_descent" and 1. otherwise, only relevant for "gradient_descent", "fisher_scoring", and "newton")
                     Initial learning rate for covariance parameters if a gradient-based optimization method is used.
 
@@ -5547,14 +5566,21 @@ class GPModel(object):
 
                 - lr_coef : double, optional (default = 0.1, only relevant for "gradient_descent", "fisher_scoring", and "newton")
                     Learning rate for fixed effect regression coefficients.
+                    If lr_coef = -999, internal default values are used.
                 - use_nesterov_acc : bool, optional (default = True, only relevant for "gradient_descent")
                     If True, Nesterov acceleration is used for gradient descent.
+                - nesterov_schedule_version : integer, optional (default = 0, only relevant for "gradient_descent")
+                    Selects the version of the Nesterov schedule (0 or 1).
+                    If nesterov_schedule_version = -999, internal default values are used.
                 - acc_rate_cov : double, optional (default = 0.5, only relevant for "gradient_descent")
                     Acceleration rate for covariance parameters for Nesterov acceleration.
+                    If acc_rate_cov = -999, internal default values are used.
                 - acc_rate_coef : double, optional (default = 0.5, only relevant for "gradient_descent")
                     Acceleration rate for regression coefficients (if there are any) for Nesterov acceleration.
+                    If acc_rate_coef = -999, internal default values are used.
                 - momentum_offset : integer, optional (default = 2, only relevant for "gradient_descent")
                     Number of iterations for which no momentum is applied in the beginning.
+                    If momentum_offset = -999, internal default values are used.
                 - m_lbfgs : integer, optional (default = 6)
                     Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer.
                     If m_lbfgs = -999, internal default values are used.

@@ -159,24 +159,24 @@ namespace GPBoost {
 		* \brief Set configuration parameters for the optimizer
 		* \param init_cov_pars Initial values for covariance parameters of RE components
 		* \param lr Learning rate for covariance parameters. If lr = -999, internal default values are used (0.1 for "gradient_descent" and 1. otherwise)
-		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0).
-		* \param max_iter Maximal number of iterations
+		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0). If acc_rate_cov = -999, internal default values are used
+		* \param max_iter Maximal number of iterations. If max_iter = -999, internal default values are used
 		* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood. If delta_rel_conv = -999, internal default values are used
 		* \param use_nesterov_acc Indicates whether Nesterov acceleration is used in the gradient descent for finding the covariance parameters (only used for "gradient_descent")e
-		* \param nesterov_schedule_version Which version of Nesterov schedule should be used (only relevant if use_nesterov_acc)
+		* \param nesterov_schedule_version Which version of Nesterov schedule should be used (only relevant if use_nesterov_acc). If nesterov_schedule_version = -999, internal default values are used
 		* \param trace If true, the value of the gradient is printed for some iterations
 		* \param optimizer_cov Optimizer for covariance parameters
-		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc)
-		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters"
+		* \param momentum_offset Number of iterations for which no mometum is applied in the beginning (only relevant if use_nesterov_acc). If momentum_offset = -999, internal default values are used
+		* \param convergence_criterion The convergence criterion used for terminating the optimization algorithm. Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters". If convergence_criterion = "default", internal default values are used
 		* \param num_covariates Number of covariates
 		* \param init_coef Initial values for the regression coefficients
-		* \param lr_coef Learning rate for fixed-effect linear coefficients
-		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0)
+		* \param lr_coef Learning rate for fixed-effect linear coefficients. If lr_coef = -999, internal default values are used
+		* \param acc_rate_coef Acceleration rate for coefficients for Nesterov acceleration (only relevant if nesterov_schedule_version == 0). If acc_rate_coef = -999, internal default values are used
 		* \param optimizer_coef Optimizer for linear regression coefficients
-		* \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm
-		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization
-		* \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation
-		* \param num_rand_vec_trace Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
+		* \param cg_max_num_it Maximal number of iterations for conjugate gradient algorithm. If cg_max_num_it = -999, internal default values are used
+		* \param cg_max_num_it_tridiag Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization. If cg_max_num_it_tridiag = -999, internal default values are used
+		* \param cg_delta_conv Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation. If cg_delta_conv = -999, internal default values are used
+		* \param num_rand_vec_trace Number of random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix. If num_rand_vec_trace = -999, internal default values are used
 		* \param reuse_rand_vec_trace If true, random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning and then reused in later trace approximations, otherwise they are sampled everytime a trace is calculated
 		* \param cg_preconditioner_type Type of preconditioner used for the conjugate gradient algorithm
 		* \param seed_rand_vec_trace Seed number to generate random vectors (e.g. Rademacher) for stochastic approximation of the trace of a matrix
