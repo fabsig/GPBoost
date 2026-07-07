@@ -1398,7 +1398,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         gp_approx = "vecchia_latent", num_neighbors = 30,
                                         vecchia_ordering = "none", matrix_inversion_method = "cholesky"), file='NUL')
     capture.output( fit(gp_model, y = y, params = params_latent), file='NUL')
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_vecchia[c(3,5)])),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_vecchia[3:6])),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars_vecchia[1])),TOLERANCE_LOOSE)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_vecchia), TOLERANCE_MEDIUM)
     # "vecchia_latent" with iterative methods (pivoted Cholesky)
@@ -1406,7 +1406,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         gp_approx = "vecchia_latent", num_neighbors = 30,
                                         vecchia_ordering = "none", matrix_inversion_method = "iterative"), file='NUL')
     capture.output( fit(gp_model, y = y, params = params_latent), file='NUL')
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_vecchia[c(3,5)])),0.02)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_vecchia[3:6])),0.02)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars_vecchia[1])),0.02)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_vecchia), 0.2)
     # "vecchia_latent" with iterative methods (FITC preconditioner)
@@ -1415,7 +1415,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         vecchia_ordering = "none", matrix_inversion_method = "iterative"), file='NUL')
     params_latent$cg_preconditioner_type = "predictive_process_plus_diagonal"
     capture.output( fit(gp_model, y = y, params = params_latent), file='NUL')
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_vecchia[c(3,5)])),0.02)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_vecchia[3:6])),0.02)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-cov_pars_vecchia[1])),0.02)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_vecchia), 0.2)
     
@@ -1547,7 +1547,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                          cov_pars = cov_pars_pred, predict_var = TRUE, predict_response = FALSE)
     expect_lt(sum(abs(pred_var$mu - pred_var2$mu)), TOLERANCE_STRICT)
     expect_lt(sum(abs(pred_var$var - cov_pars_pred[1] - pred_var2$var)), TOLERANCE_STRICT)
-    
     
   })
   
@@ -3809,7 +3808,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params$init_cov_pars <- init_cov_pars
     
     # VIF without GPU
-    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", GPU_use = F,
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", GPU_use = FALSE,
                                            gp_approx = "vif_correlation_based",num_ind_points = 50,num_neighbors = 20,
                                            y = y, X = X,  matrix_inversion_method = "cholesky",
                                            params = OPTIM_PARAMS_BFGS), file='NUL')
@@ -3824,7 +3823,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred_var_without_GPU <- as.vector(pred$var)
     
     # VIF with GPU
-    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", GPU_use = T,
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", GPU_use = TRUE,
                                            gp_approx = "vif_correlation_based",num_ind_points = 50,num_neighbors = 20,
                                            y = y, X = X,  matrix_inversion_method = "cholesky",
                                            params = OPTIM_PARAMS_BFGS), file='NUL')

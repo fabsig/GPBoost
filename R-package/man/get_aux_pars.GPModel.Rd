@@ -4,10 +4,14 @@
 \alias{get_aux_pars.GPModel}
 \title{Get (estimated) auxiliary (additional) parameters of the likelihood}
 \usage{
-\method{get_aux_pars}{GPModel}(gp_model)
+\method{get_aux_pars}{GPModel}(gp_model, std_err = FALSE)
 }
 \arguments{
 \item{gp_model}{A \code{GPModel}}
+
+\item{std_err}{A \code{boolean}. If TRUE, (approximate) standard errors are calculated 
+(= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
+square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)}
 }
 \value{
 A \code{GPModel}
