@@ -5781,19 +5781,21 @@ class GPModel(object):
                 coef = pd.DataFrame(coef.reshape((1, -1)), columns=self.coef_names, index=['Param.'])
         return coef
 
-    def get_aux_pars(self, format_pandas=True):
+    def get_aux_pars(self, std_err=False, format_pandas=True):
         """Get (estimated) auxiliary (additional) parameters of the likelihood such as the shape parameter of a gamma or
         a negative binomial distribution. Some likelihoods (e.g., bernoulli_logit or poisson) have no auxiliary parameters
 
         Parameters
         ----------
+        std_err : bool (default=False)
+            If True, (approximate) standard errors are calculated
         format_pandas : bool (default=True)
             If True, a pandas DataFrame is returned, otherwise a numpy array is returned
 
         Returns
         -------
         result : numpy array or pandas DataFrame
-            auxiliary (additional) parameters of the likelihood
+            auxiliary (additional) parameters of the likelihood and standard errors (if std_err=True)
 
         Example
         -------
@@ -5801,22 +5803,34 @@ class GPModel(object):
         >>> gp_model.fit(y=y, X=X)
         >>> gp_model.get_aux_pars()
         """
+        if not self._can_calculate_standard_errors_aux_pars():
+            std_err = False
         num_aux_pars = self._get_num_aux_pars()
         if num_aux_pars > 0:
-            aux_pars = np.zeros(num_aux_pars, dtype=np.float64)
+            if std_err:
+                aux_pars = np.zeros(2 * num_aux_pars, dtype=np.float64)
+            else:
+                aux_pars = np.zeros(num_aux_pars, dtype=np.float64)
             buffer_len = 1 << 20
             string_buffer = ctypes.create_string_buffer(buffer_len)
             ptr_string_buffer = ctypes.c_char_p(*[ctypes.addressof(string_buffer)])
             _safe_call(_LIB.GPB_GetAuxPars(
                 self.handle,
                 aux_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-                ptr_string_buffer))
+                ptr_string_buffer,
+                ctypes.c_bool(std_err)))
             names_str = string_buffer.value.decode()
             names = names_str.split("_SEP_")
             if len(names) != num_aux_pars:
                 raise ValueError("Number of names for auxiliary parameters does not match the number of parameters")
+            if std_err:
+                aux_pars = np.vstack((aux_pars[0:num_aux_pars],
+                                      aux_pars[num_aux_pars:(2 * num_aux_pars)]))
             if format_pandas:
-                aux_pars = pd.DataFrame(aux_pars.reshape((1, -1)), columns=names, index=['Param.'])
+                if std_err:
+                    aux_pars = pd.DataFrame(aux_pars, columns=names, index=['Param.', 'Std. err.'])
+                else:
+                    aux_pars = pd.DataFrame(aux_pars.reshape((1, -1)), columns=names, index=['Param.'])
         else:
             aux_pars = None
         return aux_pars
@@ -5881,7 +5895,7 @@ class GPModel(object):
         if self._get_num_aux_pars() > 0:
             print("-----------------------------------------------------")
             print("Additional parameters:")
-            aux_pars = self.get_aux_pars(format_pandas=True)
+            aux_pars = self.get_aux_pars(std_err=std_err, format_pandas=True)
             print(round(aux_pars.transpose(), 4))
         if not self.model_has_been_loaded_from_saved_file:    
             if self.params["maxit"] == self._get_num_optim_iter() and not self.model_has_been_loaded_from_saved_file:
@@ -6716,6 +6730,13 @@ class GPModel(object):
     def _can_calculate_standard_errors_cov_pars(self):
         out = ctypes.c_int64(0)
         _safe_call(_LIB.GPB_CanCalculateStandardErrorsCovPars(
+            self.handle,
+            ctypes.byref(out)))
+        return bool(out.value)
+
+    def _can_calculate_standard_errors_aux_pars(self):
+        out = ctypes.c_int64(0)
+        _safe_call(_LIB.GPB_CanCalculateStandardErrorsAuxPars(
             self.handle,
             ctypes.byref(out)))
         return bool(out.value)

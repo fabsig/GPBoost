@@ -1754,12 +1754,28 @@ namespace GPBoost {
 		}//end OptimLinRegrCoefCovPar
 
 		bool CanCalculateStandardErrorsCovPars() const {
-			return (gauss_likelihood_ && gp_approx_ != "full_scale_vecchia");
+			if (gauss_likelihood_) {
+				return gp_approx_ != "full_scale_vecchia";
+			}
+			// For non-Gaussian likelihoods, standard errors are obtained from a numerical approximation
+			// of the Hessian of the negative log-likelihood (see 'CalcHessianCovParAuxPars') which is
+			// supported for all approximations
+			return true;
 		}
 
 		/*!
-		* \brief Calculate standard errors of covariance parameters (for Gaussian likelihood only)
-		* \para optim_cov_pars Optimal covariance parameters
+		* \brief Returns true if standard errors for the auxiliary (additional) parameters of non-Gaussian likelihoods can be calculated
+		*/
+		bool CanCalculateStandardErrorsAuxPars() const {
+			return (!gauss_likelihood_ && estimate_aux_pars_);
+		}
+
+		/*!
+		* \brief Calculate standard errors of covariance parameters
+		*		 For Gaussian likelihoods, this is based on the Fisher information.
+		*		 For non-Gaussian likelihoods, the Fisher information is not tractable (Laplace approximation) and a numerical
+		*		 approximation of the Hessian of the negative log-likelihood is used instead (see 'CalcHessianCovParAuxPars' and 'CalcStdDevCovParAuxParsNonGaussian')
+		* \para optim_cov_pars Optimal covariance parameters on the transformed scale (but not log-transformed)
 		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters (can be nullptr, used only if calc_std_dev)
 		*/
 		void CalculateStandardErrorsCovPars(const double* optim_cov_pars,
@@ -1776,8 +1792,9 @@ namespace GPBoost {
 				CalcStdDevCovPar(cov_pars, std_dev_cov);//TODO: maybe another call to CalcCovFactor can be avoided in CalcStdDevCovPar (need to take care of cov_pars[0])
 			}
 			else {
-				std_dev_cov.setZero();// Calculation of standard deviations for covariance parameters is not supported for non-Gaussian likelihoods
-				Log::REFatal("Calculation of standard errors of covariance parameters for non-Gaussian likelihoods is currently not supported ");
+				vec_t std_dev_aux_pars_unused;
+				const double* fixed_effects_ptr = GetFixedEffectsPtrForStdDevCalc();
+				CalcStdDevCovParAuxParsNonGaussian(cov_pars, fixed_effects_ptr, std_dev_cov, std_dev_aux_pars_unused);
 			}
 			for (int i = 0; i < num_cov_par_; ++i) {
 				std_dev_cov_par[i] = std_dev_cov[i];
@@ -1812,6 +1829,45 @@ namespace GPBoost {
 			}
 		}//end CalculateStandardErrorsCoefs
 
+		/*!
+		* \brief Calculate standard errors of the auxiliary (additional) parameters of non-Gaussian likelihoods (e.g., shape parameter of a gamma likelihood)
+		*		 See 'CalcStdDevCovParAuxParsNonGaussian' for details on how these are calculated
+		* \para optim_cov_pars Optimal covariance parameters
+		* \param[out] std_dev_aux_par Standard deviations for the auxiliary parameters
+		*/
+		void CalculateStandardErrorsAuxPars(const double* optim_cov_pars,
+			double* std_dev_aux_par) {
+			CHECK(!gauss_likelihood_);
+			CHECK(estimate_aux_pars_);
+			vec_t cov_pars(num_cov_par_);
+			for (int i = 0; i < num_cov_par_; ++i) {
+				cov_pars[i] = optim_cov_pars[i];
+			}
+			vec_t std_dev_cov_par_unused, std_dev_aux(NumAuxPars());
+			const double* fixed_effects_ptr = GetFixedEffectsPtrForStdDevCalc();
+			CalcStdDevCovParAuxParsNonGaussian(cov_pars, fixed_effects_ptr, std_dev_cov_par_unused, std_dev_aux);
+			for (int i = 0; i < NumAuxPars(); ++i) {
+				std_dev_aux_par[i] = std_dev_aux[i];
+			}
+		}//end CalculateStandardErrorsAuxPars
+
+		/*!
+		* \brief Determine the (total) fixed effects component of the location parameter (= offset + X * beta_, if there are covariates)
+		*		 corresponding to the current 'beta_' for use in standard error calculations for non-Gaussian likelihoods
+		* \return Pointer to the fixed effects (can be nullptr if there are neither covariates nor an offset)
+		*/
+		const double* GetFixedEffectsPtrForStdDevCalc() {
+			fixed_effects_std_dev_calc_ = vec_t();
+			if (has_covariates_) {
+				UpdateFixedEffects(beta_, has_fixed_effects_ ? fixed_effects_.data() : nullptr, fixed_effects_std_dev_calc_);
+				return fixed_effects_std_dev_calc_.data();
+			}
+			else if (has_fixed_effects_) {
+				return fixed_effects_.data();
+			}
+			return nullptr;
+		}//end GetFixedEffectsPtrForStdDevCalc
+
 		bool CheckOptimizerHasConverged(const vec_t& cov_aux_pars,
 			const vec_t& cov_aux_pars_lag1,
 			const vec_t& beta_lag1) const {
@@ -1836,7 +1892,7 @@ namespace GPBoost {
 		}//CheckOptimizerHasConverged
 
 		/*!
-		* \brief Calculate gradient wrt the covariance and auxiliary parameters and regression coefficients
+		* \brief Calculate gradient of the negative log-marginal likelihood wrt the covariance and auxiliary parameters and regression coefficients
 		*	Call 'CalcCovFactorOrModeAndNegLL' first since this function assumes that the covariance matrix has been factorized (by 'CalcCovFactor') and
 		*		that y_aux or y_tilde/y_tilde2 (if use_woodbury_identity_) have been calculated (by 'CalcYAux' or 'CalcYtilde')
 		*	The gradient wrt covariance and auxiliary parameters is calculated on the log-scale
@@ -2086,7 +2142,7 @@ namespace GPBoost {
 		}//end CalcGradPars
 
 		/*!
-		* \brief Calculate gradient wrt the covariance and auxiliary parameters for the FITC and FSA approximations for Gaussian likelihoods
+		* \brief Calculate gradient of the negative log-marginal likelihood wrt the covariance and auxiliary parameters for the FITC and FSA approximations for Gaussian likelihoods
 		*	The gradient wrt covariance and auxiliary parameters is calculated on the log-scale
 		*/
 		void CalcGradPars_FITC_FSA_GaussLikelihood_Cluster_i(double error_var,
@@ -2343,7 +2399,7 @@ namespace GPBoost {
 		}//end CalcGradPars_FITC_FSA_GaussLikelihood_Cluster_i
 
 		/*!
-		* \brief Calculate gradient wrt the covariance and auxiliary parameters when having only grouped REs for Gaussian likelihoods
+		* \brief Calculate gradient of the negative log-marginal likelihood wrt the covariance and auxiliary parameters when having only grouped REs for Gaussian likelihoods
 		*	The gradient wrt covariance and auxiliary parameters is calculated on the log-scale
 		*/
 		void CalcGradPars_Only_Grouped_REs_Woodbury_GaussLikelihood_Cluster_i(const vec_t& cov_pars,
@@ -3161,7 +3217,7 @@ namespace GPBoost {
 		}//end PrintTraceParameters
 
 		/*!
-		* \brief Calculate gradient wrt fixed effects F (for GPBoost algorithm) and write on input (for Gaussian data, the gradient is Psi^-1*y (=y_aux))
+		* \brief Calculate gradient of the negative log-marginal likelihood wrt fixed effects F (for GPBoost algorithm) and write on input (for Gaussian data, the gradient is Psi^-1*y (=y_aux))
 		* \param[out] y Input response data and output gradient written on it.
 		*		For the GPBoost algorithm for Gaussian data, the input is F - y where F is the fitted value of the ensemble at the training data and y the response data.
 		*		For the GPBoost algorithm for non-Gaussian data, this input is ignored as the response data has been set before.
@@ -5508,6 +5564,8 @@ namespace GPBoost {
 		bool has_fixed_effects_ = false;
 		/*! \brief Fixed effects / offset */
 		vec_t fixed_effects_;
+		/*! \brief Used to keep the memory of the fixed effects (offset + X * beta_) returned by 'GetFixedEffectsPtrForStdDevCalc' alive */
+		vec_t fixed_effects_std_dev_calc_;
 
 		/*! \brief Variance of idiosyncratic error term (nugget effect) */
 		double sigma2_ = 1.;//initialize with 1. to avoid valgrind false positives in EvalLLforLBFGSpp() in optim_utils.h
@@ -10561,7 +10619,20 @@ namespace GPBoost {
 			}
 			den_mat_t FI;
 			CalcFisherInformation(cov_pars, FI, false, true, false);
-			std_dev = FI.inverse().diagonal().array().sqrt().matrix();
+			const double nan_value = std::numeric_limits<double>::quiet_NaN();
+			std_dev = vec_t::Constant(FI.rows(), nan_value);
+			Eigen::LLT<den_mat_t> chol_FI(FI);
+			if (chol_FI.info() == Eigen::Success) {
+				den_mat_t FI_inv = chol_FI.solve(den_mat_t::Identity(FI.rows(), FI.cols()));
+				for (int i = 0; i < (int)FI.rows(); ++i) {
+					if (std::isfinite(FI_inv(i, i)) && FI_inv(i, i) >= 0.) {
+						std_dev[i] = std::sqrt(FI_inv(i, i));
+					}
+				}
+			}
+			else {
+				Log::REWarning("Cannot calculate standard deviations for covariance parameters since the Fisher information is not positive definite ");
+			}
 		}
 
 		/*!
@@ -10606,6 +10677,11 @@ namespace GPBoost {
 			den_mat_t H(num_covariates, num_covariates);// Aproximate Hessian calculated as the Jacobian of the gradient
 			const double mach_eps = std::numeric_limits<double>::epsilon();
 			vec_t delta_step = beta * std::pow(mach_eps, 1.0 / 3.0);// based on https://math.stackexchange.com/questions/1039428/finite-difference-method
+			for (int i = 0; i < num_covariates; ++i) {
+				if (std::abs(delta_step[i]) < std::pow(mach_eps, 1.0 / 3.0)) {
+					delta_step[i] = std::pow(mach_eps, 1.0 / 3.0);
+				}
+			}
 			vec_t fixed_effects_vec, beta_change1, beta_change2, grad_beta_change1, grad_beta_change2;
 			vec_t unused_dummy;
 			for (int i = 0; i < num_covariates; ++i) {
@@ -10626,20 +10702,42 @@ namespace GPBoost {
 			}
 			den_mat_t Hsym = (H + H.transpose()) / 2.;
 			// (Very) approximate standard deviations as square root of diagonal of inverse Hessian
-			std_dev_beta = Hsym.inverse().diagonal().array().sqrt().matrix();
+			const double nan_value = std::numeric_limits<double>::quiet_NaN();
+			std_dev_beta = vec_t::Constant(num_covariates, nan_value);
+			Eigen::LLT<den_mat_t> chol_Hessian(Hsym);
+			if (chol_Hessian.info() == Eigen::Success) {
+				den_mat_t Hsym_inv = chol_Hessian.solve(den_mat_t::Identity(num_covariates, num_covariates));
+				for (int i = 0; i < num_covariates; ++i) {
+					if (std::isfinite(Hsym_inv(i, i)) && Hsym_inv(i, i) >= 0.) {
+						std_dev_beta[i] = std::sqrt(Hsym_inv(i, i));
+					}
+				}
+			}
+			else {
+				Log::REWarning("Cannot calculate standard deviations for regression coefficients since the approximated Hessian is not positive definite ");
+			}
 		}//end CalcStdDevCoefNonGaussian
 
 		/*!
-		* \brief Calculate numerically approximated Hessian for the covariance and auxiliary parameters
+		* \brief Calculate numerically approximated Hessian (on the transformed scale) for the covariance and auxiliary parameters
 		* \param cov_aux_pars Covariance and auxiliary (if present) parameters
 		* \param include_error_var If true, the error variance parameter (=nugget effect) is also included, otherwise not
 		* \param fixed_effects Externally provided fixed effects component of location parameter
 		* \param[out] Hessian matrix obtained as numerical Jacobian of the gradient
+		* \param h_eps Step size (on the log-scale) used for the finite difference. If <= 0., a default of eps^(1/3) is used
+		*		 (appropriate for the per-iteration use in the Newton optimizer). For a one-off, high-accuracy Hessian
+		*		 evaluation (e.g., for standard errors, see 'CalcStdDevCovParAuxParsNonGaussian'), a larger, explicitly
+		*		 provided step size should be used: since 'CalcGradPars' relies on an iterative mode-finding procedure
+		*		 with a finite convergence tolerance ('delta_conv_mode_finding_'), and since the gradient is a sum over
+		*		 all observations (so that floating-point summation error grows with the number of data points), the
+		*		 gradient carries some numerical noise; too small a step size relative to this noise floor can make the
+		*		 resulting (doubly-approximated) Hessian estimate inaccurate or not positive definite
 		*/
 		void CalcHessianCovParAuxPars(const vec_t& cov_aux_pars,
 			bool include_error_var,
 			const double* fixed_effects,
-			den_mat_t& Hessian) {
+			den_mat_t& Hessian,
+			double h_eps = -1.) {
 			if (estimate_aux_pars_) {
 				CHECK(cov_aux_pars.size() == num_cov_par_ + NumAuxPars());
 			}
@@ -10657,8 +10755,10 @@ namespace GPBoost {
 			}
 			den_mat_t H(length_grad, length_grad);// Aproximate Hessian calculated as the Jacobian of the gradient
 			vec_t log_pars = cov_aux_pars.array().log().matrix();
-			const double h_eps = std::pow(std::numeric_limits<double>::epsilon(), 1.0 / 3.0);
-			vec_t delta_step = log_pars * h_eps;// based on https://math.stackexchange.com/questions/1039428/finite-difference-method
+			if (h_eps <= 0.) {
+				h_eps = std::pow(std::numeric_limits<double>::epsilon(), 1.0 / 3.0);
+			}
+			vec_t delta_step = log_pars.array().abs().matrix() * h_eps;// based on https://math.stackexchange.com/questions/1039428/finite-difference-method
 			for (int i = 0; i < (int)delta_step.size(); ++i) {//avoid problems when log_pars is close to 0
 				if (delta_step[i] < h_eps) {
 					delta_step[i] = h_eps;
@@ -10687,6 +10787,157 @@ namespace GPBoost {
 			}
 			Hessian = (H + H.transpose()) / 2.;
 		}//end CalcHessianCovParAuxPars
+
+		/*!
+		* \brief Calculate the derivative of the original-scale covariance parameters with respect to the log of the
+		*		 internal (transformed) scale used for optimization, i.e., d(cov_pars_orig_i) / d(log(cov_pars_trans_i)),
+		*		 for every covariance parameter. See 'CalcStdDevCovParAuxParsNonGaussian' for how and why this is used.
+		* \param cov_pars_trans Covariance parameters on the internal (transformed) scale used for optimization
+		* \param[out] d_orig_d_log_trans Vector of length num_cov_par_ with d(TransformBackCovPars(cov_pars_trans)_i) / d(log(cov_pars_trans_i))
+		*/
+		void CalcDCovParsOrigDLogTrans(const vec_t& cov_pars_trans,
+			vec_t& d_orig_d_log_trans) {
+			const double h = std::pow(std::numeric_limits<double>::epsilon(), 1.0 / 3.0);// small fixed step (cheap, closed-form, non-stochastic function -> no need for a parameter-magnitude-dependent step size)
+			vec_t pars_p, pars_m, pars_orig_p, pars_orig_m;
+			d_orig_d_log_trans = vec_t(num_cov_par_);
+			for (int i = 0; i < num_cov_par_; ++i) {
+				pars_p = cov_pars_trans;
+				pars_m = cov_pars_trans;
+				pars_p[i] = cov_pars_trans[i] * std::exp(h);
+				pars_m[i] = cov_pars_trans[i] * std::exp(-h);
+				TransformBackCovPars(pars_p, pars_orig_p);
+				TransformBackCovPars(pars_m, pars_orig_m);
+				d_orig_d_log_trans[i] = (pars_orig_p[i] - pars_orig_m[i]) / (2. * h);
+			}
+		}//end CalcDCovParsOrigDLogTrans
+
+		/*!
+		* \brief Analogous to 'CalcDCovParsOrigDLogTrans' but for the auxiliary (additional) parameters of non-Gaussian
+		*		 likelihoods (see 'TransformAuxPars' / 'BackTransformAuxPars' in likelihoods.h, e.g. a logit-type
+		*		 reparametrization for the second parameter of the "zero_inflated_gamma" likelihood).
+		* \param aux_pars_trans Auxiliary parameters on the internal (transformed) scale used for optimization (as returned by 'GetAuxPars')
+		* \param[out] d_orig_d_log_trans Vector of the same length as aux_pars_trans with d(BackTransformAuxPars(aux_pars_trans)_i) / d(log(aux_pars_trans_i))
+		*/
+		void CalcDAuxParsOrigDLogTrans(const vec_t& aux_pars_trans,
+			vec_t& d_orig_d_log_trans) {
+			int num_aux = (int)aux_pars_trans.size();
+			const double h = std::pow(std::numeric_limits<double>::epsilon(), 1.0 / 3.0);
+			vec_t pars_p, pars_m, pars_orig_p(num_aux), pars_orig_m(num_aux);
+			d_orig_d_log_trans = vec_t(num_aux);
+			for (int i = 0; i < num_aux; ++i) {
+				pars_p = aux_pars_trans;
+				pars_m = aux_pars_trans;
+				pars_p[i] = aux_pars_trans[i] * std::exp(h);
+				pars_m[i] = aux_pars_trans[i] * std::exp(-h);
+				BackTransformAuxPars(pars_p.data(), pars_orig_p.data());
+				BackTransformAuxPars(pars_m.data(), pars_orig_m.data());
+				d_orig_d_log_trans[i] = (pars_orig_p[i] - pars_orig_m[i]) / (2. * h);
+			}
+		}//end CalcDAuxParsOrigDLogTrans
+
+		/*!
+		* \brief Calculate standard deviations for the MLE of the covariance parameters, and, if present, the auxiliary
+		*		 (additional) parameters of the likelihood, for non-Gaussian likelihoods.
+		*		 The Fisher information is not tractable for non-Gaussian likelihoods (Laplace approximation), and standard
+		*		 errors are thus obtained from a numerically approximated Hessian of the negative log-likelihood calculated via
+		*		 'CalcHessianCovParAuxPars' (a numerical Jacobian of the analytical gradient, see 'CalcGradPars'), which is
+		*		 used as an approximation for the Fisher information.
+		* \param cov_pars_trans MLE of covariance parameters (on the transformed scale, except for the log-transform)
+		* \param fixed_effects Externally provided fixed effects component of location parameter (including the contribution of covariates X * beta_, if present)
+		* \param[out] std_dev_cov_par Standard deviations for the covariance parameters
+		* \param[out] std_dev_aux_pars Standard deviations for the auxiliary parameters (empty if aux_pars are not estimated)
+		*/
+		void CalcStdDevCovParAuxParsNonGaussian(const vec_t& cov_pars_trans,
+			const double* fixed_effects,
+			vec_t& std_dev_cov_par,
+			vec_t& std_dev_aux_pars) {
+			CHECK(!gauss_likelihood_);
+			int num_aux = estimate_aux_pars_ ? NumAuxPars() : 0;
+			vec_t cov_aux_pars(num_cov_par_ + num_aux);
+			cov_aux_pars.segment(0, num_cov_par_) = cov_pars_trans;
+			vec_t aux_pars_trans;
+			if (num_aux > 0) {
+				aux_pars_trans = Eigen::Map<const vec_t>(GetAuxPars(), num_aux);
+				cov_aux_pars.segment(num_cov_par_, num_aux) = aux_pars_trans;
+			}
+			den_mat_t Hessian;
+			// Use a larger step size than the default (used by the Newton optimizer) since this is a one-off, high-accuracy
+			// Hessian evaluation for which the default step size can be too small relative to the numerical noise in the
+			// gradient (which itself relies on an iterative mode-finding procedure and involves a sum over all observations,
+			// see the note on 'h_eps' in 'CalcHessianCovParAuxPars')
+			CalcHessianCovParAuxPars(cov_aux_pars, false, fixed_effects, Hessian, 1e-4);
+			if (num_aux > 0) {//restore aux_pars_ since 'CalcHessianCovParAuxPars' perturbs these internally
+				SetAuxPars(cov_aux_pars.data() + num_cov_par_);
+			}
+			CalcCovFactorOrModeAndNegLL(cov_pars_trans, fixed_effects);//restore the mode / covariance factorization for 'cov_pars' (perturbed internally by 'CalcHessianCovParAuxPars')
+			const double nan_value = std::numeric_limits<double>::quiet_NaN();
+			std::vector<int> ind_estimated;
+			for (int i = 0; i < num_cov_par_; ++i) {
+				if (estimate_cov_par_index_[i] > 0) {
+					ind_estimated.push_back(i);
+				}
+			}
+			for (int i = 0; i < num_aux; ++i) {
+				int ind_aux = num_cov_par_ + i;
+				// Note: a non-estimated (fixed) auxiliary parameter (e.g., a fixed degrees-of-freedom parameter for a
+				// "t_fix_df" likelihood) has its gradient unconditionally reported as exactly 0 (by design, so that the
+				// optimizer never updates it), so its own diagonal Hessian entry is exactly 0
+				if (Hessian(ind_aux, ind_aux) > 0.) {
+					ind_estimated.push_back(ind_aux);
+				}
+			}
+			den_mat_t Hessian_inv = den_mat_t::Constant(num_cov_par_ + num_aux, num_cov_par_ + num_aux, nan_value);
+			if (!ind_estimated.empty()) {
+				den_mat_t Hessian_est(ind_estimated.size(), ind_estimated.size());
+				for (int i = 0; i < (int)ind_estimated.size(); ++i) {
+					for (int j = 0; j < (int)ind_estimated.size(); ++j) {
+						Hessian_est(i, j) = Hessian(ind_estimated[i], ind_estimated[j]);
+					}
+				}
+				Eigen::LLT<den_mat_t> chol_Hessian(Hessian_est);
+				if (chol_Hessian.info() == Eigen::Success) {
+					den_mat_t Hessian_est_inv = chol_Hessian.solve(den_mat_t::Identity(ind_estimated.size(), ind_estimated.size()));
+					for (int i = 0; i < (int)ind_estimated.size(); ++i) {
+						for (int j = 0; j < (int)ind_estimated.size(); ++j) {
+							Hessian_inv(ind_estimated[i], ind_estimated[j]) = Hessian_est_inv(i, j);
+						}
+					}
+				}
+				else {
+					Log::REWarning("Cannot calculate standard deviations for covariance / auxiliary parameters since the approximated Hessian is not positive definite ");
+				}
+			}
+			// 'CalcHessianCovParAuxPars' calculates the Hessian above with respect to the log of the internal scale used for
+			// optimization, i.e., with respect to phi_trans = log(TransformCovPars(cov_pars_orig)) for covariance parameters
+			// and with respect to log(GetAuxPars()) = log(TransformAuxPars(aux_pars_orig)) for auxiliary parameters. I.e., for
+			// both covariance and auxiliary parameters there are two nested transformations between the original scale and
+			// the internal scale used for optimization: first a (covariance-function- / likelihood-specific, and possibly
+			// non-linear) transformation ('TransformCovPars' / 'TransformAuxPars'), and then, on top of this, the log-scale.
+			// Standard deviations are required on the original scale, and the delta method is used to obtain them directly
+			// from phi_trans (for which the Hessian above is available) to the original scale:
+			// if d_i = d(theta_i) / d(phi_trans_i), where theta_i is the original-scale parameter (obtained from phi_trans_i
+			// via 'TransformBackCovPars' / 'BackTransformAuxPars', see 'CalcDCovParsOrigDLogTrans' / 'CalcDAuxParsOrigDLogTrans'),
+			// then Var(theta_i) approx d_i^2 * Var(phi_trans_i) = d_i^2 * [H_phi^(-1)]_ii, where H_phi is the Hessian calculated
+			// by 'CalcHessianCovParAuxPars'.
+			vec_t d_cov_orig_d_log_trans;
+			CalcDCovParsOrigDLogTrans(cov_pars_trans, d_cov_orig_d_log_trans);
+			std_dev_cov_par = vec_t::Constant(num_cov_par_, nan_value);
+			for (int i = 0; i < num_cov_par_; ++i) {
+				if (std::isfinite(Hessian_inv(i, i)) && Hessian_inv(i, i) >= 0.) {
+					std_dev_cov_par[i] = std::abs(d_cov_orig_d_log_trans[i]) * std::sqrt(Hessian_inv(i, i));
+				}
+			}
+			std_dev_aux_pars = vec_t::Constant(num_aux, nan_value);
+			if (num_aux > 0) {
+				vec_t d_aux_orig_d_log_trans;
+				CalcDAuxParsOrigDLogTrans(aux_pars_trans, d_aux_orig_d_log_trans);
+				for (int i = 0; i < num_aux; ++i) {
+					if (std::isfinite(Hessian_inv(num_cov_par_ + i, num_cov_par_ + i)) && Hessian_inv(num_cov_par_ + i, num_cov_par_ + i) >= 0.) {
+						std_dev_aux_pars[i] = std::abs(d_aux_orig_d_log_trans[i]) * std::sqrt(Hessian_inv(num_cov_par_ + i, num_cov_par_ + i));
+					}
+				}
+			}
+		}//end CalcStdDevCovParAuxParsNonGaussian
 
 		/*!
 		 * \brief Prepare for prediction: set respone variable data, factorize covariance matrix and calculate Psi^{-1}y_obs or calculate Laplace approximation (if required)

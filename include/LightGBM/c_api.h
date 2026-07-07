@@ -1519,6 +1519,9 @@ GPBOOST_C_EXPORT int GPB_GetCurrentNegLogLikelihood(REModelHandle handle,
 GPBOOST_C_EXPORT int GPB_CanCalculateStandardErrorsCovPars(REModelHandle handle,
     int* out);
 
+GPBOOST_C_EXPORT int GPB_CanCalculateStandardErrorsAuxPars(REModelHandle handle,
+    int* out);
+
 /*!
 * \brief Get covariance parameters
 *		 Note: You should pre-allocate memory for optim_cov_pars. Its length equals the number of covariance parameters (num_cov_pars) or twice this if calc_std_dev = true
@@ -1779,14 +1782,17 @@ GPBOOST_C_EXPORT int GPB_SetOffsetData(REModelHandle handle,
 
 /*!
 * \brief Get additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
+*		 Note: You should pre-allocate memory for aux_pars. Its length equals the number of auxiliary parameters (GPB_GetNumAuxPars) or twice this if calc_std_dev = true
 * \param handle Handle of REModel
 * \param[out] aux_pars Additional likelihood parameters (aux_pars_). This vector needs to be pre-allocated
 * \param[out] out_str Name of the first parameter
+* \param calc_std_dev If true, standard deviations are also exported
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_GetAuxPars(REModelHandle handle,
     double* aux_pars,
-    char* out_str);
+    char* out_str,
+    bool calc_std_dev);
 
 /*!
 * \brief Get number of additional likelihood parameters (e.g., shape parameter for a gamma likelihood)

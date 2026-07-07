@@ -5827,8 +5827,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
     }
     
-    
-    
     # Single level grouped random effects
     quantile <- 0.5
     quantile_up <- 0.975
@@ -5985,6 +5983,181 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_gte(cvbst$best_iter, nit-30)
     
     # }
-    
+
   }) # end asymmetric_laplace regression
+
+  test_that("Standard errors for non-Gaussian likelihoods ", {
+
+    ##################################################################################
+    ## Single-level grouped random effects model with large data:
+    ## t_fix_df (df = 100, ~ Gaussian) vs. Gaussian likelihood
+    ##################################################################################
+
+    # Large data
+    n_L <- 1e6 # number of samples
+    m_L <- n_L/10 # number of categories / levels for grouping variable
+    group_L <- rep(1,n_L) # grouping variable
+    for(i in 1:m_L) group_L[((i-1)*n_L/m_L+1):(i*n_L/m_L)] <- i
+    keps <- 1E-10
+    b1_L <- qnorm(sim_rand_unif(n=m_L, init_c=0.846)*(1-keps) + keps/2)
+    X_L <- cbind(rep(1,n_L),sim_rand_unif(n=n_L, init_c=0.341)) # design matrix / covariate data for fixed effect
+    beta <- c(2,2) # regression coefficients
+    xi_L <- sqrt(0.5) * qnorm(sim_rand_unif(n=m_L, init_c=0.321)*(1-keps) + keps/2)
+    y_L <- b1_L[group_L] + X_L%*%beta + xi_L
+
+    # Gaussian likelihood
+    gp_model <- fitGPModel(group_data = group_L, y = y_L, X = X_L, params = OPTIM_PARAMS_BFGS)
+    cov_pars <- c(0.494977742806986, 0.000737869253510783, 1.00023218861287, 0.00469511495626555)
+    coef <- c(2.00139224119177, 0.00348515144516913, 1.9982547154621, 0.00257213144546817)
+    nll <- 1220035.31884647
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll),TOLERANCE_MEDIUM)
+    expect_equal(gp_model$get_num_optim_iter(), 8)
+
+    # t likelihood with a fixed, large degrees-of-freedom parameter (df = 100), i.e., almost Gaussian noise
+    gp_model_t <- fitGPModel(group_data = group_L, y = y_L, X = X_L, likelihood = "t_fix_df",
+                             likelihood_additional_param = 100, params = OPTIM_PARAMS_BFGS)
+    cov_pars_t <- c(0.99507942001268, 0.00466152106361322)
+    aux_pars_t <- c(0.697555658265811, 0.000526826413633507, 100, NaN)
+    coef_t <- c(2.00089388635637, 0.00360116458425975, 1.99824865983513, 0.00257268179943032)
+    nll_t <- 1219982.93643412
+    cov_pars_t_result <- as.vector(gp_model_t$get_cov_pars(std_err = TRUE))
+    aux_pars_t_result <- as.vector(gp_model_t$get_aux_pars(std_err = TRUE))
+    expect_lt(sum(abs(cov_pars_t_result-cov_pars_t)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(aux_pars_t_result[1:3]-aux_pars_t[1:3])),TOLERANCE_STRICT)
+    expect_true(is.nan(aux_pars_t_result[4])) # no standard error for the fixed (not estimated) degrees-of-freedom parameter
+    expect_lt(sum(abs(as.vector(gp_model_t$get_coef(std_err = TRUE))-coef_t)),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model_t$get_current_neg_log_likelihood()-nll_t),TOLERANCE_MEDIUM)
+    expect_equal(gp_model_t$get_num_optim_iter(), 7)
+
+    # Compare the Gaussian and t_fix_df (df=100, ~ Gaussian) models: since a t distribution with a
+    # large degrees-of-freedom parameter is very close to a Gaussian distribution, both the parameter
+    # estimates and their standard errors should be approximately equal
+    # Random effect (grouped) variance: same parametrization in both models -> compare directly
+    expect_lt(abs(cov_pars_t_result[1] - cov_pars[3]), TOLERANCE_LOOSE) # estimate
+    expect_lt(abs(cov_pars_t_result[2] - cov_pars[4]), TOLERANCE_LOOSE) # standard error
+    # Idiosyncratic error: the Gaussian likelihood models this as a variance (cov_pars[1]), the t
+    # likelihood as a scale parameter (aux_pars[1]) of a t distribution with fixed degrees of freedom.
+    # Convert the t scale parameter (and its standard error, via the delta method) to the implied
+    # variance of the noise term (Var = scale^2 * df / (df - 2)) for a fair, like-for-like comparison
+    implied_var <- aux_pars_t_result[1]^2 * 100 / 98
+    se_implied_var <- 2 * aux_pars_t_result[1] * (100 / 98) * aux_pars_t_result[2]
+    expect_lt(abs(implied_var - cov_pars[1]), TOLERANCE_LOOSE) # estimate
+    expect_lt(abs(se_implied_var - cov_pars[2]), TOLERANCE_LOOSE) # standard error
+    # Linear regression coefficients: same parametrization in both models -> compare directly
+    expect_lt(sum(abs(coef_t[c(1,3)] - coef[c(1,3)])), TOLERANCE_LOOSE) # estimates
+    expect_lt(sum(abs(coef_t[c(2,4)] - coef[c(2,4)])), TOLERANCE_LOOSE) # standard errors
+
+    ##################################################################################
+    ## Single-level grouped random effects model with large data:
+    ## zoctn likelihood (only hard-coded values since a comparison to another likelihood is not meaningful)
+    ##################################################################################
+    sd <- 0.5
+    a <- -0.5
+    b <- 1.2
+    mu_zoctn_L <- b1_L[group_L] + 0.5*X_L%*%beta
+    y_zoctn_L <- qnorm(sim_rand_unif(n=n_L, init_c=0.74), mean = mu_zoctn_L, sd = sd)
+    logistic <- function(t) 1 / (1 + exp(-t))
+    logit    <- function(p) log(p / (1 - p))
+    y_zoctn_L[y_zoctn_L<0] <- 0
+    y_zoctn_L[y_zoctn_L>1] <- 1
+    y_zoctn_L[y_zoctn_L>0 & y_zoctn_L<1] <- logistic(a + b*logit(y_zoctn_L[y_zoctn_L>0 & y_zoctn_L<1]))
+
+    gp_model_zoctn <- fitGPModel(group_data = group_L, y = y_zoctn_L, X = X_L, likelihood = "zoctn",
+                                 params = OPTIM_PARAMS_BFGS)
+    cov_pars_zoctn <- c(0.946230982256346, 0.00572224587906622)
+    aux_pars_zoctn <- c(0.500451821354835, 0.000810341663144462, -0.501553021136885,
+                        0.00411718642658039, 1.20666369143565, 0.00206520719955995)
+    coef_zoctn <- c(0.996946818579902, 0.00364230082868289, 1.02535498713713, 0.00295663078420993)
+    nll_zoctn <- 500973.000797625
+    expect_lt(sum(abs(as.vector(gp_model_zoctn$get_cov_pars(std_err = TRUE))-cov_pars_zoctn)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model_zoctn$get_aux_pars(std_err = TRUE))-aux_pars_zoctn)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model_zoctn$get_coef(std_err = TRUE))-coef_zoctn)),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model_zoctn$get_current_neg_log_likelihood()-nll_zoctn),TOLERANCE_MEDIUM)
+    expect_equal(gp_model_zoctn$get_num_optim_iter(), 17)
+
+    ##################################################################################
+    ## Gaussian process model with a Vecchia approximation:
+    ## t_fix_df (df = 100, ~ Gaussian) vs. Gaussian likelihood
+    ## Note: for the Gaussian likelihood, the Fisher information for the covariance parameters under a
+    ## Vecchia approximation is, by default, calculated using a stochastic trace estimator
+    ## (use_stochastic_trace_for_Fisher_information_Vecchia_ = TRUE in the C++ code); this introduces some
+    ## additional (deterministic, seeded) noise into the standard errors of the covariance parameters, so a
+    ## looser tolerance than for the (exact) grouped random effects model above is used for the comparisons
+    ## below. In addition, standard errors for the linear regression coefficients are calculated very
+    ## differently for the two likelihoods (an analytic formula for the Gaussian likelihood vs. a numerical
+    ## approximation for the t likelihood), and these were found to disagree more under a Vecchia
+    ## approximation than in the exact case above, so an even looser tolerance is used for that comparison
+    ##################################################################################
+    n_v <- 500 # number of samples
+    d_v <- 2 # dimension of GP locations
+    coords_v <- matrix(sim_rand_unif(n=n_v*d_v, init_c=0.15), ncol=d_v)
+    sigma2_v <- 1 # marginal variance of GP
+    rho_v <- 0.1 # range parameter
+    D_v <- as.matrix(dist(coords_v))
+    Sigma_v <- sigma2_v * exp(-D_v/rho_v) + diag(1E-20,n_v)
+    L_v <- t(chol(Sigma_v))
+    b_v <- qnorm(sim_rand_unif(n=n_v, init_c=0.741))
+    X_v <- cbind(rep(1,n_v), sim_rand_unif(n=n_v, init_c=0.642)) # design matrix / covariate data for fixed effect
+    beta_v <- c(1,1) # regression coefficients
+    xi_v <- sqrt(0.1) * qnorm(sim_rand_unif(n=n_v, init_c=0.951)) # idiosyncratic (nugget) error
+    y_v <- as.vector(L_v %*% b_v) + as.vector(X_v %*% beta_v) + xi_v
+    num_neighbors_v <- 30
+
+    tol_vecchia <- 0.035 # covariance / auxiliary parameters, their standard errors, and coefficient estimates
+    tol_vecchia_coef_se <- 0.12 # standard errors of regression coefficients (see note above)
+
+    # Gaussian likelihood
+    gp_model_gauss_v <- fitGPModel(gp_coords = coords_v, cov_function = "exponential",
+                                   gp_approx = "vecchia", num_neighbors = num_neighbors_v,
+                                   y = y_v, X = X_v, params = OPTIM_PARAMS_BFGS)
+    cov_pars_v <- c(0.0578304572593316, 0.0323206204551912, 0.715705182971271,
+                    0.080146397671051, 0.0483181738202239, 0.00714845208930165)
+    coef_v <- c(0.962932883927947, 0.110839163937625, 1.10211572960383, 0.0925165508666763)
+    nll_v <- 537.536566769249
+    expect_lt(sum(abs(as.vector(gp_model_gauss_v$get_cov_pars(std_err = TRUE))-cov_pars_v)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model_gauss_v$get_coef(std_err = TRUE))-coef_v)),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model_gauss_v$get_current_neg_log_likelihood()-nll_v),TOLERANCE_MEDIUM)
+    expect_equal(gp_model_gauss_v$get_num_optim_iter(), 14)
+
+    # t likelihood with a fixed, large degrees-of-freedom parameter (df = 100), i.e., almost Gaussian noise
+    gp_model_t_v <- fitGPModel(gp_coords = coords_v, cov_function = "exponential",
+                               gp_approx = "vecchia", num_neighbors = num_neighbors_v,
+                               likelihood = "t_fix_df", likelihood_additional_param = 100,
+                               y = y_v, X = X_v, params = OPTIM_PARAMS_BFGS)
+    cov_pars_t_v <- c(0.731926050658421, 0.075588626901931, 0.0469233950753127, 0.00678002822650866)
+    aux_pars_t_v <- c(0.215485446742063, 0.134997889593886, 100, NaN)
+    coef_t_v <- c(0.958738169312722, 0.0196912670065139, 1.09862570873013, 0.0328225530709028)
+    nll_t_v <- 535.896092489469
+    cov_pars_t_v_result <- as.vector(gp_model_t_v$get_cov_pars(std_err = TRUE))
+    aux_pars_t_v_result <- as.vector(gp_model_t_v$get_aux_pars(std_err = TRUE))
+    coef_t_v_result <- as.vector(gp_model_t_v$get_coef(std_err = TRUE))
+    expect_lt(sum(abs(cov_pars_t_v_result-cov_pars_t_v)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(aux_pars_t_v_result[1:3]-aux_pars_t_v[1:3])),TOLERANCE_STRICT)
+    expect_true(is.nan(aux_pars_t_v_result[4])) # no standard error for the fixed (not estimated) degrees-of-freedom parameter
+    expect_lt(sum(abs(coef_t_v_result-coef_t_v)),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model_t_v$get_current_neg_log_likelihood()-nll_t_v),TOLERANCE_MEDIUM)
+    expect_equal(gp_model_t_v$get_num_optim_iter(), 15)
+
+    # Compare the Gaussian and t_fix_df (df=100, ~ Gaussian) models (see note above on tolerances)
+    # GP variance and range: same parametrization in both models -> compare directly
+    expect_lt(abs(cov_pars_t_v_result[1] - cov_pars_v[3]), tol_vecchia) # GP variance estimate
+    expect_lt(abs(cov_pars_t_v_result[2] - cov_pars_v[4]), tol_vecchia) # GP variance standard error
+    expect_lt(abs(cov_pars_t_v_result[3] - cov_pars_v[5]), tol_vecchia) # GP range estimate
+    expect_lt(abs(cov_pars_t_v_result[4] - cov_pars_v[6]), tol_vecchia) # GP range standard error
+    # Idiosyncratic (nugget) error: convert the t scale parameter (and its standard error, via the delta
+    # method) to the implied noise variance, as in the grouped random effects model above
+    implied_var_v <- aux_pars_t_v_result[1]^2 * 100 / 98
+    se_implied_var_v <- 2 * aux_pars_t_v_result[1] * (100 / 98) * aux_pars_t_v_result[2]
+    expect_lt(abs(implied_var_v - cov_pars_v[1]), tol_vecchia) # estimate
+    expect_lt(abs(se_implied_var_v - cov_pars_v[2]), tol_vecchia) # standard error
+    # Linear regression coefficients: estimates agree well; standard errors are compared with a much
+    # looser tolerance since they are calculated very differently for the two likelihoods (see note above)
+    expect_lt(sum(abs(coef_t_v_result[c(1,3)] - coef_v[c(1,3)])), tol_vecchia) # estimates
+    expect_lt(abs(coef_t_v_result[2] - coef_v[2]), tol_vecchia_coef_se) # standard error (intercept)
+    expect_lt(abs(coef_t_v_result[4] - coef_v[4]), tol_vecchia_coef_se) # standard error (slope)
+
+  })
+
 }

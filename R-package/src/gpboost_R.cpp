@@ -1052,6 +1052,16 @@ SEXP GPB_CanCalculateStandardErrorsCovPars_R(
 	return R_NilValue;
 }
 
+SEXP GPB_CanCalculateStandardErrorsAuxPars_R(
+	SEXP handle,
+	SEXP out) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_CanCalculateStandardErrorsAuxPars(R_ExternalPtrAddr(handle),
+		R_INT_PTR(out)));
+	R_API_END();
+	return R_NilValue;
+}
+
 SEXP GPB_GetCovPar_R(SEXP handle,
 	SEXP calc_std_dev,
 	SEXP optim_cov_pars) {
@@ -1328,13 +1338,15 @@ SEXP GPB_SetOffsetData_R(SEXP handle,
 }
 
 SEXP GPB_GetAuxPars_R(SEXP handle,
+	SEXP calc_std_dev,
 	SEXP aux_pars) {
 	SEXP ret;
 	std::vector<char> inner_char_buf(128);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetAuxPars(R_ExternalPtrAddr(handle),
 		R_REAL_PTR(aux_pars),
-		inner_char_buf.data()));
+		inner_char_buf.data(),
+		Rf_asLogical(calc_std_dev)));
 	R_API_END();
 	ret = PROTECT(Rf_allocVector(STRSXP, 1));
 	SET_STRING_ELT(ret, 0, Rf_mkChar(inner_char_buf.data()));
@@ -1408,6 +1420,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
   {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 31},
   {"GPB_CanCalculateStandardErrorsCovPars_R", (DL_FUNC)&GPB_CanCalculateStandardErrorsCovPars_R, 2},
+  {"GPB_CanCalculateStandardErrorsAuxPars_R", (DL_FUNC)&GPB_CanCalculateStandardErrorsAuxPars_R, 2},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},
   {"GPB_OptimLinRegrCoefCovPar_R"     , (DL_FUNC)&GPB_OptimLinRegrCoefCovPar_R     , 5},
   {"GPB_EvalNegLogLikelihood_R"       , (DL_FUNC)&GPB_EvalNegLogLikelihood_R       , 5},
@@ -1431,7 +1444,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetCovariateData_R"           , (DL_FUNC)&GPB_GetCovariateData_R           , 2},
   {"GPB_GetOffsetData_R"              , (DL_FUNC)&GPB_GetOffsetData_R              , 2},
   {"GPB_SetOffsetData_R"              , (DL_FUNC)&GPB_SetOffsetData_R              , 2},
-  {"GPB_GetAuxPars_R"                 , (DL_FUNC)&GPB_GetAuxPars_R                 , 2},
+  {"GPB_GetAuxPars_R"                 , (DL_FUNC)&GPB_GetAuxPars_R                 , 3},
   {"GPB_GetNumAuxPars_R"              , (DL_FUNC)&GPB_GetNumAuxPars_R              , 2},
   {"GPB_GetInitAuxPars_R"             , (DL_FUNC)&GPB_GetInitAuxPars_R             , 2},
   {NULL, NULL, 0}

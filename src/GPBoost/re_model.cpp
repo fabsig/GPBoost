@@ -539,6 +539,7 @@ namespace GPBoost {
 		model_has_been_estimated_ = true;
 		std_dev_cov_pars_calculated_ = false;
 		std_dev_coef_calculated_ = false;
+		std_dev_aux_pars_calculated_ = false;
 	}//end OptimCovPar
 
 	void REModel::OptimLinRegrCoefCovPar(const double* y_data,
@@ -621,6 +622,7 @@ namespace GPBoost {
 		model_has_been_estimated_ = true;
 		std_dev_cov_pars_calculated_ = false;
 		std_dev_coef_calculated_ = false;
+		std_dev_aux_pars_calculated_ = false;
 	}//end OptimLinRegrCoefCovPar
 
 	void REModel::FindInitialValueBoosting() {
@@ -895,6 +897,18 @@ namespace GPBoost {
 		}
 		else {
 			return re_model_den_->CanCalculateStandardErrorsCovPars();
+		}
+	}
+
+	bool REModel::CanCalculateStandardErrorsAuxPars() const {
+		if (matrix_format_ == "sp_mat_t") {
+			return re_model_sp_->CanCalculateStandardErrorsAuxPars();
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			return re_model_sp_rm_->CanCalculateStandardErrorsAuxPars();
+		}
+		else {
+			return re_model_den_->CanCalculateStandardErrorsAuxPars();
 		}
 	}
 
@@ -1342,8 +1356,10 @@ namespace GPBoost {
 	}
 
 	void REModel::GetAuxPars(double* aux_pars,
-		string_t& name) const {//only for exporting -> thus aux_pars on original scale
+		string_t& name,
+		bool calc_std_dev) {//only for exporting -> thus aux_pars on original scale
 		const double* aux_pars_temp;
+		int num_aux_pars = NumAuxPars();
 		if (matrix_format_ == "sp_mat_t") {
 			aux_pars_temp = re_model_sp_->GetAuxPars();
 			re_model_sp_->BackTransformAuxPars(aux_pars_temp, aux_pars);
@@ -1358,7 +1374,28 @@ namespace GPBoost {
 			aux_pars_temp = re_model_den_->GetAuxPars();
 			re_model_den_->BackTransformAuxPars(aux_pars_temp, aux_pars);
 			re_model_den_->GetNamesAuxPars(name);
-		}		
+		}
+		if (calc_std_dev) {
+			if (!std_dev_aux_pars_calculated_) {
+				std_dev_aux_pars_ = vec_t(num_aux_pars);
+				if (matrix_format_ == "sp_mat_t") {
+					re_model_sp_->CalculateStandardErrorsAuxPars(cov_pars_.data(), std_dev_aux_pars_.data());
+				}
+				else if (matrix_format_ == "sp_mat_rm_t") {
+					re_model_sp_rm_->CalculateStandardErrorsAuxPars(cov_pars_.data(), std_dev_aux_pars_.data());
+				}
+				else {
+					re_model_den_->CalculateStandardErrorsAuxPars(cov_pars_.data(), std_dev_aux_pars_.data());
+				}
+				std_dev_aux_pars_calculated_ = true;
+			}
+			else {
+				CHECK((int)std_dev_aux_pars_.size() == num_aux_pars);
+			}
+			for (int j = 0; j < num_aux_pars; ++j) {
+				aux_pars[j + num_aux_pars] = std_dev_aux_pars_[j];
+			}
+		}
 	}
 
 	void REModel::SetAuxPars(const double* aux_pars) {
@@ -1371,6 +1408,7 @@ namespace GPBoost {
 		else {
 			re_model_den_->SetAuxPars(aux_pars);
 		}
+		std_dev_aux_pars_calculated_ = false;
 	}
 
 	void REModel::GetInitAuxPars(double* aux_pars) const {

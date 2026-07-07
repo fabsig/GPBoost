@@ -1396,18 +1396,36 @@ gpb.GPModel <- R6::R6Class(
       return(coef)
     },
     
-    get_aux_pars = function() {
+    get_aux_pars = function(std_err = FALSE) {
+      if (!is.logical(std_err)) {
+        stop("GPModel: ", sQuote("std_err"), " needs to be of boolean type ")
+      }
+      if (!self$can_calculate_standard_errors_aux_pars()) {
+        std_err <- FALSE
+      }
       num_aux_pars <- self$get_num_aux_pars()
       if (num_aux_pars > 0) {
-        aux_pars <- numeric(num_aux_pars)
+        if (std_err) {
+          aux_pars <- numeric(2 * num_aux_pars)
+        } else {
+          aux_pars <- numeric(num_aux_pars)
+        }
         aux_pars_name_str <- .Call(
           GPB_GetAuxPars_R
           , private$handle
+          , std_err
           , aux_pars
         )
         aux_pars_name <- strsplit(aux_pars_name_str, "_SEP_")[[1]]
         if (length(aux_pars_name) != num_aux_pars) stop("get_aux_pars: wrong length of 'aux_par_name'")
-        names(aux_pars) <- aux_pars_name
+        if (std_err) {
+          aux_pars_std_err <- aux_pars[1:num_aux_pars + num_aux_pars]
+          aux_pars <- rbind(aux_pars[1:num_aux_pars], aux_pars_std_err)
+          colnames(aux_pars) <- aux_pars_name
+          rownames(aux_pars) <- c("Param.", "Std. err.")
+        } else {
+          names(aux_pars) <- aux_pars_name
+        }
       } else {
         aux_pars <- NULL
       }
@@ -2193,7 +2211,17 @@ gpb.GPModel <- R6::R6Class(
       )
       return(as.logical(out))
     },
-    
+
+    can_calculate_standard_errors_aux_pars = function() {
+      out <- integer(1)
+      .Call(
+        GPB_CanCalculateStandardErrorsAuxPars_R
+        , private$handle
+        , out
+      )
+      return(as.logical(out))
+    },
+
     get_num_aux_pars = function() {
       num_aux_pars <- integer(1)
       .Call(
@@ -2401,12 +2429,16 @@ gpb.GPModel <- R6::R6Class(
         }
       }
       if (self$get_num_aux_pars() > 0) {
-        aux_pars <- self$get_aux_pars()
-        aux_pars <- t(t(aux_pars))
-        colnames(aux_pars) <- "Param."
+        aux_pars <- self$get_aux_pars(std_err = std_err)
         cat("-----------------------------------------------------\n")
         cat("Additional parameters:\n")
-        print(round(aux_pars,4))
+        if (is.matrix(aux_pars)) {
+          print(round(t(aux_pars),4))
+        } else {
+          aux_pars <- t(t(aux_pars))
+          colnames(aux_pars) <- "Param."
+          print(round(aux_pars,4))
+        }
       }
       if (!private$model_has_been_loaded_from_saved_file) {
         if (private$params$maxit == self$get_num_optim_iter()) {
@@ -3634,10 +3666,10 @@ get_coef.GPModel <- function(gp_model, std_err = FALSE) {
 }
 
 #' Get (estimated) auxiliary (additional) parameters of the likelihood
-#' 
+#'
 #' Get (estimated) auxiliary (additional) parameters of the likelihood such as the shape parameter of a gamma or
 #' a negative binomial distribution. Some likelihoods (e.g., bernoulli_logit or poisson) have no auxiliary parameters
-#' 
+#'
 #' @param gp_model A \code{GPModel}
 #' @inheritParams GPModel_shared_params
 #'
@@ -3649,17 +3681,17 @@ get_coef.GPModel <- function(gp_model, std_err = FALSE) {
 #' gp_model <- fitGPModel(group_data = group_data[,1], y = y_pos, X = X1, likelihood="gamma")
 #' get_aux_pars(gp_model)
 #' }
-#' 
+#'
 #' @author Fabio Sigrist
-#' @export 
-#' 
-get_aux_pars <- function(gp_model) UseMethod("get_aux_pars")
+#' @export
+#'
+get_aux_pars <- function(gp_model, std_err = FALSE) UseMethod("get_aux_pars")
 
 #' Get (estimated) auxiliary (additional) parameters of the likelihood
-#' 
+#'
 #' Get (estimated) auxiliary (additional) parameters of the likelihood such as the shape parameter of a gamma or
 #' a negative binomial distribution. Some likelihoods (e.g., bernoulli_logit or poisson) have no auxiliary parameters
-#' 
+#'
 #' @param gp_model A \code{GPModel}
 #' @inheritParams GPModel_shared_params
 #'
@@ -3673,18 +3705,18 @@ get_aux_pars <- function(gp_model) UseMethod("get_aux_pars")
 #' gp_model <- fitGPModel(group_data = group_data[,1], y = y_pos, X = X1, likelihood="gamma")
 #' get_aux_pars(gp_model)
 #' }
-#' @method get_aux_pars GPModel 
+#' @method get_aux_pars GPModel
 #' @rdname get_aux_pars.GPModel
 #' @author Fabio Sigrist
-#' @export 
-#' 
-get_aux_pars.GPModel <- function(gp_model) {
-  
+#' @export
+#'
+get_aux_pars.GPModel <- function(gp_model, std_err = FALSE) {
+
   if (!gpb.check.r6.class(gp_model, "GPModel")) {
     stop("get_aux_pars.GPModel: gp_model needs to be a ", sQuote("GPModel"))
   }
-  
-  gp_model$get_aux_pars()
+
+  gp_model$get_aux_pars(std_err)
 }
 
 #' Auxiliary function to create categorical variables for nested grouped random effects

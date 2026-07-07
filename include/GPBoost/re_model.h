@@ -494,13 +494,18 @@ namespace GPBoost {
 		*/
 		int NumAuxPars() const;
 
+		bool CanCalculateStandardErrorsAuxPars() const;
+
 		/*!
 		* \brief Get additional likelihood parameters (e.g., shape parameter for a gamma likelihood, on original scale)
+		*		 Note: You should pre-allocate memory for aux_pars. Its length equals the number of auxiliary parameters (NumAuxPars()) or twice this if calc_std_dev = true
 		* \param[out] aux_pars Additional likelihood parameters (aux_pars_). This vector needs to be pre-allocated
 		* \param[out] name Name of the parameters (separated by "_SEP_" if there are multiple parameters)
+		* \param calc_std_dev If true, standard deviations are also exported
 		*/
 		void GetAuxPars(double* aux_pars,
-			string_t& name) const;
+			string_t& name,
+			bool calc_std_dev);
 
 		/*!
 		* \brief Set aux_pars_
@@ -556,8 +561,8 @@ namespace GPBoost {
 		bool trace_ = false;
 		int num_it_ = 0; //Number of iterations done for covariance and linear regression parameter estimation
 		// Covariance parameters related variables
-		vec_t cov_pars_; //Covariance parameters
-		vec_t init_cov_pars_; //Initial values for covariance parameters
+		vec_t cov_pars_; //Covariance parameters on the transformed scale (except not log-transformed)
+		vec_t init_cov_pars_; //Initial values for covariance parameters on the transformed scale (except not log-transformed)
 		bool cov_pars_initialized_ = false; //This is true if InitializeCovParsIfNotDefined() has been called
 		bool covariance_matrix_has_been_factorized_ = false; //If true, the covariance matrix Psi has been factorized for the cov_pars_ (either through OptimCovPar/OptimLinRegrCoefCovPar or EvalNegLogLikelihood) and will not be factorized anew when making predictions in Predict
 		bool init_cov_pars_provided_ = false;
@@ -579,6 +584,8 @@ namespace GPBoost {
 		// Variables for additional parameters for non-Gaussian likelihoods
 		vec_t init_aux_pars_; // Additional parameters for non-Gaussian likelihoods
 		bool init_aux_pars_given_ = false;
+		vec_t std_dev_aux_pars_;
+		bool std_dev_aux_pars_calculated_ = false;
 		bool init_coef_aux_pars_from_iid_model_ = false;
 		bool model_has_been_estimated_ = false;
 		std::vector<double> init_score_boosting_;

@@ -831,6 +831,11 @@ GPBOOST_C_EXPORT SEXP GPB_CanCalculateStandardErrorsCovPars_R(
 	SEXP out
 );
 
+GPBOOST_C_EXPORT SEXP GPB_CanCalculateStandardErrorsAuxPars_R(
+	SEXP handle,
+	SEXP out
+);
+
 /*!
 * \brief Get covariance parameters
 *		 Note: You should pre-allocate memory for optim_cov_pars. Its length equals the number of covariance parameters (num_cov_pars) or twice this if calc_std_dev = true
@@ -1109,12 +1114,15 @@ GPBOOST_C_EXPORT SEXP GPB_SetOffsetData_R(
 
 /*!
 * \brief Get additional likelihood parameters (e.g., shape parameter for a gamma likelihood)
+*		 Note: You should pre-allocate memory for aux_pars. Its length equals the number of auxiliary parameters or twice this if calc_std_dev = true
 * \param handle Handle of REModel
+* \param calc_std_dev If true, standard deviations are also exported
 * \param[out] aux_pars Additional likelihood parameters (aux_pars_). This vector needs to be pre-allocated
 * \return R character vector (length=1) with the name of the first parameter
 */
 GPBOOST_C_EXPORT SEXP GPB_GetAuxPars_R(
 	SEXP handle,
+	SEXP calc_std_dev,
 	SEXP aux_pars
 );
 
