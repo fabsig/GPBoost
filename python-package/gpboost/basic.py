@@ -5849,7 +5849,29 @@ class GPModel(object):
         >>> gp_model.fit(y=y, X=X)
         >>> gp_model.summary()
         """
+        # First, perform all calculations (some of which, e.g. standard deviation calculations,
+        # can trigger warning messages) before printing anything, so that any such warnings are
+        # not interleaved with the output below
         cov_pars = self.get_cov_pars(std_err=std_err, format_pandas=True)
+        if self.has_covariates:
+            coefs = self.get_coef(std_err=std_err, format_pandas=True)
+            if std_err:
+                z_values = np.array(coefs.iloc[0] / coefs.iloc[1])
+                p_values = 2 * scipy.stats.norm.cdf(-np.abs(z_values))
+        num_aux_pars = self._get_num_aux_pars()
+        if num_aux_pars > 0:
+            aux_pars = self.get_aux_pars(std_err=std_err, format_pandas=True)
+        if self.model_fitted:
+            ll = -self.get_current_neg_log_likelihood()
+            npar = self.num_cov_pars
+            if self.has_covariates: npar = npar + self.num_coef
+            if self.iid_model: npar = npar - 1 # do not count variance component
+            aic = 2 * npar - 2 * ll
+            bic = npar * np.log(self.num_data) - 2 * ll
+        no_convergence = (not self.model_has_been_loaded_from_saved_file and
+                          self.params["maxit"] == self._get_num_optim_iter())
+
+        # Now print everything
         print("=====================================================")
         print("Model summary:")
         print("Nb. observations: " + str(self.num_data))
@@ -5862,16 +5884,10 @@ class GPModel(object):
                         outstr = outstr + ", "
                     outstr = outstr + str(self.nb_groups[i]) + " (" + self.re_comp_names[i] + ")"
                 print(outstr)
-        if self.model_fitted:            
-            ll = -self.get_current_neg_log_likelihood()
-            npar = self.num_cov_pars
-            if self.has_covariates: npar = npar + self.num_coef
-            if self.iid_model: npar = npar - 1 # do not count variance component
-            aic = 2 * npar - 2 * ll
-            bic = npar * np.log(self.num_data) - 2 * ll
+        if self.model_fitted:
             printout = pd.DataFrame([round(ll, 2), round(aic, 2), round(bic, 2)]).transpose()
             printout.columns = ["Log-lik", "AIC", "BIC"]
-            print(printout.to_string(index=False))            
+            print(printout.to_string(index=False))
             print("-----------------------------------------------------")
         if not self.iid_model:
             print("Covariance parameters (random effects):")
@@ -5883,24 +5899,19 @@ class GPModel(object):
         if self.has_covariates:
             print("-----------------------------------------------------")
             print("Linear regression coefficients (fixed effects):")
-            coefs = self.get_coef(std_err=std_err, format_pandas=True)
             if std_err:
-                z_values = np.array(coefs.iloc[0] / coefs.iloc[1])
-                p_values = 2 * scipy.stats.norm.cdf(-np.abs(z_values))
-                coefs = coefs.transpose()
-                print(round(pd.concat([coefs, pd.DataFrame({"z value": z_values, "P(>|z|)": p_values},
-                                                           index=coefs.index)], axis=1), 4))
+                coefs_t = coefs.transpose()
+                print(round(pd.concat([coefs_t, pd.DataFrame({"z value": z_values, "P(>|z|)": p_values},
+                                                           index=coefs_t.index)], axis=1), 4))
             else:
                 print(round(coefs.transpose(), 4))
-        if self._get_num_aux_pars() > 0:
+        if num_aux_pars > 0:
             print("-----------------------------------------------------")
             print("Additional parameters:")
-            aux_pars = self.get_aux_pars(std_err=std_err, format_pandas=True)
             print(round(aux_pars.transpose(), 4))
-        if not self.model_has_been_loaded_from_saved_file:    
-            if self.params["maxit"] == self._get_num_optim_iter() and not self.model_has_been_loaded_from_saved_file:
-                print("-----------------------------------------------------")
-                print("Note: no convergence after the maximal number of iterations")
+        if no_convergence:
+            print("-----------------------------------------------------")
+            print("Note: no convergence after the maximal number of iterations")
         print("=====================================================")
         return self
 

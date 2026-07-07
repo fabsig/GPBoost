@@ -2366,7 +2366,35 @@ gpb.GPModel <- R6::R6Class(
     },
     
     summary = function(std_err = TRUE) {
+      # First, perform all calculations (some of which, e.g. standard deviation calculations,
+      # can trigger warning messages) before printing anything, so that warnings are
+      # not interleaved with the output below
       cov_pars <- self$get_cov_pars(std_err = std_err)
+      has_covariates <- private$has_covariates
+      if (has_covariates) {
+        coefs <- self$get_coef(std_err = std_err)
+        if (std_err) {
+          z_values <- coefs[1,] / coefs[2,]
+          p_values <- 2 * exp(pnorm(-abs(z_values), log.p = TRUE))
+        }
+      }
+      num_aux_pars <- self$get_num_aux_pars()
+      if (num_aux_pars > 0) {
+        aux_pars <- self$get_aux_pars(std_err = std_err)
+      }
+      model_fitted <- private$model_fitted
+      if (model_fitted) {
+        ll <- -self$get_current_neg_log_likelihood()
+        npar <- private$num_cov_pars
+        if (has_covariates) npar <- npar + private$num_coef
+        if (private$iid_model) npar <- npar - 1 # do not count variance component
+        aic <- 2*npar - 2*ll
+        bic <- npar*log(self$get_num_data()) - 2*ll
+      }
+      no_convergence <- (!private$model_has_been_loaded_from_saved_file) &&
+        (private$params$maxit == self$get_num_optim_iter())
+
+      # Now print everything
       cat("=====================================================\n")
       cat("Model summary:\n")
       cat(paste0("Nb. observations: ", self$get_num_data(),"\n"))
@@ -2382,13 +2410,7 @@ gpb.GPModel <- R6::R6Class(
         outstr <- paste0(outstr,"\n")
         cat(outstr)
       }
-      if (private$model_fitted) {
-        ll <- -self$get_current_neg_log_likelihood()
-        npar <- private$num_cov_pars
-        if (private$has_covariates) npar <- npar + private$num_coef
-        if (private$iid_model) npar <- npar - 1 # do not count variance component
-        aic <- 2*npar - 2*ll
-        bic <- npar*log(self$get_num_data()) - 2*ll
+      if (model_fitted) {
         print(round(c("Log-lik"=ll, "AIC"=aic, "BIC"=bic),digits=2))
         cat("-----------------------------------------------------\n")
       }
@@ -2413,13 +2435,10 @@ gpb.GPModel <- R6::R6Class(
         rownames(cov_pars_print) <- "Error_var"
         print(round(cov_pars_print,4))
       }
-      if (private$has_covariates) {
-        coefs <- self$get_coef(std_err = std_err)
+      if (has_covariates) {
         cat("-----------------------------------------------------\n")
         cat("Linear regression coefficients (fixed effects):\n")
         if (std_err) {
-          z_values <- coefs[1,] / coefs[2,]
-          p_values <- 2 * exp(pnorm(-abs(z_values), log.p = TRUE))
           coefs_summary <- cbind(t(coefs),"z value"=z_values,"P(>|z|)"=p_values)
           print(round(coefs_summary,4))
         } else {
@@ -2428,8 +2447,7 @@ gpb.GPModel <- R6::R6Class(
           print(round(coefs,4))
         }
       }
-      if (self$get_num_aux_pars() > 0) {
-        aux_pars <- self$get_aux_pars(std_err = std_err)
+      if (num_aux_pars > 0) {
         cat("-----------------------------------------------------\n")
         cat("Additional parameters:\n")
         if (is.matrix(aux_pars)) {
@@ -2440,11 +2458,9 @@ gpb.GPModel <- R6::R6Class(
           print(round(aux_pars,4))
         }
       }
-      if (!private$model_has_been_loaded_from_saved_file) {
-        if (private$params$maxit == self$get_num_optim_iter()) {
-          cat("-----------------------------------------------------\n")
-          cat("Note: no convergence after the maximal number of iterations\n")
-        }
+      if (no_convergence) {
+        cat("-----------------------------------------------------\n")
+        cat("Note: no convergence after the maximal number of iterations\n")
       }
       cat("=====================================================\n")
     }
