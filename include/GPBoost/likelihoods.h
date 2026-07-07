@@ -7210,10 +7210,10 @@ namespace GPBoost {
 					}
 				}
 			}//end calc_pred_cov || calc_pred_var || sample_posterior
-			if (sample_posterior) {
-				Log::REInfo("Test %g %g %g %g %g", post_samples_id.mean(), post_samples_id.coeffRef(0, 0), post_samples_id.coeffRef(1, 0),
-					post_samples_id.coeffRef(0, 1), post_samples_id.coeffRef(1, 1));
-			}
+			//if (sample_posterior) {
+			//	Log::REInfo("Test %g %g %g %g %g", post_samples_id.mean(), post_samples_id.coeffRef(0, 0), post_samples_id.coeffRef(1, 0),
+			//		post_samples_id.coeffRef(0, 1), post_samples_id.coeffRef(1, 1));
+			//}
 		}//end PredictLaplaceApproxFSVA
 
 		/*!
@@ -14082,9 +14082,10 @@ namespace GPBoost {
 		/*! \brief Type of predictive variance correction */
 		string_t var_cor_pred_version_ = "freq_asymptotic";
 
+		// PARAMETERS FOR QUANTILE REGRESSION
 		/*! \brief Quantile for asymmetric Laplace distribution */
 		double quantile_;
-		/*! \brief Tolerance level for calculating sub-gradients */
+		/*! \brief Tolerance level for calculating sub-gradients (currently not used) */
 		const double EPSILON_SUB_GRAD_ = 1e-8;
 		double eps_sub_grad_scale_ = EPSILON_SUB_GRAD_;
 		/*! \brief If true, kink-clipping is applied during mode finding forthe asymmetric_laplace likelihood */
@@ -14092,6 +14093,22 @@ namespace GPBoost {
 		mutable bool re_grouping_built_ = false;
 		mutable std::vector<data_size_t> re_group_indptr_;
 		mutable std::vector<data_size_t> re_group_indices_;
+
+		// PARAMETERS FOR THE TKC APPROXIMATION
+		/*! \brief Parameter that determines the curvature in the TKC approximation such that the log-likelihood and the quadratic approximation match well in a neighborhood of "size" delta_location_par_ around the location_par F(X) + Zb (= |ll(location_par) - ll(location_par + delta_location_par_)|). */
+		double delta_location_par_ = 1e-6;
+		/*! \brief If true, the delta_location_par_ is constant */
+		bool const_delta_location_par_ = false;
+		/*! \brief Minimal decrease in log-likelihood for automatic finding of delta_location_par_ in TKC approximation */
+		double TKC_MIN_DECREASE_LOG_LIKE_ = 0.1;
+		/*! \brief Value returned by 'GoodnessFit_TKC_approx' if minimal decrease in log-likelihood for automatic finding of delta_location_par_ in TKC approximation is not met */
+		double GOODNESS_FIT_MIN_DECREASE_LOG_LIKE_NOT_MET_ = 1e98;
+		/*! \brief delta_log_like_up_ = ll(location_par) - ll(location_par + delta_location_par_) (including sign) */
+		double delta_log_like_up_;
+		/*! \brief delta_log_like_down_ = ll(location_par) - ll(location_par - delta_location_par_) */
+		double delta_log_like_down_;
+		/*! \brief Sum of first derivatives of the log-likelihood (used only in special cases) */
+		double sum_first_deriv_;
 
 		// MODE FINDING PROPERTIES
 		/*! \brief Maximal number of iteration done for finding posterior mode with Newton's method */
@@ -14251,23 +14268,6 @@ namespace GPBoost {
 		bool reuse_rand_vec_I_sim_post_ = true;
 		/*! If reuse_rand_vec_I_sim_post_ is true and rand_vec_I_sim_post_ has been generated for the first time, then sampled_rand_vec_I_sim_post_ is set to true */
 		bool sampled_rand_vec_I_sim_post_ = false;
-
-
-		// PARAMETERS FOR THE TKC APPROXIMATION
-		/*! \brief Parameter that determines the curvature in the TKC approximation such that the log-likelihood and the quadratic approximation match well in a neighborhood of "size" delta_location_par_ around the location_par F(X) + Zb (= |ll(location_par) - ll(location_par + delta_location_par_)|). */
-		double delta_location_par_ = 1e-6;
-		/*! \brief If true, the delta_location_par_ is constant */
-		bool const_delta_location_par_ = false;
-		/*! \brief Minimal decrease in log-likelihood for automatic finding of delta_location_par_ in TKC approximation */
-		double TKC_MIN_DECREASE_LOG_LIKE_ = 0.1;
-		/*! \brief Value returned by 'GoodnessFit_TKC_approx' if minimal decrease in log-likelihood for automatic finding of delta_location_par_ in TKC approximation is not met */
-		double GOODNESS_FIT_MIN_DECREASE_LOG_LIKE_NOT_MET_ = 1e98;
-		/*! \brief delta_log_like_up_ = ll(location_par) - ll(location_par + delta_location_par_) (including sign) */
-		double delta_log_like_up_;
-		/*! \brief delta_log_like_down_ = ll(location_par) - ll(location_par - delta_location_par_) */
-		double delta_log_like_down_;
-		/*! \brief Sum of first derivatives of the log-likelihood (used only in special cases) */
-		double sum_first_deriv_;
 
 		/*! \brief Order of the (adaptive) Gauss-Hermite quadrature */
 		int order_GH_ = 30;

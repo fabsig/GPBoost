@@ -5886,6 +5886,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.4084587961)),tolerance_loc_1)
     expect_lt(sum(abs(gp_model$get_aux_pars()-0.2692574357 )),tolerance_loc_1)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.1244755503, 2.0742575413))),tolerance_loc_1)
+    expect_false(gp_model$can_calculate_standard_errors_coef())
+    expect_equal(gp_model$get_coef(std_err = TRUE), gp_model$get_coef(std_err = FALSE))
     expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-116.0977714))),tolerance_loc_1)
     expect_equal(gp_model$get_num_optim_iter(), 26)
     # Prediction

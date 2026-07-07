@@ -1372,6 +1372,9 @@ gpb.GPModel <- R6::R6Class(
       if (!is.logical(std_err)) {
         stop("GPModel: ", sQuote("std_err"), " needs to be of boolean type ")
       }
+      if (!self$can_calculate_standard_errors_coef()) {
+        std_err <- FALSE
+      }
       if (is.null(private$num_covariates)) {
         stop("GPModel: ", sQuote("fit"), " has not been called")
       }
@@ -2220,6 +2223,10 @@ gpb.GPModel <- R6::R6Class(
         , out
       )
       return(as.logical(out))
+    },
+
+    can_calculate_standard_errors_coef = function() {
+      return(self$get_likelihood_name() != "asymmetric_laplace")
     },
 
     get_num_aux_pars = function() {

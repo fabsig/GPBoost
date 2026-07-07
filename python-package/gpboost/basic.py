@@ -5761,6 +5761,8 @@ class GPModel(object):
         """
         if self.num_covariates is None:
             raise ValueError("'fit' has not been called")
+        if not self._can_calculate_standard_errors_coef():
+            std_err = False
         if std_err:
             optim_pars = np.zeros(2 * self.num_coef, dtype=np.float64)
         else:
@@ -6751,6 +6753,9 @@ class GPModel(object):
             self.handle,
             ctypes.byref(out)))
         return bool(out.value)
+
+    def _can_calculate_standard_errors_coef(self):
+        return self._get_likelihood_name() != "asymmetric_laplace"
 
     def _get_num_optim_iter(self):
         num_it = ctypes.c_int64(0)
