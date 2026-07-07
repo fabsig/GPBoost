@@ -1184,7 +1184,7 @@ gpb.GPModel <- R6::R6Class(
       }
       if (length(cov_pars) != private$num_cov_pars) {
         add_message <- ""
-        if (private$gp_approx == "vecchia_latent") add_message <- ". The error variance should be provided via the 'aux_pars' argument"
+        if (private$gp_approx == "vecchia_latent" || self$get_likelihood_name() == "gaussian_latent") add_message <- ". The error variance should be provided via the 'aux_pars' argument"
         stop("GPModel.neg_log_likelihood: Size of ", sQuote("cov_pars"), 
              " does not correspond to the number of parameters", add_message)
       }
@@ -1714,7 +1714,7 @@ gpb.GPModel <- R6::R6Class(
         }
         if (length(cov_pars) != private$num_cov_pars) {
           add_message <- ""
-          if (private$gp_approx == "vecchia_latent") add_message <- ". The error variance should be provided via the 'aux_pars' argument"
+          if (private$gp_approx == "vecchia_latent" || self$get_likelihood_name() == "gaussian_latent") add_message <- ". The error variance should be provided via the 'aux_pars' argument"
           stop("predict.GPModel: Size of ", sQuote("cov_pars"), " does not correspond to the number of parameters", add_message)
         }
       }

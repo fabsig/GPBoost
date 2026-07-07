@@ -86,6 +86,202 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   folds <- list()
   nf <- 2
   for(i in 1:nf) folds[[i]] <- as.integer(((1:(n/nf)) -1) * nf + i)
+
+  test_that("gaussian_latent likelihood agrees with gaussian likelihood ", {
+    n_lat <- 40
+    group_lat <- rep(1:8, each = 5)
+    group2_lat <- rep(1:5, length.out = n_lat)
+    coords_lat <- cbind(seq(0.02, 0.98, length.out = n_lat),
+                        sin(seq(0.1, 2.9, length.out = n_lat)))
+    y_lat <- 0.3 + 0.7 * seq_len(n_lat) / n_lat + cos(seq_len(n_lat) / 4)
+    err_var <- 0.35
+    gr_var_1 <- 0.7
+    gr_var_2 <- 0.45
+    gp_var <- 0.8
+    gp_range <- 0.25
+    tol_lat <- 5e-5
+    expect_gaussian_latent_equal <- function(model_gauss, model_latent,
+                                             cov_pars_gauss, cov_pars_latent,
+                                             aux_pars_gauss = NULL,
+                                             aux_pars_latent = err_var,
+                                             tolerance = tol_lat) {
+      expect_equal(model_latent$get_num_aux_pars(), 1L)
+      nll_gauss <- model_gauss$neg_log_likelihood(cov_pars = cov_pars_gauss, y = y_lat, aux_pars = aux_pars_gauss)
+      nll_latent <- model_latent$neg_log_likelihood(cov_pars = cov_pars_latent, y = y_lat, aux_pars = aux_pars_latent)
+      expect_equal(nll_latent, nll_gauss, tolerance = tolerance)
+    }
+    expect_gaussian_latent_predictions_equal <- function(model_gauss, model_latent,
+                                                         cov_pars_gauss, cov_pars_latent,
+                                                         group_data_pred = NULL,
+                                                         gp_coords_pred = NULL,
+                                                         aux_pars_gauss = NULL,
+                                                         aux_pars_latent = err_var,
+                                                         tolerance = tol_lat) {
+      if (!is.null(aux_pars_gauss)) {
+        model_gauss$set_optim_params(params = list(init_aux_pars = aux_pars_gauss,
+                                                   init_coef_aux_pars_from_iid_model = FALSE))
+      }
+      model_latent$set_optim_params(params = list(init_aux_pars = aux_pars_latent,
+                                                  init_coef_aux_pars_from_iid_model = FALSE))
+      pred_gauss <- predict(model_gauss, y = y_lat, group_data_pred = group_data_pred,
+                            gp_coords_pred = gp_coords_pred, cov_pars = cov_pars_gauss,
+                            predict_var = TRUE, predict_response = TRUE)
+      pred_latent <- predict(model_latent, y = y_lat, group_data_pred = group_data_pred,
+                             gp_coords_pred = gp_coords_pred, cov_pars = cov_pars_latent,
+                             predict_var = TRUE, predict_response = TRUE)
+      expect_equal(pred_latent$mu, pred_gauss$mu, tolerance = tolerance)
+      expect_equal(pred_latent$var, pred_gauss$var, tolerance = tolerance)
+    }
+    
+    expect_gaussian_latent_equal(
+      GPModel(group_data = group_lat, likelihood = "gaussian"),
+      GPModel(group_data = group_lat, likelihood = "gaussian_latent"),
+      c(err_var, gr_var_1),
+      c(gr_var_1)
+    )
+    expect_gaussian_latent_equal(
+      GPModel(group_data = cbind(group_lat, group2_lat), likelihood = "gaussian"),
+      GPModel(group_data = cbind(group_lat, group2_lat), likelihood = "gaussian_latent"),
+      c(err_var, gr_var_1, gr_var_2),
+      c(gr_var_1, gr_var_2)
+    )
+    expect_gaussian_latent_equal(
+      GPModel(group_data = group_lat, gp_coords = coords_lat, cov_function = "exponential",
+              likelihood = "gaussian", matrix_inversion_method = "cholesky"),
+      GPModel(group_data = group_lat, gp_coords = coords_lat, cov_function = "exponential",
+              likelihood = "gaussian_latent", matrix_inversion_method = "cholesky"),
+      c(err_var, gr_var_1, gp_var, gp_range),
+      c(gr_var_1, gp_var, gp_range)
+    )
+    expect_gaussian_latent_equal(
+      GPModel(gp_coords = coords_lat, cov_function = "exponential", likelihood = "gaussian",
+              gp_approx = "vecchia_latent", num_neighbors = 5, vecchia_ordering = "none",
+              matrix_inversion_method = "cholesky"),
+      GPModel(gp_coords = coords_lat, cov_function = "exponential", likelihood = "gaussian_latent",
+              gp_approx = "vecchia", num_neighbors = 5, vecchia_ordering = "none",
+              matrix_inversion_method = "cholesky"),
+      c(gp_var, gp_range),
+      c(gp_var, gp_range),
+      aux_pars_gauss = err_var
+    )
+    
+    group_pred_lat <- c(1, 4, 99)
+    group_pred_cross_lat <- cbind(c(1, 4, 99), c(1, 3, 99))
+    coords_pred_lat <- coords_lat[c(2, 11, 30), ] + 0.01
+    expect_gaussian_latent_predictions_equal(
+      GPModel(group_data = group_lat, likelihood = "gaussian"),
+      GPModel(group_data = group_lat, likelihood = "gaussian_latent"),
+      c(err_var, gr_var_1),
+      c(gr_var_1),
+      group_data_pred = group_pred_lat
+    )
+    expect_gaussian_latent_predictions_equal(
+      GPModel(group_data = cbind(group_lat, group2_lat), likelihood = "gaussian"),
+      GPModel(group_data = cbind(group_lat, group2_lat), likelihood = "gaussian_latent"),
+      c(err_var, gr_var_1, gr_var_2),
+      c(gr_var_1, gr_var_2),
+      group_data_pred = group_pred_cross_lat
+    )
+    expect_gaussian_latent_predictions_equal(
+      GPModel(group_data = group_lat, gp_coords = coords_lat, cov_function = "exponential",
+              likelihood = "gaussian", matrix_inversion_method = "cholesky"),
+      GPModel(group_data = group_lat, gp_coords = coords_lat, cov_function = "exponential",
+              likelihood = "gaussian_latent", matrix_inversion_method = "cholesky"),
+      c(err_var, gr_var_1, gp_var, gp_range),
+      c(gr_var_1, gp_var, gp_range),
+      group_data_pred = group_pred_lat,
+      gp_coords_pred = coords_pred_lat
+    )
+    expect_gaussian_latent_predictions_equal(
+      GPModel(gp_coords = coords_lat, cov_function = "exponential", likelihood = "gaussian",
+              gp_approx = "vecchia_latent", num_neighbors = 5, vecchia_ordering = "none",
+              matrix_inversion_method = "cholesky"),
+      GPModel(gp_coords = coords_lat, cov_function = "exponential", likelihood = "gaussian_latent",
+              gp_approx = "vecchia", num_neighbors = 5, vecchia_ordering = "none",
+              matrix_inversion_method = "cholesky"),
+      c(gp_var, gp_range),
+      c(gp_var, gp_range),
+      gp_coords_pred = coords_pred_lat,
+      aux_pars_gauss = err_var
+    )
+
+    ## Iterative methods for crossed random effects (stochastic -> lower tolerance)
+    tol_lat_iterative <- TOLERANCE_ITERATIVE
+    iterative_optim_params <- list(cg_delta_conv = 1e-6, num_rand_vec_trace = 500,
+                                   seed_rand_vec_trace = 1, init_coef_aux_pars_from_iid_model = FALSE)
+    gp_model_gauss_it <- GPModel(group_data = cbind(group_lat, group2_lat), likelihood = "gaussian",
+                                 matrix_inversion_method = "iterative")
+    gp_model_latent_it <- GPModel(group_data = cbind(group_lat, group2_lat), likelihood = "gaussian_latent",
+                                  matrix_inversion_method = "iterative")
+    gp_model_gauss_it$set_optim_params(params = iterative_optim_params)
+    gp_model_latent_it$set_optim_params(params = iterative_optim_params)
+    expect_gaussian_latent_equal(
+      gp_model_gauss_it,
+      gp_model_latent_it,
+      c(err_var, gr_var_1, gr_var_2),
+      c(gr_var_1, gr_var_2),
+      tolerance = tol_lat_iterative
+    )
+    expect_gaussian_latent_predictions_equal(
+      gp_model_gauss_it,
+      gp_model_latent_it,
+      c(err_var, gr_var_1, gr_var_2),
+      c(gr_var_1, gr_var_2),
+      group_data_pred = group_pred_cross_lat,
+      tolerance = tol_lat_iterative
+    )
+
+    ## Vecchia + GP with iterative methods (stochastic -> lower tolerance)
+    gp_model_gauss_vecchia_it <- GPModel(gp_coords = coords_lat, cov_function = "exponential", likelihood = "gaussian",
+                                        gp_approx = "vecchia_latent", num_neighbors = 5, vecchia_ordering = "none",
+                                        matrix_inversion_method = "iterative")
+    gp_model_latent_vecchia_it <- GPModel(gp_coords = coords_lat, cov_function = "exponential", likelihood = "gaussian_latent",
+                                         gp_approx = "vecchia", num_neighbors = 5, vecchia_ordering = "none",
+                                         matrix_inversion_method = "iterative")
+    gp_model_gauss_vecchia_it$set_optim_params(params = iterative_optim_params)
+    gp_model_latent_vecchia_it$set_optim_params(params = iterative_optim_params)
+    expect_gaussian_latent_equal(
+      gp_model_gauss_vecchia_it,
+      gp_model_latent_vecchia_it,
+      c(gp_var, gp_range),
+      c(gp_var, gp_range),
+      aux_pars_gauss = err_var,
+      tolerance = tol_lat_iterative
+    )
+    expect_gaussian_latent_predictions_equal(
+      gp_model_gauss_vecchia_it,
+      gp_model_latent_vecchia_it,
+      c(gp_var, gp_range),
+      c(gp_var, gp_range),
+      gp_coords_pred = coords_pred_lat,
+      aux_pars_gauss = err_var,
+      tolerance = tol_lat_iterative
+    )
+
+    capture.output(gp_model_gauss_fit <- fitGPModel(
+      group_data = group_lat, likelihood = "gaussian", y = y_lat,
+      params = list(optimizer_cov = "lbfgs", maxit = 100,
+                    init_cov_pars = c(err_var, gr_var_1),
+                    init_coef_aux_pars_from_iid_model = FALSE)), file = "NUL")
+    capture.output(gp_model_latent_fit <- fitGPModel(
+      group_data = group_lat, likelihood = "gaussian_latent", y = y_lat,
+      params = list(optimizer_cov = "lbfgs", maxit = 100,
+                    init_cov_pars = c(gr_var_1), init_aux_pars = c(err_var),
+                    init_coef_aux_pars_from_iid_model = FALSE)), file = "NUL")
+    expect_equal(gp_model_latent_fit$get_current_neg_log_likelihood(),
+                 gp_model_gauss_fit$get_current_neg_log_likelihood(),
+                 tolerance = TOLERANCE_MEDIUM)
+    expect_equal(c(as.vector(gp_model_latent_fit$get_aux_pars()),
+                   as.vector(gp_model_latent_fit$get_cov_pars(std_err = FALSE))),
+                 as.vector(gp_model_gauss_fit$get_cov_pars(std_err = FALSE)),
+                 tolerance = TOLERANCE_MEDIUM)
+    pred_gauss_fit <- predict(gp_model_gauss_fit, y = y_lat, group_data_pred = group_pred_lat,
+                              predict_var = TRUE, predict_response = TRUE)
+    pred_latent_fit <- predict(gp_model_latent_fit, y = y_lat, group_data_pred = group_pred_lat,
+                               predict_var = TRUE, predict_response = TRUE)
+    expect_equal(pred_latent_fit$mu, pred_gauss_fit$mu, tolerance = TOLERANCE_MEDIUM)
+    expect_equal(pred_latent_fit$var, pred_gauss_fit$var, tolerance = TOLERANCE_MEDIUM)
+  })
   
   test_that("Binary classification with Gaussian process model ", {
     probs <- pnorm(L %*% b_1)

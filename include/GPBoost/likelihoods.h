@@ -322,10 +322,10 @@ namespace GPBoost {
 					information_changes_during_mode_finding_ = false;
 				}
 			}//end "asymmetric_laplace"
-			else if (likelihood_type_ == "gaussian") {
+			else if (IsGaussianLikelihood()) {
 				aux_pars_ = { 1. };
 				names_aux_pars_ = { "error_variance" };
-				if (use_likelihoods_file_for_gaussian_) {
+				if (use_likelihoods_file_for_gaussian_ || likelihood_type_ == "gaussian_latent") {
 					num_aux_pars_ = 1;
 					num_aux_pars_estim_ = 1;
 				}
@@ -636,6 +636,10 @@ namespace GPBoost {
 			return(likelihood_type_);
 		}
 
+		bool IsGaussianLikelihood() const {
+			return(likelihood_type_ == "gaussian" || likelihood_type_ == "gaussian_latent");
+		}
+
 		/*!
 		* \brief Set the type of likelihood
 		* \param type Likelihood name
@@ -839,7 +843,7 @@ namespace GPBoost {
 					Log::REWarning("No 0's and 1's in the response variable 'y' but used likelihood = '%s ", likelihood_type_.c_str());
 				}
 			}
-			else if (likelihood_type_ != "gaussian" && likelihood_type_ != "t" && likelihood_type_ != "gaussian_heteroscedastic" &&
+			else if (!IsGaussianLikelihood() && likelihood_type_ != "t" && likelihood_type_ != "gaussian_heteroscedastic" &&
 				likelihood_type_ != "asymmetric_laplace") {
 				Log::REFatal("CheckY: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 			}
@@ -927,7 +931,7 @@ namespace GPBoost {
 				}
 				init_intercept = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);
 			}//end "t"
-			else if (likelihood_type_ == "gaussian" || (likelihood_type_ == "gaussian_heteroscedastic" && ind_set_re == 0)) {
+			else if (IsGaussianLikelihood() || (likelihood_type_ == "gaussian_heteroscedastic" && ind_set_re == 0)) {
 				double sw = 0.0;
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:init_intercept, sw)
@@ -1220,7 +1224,7 @@ namespace GPBoost {
 			const data_size_t num_data) {
 			double sw = 0.0, avg = 0., avg_sq = 0., sample_var = 1.;
 			if (likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
-				likelihood_type_ == "gaussian") {
+				IsGaussianLikelihood()) {
 				double sum_sq = 0.;
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:avg, sum_sq, sw)
@@ -1351,7 +1355,7 @@ namespace GPBoost {
 					aux_pars_[0] = (q75 - q25) / 1.349;
 				}
 			}//end "t"
-			else if (likelihood_type_ == "gaussian") {
+			else if (IsGaussianLikelihood()) {
 				aux_pars_[0] = sample_var / 2.;
 			}//end "gaussian")
 			else if (likelihood_type_ == "lognormal") {
@@ -1878,7 +1882,7 @@ namespace GPBoost {
 					C_sigma2 = C_sigma2 * C_sigma2;
 				}
 			}//end "t"
-			else if (likelihood_type_ == "gaussian" || likelihood_type_ == "zero_censored_power_transformed_normal" ||
+			else if (IsGaussianLikelihood() || likelihood_type_ == "zero_censored_power_transformed_normal" ||
 				likelihood_type_ == "asymmetric_laplace") {
 				double sw = 0.0, mean = 0., sec_mom = 0;
 				if (fixed_effects == nullptr) {
@@ -1941,7 +1945,7 @@ namespace GPBoost {
 						"Will use the value provided in 'likelihood_additional_param' ", names_aux_pars_[1].c_str(), aux_pars[1], aux_pars_[1]);
 				}
 			}
-			if (likelihood_type_ == "gaussian" || likelihood_type_ == "gamma" ||
+			if (IsGaussianLikelihood() || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "beta" || likelihood_type_ == "t" || likelihood_type_ == "lognormal" ||
 				likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_inflated_gamma" ||
@@ -8400,7 +8404,7 @@ namespace GPBoost {
 				//                  }
 				//              }
 			}//end "t"
-			else if (likelihood_type_ == "gaussian") {
+			else if (IsGaussianLikelihood()) {
 				if (predict_var) {
 					pred_var.array() += aux_pars_[0];
 				}
@@ -8893,7 +8897,7 @@ namespace GPBoost {
 		*			This is only used by the 'ConvertOutput()' function in regression_objective.hpp
 		*/
 		double TransformToReponseScale(const double value) const {
-			if (likelihood_type_ == "gaussian" || likelihood_type_ == "t") {
+			if (IsGaussianLikelihood() || likelihood_type_ == "t") {
 				return value;
 			}
 			else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
@@ -9052,7 +9056,7 @@ namespace GPBoost {
 					}
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
-				else if (likelihood_type_ != "gaussian" && likelihood_type_ != "gaussian_heteroscedastic" &&
+				else if (!IsGaussianLikelihood() && likelihood_type_ != "gaussian_heteroscedastic" &&
 					likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 					likelihood_type_ != "poisson" && likelihood_type_ != "t" && likelihood_type_ != "beta" &&
 					likelihood_type_ != "zero_one_censored_transformed_beta" && likelihood_type_ != "zero_one_censored_shifted_gamma" &&
@@ -9110,7 +9114,7 @@ namespace GPBoost {
 						std::lgamma((aux_pars_[1] + 1.) / 2.) - 0.5 * std::log(aux_pars_[1]) -
 						std::lgamma(aux_pars_[1] / 2.) - 0.5 * std::log(M_PI));
 				}
-				else if (likelihood_type_ == "gaussian") {
+				else if (IsGaussianLikelihood()) {
 					log_normalizing_constant_ = -num_data_ * (M_LOGSQRT2PI + 0.5 * std::log(aux_pars_[0]));
 				}
 				else if (likelihood_type_ == "gaussian_heteroscedastic") {
@@ -9363,7 +9367,7 @@ namespace GPBoost {
 					ll += w * LogLikT(y_data[i], location_par[i], false);
 				}
 			}
-			else if (likelihood_type_ == "gaussian") {
+			else if (IsGaussianLikelihood()) {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					const double w = has_weights_ ? weights_[i] : 1.0;
@@ -9475,7 +9479,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "t") {
 				return(LogLikT(y_data, location_par, true));
 			}
-			else if (likelihood_type_ == "gaussian") {
+			else if (IsGaussianLikelihood()) {
 				return(LogLikGaussian(y_data, location_par, true));
 			}
 			else if (likelihood_type_ == "lognormal") {
@@ -9884,7 +9888,7 @@ namespace GPBoost {
 					first_deriv_ll[i] = w * FirstDerivLogLikT(y_data[i], location_par[i]);
 				}
 			}
-			else if (likelihood_type_ == "gaussian") {
+			else if (IsGaussianLikelihood()) {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					const double w = has_weights_ ? weights_[i] : 1.0;
@@ -10005,7 +10009,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "t") {
 				return(FirstDerivLogLikT(y_data, location_par));
 			}
-			else if (likelihood_type_ == "gaussian") {
+			else if (IsGaussianLikelihood()) {
 				return(FirstDerivLogLikGaussian(y_data, location_par));
 			}
 			else if (likelihood_type_ == "lognormal") {
@@ -10499,7 +10503,7 @@ namespace GPBoost {
 						information_ll[i] = w * SecondDerivNegLogLikT(y_data[i], location_par[i]);
 					}
 				}
-				else if (likelihood_type_ == "gaussian") {
+				else if (IsGaussianLikelihood()) {
 					const double FI = SecondDerivNegLogLikGaussian();
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -10596,7 +10600,7 @@ namespace GPBoost {
 						information_ll[i] = w * FI;
 					}
 				}
-				else if (likelihood_type_ == "gaussian") {
+				else if (IsGaussianLikelihood()) {
 					const double FI = SecondDerivNegLogLikGaussian();
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -10687,7 +10691,7 @@ namespace GPBoost {
 				else if (likelihood_type_ == "beta") {
 					return(SecondDerivNegLogLikBeta(y_data, location_par));
 				}
-				else if (likelihood_type_ == "gaussian") {
+				else if (IsGaussianLikelihood()) {
 					return(SecondDerivNegLogLikGaussian());
 				}
 				else if (likelihood_type_ == "lognormal") {
@@ -10729,7 +10733,7 @@ namespace GPBoost {
 				else if (likelihood_type_ == "t") {
 					return(FisherInformationT());
 				}
-				else if (likelihood_type_ == "gaussian") {
+				else if (IsGaussianLikelihood()) {
 					return(SecondDerivNegLogLikGaussian());
 				}
 				else if (likelihood_type_ == "lognormal") {
@@ -11356,7 +11360,7 @@ namespace GPBoost {
 						deriv_information_diag_loc_par[i] = w * -2. * (aux_pars_[1] + 1.) * (res_sq - 3. * nu_sigma2) * res / (denom * denom * denom);
 					}
 				}
-				else if (likelihood_type_ == "gaussian" || likelihood_type_ == "lognormal") {
+				else if (IsGaussianLikelihood() || likelihood_type_ == "lognormal") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						deriv_information_diag_loc_par[i] = 0.;
@@ -11536,7 +11540,7 @@ namespace GPBoost {
 						deriv_information_diag_loc_par[i] = 0.;
 					}
 				}
-				else if (likelihood_type_ == "gaussian" || likelihood_type_ == "lognormal" || likelihood_type_ == "asymmetric_laplace") {
+				else if (IsGaussianLikelihood() || likelihood_type_ == "lognormal" || likelihood_type_ == "asymmetric_laplace") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						deriv_information_diag_loc_par[i] = 0.;
@@ -11658,7 +11662,7 @@ namespace GPBoost {
 					grad[1] = neg_log_grad_df;
 				}
 			}//end "t"
-			else if (likelihood_type_ == "gaussian") {
+			else if (IsGaussianLikelihood()) {
 				//gradient for variance parameter is calculated on the log-scale
 				double neg_log_grad = 0.;
 #pragma omp parallel for schedule(static) reduction(+:neg_log_grad)
@@ -12051,7 +12055,7 @@ namespace GPBoost {
 						}
 					}
 				}//end "t"
-				else if (likelihood_type_ == "gaussian") {
+				else if (IsGaussianLikelihood()) {
 					//gradient for variance parameter is calculated on the log-scale
 					CHECK(ind_aux_par == 0);
 #pragma omp parallel for schedule(static)
@@ -12495,7 +12499,7 @@ namespace GPBoost {
 		*           Used for adaptive Gauss-Hermite quadrature for the prediction of the response variable ('RespMeanAdaptiveGHQuadrature')
 		*/
 		inline double CondMeanLikelihood(const double value) const {
-			if (likelihood_type_ == "gaussian" || likelihood_type_ == "t") {
+			if (IsGaussianLikelihood() || likelihood_type_ == "t") {
 				return value;
 			}
 			else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
@@ -12530,7 +12534,7 @@ namespace GPBoost {
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return 1.;
 			}
-			else if (likelihood_type_ == "t" || likelihood_type_ == "gaussian") {
+			else if (likelihood_type_ == "t" || IsGaussianLikelihood()) {
 				return (1. / value);
 			}
 			else {
@@ -12557,7 +12561,7 @@ namespace GPBoost {
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return 0.;
 			}
-			else if (likelihood_type_ == "t" || likelihood_type_ == "gaussian") {
+			else if (likelihood_type_ == "t" || IsGaussianLikelihood()) {
 				return (-1. / (value * value));
 			}
 			else {
@@ -14016,7 +14020,7 @@ namespace GPBoost {
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";
 		/*! \brief List of supported covariance likelihoods */
-		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit",
+		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "gaussian_latent", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit",
 			"poisson", "gamma", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "lognormal", "beta_binomial",
 			"zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
 			"asymmetric_laplace" };

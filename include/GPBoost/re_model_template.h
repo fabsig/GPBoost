@@ -4775,7 +4775,7 @@ namespace GPBoost {
 			double var = 0;
 			int ind_par;
 			double init_marg_var = 1.;
-			if (gauss_likelihood_ || likelihood_[unique_clusters_[0]]->GetLikelihood() == "gaussian" ||
+			if (gauss_likelihood_ || likelihood_[unique_clusters_[0]]->IsGaussianLikelihood() ||
 				likelihood_[unique_clusters_[0]]->GetLikelihood() == "gaussian_heteroscedastic") {
 				CHECK(num_data > 0);
 				//determine initial value for nugget effect
@@ -4812,7 +4812,7 @@ namespace GPBoost {
 			}//end Gaussian data
 			else {//non-Gaussian likelihoods
 				ind_par = 0;
-				if (likelihood_[unique_clusters_[0]]->GetLikelihood() == "gaussian" ||
+				if (likelihood_[unique_clusters_[0]]->IsGaussianLikelihood() ||
 					likelihood_[unique_clusters_[0]]->GetLikelihood() == "gaussian_heteroscedastic") {
 					init_marg_var = var / 2;
 				}

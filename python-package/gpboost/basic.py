@@ -5405,7 +5405,7 @@ class GPModel(object):
                                          convert_to_type=np.float64)
         if cov_pars.shape[0] != self.num_cov_pars:
             add_message = ""
-            if self.gp_approx == "vecchia_latent":
+            if self.gp_approx == "vecchia_latent" or self._get_likelihood_name() == "gaussian_latent":
                 add_message = ". The error variance should be provided via the 'aux_pars' argument"
             raise ValueError("'cov_pars' does not contain the correct number of parameters" + add_message)
         cov_pars_c = cov_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
@@ -6070,7 +6070,7 @@ class GPModel(object):
                                              convert_to_type=np.float64)
             if cov_pars.shape[0] != self.num_cov_pars:
                 add_message = ""
-                if self.gp_approx == "vecchia_latent":
+                if self.gp_approx == "vecchia_latent" or self._get_likelihood_name() == "gaussian_latent":
                     add_message = ". The error variance should be provided via the 'aux_pars' argument"
                 raise ValueError("'cov_pars' does not contain the correct number of parameters" + add_message)
             cov_pars_c = cov_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
