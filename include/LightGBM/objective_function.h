@@ -55,7 +55,7 @@ namespace LightGBM {
 			return ori_output;
 		}
 
-		virtual void FindInitScoreGP() const { }
+		virtual void FindInitScoreGP(const double* /*fixed_effects*/) const { }
 
 		virtual double BoostFromScore(int /*class_id*/) const { return 0.0; }
 

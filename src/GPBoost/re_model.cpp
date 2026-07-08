@@ -464,11 +464,11 @@ namespace GPBoost {
 			init_cov_pars_iid.data(),
 			nullptr,
 			fixed_effects,
-			learn_cov_aux_pars_iid,
-			false,
-			false,
-			false,
-			false);
+			/*learn_covariance_parameters = */ learn_cov_aux_pars_iid,
+			/*called_in_GPBoost_algorithm = */ false,
+			/*reuse_learning_rates_from_previous_call = */ false,
+			/*only_intercept_for_GPBoost_algo = */ false,
+			/*find_learning_rate_for_GPBoost_algo = */ false);
 		CHECK((int)coef_iid.size() == num_sets_fixed_effects_ * num_covariates);
 		coef_ = coef_iid;
 		if (!init_aux_pars_given_ && NumAuxPars() > 0 && re_model_iid->AuxParsHaveBeenSetOrEstimated()) {
@@ -496,11 +496,11 @@ namespace GPBoost {
 				cov_pars_.data(),
 				nullptr,
 				fixed_effects,
-				true,
-				called_in_GPBoost_algorithm,
-				reuse_learning_rates_from_previous_call,
-				false,
-				false);
+				/*learn_covariance_parameters = */ true,
+				/*called_in_GPBoost_algorithm = */ called_in_GPBoost_algorithm,
+				/*reuse_learning_rates_from_previous_call = */ reuse_learning_rates_from_previous_call,
+				/*only_intercept_for_GPBoost_algo = */ false,
+				/*find_learning_rate_for_GPBoost_algo = */ false);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->OptimLinRegrCoefCovPar(y_data,
@@ -512,11 +512,11 @@ namespace GPBoost {
 				cov_pars_.data(),
 				nullptr,
 				fixed_effects,
-				true,
-				called_in_GPBoost_algorithm,
-				reuse_learning_rates_from_previous_call,
-				false,
-				false);
+				/*learn_covariance_parameters = */ true,
+				/*called_in_GPBoost_algorithm = */ called_in_GPBoost_algorithm,
+				/*reuse_learning_rates_from_previous_call = */ reuse_learning_rates_from_previous_call,
+				/*only_intercept_for_GPBoost_algo = */ false,
+				/*find_learning_rate_for_GPBoost_algo = */ false);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(y_data,
@@ -528,11 +528,11 @@ namespace GPBoost {
 				cov_pars_.data(),
 				nullptr,
 				fixed_effects,
-				true,
-				called_in_GPBoost_algorithm,
-				reuse_learning_rates_from_previous_call,
-				false,
-				false);
+				/*learn_covariance_parameters = */ true,
+				/*called_in_GPBoost_algorithm = */ called_in_GPBoost_algorithm,
+				/*reuse_learning_rates_from_previous_call = */ reuse_learning_rates_from_previous_call,
+				/*only_intercept_for_GPBoost_algo = */ false,
+				/*find_learning_rate_for_GPBoost_algo = */ false);
 		}
 		has_covariates_ = false;
 		covariance_matrix_has_been_factorized_ = true;
@@ -578,11 +578,11 @@ namespace GPBoost {
 				cov_pars_.data(),
 				init_coef_ptr,
 				fixed_effects,
-				true,
-				false,
-				false,
-				false,
-				false);
+				/*learn_covariance_parameters = */ true,
+				/*called_in_GPBoost_algorithm = */ false,
+				/*reuse_learning_rates_from_previous_call = */ false,
+				/*only_intercept_for_GPBoost_algo = */ false,
+				/*find_learning_rate_for_GPBoost_algo = */ false);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->OptimLinRegrCoefCovPar(y_data,
@@ -594,11 +594,11 @@ namespace GPBoost {
 				cov_pars_.data(),
 				init_coef_ptr,
 				fixed_effects,
-				true,
-				false,
-				false,
-				false,
-				false);
+				/*learn_covariance_parameters = */ true,
+				/*called_in_GPBoost_algorithm = */ false,
+				/*reuse_learning_rates_from_previous_call = */ false,
+				/*only_intercept_for_GPBoost_algo = */ false,
+				/*find_learning_rate_for_GPBoost_algo = */ false);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(y_data,
@@ -610,11 +610,11 @@ namespace GPBoost {
 				cov_pars_.data(),
 				init_coef_ptr,
 				fixed_effects,
-				true,
-				false,
-				false,
-				false,
-				false);
+				/*learn_covariance_parameters = */ true,
+				/*called_in_GPBoost_algorithm = */ false,
+				/*reuse_learning_rates_from_previous_call = */ false,
+				/*only_intercept_for_GPBoost_algo = */ false,
+				/*find_learning_rate_for_GPBoost_algo = */ false);
 		}
 		has_covariates_ = true;
 		coef_estimated_ = true;
@@ -625,7 +625,7 @@ namespace GPBoost {
 		std_dev_aux_pars_calculated_ = false;
 	}//end OptimLinRegrCoefCovPar
 
-	void REModel::FindInitialValueBoosting() {
+	void REModel::FindInitialValueBoosting(const double* fixed_effects) {
 		CHECK(cov_pars_initialized_);
 		vec_t covariate_data(GetNumData());
 		covariate_data.setOnes();
@@ -642,12 +642,12 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				init_score_boosting_.data(),
-				nullptr,
-				false,//learn_covariance_parameters=false
-				true,
-				false,
-				true,
-				false);
+				fixed_effects,
+				/*learn_covariance_parameters = */ false,
+				/*called_in_GPBoost_algorithm = */ true,
+				/*reuse_learning_rates_from_previous_call = */ false,
+				/*only_intercept_for_GPBoost_algo = */ true,
+				/*find_learning_rate_for_GPBoost_algo = */ false);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->OptimLinRegrCoefCovPar(nullptr,
@@ -658,12 +658,12 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				init_score_boosting_.data(),
-				nullptr,
-				false,//learn_covariance_parameters=false
-				true,
-				false,
-				true,
-				false);
+				fixed_effects,
+				/*learn_covariance_parameters = */ false,
+				/*called_in_GPBoost_algorithm = */ true,
+				/*reuse_learning_rates_from_previous_call = */ false,
+				/*only_intercept_for_GPBoost_algo = */ true,
+				/*find_learning_rate_for_GPBoost_algo = */ false);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(nullptr,
@@ -674,12 +674,12 @@ namespace GPBoost {
 				num_it_,
 				cov_pars_.data(),
 				init_score_boosting_.data(),
-				nullptr,
-				false,//learn_covariance_parameters=false
-				true,
-				false,
-				true,
-				false);
+				fixed_effects,
+				/*learn_covariance_parameters = */ false,
+				/*called_in_GPBoost_algorithm = */ true,
+				/*reuse_learning_rates_from_previous_call = */ false,
+				/*only_intercept_for_GPBoost_algo = */ true,
+				/*find_learning_rate_for_GPBoost_algo = */ false);
 		}
 	}//end FindInitialValueBoosting
 
@@ -703,11 +703,11 @@ namespace GPBoost {
 				cov_pars_.data(),
 				&lr,
 				score,
-				false,//learn_covariance_parameters=false
-				true,
-				reuse_learning_rates_from_previous_call,
-				false,
-				true);
+				/*learn_covariance_parameters = */ false,
+				/*called_in_GPBoost_algorithm = */ true,
+				/*reuse_learning_rates_from_previous_call = */ reuse_learning_rates_from_previous_call,
+				/*only_intercept_for_GPBoost_algo = */ false,
+				/*find_learning_rate_for_GPBoost_algo = */ true);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->OptimLinRegrCoefCovPar(nullptr,
@@ -719,11 +719,11 @@ namespace GPBoost {
 				cov_pars_.data(),
 				&lr,
 				score,
-				false,//learn_covariance_parameters=false
-				true,
-				reuse_learning_rates_from_previous_call,
-				false,
-				true);
+				/*learn_covariance_parameters = */ false,
+				/*called_in_GPBoost_algorithm = */ true,
+				/*reuse_learning_rates_from_previous_call = */ reuse_learning_rates_from_previous_call,
+				/*only_intercept_for_GPBoost_algo = */ false,
+				/*find_learning_rate_for_GPBoost_algo = */ true);
 		}
 		else {
 			re_model_den_->OptimLinRegrCoefCovPar(nullptr,
@@ -735,11 +735,11 @@ namespace GPBoost {
 				cov_pars_.data(),
 				&lr,
 				score,
-				false,//learn_covariance_parameters=false
-				true,
-				reuse_learning_rates_from_previous_call,
-				false,
-				true);
+				/*learn_covariance_parameters = */ false,
+				/*called_in_GPBoost_algorithm = */ true,
+				/*reuse_learning_rates_from_previous_call = */ reuse_learning_rates_from_previous_call,
+				/*only_intercept_for_GPBoost_algo = */ false,
+				/*find_learning_rate_for_GPBoost_algo = */ true);
 		}
 	}//end LineSearchLearningRate
 

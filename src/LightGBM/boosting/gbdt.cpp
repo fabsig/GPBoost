@@ -359,11 +359,11 @@ namespace LightGBM {
 	* (i) and (ii) could be selected as say "auto_init_score" = 0 or 1 etc..
 	*
 	*/
-	double ObtainAutomaticInitialScore(const ObjectiveFunction* fobj, int class_id) {
+	double ObtainAutomaticInitialScore(const ObjectiveFunction* fobj, int class_id, const double* fixed_effects) {
 		double init_score = 0.0;
 		if (fobj != nullptr) {
 			if (class_id == 0) {
-				fobj->FindInitScoreGP();
+				fobj->FindInitScoreGP(fixed_effects);
 			}
 			init_score = fobj->BoostFromScore(class_id);
 		}
@@ -376,9 +376,16 @@ namespace LightGBM {
 	double GBDT::BoostFromAverage(int class_id, bool update_scorer) {
 		Common::FunctionTimer fun_timer("GBDT::BoostFromAverage", global_timer);
 		// boosting from average label; or customized "average" if implemented for the current objective
-		if (models_.empty() && !train_score_updater_->has_init_score() && objective_function_ != nullptr) {
-			if (config_->boost_from_average || (train_data_ != nullptr && train_data_->num_features() == 0)) {
-				double init_score = ObtainAutomaticInitialScore(objective_function_, class_id);
+		// Note: if a GPModel with a non-Gaussian likelihood is attached, this initialization must still run even when the
+		// user has supplied an init_score / offset: GPBoost needs to jointly find a proper initial value for the tree
+		// ensemble and the random effects mode while correctly accounting for the offset (passed below as fixed_effects). 
+		// This does not apply to the Gaussian likelihood, for which
+		// BoostFromScore() does not (and need not) account for the offset.
+		bool needs_gp_model_init = objective_function_ != nullptr && objective_function_->HasGPModel() &&
+			!objective_function_->GetGPModel()->GaussLikelihood();
+		if (models_.empty() && (!train_score_updater_->has_init_score() || needs_gp_model_init) && objective_function_ != nullptr) {
+			if (config_->boost_from_average || (train_data_ != nullptr && train_data_->num_features() == 0) || needs_gp_model_init) {
+				double init_score = ObtainAutomaticInitialScore(objective_function_, class_id, train_score_updater_->score());
 				if (std::fabs(init_score) > kEpsilon) {
 					if (update_scorer) {
 						train_score_updater_->AddScore(init_score, class_id);
@@ -498,7 +505,7 @@ namespace LightGBM {
 					if (!class_need_train_[cur_tree_id]) {
 						if (objective_function_ != nullptr) {
 							if (cur_tree_id == 0) {
-								objective_function_->FindInitScoreGP();
+								objective_function_->FindInitScoreGP(train_score_updater_->score());
 							}
 							output = objective_function_->BoostFromScore(cur_tree_id);
 						}

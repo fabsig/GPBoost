@@ -3328,6 +3328,10 @@ class Booster:
                 fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
                                                        num_iteration=num_iteration, raw_score=True, pred_leaf=False,
                                                        pred_contrib=False, data_has_header=False, is_reshape=False)
+                # Note: predictor.predict() only returns the sum of the trees. The offset supplied as
+                # 'init_score' to the training Dataset is not part of the tree ensemble and needs to be added back here
+                if self.train_set.init_score is not None:
+                    fixed_effect_train = fixed_effect_train + self.train_set.init_score
                 if self.gp_model._get_likelihood_name() == "gaussian" and self.gp_model.gp_approx != "vecchia_latent":  # Gaussian data
                     residual = self.train_set.label - fixed_effect_train
                     save_data['residual'] = residual
@@ -3572,6 +3576,10 @@ class Booster:
                                                            num_iteration=num_iteration, raw_score=True, pred_leaf=False,
                                                            pred_contrib=False, data_has_header=data_has_header,
                                                            is_reshape=False)
+                    # Note: predictor.predict() only returns the sum of the trees. The offset supplied as
+                    # 'init_score' to the training Dataset is not part of the tree ensemble and needs to be added back here
+                    if self.train_set.init_score is not None:
+                        fixed_effect_train = fixed_effect_train + self.train_set.init_score
                     residual = self.train_set.label - fixed_effect_train
                 # Note: we need to provide the response variable y as this was not saved
                 #   in the gp_model ("in C++") for Gaussian data but was overwritten during training
@@ -3625,6 +3633,10 @@ class Booster:
                                                            num_iteration=num_iteration, raw_score=True, pred_leaf=False,
                                                            pred_contrib=False, data_has_header=data_has_header,
                                                            is_reshape=False)
+                    # Note: predictor.predict() only returns the sum of the trees. The offset supplied as
+                    # 'init_score' to the training Dataset is not part of the tree ensemble and needs to be added back here
+                    if self.train_set.init_score is not None:
+                        fixed_effect_train = fixed_effect_train + self.train_set.init_score
                     if self.gp_model.model_has_been_loaded_from_saved_file:
                         y = self.train_set.label
                 fixed_effect = predictor.predict(data=data, start_iteration=start_iteration,

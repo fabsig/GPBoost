@@ -654,7 +654,13 @@ Booster <- R6::R6Class(
                                                   , predcontrib = FALSE
                                                   , header = header
                                                   , reshape = FALSE )
-          if (private$gp_model$get_likelihood_name() == "gaussian" & 
+          # Note: 'predictor$predict()' only returns the sum of the trees. The offset supplied as
+          #   'init_score' to gpb.Dataset() for the training data is not part of the tree ensemble and needs to be added back here
+          init_score_train <- private$train_set$.__enclos_env__$private$info$init_score
+          if (!is.null(init_score_train)) {
+            fixed_effect_train <- fixed_effect_train + init_score_train
+          }
+          if (private$gp_model$get_likelihood_name() == "gaussian" &
               private$gp_model$.__enclos_env__$private$gp_approx != "vecchia_latent") {
             residual = private$train_set$.__enclos_env__$private$info$label - fixed_effect_train
             save_data[["residual"]] <- as.vector(residual)
@@ -794,6 +800,12 @@ Booster <- R6::R6Class(
                                                     , predcontrib = FALSE
                                                     , header = header
                                                     , reshape = FALSE )
+            # Note: 'predictor$predict()' only returns the sum of the trees. The offset supplied as
+            #   'init_score' to gpb.Dataset() for the training data is not part of the tree ensemble and needs to be added back here
+            init_score_train <- private$train_set$.__enclos_env__$private$info$init_score
+            if (!is.null(init_score_train)) {
+              fixed_effect_train <- fixed_effect_train + init_score_train
+            }
             residual = private$train_set$.__enclos_env__$private$info$label - fixed_effect_train
           }
           
@@ -876,6 +888,12 @@ Booster <- R6::R6Class(
                                                     , predcontrib = FALSE
                                                     , header = header
                                                     , reshape = FALSE )
+            # Note: 'predictor$predict()' only returns the sum of the trees. The offset supplied as
+            #   'init_score' to gpb.Dataset() for the training data is not part of the tree ensemble and needs to be added back here
+            init_score_train <- private$train_set$.__enclos_env__$private$info$init_score
+            if (!is.null(init_score_train)) {
+              fixed_effect_train <- fixed_effect_train + init_score_train
+            }
             if (private$gp_model$.__enclos_env__$private$model_has_been_loaded_from_saved_file){
               # The label is never saved in the gp_model, so we need to provide it to the predict function when the model as loaded from file
               y <- private$train_set$.__enclos_env__$private$info$label

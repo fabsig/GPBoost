@@ -255,8 +255,10 @@ namespace GPBoost {
 
 		/*!
 		* \brief Find constant initial value of ensenmble for boosting (used only for non-Gaussian likelihoods)
+		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset, can be nullptr). This needs to be accounted for
+		*		 here since otherwise the tree ensemble and random effects are initialized incorrectly when the user supplies an offset (init_score)
 		*/
-		void FindInitialValueBoosting();
+		void FindInitialValueBoosting(const double* fixed_effects);
 
 		/*!
 		* \brief Find constant initial value of ensenmble for boosting (used only for non-Gaussian likelihoods)

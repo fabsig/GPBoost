@@ -564,7 +564,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Predict response
       pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                       predict_var = TRUE, pred_latent = FALSE)
-      exp_pred <- c(-0.4102113,  0.1826726, -0.2455984 , 1.1575480)
+      exp_pred <- c(-0.3654355, 0.1826726, -0.2455984, 1.1575480)
       expect_lt(sum(abs(tail(pred$response_mean, n=4) - exp_pred)),TOLERANCE_STRICT)
       pred_offset <- predict(bst, data = X_test, group_data_pred = group_data_test,
                              predict_var = TRUE, pred_latent = FALSE, offset_pred = offset_pred)
@@ -582,7 +582,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Prediction
       pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                       predict_var = TRUE, pred_latent = TRUE)
-      exp_pred <- c(0.5836592, -0.3966107, 1.2839638, 0.9889305)
+      exp_pred <- c(1.1360952, 0.3089050, 1.7356259, 1.4984141)
       expect_lt(sum(abs(head(pred$fixed_effect, n=4)-exp_pred)),TOLERANCE_STRICT)
       offset_pred = rep(0.2,dim(X_test)[1])
       pred_offset <- predict(bst, data = X_test, group_data_pred = group_data_test,
@@ -591,10 +591,10 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       # Predict response
       pred <- predict(bst, data = X_test, group_data_pred = group_data_test,
                       predict_var = TRUE, pred_latent = FALSE)
-      expect_lt(sum(abs(tail(pred$response_mean, n=4) - c(0.00498399, 0.63245646, 0.18178494, 0.54744644))),TOLERANCE_STRICT)
+      expect_lt(sum(abs(tail(pred$response_mean, n=4) - c(0.0076108, 0.7559669, 0.2865552, 0.7461261))),TOLERANCE_STRICT)
       pred_offset <- predict(bst, data = X_test, group_data_pred = group_data_test,
                              predict_var = TRUE, pred_latent = FALSE, offset_pred = offset_pred)
-      expect_lt(sum(abs(tail(pred_offset$response_mean, n=4) - c(0.008398241, 0.677285417, 0.215691014, 0.595209743))),TOLERANCE)
+      expect_lt(sum(abs(tail(pred_offset$response_mean, n=4) - c(0.0125890, 0.7941900, 0.3314843, 0.7852381))),TOLERANCE)
     })
     
     test_that("GPBoost algorithm: large data and 'reuse_learning_rates_gp_model' and 'line_search_step_length' options", {

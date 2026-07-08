@@ -236,9 +236,9 @@ namespace LightGBM {
 			}
 		}
 
-		void FindInitScoreGP() const override {
+		void FindInitScoreGP(const double* fixed_effects) const override {
 			if (has_gp_model_ && likelihood_type_ != std::string("gaussian")) {
-				re_model_->FindInitialValueBoosting();
+				re_model_->FindInitialValueBoosting(fixed_effects);
 			}
 		}
 
