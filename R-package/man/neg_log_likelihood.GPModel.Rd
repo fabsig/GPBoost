@@ -16,7 +16,7 @@ Covariance parameters of Gaussian process and  random effects}
 \item{y}{A \code{vector} with response variable data}
 
 \item{fixed_effects}{A \code{numeric} \code{vector} with fixed effects, e.g., containing a linear predictor. 
-The length of this vector needs to equal the number of training data points.}
+The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.}
 
 \item{aux_pars}{A \code{vector} with \code{numeric} elements. 
 Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood)}

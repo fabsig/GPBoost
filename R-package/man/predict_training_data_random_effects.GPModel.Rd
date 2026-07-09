@@ -2,16 +2,24 @@
 % Please edit documentation in R/GPModel.R
 \name{predict_training_data_random_effects.GPModel}
 \alias{predict_training_data_random_effects.GPModel}
+\alias{predict_training_data_random_effects.gpb.Booster}
 \title{Predict ("estimate") training data random effects for a \code{GPModel}}
 \usage{
 \method{predict_training_data_random_effects}{GPModel}(gp_model,
-  predict_var = FALSE)
+  predict_var = FALSE, offset = NULL, ...)
+
+\method{predict_training_data_random_effects}{gpb.Booster}(gp_model,
+  predict_var = FALSE, ...)
 }
 \arguments{
 \item{gp_model}{A \code{GPModel}}
 
 \item{predict_var}{A \code{boolean}. If TRUE, the (posterior) 
 predictive variances are calculated}
+
+\item{offset}{A \code{numeric} \code{vector} with 
+additional fixed effects contributions that are added to the linear predictor (= offset). 
+The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.}
 }
 \value{
 A \code{GPModel}

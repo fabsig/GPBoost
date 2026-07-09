@@ -87,7 +87,9 @@ Model specification parameters
 
       -  ``zero_one_censored_shifted_gamma`` : Zero-one censored shifted gamma likelihood for modeling data in [0,1] with point masses at 0 and 1 and a continuous distribution on (0,1). The model used is Y = min(max(Z - xi, 0), 1), where Z follows a gamma distribution with mean mu = exp(F(X) + Zb) and shape k. The shape k and shift xi are (auxiliary) parameters that are estimated. For more details on this model, see Sigrist and Stahel (2011)
 
-      - ``gaussian_heteroscedastic`` :  Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a ``vecchia`` approximation
+      - ``gaussian_heteroscedastic_fixed_and_random`` :  Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a ``vecchia`` approximation
+
+      - ``gaussian_heteroscedastic`` :  Gaussian likelihood where the mean is related to fixed and random effects and the log-error variance is related to fixed effects only (covariates and / or the GPBoost tree-boosting algorithm; no random effects / GPs for the variance)
 
       - Note: the first lines in the `likelihoods source file <https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h>`__ contain additional comments on the specific parametrizations used
 

@@ -2514,7 +2514,7 @@ class Booster:
             raise TypeError('Need at least one training dataset or model file or model string '
                             'to create Booster instance')
         self.params = params
-        if self.params.get("objective", None) == "mean_scale_regression":
+        if self.params.get("objective", None) in ("mean_scale_regression", "gaussian_heteroscedastic"):
             self.is_mean_scale_regression = True
 
     def __del__(self):
@@ -3330,6 +3330,8 @@ class Booster:
                                                        pred_contrib=False, data_has_header=False, is_reshape=False)
                 # Note: predictor.predict() only returns the sum of the trees. The offset supplied as
                 # 'init_score' to the training Dataset is not part of the tree ensemble and needs to be added back here
+                if self.gp_model.num_sets_fe == 2:
+                    fixed_effect_train = np.concatenate((fixed_effect_train[::2], fixed_effect_train[1::2]))
                 if self.train_set.init_score is not None:
                     fixed_effect_train = fixed_effect_train + self.train_set.init_score
                 if self.gp_model._get_likelihood_name() == "gaussian" and self.gp_model.gp_approx != "vecchia_latent":  # Gaussian data
@@ -3397,6 +3399,49 @@ class Booster:
         ret['pandas_categorical'] = json.loads(json.dumps(self.pandas_categorical,
                                                           default=json_default_with_numpy))
         return ret
+
+    def predict_training_data_random_effects(self, predict_var=False, start_iteration=0,
+                                             num_iteration=None, data_has_header=False, **kwargs):
+        """Predict ("estimate") training data random effects for the associated GPModel.
+
+        Parameters
+        ----------
+        predict_var : bool, optional (default=False)
+            If True, the (posterior) predictive variances are calculated.
+        start_iteration : int, optional (default=0)
+            Start index of the iteration used for the training fixed effects.
+        num_iteration : int or None, optional (default=None)
+            Total number of iterations used for the training fixed effects.
+        data_has_header : bool, optional (default=False)
+            Whether the training data has a header. Used only if the data is a string.
+        **kwargs
+            Other parameters for the prediction function.
+
+        Returns
+        -------
+        result : pandas DataFrame
+            Predicted ("estimated") training data random effects.
+        """
+        if not self.has_gp_model:
+            raise GPBoostError("predict_training_data_random_effects: Booster has no gp_model")
+        if self.gp_model._get_likelihood_name() == "gaussian" and self.gp_model.gp_approx != "vecchia_latent":
+            raise GPBoostError("predict_training_data_random_effects is currently only implemented for non-Gaussian likelihoods")
+        if self.train_set.data is None:
+            raise GPBoostError("predict_training_data_random_effects: cannot calculate training fixed effects. "
+                               "Set 'free_raw_data = False' when you construct the Dataset")
+
+        predictor = self._to_predictor(deepcopy(kwargs))
+        fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
+                                               num_iteration=num_iteration, raw_score=True,
+                                               pred_leaf=False, pred_contrib=False,
+                                               data_has_header=data_has_header, is_reshape=False)
+        if self.gp_model.num_sets_fe == 2:
+            fixed_effect_train = np.concatenate((fixed_effect_train[::2], fixed_effect_train[1::2]))
+        if self.train_set.init_score is not None:
+            fixed_effect_train = fixed_effect_train + self.train_set.init_score
+
+        return self.gp_model.predict_training_data_random_effects(predict_var=predict_var,
+                                                                  offset=fixed_effect_train)
 
     def predict(self, data, start_iteration=0, num_iteration=None,
                 pred_latent=False, pred_leaf=False, pred_contrib=False,
@@ -3471,7 +3516,7 @@ class Booster:
             if predictions should be made for other parameters than the estimated ones
         offset_pred : numpy array or None, optional (default=None)
             Offsets for prediction: additional fixed effects contributions that are added to the predictor for the prediction points. 
-            The length of this vector needs to equal the number of prediction points.
+            The length of this vector needs to equal the number of prediction points times the number of fixed-effect sets.
         ignore_gp_model : bool, optional (default=False)
             If True, predictions are only made for the tree ensemble part and the gp_model is ignored
         raw_score : bool or None, discontinued (default=None)
@@ -3635,6 +3680,8 @@ class Booster:
                                                            is_reshape=False)
                     # Note: predictor.predict() only returns the sum of the trees. The offset supplied as
                     # 'init_score' to the training Dataset is not part of the tree ensemble and needs to be added back here
+                    if self.gp_model.num_sets_fe == 2:
+                        fixed_effect_train = np.concatenate((fixed_effect_train[::2], fixed_effect_train[1::2]))
                     if self.train_set.init_score is not None:
                         fixed_effect_train = fixed_effect_train + self.train_set.init_score
                     if self.gp_model.model_has_been_loaded_from_saved_file:
@@ -3643,15 +3690,18 @@ class Booster:
                                                  num_iteration=num_iteration, raw_score=True, pred_leaf=False,
                                                  pred_contrib=False, data_has_header=data_has_header,
                                                  is_reshape=False)
-                if offset_pred is not None:
-                    if len(fixed_effect) != len(offset_pred):
-                        raise GPBoostError("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
-                    fixed_effect += offset_pred
-                if self.gp_model.num_sets_fe == 2:
-                    fixed_effect_train = np.concatenate((fixed_effect_train[::2], fixed_effect_train[1::2]))
                 if pred_latent:
                     if self.gp_model.num_sets_fe == 2:
+                        if offset_pred is not None and len(fixed_effect) != len(offset_pred):
+                            raise GPBoostError("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
+                        npred = len(fixed_effect) // 2
                         fixed_effect = fixed_effect[::2] # take only predictions for mean
+                        if offset_pred is not None:
+                            fixed_effect += offset_pred[:npred]
+                    elif offset_pred is not None:
+                        if len(fixed_effect) != len(offset_pred):
+                            raise GPBoostError("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
+                        fixed_effect += offset_pred
                     # Note: we don't need to provide the response variable y as this is saved
                     #   in the gp_model ("in C++") for non-Gaussian data. y is only not NULL when
                     #   the model was loaded from a file
@@ -3680,6 +3730,10 @@ class Booster:
                 else:  # predict response variable (not pred_latent)
                     if self.gp_model.num_sets_fe == 2:
                         fixed_effect = np.concatenate((fixed_effect[::2], fixed_effect[1::2])) # fixed effects predictions for mean and variance
+                    if offset_pred is not None:
+                        if len(fixed_effect) != len(offset_pred):
+                            raise GPBoostError("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
+                        fixed_effect += offset_pred
                     pred_resp = self.gp_model.predict(group_data_pred=group_data_pred,
                                                       group_rand_coef_data_pred=group_rand_coef_data_pred,
                                                       gp_coords_pred=gp_coords_pred,
@@ -4239,9 +4293,14 @@ class GPModel(object):
                         distribution with mean mu = exp(F(X) + Zb) and shape k. The shape k and shift xi are (auxiliary) parameters 
                         that are estimated. For more details on this model, see Sigrist and Stahel (2011)
 
-                    - "gaussian_heteroscedastic":
+                    - "gaussian_heteroscedastic_fixed_and_random":
 
                         Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation
+
+                    - "gaussian_heteroscedastic":
+
+                        Gaussian likelihood where the mean is related to fixed and random effects and the log-error variance is related to fixed effects only
+                        (covariates and / or the GPBoost tree-boosting algorithm; no random effects / GPs for the variance)
 
                     - Note: the first lines in the `likelihoods source file <https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h>`__ contain additional comments on the specific parametrizations used
 
@@ -4694,8 +4753,10 @@ class GPModel(object):
             else:
                 group_data = np.zeros((num_data, 1))
                 self.iid_model = True
-        if likelihood == "gaussian_heteroscedastic":
+        if likelihood == "gaussian_heteroscedastic_fixed_and_random":
             self.num_sets_re = 2
+            self.num_sets_fe = 2
+        elif likelihood == "gaussian_heteroscedastic":
             self.num_sets_fe = 2
         self.cov_par_names = []
 
@@ -5302,7 +5363,7 @@ class GPModel(object):
 
         offset : numpy 1-D array or None, optional (default=None)
             Additional fixed effects contributions that are added to the linear predictor (= offset).
-            The length of this vector needs to equal the number of training data points.
+            The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.
         fixed_effects : numpy 1-D array or None, optional (default=None)
             This is discontinued. Use the renamed equivalent argument 'offset' instead.
 
@@ -5390,7 +5451,7 @@ class GPModel(object):
             Response variable data
         fixed_effects : numpy 1-D array or None, optional (default=None)
             A vector with fixed effects, e.g., containing a linear predictor.
-            The length of this vector needs to equal the number of training data points.
+            The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.
         aux_pars : numpy array or pandas DataFrame, optional (default = None)
             Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None)
 
@@ -5996,10 +6057,10 @@ class GPModel(object):
                 (this option is not used by users directly)
             offset : numpy 1-D array or None, optional (default=None)
                 Additional fixed effects contributions that are added to the linear predictor (= offset).
-                The length of this vector needs to equal the number of training data points.
+                The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.
             offset_pred : numpy 1-D array or None, optional (default=None)
                 Additional fixed effects contributions that are added to the linear predictor for the prediction points (= offset).
-                The length of this vector needs to equal the number of prediction points.
+                The length of this vector needs to equal the number of prediction points times the number of fixed-effect sets.
             fixed_effects : numpy 1-D array or None, optional (default=None)
                 This is discontinued. Use the renamed equivalent argument 'offset' instead
             fixed_effects_pred : numpy 1-D array or None, optional (default=None)
@@ -6221,7 +6282,12 @@ class GPModel(object):
             if len(offset_pred.shape) != 1:
                 raise ValueError("'offset_pred' needs to be a vector / one-dimensional numpy.ndarray ")
             if offset_pred.shape[0] != (num_data_pred * self.num_sets_fe):
-                raise ValueError("Incorrect number of data points in 'offset_pred'")
+                raise ValueError("Incorrect length of 'offset_pred'. Expected "
+                                 f"{num_data_pred * self.num_sets_fe} (= {num_data_pred} prediction data point(s) * "
+                                 f"{self.num_sets_fe} fixed-effect set(s)), but got {offset_pred.shape[0]}. "
+                                 "For GPBoost predictions, this often means that the random-effect prediction data "
+                                 "(e.g., 'group_data_pred' or 'gp_coords_pred') has a different number of rows than "
+                                 "'data' used for the tree ensemble.")
             offset_pred = offset_pred.astype(np.float64)
             offset_pred_c = offset_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
@@ -6507,13 +6573,16 @@ class GPModel(object):
             ctypes.c_int(self.rank_pred_approx_matrix_lanczos)))
         return self
 
-    def predict_training_data_random_effects(self, predict_var=False):
+    def predict_training_data_random_effects(self, predict_var=False, offset=None):
         """Predict ("estimate") training data random effects.
 
         Parameters
         ----------
             predict_var : bool (default=False)
                 If True, the (posterior) predictive variances are calculated
+            offset : numpy array or None, optional (default=None)
+                Fixed effects for the training data. For likelihoods with multiple fixed-effect sets,
+                this must contain one block per fixed-effect set.
 
         Returns
         -------
@@ -6535,6 +6604,18 @@ class GPModel(object):
         num_re_comps = (self.num_group_re + self.num_group_rand_coef + self.num_gp + self.num_gp_rand_coef) * self.num_sets_re
         if self.drop_intercept_group_rand_effect is not None:
             num_re_comps = num_re_comps - self.drop_intercept_group_rand_effect.sum()
+        offset_c = ctypes.c_void_p()
+        if offset is not None:
+            if not isinstance(offset, np.ndarray):
+                raise ValueError("'offset' needs to be a numpy.ndarray")
+            if len(offset.shape) != 1:
+                raise ValueError("'offset' needs to be a vector / one-dimensional numpy.ndarray ")
+            if offset.shape[0] != self.num_data * self.num_sets_fe:
+                raise ValueError("Incorrect length of 'offset'. Expected "
+                                 f"{self.num_data * self.num_sets_fe} (= {self.num_data} training data point(s) * "
+                                 f"{self.num_sets_fe} fixed-effect set(s)), but got {offset.shape[0]}.")
+            offset = offset.astype(np.float64)
+            offset_c = offset.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         if predict_var:
             re_preds = np.zeros(self.num_data * num_re_comps * 2, dtype=np.float64)
         else:
@@ -6545,7 +6626,7 @@ class GPModel(object):
             ctypes.c_void_p(),
             ctypes.c_void_p(),
             re_preds.ctypes.data_as(ctypes.POINTER(ctypes.c_double)),
-            ctypes.c_void_p(),
+            offset_c,
             ctypes.c_bool(predict_var)))
         if predict_var:
             re_preds = re_preds.reshape((self.num_data, num_re_comps * 2), order='F')
@@ -6590,16 +6671,18 @@ class GPModel(object):
         ----------
         offset : numpy 1-D array
             Additional fixed effects contributions that are added to the linear predictor (= offset).
-            The length of this vector needs to equal the number of training data points.
+            The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.
         """
                 
         if not isinstance(offset, np.ndarray):
                 raise ValueError("'offset' needs to be a numpy.ndarray")
         if len(offset.shape) != 1:
             raise ValueError("'offset' needs to be a vector / one-dimensional numpy.ndarray ")
-        if offset.shape[0] != (self.num_data * self.num_sets_re):
-            raise ValueError("Incorrect number of data points in 'offset'")
-    
+        if offset.shape[0] != (self.num_data * self.num_sets_fe):
+            raise ValueError("Incorrect length of 'offset'. Expected "
+                             f"{self.num_data * self.num_sets_fe} (= {self.num_data} training data point(s) * "
+                             f"{self.num_sets_fe} fixed-effect set(s)), but got {offset.shape[0]}.")
+
     def _get_offset_data(self):
         """Get offset data.
         Returns
@@ -6609,7 +6692,7 @@ class GPModel(object):
 
         if not self.has_offset:
             raise ValueError("Model has no offset data ")
-        offset = np.zeros(self.num_data * self.num_sets_re, dtype=np.float64)
+        offset = np.zeros(self.num_data * self.num_sets_fe, dtype=np.float64)
         _safe_call(_LIB.GPB_GetOffsetData(
             self.handle,
             offset.ctypes.data_as(ctypes.POINTER(ctypes.c_double))))
@@ -6621,7 +6704,7 @@ class GPModel(object):
         ----------
         offset : numpy 1-D array
             Additional fixed effects contributions that are added to the linear predictor (= offset).
-            The length of this vector needs to equal the number of training data points.
+            The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.
         """
 
         self.has_offset = True

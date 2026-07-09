@@ -4,7 +4,7 @@
 \alias{predict_training_data_random_effects}
 \title{Predict ("estimate") training data random effects for a \code{GPModel}}
 \usage{
-predict_training_data_random_effects(gp_model, predict_var = FALSE)
+predict_training_data_random_effects(gp_model, predict_var = FALSE, ...)
 }
 \arguments{
 \item{gp_model}{A \code{GPModel}}

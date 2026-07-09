@@ -1160,7 +1160,7 @@ namespace GPBoost {
 			const double* fixed_effects_ptr = fixed_effects;
 			if (fixed_effects != nullptr && !called_in_GPBoost_algorithm) {//save offset / fixed_effects for prediction
 				has_fixed_effects_ = true;
-				fixed_effects_ = Eigen::Map<const vec_t>(fixed_effects, num_data_ * num_sets_re_);
+				fixed_effects_ = Eigen::Map<const vec_t>(fixed_effects, num_data_ * num_sets_fixed_effects_);
 			}
 			// Initialization of covariance parameters
 			int num_cov_par_estimate = num_cov_par_;
@@ -1215,12 +1215,12 @@ namespace GPBoost {
 						scale_transf_[intercept_col_] = 1.;
 					}
 				}
-				beta_ = vec_t(num_covariates_ * num_sets_re_);
+				beta_ = vec_t(num_covariates_ * num_sets_fixed_effects_);
 				if (init_coef == nullptr) {
 					beta_.setZero();
 				}
 				else {
-					beta_ = Eigen::Map<const vec_t>(init_coef, num_covariates_ * num_sets_re_);
+					beta_ = Eigen::Map<const vec_t>(init_coef, num_covariates_ * num_sets_fixed_effects_);
 				}
 				if (init_coef == nullptr || only_intercept_for_GPBoost_algo) {
 					if (has_intercept_) {
@@ -1228,7 +1228,7 @@ namespace GPBoost {
 						if (num_sets_re_ > 1) {
 							CHECK(num_sets_re_ == 2); // check whether this makes sense if other models with num_sets_re_> 1 are implemented in the future
 						}
-						for (int igp = 0; igp < num_sets_re_; ++igp) {
+						for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
 							if (y_data == nullptr) {
 								vec_t y_temp(num_data_);
 								GetY(y_temp.data());
@@ -1713,7 +1713,7 @@ namespace GPBoost {
 						// transform coefficients back to original scale
 						TransformBackCoef(beta_, beta_);
 					}
-					for (int i = 0; i < num_covariates_ * num_sets_re_; ++i) {
+					for (int i = 0; i < num_covariates_ * num_sets_fixed_effects_; ++i) {
 						optim_coef[i] = beta_[i];
 					}
 				}
@@ -1756,6 +1756,14 @@ namespace GPBoost {
 		bool CanCalculateStandardErrorsCovPars() const {
 			if (gauss_likelihood_) {
 				return gp_approx_ != "full_scale_vecchia";
+			}
+			// For likelihoods with a fixed-effects-only location parameter block (e.g., the log-error variance
+			// for 'gaussian_heteroscedastic'), standard errors require re-evaluating the fixed effects at 'beta_'
+			// and/or the saved offset. If neither covariates nor a saved offset are available - as is the case for
+			// a GPBoost-algorithm-only model queried after training, where the tree-boosting scores are owned by
+			// the booster and not stored in this object - this cannot be done
+			if (num_sets_fixed_effects_ > num_sets_re_ && !has_covariates_ && !has_fixed_effects_) {
+				return false;
 			}
 			// For non-Gaussian likelihoods, standard errors are obtained from a numerical approximation
 			// of the Hessian of the negative log-likelihood (see 'CalcHessianCovParAuxPars') which is
@@ -1813,7 +1821,8 @@ namespace GPBoost {
 				cov_pars[i] = optim_cov_pars[i];
 			}
 			CHECK(has_covariates_);
-			vec_t std_dev_beta(num_covariates_);
+			const int num_coef = num_covariates_ * num_sets_fixed_effects_;
+			vec_t std_dev_beta(num_coef);
 			if (gauss_likelihood_) {
 				CalcStdDevCoef(cov_pars, X_, std_dev_beta);
 			}
@@ -1822,9 +1831,9 @@ namespace GPBoost {
 				if (has_fixed_effects_) {
 					fixed_effects_ptr = fixed_effects_.data();
 				}
-				CalcStdDevCoefNonGaussian(num_covariates_, beta_, cov_pars, fixed_effects_ptr, std_dev_beta);
+				CalcStdDevCoefNonGaussian(num_coef, beta_, cov_pars, fixed_effects_ptr, std_dev_beta);
 			}
-			for (int i = 0; i < num_covariates_; ++i) {
+			for (int i = 0; i < num_coef; ++i) {
 				std_dev_coef[i] = std_dev_beta[i];
 			}
 		}//end CalculateStandardErrorsCoefs
@@ -2010,21 +2019,21 @@ namespace GPBoost {
 					}
 				}
 				if (calc_beta_grad) {
-					grad_F = vec_t(num_data_ * num_sets_re_);
+					grad_F = vec_t(num_data_ * num_sets_fixed_effects_);
 				}
 				bool calc_grad_aux_par = calc_cov_aux_par_grad && estimate_aux_pars_;
 				for (const auto& cluster_i : unique_clusters_) {
 					vec_t grad_F_cluster_i;
 					if (calc_beta_grad) {
-						grad_F_cluster_i = vec_t(num_data_per_cluster_[cluster_i] * num_sets_re_);
+						grad_F_cluster_i = vec_t(num_data_per_cluster_[cluster_i] * num_sets_fixed_effects_);
 					}
 					//map fixed effects to clusters (if needed)
 					if (num_clusters_ == 1 && (gp_approx_ != "vecchia" || vecchia_ordering_ == "none")) {//only one cluster / independent realization and order of data does not matter
 						fixed_effects_cluster_i_ptr = fixed_effects;
 					}
 					else if (fixed_effects != nullptr) {//more than one cluster and order of samples matters
-						fixed_effects_cluster_i = vec_t(num_data_per_cluster_[cluster_i] * num_sets_re_);
-						for (int igp = 0; igp < num_sets_re_; ++igp) {
+						fixed_effects_cluster_i = vec_t(num_data_per_cluster_[cluster_i] * num_sets_fixed_effects_);
+						for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
 #pragma omp parallel for schedule(static)
 							for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
 								fixed_effects_cluster_i[j + num_data_per_cluster_[cluster_i] * igp] = fixed_effects[data_indices_per_cluster_[cluster_i][j] + num_data_ * igp];
@@ -2082,12 +2091,12 @@ namespace GPBoost {
 					if (calc_beta_grad) {
 						if (num_clusters_ == 1 && ((gp_approx_ != "vecchia" && gp_approx_ != "full_scale_vecchia") || vecchia_ordering_ == "none")) {//only one cluster / independent realization and order of data does not matter
 #pragma omp parallel for schedule(static)//write on output
-							for (int j = 0; j < num_data_ * num_sets_re_; ++j) {
+							for (int j = 0; j < num_data_ * num_sets_fixed_effects_; ++j) {
 								grad_F[j] = grad_F_cluster_i[j];
 							}
 						}
 						else {//more than one cluster and order of samples matters
-							for (int igp = 0; igp < num_sets_re_; ++igp) {
+							for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
 #pragma omp parallel for schedule(static)
 								for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
 									grad_F[data_indices_per_cluster_[cluster_i][j] + igp * num_data_] = grad_F_cluster_i[j + igp * num_data_per_cluster_[cluster_i]];
@@ -2097,8 +2106,8 @@ namespace GPBoost {
 					}
 				}// end loop over clusters
 				if (calc_beta_grad) {
-					grad_beta = vec_t(num_sets_re_ * num_covariates_);
-					for (int igp = 0; igp < num_sets_re_; ++igp) {
+					grad_beta = vec_t(num_sets_fixed_effects_ * num_covariates_);
+					for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
 						grad_beta.segment(igp * num_covariates_, num_covariates_) = (X_.transpose()) * (grad_F.segment(igp * num_data_, num_data_));
 					}
 				}
@@ -2654,7 +2663,7 @@ namespace GPBoost {
 		* \return num_covariates_
 		*/
 		int GetNumCoef() {
-			return num_covariates_ * num_sets_re_;
+			return num_covariates_ * num_sets_fixed_effects_;
 		}
 
 		/*!
@@ -2663,6 +2672,14 @@ namespace GPBoost {
 		*/
 		int GetNumSetsRE() {
 			return num_sets_re_;
+		}
+
+		/*!
+		* \brief Return num_sets_fixed_effects_
+		* \return num_sets_fixed_effects_
+		*/
+		int GetNumSetsFixedEffects() {
+			return num_sets_fixed_effects_;
 		}
 
 		/*!
@@ -2801,13 +2818,13 @@ namespace GPBoost {
 				SetY(resid.data());
 			}
 			else {
-				fixed_effects_vec = vec_t(num_data_ * num_sets_re_);
-				for (int igp = 0; igp < num_sets_re_; ++igp) {
+				fixed_effects_vec = vec_t(num_data_ * num_sets_fixed_effects_);
+				for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
 					fixed_effects_vec.segment(igp * num_data_, num_data_) = X_ * (beta.segment(num_covariates_ * igp, num_covariates_));
 				}
 				if (fixed_effects != nullptr) {//add external fixed effects to linear predictor
 #pragma omp parallel for schedule(static)
-					for (int i = 0; i < num_data_ * num_sets_re_; ++i) {
+					for (int i = 0; i < num_data_ * num_sets_fixed_effects_; ++i) {
 						fixed_effects_vec[i] += fixed_effects[i];
 					}
 				}
@@ -3505,10 +3522,10 @@ namespace GPBoost {
 			// Initialize linear predictor related terms and covariance parameters
 			vec_t coef, mu;//mu = linear regression predictor
 			if (has_covariates_) {//calculate linear regression term
-				coef = Eigen::Map<const vec_t>(coef_pred, num_covariates_ * num_sets_re_);
+				coef = Eigen::Map<const vec_t>(coef_pred, num_covariates_ * num_sets_fixed_effects_);
 				den_mat_t X_pred = Eigen::Map<const den_mat_t>(covariate_data_pred, num_data_pred, num_covariates_);
-				mu = vec_t(num_sets_re_ * num_data_pred);
-				for (int igp = 0; igp < num_sets_re_; ++igp) {
+				mu = vec_t(num_sets_fixed_effects_ * num_data_pred);
+				for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
 					mu.segment(num_data_pred * igp, num_data_pred) = X_pred * (coef.segment(num_covariates_ * igp, num_covariates_));
 				}
 			}
@@ -3545,7 +3562,7 @@ namespace GPBoost {
 
 				//Case 1: no data observed for this Gaussian process with ID 'cluster_i'
 				if (std::find(unique_clusters_.begin(), unique_clusters_.end(), cluster_i) == unique_clusters_.end()) {
-					if (num_sets_re_ > 1) {
+					if (num_sets_re_ > 1 || num_sets_fixed_effects_ > num_sets_re_) {
 						Log::REFatal("Predict function is not implemented for new clusters (in 'cluster_ids_pred') for heterodescadistic models ");
 					}
 					if (grouped_RE_and_vecchia_GP_) {
@@ -4286,6 +4303,26 @@ namespace GPBoost {
 						if (sample_prior) {
 							Log::REFatal("Prior sampling for the option 'predict_response' is currently not yet implemented for this likelihood, set predict_response = false");
 						}
+						if (num_sets_fixed_effects_ > num_sets_re_) {
+							// Additional location parameter blocks related to fixed effects only (e.g., the log-error variance for 'gaussian_heteroscedastic')
+							// are deterministic given the fixed effects (no random effect / GP posterior uncertainty)
+							for (int igp = num_sets_re_; igp < num_sets_fixed_effects_; ++igp) {
+								mean_pred_id[igp] = vec_t::Zero(num_data_per_cluster_pred[cluster_i]);
+								var_pred_id[igp] = vec_t::Zero(num_data_per_cluster_pred[cluster_i]);
+								if (fixed_effects_pred != nullptr) {
+#pragma omp parallel for schedule(static)
+									for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+										mean_pred_id[igp][i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
+									}
+								}
+								if (has_covariates_) {
+#pragma omp parallel for schedule(static)
+									for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+										mean_pred_id[igp][i] += mu[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
+									}
+								}
+							}
+						}
 						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id[0], var_pred_id[0], mean_pred_id[1], var_pred_id[1], predict_var);
 					}
 
@@ -4390,7 +4427,7 @@ namespace GPBoost {
 			vec_t cov_pars = Eigen::Map<const vec_t>(cov_pars_pred, num_cov_par_);
 			vec_t coef;
 			if (has_covariates_) {
-				coef = Eigen::Map<const vec_t>(coef_pred, num_covariates_);
+				coef = Eigen::Map<const vec_t>(coef_pred, num_covariates_ * num_sets_fixed_effects_);
 			}
 			if (gauss_likelihood_ && (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia")) {
 				calc_cov_factor = true;//recalculate Vecchia approximation since it might have been done (saved in B_[0]) with a different nugget effect if calc_std_dev == true in CalcStdDevCovPar
@@ -6208,7 +6245,7 @@ namespace GPBoost {
 				Log::REFatal("Model does not have an offset term ");
 			}
 #pragma omp parallel for schedule(static)
-			for (int i = 0; i < num_data_ * num_sets_re_; ++i) {
+			for (int i = 0; i < num_data_ * num_sets_fixed_effects_; ++i) {
 				fixed_effects[i] = fixed_effects_[i];
 			}
 		}
@@ -6219,7 +6256,7 @@ namespace GPBoost {
 		*/
 		void SetOffsetData(const double* fixed_effects) {//note 'offset' is otherwise called 'fixed_effects' in this file for historical reasons ...
 			has_fixed_effects_ = true;
-			fixed_effects_ = Eigen::Map<const vec_t>(fixed_effects, num_data_ * num_sets_re_);
+			fixed_effects_ = Eigen::Map<const vec_t>(fixed_effects, num_data_ * num_sets_fixed_effects_);
 		}
 
 		/*!
@@ -6858,7 +6895,13 @@ namespace GPBoost {
 				}
 			}
 			num_sets_re_ = likelihood_[unique_clusters_[0]]->GetNumSetsRE();
-			num_sets_fixed_effects_ = num_sets_re_;
+			num_sets_fixed_effects_ = likelihood_[unique_clusters_[0]]->GetNumSetsFixedEffects();
+			// Note: num_sets_fixed_effects_ > num_sets_re_ for likelihoods where some location parameter blocks (e.g., the
+			// log-error variance for 'gaussian_heteroscedastic') are related to fixed effects only (covariates and / or the
+			// GPBoost tree-boosting scores) without an associated random effect / GP. This is supported for all random effects
+			// / GP structures with matrix_inversion_method = "cholesky"; using matrix_inversion_method = "iterative" for
+			// structures other than "no random effects" (iid) or exactly one grouped random effect raises an informative error
+			// further downstream (in likelihoods.h) where it is actually used
 			if (num_sets_re_ > 1) {
 				if (!(gp_approx_ == "vecchia" && num_gp_ == 1 && num_comps_total_ == 1)) {
 					Log::REFatal("likelihood = '%s' is currently only supported for GPs with a 'vecchia' approximation ", (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
@@ -7939,10 +7982,10 @@ namespace GPBoost {
 		*/
 		void TransformCoef(const vec_t& beta,
 			vec_t& beta_trans) {
-			CHECK(loc_transf_.size() == beta.size() / num_sets_re_);
-			CHECK(scale_transf_.size() == beta.size() / num_sets_re_);
+			CHECK(loc_transf_.size() == beta.size() / num_sets_fixed_effects_);
+			CHECK(scale_transf_.size() == beta.size() / num_sets_fixed_effects_);
 			beta_trans = beta;
-			for (int igp = 0; igp < num_sets_re_; ++igp) {
+			for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
 				for (int icol = 0; icol < num_covariates_; ++icol) {
 					if (!has_intercept_ || icol != intercept_col_) {
 						if (has_intercept_) {
@@ -7964,10 +8007,10 @@ namespace GPBoost {
 		*/
 		void TransformBackCoef(const vec_t& beta,
 			vec_t& beta_orig) {
-			CHECK(loc_transf_.size() == beta.size() / num_sets_re_);
-			CHECK(scale_transf_.size() == beta.size() / num_sets_re_);
+			CHECK(loc_transf_.size() == beta.size() / num_sets_fixed_effects_);
+			CHECK(scale_transf_.size() == beta.size() / num_sets_fixed_effects_);
 			beta_orig = beta;
-			for (int igp = 0; igp < num_sets_re_; ++igp) {
+			for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
 				if (has_intercept_) {
 					beta_orig[igp * num_covariates_ + intercept_col_] /= scale_transf_[intercept_col_];
 				}
@@ -8434,14 +8477,14 @@ namespace GPBoost {
 			const double* fixed_effects_cluster_i_ptr = nullptr;
 			vec_t fixed_effects_cluster_i;
 			for (const auto& cluster_i : unique_clusters_) {
-				vec_t grad_F_cluster_i(num_data_per_cluster_[cluster_i] * num_sets_re_);
+				vec_t grad_F_cluster_i(num_data_per_cluster_[cluster_i] * num_sets_fixed_effects_);
 				//map fixed effects to clusters (if needed)
 				if (num_clusters_ == 1 && ((gp_approx_ != "vecchia" && gp_approx_ != "full_scale_vecchia") || vecchia_ordering_ == "none")) {//only one cluster / independent realization and order of data does not matter
 					fixed_effects_cluster_i_ptr = fixed_effects;
 				}
 				else if (fixed_effects != nullptr) {//more than one cluster and order of samples matters
-					fixed_effects_cluster_i = vec_t(num_data_per_cluster_[cluster_i] * num_sets_re_);
-					for (int igp = 0; igp < num_sets_re_; ++igp) {
+					fixed_effects_cluster_i = vec_t(num_data_per_cluster_[cluster_i] * num_sets_fixed_effects_);
+					for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
 #pragma omp parallel for schedule(static)
 						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
 							fixed_effects_cluster_i[j + num_data_per_cluster_[cluster_i] * igp] = fixed_effects[data_indices_per_cluster_[cluster_i][j] + num_data_ * igp];
@@ -8490,12 +8533,12 @@ namespace GPBoost {
 				//write on output
 				if (num_clusters_ == 1 && ((gp_approx_ != "vecchia" && gp_approx_ != "full_scale_vecchia") || vecchia_ordering_ == "none")) {//only one cluster / independent realization and order of data does not matter
 #pragma omp parallel for schedule(static)//write on output
-					for (int j = 0; j < num_data_ * num_sets_re_; ++j) {
+					for (int j = 0; j < num_data_ * num_sets_fixed_effects_; ++j) {
 						grad_F[j] = grad_F_cluster_i[j];
 					}
 				}
 				else {//more than one cluster and order of samples matters
-					for (int igp = 0; igp < num_sets_re_; ++igp) {
+					for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
 #pragma omp parallel for schedule(static)
 						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
 							grad_F[data_indices_per_cluster_[cluster_i][j] + num_data_ * igp] = grad_F_cluster_i[j + num_data_per_cluster_[cluster_i] * igp];
@@ -9133,9 +9176,9 @@ namespace GPBoost {
 					fixed_effects_cluster_i_ptr = fixed_effects;
 				}
 				else if (fixed_effects != nullptr) {//more than one cluster and order of samples matters
-					fixed_effects_cluster_i = vec_t(num_data_per_cluster_[cluster_i] * num_sets_re_);
+					fixed_effects_cluster_i = vec_t(num_data_per_cluster_[cluster_i] * num_sets_fixed_effects_);
 					//Note: this is quite inefficient as the mapping of the fixed_effects to the different clusters is done repeatedly for the same data. Could be saved if performance is an issue here
-					for (int igp = 0; igp < num_sets_re_; ++igp) {
+					for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
 #pragma omp parallel for schedule(static)
 						for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
 							fixed_effects_cluster_i[j + num_data_per_cluster_[cluster_i] * igp] = fixed_effects[data_indices_per_cluster_[cluster_i][j] + num_data_ * igp];
@@ -10663,28 +10706,28 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculate standard deviations for the MLE of the regression coefficients as the square root of diagonal of a numerically approximated inverse Hessian
-		* \param num_covariates Number of covariates / coefficients
+		* \param num_coef Number of coefficients
 		* \param beta Regression coefficients
 		* \param cov_pars Covariance parameters
 		* \param fixed_effects Externally provided fixed effects component of location parameter
 		* \param[out] std_dev_beta Standard deviations
 		*/
-		void CalcStdDevCoefNonGaussian(int num_covariates,
+		void CalcStdDevCoefNonGaussian(int num_coef,
 			const vec_t& beta,
 			const vec_t& cov_pars,
 			const double* fixed_effects,
 			vec_t& std_dev_beta) {
-			den_mat_t H(num_covariates, num_covariates);// Aproximate Hessian calculated as the Jacobian of the gradient
+			den_mat_t H(num_coef, num_coef);// Aproximate Hessian calculated as the Jacobian of the gradient
 			const double mach_eps = std::numeric_limits<double>::epsilon();
 			vec_t delta_step = beta * std::pow(mach_eps, 1.0 / 3.0);// based on https://math.stackexchange.com/questions/1039428/finite-difference-method
-			for (int i = 0; i < num_covariates; ++i) {
+			for (int i = 0; i < num_coef; ++i) {
 				if (std::abs(delta_step[i]) < std::pow(mach_eps, 1.0 / 3.0)) {
 					delta_step[i] = std::pow(mach_eps, 1.0 / 3.0);
 				}
 			}
 			vec_t fixed_effects_vec, beta_change1, beta_change2, grad_beta_change1, grad_beta_change2;
 			vec_t unused_dummy;
-			for (int i = 0; i < num_covariates; ++i) {
+			for (int i = 0; i < num_coef; ++i) {
 				// Beta plus / minus delta
 				beta_change1 = beta;
 				beta_change2 = beta;
@@ -10703,11 +10746,11 @@ namespace GPBoost {
 			den_mat_t Hsym = (H + H.transpose()) / 2.;
 			// (Very) approximate standard deviations as square root of diagonal of inverse Hessian
 			const double nan_value = std::numeric_limits<double>::quiet_NaN();
-			std_dev_beta = vec_t::Constant(num_covariates, nan_value);
+			std_dev_beta = vec_t::Constant(num_coef, nan_value);
 			Eigen::LLT<den_mat_t> chol_Hessian(Hsym);
 			if (chol_Hessian.info() == Eigen::Success) {
-				den_mat_t Hsym_inv = chol_Hessian.solve(den_mat_t::Identity(num_covariates, num_covariates));
-				for (int i = 0; i < num_covariates; ++i) {
+				den_mat_t Hsym_inv = chol_Hessian.solve(den_mat_t::Identity(num_coef, num_coef));
+				for (int i = 0; i < num_coef; ++i) {
 					if (std::isfinite(Hsym_inv(i, i)) && Hsym_inv(i, i) >= 0.) {
 						std_dev_beta[i] = std::sqrt(Hsym_inv(i, i));
 					}
@@ -10988,14 +11031,14 @@ namespace GPBoost {
 			}//end if gauss_likelihood_
 			else {//if not gauss_likelihood_
 				if (has_covariates_) {
-					fixed_effects_vec = vec_t(num_data_ * num_sets_re_);
-					for (int igp = 0; igp < num_sets_re_; ++igp) {
+					fixed_effects_vec = vec_t(num_data_ * num_sets_fixed_effects_);
+					for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
 						fixed_effects_vec.segment(num_data_ * igp, num_data_) = X_ * (coef.segment(num_covariates_ * igp, num_covariates_));
 					}
 					//add external fixed effects to linear predictor
 					if (fixed_effects != nullptr) {
 #pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_data_ * num_sets_re_; ++i) {
+						for (int i = 0; i < num_data_ * num_sets_fixed_effects_; ++i) {
 							fixed_effects_vec[i] += fixed_effects[i];
 						}
 					}

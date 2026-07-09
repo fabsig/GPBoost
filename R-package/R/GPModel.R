@@ -60,8 +60,11 @@
 #' with point masses at 0 and 1 and a continuous distribution on (0,1). The model used is Y = min(max(Z - xi, 0), 1), 
 #' where Z follows a gamma distribution with mean mu = exp(F(X) + Zb) and shape k. The shape k and shift xi are 
 #' (auxiliary) parameters that are estimated. For more details on this model, see Sigrist and Stahel (2011) }
-#' \item{ "gaussian_heteroscedastic": Gaussian likelihood where both the mean and the variance 
+#' \item{ "gaussian_heteroscedastic_fixed_and_random": Gaussian likelihood where both the mean and the variance
 #' are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation }
+#' \item{ "gaussian_heteroscedastic": Gaussian likelihood where the mean is related to fixed and random effects and
+#' the log-error variance is related to fixed effects only (covariates and / or the GPBoost tree-boosting algorithm;
+#' no random effects / GPs for the variance) }
 #' \item{ Note: the first lines in the \href{https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h}{likelihoods source file} contain additional comments on the specific parametrizations used }
 #' \item{ Note: other likelihoods can be implemented upon request }
 #' }
@@ -402,7 +405,7 @@
 #'            }
 #' @param offset A \code{numeric} \code{vector} with 
 #' additional fixed effects contributions that are added to the linear predictor (= offset). 
-#' The length of this vector needs to equal the number of training data points.
+#' The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.
 #' @param fixed_effects This is discontinued. Use the renamed equivalent argument \code{offset} instead
 #' @param group_data_pred A \code{vector} or \code{matrix} with elements being group levels 
 #' for which predictions are made (if there are grouped random effects in the \code{GPModel})
@@ -595,8 +598,10 @@ gpb.GPModel <- R6::R6Class(
           private$iid_model <- TRUE
         }
       }
-      if (likelihood == "gaussian_heteroscedastic") {
+      if (likelihood == "gaussian_heteroscedastic_fixed_and_random") {
         private$num_sets_re = 2
+        private$num_sets_fe = 2
+      } else if (likelihood == "gaussian_heteroscedastic") {
         private$num_sets_fe = 2
       }
       private$cov_par_names <- c()
@@ -1935,7 +1940,14 @@ gpb.GPModel <- R6::R6Class(
           stop("predict.GPModel: Can only use ", sQuote("vector"), " as ", sQuote("offset_pred"))
         }
         if (length(offset_pred) != (num_data_pred * private$num_sets_fe)) {
-          stop("predict.GPModel: Length of ", sQuote("offset"), " does not match number of predicted data points")
+          stop("predict.GPModel: Length of ", sQuote("offset_pred"), " is incorrect. Expected ",
+               num_data_pred * private$num_sets_fe, " (= ", num_data_pred,
+               " prediction data point(s) * ", private$num_sets_fe,
+               " fixed-effect set(s)), but got ", length(offset_pred), ". ",
+               "For GPBoost predictions, this often means that the random-effect prediction data ",
+               "(e.g., ", sQuote("group_data_pred"), " or ", sQuote("gp_coords_pred"),
+               ") has a different number of rows than ", sQuote("data"),
+               " used for the tree ensemble.")
         }
       }# end offset_pred
       # Pre-allocate empty vector
@@ -2007,7 +2019,8 @@ gpb.GPModel <- R6::R6Class(
       return(list(mu=pred_mean,cov=pred_cov_mat,var=pred_var,posterior_samples=posterior_samples,prior_samples=prior_samples))
     },
     
-    predict_training_data_random_effects = function(predict_var = FALSE) {
+    predict_training_data_random_effects = function(predict_var = FALSE,
+                                                    offset = NULL) {
       if(isTRUE(private$model_has_been_loaded_from_saved_file)){
         stop("GPModel: 'predict_training_data_random_effects' is currently not implemented for models that have been loaded from a saved file. Use the 'predict' function instead ")
       }
@@ -2020,6 +2033,27 @@ gpb.GPModel <- R6::R6Class(
         stop("predict_training_data_random_effects.GPModel: Can only use ", 
              sQuote("logical"), " as ", sQuote("predict_var"))
       }
+      if (!is.null(offset)) {
+        if (!is.vector(offset)) {
+          if (is.matrix(offset)) {
+            if (dim(offset)[2] != 1) {
+              stop("predict_training_data_random_effects.GPModel: Can only use ",
+                   sQuote("vector"), " as ", sQuote("offset"))
+            }
+          } else {
+            stop("predict_training_data_random_effects.GPModel: Can only use ",
+                 sQuote("vector"), " as ", sQuote("offset"))
+          }
+        }
+        if (storage.mode(offset) != "double") {
+          storage.mode(offset) <- "double"
+        }
+        offset <- as.vector(offset)
+        if (length(offset) != private$num_data * private$num_sets_fe) {
+          stop("predict_training_data_random_effects.GPModel: Length of ",
+               sQuote("offset"), " must be equal to the number of training data points times the number of fixed-effect sets")
+        }
+      }
       if (predict_var) {
         re_preds <- numeric(private$num_data * num_re_comps * 2)
       } else {
@@ -2031,7 +2065,7 @@ gpb.GPModel <- R6::R6Class(
         , private$handle
         , NULL
         , NULL
-        , NULL
+        , offset
         , predict_var
         , re_preds
       )
@@ -2129,16 +2163,19 @@ gpb.GPModel <- R6::R6Class(
         }
       }
       offset <- as.vector(offset)
-      if (length(offset) != (private$num_data *  private$num_sets_re)) {
-        stop("GPModel: Number of data points in ", sQuote("offset"), " does not match number of data points of initialized model")
+      if (length(offset) != (private$num_data *  private$num_sets_fe)) {
+        stop("GPModel: Length of ", sQuote("offset"), " is incorrect. Expected ",
+             private$num_data * private$num_sets_fe, " (= ", private$num_data,
+             " training data point(s) * ", private$num_sets_fe,
+             " fixed-effect set(s)), but got ", length(offset), ".")
       }
     },
-    
+
     get_offset_data = function() {
       if (!private$has_offset) {
         stop("GPModel: Model has no offset ")
       }
-      offset <- numeric(private$num_data * private$num_sets_re)
+      offset <- numeric(private$num_data * private$num_sets_fe)
       .Call(
         GPB_GetOffsetData_R
         , private$handle
@@ -3105,7 +3142,7 @@ summary.GPModel <- function(object, std_err = TRUE, ...){
 #' is predicted, otherwise the latent random effects
 #' @param offset_pred A \code{numeric} \code{vector} with 
 #' additional fixed effects contributions that are added to the linear predictor for the prediction points (= offset). 
-#' The length of this vector needs to equal the number of prediction points.
+#' The length of this vector needs to equal the number of prediction points times the number of fixed-effect sets.
 #' @param fixed_effects_pred This is discontinued. Use the renamed equivalent argument \code{offset_pred} instead
 #' @param ... (not used, ignore this, simply here that there is no CRAN warning)
 #' @inheritParams GPModel_shared_params 
@@ -3454,7 +3491,7 @@ set_prediction_data.GPModel <- function(gp_model
 #' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood)
 #' @inheritParams GPModel_shared_params
 #' @param fixed_effects A \code{numeric} \code{vector} with fixed effects, e.g., containing a linear predictor. 
-#' The length of this vector needs to equal the number of training data points.
+#' The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.
 #'
 #' @examples
 #' \donttest{
@@ -3488,7 +3525,7 @@ neg_log_likelihood <- function(gp_model
 #' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood)
 #' @inheritParams GPModel_shared_params
 #' @param fixed_effects A \code{numeric} \code{vector} with fixed effects, e.g., containing a linear predictor. 
-#' The length of this vector needs to equal the number of training data points.
+#' The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.
 #'
 #' @return A \code{GPModel}
 #'
@@ -3549,7 +3586,8 @@ neg_log_likelihood.GPModel <- function(gp_model
 #' @export 
 #' 
 predict_training_data_random_effects <- function(gp_model,
-                                                 predict_var = FALSE) UseMethod("predict_training_data_random_effects")
+                                                 predict_var = FALSE,
+                                                 ...) UseMethod("predict_training_data_random_effects")
 
 #' Predict ("estimate") training data random effects for a \code{GPModel}
 #' 
@@ -3579,13 +3617,32 @@ predict_training_data_random_effects <- function(gp_model,
 #' @export 
 #' 
 predict_training_data_random_effects.GPModel <- function(gp_model,
-                                                         predict_var = FALSE) {
+                                                         predict_var = FALSE,
+                                                         offset = NULL,
+                                                         ...) {
   
   if (!gpb.check.r6.class(gp_model, "GPModel")) {
     stop("predict_training_data_random_effects.GPModel: gp_model needs to be a ", sQuote("GPModel"))
   }
   
-  return(gp_model$predict_training_data_random_effects(predict_var = predict_var))
+  return(gp_model$predict_training_data_random_effects(predict_var = predict_var,
+                                                       offset = offset))
+}
+
+#' @method predict_training_data_random_effects gpb.Booster
+#' @rdname predict_training_data_random_effects.GPModel
+#' @export
+#'
+predict_training_data_random_effects.gpb.Booster <- function(gp_model,
+                                                             predict_var = FALSE,
+                                                             ...) {
+
+  if (!gpb.check.r6.class(gp_model, "gpb.Booster")) {
+    stop("predict_training_data_random_effects.gpb.Booster: gp_model needs to be a ", sQuote("gpb.Booster"))
+  }
+
+  return(gp_model$predict_training_data_random_effects(predict_var = predict_var,
+                                                       ...))
 }
 
 #' Get (estimated) covariance parameters

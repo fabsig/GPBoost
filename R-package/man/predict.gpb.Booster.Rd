@@ -76,7 +76,7 @@ parameters than the trained ones}
 
 \item{offset_pred}{A \code{numeric} \code{vector}. 
 Offsets for prediction: additional fixed effects contributions that are added to the predictor for the prediction points. 
-The length of this vector needs to equal the number of prediction points.}
+The length of this vector needs to equal the number of prediction points times the number of fixed-effect sets.}
 
 \item{ignore_gp_model}{A \code{boolean}. If TRUE, predictions are only made for the tree ensemble part
 and the \code{gp_model} is ignored}

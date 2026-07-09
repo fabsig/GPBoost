@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 ## Examples on how to use GPBoost for 
-##  - the Grabit model of Sigrist and Hirnschall (2019)
-##  - mean-scale regression / heteroscedastic regression with a Gaussian likelihood
+##  - the Grabit model of Sigrist and Hirnschall (2019) without random effects or GPs
+##  - mean-scale regression / heteroscedastic regression with a Gaussian likelihood without random effects or GPs
 
 @author: Fabio Sigrist
 """

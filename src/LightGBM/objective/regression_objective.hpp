@@ -1028,7 +1028,7 @@ namespace LightGBM {
 					gradients[i] = static_cast<score_t>(neg_resid * inv_var * weights_[i]);
 					hessians[i] = static_cast<score_t>(inv_var * weights_[i]);
 					hessians[i + num_data_] = static_cast<score_t>(inv_var * neg_resid * neg_resid / 2. * weights_[i]);
-					gradients[i + num_data_] = -gradients[i + num_data_] + 0.5;
+					gradients[i + num_data_] = static_cast<score_t>(-hessians[i + num_data_] + 0.5 * weights_[i]);
 				}
 			}
 		}//end GetGradients
@@ -1076,22 +1076,24 @@ namespace LightGBM {
 			else if (num_tree == 1) {
 				double sum_sq = 0.0f;
 				if (weights_ != nullptr) {
-#pragma omp parallel for schedule(static) reduction(+:suml, sumw) if (!deterministic_)
+#pragma omp parallel for schedule(static) reduction(+:suml, sum_sq, sumw) if (!deterministic_)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						suml += label_[i] * weights_[i];
 						sum_sq += label_[i] * label_[i] * weights_[i];
 						sumw += weights_[i];
 					}
-					initscore = std::log(sum_sq / sumw - suml * suml / sumw / sumw);
+					double init_var = sum_sq / sumw - suml * suml / sumw / sumw;
+					initscore = std::log(std::max<double>(init_var, kEpsilon));
 				}
 				else {
 					sumw = static_cast<double>(num_data_);
-#pragma omp parallel for schedule(static) reduction(+:suml) if (!deterministic_)
+#pragma omp parallel for schedule(static) reduction(+:suml, sum_sq) if (!deterministic_)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						suml += label_[i];
 						sum_sq += label_[i] * label_[i];
 					}
-					initscore = std::log(sum_sq / sumw - suml * suml / sumw / sumw);
+					double init_var = sum_sq / sumw - suml * suml / sumw / sumw;
+					initscore = std::log(std::max<double>(init_var, kEpsilon));
 				}
 			}
 			return initscore;

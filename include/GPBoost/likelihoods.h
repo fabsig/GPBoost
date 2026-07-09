@@ -92,6 +92,12 @@
 *     p1 = P(Y=1) = P(Z >= 1+xi) = 1 - G(k, (1+xi)/theta)
 *   Parameters:  aux_pars_[0] = k > 0 (shape), aux_pars_[1] = xi > 0 (shift), mu = exp(location_par), theta = mu/k
 *
+* For a "gaussian_heteroscedastic" likelihood, the following density is used:
+*   f(y) = 1 / sqrt(2*pi*sigma2) * exp( -(y - mu)^2 / (2*sigma2) )
+*       - mu = location_par (first block), sigma2 = exp(location_par2) (second block, i.e., log(sigma2) = location_par2)
+*       - mu = random + fixed effects; log(sigma2) = fixed effects only (covariates and / or the GPBoost tree-boosting
+*         algorithm; no random effects / GPs for the variance)
+*
 */
 #ifndef GPB_LIKELIHOODS_
 #define GPB_LIKELIHOODS_
@@ -340,7 +346,7 @@ namespace GPBoost {
 				maxit_mode_newton_ = 1;
 				max_number_lr_shrinkage_steps_newton_ = 1;
 			}//end "gaussian"
-			else if (likelihood_type_ == "gaussian_heteroscedastic") {
+			else if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
 				if (user_defined_approximation_type_ != "none" && user_defined_approximation_type_ != "fisher_laplace") {
 					Log::REFatal("Only 'fisher_laplace' approximation is implemented for likelihood = %s ", likelihood_type_.c_str());
 				}
@@ -348,9 +354,27 @@ namespace GPBoost {
 				num_aux_pars_ = 0;
 				num_aux_pars_estim_ = 0;
 				num_sets_re_ = 2;
+				num_sets_fixed_effects_ = 2;
 				need_pred_latent_var_for_response_mean_ = false;
 				armijo_condition_ = false;
-			}//end "gaussian_heteroscedastic"
+			}//end "gaussian_heteroscedastic_fixed_and_random"
+			else if (likelihood_type_ == "gaussian_heteroscedastic") {
+				// Gaussian likelihood where the mean is related to fixed and random effects and the log-error variance is related to fixed effects only (no random effects / GPs for the variance)
+				if (user_defined_approximation_type_ != "none" && user_defined_approximation_type_ != "fisher_laplace") {
+					Log::REFatal("Only 'fisher_laplace' approximation is implemented for likelihood = %s ", likelihood_type_.c_str());
+				}
+				approximation_type_ = "fisher_laplace";
+				num_aux_pars_ = 0;
+				num_aux_pars_estim_ = 0;
+				num_sets_re_ = 1;
+				num_sets_fixed_effects_ = 2;
+				need_pred_latent_var_for_response_mean_ = false;
+				information_changes_during_mode_finding_ = false;
+				information_changes_after_mode_finding_ = false;
+				grad_information_wrt_mode_non_zero_ = false;
+				maxit_mode_newton_ = 1;
+				max_number_lr_shrinkage_steps_newton_ = 1;
+			}//end "gaussian_heteroscedastic" (fixed effects only)
 			else if (likelihood_type_ == "lognormal") {
 				aux_pars_ = { 0.5 };// variance on the log scale
 				names_aux_pars_ = { "log_variance" };
@@ -429,7 +453,7 @@ namespace GPBoost {
 			}
 			dim_mode_ = num_sets_re_ * num_re;
 			dim_mode_per_set_re_ = num_re;
-			dim_location_par_ = num_sets_re_ * num_data_;
+			dim_location_par_ = num_sets_fixed_effects_ * num_data_;
 			if (use_Z_) {
 				CHECK(!use_random_effects_indices_of_data_);
 				dim_deriv_ll_ = num_sets_re_ * num_data_; // grouped random effects models calculate fist_deriv_ll_ and information_ll_ on the data-scale and the apply the Z^T transformation
@@ -599,7 +623,7 @@ namespace GPBoost {
 					first_deriv_ll_data_scale_ = vec_t(dim_location_par_);
 					information_ll_data_scale_ = vec_t(dim_location_par_);
 				}
-				if (likelihood_type_ == "gaussian_heteroscedastic" && approximation_type_ == "laplace") {
+				if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random" && approximation_type_ == "laplace") {
 					off_diag_information_ll_ = vec_t(dim_deriv_ll_per_set_re_);
 					if (use_random_effects_indices_of_data_) {
 						off_diag_information_ll_data_scale_ = vec_t(num_data_);
@@ -641,6 +665,17 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief True for both heteroscedastic Gaussian likelihoods ('gaussian_heteroscedastic' and 'gaussian_heteroscedastic_fixed_and_random').
+		*		These two likelihoods share the same location parameter layout (location_par[i] = mean, location_par[i + num_data_] = log-error variance)
+		*		and thus the same likelihood / gradient / information formulas wrt the location parameter. They differ in how the
+		*		log-error variance block is obtained: exclusively from fixed effects for 'gaussian_heteroscedastic' vs. from the sum of fixed
+		*		and random effects for 'gaussian_heteroscedastic_fixed_and_random' (num_sets_re_ = 1 vs. 2, respectively)
+		*/
+		bool IsGaussianHeteroscedastic() const {
+			return(likelihood_type_ == "gaussian_heteroscedastic" || likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random");
+		}
+
+		/*!
 		* \brief Set the type of likelihood
 		* \param type Likelihood name
 		*/
@@ -672,6 +707,14 @@ namespace GPBoost {
 		*/
 		int GetNumSetsRE() const {
 			return(num_sets_re_);
+		}
+
+		/*!
+		* \brief Returns the number of sets of fixed effects (covariates / boosting scores). This is larger than num_sets_re_
+		*		 for likelihoods where some location parameter blocks are related to fixed effects only (no random effects / GPs), e.g., 'gaussian_heteroscedastic'
+		*/
+		int GetNumSetsFixedEffects() const {
+			return(num_sets_fixed_effects_);
 		}
 
 		/*!
@@ -843,7 +886,7 @@ namespace GPBoost {
 					Log::REWarning("No 0's and 1's in the response variable 'y' but used likelihood = '%s ", likelihood_type_.c_str());
 				}
 			}
-			else if (!IsGaussianLikelihood() && likelihood_type_ != "t" && likelihood_type_ != "gaussian_heteroscedastic" &&
+			else if (!IsGaussianLikelihood() && likelihood_type_ != "t" && !IsGaussianHeteroscedastic() &&
 				likelihood_type_ != "asymmetric_laplace") {
 				Log::REFatal("CheckY: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 			}
@@ -931,7 +974,7 @@ namespace GPBoost {
 				}
 				init_intercept = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);
 			}//end "t"
-			else if (IsGaussianLikelihood() || (likelihood_type_ == "gaussian_heteroscedastic" && ind_set_re == 0)) {
+			else if (IsGaussianLikelihood() || (IsGaussianHeteroscedastic() && ind_set_re == 0)) {
 				double sw = 0.0;
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:init_intercept, sw)
@@ -951,8 +994,8 @@ namespace GPBoost {
 				}
 				init_intercept /= sw;
 			}//end "gaussian"
-			else if (likelihood_type_ == "gaussian_heteroscedastic" && ind_set_re == 1) {
-				double sw = 0.0, avg = 0., sum_sq = 0.;
+			else if (IsGaussianHeteroscedastic() && ind_set_re == 1) {
+				double sw = 0.0, avg = 0., sum_sq = 0., avg_exp_var_offset = 0.;
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:avg, sum_sq, sw)
 					for (data_size_t i = 0; i < num_data; ++i) {
@@ -961,16 +1004,19 @@ namespace GPBoost {
 						sum_sq += w * y_data[i] * y_data[i];
 						sw += w;
 					}
+					avg_exp_var_offset = 1.;
 				}
 				else {
-#pragma omp parallel for schedule(static) reduction(+:avg, sum_sq, sw)
+#pragma omp parallel for schedule(static) reduction(+:avg, sum_sq, sw, avg_exp_var_offset)
 					for (data_size_t i = 0; i < num_data; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						double y_min_FE = y_data[i] - fixed_effects[i];
 						avg += w * y_min_FE;
 						sum_sq += w * y_min_FE * y_min_FE;
+						avg_exp_var_offset += w * std::exp(fixed_effects[i + num_data]);
 						sw += w;
 					}
+					avg_exp_var_offset /= sw;
 				}
 				avg /= sw;
 				double avg_sq = avg * avg;
@@ -979,7 +1025,7 @@ namespace GPBoost {
 				if (sample_error_var < 1e-6) {
 					sample_error_var = 1e-6;
 				}
-				init_intercept = std::log(sample_error_var);
+				init_intercept = std::log(sample_error_var) - std::log(avg_exp_var_offset);
 			}//end gaussian_heteroscedastic
 			else if (likelihood_type_ == "zero_censored_power_transformed_normal") {
 				// Strategy:
@@ -1197,7 +1243,7 @@ namespace GPBoost {
 			bool ret_val = false;
 			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
-				likelihood_type_ == "gaussian_heteroscedastic" || likelihood_type_ == "lognormal" ||
+				IsGaussianHeteroscedastic() || likelihood_type_ == "lognormal" ||
 				likelihood_type_ == "zero_inflated_gamma" || likelihood_type_ == "zero_censored_power_transformed_normal" ||
 				likelihood_type_ == "zoctn" || likelihood_type_ == "zero_one_censored_transformed_beta" ||
 				likelihood_type_ == "zero_one_censored_shifted_gamma" ||
@@ -1795,7 +1841,7 @@ namespace GPBoost {
 			}//end "asymmetric_laplace"
 			else if (likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 				likelihood_type_ != "binomial_probit" && likelihood_type_ != "binomial_logit" &&
-				likelihood_type_ != "poisson" && likelihood_type_ != "gaussian_heteroscedastic" && 
+				likelihood_type_ != "poisson" && !IsGaussianHeteroscedastic() &&
 				likelihood_type_ != "quasi_bernoulli_probit" && likelihood_type_ != "quasi_bernoulli_logit") {
 				Log::REFatal("FindInitialAuxPars: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 			}
@@ -1908,7 +1954,7 @@ namespace GPBoost {
 				C_mu = std::abs(mean);
 				C_sigma2 = sec_mom - mean * mean;
 			}//end "gaussian"|| likelihood_type_ == "zero_censored_power_transformed_normal" || likelihood_type_ == "asymmetric_laplace"
-			else if (likelihood_type_ == "gaussian_heteroscedastic") {
+			else if (IsGaussianHeteroscedastic()) {
 				C_mu = 1e99;//not implemented
 				C_sigma2 = 1e99;
 			}
@@ -2416,7 +2462,7 @@ namespace GPBoost {
 				mode_previous_value_ = mode_;
 				na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			}
-			vec_t location_par(num_data_);//location parameter = mode of random effects + fixed effects
+			vec_t location_par(dim_location_par_);//location parameter = mode of random effects + fixed effects (+ possibly additional fixed-effects-only blocks)
 			double* location_par_ptr_dummy;//not used
 			UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 			// Initialize objective function (LA approx. marginal likelihood) for use as convergence criterion
@@ -3543,7 +3589,7 @@ namespace GPBoost {
 			TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt, L_inv_Wsqrt, false);//L_inv_Wsqrt = L\Wsqrt
 			vec_t SigmaI_plus_W_inv_diag, d_mll_d_mode;
 			T_mat L_inv_Wsqrt_Sigma;
-			if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad) {
+			if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad || (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad)) {
 				L_inv_Wsqrt_Sigma = L_inv_Wsqrt * (*Sigma);
 				//Log::REInfo("CalcGradNegMargLikelihoodLaplaceApproxStable: L_inv_ZtWZsqrt: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt));//Only for debugging
 				//Log::REInfo("CalcGradNegMargLikelihoodLaplaceApproxStable: L_inv_ZtWZsqrt_Sigma: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt_Sigma));//Only for debugging
@@ -3607,12 +3653,37 @@ namespace GPBoost {
 								information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 						}
 					}
+					if (likelihood_type_ == "gaussian_heteroscedastic") {
+						// Gradient wrt the fixed effects of the log-error variance. There is no random effect / mode for this
+						// block, so there is no implicit derivative (through the mode) here (see reasoning in
+						// 'CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale')
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							double dummy_mean_deriv, deriv_log_var;
+							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
+							fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
+								0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
+						}
+					}
 				}
 				else {
 					fixed_effect_grad = -first_deriv_ll_;
 					if (grad_information_wrt_mode_non_zero_) {
 						vec_t d_mll_d_F_implicit = (SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 						fixed_effect_grad += d_mll_d_mode - d_mll_d_F_implicit;
+					}
+					if (likelihood_type_ == "gaussian_heteroscedastic") {
+						// 'fixed_effect_grad = -first_deriv_ll_' above sized this to num_data_ (first_deriv_ll_ is not aware
+						// of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the mean block
+						fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							double dummy_mean_deriv, deriv_log_var;
+							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
+							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
+						}
 					}
 				}
 			}//end calc_F_grad
@@ -3921,6 +3992,41 @@ namespace GPBoost {
 					if (grad_information_wrt_mode_non_zero_) {
 						fixed_effect_grad += 0.5 * trace_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z - Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode.cwiseProduct(information_ll_);
 					}
+					else if (likelihood_type_ == "gaussian_heteroscedastic") {
+						// Stochastic (Hutchinson) estimate of the data-scale diagonal of Z (Sigma^-1 + Z^T W Z)^-1 Z^T, needed
+						// for the log-error variance's fixed-effect gradient (see the Cholesky branch above for the exact,
+						// non-stochastic analogue). The existing SigmaI_plus_ZtWZ_inv_RV_ cannot be reused here since it is
+						// solved against the preconditioned vectors rand_vec_trace_P_ (Cov = P, the preconditioner), whereas
+						// an unbiased diagonal estimate requires solving against the raw vectors rand_vec_trace_I_ (Cov = I,
+						// already generated above for the log-determinant's stochastic trace estimation)
+						// 'fixed_effect_grad = -first_deriv_ll_' above sized this to num_data_ (first_deriv_ll_ is not aware
+						// of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the mean block
+						fixed_effect_grad.conservativeResize(dim_location_par_);
+						CHECK(rand_vec_trace_I_.rows() == dim_mode_);
+						CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
+						den_mat_t SigmaI_plus_ZtWZ_inv_RV_I(dim_mode_, num_rand_vec_trace_);
+						bool has_NA_or_Inf_stoch_diag = false;
+						CGRandomEffectsMat(SigmaI_plus_ZtWZ_rm_, rand_vec_trace_I_, SigmaI_plus_ZtWZ_inv_RV_I, has_NA_or_Inf_stoch_diag,
+							dim_mode_, num_rand_vec_trace_, cg_max_num_it_, cg_delta_conv_, cg_preconditioner_type_,
+							L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+						if (has_NA_or_Inf_stoch_diag) {
+							Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
+						}
+						den_mat_t Z_SigmaI_plus_ZtWZ_inv_RV_I(num_data_, num_rand_vec_trace_), Z_RV_I(num_data_, num_rand_vec_trace_);
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_rand_vec_trace_; ++i) {
+							Z_SigmaI_plus_ZtWZ_inv_RV_I.col(i) = (*Zt_).transpose() * SigmaI_plus_ZtWZ_inv_RV_I.col(i);
+							Z_RV_I.col(i) = (*Zt_).transpose() * rand_vec_trace_I_.col(i);
+						}
+						vec_t SigmaI_plus_ZtWZ_inv_diag_data_scale = (Z_SigmaI_plus_ZtWZ_inv_RV_I.cwiseProduct(Z_RV_I)).rowwise().mean();
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							double dummy_mean_deriv, deriv_log_var;
+							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_], dummy_mean_deriv, deriv_log_var);
+							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_ZtWZ_inv_diag_data_scale[i];
+						}
+					}
 				}//end calc_F_grad
 				// calculate gradient wrt additional likelihood parameters
 				if (calc_aux_par_grad) {
@@ -4120,6 +4226,23 @@ namespace GPBoost {
 						vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = (((d_mll_d_mode.transpose() * L_inv.transpose()) * L_inv) * (*Zt_)) * information_ll_.asDiagonal();
 						fixed_effect_grad += d_detmll_d_F - d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W;
 					}//end grad_information_wrt_mode_non_zero_
+					if (likelihood_type_ == "gaussian_heteroscedastic") {
+						// Gradient wrt the fixed effects of the log-error variance. There is no random effect / mode for this
+						// block, so there is no implicit derivative (through the mode) here. 'L_inv * Zt.col(i)' squared-norm
+						// is the data-scale diagonal of (Sigma^-1 + Zt*W*Z)^-1 at observation i (see the mean's d_detmll_d_F above)
+						// 'fixed_effect_grad = -first_deriv_ll_' above sized this to num_data_ (first_deriv_ll_ is not aware
+						// of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the mean block
+						fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_data_; ++i) {
+							vec_t L_inv_Zt_col_i = L_inv * (*Zt_).col(i);
+							double SigmaI_plus_ZtWZ_inv_data_scale_i = L_inv_Zt_col_i.squaredNorm();
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							double dummy_mean_deriv, deriv_log_var;
+							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_], dummy_mean_deriv, deriv_log_var);
+							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_ZtWZ_inv_data_scale_i;
+						}
+					}
 				}//end calc_F_grad
 				// calculate gradient wrt additional likelihood parameters
 				if (calc_aux_par_grad) {
@@ -4190,7 +4313,7 @@ namespace GPBoost {
 			}
 			CHECK(mode_has_been_calculated_);
 			// Initialize variables
-			vec_t location_par(num_data_);//location parameter = mode of random effects + fixed effects
+			vec_t location_par(dim_location_par_);//location parameter = mode of random effects + fixed effects (+ possibly additional fixed-effects-only blocks)
 			double* location_par_ptr_dummy;//not used
 			UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 			// calculate gradient of approx. marginal likelihood wrt the mode
@@ -4225,6 +4348,22 @@ namespace GPBoost {
 					if (grad_information_wrt_mode_non_zero_ && !iid_model_) {
 						fixed_effect_grad[i] += 0.5 * deriv_information_diag_loc_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]] - //=d_detmll_d_F
 							d_mll_d_mode[random_effects_indices_of_data_[i]] * information_ll_data_scale_[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];//=implicit derivative = d_mll_d_mode * d_mode_d_F
+					}
+				}
+				if (likelihood_type_ == "gaussian_heteroscedastic") {
+					// Gradient wrt the fixed effects of the log-error variance. There is no random effect / mode for this block,
+					// so there is no implicit derivative (through the mode) here; W (= information_ll_data_scale_, the mean's Fisher
+					// information) does not depend on the mode either (grad_information_wrt_mode_non_zero_ == false), so there is
+					// also no term capturing how the mean's mode would change with the log-error variance
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						double dummy_mean_deriv, deriv_log_var;
+						FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_], dummy_mean_deriv, deriv_log_var);
+						fixed_effect_grad[i + num_data_] = -w * deriv_log_var;
+						if (!iid_model_) {
+							fixed_effect_grad[i + num_data_] -= 0.5 * information_ll_data_scale_[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];
+						}
 					}
 				}
 			}//end calc_F_grad
@@ -4549,6 +4688,36 @@ namespace GPBoost {
 							}
 						}//end grad_information_wrt_mode_can_be_zero_for_some_points_
 					}
+					else if (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad) {
+						// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1), needed for the log-error variance's
+						// fixed-effect gradient below. The ratio trick used just above is not applicable here since
+						// deriv_information_diag_loc_par is identically zero (grad_information_wrt_mode_non_zero_ == false).
+						// Note: rand_vec_trace_I_ is Cov = P (the 'fitc' preconditioner) here, not Cov = I (see
+						// FindModePostRandEffCalcMLLFSVA); the raw (Cov = I) vectors are rand_vec_trace_I2_. Solve
+						// (Sigma^-1+W) x_k = r_k for each column r_k via the push-through identity
+						// (Sigma^-1+W)^-1 = W^-1 (Sigma+W^-1)^-1 Sigma (same recipe as the implicit-derivative solve above),
+						// then diag ~= mean_k(x_k * r_k)
+						CHECK(num_sets_re_ == 1);
+						den_mat_t SigmaI_plus_W_inv_RV_I(dim_mode_, num_rand_vec_trace_);
+						bool has_NA_or_Inf_stoch_diag = false;
+						for (int k = 0; k < num_rand_vec_trace_; ++k) {
+							vec_t Sigma_rv = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rand_vec_trace_I2_.col(k))) +
+								(*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * rand_vec_trace_I2_.col(k)));
+							vec_t W_result(dim_mode_);
+							bool has_NA_or_Inf_k = false;
+							CGVIFLaplaceSigmaPlusWinvVec(information_ll_.cwiseInverse(), D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
+								chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, Sigma_rv, W_result, has_NA_or_Inf_k,
+								cg_max_num_it_, true, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
+							SigmaI_plus_W_inv_RV_I.col(k) = information_ll_.cwiseInverse().cwiseProduct(W_result);
+							if (has_NA_or_Inf_k) {
+								has_NA_or_Inf_stoch_diag = true;
+							}
+						}
+						if (has_NA_or_Inf_stoch_diag) {
+							Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
+						}
+						SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv_RV_I.cwiseProduct(rand_vec_trace_I2_)).rowwise().mean();
+					}
 					if (calc_F_grad) {
 						if (use_random_effects_indices_of_data_) {
 							fixed_effect_grad = -first_deriv_ll_data_scale_;
@@ -4559,12 +4728,33 @@ namespace GPBoost {
 										information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 								}
 							}
+							if (likelihood_type_ == "gaussian_heteroscedastic") {
+								fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+								for (data_size_t i = 0; i < num_data_; ++i) {
+									const double w = has_weights_ ? weights_[i] : 1.0;
+									double dummy_mean_deriv, deriv_log_var;
+									FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
+									fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
+										0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
+								}
+							}
 						}
 						else {
 							fixed_effect_grad = -first_deriv_ll_;
 							if (grad_information_wrt_mode_non_zero_) {
 								vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 								fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
+							}
+							if (likelihood_type_ == "gaussian_heteroscedastic") {
+								fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+								for (data_size_t i = 0; i < num_data_; ++i) {
+									const double w = has_weights_ ? weights_[i] : 1.0;
+									double dummy_mean_deriv, deriv_log_var;
+									FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
+									fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
+								}
 							}
 						}
 					}
@@ -4955,6 +5145,30 @@ namespace GPBoost {
 							}
 						} //end grad_information_wrt_mode_can_be_zero_for_some_points_
 					}
+					else if (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad) {
+						// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1) using the raw (Cov = I) random vectors
+						// rand_vec_trace_I2_ (for 'vifdu', rand_vec_trace_I_ is Cov = P, not I; for 'none' the two coincide,
+						// see FindModePostRandEffCalcMLLFSVA). CGFVIFLaplaceVec solves (Sigma^-1+W) directly here (no
+						// push-through needed, unlike the 'fitc' preconditioner case above)
+						CHECK(num_sets_re_ == 1);
+						den_mat_t SigmaI_plus_W_inv_RV_I(dim_mode_, num_rand_vec_trace_);
+						bool has_NA_or_Inf_stoch_diag = false;
+						for (int k = 0; k < num_rand_vec_trace_; ++k) {
+							vec_t SigmaI_plus_W_inv_RV_I_col(dim_mode_);
+							bool has_NA_or_Inf_k = false;
+							CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov,
+								W_D_inv_inv, chol_fact_sigma_woodbury_woodbury_, rand_vec_trace_I2_.col(k), SigmaI_plus_W_inv_RV_I_col, has_NA_or_Inf_k,
+								cg_max_num_it_, true, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
+							SigmaI_plus_W_inv_RV_I.col(k) = SigmaI_plus_W_inv_RV_I_col;
+							if (has_NA_or_Inf_k) {
+								has_NA_or_Inf_stoch_diag = true;
+							}
+						}
+						if (has_NA_or_Inf_stoch_diag) {
+							Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
+						}
+						SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv_RV_I.cwiseProduct(rand_vec_trace_I2_)).rowwise().mean();
+					}
 					if (calc_F_grad) {
 						if (use_random_effects_indices_of_data_) {
 							fixed_effect_grad = -first_deriv_ll_data_scale_;
@@ -4965,12 +5179,33 @@ namespace GPBoost {
 										information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 								}
 							}
+							if (likelihood_type_ == "gaussian_heteroscedastic") {
+								fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+								for (data_size_t i = 0; i < num_data_; ++i) {
+									const double w = has_weights_ ? weights_[i] : 1.0;
+									double dummy_mean_deriv, deriv_log_var;
+									FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
+									fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
+										0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
+								}
+							}
 						}
 						else {
 							fixed_effect_grad = -first_deriv_ll_;
 							if (grad_information_wrt_mode_non_zero_) {
 								vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 								fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
+							}
+							if (likelihood_type_ == "gaussian_heteroscedastic") {
+								fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+								for (data_size_t i = 0; i < num_data_; ++i) {
+									const double w = has_weights_ ? weights_[i] : 1.0;
+									double dummy_mean_deriv, deriv_log_var;
+									FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
+									fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
+								}
 							}
 						}
 					}
@@ -5239,7 +5474,7 @@ namespace GPBoost {
 				// Calcul
 				if (calc_F_grad || calc_aux_par_grad) {
 					if (!calc_cov_grad_internal) {
-						if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_) {
+						if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad)) {
 							SigmaI_plus_W_inv = D_inv;
 							CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_W_inv, true);
 							den_mat_t SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
@@ -5270,7 +5505,7 @@ namespace GPBoost {
 							SigmaI_plus_W_inv_d_mll_d_mode = information_ll_.cwiseInverse().asDiagonal() * (SigmaI_plus_W_inv_d_mll_d_mode_part - sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov * chol_fact_sigma_woodbury_2.solve((*cross_cov).transpose() * SigmaI_plus_W_inv_d_mll_d_mode_part));
 						}
 					}
-					else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_)) {
+					else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad)) {
 						SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv.diagonal().array() + SigmaI_plus_W_inv_diag.array()).matrix();
 					}
 				}
@@ -5285,12 +5520,34 @@ namespace GPBoost {
 									information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 							}
 						}
+						if (likelihood_type_ == "gaussian_heteroscedastic") {
+#pragma omp parallel for schedule(static)
+							for (data_size_t i = 0; i < num_data_; ++i) {
+								const double w = has_weights_ ? weights_[i] : 1.0;
+								double dummy_mean_deriv, deriv_log_var;
+								FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
+								fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
+									0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
+							}
+						}
 					}
 					else {
 						fixed_effect_grad = -first_deriv_ll_;
 						if (grad_information_wrt_mode_non_zero_) {
 							vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 							fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
+						}
+						if (likelihood_type_ == "gaussian_heteroscedastic") {
+							// 'fixed_effect_grad = -first_deriv_ll_' above sized this to num_data_ (first_deriv_ll_ is not aware
+							// of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the mean block
+							fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+							for (data_size_t i = 0; i < num_data_; ++i) {
+								const double w = has_weights_ ? weights_[i] : 1.0;
+								double dummy_mean_deriv, deriv_log_var;
+								FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
+								fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
+							}
 						}
 					}
 				}//end calc_F_grad
@@ -5413,7 +5670,7 @@ namespace GPBoost {
 				vec_t D_inv_plus_W_inv_diag;
 				den_mat_t PI_Z; //also used for preconditioner "zero_infill_incomplete_cholesky"
 				//Stochastic Trace: Calculate gradient of approx. marginal likelihood wrt. the mode (and thus also F here if !use_random_effects_indices_of_data_)
-				if (likelihood_type_ == "gaussian_heteroscedastic") {
+				if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
 					vec_t deriv_information_diag_loc_par_all = vec_t::Zero(dim_mode_);
 					deriv_information_diag_loc_par_all.segment(0, dim_mode_per_set_re_) = deriv_information_diag_loc_par;
 					vec_t d_log_det_Sigma_W_plus_I_d_mode_temp;
@@ -5519,7 +5776,7 @@ namespace GPBoost {
 				}
 				//Calculate gradient wrt fixed effects
 				if (grad_information_wrt_mode_non_zero_ && ((use_random_effects_indices_of_data_ && calc_F_grad) || calc_aux_par_grad)) {
-					if (likelihood_type_ == "gaussian_heteroscedastic") {
+					if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
 						vec_t ones = vec_t::Ones(dim_mode_);
 						vec_t diag_WI_dummy, D_inv_plus_W_inv_dia_dummy;
 						den_mat_t PI_Z_dummy, WI_PI_Z_dummy, WI_WI_plus_Sigma_inv_Z_dummy;
@@ -5540,6 +5797,34 @@ namespace GPBoost {
 							}
 						}//end grad_information_wrt_mode_can_be_zero_for_some_points_
 					}
+				}
+				else if (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad) {
+					// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1) (RE/mode-scale, dimension dim_mode_), needed
+					// for the log-error variance's fixed-effect gradient below. The ratio trick used just above
+					// (d_log_det_Sigma_W_plus_I_d_mode / deriv_information_diag_loc_par) is not applicable here since
+					// deriv_information_diag_loc_par is identically zero (grad_information_wrt_mode_non_zero_ == false: the
+					// mean's Fisher information exp(-log-error-variance) does not depend on the mode). Instead, solve
+					// (Sigma^-1+W) x_k = r_k for each column r_k of the raw (Cov = I) random vectors rand_vec_trace_I_ (already
+					// generated above for the log-determinant's stochastic trace estimation) using the existing,
+					// preconditioner-agnostic single-vector solver (it internally performs the required push-through for
+					// preconditioners where (Sigma^-1+W) is not solved for directly), then diag ~= mean_k(x_k * r_k)
+					CHECK(num_sets_re_ == 1);
+					den_mat_t SigmaI_plus_W_inv_RV_I(dim_mode_, num_rand_vec_trace_);
+					bool has_NA_or_Inf_stoch_diag = false;
+					for (int k = 0; k < num_rand_vec_trace_; ++k) {
+						vec_t SigmaI_plus_W_inv_RV_I_col(dim_mode_);
+						bool has_NA_or_Inf_k = false;
+						Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i,
+							rand_vec_trace_I_.col(k), SigmaI_plus_W_inv_RV_I_col, true, has_NA_or_Inf_k);
+						SigmaI_plus_W_inv_RV_I.col(k) = SigmaI_plus_W_inv_RV_I_col;
+						if (has_NA_or_Inf_k) {
+							has_NA_or_Inf_stoch_diag = true;
+						}
+					}
+					if (has_NA_or_Inf_stoch_diag) {
+						Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
+					}
+					SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv_RV_I.cwiseProduct(rand_vec_trace_I_)).rowwise().mean();
 				}
 				//Calculate gradient wrt additional likelihood parameters
 				if (calc_aux_par_grad) {
@@ -5655,9 +5940,9 @@ namespace GPBoost {
 								if (grad_information_wrt_mode_non_zero_ && igp == 0) {
 									CHECK(first_deriv_information_loc_par_caluclated_);
 									if (num_sets_re_ > 1) {
-										CHECK(likelihood_type_ == "gaussian_heteroscedastic");
+										CHECK(likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random");
 									}
-									if (likelihood_type_ == "gaussian_heteroscedastic") {
+									if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
 										d_mll_d_mode = vec_t::Zero(dim_mode_);
 										d_mll_d_mode.segment(dim_mode_per_set_re_, dim_mode_per_set_re_) = 0.5 * (SigmaI_plus_W_inv.diagonal().segment(0, dim_mode_per_set_re_).array() * deriv_information_diag_loc_par.array()).matrix();
 									}
@@ -5686,12 +5971,12 @@ namespace GPBoost {
 				}//end calc_cov_grad_internal
 				if (calc_F_grad || calc_aux_par_grad) {
 					if (!calc_cov_grad_internal) {
-						if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_) {
+						if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad)) {
 							sp_mat_t L_inv_sqr = L_inv.cwiseProduct(L_inv);
 							SigmaI_plus_W_inv_diag = L_inv_sqr.transpose() * vec_t::Ones(L_inv_sqr.rows());// diagonal of (Sigma^-1 + W) ^ -1
 						}
 						if (grad_information_wrt_mode_non_zero_) {
-							if (likelihood_type_ == "gaussian_heteroscedastic") {
+							if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
 								d_mll_d_mode = vec_t::Zero(dim_mode_);
 								d_mll_d_mode.segment(dim_mode_per_set_re_, dim_mode_per_set_re_) = (0.5 * SigmaI_plus_W_inv_diag.segment(0, dim_mode_per_set_re_).array() * deriv_information_diag_loc_par.array()).matrix();// gradient of approx. marginal likelihood wrt the mode and thus also F here
 								// note: deriv_information_diag_loc_par is of length dim_mode_per_set_re_ here since only the non-zero derivatives are saved
@@ -5702,7 +5987,7 @@ namespace GPBoost {
 							SigmaI_plus_W_inv_d_mll_d_mode = L_inv.transpose() * (L_inv * d_mll_d_mode);
 						}
 					}
-					else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_)) {
+					else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad)) {
 						SigmaI_plus_W_inv_diag = SigmaI_plus_W_inv.diagonal();
 					}
 				}//end calc_F_grad || calc_aux_par_grad
@@ -5745,7 +6030,7 @@ namespace GPBoost {
 				if (use_random_effects_indices_of_data_) {
 					fixed_effect_grad = -first_deriv_ll_data_scale_;
 					if (grad_information_wrt_mode_non_zero_) {
-						if (likelihood_type_ == "gaussian_heteroscedastic") {
+						if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
 #pragma omp parallel for schedule(static)
 							for (data_size_t i = 0; i < num_data_; ++i) {
 								fixed_effect_grad[i] -= information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
@@ -5764,12 +6049,37 @@ namespace GPBoost {
 							}
 						}
 					}
+					if (likelihood_type_ == "gaussian_heteroscedastic") {
+						// Gradient wrt the fixed effects of the log-error variance. There is no random effect / mode for this
+						// block, so there is no implicit derivative (through the mode) here (see reasoning in
+						// 'CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale')
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							double dummy_mean_deriv, deriv_log_var;
+							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
+							fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
+								0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
+						}
+					}
 				}
 				else {
 					fixed_effect_grad = -first_deriv_ll_;
 					if (grad_information_wrt_mode_non_zero_) {
 						vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 						fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
+					}
+					if (likelihood_type_ == "gaussian_heteroscedastic") {
+						// 'fixed_effect_grad = -first_deriv_ll_' above sized this to num_data_ (first_deriv_ll_ is not aware
+						// of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the mean block
+						fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							double dummy_mean_deriv, deriv_log_var;
+							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
+							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
+						}
 					}
 				}
 			}//end calc_F_grad
@@ -5854,7 +6164,7 @@ namespace GPBoost {
 			vec_t WI = information_ll_.cwiseInverse();
 			vec_t DW_plus_I_inv_diag, SigmaI_plus_W_inv_diag, d_mll_d_mode;
 			den_mat_t L_inv_cross_cov_T_DW_plus_I_inv;
-			if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad) {
+			if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad || (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad)) {
 				DW_plus_I_inv_diag = (information_ll_.array() * fitc_resid_diag.array() + 1.).matrix().cwiseInverse();
 				L_inv_cross_cov_T_DW_plus_I_inv = (*cross_cov).transpose() * (DW_plus_I_inv_diag.asDiagonal());
 				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_dense_Newton_, L_inv_cross_cov_T_DW_plus_I_inv, L_inv_cross_cov_T_DW_plus_I_inv, false);
@@ -5955,12 +6265,34 @@ namespace GPBoost {
 								information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 						}
 					}
+					if (likelihood_type_ == "gaussian_heteroscedastic") {
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							double dummy_mean_deriv, deriv_log_var;
+							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
+							fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
+								0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
+						}
+					}
 				}
 				else {
 					fixed_effect_grad = -first_deriv_ll_;
 					if (grad_information_wrt_mode_non_zero_) {
 						vec_t d_mll_d_F_implicit = (SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 						fixed_effect_grad += d_mll_d_mode - d_mll_d_F_implicit;
+					}
+					if (likelihood_type_ == "gaussian_heteroscedastic") {
+						// 'fixed_effect_grad = -first_deriv_ll_' above sized this to num_data_ (first_deriv_ll_ is not aware
+						// of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the mean block
+						fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							double dummy_mean_deriv, deriv_log_var;
+							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
+							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
+						}
 					}
 				}
 			}//end calc_F_grad
@@ -6646,7 +6978,7 @@ namespace GPBoost {
 				if (calc_pred_cov || calc_pred_var) {
 					if (use_variance_correction_for_prediction_) {
 						diag_information_variance_correction_for_prediction_ = true;
-						vec_t location_par(num_data_);//location parameter = mode of random effects + fixed effects
+						vec_t location_par(dim_location_par_);//location parameter = mode of random effects + fixed effects (+ possibly additional fixed-effects-only blocks)
 						double* location_par_ptr_dummy;//not used
 						UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
 						CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
@@ -8409,7 +8741,9 @@ namespace GPBoost {
 					pred_var.array() += aux_pars_[0];
 				}
 			}
-			else if (likelihood_type_ == "gaussian_heteroscedastic") {
+			else if (IsGaussianHeteroscedastic()) {
+				// For 'gaussian_heteroscedastic' (fixed effects only), the caller sets pred_var_var = 0 since the log-error
+				// variance is deterministic given the fixed effects (no random effect / GP posterior uncertainty)
 				if (predict_var) {
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < (int)pred_mean.size(); ++i) {
@@ -9056,7 +9390,7 @@ namespace GPBoost {
 					}
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
-				else if (!IsGaussianLikelihood() && likelihood_type_ != "gaussian_heteroscedastic" &&
+				else if (!IsGaussianLikelihood() && !IsGaussianHeteroscedastic() &&
 					likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 					likelihood_type_ != "poisson" && likelihood_type_ != "t" && likelihood_type_ != "beta" &&
 					likelihood_type_ != "zero_one_censored_transformed_beta" && likelihood_type_ != "zero_one_censored_shifted_gamma" &&
@@ -9117,7 +9451,7 @@ namespace GPBoost {
 				else if (IsGaussianLikelihood()) {
 					log_normalizing_constant_ = -num_data_ * (M_LOGSQRT2PI + 0.5 * std::log(aux_pars_[0]));
 				}
-				else if (likelihood_type_ == "gaussian_heteroscedastic") {
+				else if (IsGaussianHeteroscedastic()) {
 					log_normalizing_constant_ = -num_data_ * M_LOGSQRT2PI;
 				}
 				else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" || 
@@ -9374,7 +9708,7 @@ namespace GPBoost {
 					ll += w * LogLikGaussian(y_data[i], location_par[i], false);
 				}
 			}
-			else if (likelihood_type_ == "gaussian_heteroscedastic") {
+			else if (IsGaussianHeteroscedastic()) {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					const double w = has_weights_ ? weights_[i] : 1.0;
@@ -9895,7 +10229,7 @@ namespace GPBoost {
 					first_deriv_ll[i] = w * FirstDerivLogLikGaussian(y_data[i], location_par[i]);
 				}
 			}
-			else if (likelihood_type_ == "gaussian_heteroscedastic") {
+			else if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_],
@@ -9904,6 +10238,14 @@ namespace GPBoost {
 						first_deriv_ll[i] *= weights_[i];
 						first_deriv_ll[i + num_data_] *= weights_[i];
 					}
+				}
+			}
+			else if (likelihood_type_ == "gaussian_heteroscedastic") {
+				// Only the mean is a mode / random effect here; the log-error variance (location_par[i + num_data_]) is a fixed effect
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					first_deriv_ll[i] = w * FirstDerivLogLikGaussianHeteroscedasticMean(y_data[i], location_par[i], location_par[i + num_data_]);
 				}
 			}
 			else if (likelihood_type_ == "lognormal") {
@@ -10109,6 +10451,14 @@ namespace GPBoost {
 			double resid = y - location_par;
 			first_deriv_mean = resid * sigma2_inv;
 			first_deriv_log_var = (first_deriv_mean * resid - 1.) / 2.;
+		}
+
+		/*!
+		* \brief First derivative of the heteroscedastic Gaussian log-likelihood wrt the mean only (location_par). Used for
+		*		'gaussian_heteroscedastic' where the log-error variance (location_par2) is a fixed effect and thus not part of the mode / random effect
+		*/
+		inline double FirstDerivLogLikGaussianHeteroscedasticMean(double y, double location_par, double location_par2) const {
+			return ((y - location_par) * std::exp(-location_par2));
 		}
 
 		inline double FirstDerivLogLikLogNormal(double y, double location_par) const {
@@ -10511,7 +10861,7 @@ namespace GPBoost {
 						information_ll[i] = w * FI;
 					}
 				}
-				else if (likelihood_type_ == "gaussian_heteroscedastic") {
+				else if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						SecondDerivNegLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_],
@@ -10608,7 +10958,7 @@ namespace GPBoost {
 						information_ll[i] = w * FI;
 					}
 				}
-				else if (likelihood_type_ == "gaussian_heteroscedastic") {
+				else if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						FisherInformationGaussianHeteroscedastic(location_par[i + num_data_], information_ll[i], information_ll[i + num_data_]);
@@ -10616,6 +10966,14 @@ namespace GPBoost {
 							information_ll[i] *= weights_[i];
 							information_ll[i + num_data_] *= weights_[i];
 						}
+					}
+				}
+				else if (likelihood_type_ == "gaussian_heteroscedastic") {
+					// Only the mean is a mode / random effect here; the log-error variance (location_par[i + num_data_]) is a fixed effect
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * FisherInformationGaussianHeteroscedasticMean(location_par[i + num_data_]);
 					}
 				}
 				else if (likelihood_type_ == "lognormal") {
@@ -10846,6 +11204,14 @@ namespace GPBoost {
 		inline void FisherInformationGaussianHeteroscedastic(const double location_par_var, double& second_deriv, double& second_deriv2) const {
 			second_deriv = std::exp(-location_par_var);
 			second_deriv2 = 1 / 2.;
+		}
+
+		/*!
+		* \brief Fisher information of the heteroscedastic Gaussian log-likelihood wrt the mean only (location_par). Used for
+		*		'gaussian_heteroscedastic' where the log-error variance (location_par_var) is a fixed effect and thus not part of the mode / random effect
+		*/
+		inline double FisherInformationGaussianHeteroscedasticMean(const double location_par_var) const {
+			return (std::exp(-location_par_var));
 		}
 
 		inline double SecondDerivNegLogLikLogNormal() const {
@@ -11546,7 +11912,7 @@ namespace GPBoost {
 						deriv_information_diag_loc_par[i] = 0.;
 					}
 				}
-				else if (likelihood_type_ == "gaussian_heteroscedastic") {
+				else if (IsGaussianHeteroscedastic()) {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
@@ -12810,6 +13176,11 @@ namespace GPBoost {
 			const double* fixed_effects,
 			vec_t& location_par,
 			double** location_par_ptr) {
+			if (num_sets_fixed_effects_ > num_sets_re_ && fixed_effects == nullptr) {
+				Log::REFatal("UpdateLocationParNewMode: No fixed effects (covariates and / or tree-boosting scores) are provided for likelihood = '%s'. "
+					"This likelihood requires a fixed effects term (e.g., covariates 'X' and / or the GPBoost tree-boosting algorithm) ",
+					likelihood_type_.c_str());
+			}
 			if (use_random_effects_indices_of_data_) {
 				for (int igp = 0; igp < num_sets_re_; ++igp) {
 					if (fixed_effects == nullptr) {
@@ -12825,28 +13196,58 @@ namespace GPBoost {
 						}
 					}
 				}
+				// Additional location parameter blocks that are related to fixed effects only (no random effect / GP), e.g., the log-error variance for 'gaussian_heteroscedastic'
+				for (int igp = num_sets_re_; igp < num_sets_fixed_effects_; ++igp) {
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						location_par[i + igp * num_data_] = fixed_effects[i + igp * num_data_];
+					}
+				}
 				*location_par_ptr = location_par.data();
 			}//end use_random_effects_indices_of_data_
 			else if (use_Z_) {
 				CHECK(num_sets_re_ == 1);// not yet implemented otherwise
-				location_par = (*Zt_).transpose() * mode;//location parameter = mode of random effects + fixed effects
+				if (num_sets_fixed_effects_ > num_sets_re_) {
+					// location_par needs to hold additional fixed-effects-only blocks, so it cannot be auto-resized
+					// to just num_data_ via assignment below (as is done in the simple case)
+					location_par = vec_t(num_sets_fixed_effects_ * num_data_);
+					location_par.segment(0, num_data_) = (*Zt_).transpose() * mode;
+				}
+				else {
+					location_par = (*Zt_).transpose() * mode;//location parameter = mode of random effects + fixed effects
+				}
 				if (fixed_effects != nullptr) {
 #pragma omp parallel for schedule(static)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						location_par[i] += fixed_effects[i];
 					}
 				}
+				// Additional location parameter blocks that are related to fixed effects only (no random effect / GP), e.g., the log-error variance for 'gaussian_heteroscedastic'
+				for (int igp = num_sets_re_; igp < num_sets_fixed_effects_; ++igp) {
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						location_par[i + igp * num_data_] = fixed_effects[i + igp * num_data_];
+					}
+				}
 				*location_par_ptr = location_par.data();
 			}
 			else {// !use_random_effects_indices_of_data_ && !use_Z_
-				CHECK(dim_location_par_ == dim_mode_);
+				CHECK(dim_mode_ == num_sets_re_ * num_data_);
 				if (fixed_effects == nullptr) {
+					CHECK(num_sets_fixed_effects_ == num_sets_re_);// not yet implemented otherwise: without any fixed effects, there cannot be additional fixed-effects-only blocks
 					*location_par_ptr = mode.data();
 				}
 				else {
 #pragma omp parallel for schedule(static)
-					for (data_size_t i = 0; i < dim_location_par_; ++i) {
+					for (data_size_t i = 0; i < dim_mode_; ++i) {
 						location_par[i] = mode[i] + fixed_effects[i];
+					}
+					// Additional location parameter blocks that are related to fixed effects only (no random effect / GP), e.g., the log-error variance for 'gaussian_heteroscedastic'
+					for (int igp = num_sets_re_; igp < num_sets_fixed_effects_; ++igp) {
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							location_par[i + igp * num_data_] = fixed_effects[i + igp * num_data_];
+						}
 					}
 					*location_par_ptr = location_par.data();
 				}
@@ -13917,6 +14318,9 @@ namespace GPBoost {
 		data_size_t num_data_;
 		/*! \brief Number of sets of random effects / GPs. This is larger than 1, e.g., heteroscedastic models */
 		int num_sets_re_ = 1;
+		/*! \brief Number of sets of fixed effects (covariates / boosting scores). This is >= num_sets_re_; it is larger than num_sets_re_ for likelihoods
+		*		 where some location parameter blocks are related to fixed effects only, without an associated random effect / GP (e.g., 'gaussian_heteroscedastic') */
+		int num_sets_fixed_effects_ = 1;
 		/*! \brief Dimension (= length) of mode_ */
 		data_size_t dim_mode_;
 		/*! \brief Dimension (= length) of mode_ per parameter / set of RE / GP */
@@ -14021,7 +14425,7 @@ namespace GPBoost {
 		string_t likelihood_type_ = "gaussian";
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "gaussian_latent", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit",
-			"poisson", "gamma", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "lognormal", "beta_binomial",
+			"poisson", "gamma", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "gaussian_heteroscedastic_fixed_and_random", "lognormal", "beta_binomial",
 			"zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
 			"asymmetric_laplace" };
 		/*! \brief List of supported covariance likelihoods */

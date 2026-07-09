@@ -165,7 +165,7 @@ fixed effects linear regression term (if there is one)}
 
 \item{offset}{A \code{numeric} \code{vector} with 
 additional fixed effects contributions that are added to the linear predictor (= offset). 
-The length of this vector needs to equal the number of training data points.}
+The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.}
 
 \item{fixed_effects}{This is discontinued. Use the renamed equivalent argument \code{offset} instead}
 }
