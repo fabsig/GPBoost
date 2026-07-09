@@ -2610,15 +2610,7 @@ namespace GPBoost {
 			B_t_D_inv_rm_ = D_inv_B_rm_.transpose();
 			// Variables when using Cholesky factorization
 			sp_mat_t SigmaI, SigmaI_plus_W;
-			vec_t mode_update_lag1;//auxiliary variable used only if quasi_newton_for_mode_finding_
 			den_mat_t woodbury_cross_cov_Bt_D_inv_B;
-			if (quasi_newton_for_mode_finding_ && matrix_inversion_method_ == "cholesky") {
-				mode_update_lag1 = mode_;
-				if (quasi_newton_for_mode_finding_) {
-					//TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury, Bt_D_inv_B_cross_cov.transpose(), woodbury_cross_cov_Bt_D_inv_B, false);
-					GPBoost::solve_lower_triangular(chol_fact_sigma_woodbury, Bt_D_inv_B_cross_cov.transpose(), woodbury_cross_cov_Bt_D_inv_B, GPU_use);
-				}
-			}
 			// Variables when using iterative methods
 			int cg_max_num_it = cg_max_num_it_;
 			int cg_max_num_it_tridiag = cg_max_num_it_tridiag_;
@@ -2675,204 +2667,116 @@ namespace GPBoost {
 				if (it == 0 || information_changes_during_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par_ptr, true);
 				}
-				if (quasi_newton_for_mode_finding_) {
-					B_mode = B_rm_ * mode_;
-					D_inv_B_mode = D_inv_rm_ * B_mode;
-					B_t_D_inv_B_mode = B_rm_.transpose() * D_inv_B_mode;
-					wood_inv_cross_cov_B_t_D_inv_B_mode = chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * B_t_D_inv_B_mode);
-					vec_t grad = first_deriv_ll_ - B_t_D_inv_B_mode + Bt_D_inv_B_cross_cov * wood_inv_cross_cov_B_t_D_inv_B_mode;
-					if (matrix_inversion_method_ == "iterative") {
-						if (cg_preconditioner_type_ == "vifdu") {
+				// Calculate Cholesky factor and update mode
+				rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();//right hand side for updating mode
+				if (matrix_inversion_method_ == "iterative") {
+					//Reduce max. number of iterations for the CG in first update
+					if (cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") {
+						if (it == 0 || information_changes_during_mode_finding_) {
 							W_D_inv = (information_ll_ + D_inv_rm_.diagonal());
 							W_D_inv_inv = W_D_inv.cwiseInverse();
 							W_D_inv_sqrt = W_D_inv_inv.cwiseSqrt();
-							B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov = W_D_inv_sqrt.asDiagonal() * D_inv_B_cross_cov_;
-							den_mat_t B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot;
-							GPBoost::matmul(B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose(), B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov, B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot, GPU_use);
-							sigma_woodbury_woodbury = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot;
-							chol_fact_sigma_woodbury_woodbury.compute(sigma_woodbury_woodbury);
-							vec_t grad_aux = W_D_inv_inv.cwiseProduct((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(grad));
-							//grad_aux.array() /= (D_inv.diagonal().array() + information_ll_.array());
-							grad = B_rm_.triangularView<Eigen::UpLoType::UnitLower>().solve(grad_aux +
-								W_D_inv_inv.cwiseProduct(D_inv_B_cross_cov_ * chol_fact_sigma_woodbury_woodbury.solve(D_inv_B_cross_cov_.transpose() * grad_aux)));
+							if (cg_preconditioner_type_ == "vifdu") {
+								B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov = W_D_inv_sqrt.asDiagonal() * D_inv_B_cross_cov_;
+								den_mat_t B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot;
+								GPBoost::matmul(B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose(), B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov, B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot, GPU_use);
+								sigma_woodbury_woodbury = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot;
+								chol_fact_sigma_woodbury_woodbury.compute(sigma_woodbury_woodbury);
+							}
 						}
-						else if (cg_preconditioner_type_ == "fitc") {
-							const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
-							rhs_part1 = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(grad);
-							rhs_part = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(rhs_part1);
-							rhs_part2 = (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * grad));
-							grad = rhs_part + rhs_part2;
+						if ((information_ll_.array() > 1e10).any()) {
+							has_NA_or_Inf = true;// the inversion of the preconditioner with the Woodbury identity can be numerically unstable when information_ll_ is very large
+						}
+						else {
+							CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
+								chol_fact_sigma_woodbury_woodbury, rhs, mode_update, has_NA_or_Inf, cg_max_num_it, it == 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
+						}
+					}
+					else if (cg_preconditioner_type_ == "fitc") {
+						const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
+						if (it == 0 || information_changes_during_mode_finding_) {
 							information_ll_inv.array() = information_ll_.array().inverse();
-							if (it == 0 || information_changes_during_mode_finding_) {
 #pragma omp parallel for schedule(static)   
-								for (int i = 0; i < dim_mode_; ++i) {
-									diagonal_approx_preconditioner_[i] = diagonal_approx_preconditioner_vecchia[i] + information_ll_inv[i];
-								}
+							for (int i = 0; i < dim_mode_; ++i) {
+								diagonal_approx_preconditioner_[i] = diagonal_approx_preconditioner_vecchia[i] + information_ll_inv[i];
 							}
 							diagonal_approx_inv_preconditioner_ = diagonal_approx_preconditioner_.cwiseInverse();
 							den_mat_t sigma_woodbury_preconditioner;
 							GPBoost::matmul((*cross_cov_preconditioner).transpose(), (diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner)), sigma_woodbury_preconditioner, GPU_use);
-							//den_mat_t sigma_woodbury_preconditioner = (*cross_cov_preconditioner).transpose() * (diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner));
+							//den_mat_t sigma_woodbury_preconditioner = ((*cross_cov_preconditioner).transpose() * diagonal_approx_inv_preconditioner_.asDiagonal()) * (*cross_cov_preconditioner);
 							sigma_woodbury_preconditioner += (sigma_ip_preconditioner);
 							chol_fact_woodbury_preconditioner_.compute(sigma_woodbury_preconditioner);
-							mode_update_part = diagonal_approx_inv_preconditioner_.asDiagonal() * grad;
-							grad = information_ll_inv.asDiagonal() * (mode_update_part -
-								diagonal_approx_inv_preconditioner_.asDiagonal() * ((*cross_cov_preconditioner) * chol_fact_woodbury_preconditioner_.solve((*cross_cov_preconditioner).transpose() * mode_update_part)));
 						}
+						rhs_part1 = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rhs);
+						rhs_part = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(rhs_part1);
+						rhs_part2 = (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * rhs));
+						rhs = rhs_part + rhs_part2;
+						CGVIFLaplaceSigmaPlusWinvVec(information_ll_inv, D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
+							chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rhs, mode_update_part, has_NA_or_Inf,
+							cg_max_num_it, it == 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
+						mode_update = information_ll_inv.asDiagonal() * mode_update_part;
+					}
+				}//end iterative
+				else { // start Cholesky 
+					information_ll_inv.array() = information_ll_.array().inverse();
+					if (it == 0 || information_changes_during_mode_finding_) {
+						SigmaI_plus_W = SigmaI;
+						SigmaI_plus_W.diagonal().array() += information_ll_.array();
+						SigmaI_plus_W.makeCompressed();
+						//Calculation of the Cholesky factor is the bottleneck
+						if (!chol_fact_pattern_analyzed_) {
+							chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
+							chol_fact_pattern_analyzed_ = true;
+						}
+						chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
+					}
+					sigma_woodbury_2 = (sigma_woodbury)-Bt_D_inv_B_cross_cov.transpose() * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
+					chol_fact_sigma_woodbury_2.compute(sigma_woodbury_2);
+					vec_t Sigma_I_rhs = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
+					vec_t Bt_D_inv_B_cross_cov_T_Sigma_I_rhs = Bt_D_inv_B_cross_cov.transpose() * Sigma_I_rhs;
+					vec_t woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs = chol_fact_sigma_woodbury_2.solve(Bt_D_inv_B_cross_cov_T_Sigma_I_rhs);
+					vec_t Bt_D_inv_B_cross_cov_woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs = Bt_D_inv_B_cross_cov * woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs;
+					vec_t SigmaI_Bt_D_inv_B_cross_cov_woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov_woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs);
+					mode_update = Sigma_I_rhs + SigmaI_Bt_D_inv_B_cross_cov_woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs;
+				} // end Cholesky
+				// Backtracking line search
+				double grad_dot_direction = 0.;//for Armijo check
+				if (armijo_condition_) {
+					if (num_sets_re_ > 1) {
+						Log::REFatal("The Armijo condition check is currently not implemented when num_sets_re_ > 1 (=multiple parameters related to GPs) ");
+					}
+					vec_t direction = mode_update - mode_;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
+					vec_t gradient = B.transpose() * (D_inv * (B * direction)) -
+						Bt_D_inv_B_cross_cov * (chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * direction)) +
+						information_ll_.asDiagonal() * direction;//gradient = (Sigma^-1 + W) * direction (Sigma^-1 calculated with Woodbury), direction = (Sigma^-1 + W)^-1 * gradient
+					grad_dot_direction = direction.dot(gradient);
+				}
+				double lr_mode = 1.;
+				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
+					if (ih == 0) {
+						mode_new = mode_update;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
 					}
 					else {
-						sp_mat_t D_inv_B;
-						D_inv_B = D_inv * B;
-						sp_mat_t Bt_D_inv_B_aux;
-						Bt_D_inv_B_aux = B.cwiseProduct(D_inv_B);
-						vec_t SigmaI_diag = Bt_D_inv_B_aux.transpose() * vec_t::Ones(Bt_D_inv_B_aux.rows());
-#pragma omp parallel for schedule(static)   
-						for (int ii = 0; ii < woodbury_cross_cov_Bt_D_inv_B.cols(); ii++) {
-							SigmaI_diag[ii] -= woodbury_cross_cov_Bt_D_inv_B.col(ii).array().square().sum();
-						}
-						grad.array() /= (information_ll_.array() + SigmaI_diag.array());
+						mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
 					}
-					// Backtracking line search
-					lr_GD = 1.;
-					double nesterov_acc_rate = (1. - (3. / (6. + it)));//Nesterov acceleration factor
-					for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_QUASI_NEWTON_; ++ih) {
-						mode_update = mode_ + lr_GD * grad;
-						REModelTemplate<T_mat, T_chol>::ApplyMomentumStep(it, mode_update, mode_update_lag1,
-							mode_new, nesterov_acc_rate, 0, false, 2, false);
-						if (kink_cliping_) {
-							ApplyKinkClippingAsymLaplace(y_data, fixed_effects, mode_, mode_new);
-						}
-						CapChangeModeUpdateNewton(mode_new);
-						B_mode = B_rm_ * mode_new;
-						D_inv_B_mode = D_inv_rm_ * B_mode;
-						cross_cov_B_t_D_inv_B_mode = Bt_D_inv_B_cross_cov.transpose() * mode_new;
-						wood_inv_cross_cov_B_t_D_inv_B_mode = chol_fact_sigma_woodbury.solve(cross_cov_B_t_D_inv_B_mode);
-						UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-						approx_marginal_ll_new = -0.5 * ((B_mode.dot(D_inv_B_mode)) - cross_cov_B_t_D_inv_B_mode.dot(wood_inv_cross_cov_B_t_D_inv_B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
-						if (approx_marginal_ll_new < approx_marginal_ll ||
-							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-							lr_GD *= 0.5;
-							//nesterov_acc_rate *= 0.5;
-						}
-						else {//approx_marginal_ll_new >= approx_marginal_ll
-							break;
-						}
-					}// end loop over learnig rate halving procedure
-					mode_ = mode_new;
-					mode_update_lag1 = mode_update;
-				}//end quasi_newton_for_mode_finding_
-				else {//Newton's method
-					// Calculate Cholesky factor and update mode
-					rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();//right hand side for updating mode
-					if (matrix_inversion_method_ == "iterative") {
-						//Reduce max. number of iterations for the CG in first update
-						if (cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") {
-							if (it == 0 || information_changes_during_mode_finding_) {
-								W_D_inv = (information_ll_ + D_inv_rm_.diagonal());
-								W_D_inv_inv = W_D_inv.cwiseInverse();
-								W_D_inv_sqrt = W_D_inv_inv.cwiseSqrt();
-								if (cg_preconditioner_type_ == "vifdu") {
-									B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov = W_D_inv_sqrt.asDiagonal() * D_inv_B_cross_cov_;
-									den_mat_t B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot;
-									GPBoost::matmul(B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose(), B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov, B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot, GPU_use);
-									sigma_woodbury_woodbury = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov_dot;
-									chol_fact_sigma_woodbury_woodbury.compute(sigma_woodbury_woodbury);
-								}
-							}
-							if ((information_ll_.array() > 1e10).any()) {
-								has_NA_or_Inf = true;// the inversion of the preconditioner with the Woodbury identity can be numerically unstable when information_ll_ is very large
-							}
-							else {
-								CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
-									chol_fact_sigma_woodbury_woodbury, rhs, mode_update, has_NA_or_Inf, cg_max_num_it, it == 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
-							}
-						}
-						else if (cg_preconditioner_type_ == "fitc") {
-							const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
-							if (it == 0 || information_changes_during_mode_finding_) {
-								information_ll_inv.array() = information_ll_.array().inverse();
-#pragma omp parallel for schedule(static)   
-								for (int i = 0; i < dim_mode_; ++i) {
-									diagonal_approx_preconditioner_[i] = diagonal_approx_preconditioner_vecchia[i] + information_ll_inv[i];
-								}
-								diagonal_approx_inv_preconditioner_ = diagonal_approx_preconditioner_.cwiseInverse();
-								den_mat_t sigma_woodbury_preconditioner;
-								GPBoost::matmul((*cross_cov_preconditioner).transpose(), (diagonal_approx_inv_preconditioner_.asDiagonal() * (*cross_cov_preconditioner)), sigma_woodbury_preconditioner, GPU_use);
-								//den_mat_t sigma_woodbury_preconditioner = ((*cross_cov_preconditioner).transpose() * diagonal_approx_inv_preconditioner_.asDiagonal()) * (*cross_cov_preconditioner);
-								sigma_woodbury_preconditioner += (sigma_ip_preconditioner);
-								chol_fact_woodbury_preconditioner_.compute(sigma_woodbury_preconditioner);
-							}
-							rhs_part1 = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rhs);
-							rhs_part = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(rhs_part1);
-							rhs_part2 = (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * rhs));
-							rhs = rhs_part + rhs_part2;
-							CGVIFLaplaceSigmaPlusWinvVec(information_ll_inv, D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
-								chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rhs, mode_update_part, has_NA_or_Inf,
-								cg_max_num_it, it == 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
-							mode_update = information_ll_inv.asDiagonal() * mode_update_part;
-						}
-					}//end iterative
-					else { // start Cholesky 
-						information_ll_inv.array() = information_ll_.array().inverse();
-						if (it == 0 || information_changes_during_mode_finding_) {
-							SigmaI_plus_W = SigmaI;
-							SigmaI_plus_W.diagonal().array() += information_ll_.array();
-							SigmaI_plus_W.makeCompressed();
-							//Calculation of the Cholesky factor is the bottleneck
-							if (!chol_fact_pattern_analyzed_) {
-								chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
-								chol_fact_pattern_analyzed_ = true;
-							}
-							chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
-						}
-						sigma_woodbury_2 = (sigma_woodbury)-Bt_D_inv_B_cross_cov.transpose() * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
-						chol_fact_sigma_woodbury_2.compute(sigma_woodbury_2);
-						vec_t Sigma_I_rhs = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
-						vec_t Bt_D_inv_B_cross_cov_T_Sigma_I_rhs = Bt_D_inv_B_cross_cov.transpose() * Sigma_I_rhs;
-						vec_t woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs = chol_fact_sigma_woodbury_2.solve(Bt_D_inv_B_cross_cov_T_Sigma_I_rhs);
-						vec_t Bt_D_inv_B_cross_cov_woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs = Bt_D_inv_B_cross_cov * woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs;
-						vec_t SigmaI_Bt_D_inv_B_cross_cov_woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov_woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs);
-						mode_update = Sigma_I_rhs + SigmaI_Bt_D_inv_B_cross_cov_woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs;
-					} // end Cholesky
-					// Backtracking line search
-					double grad_dot_direction = 0.;//for Armijo check
-					if (armijo_condition_) {
-						if (num_sets_re_ > 1) {
-							Log::REFatal("The Armijo condition check is currently not implemented when num_sets_re_ > 1 (=multiple parameters related to GPs) ");
-						}
-						vec_t direction = mode_update - mode_;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
-						vec_t gradient = B.transpose() * (D_inv * (B * direction)) -
-							Bt_D_inv_B_cross_cov * (chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * direction)) +
-							information_ll_.asDiagonal() * direction;//gradient = (Sigma^-1 + W) * direction (Sigma^-1 calculated with Woodbury), direction = (Sigma^-1 + W)^-1 * gradient
-						grad_dot_direction = direction.dot(gradient);
+					if (kink_cliping_) {
+						ApplyKinkClippingAsymLaplace(y_data, fixed_effects, mode_, mode_new);
 					}
-					double lr_mode = 1.;
-					for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
-						if (ih == 0) {
-							mode_new = mode_update;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
-						}
-						else {
-							mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
-						}
-						if (kink_cliping_) {
-							ApplyKinkClippingAsymLaplace(y_data, fixed_effects, mode_, mode_new);
-						}
-						CapChangeModeUpdateNewton(mode_new);
-						UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-						B_mode = B * mode_new;
-						cross_cov_B_t_D_inv_B_mode = Bt_D_inv_B_cross_cov.transpose() * mode_new;
-						wood_inv_cross_cov_B_t_D_inv_B_mode = chol_fact_sigma_woodbury.solve(cross_cov_B_t_D_inv_B_mode);
-						approx_marginal_ll_new = -0.5 * ((B_mode.dot(D_inv * B_mode)) - cross_cov_B_t_D_inv_B_mode.dot(wood_inv_cross_cov_B_t_D_inv_B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
-						if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
-							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-							lr_mode *= 0.5;
-						}
-						else {//approx_marginal_ll_new >= approx_marginal_ll
-							break;
-						}
-					}// end loop over learnig rate halving procedure
-					mode_ = mode_new;
-				}
+					CapChangeModeUpdateNewton(mode_new);
+					UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+					B_mode = B * mode_new;
+					cross_cov_B_t_D_inv_B_mode = Bt_D_inv_B_cross_cov.transpose() * mode_new;
+					wood_inv_cross_cov_B_t_D_inv_B_mode = chol_fact_sigma_woodbury.solve(cross_cov_B_t_D_inv_B_mode);
+					approx_marginal_ll_new = -0.5 * ((B_mode.dot(D_inv * B_mode)) - cross_cov_B_t_D_inv_B_mode.dot(wood_inv_cross_cov_B_t_D_inv_B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
+					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
+						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+						lr_mode *= 0.5;
+					}
+					else {//approx_marginal_ll_new >= approx_marginal_ll
+						break;
+					}
+				}// end loop over learnig rate halving procedure
+				mode_ = mode_new;
 				CheckConvergenceModeFinding(it, approx_marginal_ll_new, approx_marginal_ll, terminate_optim, has_NA_or_Inf);
 				if (terminate_optim || has_NA_or_Inf) {
 					break;
@@ -3047,10 +2951,6 @@ namespace GPBoost {
 			vec_t rhs, B_mode, mode_new, mode_update(dim_mode_);
 			// Variables when using Cholesky factorization
 			sp_mat_t SigmaI, SigmaI_plus_W;
-			vec_t mode_update_lag1;//auxiliary variable used only if quasi_newton_for_mode_finding_
-			if (quasi_newton_for_mode_finding_) {
-				mode_update_lag1 = mode_;
-			}
 			// Variables when using iterative methods
 			int cg_max_num_it = cg_max_num_it_;
 			int cg_max_num_it_tridiag = cg_max_num_it_tridiag_;
@@ -3134,127 +3034,87 @@ namespace GPBoost {
 				if (it == 0 || information_changes_during_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par_ptr, true);
 				}
-				if (quasi_newton_for_mode_finding_) {
-					CHECK(num_sets_re_ == 1);
-					vec_t grad = first_deriv_ll_ - B[0].transpose() * (D_inv[0] * (B[0] * mode_));
-					sp_mat_t D_inv_B = D_inv[0] * B[0];
-					sp_mat_t Bt_D_inv_B_aux = B[0].cwiseProduct(D_inv_B);
-					vec_t SigmaI_diag = Bt_D_inv_B_aux.transpose() * vec_t::Ones(Bt_D_inv_B_aux.rows());
-					grad.array() /= (information_ll_.array() + SigmaI_diag.array());
-					//// Alternative way approximating W + Sigma^-1 with Bt * (W + D^-1) * B. 
-					//// Note: seems to work worse compared to above diagonal approach. Also, better to comment out "nesterov_acc_rate *= 0.5;"
-					//vec_t grad_aux = (B.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(grad);
-					//grad_aux.array() /= (D_inv.diagonal().array() + information_ll_.array());
-					//grad = B.triangularView<Eigen::UpLoType::UnitLower>().solve(grad_aux);
-					// Backtracking line search
-					double lr_mode = 1.;
-					double nesterov_acc_rate = (1. - (3. / (6. + it)));//Nesterov acceleration factor
-					for (int ih = 0; ih < MAX_NUMBER_LR_SHRINKAGE_STEPS_QUASI_NEWTON_; ++ih) {
-						mode_update = mode_ + lr_mode * grad;
-						REModelTemplate<T_mat, T_chol>::ApplyMomentumStep(it, mode_update, mode_update_lag1,
-							mode_new, nesterov_acc_rate, 0, false, 2, false);
-						if (kink_cliping_) {
-							ApplyKinkClippingAsymLaplace(y_data, fixed_effects, mode_, mode_new);
+				// Calculate Cholesky factor and update mode
+				if (information_has_off_diagonal_) {
+					rhs = information_ll_mat_ * mode_ + first_deriv_ll_;//right hand side for updating mode
+				}
+				else {
+					rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();//right hand side for updating mode
+				}
+				if (matrix_inversion_method_ == "iterative") {
+					bool calculate_preconditioners = it == 0 || information_changes_during_mode_finding_;
+					Inv_SigmaI_plus_ZtWZ_Vecchia_iterative(cg_max_num_it, I_k_plus_Sigma_L_kt_W_Sigma_L_k, SigmaI, SigmaI_plus_W, B[0], has_NA_or_Inf,
+						re_comps_cross_cov_cluster_i, cluster_i, re_model, rhs, mode_update, it == 0, calculate_preconditioners);
+					if (has_NA_or_Inf) {
+						approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
+						Log::REDebug(NA_OR_INF_WARNING_);
+						break;
+					}
+				} //end iterative
+				else { // start Cholesky 
+					if (it == 0 || information_changes_during_mode_finding_) {
+						SigmaI_plus_W = SigmaI;
+						if (information_has_off_diagonal_) {
+							SigmaI_plus_W += information_ll_mat_;
 						}
-						CapChangeModeUpdateNewton(mode_new);
-						B_mode = B[0] * mode_new;
-						UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-						approx_marginal_ll_new = -0.5 * (B_mode.dot(D_inv[0] * B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
-						if (approx_marginal_ll_new < approx_marginal_ll ||
-							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-							lr_mode *= 0.5;
-							nesterov_acc_rate *= 0.5;
+						else {
+							SigmaI_plus_W.diagonal().array() += information_ll_.array();
 						}
-						else {//approx_marginal_ll_new >= approx_marginal_ll
-							break;
+						SigmaI_plus_W.makeCompressed();
+						//Calculation of the Cholesky factor is the bottleneck
+						if (!chol_fact_pattern_analyzed_) {
+							chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
+							chol_fact_pattern_analyzed_ = true;
 						}
-					}// end loop over learnig rate halving procedure
-					mode_ = mode_new;
-					mode_update_lag1 = mode_update;
-				}//end quasi_newton_for_mode_finding_
-				else {//Newton's method
-					// Calculate Cholesky factor and update mode
-					if (information_has_off_diagonal_) {
-						rhs = information_ll_mat_ * mode_ + first_deriv_ll_;//right hand side for updating mode
+						chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
+					}
+					//Log::REInfo("SigmaI_plus_W: number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging
+					//Log::REInfo("chol_fact_SigmaI_plus_ZtWZ: Number non zeros = %d", (int)((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).nonZeros());//only for debugging
+					mode_update = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
+				} // end Cholesky
+				// Backtracking line search
+				double grad_dot_direction = 0.;//for Armijo check
+				if (armijo_condition_) {
+					if (num_sets_re_ > 1) {
+						Log::REFatal("The Armijo condition check is currently not implemented when num_sets_re_ > 1 (=multiple parameters related to GPs) ");
+					}
+					vec_t direction = mode_update - mode_;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
+					vec_t gradient = B[0].transpose() * (D_inv[0] * (B[0] * direction)) + information_ll_.asDiagonal() * direction;//gradient = (Sigma^-1 + W) * direction, direction = (Sigma^-1 + W)^-1 * gradient
+					grad_dot_direction = direction.dot(gradient);
+				}
+				double lr_mode = 1.;
+				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
+					if (ih == 0) {
+						mode_new = mode_update;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
 					}
 					else {
-						rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();//right hand side for updating mode
+						mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
 					}
-					if (matrix_inversion_method_ == "iterative") {
-						bool calculate_preconditioners = it == 0 || information_changes_during_mode_finding_;
-						Inv_SigmaI_plus_ZtWZ_Vecchia_iterative(cg_max_num_it, I_k_plus_Sigma_L_kt_W_Sigma_L_k, SigmaI, SigmaI_plus_W, B[0], has_NA_or_Inf,
-							re_comps_cross_cov_cluster_i, cluster_i, re_model, rhs, mode_update, it == 0, calculate_preconditioners);
-						if (has_NA_or_Inf) {
-							approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
-							Log::REDebug(NA_OR_INF_WARNING_);
-							break;
-						}
-					} //end iterative
-					else { // start Cholesky 
-						if (it == 0 || information_changes_during_mode_finding_) {
-							SigmaI_plus_W = SigmaI;
-							if (information_has_off_diagonal_) {
-								SigmaI_plus_W += information_ll_mat_;
-							}
-							else {
-								SigmaI_plus_W.diagonal().array() += information_ll_.array();
-							}
-							SigmaI_plus_W.makeCompressed();
-							//Calculation of the Cholesky factor is the bottleneck
-							if (!chol_fact_pattern_analyzed_) {
-								chol_fact_SigmaI_plus_ZtWZ_vecchia_.analyzePattern(SigmaI_plus_W);
-								chol_fact_pattern_analyzed_ = true;
-							}
-							chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
-						}
-						//Log::REInfo("SigmaI_plus_W: number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging
-						//Log::REInfo("chol_fact_SigmaI_plus_ZtWZ: Number non zeros = %d", (int)((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).nonZeros());//only for debugging
-						mode_update = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
-					} // end Cholesky
-					// Backtracking line search
-					double grad_dot_direction = 0.;//for Armijo check
-					if (armijo_condition_) {
-						if (num_sets_re_ > 1) {
-							Log::REFatal("The Armijo condition check is currently not implemented when num_sets_re_ > 1 (=multiple parameters related to GPs) ");
-						}
-						vec_t direction = mode_update - mode_;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
-						vec_t gradient = B[0].transpose() * (D_inv[0] * (B[0] * direction)) + information_ll_.asDiagonal() * direction;//gradient = (Sigma^-1 + W) * direction, direction = (Sigma^-1 + W)^-1 * gradient
-						grad_dot_direction = direction.dot(gradient);
+					if (kink_cliping_) {
+						ApplyKinkClippingAsymLaplace(y_data, fixed_effects, mode_, mode_new);
 					}
-					double lr_mode = 1.;
-					for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
-						if (ih == 0) {
-							mode_new = mode_update;//mode_update = "new mode" = (Sigma^-1 + W)^-1 (W * mode + grad p(y|mode))
+					CapChangeModeUpdateNewton(mode_new);
+					UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
+					approx_marginal_ll_new = LogLikelihood(y_data, y_data_int, location_par_ptr);
+					if (num_sets_re_ == 1) {
+						B_mode = B[0] * mode_new;
+						approx_marginal_ll_new += -0.5 * (B_mode.dot(D_inv[0] * B_mode));
+					}
+					else {
+						for (int igp = 0; igp < num_sets_re_; ++igp) {
+							B_mode.segment(dim_mode_per_set_re_ * igp, dim_mode_per_set_re_) = B[igp] * (mode_new.segment(dim_mode_per_set_re_ * igp, dim_mode_per_set_re_));
+							approx_marginal_ll_new += -0.5 * ((B_mode.segment(dim_mode_per_set_re_ * igp, dim_mode_per_set_re_)).dot(D_inv[igp] * (B_mode.segment(dim_mode_per_set_re_ * igp, dim_mode_per_set_re_))));
 						}
-						else {
-							mode_new = (1 - lr_mode) * mode_ + lr_mode * mode_update;
-						}
-						if (kink_cliping_) {
-							ApplyKinkClippingAsymLaplace(y_data, fixed_effects, mode_, mode_new);
-						}
-						CapChangeModeUpdateNewton(mode_new);
-						UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
-						approx_marginal_ll_new = LogLikelihood(y_data, y_data_int, location_par_ptr);
-						if (num_sets_re_ == 1) {
-							B_mode = B[0] * mode_new;
-							approx_marginal_ll_new += -0.5 * (B_mode.dot(D_inv[0] * B_mode));
-						}
-						else {
-							for (int igp = 0; igp < num_sets_re_; ++igp) {
-								B_mode.segment(dim_mode_per_set_re_ * igp, dim_mode_per_set_re_) = B[igp] * (mode_new.segment(dim_mode_per_set_re_ * igp, dim_mode_per_set_re_));
-								approx_marginal_ll_new += -0.5 * ((B_mode.segment(dim_mode_per_set_re_ * igp, dim_mode_per_set_re_)).dot(D_inv[igp] * (B_mode.segment(dim_mode_per_set_re_ * igp, dim_mode_per_set_re_))));
-							}
-						}
-						if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
-							std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-							lr_mode *= 0.5;
-						}
-						else {//approx_marginal_ll_new >= approx_marginal_ll
-							break;
-						}
-					}// end loop over learnig rate halving procedure
-					mode_ = mode_new;
-				}//end Newton's method
+					}
+					if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
+						std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
+						lr_mode *= 0.5;
+					}
+					else {//approx_marginal_ll_new >= approx_marginal_ll
+						break;
+					}
+				}// end loop over learnig rate halving procedure
+				mode_ = mode_new;
 				CheckConvergenceModeFinding(it, approx_marginal_ll_new, approx_marginal_ll, terminate_optim, has_NA_or_Inf);
 				if (terminate_optim || has_NA_or_Inf) {
 					break;
@@ -9158,13 +9018,6 @@ namespace GPBoost {
 					user_defined_mode_finding_approach_ = true;
 					return likelihood.substr(0, likelihood.size() - 20);
 				}
-			}			
-			if (likelihood.size() > 13) {
-				if (likelihood.substr(likelihood.size() - 13) == string_t("_quasi-newton")) {
-					quasi_newton_for_mode_finding_ = true;
-					user_defined_mode_finding_approach_ = true;
-					return likelihood.substr(0, likelihood.size() - 13);
-				}
 			}
 			return likelihood;
 		}
@@ -14527,8 +14380,6 @@ namespace GPBoost {
 		double delta_conv_mode_finding_ = 1e-8;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the ewton method for mode finding in Laplace approximation */
 		int max_number_lr_shrinkage_steps_newton_ = 20;
-		/*! \brief If true, a quasi-Newton method instead of Newton's method is used for finding the maximal mode. Only supported for the Vecchia approximation */
-		bool quasi_newton_for_mode_finding_ = false;
 		/*! \brief Maximal number of steps for which learning rate shrinkage is done in the quasi-Newton method for mode finding in Laplace approximation */
 		int MAX_NUMBER_LR_SHRINKAGE_STEPS_QUASI_NEWTON_ = 20;
 		/*! \brief If true, the mode can only change by 'MAX_CHANGE_MODE_NEWTON_' in Newton's method */
