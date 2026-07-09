@@ -102,7 +102,7 @@ namespace GPBoost {
 			h = z + b * h;
 		}
 		if (!run_in_parallel_do_not_report_non_convergence) {
-			Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			Log::REDebug("CGVecchiaLaplaceVec: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 				"This could happen if the initial learning rate is too large in a line search phase. Otherwise you might increase 'cg_max_num_it' ", p);
 		}
 	} // end CGVecchiaLaplaceVec
@@ -212,11 +212,11 @@ namespace GPBoost {
 				return;
 			}
 		}
-		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+		Log::REDebug("CGTridiagVecchiaLaplace: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGTridiagVecchiaLaplace
 
-	void CGVecchiaLaplaceSigmaPlusWinvVec(const vec_t& diag_W,
+	void CGVecchiaLaplace_Version_SigmaPlusWinvVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
 		const sp_mat_rm_t& D_inv_B_rm,
 		const vec_t& rhs,
@@ -290,7 +290,7 @@ namespace GPBoost {
 			z = B_vecchia_pc.transpose() * (D_inv_vecchia_pc * (B_vecchia_pc * r));
 		}
 		else {
-			Log::REFatal("CGVecchiaLaplaceSigmaPlusWinvVec: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
+			Log::REFatal("CGVecchiaLaplace_Version_SigmaPlusWinvVec: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 		}
 		h = z;
 		for (int j = 0; j < p; ++j) {
@@ -312,7 +312,7 @@ namespace GPBoost {
 				u = diag_W_inv.cwiseProduct(u);
 				if ((j + 1) == p) {
 					if (!run_in_parallel_do_not_report_non_convergence) {
-						Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+						Log::REDebug("CGVecchiaLaplace_Version_SigmaPlusWinvVec: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 							"This could happen if the initial learning rate is too large in a line search phase. Otherwise you might increase 'cg_max_num_it' ", p);
 					}
 				}
@@ -341,9 +341,9 @@ namespace GPBoost {
 			b /= r_old.transpose() * z_old;
 			h = z + b * h;
 		}
-	} // end CGVecchiaLaplaceSigmaPlusWinvVec
+	} // end CGVecchiaLaplace_Version_SigmaPlusWinvVec
 
-	void CGTridiagVecchiaLaplaceSigmaPlusWinv(const vec_t& diag_W,
+	void CGTridiagVecchiaLaplace_Version_SigmaPlusWinv(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
 		const sp_mat_rm_t& D_inv_B_rm,
 		const den_mat_t& rhs,
@@ -403,7 +403,7 @@ namespace GPBoost {
 			}
 		}
 		else {
-			Log::REFatal("CGTridiagVecchiaLaplaceSigmaPlusWinv: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
+			Log::REFatal("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 		}
 		H = Z;
 		for (int j = 0; j < p; ++j) {
@@ -470,9 +470,9 @@ namespace GPBoost {
 				return;
 			}
 		}
-		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+		Log::REDebug("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
-	} // end CGTridiagVecchiaLaplaceSigmaplusWinv
+	} // end CGTridiagVecchiaLaplace_Version_SigmaPlusWinv
 
 	void CGFVIFLaplaceVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -524,7 +524,7 @@ namespace GPBoost {
 			z = r;
 		}
 		else {
-			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			Log::REFatal("CGFVIFLaplaceVec: Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 		}
 		h = z;
 		for (int j = 0; j < p; ++j) {
@@ -557,14 +557,14 @@ namespace GPBoost {
 				z = r;
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+				Log::REFatal("CGFVIFLaplaceVec: Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 			}
 			b = r.transpose() * z;
 			b /= r_old.transpose() * z_old;
 			h = z + b * h;
 		}
 		if (!run_in_parallel_do_not_report_non_convergence) {
-			Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			Log::REDebug("CGFVIFLaplaceVec: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 				"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
 		}
 	} // end CGFVIFLaplaceVec
@@ -628,7 +628,7 @@ namespace GPBoost {
 			Z = R;
 		}
 		else {
-			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			Log::REFatal("CGTridiagVIFLaplace: Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 		}
 		H = Z;
 		for (int j = 0; j < p; ++j) {
@@ -681,7 +681,7 @@ namespace GPBoost {
 				Z = R;
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+				Log::REFatal("CGTridiagVIFLaplace: Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 			}
 			b_old = b;
 			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
@@ -701,11 +701,11 @@ namespace GPBoost {
 				return;
 			}
 		}
-		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+		Log::REDebug("CGTridiagVIFLaplace: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
 	} // end CGTridiagVIFLaplace
 
-	void CGVIFLaplaceSigmaPlusWinvVec(const vec_t& diag_W_inv,
+	void CGVIFLaplace_Version_SigmaPlusWinvVec(const vec_t& diag_W_inv,
 		const sp_mat_rm_t& D_inv_B_rm_,
 		const sp_mat_rm_t& B_rm,
 		const chol_den_mat_t& chol_fact_sigma_woodbury_preconditioner,
@@ -754,7 +754,7 @@ namespace GPBoost {
 			z = r;
 		}
 		else {
-			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			Log::REFatal("CGVIFLaplace_Version_SigmaPlusWinvVec: Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 		}
 		h = z;
 		for (int j = 0; j < p; ++j) {
@@ -786,19 +786,19 @@ namespace GPBoost {
 				z = r;
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+				Log::REFatal("CGVIFLaplace_Version_SigmaPlusWinvVec: Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 			}
 			b = r.transpose() * z;
 			b /= r_old.transpose() * z_old;
 			h = z + b * h;
 		}
 		if (!run_in_parallel_do_not_report_non_convergence) {
-			Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+			Log::REDebug("CGVIFLaplace_Version_SigmaPlusWinvVec: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 				"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it'.", p);
 		}
-	} // end CGVIFLaplaceSigmaPlusWinvVec
+	} // end CGVIFLaplace_Version_SigmaPlusWinvVec
 
-	void CGTridiagVIFLaplaceSigmaPlusWinv(const vec_t& diag_W_inv,
+	void CGTridiagVIFLaplace_Version_SigmaPlusWinv(const vec_t& diag_W_inv,
 		const sp_mat_rm_t& D_inv_B_rm_,
 		const sp_mat_rm_t& B_rm,
 		const chol_den_mat_t& chol_fact_sigma_woodbury_preconditioner,
@@ -845,7 +845,7 @@ namespace GPBoost {
 			Z = R;
 		}
 		else {
-			Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+			Log::REFatal("CGTridiagVIFLaplace_Version_SigmaPlusWinv: Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 		}
 		H = Z;
 		for (int j = 0; j < p; ++j) {
@@ -888,7 +888,7 @@ namespace GPBoost {
 				Z = R;
 			}
 			else {
-				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
+				Log::REFatal("CGTridiagVIFLaplace_Version_SigmaPlusWinv: Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 			}
 
 			b_old = b;
@@ -909,9 +909,9 @@ namespace GPBoost {
 				return;
 			}
 		}
-		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
+		Log::REDebug("CGTridiagVIFLaplace_Version_SigmaPlusWinv: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
-	} // end CGTridiagVIFLaplaceSigmaPlusWinv
+	} // end CGTridiagVIFLaplace_Version_SigmaPlusWinv
 
 
 	//// Old non-parallel version

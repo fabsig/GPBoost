@@ -119,7 +119,7 @@ namespace GPBoost {
 	* \param D_inv_vecchia_pc D^(-1) for the Vecchia preconditioner
 	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
 	*/
-	void CGVecchiaLaplaceSigmaPlusWinvVec(const vec_t& diag_W,
+	void CGVecchiaLaplace_Version_SigmaPlusWinvVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
 		const sp_mat_rm_t& D_inv_B_rm,
 		const vec_t& rhs,
@@ -164,7 +164,7 @@ namespace GPBoost {
 	* \param B_vecchia_pc B for the Vecchia preconditioner
 	* \param D_inv_vecchia_pc D^(-1) for the Vecchia preconditioner
 	*/
-	void CGTridiagVecchiaLaplaceSigmaPlusWinv(const vec_t& diag_W,
+	void CGTridiagVecchiaLaplace_Version_SigmaPlusWinv(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
 		const sp_mat_rm_t& D_inv_B_rm,
 		const den_mat_t& rhs,
@@ -279,7 +279,7 @@ namespace GPBoost {
 	* \param cg_preconditioner_type Type of preconditioner used.
 	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
 	*/
-	void CGVIFLaplaceSigmaPlusWinvVec(const vec_t& diag_W_inv,
+	void CGVIFLaplace_Version_SigmaPlusWinvVec(const vec_t& diag_W_inv,
 		const sp_mat_rm_t& D_inv_B_rm_,
 		const sp_mat_rm_t& B_rm,
 		const chol_den_mat_t& chol_fact_sigma_woodbury_preconditioner,
@@ -315,7 +315,7 @@ namespace GPBoost {
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param cg_preconditioner_type Type of preconditioner used.
 	*/
-	void CGTridiagVIFLaplaceSigmaPlusWinv(const vec_t& diag_W_inv,
+	void CGTridiagVIFLaplace_Version_SigmaPlusWinv(const vec_t& diag_W_inv,
 		const sp_mat_rm_t& D_inv_B_rm_,
 		const sp_mat_rm_t& B_rm,
 		const chol_den_mat_t& chol_fact_sigma_woodbury_preconditioner,
