@@ -12,7 +12,7 @@
   predict_var = FALSE, ...)
 }
 \arguments{
-\item{gp_model}{A \code{GPModel}}
+\item{gp_model}{A \code{GPModel} or a \code{gpb.Booster} with a \code{GPModel}}
 
 \item{predict_var}{A \code{boolean}. If TRUE, the (posterior) 
 predictive variances are calculated}
@@ -20,6 +20,8 @@ predictive variances are calculated}
 \item{offset}{A \code{numeric} \code{vector} with 
 additional fixed effects contributions that are added to the linear predictor (= offset). 
 The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.}
+
+\item{...}{Additional arguments passed to methods.}
 }
 \value{
 A \code{GPModel}

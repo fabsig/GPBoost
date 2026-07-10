@@ -6025,22 +6025,25 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model$get_aux_pars()-aux_pars)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll)),TOLERANCE_MEDIUM)
+    gp_model_iid <- fitGPModel(y = y, X = X, likelihood = likelihood, params=params_init)
     params_init$maxit <- 0
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
                                            y = y, X=X, params = params_init, matrix_inversion_method = "cholesky")
                     , file='NUL')
-    gp_model_iid <- fitGPModel(y = y, X = X, likelihood = likelihood, params=params_init)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-gp_model_iid$get_coef(std_err = FALSE))),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-gp_model_iid$get_aux_pars())),TOLERANCE_STRICT)
+    # init_aux_pars given and only coefs initialized
     params_init_aux <- params_init
     params_init_aux$init_aux_pars <- aux_pars
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
                                            y = y, X=X, params = params_init_aux, matrix_inversion_method = "cholesky")
                     , file='NUL')
-    gp_model_iid_aux <- fitGPModel(y = y, X = X, likelihood = likelihood,
-                                   params = list(maxit = 0, init_aux_pars = aux_pars,
-                                                 init_coef_aux_pars_from_iid_model = TRUE))
-    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-gp_model_iid_aux$get_coef(std_err = FALSE))),TOLERANCE_STRICT)
+    params_ref <- params_init_aux
+    params_ref$maxit <- 1000
+    params_ref$estimate_aux_pars <- FALSE
+    params_ref$init_coef_aux_pars_from_iid_model <- NULL
+    gp_model_iid_ref <- fitGPModel(y = y, X = X, likelihood = likelihood, params = params_ref)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-gp_model_iid_ref$get_coef(std_err = FALSE))),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars)),TOLERANCE_STRICT)
     params_init_coef <- list(maxit = 0, init_coef = c(0.2, 0.3), init_aux_pars = aux_pars,
                              init_coef_aux_pars_from_iid_model = TRUE)

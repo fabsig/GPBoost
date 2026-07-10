@@ -3385,7 +3385,7 @@ set_optim_params <- function(gp_model,
 #' gp_model <- GPModel(group_data = group_data, likelihood="gaussian")
 #' set_optim_params(gp_model, params=list(optimizer_cov="nelder_mead"))
 #' }
-#' @method set_optim_params GPModel 
+#' @method set_optim_params GPModel
 #' @rdname set_optim_params.GPModel
 #' @author Fabio Sigrist
 #' @export 
@@ -3449,7 +3449,7 @@ set_prediction_data <- function(gp_model,
 #' gp_model <- GPModel(group_data = group_data[train_ind,1], likelihood="gaussian")
 #' set_prediction_data(gp_model, group_data_pred = group_data[-train_ind,1])
 #' }
-#' @method set_prediction_data GPModel 
+#' @method set_prediction_data GPModel
 #' @rdname set_prediction_data.GPModel
 #' @author Fabio Sigrist
 #' @export 
@@ -3571,8 +3571,9 @@ neg_log_likelihood.GPModel <- function(gp_model
 #' 
 #' Predict ("estimate") training data random effects for a \code{GPModel}
 #' 
-#' @param gp_model A \code{GPModel}
+#' @param gp_model A \code{GPModel} or a \code{gpb.Booster} with a \code{GPModel}
 #' @inheritParams GPModel_shared_params
+#' @param ... Additional arguments passed to methods.
 #'
 #' @return A \code{GPModel}
 #'
@@ -3582,7 +3583,7 @@ neg_log_likelihood.GPModel <- function(gp_model
 #' # Add intercept column
 #' X1 <- cbind(rep(1,dim(X)[1]),X)
 #' X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
-#' 
+#'
 #' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1, likelihood="gaussian")
 #' all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
 #' first_occurences <- match(unique(group_data[,1]), group_data[,1])
@@ -3590,18 +3591,19 @@ neg_log_likelihood.GPModel <- function(gp_model
 #' head(unique_training_data_random_effects)
 #' }
 #' @author Fabio Sigrist
-#' @export 
-#' 
+#' @export
+#'
 predict_training_data_random_effects <- function(gp_model,
                                                  predict_var = FALSE,
                                                  ...) UseMethod("predict_training_data_random_effects")
 
 #' Predict ("estimate") training data random effects for a \code{GPModel}
-#' 
-#' Predict ("estimate") training data random effects for a \code{GPModel} 
-#' 
-#' @param gp_model A \code{GPModel}
+#'
+#' Predict ("estimate") training data random effects for a \code{GPModel}
+#'
+#' @param gp_model A \code{GPModel} or a \code{gpb.Booster} with a \code{GPModel}
 #' @inheritParams GPModel_shared_params
+#' @param ... Additional arguments passed to methods.
 #'
 #' @return A \code{GPModel}
 #'
@@ -3611,14 +3613,14 @@ predict_training_data_random_effects <- function(gp_model,
 #' # Add intercept column
 #' X1 <- cbind(rep(1,dim(X)[1]),X)
 #' X_test1 <- cbind(rep(1,dim(X_test)[1]),X_test)
-#' 
+#'
 #' gp_model <- fitGPModel(group_data = group_data[,1], y = y, X = X1, likelihood="gaussian")
 #' all_training_data_random_effects <- predict_training_data_random_effects(gp_model)
 #' first_occurences <- match(unique(group_data[,1]), group_data[,1])
 #' unique_training_data_random_effects <- all_training_data_random_effects[first_occurences]
 #' head(unique_training_data_random_effects)
 #' }
-#' @method predict_training_data_random_effects GPModel 
+#' @method predict_training_data_random_effects GPModel
 #' @rdname predict_training_data_random_effects.GPModel
 #' @author Fabio Sigrist
 #' @export 

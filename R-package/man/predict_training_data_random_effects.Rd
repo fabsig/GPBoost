@@ -7,10 +7,12 @@
 predict_training_data_random_effects(gp_model, predict_var = FALSE, ...)
 }
 \arguments{
-\item{gp_model}{A \code{GPModel}}
+\item{gp_model}{A \code{GPModel} or a \code{gpb.Booster} with a \code{GPModel}}
 
 \item{predict_var}{A \code{boolean}. If TRUE, the (posterior) 
 predictive variances are calculated}
+
+\item{...}{Additional arguments passed to methods.}
 }
 \value{
 A \code{GPModel}
