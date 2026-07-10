@@ -3,10 +3,15 @@
 *   boosting with Gaussian process and mixed effects models
 *
 * Copyright (c) 2020 - 2026 Fabio Sigrist, Tim Gyger, and Pascal Kuendig. All rights reserved.
-*
+* 
+* 
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
 *
-*
+* 
+* Iterative methods (matrix_inversion_method_ == "iterative") are based on the following references:
+*	- Kündig and Sigrist, 2025, "Scalable Krylov Subspace Methods for Generalized Mixed Effects Models with Crossed Random Effects", https://arxiv.org/abs/2505.09552
+*	- Gyger, Furrer, and Sigrist, SIAM/ASA JUQ 2026, "Iterative Methods for Full-Scale Gaussian Process Approximations for Large Spatial Data", https://epubs.siam.org/doi/full/10.1137/25M1731320
+* 
 *  EXPLANATIONS ON PARAMETERIZATIONS USED
 *
 *  The following notation is used below:
@@ -2639,7 +2644,6 @@ namespace GPBoost {
 			int it;
 			bool terminate_optim = false;
 			bool has_NA_or_Inf = false;
-			double lr_GD = 1.;// learning rate for gradient descent
 			vec_t rhs_part, rhs_part1, rhs_part2, W_rhs, information_ll_inv(dim_mode_);
 			den_mat_t sigma_woodbury_2;
 			chol_den_mat_t chol_fact_sigma_woodbury_2;

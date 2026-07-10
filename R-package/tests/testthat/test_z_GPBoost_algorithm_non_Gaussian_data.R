@@ -2161,51 +2161,6 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         }
       }
     })
-    
-    test_that("GPBoost algorithm with grouped random effects and 'gaussian_heteroscedastic' likelihood", {
-      n <- 120
-      p <- 4
-      X <- matrix(sim_rand_unif(n * p, init_c = 0.731), ncol = p)
-      X[, 1] <- 1
-      beta_mean <- c(0.2, 0.7, -0.2, 0.1)
-      beta_var <- c(-2.0, 0.8, 0.1, -0.1)
-      f_mean <- as.vector(X %*% beta_mean)
-      f_var <- exp(as.vector(X %*% beta_var))
-      m <- 12
-      group <- rep(1:m, each = n / m)
-      b <- 0.3 * qnorm(sim_rand_unif(n = m, init_c = 0.4242))
-      y <- f_mean + b[group] + sqrt(f_var) * qnorm(sim_rand_unif(n = n, init_c = 0.3131))
-
-      dtrain <- gpb.Dataset(data = X, label = y)
-      gp_model <- GPModel(group_data = group,
-                          likelihood = "gaussian_heteroscedastic")
-      gp_model$set_optim_params(params = DEFAULT_OPTIM_PARAMS_EARLY_STOP_NO_NESTEROV)
-      bst <- gpb.train(data = dtrain,
-                       gp_model = gp_model,
-                       nrounds = 3,
-                       learning_rate = 0.05,
-                       max_depth = 2,
-                       min_data_in_leaf = 5,
-                       verbose = 0,
-                       deterministic = TRUE)
-
-      re_pred <- predict_training_data_random_effects(bst)
-      expect_equal(dim(re_pred), c(n, 1))
-      expect_false(anyNA(re_pred))
-
-      pred_latent <- predict(bst, data = X[1:10, ], group_data_pred = group[1:10],
-                             predict_var = TRUE, pred_latent = TRUE)
-      expect_equal(length(pred_latent$fixed_effect), 10)
-      expect_equal(length(pred_latent$random_effect_mean), 10)
-      expect_false(anyNA(pred_latent$random_effect_mean))
-
-      pred_response <- predict(bst, data = X[1:10, ], group_data_pred = group[1:10],
-                               predict_var = TRUE, pred_latent = FALSE)
-      expect_equal(length(pred_response$response_mean), 10)
-      expect_equal(length(pred_response$response_var), 10)
-      expect_false(anyNA(pred_response$response_mean))
-      expect_false(anyNA(pred_response$response_var))
-    })
 
     if (Sys.getenv("GPBOOST_ADDITIONAL_SLOW_TESTS") == "GPBOOST_ADDITIONAL_SLOW_TESTS") {
       # slow test 

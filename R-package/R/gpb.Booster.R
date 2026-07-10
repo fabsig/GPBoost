@@ -63,6 +63,7 @@ Booster <- R6::R6Class(
           
           private$has_gp_model <- TRUE
           private$gp_model <- gp_model
+          private$gp_model$.__enclos_env__$private$used_in_gpboost_algorithm <- TRUE
           # Store booster handle
           handle <- .Call(
             LGBM_GPBoosterCreate_R

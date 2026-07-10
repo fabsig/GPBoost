@@ -4174,12 +4174,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   }) #end gaussian_heteroscedastic_fixed_and_random likelihood
 
   test_that("gaussian_heteroscedastic likelihood (fixed effects only) for linear and GPBoost models ", {
+
     n_het <- 100
     group_het <- rep(1:10, each = 10)
     X_het <- cbind(rep(1, n_het), sim_rand_unif(n = n_het, init_c = 0.256))
     beta_mean <- c(0.3, 0.7)
     beta_var <- c(-0.5, 1.2)
-    gr_var_het <- 0.35
+    gr_var_het <- 1
     b_gr_het <- qnorm(sim_rand_unif(n = 10, init_c = 0.741))
     mean_true <- as.vector(X_het %*% beta_mean) + sqrt(gr_var_het) * b_gr_het[group_het]
     log_var_true <- as.vector(X_het %*% beta_var)
@@ -4190,7 +4191,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     fixed_effects_given_het <- as.vector(cbind(X_het %*% c(0.2, 0.5), X_het %*% c(-0.3, 0.8)))
     nll_given_het <- GPModel(group_data = group_het, likelihood = "gaussian_heteroscedastic")$neg_log_likelihood(
       cov_pars = cov_pars_given_het, y = y_het, fixed_effects = fixed_effects_given_het)
-    expect_lt(abs(nll_given_het - 155.30124457), TOLERANCE_MEDIUM)
+    expect_lt(abs(nll_given_het - 157.80743264), TOLERANCE_MEDIUM)
 
     # A fixed-effects-only variance requires a fixed effects term (covariates and / or GPBoost boosting):
     # without any covariates and without the GPBoost algorithm, fitting should raise an informative error
@@ -4211,23 +4212,28 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Note: std. errs. must be strictly positive; a plain is.finite() check would not catch a regression where the
     # variance block's std. errs. are silently left at their R-side zero-initialized default (0 is finite)
     expect_true(all(coef_het_std_err["Std. err.", ] > 0))
-    expected_coef_het <- c(-0.08045959, 1.06952594, -0.62776050, 1.52450432)
+    expected_coef_het <- c(-0.16843105, 1.05258998, -0.64123490, 1.54924057)
     expect_lt(sum(abs(coef_het - expected_coef_het)), TOLERANCE_MEDIUM)
-    expect_lt(abs(as.vector(gp_model_het$get_cov_pars(std_err = FALSE)) - 0.04860032), TOLERANCE_MEDIUM)
-    expect_lt(abs(gp_model_het$get_current_neg_log_likelihood() - 151.10872777), TOLERANCE_MEDIUM)
+    expect_lt(abs(as.vector(gp_model_het$get_cov_pars(std_err = FALSE)) - 0.24994751), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_het$get_current_neg_log_likelihood() - 155.27522914), TOLERANCE_MEDIUM)
     # Prediction: response mean and variance
     X_test_het <- cbind(rep(1, 3), c(0.1, 0.4, 0.8))
     group_test_het <- c(1, 3, 11)
     pred_het <- predict(gp_model_het, y = y_het, group_data_pred = group_test_het, X_pred = X_test_het,
                         predict_var = TRUE, predict_response = TRUE)
-    expected_mu_het <- c(0.10067895, 0.33786288, 0.77516116)
-    expected_var_het <- c(0.65548125, 1.01482812, 1.85591647)
+    expected_mu_het <- c(0.35476713, 0.16102877, 0.67364093)
+    expected_var_het <- c(0.69153035, 1.04948914, 2.06871225)
     expect_lt(sum(abs(pred_het$mu - expected_mu_het)), TOLERANCE_MEDIUM)
     expect_lt(sum(abs(pred_het$var - expected_var_het)), TOLERANCE_MEDIUM)
     X_zero_het <- matrix(0, nrow = n_het, ncol = ncol(X_het))
     re_pred_train_het <- predict_training_data_random_effects(gp_model_het)
-    expected_re_pred_train_het <- c(0.07418595, 0.07418595, 0.07418595, 0.07418595, 0.07418595)
-    expect_lt(sum(abs(re_pred_train_het[1:5, 1] - expected_re_pred_train_het)), TOLERANCE_MEDIUM)
+    expected_re_pred_train_het <- c(0.41793918, 0.11415140, -0.09157617, -0.06884991, 0.53482262,
+                                    -0.64437448, 0.20923218, -0.85328655, 0.28497061, 0.09707038)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_het[, 1])) - expected_re_pred_train_het)), TOLERANCE_MEDIUM)
+    re_pred_train_het_var <- predict_training_data_random_effects(gp_model_het, predict_var = TRUE)
+    expected_re_pred_train_het_var <- c(0.07663970, 0.06660995, 0.07079751, 0.07706457, 0.07193486,
+                                        0.06797221, 0.08127999, 0.07331034, 0.06945477, 0.07959953)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_het_var[, 2])) - expected_re_pred_train_het_var)), TOLERANCE_MEDIUM)
     pred_train_re_het <- predict(gp_model_het, y = y_het, group_data_pred = group_het, X_pred = X_zero_het,
                                  predict_response = FALSE, predict_var = FALSE)
     expect_lt(sum(abs(as.vector(re_pred_train_het[, 1]) - pred_train_re_het$mu)), TOLERANCE_STRICT)
@@ -4242,9 +4248,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                   y = y_het, X = X_het,
                                                   params = OPTIM_PARAMS_BFGS), file = "NUL")
     coef_het_iid <- as.vector(gp_model_het_iid$get_coef(std_err = FALSE))
-    expected_coef_het_iid <- c(-0.08612593, 1.07850700, -0.51862728, 1.39880423)
+    expected_coef_het_iid <- c(-0.18164405, 1.06906319, -0.14266627, 0.97312331)
     expect_lt(sum(abs(coef_het_iid - expected_coef_het_iid)), TOLERANCE_MEDIUM)
-    expect_lt(abs(gp_model_het_iid$get_current_neg_log_likelihood() - 151.44567090), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_het_iid$get_current_neg_log_likelihood() - 159.44268884), TOLERANCE_MEDIUM)
 
     ###################
     ## GPBoost algorithm (tree-boosting): mean via a grouped random effect + trees, variance via a second tree ensemble
@@ -4253,15 +4259,26 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model_het_boost$set_optim_params(params = OPTIM_PARAMS_BFGS)
     dtrain_het <- gpb.Dataset(data = X_het[, 2, drop = FALSE], label = y_het)
     bst_het <- gpb.train(data = dtrain_het, gp_model = gp_model_het_boost, nrounds = 20,
-                         learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 5,
+                         learning_rate = 0.01, max_depth = 2, min_data_in_leaf = 5,
                          verbose = 0, deterministic = TRUE)
     pred_het_boost <- predict(bst_het, data = X_het[1:3, 2, drop = FALSE], group_data_pred = group_test_het,
                               predict_var = TRUE, pred_latent = FALSE)
-    expect_lt(abs(as.vector(gp_model_het_boost$get_cov_pars(std_err = FALSE)) - 0.00000178), TOLERANCE_MEDIUM)
-    expected_response_mean_boost <- c(0.00335010, 0.00502697, 0.52795774)
-    expected_response_var_boost <- c(1.14895911, 0.95499299, 1.50502746)
+    expect_lt(abs(as.vector(gp_model_het_boost$get_cov_pars(std_err = FALSE)) - 0.15080798), TOLERANCE_MEDIUM)
+    expected_response_mean_boost <- c(0.52600579, 0.24099045, 0.37506889)
+    expected_response_var_boost <- c(1.43766912, 1.43641997, 1.58325054)
     expect_lt(sum(abs(pred_het_boost$response_mean - expected_response_mean_boost)), TOLERANCE_MEDIUM)
     expect_lt(sum(abs(pred_het_boost$response_var - expected_response_var_boost)), TOLERANCE_MEDIUM)
+    expect_error(predict_training_data_random_effects(gp_model_het_boost),
+                 "predict_training_data_random_effects\\(bst\\)")
+    re_pred_train_boost <- predict_training_data_random_effects(bst_het)
+    expected_re_pred_train_boost <- c(0.27708188, 0.02084478, -0.06485732, -0.09881753, 0.40985823,
+                                      -0.38168637, 0.10144342, -0.57590024, 0.17622270, 0.07567558)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_boost[, 1])) - expected_re_pred_train_boost)), TOLERANCE_MEDIUM)
+    re_pred_train_boost_var <- predict_training_data_random_effects(bst_het, predict_var = TRUE)
+    expect_lt(sum(abs(re_pred_train_boost_var[, 1] - re_pred_train_boost[, 1])), TOLERANCE_STRICT)
+    expected_re_pred_train_boost_var <- c(0.07329236, 0.07204321, 0.07222443, 0.07247900, 0.07183686,
+                                          0.07303205, 0.07294693, 0.07201704, 0.07256303)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_boost_var[, 2])) - expected_re_pred_train_boost_var)), TOLERANCE_MEDIUM)
 
     ###################
     ## GPs

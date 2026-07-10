@@ -2420,6 +2420,7 @@ class Booster:
                     raise ValueError("Number of data points in gp_model and train_set are not equal")
                 self.has_gp_model = True
                 self.gp_model = gp_model
+                self.gp_model.used_in_gpboost_algorithm = True
                 _safe_call(_LIB.LGBM_GPBoosterCreate(
                     train_set.construct().handle,
                     c_str(params_str),
@@ -2473,6 +2474,7 @@ class Booster:
                         save_data['gp_model_str']['y'] = np.array(save_data['label'])
                     self.gp_model_prediction_data_loaded_from_file = True
                 self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
+                self.gp_model.used_in_gpboost_algorithm = True
                 self.gp_model.model_fitted = False
             else:  # has no gp_model
                 out_num_iterations = ctypes.c_int(0)
@@ -2507,6 +2509,7 @@ class Booster:
                         save_data['gp_model_str']['y'] = np.array(save_data['label'])
                     self.gp_model_prediction_data_loaded_from_file = True
                 self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
+                self.gp_model.used_in_gpboost_algorithm = True
                 self.gp_model.model_fitted = False
             else:  # has no gp_model
                 self.model_from_string(model_str, not silent)
@@ -2557,6 +2560,7 @@ class Booster:
                 save_data = json.loads(model_str)
                 bst_str = save_data['booster_str']
                 state['gp_model'] = GPModel(model_dict=save_data['gp_model_str'])
+                state['gp_model'].used_in_gpboost_algorithm = True
                 if save_data.get("raw_data") is not None:
                     state['train_set'] = Dataset(data=save_data['raw_data']['data'],
                                                  label=save_data['raw_data']['label'])
@@ -3431,6 +3435,11 @@ class Booster:
                                "Set 'free_raw_data = False' when you construct the Dataset")
 
         predictor = self._to_predictor(deepcopy(kwargs))
+        if num_iteration is None:
+            if start_iteration <= 0:
+                num_iteration = self.best_iteration
+            else:
+                num_iteration = -1
         fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
                                                num_iteration=num_iteration, raw_score=True,
                                                pred_leaf=False, pred_contrib=False,
@@ -4632,6 +4641,7 @@ class GPModel(object):
         self.num_data_pred = 0
         self.prediction_data_is_set = False
         self.model_has_been_loaded_from_saved_file = False
+        self.used_in_gpboost_algorithm = False
         self.y_loaded_from_file = None
         self.cov_pars_loaded_from_file = None
         self.coefs_loaded_from_file = None
@@ -6601,6 +6611,10 @@ class GPModel(object):
         """
         if self.model_has_been_loaded_from_saved_file:
             raise ValueError("'predict_training_data_random_effects' is currently not implemented for models that have been loaded from a saved file. Use the 'predict' function instead ")
+        if self.used_in_gpboost_algorithm and offset is None:
+            raise ValueError("This GPModel is used in a GPBoost model. Call 'predict_training_data_random_effects' "
+                             "on the Booster object instead, e.g. 'bst.predict_training_data_random_effects()'. "
+                             "The Booster is needed to provide the training tree fixed effects as an offset.")
         num_re_comps = (self.num_group_re + self.num_group_rand_coef + self.num_gp + self.num_gp_rand_coef) * self.num_sets_re
         if self.drop_intercept_group_rand_effect is not None:
             num_re_comps = num_re_comps - self.drop_intercept_group_rand_effect.sum()

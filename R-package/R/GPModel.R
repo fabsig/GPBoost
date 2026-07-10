@@ -2024,6 +2024,12 @@ gpb.GPModel <- R6::R6Class(
       if(isTRUE(private$model_has_been_loaded_from_saved_file)){
         stop("GPModel: 'predict_training_data_random_effects' is currently not implemented for models that have been loaded from a saved file. Use the 'predict' function instead ")
       }
+      if (isTRUE(private$used_in_gpboost_algorithm) && is.null(offset)) {
+        stop("predict_training_data_random_effects.GPModel: This GPModel is used in a GPBoost model. ",
+             "Call ", sQuote("predict_training_data_random_effects"), " on the ", sQuote("gpb.Booster"),
+             " object instead, e.g. ", sQuote("predict_training_data_random_effects(bst)"), ". ",
+             "The Booster is needed to provide the training tree fixed effects as an offset.")
+      }
       num_re_comps = (private$num_group_re + private$num_group_rand_coef + 
                         private$num_gp + private$num_gp_rand_coef) * private$num_sets_re
       if (!is.null(private$drop_intercept_group_rand_effect)) {
@@ -2562,6 +2568,7 @@ gpb.GPModel <- R6::R6Class(
     coef_names = NULL,
     num_data_pred = NULL,
     model_has_been_loaded_from_saved_file = FALSE,
+    used_in_gpboost_algorithm = FALSE,
     y_loaded_from_file = NULL,
     cov_pars_loaded_from_file = NULL,
     coefs_loaded_from_file = NULL,

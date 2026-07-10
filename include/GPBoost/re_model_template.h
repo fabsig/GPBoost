@@ -5,6 +5,10 @@
 * Copyright (c) 2020 - 2026 Fabio Sigrist, Tim Gyger, and Pascal Kuendig. All rights reserved.
 *
 * Licensed under the Apache License Version 2.0. See LICENSE file in the project root for license information.
+* 
+* * Iterative methods (matrix_inversion_method_ == "iterative") are based on the following references:
+*	- Kündig and Sigrist, 2025, "Scalable Krylov Subspace Methods for Generalized Mixed Effects Models with Crossed Random Effects", https://arxiv.org/abs/2505.09552
+*	- Gyger, Furrer, and Sigrist, SIAM/ASA JUQ 2026, "Iterative Methods for Full-Scale Gaussian Process Approximations for Large Spatial Data", https://epubs.siam.org/doi/full/10.1137/25M1731320
 */
 #ifndef GPB_RE_MODEL_TEMPLATE_H_
 #define GPB_RE_MODEL_TEMPLATE_H_
