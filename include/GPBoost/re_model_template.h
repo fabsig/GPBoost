@@ -485,6 +485,13 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Returns true if this is an iid model
+		*/
+		bool IsIidModel() const {
+			return(iid_model_);
+		}
+
+		/*!
 		* \brief Returns the type of likelihood
 		*/
 		string_t GetLikelihood() {

@@ -550,7 +550,10 @@ namespace GPBoost {
 		double* init_coef_ptr;
 		num_covariates_ = num_covariates;
 		num_coef_ = num_covariates * num_sets_fixed_effects_;
-		if (init_coef_aux_pars_from_iid_model_ && !init_coef_given_) {
+		if (init_coef_aux_pars_from_iid_model_ && !init_coef_given_ &&
+			((matrix_format_ == "sp_mat_t" && !re_model_sp_->IsIidModel()) ||
+			 (matrix_format_ == "sp_mat_rm_t" && !re_model_sp_rm_->IsIidModel()) ||
+			 (matrix_format_ == "den_mat_t" && !re_model_den_->IsIidModel()))) {
 			if (matrix_format_ == "sp_mat_t") {
 				InitCoefAuxParsFromIidModel(re_model_sp_.get(), y_data, covariate_data, num_covariates, fixed_effects);
 			}
