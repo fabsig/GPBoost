@@ -2057,7 +2057,7 @@ namespace GPBoost {
 		void FindModePostRandEffCalcMLLStable(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
-			const std::shared_ptr<T_mat> Sigma,
+			const std::shared_ptr<T_mat>& Sigma,
 			double& approx_marginal_ll) {
 			ChecksBeforeModeFinding();
 			fixed_effects_ = fixed_effects;
@@ -2734,7 +2734,7 @@ namespace GPBoost {
 						}
 						chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
 					}
-					sigma_woodbury_2 = (sigma_woodbury)-Bt_D_inv_B_cross_cov.transpose() * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
+					sigma_woodbury_2 = (sigma_woodbury) - Bt_D_inv_B_cross_cov.transpose() * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
 					chol_fact_sigma_woodbury_2.compute(sigma_woodbury_2);
 					vec_t Sigma_I_rhs = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
 					vec_t Bt_D_inv_B_cross_cov_T_Sigma_I_rhs = Bt_D_inv_B_cross_cov.transpose() * Sigma_I_rhs;
@@ -3413,7 +3413,7 @@ namespace GPBoost {
 		void CalcGradNegMargLikelihoodLaplaceApproxStable(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
-			const std::shared_ptr<T_mat> Sigma,
+			const std::shared_ptr<T_mat>& Sigma,
 			const std::vector<std::shared_ptr<RECompBase<T_mat>>>& re_comps_cluster_i,
 			bool calc_cov_grad,
 			bool calc_F_grad,
@@ -6212,7 +6212,7 @@ namespace GPBoost {
 		void PredictLaplaceApproxStable(const double* y_data,
 			const int* y_data_int,
 			const double* fixed_effects,
-			const std::shared_ptr<T_mat> ZSigmaZt,
+			const std::shared_ptr<T_mat>& ZSigmaZt,
 			const T_mat& Cross_Cov,
 			vec_t& pred_mean,
 			T_mat& pred_cov,
@@ -7705,19 +7705,23 @@ namespace GPBoost {
 		/*!
 		* \brief Sampling from the Laplace-approximated posterior
 		*/
-		void Sample_Posterior_LaplaceApprox_Stable(const std::shared_ptr<T_mat> Sigma) {
+		void Sample_Posterior_LaplaceApprox_Stable(const std::shared_ptr<T_mat>& Sigma) {
 			CHECK(num_sets_re_ == 1);
-			T_mat Sigma_stable = (*Sigma);
-			Sigma_stable.diagonal().array() *= JITTER_MUL;
-			T_chol chol_fact;
-			bool chol_fact_pattern_analyzed = false;
-			CalcChol<T_mat>(chol_fact, Sigma_stable, chol_fact_pattern_analyzed);
-			T_mat SigmaI_plus_W(Sigma_stable.rows(), Sigma_stable.cols());
-			SigmaI_plus_W.setIdentity();
-			SolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact, SigmaI_plus_W, SigmaI_plus_W);
-			SigmaI_plus_W += information_ll_.asDiagonal();
-			chol_fact_pattern_analyzed = false;
-			CalcChol<T_mat>(chol_fact, SigmaI_plus_W, chol_fact_pattern_analyzed);
+			CHECK(Sigma != nullptr);
+			T_chol chol_fact_SigmaI_plus_W;
+			{
+				T_mat Sigma_stable = (*Sigma);
+				Sigma_stable.diagonal().array() *= JITTER_MUL;
+				T_chol chol_fact_Sigma;
+				bool chol_fact_pattern_analyzed = false;
+				CalcChol<T_mat>(chol_fact_Sigma, Sigma_stable, chol_fact_pattern_analyzed);
+				T_mat SigmaI_plus_W(Sigma_stable.rows(), Sigma_stable.cols());
+				SigmaI_plus_W.setIdentity();
+				SolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Sigma, SigmaI_plus_W, SigmaI_plus_W);
+				SigmaI_plus_W += information_ll_.asDiagonal();
+				chol_fact_pattern_analyzed = false;
+				CalcChol<T_mat>(chol_fact_SigmaI_plus_W, SigmaI_plus_W, chol_fact_pattern_analyzed);
+			} // Sigma_stable, chol_fact_Sigma, and SigmaI_plus_W are destroyed here
 			//sample iid normal random vectors
 			if (!sampled_rand_vec_I_sim_post_) {
 				rand_vec_I_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
@@ -7731,7 +7735,7 @@ namespace GPBoost {
 			CHECK(rand_vec_I_sim_post_.rows() == dim_mode_);
 			CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
 			CHECK(rand_vec_sim_post_.rows() == dim_mode_);
-			TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_fact, rand_vec_I_sim_post_, rand_vec_sim_post_, false);
+			TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_W, rand_vec_I_sim_post_, rand_vec_sim_post_, true);
 			SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
 			rand_vec_sim_post_calculated_ = true;
 		}//end Sample_Posterior_LaplaceApprox_Stable
@@ -7768,7 +7772,7 @@ namespace GPBoost {
 			CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
 			CHECK(rand_vec_sim_post_.rows() == dim_mode_);
 			if (matrix_inversion_method_ == "cholesky") {
-				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, rand_vec_I_sim_post_, rand_vec_sim_post_, false);
+				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, rand_vec_I_sim_post_, rand_vec_sim_post_, true);
 			}
 			else if (matrix_inversion_method_ == "iterative") {
 				CHECK(rand_vec_I_2_sim_post_.cols() == num_rand_vec_sim_post_);
@@ -7871,7 +7875,7 @@ namespace GPBoost {
 			CHECK(rand_vec_sim_post_.rows() == dim_mode_);
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
-				rand_vec_sim_post_.col(i) = (rand_vec_I_sim_post_.col(i).array() / diag_SigmaI_plus_ZtWZ_.array()).matrix();
+				rand_vec_sim_post_.col(i) = (rand_vec_I_sim_post_.col(i).array() / diag_SigmaI_plus_ZtWZ_.array().sqrt()).matrix();
 			}
 			SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
 			rand_vec_sim_post_calculated_ = true;
@@ -7900,7 +7904,7 @@ namespace GPBoost {
 			CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
 			CHECK(rand_vec_sim_post_.rows() == dim_mode_);
 			if (matrix_inversion_method_ == "cholesky") {
-				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_I_sim_post_, rand_vec_sim_post_, false);
+				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_I_sim_post_, rand_vec_sim_post_, true);
 			}
 			else if (matrix_inversion_method_ == "iterative") {
 				CHECK(rand_vec_I_2_sim_post_.cols() == num_rand_vec_sim_post_);
@@ -7967,7 +7971,7 @@ namespace GPBoost {
 			CHECK(rand_vec_I_2_sim_post_.cols() == num_rand_vec_sim_post_);
 			CHECK(rand_vec_I_2_sim_post_.rows() == num_ip);
 			if (matrix_inversion_method_ == "cholesky") {
-				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_I_sim_post_, rand_vec_sim_post_, false);
+				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_I_sim_post_, rand_vec_sim_post_, true);
 				den_mat_t rand_vec_aux(num_ip, num_rand_vec_sim_post_);
 				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_2, rand_vec_I_2_sim_post_, rand_vec_aux, true);
 				den_mat_t rand_vec_aux_2 = Bt_D_inv_B_cross_cov * rand_vec_aux;
@@ -8185,7 +8189,7 @@ namespace GPBoost {
 //      * \param ZSigmaZt Covariance matrix of latent random effect
 //      * \param[out] pred_var Variance of Laplace-approximated posterior
 //      */
-//      void CalcVarLaplaceApproxStable(const std::shared_ptr<T_mat> ZSigmaZt,
+//      void CalcVarLaplaceApproxStable(const std::shared_ptr<T_mat>& ZSigmaZt,
 //          vec_t& pred_var) {
 //          if (na_or_inf_during_last_call_to_find_mode_) {
 //              Log::REFatal(NA_OR_INF_ERROR_);
@@ -8207,7 +8211,7 @@ namespace GPBoost {
 		* \param Sigma Covariance matrix of latent random effect
 		* \param[out] pred_var Variance of Laplace-approximated posterior
 		*/
-		void CalcVarLaplaceApproxOnlyOneGPCalculationsOnREScale(const std::shared_ptr<T_mat> Sigma,
+		void CalcVarLaplaceApproxOnlyOneGPCalculationsOnREScale(const std::shared_ptr<T_mat>& Sigma,
 			vec_t& pred_var) {
 			if (na_or_inf_during_last_call_to_find_mode_) {
 				Log::REFatal(NA_OR_INF_ERROR_);
