@@ -132,20 +132,22 @@ then
                     #include <omp.h>
                 ]],
                 [[
-                    return (omp_get_max_threads() <= 1);
+                    (void)omp_get_max_threads();
                 ]]
             )
         ]
     )
     ${CXX} ${CPPFLAGS} ${CXXFLAGS} ${LDFLAGS} ${OPENMP_CXXFLAGS} ${OPENMP_LIB} -o conftest conftest.cpp 2>/dev/null && ./conftest && ac_pkg_openmp=yes
 
-    # -Xclang is not portable (it is clang-specific)
-    # if compilation above failed, try without that flag
+    # -Xclang and -lomp are Clang-specific. If the compilation above failed,
+    # try the GCC-style flag. GCC's driver links its OpenMP runtime (libgomp)
+    # automatically, so do not retain the Clang-specific -lomp here.
     if test "${ac_pkg_openmp}" = no; then
         if test -f "./conftest"; then
             rm ./conftest
         fi
         OPENMP_CXXFLAGS="-fopenmp"
+        OPENMP_LIB=""
         ${CXX} ${CPPFLAGS} ${CXXFLAGS} ${LDFLAGS} ${OPENMP_CXXFLAGS} ${OPENMP_LIB} -o conftest conftest.cpp 2>/dev/null && ./conftest && ac_pkg_openmp=yes
     fi
 

@@ -1791,21 +1791,23 @@ $as_echo_n "checking whether OpenMP will work in a package... " >&6; }
 int
 main ()
 {
-                    return (omp_get_max_threads() <= 1);
+                    (void)omp_get_max_threads();
   ;
   return 0;
 }
 _ACEOF
     ${CXX} ${CPPFLAGS} ${CXXFLAGS} ${LDFLAGS} ${OPENMP_CXXFLAGS} ${OPENMP_LIB} -o conftest conftest.cpp 2>/dev/null && ./conftest && ac_pkg_openmp=yes
 
-    # -Xclang is not portable (it is clang-specific)
-    # if compilation above failed, try without that flag
+    # -Xclang and -lomp are Clang-specific. If the compilation above failed,
+    # try the GCC-style flag. GCC's driver links its OpenMP runtime (libgomp)
+    # automatically, so do not retain the Clang-specific -lomp here.
     if test "${ac_pkg_openmp}" = no; then
         if test -f "./conftest"; then
             rm ./conftest
         fi
         OPENMP_CXXFLAGS="-fopenmp"
-        ${CXX} ${CPPFLAGS} ${CXXFLAGS} ${LDFLAGS} ${OPENMP_CXXFLAGS} -o conftest conftest.cpp 2>/dev/null && ./conftest && ac_pkg_openmp=yes
+        OPENMP_LIB=""
+        ${CXX} ${CPPFLAGS} ${CXXFLAGS} ${LDFLAGS} ${OPENMP_CXXFLAGS} ${OPENMP_LIB} -o conftest conftest.cpp 2>/dev/null && ./conftest && ac_pkg_openmp=yes
     fi
 
     { $as_echo "$as_me:${as_lineno-$LINENO}: result: ${ac_pkg_openmp}" >&5

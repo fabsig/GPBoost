@@ -147,26 +147,48 @@ if(USE_CUDA_GP)
 endif(USE_CUDA_GP)
 
 if(USE_OPENMP)
-    find_package(OpenMP REQUIRED)
-    if(APPLE)
-        find_package(OpenMP)
-        if(NOT OpenMP_FOUND)
-            # libomp 15.0+ from brew is keg-only, so have to search in other locations.
-            # See https://github.com/Homebrew/homebrew-core/issues/112107#issuecomment-1278042927.
-            execute_process(COMMAND brew --prefix libomp
+    # First use CMake's compiler-aware detection. In particular, this selects
+    # -fopenmp / libgomp when compiling with GCC on macOS.
+    find_package(OpenMP QUIET COMPONENTS CXX)
+    if(APPLE AND NOT OpenMP_CXX_FOUND)
+        # libomp 15.0+ from brew is keg-only, so have to search in other locations.
+        # See https://github.com/Homebrew/homebrew-core/issues/112107#issuecomment-1278042927.
+        find_program(HOMEBREW_EXECUTABLE brew)
+        if(HOMEBREW_EXECUTABLE)
+            execute_process(COMMAND ${HOMEBREW_EXECUTABLE} --prefix libomp
+                            RESULT_VARIABLE HOMEBREW_LIBOMP_RESULT
                             OUTPUT_VARIABLE HOMEBREW_LIBOMP_PREFIX
                             OUTPUT_STRIP_TRAILING_WHITESPACE)
-            set(OpenMP_C_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_LIBOMP_PREFIX}/include")
+        endif()
+        if(HOMEBREW_EXECUTABLE AND HOMEBREW_LIBOMP_RESULT EQUAL 0)
             set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I${HOMEBREW_LIBOMP_PREFIX}/include")
-            set(OpenMP_C_LIB_NAMES omp)
             set(OpenMP_CXX_LIB_NAMES omp)
             set(OpenMP_omp_LIBRARY ${HOMEBREW_LIBOMP_PREFIX}/lib/libomp.dylib)
-            find_package(OpenMP REQUIRED)
+            find_package(OpenMP QUIET COMPONENTS CXX)
         endif()
-    else()
-        find_package(OpenMP REQUIRED)
     endif()
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    if(NOT OpenMP_CXX_FOUND)
+        if(USE_CUDA OR USE_CUDA_GP)
+            if(APPLE)
+                message(FATAL_ERROR
+                    "OpenMP is required for CUDA builds but was not found. "
+                    "Install it with 'brew install libomp' and configure GPBoost again.")
+            else()
+                message(FATAL_ERROR "OpenMP is required for CUDA builds but was not found.")
+            endif()
+        else()
+            if(APPLE)
+                message(WARNING
+                    "OpenMP was not found. To enable multi-threading, install it with "
+                    "'brew install libomp' and configure GPBoost again. GPBoost will now "
+                    "be built without OpenMP and run single-threaded.")
+            else()
+                message(WARNING
+                    "OpenMP was not found. GPBoost will be built without OpenMP and run single-threaded.")
+            endif()
+            set(USE_OPENMP OFF CACHE BOOL "Enable OpenMP" FORCE)
+        endif()
+    endif()
 endif(USE_OPENMP)
 
 if(USE_GPU)
@@ -508,10 +530,8 @@ if(USE_MPI)
 endif(USE_MPI)
 
 if(USE_OPENMP)
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
-        TARGET_LINK_LIBRARIES(gpboost OpenMP::OpenMP_CXX)
-        TARGET_LINK_LIBRARIES(_gpboost OpenMP::OpenMP_CXX)
-    endif()
+    TARGET_LINK_LIBRARIES(gpboost OpenMP::OpenMP_CXX)
+    TARGET_LINK_LIBRARIES(_gpboost OpenMP::OpenMP_CXX)
 endif(USE_OPENMP)
 
 if(USE_GPU)
