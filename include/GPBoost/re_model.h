@@ -62,7 +62,8 @@ namespace GPBoost {
 		* \param num_parallel_threads Number of parallel threads for OMP
 		* \param GPU_use If TRUE, GPU acceleration will be used if supported.
 		* \param has_weights True, if sample weights should be used
-		* \param weights Sample weights
+		* \param weights Sample weights. For Gaussian likelihoods, the error variance of observation i is divided by weights[i].
+		*                For non-Gaussian likelihoods, the conditional log-likelihood contribution of observation i is multiplied by weights[i].
 		* \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
 		*/
 		LIGHTGBM_EXPORT REModel(data_size_t num_data,

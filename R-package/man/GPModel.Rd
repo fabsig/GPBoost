@@ -189,7 +189,10 @@ This is currently only supported for the following cases:
 }
 }}
 
-\item{weights}{A \code{vector} with sample weights. Note that this affects both the random and fixed effects components.}
+\item{weights}{A \code{vector} with sample weights. For a Gaussian likelihood, the error variance ("nugget") for
+observation \code{i} is divided by \code{weights[i]}. For non-Gaussian likelihoods, the conditional
+log-likelihood contribution of observation \code{i} is multiplied by \code{weights[i]}. Consequently,
+weights affect the estimation of both random and fixed effects.}
 
 \item{likelihood_learning_rate}{A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)}
 

@@ -249,7 +249,10 @@
 #' @param cluster_ids A \code{vector} with elements indicating independent realizations of 
 #' random effects / Gaussian processes (same values = same process realization).
 #' The elements of 'cluster_ids' can be integer, double, or character.
-#' @param weights A \code{vector} with sample weights. Note that this affects both the random and fixed effects components.
+#' @param weights A \code{vector} with sample weights. For a Gaussian likelihood, the error variance ("nugget") for
+#' observation \code{i} is divided by \code{weights[i]}. For non-Gaussian likelihoods, the conditional
+#' log-likelihood contribution of observation \code{i} is multiplied by \code{weights[i]}. Consequently,
+#' weights affect the estimation of both random and fixed effects.
 #' @param likelihood_learning_rate A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)
 #' @param free_raw_data A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 #' is freed in R after initialization

@@ -177,9 +177,13 @@ Model specification parameters
 
       - ``full_scale_tapering``: Full-scale approximation combining an inducing point / predictive process approximation with tapering on the residual process; see Gyger, Furrer, and Sigrist (2024) for more details
 
--  ``cluster_ids`` : one dimensional numpy array (vector) with integer data or Null, (default = Null)
+-  ``cluster_ids`` : one dimensional array (vector) with integer data or Null, (default = Null)
 
    -  IDs / labels indicating independent realizations of random effects / Gaussian processes (same values = same process realization)
+
+-  ``weights`` : one dimensional array (vector) with numeric data or Null, (default = Null)
+
+   -  Sample weights. For a Gaussian likelihood, the error variance for observation ``i`` is divided by ``weights[i]``. For non-Gaussian likelihoods, the conditional log-likelihood contribution of observation ``i`` is multiplied by ``weights[i]``. Consequently, weights affect the estimation of both random and fixed effects.
 
 -  ``cov_fct_taper_range`` : double, (default = 1.)
 

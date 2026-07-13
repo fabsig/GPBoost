@@ -4479,7 +4479,10 @@ class GPModel(object):
                         - likelihood == "gaussian" and gp_approx == "full_scale_tapering" (Gaussian likelihood with a full-scale tapering approximation)
 
             weights : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
-                Sample weights. Note that this affects both the random and fixed effects components.
+                Sample weights. For a Gaussian likelihood, the error variance ("nugget") for observation ``i`` is
+                divided by ``weights[i]``. For non-Gaussian likelihoods, the conditional log-likelihood
+                contribution of observation ``i`` is multiplied by ``weights[i]``. Consequently, weights
+                affect the estimation of both random and fixed effects.
             likelihood_learning_rate : float, optional (default=1.)
                 A learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)
             cov_fct_taper_range : float, optional (default=1.)
