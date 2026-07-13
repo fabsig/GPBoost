@@ -4761,7 +4761,8 @@ class GPModel(object):
             if num_data is None:
                 raise ValueError("Both group_data and gp_coords are None. Provide at least one of them or provide 'num_data' if you want an iid model ")
             else:
-                group_data = np.zeros((num_data, 1))
+                # -999 is the reserved group label used by C++ to identify an explicitly requested iid model
+                group_data = np.full((num_data, 1), -999)
                 self.iid_model = True
         if likelihood == "gaussian_heteroscedastic_fixed_and_random":
             self.num_sets_re = 2

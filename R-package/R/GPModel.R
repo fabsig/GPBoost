@@ -594,7 +594,8 @@ gpb.GPModel <- R6::R6Class(
           stop("GPModel: Both ", sQuote("group_data"), " and " , sQuote("gp_coords"),
                " are NULL. Provide at least one of them or provide 'num_data' if you want an iid model ")
         } else {
-          group_data <- rep(0, num_data)
+          # -999 is the reserved group label used by C++ to identify an explicitly requested iid model
+          group_data <- rep(-999, num_data)
           private$iid_model <- TRUE
         }
       }

@@ -390,9 +390,12 @@ namespace GPBoost {
 			y_data_iid = y_data_iid_vec.data();
 		}
 		std::vector<char> re_group_data_iid;
-		re_group_data_iid.reserve(2 * static_cast<size_t>(num_data_));
+		re_group_data_iid.reserve(5 * static_cast<size_t>(num_data_));
 		for (data_size_t i = 0; i < num_data_; ++i) {
-			re_group_data_iid.push_back('0');
+			re_group_data_iid.push_back('-');
+			re_group_data_iid.push_back('9');
+			re_group_data_iid.push_back('9');
+			re_group_data_iid.push_back('9');
 			re_group_data_iid.push_back('\0');
 		}
 		const double* weights_ptr = (has_weights_ && !weights_.empty()) ? weights_.data() : nullptr;

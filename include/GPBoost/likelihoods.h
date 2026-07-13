@@ -183,6 +183,7 @@ namespace GPBoost {
 		* \param weights Sample weights
 		* \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
 		* \param only_one_grouped_RE True if there are only a single level grouped random effects
+		* \param iid_model True if this is an explicitly requested iid model
 		*/
 		Likelihood(string_t type,
 			data_size_t num_data,
@@ -195,7 +196,8 @@ namespace GPBoost {
 			bool has_weights,
 			const double* weights,
 			double likelihood_learning_rate,
-			bool only_one_grouped_RE) {
+			bool only_one_grouped_RE,
+			bool iid_model) {
 			num_data_ = num_data;
 			string_t likelihood = type;
 			likelihood = ParseLikelihoodAliasKinkClipping(likelihood);
@@ -454,7 +456,7 @@ namespace GPBoost {
 				CHECK(random_effects_indices_of_data != nullptr);
 				CHECK(Zt == nullptr);
 				CHECK(!has_SigmaI_mode);
-				iid_model_ = GPBoost::HasOnlyExactZero<data_size_t>(random_effects_indices_of_data_, num_data_);
+				iid_model_ = iid_model;
 			}
 			dim_mode_ = num_sets_re_ * num_re;
 			dim_mode_per_set_re_ = num_re;
