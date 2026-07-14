@@ -3,6 +3,29 @@
 \name{GPModel_shared_params}
 \alias{GPModel_shared_params}
 \title{Documentation for parameters shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}}
+\usage{
+GPModel_shared_params(likelihood = NULL, likelihood_additional_param = NULL,
+  group_data = NULL, group_rand_coef_data = NULL,
+  ind_effect_group_rand_coef = NULL,
+  drop_intercept_group_rand_effect = NULL, gp_coords = NULL,
+  gp_rand_coef_data = NULL, cov_function = NULL, cov_fct_shape = NULL,
+  gp_approx = NULL, num_parallel_threads = NULL, GPU_use = NULL,
+  cov_fct_taper_range = NULL, cov_fct_taper_shape = NULL,
+  num_neighbors = NULL, vecchia_ordering = NULL,
+  ind_points_selection = NULL, num_ind_points = NULL,
+  cover_tree_radius = NULL, matrix_inversion_method = NULL, seed = NULL,
+  vecchia_pred_type = NULL, num_neighbors_pred = NULL,
+  cg_delta_conv_pred = NULL, nsim_var_pred = NULL,
+  rank_pred_approx_matrix_lanczos = NULL, cluster_ids = NULL,
+  weights = NULL, likelihood_learning_rate = NULL, free_raw_data = NULL,
+  y = NULL, X = NULL, params = NULL, offset = NULL,
+  fixed_effects = NULL, group_data_pred = NULL,
+  group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
+  gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL, X_pred = NULL,
+  predict_cov_mat = NULL, predict_var = NULL, sample_posterior = NULL,
+  sample_prior = NULL, num_post_samples = NULL, num_prior_samples = NULL,
+  std_err = NULL, vecchia_approx = NULL, num_data = NULL)
+}
 \arguments{
 \item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable. 
 Available options:
@@ -489,3 +512,4 @@ square root of diagonal of a numerically approximated inverse Hessian for non-Ga
 \description{
 Documentation for parameters shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}
 }
+\keyword{internal}
