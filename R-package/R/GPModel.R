@@ -2506,7 +2506,7 @@ gpb.GPModel <- R6::R6Class(
       cat("=====================================================\n")
       cat("Model summary:\n")
       cat(paste0("Nb. observations: ", self$get_num_data(),"\n"))
-      if ((private$num_group_re + private$num_group_rand_coef) > 0) {
+      if (!private$iid_model && (private$num_group_re + private$num_group_rand_coef) > 0) {
         outstr <- "Nb. groups: "
         for (i in 1:private$num_group_re) {
           if (i > 1) {

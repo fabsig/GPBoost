@@ -5964,7 +5964,7 @@ class GPModel(object):
         print("=====================================================")
         print("Model summary:")
         print("Nb. observations: " + str(self.num_data))
-        if (self.num_group_re + self.num_group_rand_coef) > 0:
+        if not self.iid_model and (self.num_group_re + self.num_group_rand_coef) > 0:
                 outstr = pd.DataFrame(self.nb_groups.reshape((1, -1)),
                                       columns=self.re_comp_names[0:self.num_group_re]).to_string(index=False)
                 outstr = "Nb. groups: "
