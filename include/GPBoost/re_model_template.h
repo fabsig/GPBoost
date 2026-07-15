@@ -7799,7 +7799,7 @@ namespace GPBoost {
 			}
 			const double nugget_min = MIN_NUGGET_VAR_RATIO_ / (1. - MIN_NUGGET_VAR_RATIO_) * other_var;
 			if (std::isfinite(nugget_min) && cov_pars_orig[0] < nugget_min) {
-				Log::REWarning("The Gaussian error (nugget) variance was increased from %g to %g while %s "
+				Log::REDebug("The Gaussian error (nugget) variance was increased from %g to %g while %s "
 					"to enforce (error variance) / (error variance + marginal variance of random effects) >= %g ",
 					cov_pars_orig[0], nugget_min, context, MIN_NUGGET_VAR_RATIO_);
 				cov_pars_orig[0] = nugget_min;
