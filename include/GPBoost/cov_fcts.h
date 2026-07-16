@@ -659,7 +659,7 @@ namespace GPBoost {
 				if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_rows; ++i) {
-						sigma(i, i) = variance_on_the_diagonal_ ? pars[0] : GetDistanceForCovFct_(i, i, dist, coords_ptr, coords_pred_ptr);
+						sigma(i, i) = variance_on_the_diagonal_ ? pars[0] : CovFct_dist_(GetDistanceForCovFct_(i, i, dist, coords_ptr, coords_pred_ptr), pars[0], range, shape);
 						for (int j = i + 1; j < num_cols; ++j) {
 							double dist_ij = GetDistanceForCovFct_(i, j, dist, coords_ptr, coords_pred_ptr);
 							sigma(i, j) = CovFct_dist_(dist_ij, pars[0], range, shape);
@@ -767,7 +767,7 @@ namespace GPBoost {
 							int i = (int)it.row();
 							int j = (int)it.col();
 							if (i == j) {
-								it.valueRef() = variance_on_the_diagonal_ ? pars[0] : GetDistanceForCovFct_(i, i, dist, coords_ptr, coords_pred_ptr);
+								it.valueRef() = variance_on_the_diagonal_ ? pars[0] : CovFct_dist_(GetDistanceForCovFct_(i, i, dist, coords_ptr, coords_pred_ptr), pars[0], range, shape);
 							}
 							else if (i < j) {
 								double dist_ij = GetDistanceForCovFct_(i, j, dist, coords_ptr, coords_pred_ptr);
@@ -1391,8 +1391,8 @@ namespace GPBoost {
 						med_dist_time = GPBoost::CalculateMean<std::vector<double>>(distances_time);
 					}
 					if (med_dist_space < EPSILON_NUMBERS) {
-						Log::REFatal(("Cannot find an initial value for the spatial range parameter "
-							"since both the median and the average distances among spatial coordinates are zero " + add_error_str).c_str());
+						Log::REFatal(("Cannot find an initial value for the range parameter "
+							"since both the median and the average distances among coordinates are zero " + add_error_str).c_str());
 					}
 					if (med_dist_time < EPSILON_NUMBERS) {
 						Log::REFatal(("Cannot find an initial value for the temporal range parameter "
@@ -1487,7 +1487,7 @@ namespace GPBoost {
 				else if (cov_fct_type_ == "space_time_gneiting") {//pars Parameter in the following order : sigma2, a, c, alpha, nu, beta, delta
 					int dim_space = (int)coords.cols() - 1;
 					pars[1] = (std::pow(20., 2. / dim_space) - 1.) / (med_dist_time * med_dist_time) * 4.;//a, temporal range such that correlation at 0.05 at half the median distance
-					pars[2] = 2. * 4.7 / med_dist_space;//c, spatial range such that correlation at 0.05 at half the median distance
+					pars[2] = 2. * 4.7 / med_dist_space;//c, range such that correlation at 0.05 at half the median distance
 					pars[3] = 1.;//alpha
 					pars[4] = 1.5;//nu -> matern 1.5
 					pars[5] = 1.;//beta
