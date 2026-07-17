@@ -157,7 +157,7 @@ Model specification parameters
 
       - ``ar1_mf_<base>``: Two-level autoregressive multifidelity covariance constructed from a supported base covariance function ``<base>``. For example, use ``ar1_mf_matern``, ``ar1_mf_matern_ard``, or ``ar1_mf_matern_estimate_shape``.
 
-         - The last column of ``gp_coords`` is the fidelity indicator and must equal 0 for low-fidelity observations and 1 for high-fidelity observations. All preceding columns are passed to the base covariance. In particular, for an ARD base, the fidelity column does not receive a range parameter.
+         - The last column of ``gp_coords`` is the fidelity indicator and must equal 0 for low-fidelity observations and 1 for high-fidelity observations. All preceding columns are input coordinates for the GPs. 
 
          - The model is
 
@@ -176,6 +176,8 @@ Model specification parameters
          - The covariance parameters are ordered as ``[low-fidelity base parameters, discrepancy base parameters, rho]``. The two base-parameter blocks follow the ordinary ordering of ``<base>``. ``rho`` is unrestricted and can be negative.
 
          - All supported base covariance functions except ``wendland`` can be used. Correlation tapering and Gaussian-process random coefficients are currently not supported for ``ar1_mf_<base>``.
+
+         - By default, marginal means are fidelity-specific (``fidelity_specific_mean = true``). For linear regression, a supplied design matrix :math:`X` is internally replaced by :math:`[X I(s=0), X I(s=1)]`, yielding independent low- and high-fidelity coefficient vectors. Coefficients are ordered as the low-fidelity block followed by the high-fidelity block. For the GPBoost algorithm, the fidelity indicator is automatically appended to the boosting features in training and prediction, allowing the tree mean to differ by fidelity. Prediction coordinates including the fidelity indicator must therefore be supplied. Set ``fidelity_specific_mean = false`` to use one shared marginal mean.
 
 -  ``cov_fct_shape`` : double, (default = 1.5)
 

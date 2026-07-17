@@ -243,6 +243,14 @@ gpb.train <- function(params = list(),
   }
   end_iteration <- begin_iteration + params[["num_iterations"]] - 1L
 
+  use_ar1_mf_fidelity_mean <- !is.null(gp_model) && gp_model$has_fidelity_specific_mean()
+  if (use_ar1_mf_fidelity_mean) {
+    data$add_ar1_mf_fidelity_feature(gp_model$get_fidelity_indicator())
+    if (!is.null(colnames) && !"AR1_MF_fidelity" %in% colnames) {
+      colnames <- c(colnames, "AR1_MF_fidelity")
+    }
+  }
+
   # Construct datasets, if needed
   data$update_params(params = params)
   data$construct()
@@ -293,6 +301,14 @@ gpb.train <- function(params = list(),
         valid_contain_train <- TRUE
         train_data_name <- key
         next
+      }
+
+      if (use_ar1_mf_fidelity_mean) {
+        fidelity_pred <- gp_model$get_fidelity_indicator(prediction = TRUE)
+        if (is.null(fidelity_pred)) {
+          stop("Independent fidelity-specific GPBoost means require prediction coordinates for validation data. Call 'set_prediction_data(gp_model, gp_coords_pred = ...)'.")
+        }
+        valid_data$add_ar1_mf_fidelity_feature(fidelity_pred)
       }
 
       # Update parameters, data

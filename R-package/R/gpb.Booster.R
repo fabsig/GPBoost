@@ -806,6 +806,28 @@ Booster <- R6::R6Class(
       
       # Predict on new data
       params <- list(...)
+      if (private$has_gp_model && private$gp_model$has_fidelity_specific_mean()) {
+        if (!(is.matrix(data) || methods::is(data, "dgCMatrix"))) {
+          stop("Independent fidelity-specific GPBoost means require prediction data to be a numeric matrix")
+        }
+        num_features_train <- private$train_set$dim()[2]
+        if (ncol(data) == num_features_train - 1L) {
+          fidelity_pred <- if (!is.null(gp_coords_pred)) {
+            as.matrix(gp_coords_pred)[, ncol(as.matrix(gp_coords_pred))]
+          } else {
+            private$gp_model$get_fidelity_indicator(prediction = TRUE)
+          }
+          if (is.null(fidelity_pred)) {
+            stop("Independent fidelity-specific GPBoost means require 'gp_coords_pred', including the fidelity indicator")
+          }
+          if (length(fidelity_pred) != nrow(data) || any(!(fidelity_pred %in% c(0, 1)))) {
+            stop("The prediction fidelity indicator must contain one value (0 or 1) for every prediction row")
+          }
+          data <- cbind(data, AR1_MF_fidelity = fidelity_pred)
+        } else if (ncol(data) != num_features_train) {
+          stop("The number of prediction features is incompatible with the fitted fidelity-specific GPBoost mean")
+        }
+      }
       predictor <- Predictor$new(
         modelfile = private$handle
         , params = params

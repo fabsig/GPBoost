@@ -629,6 +629,32 @@ Dataset <- R6::R6Class(
 
     },
 
+    add_ar1_mf_fidelity_feature = function(fidelity) {
+      fidelity <- as.vector(fidelity)
+      if (private$ar1_mf_fidelity_added) {
+        if (!identical(fidelity, private$ar1_mf_fidelity)) {
+          stop("This Dataset already contains a different AR1 multifidelity indicator")
+        }
+        return(invisible(self))
+      }
+      if (is.null(private$raw_data) ||
+          !(is.matrix(private$raw_data) || methods::is(private$raw_data, "dgCMatrix"))) {
+        stop("Independent fidelity-specific GPBoost means require a numeric matrix Dataset with retained raw data. Set 'free_raw_data = FALSE'.")
+      }
+      if (length(fidelity) != nrow(private$raw_data)) {
+        stop("The number of AR1 multifidelity indicators does not match the number of Dataset rows")
+      }
+      if (any(!is.finite(fidelity)) || any(!(fidelity %in% c(0, 1)))) {
+        stop("The AR1 multifidelity indicator must contain only 0 and 1")
+      }
+      if (!gpb.is.null.handle(private$handle)) private$finalize()
+      private$raw_data <- cbind(private$raw_data, AR1_MF_fidelity = fidelity)
+      private$ar1_mf_fidelity_added <- TRUE
+      private$ar1_mf_fidelity <- fidelity
+      private$version <- private$version + 1L
+      invisible(self)
+    },
+
     # Save binary model
     save_binary = function(fname) {
 
@@ -655,6 +681,8 @@ Dataset <- R6::R6Class(
     used_indices = NULL,
     info = NULL,
     version = 0L,
+    ar1_mf_fidelity_added = FALSE,
+    ar1_mf_fidelity = NULL,
     
     # Finalize will free up the handles
     finalize = function() {

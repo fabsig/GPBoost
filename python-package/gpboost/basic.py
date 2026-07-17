@@ -3598,6 +3598,27 @@ class Booster:
         if num_neighbors_pred is not None:
             raise GPBoostError("The argument 'num_neighbors_pred' is discontinued. "
                                "Use the function 'set_prediction_data' to specify this")
+        if self.has_gp_model and self.gp_model.fidelity_specific_mean:
+            if not hasattr(data, "shape") or len(data.shape) != 2:
+                raise ValueError("Fidelity-specific GPBoost means require matrix-like prediction data")
+            num_features_train = self.num_feature()
+            if data.shape[1] == num_features_train - 1:
+                coords_for_mean = gp_coords_pred if gp_coords_pred is not None else self.gp_model.gp_coords_pred
+                if coords_for_mean is None:
+                    raise ValueError("'gp_coords_pred' is required for fidelity-specific GPBoost means")
+                coords_for_mean = np.asarray(coords_for_mean)
+                fidelity = coords_for_mean[:, -1]
+                if fidelity.shape[0] != data.shape[0] or not np.all(np.isin(fidelity, (0., 1.))):
+                    raise ValueError("The prediction fidelity indicator must contain one value (0 or 1) per row")
+                if scipy.sparse.issparse(data):
+                    data = scipy.sparse.hstack((data, fidelity[:, None]), format=data.format)
+                elif isinstance(data, pd_DataFrame):
+                    data = data.copy()
+                    data["AR1_MF_fidelity"] = fidelity
+                else:
+                    data = np.column_stack((data, fidelity))
+            elif data.shape[1] != num_features_train:
+                raise ValueError("Prediction features are incompatible with the fitted fidelity-specific mean")
         predictor = self._to_predictor(deepcopy(kwargs))
         if num_iteration is None:
             if start_iteration <= 0:
@@ -4183,6 +4204,7 @@ class GPModel(object):
                  cluster_ids=None,
                  num_data=None,
                  likelihood_additional_param=None,
+                 fidelity_specific_mean=True,
                  free_raw_data=False,
                  model_file=None,
                  model_dict=None,
@@ -4421,13 +4443,18 @@ class GPModel(object):
                     "ar1_mf_matern_estimate_shape".
 
                     The last column of 'gp_coords' must be 0 for low fidelity or 1 for high fidelity.
-                    All preceding columns are passed to <base>; consequently, the fidelity column does not
-                    receive an ARD range parameter. Covariance parameters are ordered as
+                    All preceding columns are input coordinates for the GPs. Covariance parameters are ordered as
                     [low-fidelity base parameters, discrepancy base parameters, rho]. The two base blocks
                     use the ordinary parameter ordering of <base>, and rho is unrestricted and can be negative.
 
                     Any supported base covariance except "wendland" can be used. Correlation tapering and
                     Gaussian-process random coefficients are currently not supported for this model.
+
+            fidelity_specific_mean : bool, optional (default=True)
+                For an ``ar1_mf_<base>`` covariance, fit independent low- and high-fidelity marginal means.
+                Linear covariates are internally expanded into low- and high-fidelity coefficient blocks. In the
+                GPBoost algorithm the fidelity indicator is automatically appended as a boosting feature. This
+                argument is ignored for other covariance functions. Set it to False for the legacy shared mean.
 
             cov_fct_shape : float, optional (default=0.)
                 Shape parameter of the covariance function (e.g., smoothness parameter for Matern and Wendland covariance).
@@ -4630,6 +4657,7 @@ class GPModel(object):
         self.has_covariates = False
         self.has_offset = False
         self.num_covariates = 0
+        self.num_covariates_original = 0
         self.num_coef = 0
         self.group_data = None
         self.nb_groups = None
@@ -4637,8 +4665,11 @@ class GPModel(object):
         self.ind_effect_group_rand_coef = None
         self.drop_intercept_group_rand_effect = None
         self.gp_coords = None
+        self.gp_coords_pred = None
         self.gp_rand_coef_data = None
         self.cov_function = "matern"
+        self.is_ar1_multifidelity = False
+        self.fidelity_specific_mean = False
         self.cov_fct_shape = 1.5
         self.gp_approx = "none"
         self.num_parallel_threads = -1
@@ -4725,6 +4756,7 @@ class GPModel(object):
             if model_dict.get("gp_rand_coef_data") is not None:
                 gp_rand_coef_data = np.array(model_dict.get("gp_rand_coef_data"))
             cov_function = model_dict.get("cov_function")
+            fidelity_specific_mean = bool(model_dict.get("fidelity_specific_mean", False))
             cov_fct_shape = model_dict.get("cov_fct_shape")
             gp_approx = model_dict.get("gp_approx")
             cov_fct_taper_range = model_dict.get("cov_fct_taper_range")
@@ -4764,6 +4796,7 @@ class GPModel(object):
                 if model_dict.get("coefs") is not None:
                     self.coefs_loaded_from_file = np.array(model_dict.get("coefs"))
                 self.num_covariates = model_dict.get("num_covariates")
+                self.num_covariates_original = model_dict.get("num_covariates_original", self.num_covariates)
                 self.num_coef = model_dict.get("num_coef")
                 if self.num_coef != self.num_covariates * self.num_sets_fe:
                     raise ValueError("incorrect 'num_coef'")
@@ -4924,6 +4957,8 @@ class GPModel(object):
             self.num_gp = 1
             self.dim_coords = gp_coords.shape[1]
             self.cov_function = cov_function
+            self.is_ar1_multifidelity = self.cov_function.startswith("ar1_mf_")
+            self.fidelity_specific_mean = self.is_ar1_multifidelity and bool(fidelity_specific_mean)
             self.cov_fct_shape = cov_fct_shape
             self.gp_approx = gp_approx
             self.cov_fct_taper_range = cov_fct_taper_range
@@ -5179,7 +5214,11 @@ class GPModel(object):
             if self.has_offset:
                 offset=np.array(model_dict.get("offset"))
             if self.has_covariates:
-                self.fit(y=self.y_loaded_from_file, X=self.X_loaded_from_file, params=params, offset=offset)
+                X_loaded = self.X_loaded_from_file
+                if self.fidelity_specific_mean and X_loaded.shape[1] == 2 * self.num_covariates_original:
+                    p = self.num_covariates_original
+                    X_loaded = X_loaded[:, :p] + X_loaded[:, p:]
+                self.fit(y=self.y_loaded_from_file, X=X_loaded, params=params, offset=offset)
             else:
                 self.fit(y=self.y_loaded_from_file, params=params, offset=offset)
 
@@ -5291,6 +5330,18 @@ class GPModel(object):
                 _safe_call(_LIB.GPB_REModelFree(self.handle))
         except AttributeError:
             pass
+
+    def _expand_fidelity_specific_covariates(self, X, fidelity, names=None, context="GPModel"):
+        fidelity = np.asarray(fidelity).reshape(-1)
+        if fidelity.shape[0] != X.shape[0]:
+            raise ValueError("{}: number of fidelity indicators does not match covariate rows".format(context))
+        if not np.all(np.isin(fidelity, (0., 1.))):
+            raise ValueError("{}: the fidelity indicator must contain only 0 and 1".format(context))
+        X_expanded = np.column_stack((X * (1. - fidelity[:, None]), X * fidelity[:, None]))
+        if names is None:
+            names = ["Covariate_{}".format(i + 1) for i in range(X.shape[1])]
+        expanded_names = [str(name) + "_low" for name in names] + [str(name) + "_high" for name in names]
+        return X_expanded, expanded_names
 
     def fit(self, y, X=None, params=None, offset=None, fixed_effects=None):
         """Fit / estimate a GPModel by maximizing the marginal likelihood
@@ -5493,16 +5544,19 @@ class GPModel(object):
                                             convert_to_type=np.float64)
             if X.shape[0] != self.num_data:
                 raise ValueError("Incorrect number of data points in X")
+            self.num_covariates_original = X.shape[1]
+            if self.fidelity_specific_mean:
+                if self.gp_coords is None:
+                    raise ValueError("Fidelity-specific means require retained GP coordinates")
+                X, X_names = self._expand_fidelity_specific_covariates(
+                    X, self.gp_coords[:, -1], X_names, "fit.GPModel")
             self.has_covariates = True
             self.num_covariates = X.shape[1]
             self.num_coef = self.num_covariates * self.num_sets_fe
             X_c, _, _ = c_float_array(X.flatten(order='F'))
             self.coef_names = []
             for ii in range(self.num_covariates):
-                if X_names is None:
-                    self.coef_names.append("Covariate_" + str(ii + 1))
-                else:
-                    self.coef_names.append(X_names[ii])
+                self.coef_names.append("Covariate_" + str(ii + 1) if X_names is None else X_names[ii])
             if self.num_sets_fe == 2:
                 self.coef_names = self.coef_names + [name + "_scale" for name in self.coef_names]
         else:
@@ -6305,6 +6359,7 @@ class GPModel(object):
                             raise ValueError("Incorrect number of data points in gp_coords_pred")
                     if gp_coords_pred.shape[1] != self.dim_coords:
                         raise ValueError("Incorrect dimension / number of coordinates (=features) in gp_coords_pred")
+                    self.gp_coords_pred = gp_coords_pred.copy()
                     gp_coords_pred_c, _, _ = c_float_array(gp_coords_pred.flatten(order='F'))
             # Set data for GP random coefficients
             if self.num_gp_rand_coef > 0:
@@ -6353,8 +6408,11 @@ class GPModel(object):
             if self.has_covariates:
                 if X_pred.shape[0] != num_data_pred:
                     raise ValueError("Incorrect number of data points in X_pred")
-                if X_pred.shape[1] != self.num_covariates:
+                if X_pred.shape[1] != self.num_covariates_original:
                     raise ValueError("Incorrect number of covariates in X_pred")
+                if self.fidelity_specific_mean:
+                    X_pred, _ = self._expand_fidelity_specific_covariates(
+                        X_pred, self.gp_coords_pred[:, -1], context="predict.GPModel")
                 X_pred_c, _, _ = c_float_array(X_pred.flatten(order='F'))
         else:
             if not self.prediction_data_is_set:
@@ -6578,6 +6636,7 @@ class GPModel(object):
                     raise ValueError("Incorrect number of data points in gp_coords_pred")
             if gp_coords_pred.shape[1] != self.dim_coords:
                 raise ValueError("Incorrect dimension / number of coordinates (=features) in gp_coords_pred")
+            self.gp_coords_pred = gp_coords_pred.copy()
             gp_coords_pred_c, _, _ = c_float_array(gp_coords_pred.flatten(order='F'))
             # Set data for GP random coefficients
             if gp_rand_coef_data_pred is not None:
@@ -6634,8 +6693,13 @@ class GPModel(object):
                                                   convert_to_type=np.float64)
             if X_pred.shape[0] != num_data_pred:
                 raise ValueError("Incorrect number of data points in X_pred")
-            if X_pred.shape[1] != self.num_covariates:
+            if X_pred.shape[1] != self.num_covariates_original:
                 raise ValueError("Incorrect number of covariates in X_pred")
+            if self.fidelity_specific_mean:
+                if self.gp_coords_pred is None:
+                    raise ValueError("'gp_coords_pred' is required for fidelity-specific means")
+                X_pred, _ = self._expand_fidelity_specific_covariates(
+                    X_pred, self.gp_coords_pred[:, -1], context="set_prediction_data")
             X_pred_c, _, _ = c_float_array(X_pred.flatten(order='F'))
         self.num_data_pred = num_data_pred
         if num_neighbors_pred is not None:
@@ -6854,6 +6918,7 @@ class GPModel(object):
         model_dict["num_neighbors"] = self.num_neighbors
         model_dict["vecchia_ordering"] = self.vecchia_ordering
         model_dict["cov_function"] = self.cov_function
+        model_dict["fidelity_specific_mean"] = self.fidelity_specific_mean
         model_dict["cov_fct_shape"] = self.cov_fct_shape
         model_dict["gp_approx"] = self.gp_approx
         model_dict["matrix_inversion_method"] = self.matrix_inversion_method
@@ -6876,6 +6941,7 @@ class GPModel(object):
             model_dict["params"]["init_coef"] = model_dict["coefs"]
             model_dict["num_coef"] = self.num_coef
             model_dict["num_covariates"] = self.num_covariates
+            model_dict["num_covariates_original"] = self.num_covariates_original
             model_dict["X"] = self._get_covariate_data()
         # Additional likelihood parameters (e.g., shape parameter for a a gamma or negative binomial likelihood)
         model_dict["params"]["init_aux_pars"] = self.get_aux_pars(format_pandas=False)

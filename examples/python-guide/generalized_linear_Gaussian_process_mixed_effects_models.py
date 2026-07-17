@@ -410,6 +410,17 @@ plt.contourf(coords_test_x1, coords_test_x2, pred_vif)
 plt.title("Predicted latent GP mean with a VIF approximation")
 plt.show(block=False)
 
+# ---------------- Two-level autoregressive multi-fidelity Gaussian process ----------------
+n_high_fidelity = 100
+fidelity = np.concatenate((np.ones(n_high_fidelity), np.zeros(len(y_train) - n_high_fidelity)))
+coords_train_mf = np.column_stack((coords_train, fidelity)) 
+# Last column: 0 = low fidelity, 1 = high fidelity
+gp_model = gpb.GPModel(gp_coords=coords_train_mf, cov_function="ar1_mf_matern", 
+                       cov_fct_shape=1.5, gp_approx="vecchia", num_neighbors=20, 
+                       likelihood=likelihood)
+gp_model.fit(y=y_train, X=X)
+gp_model.summary()
+
 # --------------------Gaussian process model with random coefficents----------------
 # Define and train model
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5, 

@@ -137,13 +137,17 @@
 #' \eqn{f_H(x)=\rho f_L(x)+\delta(x)}, where \eqn{f_L} and \eqn{\delta} are independent Gaussian processes
 #' using the same base covariance type but separate parameter vectors. For example, use "ar1_mf_matern",
 #' "ar1_mf_matern_ard", or "ar1_mf_matern_estimate_shape".
-#' The last column of \code{gp_coords} must be 0 for low fidelity or 1 for high fidelity. All preceding columns
-#' are passed to the base covariance; consequently, the fidelity column does not receive an ARD range parameter.
+#' The last column of \code{gp_coords} must be 0 for low fidelity or 1 for high fidelity. All preceding columns are input coordinates for the GPs.
 #' Covariance parameters are ordered as [low-fidelity base parameters, discrepancy base parameters, rho].
 #' The two base blocks use the ordinary parameter ordering of the base covariance, and rho is unrestricted and
 #' can be negative. Any supported base covariance except "wendland" can be used. Correlation tapering and
 #' Gaussian-process random coefficients are currently not supported for this model. }
 #' }
+#' @param fidelity_specific_mean A \code{logical}. For an \code{ar1_mf_<base>} covariance,
+#' whether marginal mean models are fitted independently for low and high fidelity. If \code{TRUE}
+#' (the default), linear covariates supplied to \code{fit()} are internally expanded into separate
+#' low- and high-fidelity coefficient blocks, and the fidelity indicator is automatically added as
+#' a feature when the model is used in the GPBoost algorithm. Ignored for other covariance functions.
 #' @param cov_fct_shape A \code{numeric} specifying the shape parameter of the covariance function 
 #' (e.g., smoothness parameter for Matern and Wendland covariance)  
 #' This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
@@ -464,6 +468,7 @@ GPModel_shared_params <- function(likelihood = NULL,
                                   gp_coords = NULL,
                                   gp_rand_coef_data = NULL,
                                   cov_function = NULL,
+                                  fidelity_specific_mean = NULL,
                                   cov_fct_shape = NULL,
                                   gp_approx = NULL,
                                   num_parallel_threads = NULL,
@@ -545,6 +550,7 @@ gpb.GPModel <- R6::R6Class(
                           cluster_ids = NULL,
                           num_data = NULL,
                           likelihood_additional_param = NULL,
+                          fidelity_specific_mean = TRUE,
                           free_raw_data = FALSE,
                           modelfile = NULL,
                           model_list = NULL,
@@ -604,6 +610,7 @@ gpb.GPModel <- R6::R6Class(
         gp_coords = model_list[["gp_coords"]]
         gp_rand_coef_data = model_list[["gp_rand_coef_data"]]
         cov_function = model_list[["cov_function"]]
+        fidelity_specific_mean <- if (is.null(model_list[["fidelity_specific_mean"]])) FALSE else isTRUE(model_list[["fidelity_specific_mean"]])
         cov_fct_shape = model_list[["cov_fct_shape"]]
         gp_approx = model_list[["gp_approx"]]
         matrix_inversion_method = model_list[["matrix_inversion_method"]]
@@ -643,6 +650,7 @@ gpb.GPModel <- R6::R6Class(
           private$coefs_loaded_from_file = model_list[["coefs"]]
           private$num_coef = model_list[["num_coef"]]
           private$num_covariates = model_list[["num_covariates"]]
+          private$num_covariates_original <- if (is.null(model_list[["num_covariates_original"]])) private$num_covariates else model_list[["num_covariates_original"]]
           if (private$num_coef != private$num_covariates * private$num_sets_fe) stop("incorrect 'num_coef'")
           private$X_loaded_from_file = model_list[["X"]]
           if (is.null(colnames(private$X_loaded_from_file))) {
@@ -678,6 +686,8 @@ gpb.GPModel <- R6::R6Class(
         private$num_sets_fe = 2
       }
       private$cov_par_names <- c()
+      private$is_ar1_multifidelity <- startsWith(as.character(cov_function), "ar1_mf_")
+      private$fidelity_specific_mean <- private$is_ar1_multifidelity && isTRUE(fidelity_specific_mean)
       private$matrix_inversion_method <- as.character(matrix_inversion_method)
       private$seed <- as.integer(seed)
       if (!is.null(num_parallel_threads)) {
@@ -1171,7 +1181,14 @@ gpb.GPModel <- R6::R6Class(
         params <- model_list[["params"]]
         params[["maxit"]] <- 0
         if (private$has_covariates) {
-          self$fit(y = private$y_loaded_from_file, X = private$X_loaded_from_file, 
+          X_loaded <- private$X_loaded_from_file
+          if (private$fidelity_specific_mean && ncol(X_loaded) == 2L * private$num_covariates_original) {
+            p_original <- private$num_covariates_original
+            X_loaded <- X_loaded[, seq_len(p_original), drop = FALSE] +
+              X_loaded[, p_original + seq_len(p_original), drop = FALSE]
+            colnames(X_loaded) <- sub("_low$", "", colnames(private$X_loaded_from_file)[seq_len(p_original)])
+          }
+          self$fit(y = private$y_loaded_from_file, X = X_loaded,
                    params = params, offset = model_list[["offset"]])
         } else {
           self$fit(y = private$y_loaded_from_file, params = params, offset = model_list[["offset"]])
@@ -1234,6 +1251,11 @@ gpb.GPModel <- R6::R6Class(
         }
         if (dim(X)[1] != private$num_data) {
           stop("fit.GPModel: Number of data points in ", sQuote("X"), " does not match number of data points of initialized model")
+        }
+        private$num_covariates_original <- as.integer(dim(X)[2])
+        if (private$fidelity_specific_mean) {
+          fidelity <- private$gp_coords[, private$dim_coords]
+          X <- private$expand_fidelity_specific_covariates(X, fidelity, "fit.GPModel")
         }
         private$has_covariates <- TRUE
         private$num_covariates <- as.integer(dim(X)[2])
@@ -1631,6 +1653,7 @@ gpb.GPModel <- R6::R6Class(
         if (dim(gp_coords_pred)[2] != private$dim_coords) {
           stop("set_prediction_data: Dimension / number of coordinates in ", sQuote("gp_coords_pred"), " is not correct")
         }
+        private$gp_coords_pred <- gp_coords_pred
         gp_coords_pred <- as.vector(matrix(gp_coords_pred))
         # Set data for GP random coefficients
         if (!is.null(gp_rand_coef_data_pred)) {
@@ -1671,8 +1694,15 @@ gpb.GPModel <- R6::R6Class(
         if (dim(X_pred)[1] != num_data_pred) {
           stop("set_prediction_data: Number of data points in ", sQuote("X_pred"), " is not correct")
         }
-        if (dim(X_pred)[2] != private$num_covariates) {
+        if (dim(X_pred)[2] != private$num_covariates_original) {
           stop("set_prediction_data: Number of covariates in ", sQuote("X_pred"), " is not correct")
+        }
+        if (private$fidelity_specific_mean) {
+          if (is.null(private$gp_coords_pred)) {
+            stop("set_prediction_data: 'gp_coords_pred' is required for an AR1 multifidelity model with fidelity-specific means")
+          }
+          X_pred <- private$expand_fidelity_specific_covariates(
+            X_pred, private$gp_coords_pred[, private$dim_coords], "set_prediction_data")
         }
         X_pred <- as.vector(matrix(X_pred))
       } # End set data linear fixed-effects
@@ -1936,6 +1966,7 @@ gpb.GPModel <- R6::R6Class(
             if (dim(gp_coords_pred)[2] != private$dim_coords) {
               stop("predict.GPModel: Dimension / number of coordinates in ", sQuote("gp_coords_pred"), " is not correct")
             }
+            private$gp_coords_pred <- gp_coords_pred
             gp_coords_pred <- as.vector(matrix(gp_coords_pred))
           }
         } # End set data for Gaussian process
@@ -1968,8 +1999,15 @@ gpb.GPModel <- R6::R6Class(
           if (dim(X_pred)[1] != num_data_pred) {
             stop("predict.GPModel: Number of data points in ", sQuote("X_pred"), " is not correct")
           }
-          if (dim(X_pred)[2] != private$num_covariates) {
+          if (dim(X_pred)[2] != private$num_covariates_original) {
             stop("predict.GPModel: Number of covariates in ", sQuote("X_pred"), " is not correct")
+          }
+          if (private$fidelity_specific_mean) {
+            if (is.null(private$gp_coords_pred)) {
+              stop("predict.GPModel: 'gp_coords_pred' is required for an AR1 multifidelity model with fidelity-specific means")
+            }
+            X_pred <- private$expand_fidelity_specific_covariates(
+              X_pred, private$gp_coords_pred[, private$dim_coords], "predict.GPModel")
           }
           X_pred <- as.vector(matrix(X_pred))
         }
@@ -2430,6 +2468,16 @@ gpb.GPModel <- R6::R6Class(
       return(invisible(self))
     },
     
+    has_fidelity_specific_mean = function() {
+      private$fidelity_specific_mean
+    },
+
+    get_fidelity_indicator = function(prediction = FALSE) {
+      coords <- if (prediction) private$gp_coords_pred else private$gp_coords
+      if (is.null(coords)) return(NULL)
+      as.vector(coords[, private$dim_coords])
+    },
+
     model_to_list = function(include_response_data=TRUE) {
       if (isTRUE(private$free_raw_data)) {
         stop("model_to_list: cannot convert to json when free_raw_data=TRUE has been set")
@@ -2462,6 +2510,7 @@ gpb.GPModel <- R6::R6Class(
       model_list[["num_neighbors"]] <- private$num_neighbors
       model_list[["vecchia_ordering"]] <- private$vecchia_ordering
       model_list[["cov_function"]] <- private$cov_function
+      model_list[["fidelity_specific_mean"]] <- private$fidelity_specific_mean
       model_list[["cov_fct_shape"]] <- private$cov_fct_shape
       model_list[["gp_approx"]] <- private$gp_approx
       model_list[["matrix_inversion_method"]] <- private$matrix_inversion_method
@@ -2483,6 +2532,7 @@ gpb.GPModel <- R6::R6Class(
         model_list[["coefs"]] <- self$get_coef()
         model_list[["params"]][["init_coef"]] <- model_list[["coefs"]]
         model_list[["num_covariates"]] <- private$num_covariates
+        model_list[["num_covariates_original"]] <- private$num_covariates_original
         model_list[["num_coef"]] <- private$num_coef
         model_list[["X"]] <- self$get_covariate_data()
       }
@@ -2643,6 +2693,7 @@ gpb.GPModel <- R6::R6Class(
     has_covariates = FALSE,
     has_offset = FALSE,
     num_covariates = 0,
+    num_covariates_original = 0,
     num_coef = 0,
     group_data = NULL,
     nb_groups = NULL,
@@ -2650,8 +2701,11 @@ gpb.GPModel <- R6::R6Class(
     ind_effect_group_rand_coef = NULL,
     drop_intercept_group_rand_effect = NULL,
     gp_coords = NULL,
+    gp_coords_pred = NULL,
     gp_rand_coef_data = NULL,
     cov_function = "matern",
+    is_ar1_multifidelity = FALSE,
+    fidelity_specific_mean = FALSE,
     cov_fct_shape = 1.5,
     gp_approx = "none",
     matrix_inversion_method = "default",
@@ -2688,6 +2742,22 @@ gpb.GPModel <- R6::R6Class(
     X_loaded_from_file = NULL,
     model_fitted = FALSE,
     current_neg_log_likelihood_loaded_from_file = NULL,
+    expand_fidelity_specific_covariates = function(X, fidelity, context) {
+      fidelity <- as.vector(fidelity)
+      if (length(fidelity) != nrow(X)) {
+        stop(context, ": Number of fidelity indicators does not match the number of rows in covariate data")
+      }
+      if (any(!is.finite(fidelity)) || any(!(fidelity %in% c(0, 1)))) {
+        stop(context, ": The last column of GP coordinates (the fidelity indicator) must contain only 0 and 1")
+      }
+      cov_names <- colnames(X)
+      if (is.null(cov_names)) {
+        cov_names <- paste0("Covariate_", seq_len(ncol(X)))
+      }
+      X_expanded <- cbind(X * (1 - fidelity), X * fidelity)
+      colnames(X_expanded) <- c(paste0(cov_names, "_low"), paste0(cov_names, "_high"))
+      X_expanded
+    },
         params = list(maxit = -999L, # default value is set in C++
           delta_rel_conv = -999., # default value is set in C++
           init_coef = NULL,
@@ -2959,6 +3029,7 @@ GPModel <- function(likelihood = "gaussian",
                     seed = 0L,
                     cluster_ids = NULL,
                     likelihood_additional_param = NULL,
+                    fidelity_specific_mean = TRUE,
                     num_data = NULL,
                     free_raw_data = FALSE,
                     vecchia_approx = NULL,
@@ -2974,6 +3045,7 @@ GPModel <- function(likelihood = "gaussian",
                             , gp_coords = gp_coords
                             , gp_rand_coef_data = gp_rand_coef_data
                             , cov_function = cov_function
+                            , fidelity_specific_mean = fidelity_specific_mean
                             , cov_fct_shape = cov_fct_shape
                             , gp_approx = gp_approx
                             , num_parallel_threads = num_parallel_threads
@@ -3174,6 +3246,7 @@ fitGPModel <- function(likelihood = "gaussian",
                        cover_tree_radius = 1.,
                        seed = 0L,
                        cluster_ids = NULL,
+                       fidelity_specific_mean = TRUE,
                        free_raw_data = FALSE,
                        y,
                        X = NULL,
@@ -3193,6 +3266,7 @@ fitGPModel <- function(likelihood = "gaussian",
                              , gp_coords = gp_coords
                              , gp_rand_coef_data = gp_rand_coef_data
                              , cov_function = cov_function
+                             , fidelity_specific_mean = fidelity_specific_mean
                              , cov_fct_shape = cov_fct_shape
                              , gp_approx = gp_approx
                              , num_parallel_threads = num_parallel_threads

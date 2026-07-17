@@ -8,18 +8,18 @@ GPModel_shared_params(likelihood = NULL, likelihood_additional_param = NULL,
   group_data = NULL, group_rand_coef_data = NULL,
   ind_effect_group_rand_coef = NULL,
   drop_intercept_group_rand_effect = NULL, gp_coords = NULL,
-  gp_rand_coef_data = NULL, cov_function = NULL, cov_fct_shape = NULL,
-  gp_approx = NULL, num_parallel_threads = NULL, GPU_use = NULL,
-  cov_fct_taper_range = NULL, cov_fct_taper_shape = NULL,
-  num_neighbors = NULL, vecchia_ordering = NULL,
-  ind_points_selection = NULL, num_ind_points = NULL,
-  cover_tree_radius = NULL, matrix_inversion_method = NULL, seed = NULL,
-  vecchia_pred_type = NULL, num_neighbors_pred = NULL,
-  cg_delta_conv_pred = NULL, nsim_var_pred = NULL,
-  rank_pred_approx_matrix_lanczos = NULL, cluster_ids = NULL,
-  weights = NULL, likelihood_learning_rate = NULL, free_raw_data = NULL,
-  y = NULL, X = NULL, params = NULL, offset = NULL,
-  fixed_effects = NULL, group_data_pred = NULL,
+  gp_rand_coef_data = NULL, cov_function = NULL,
+  fidelity_specific_mean = NULL, cov_fct_shape = NULL, gp_approx = NULL,
+  num_parallel_threads = NULL, GPU_use = NULL, cov_fct_taper_range = NULL,
+  cov_fct_taper_shape = NULL, num_neighbors = NULL,
+  vecchia_ordering = NULL, ind_points_selection = NULL,
+  num_ind_points = NULL, cover_tree_radius = NULL,
+  matrix_inversion_method = NULL, seed = NULL, vecchia_pred_type = NULL,
+  num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
+  nsim_var_pred = NULL, rank_pred_approx_matrix_lanczos = NULL,
+  cluster_ids = NULL, weights = NULL, likelihood_learning_rate = NULL,
+  free_raw_data = NULL, y = NULL, X = NULL, params = NULL,
+  offset = NULL, fixed_effects = NULL, group_data_pred = NULL,
   group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
   gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL, X_pred = NULL,
   predict_cov_mat = NULL, predict_var = NULL, sample_posterior = NULL,
@@ -162,7 +162,22 @@ For H = 0.5, this corresponds to Brownian motion (-> see the 'estimate_cov_par_i
 i.e., with a different range parameter for every coordinate of ``gp_coords`` except 
 for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: 
 \eqn{ cov(s, s') = (\sigma^2/2)\left[ \left(s_1^2 + \sum_{k=2}^d (s_k/l_k)^2\right)^H + \left({s'}_1^2 + \sum_{k=2}^d ({s'}_k/l_k)^2\right)^H - \left((s_1-{s'}_1)^2 + \sum_{k=2}^d ((s_k-{s'}_k)/l_k)^2\right)^H \right] } }
+\item{ "ar1_mf_<base>": two-level autoregressive multifidelity covariance defined by
+\eqn{f_H(x)=\rho f_L(x)+\delta(x)}, where \eqn{f_L} and \eqn{\delta} are independent Gaussian processes
+using the same base covariance type but separate parameter vectors. For example, use "ar1_mf_matern",
+"ar1_mf_matern_ard", or "ar1_mf_matern_estimate_shape".
+The last column of \code{gp_coords} must be 0 for low fidelity or 1 for high fidelity. All preceding columns are input coordinates for the GPs.
+Covariance parameters are ordered as [low-fidelity base parameters, discrepancy base parameters, rho].
+The two base blocks use the ordinary parameter ordering of the base covariance, and rho is unrestricted and
+can be negative. Any supported base covariance except "wendland" can be used. Correlation tapering and
+Gaussian-process random coefficients are currently not supported for this model. }
 }}
+
+\item{fidelity_specific_mean}{A \code{logical}. For an \code{ar1_mf_<base>} covariance,
+whether marginal mean models are fitted independently for low and high fidelity. If \code{TRUE}
+(the default), linear covariates supplied to \code{fit()} are internally expanded into separate
+low- and high-fidelity coefficient blocks, and the fidelity indicator is automatically added as
+a feature when the model is used in the GPBoost algorithm. Ignored for other covariance functions.}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
 (e.g., smoothness parameter for Matern and Wendland covariance)  
@@ -172,7 +187,12 @@ This parameter is irrelevant for some covariance functions such as the exponenti
 for Gaussian processes. Available options: 
 \itemize{
 \item{"none": No approximation }
-\item{"vecchia": Vecchia approximation; see Sigrist (2022, JMLR) for more details }
+\item{"vecchia": Vecchia approximation; see Sigrist (2022, JMLR) for more details.
+For "space_time_gneiting" and "ar1_mf_<base>", neighbors are selected by absolute correlation by default.
+Use "vecchia_euclidean" for Euclidean-distance selection. }
+\item{"vecchia_euclidean": Vecchia approximation with Euclidean-distance neighbor selection for
+"space_time_gneiting" and "ar1_mf_<base>". For multifidelity models, the last fidelity-indicator column
+is excluded from the Euclidean distance. }
 \item{"full_scale_vecchia": Vecchia-inducing points full-scale (VIF) approximation; 
 see Gyger, Furrer, and Sigrist (2025) for more details }
 \item{"tapering": The covariance function is multiplied by 

@@ -401,6 +401,16 @@ ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2],
   geom_point(size=8, shape=15) + scale_color_viridis(option = "B") + 
   ggtitle("Predicted latent GP mean with a VIF approximation")
 
+#--------------------Two-level AR1 multifidelity Gaussian process----------------
+n_high_fideltity <- 100
+fidelity <- c(rep(1,100), rep(0,ntrain-100))
+coords_train_mf <- cbind(coords_train, fidelity)
+# The last column of gp_coords must be 0 for low fidelity or 1 for high fidelity
+gp_model <- fitGPModel(gp_coords = coords_train_mf, cov_function = "ar1_mf_matern", cov_fct_shape = 1.5, 
+                       gp_approx = "vecchia", num_neighbors = 20, y = y_train,
+                       X = X, likelihood = likelihood)
+summary(gp_model)
+
 #--------------------Gaussian process model with random coefficients----------------
 gp_model <- fitGPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
                        gp_rand_coef_data = Z_SVC,
