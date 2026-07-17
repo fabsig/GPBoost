@@ -401,7 +401,7 @@ ggplot(data = data.frame(s_1=coords_test[,1], s_2=coords_test[,2],
   geom_point(size=8, shape=15) + scale_color_viridis(option = "B") + 
   ggtitle("Predicted latent GP mean with a VIF approximation")
 
-#--------------------Two-level AR1 multifidelity Gaussian process----------------
+#--------------------Two-level autoregressive multifidelity Gaussian process----------------
 n_high_fideltity <- 100
 fidelity <- c(rep(1,100), rep(0,ntrain-100))
 coords_train_mf <- cbind(coords_train, fidelity)

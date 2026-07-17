@@ -4439,13 +4439,14 @@ class GPModel(object):
                     Two-level autoregressive multifidelity covariance defined by
                     f_H(x) = rho * f_L(x) + delta(x), where f_L and delta are independent Gaussian
                     processes using the same base covariance type but separate parameter vectors.
-                    For example, use "ar1_mf_matern", "ar1_mf_matern_ard", or
-                    "ar1_mf_matern_estimate_shape".
+                    
+                    For example, use "ar1_mf_matern", "ar1_mf_matern_ard", or "ar1_mf_matern_estimate_shape".
 
                     The last column of 'gp_coords' must be 0 for low fidelity or 1 for high fidelity.
-                    All preceding columns are input coordinates for the GPs. Covariance parameters are ordered as
-                    [low-fidelity base parameters, discrepancy base parameters, rho]. The two base blocks
-                    use the ordinary parameter ordering of <base>, and rho is unrestricted and can be negative.
+                    All preceding columns are input coordinates for the GPs. 
+                    
+                    Covariance parameters are ordered as [low-fidelity base parameters, discrepancy base parameters, rho]. 
+                    The two base blocks use the ordinary parameter ordering of <base>, and rho is unrestricted and can be negative.
 
                     Any supported base covariance except "wendland" can be used. Correlation tapering and
                     Gaussian-process random coefficients are currently not supported for this model.
@@ -4470,13 +4471,7 @@ class GPModel(object):
 
                         Vecchia approximation; see Sigrist (2022, JMLR) for more details
                         For "space_time_gneiting" and "ar1_mf_<base>", neighbors are selected by absolute
-                        correlation by default. Use "vecchia_euclidean" for Euclidean-distance selection.
-
-                    - "vecchia_euclidean":
-
-                        Vecchia approximation with Euclidean-distance neighbor selection for
-                        "space_time_gneiting" and "ar1_mf_<base>". For multifidelity models, the last
-                        fidelity-indicator column is excluded from the Euclidean distance.
+                        correlation by default. Use gp_approx = "vecchia_euclidean" for Euclidean-distance selection.
 
                     - "full_scale_vecchia": 
                     

@@ -146,13 +146,15 @@ for the first coordinate which has a range parameter of 1 due to identifiability
 \eqn{ cov(s, s') = (\sigma^2/2)\left[ \left(s_1^2 + \sum_{k=2}^d (s_k/l_k)^2\right)^H + \left({s'}_1^2 + \sum_{k=2}^d ({s'}_k/l_k)^2\right)^H - \left((s_1-{s'}_1)^2 + \sum_{k=2}^d ((s_k-{s'}_k)/l_k)^2\right)^H \right] } }
 \item{ "ar1_mf_<base>": two-level autoregressive multifidelity covariance defined by
 \eqn{f_H(x)=\rho f_L(x)+\delta(x)}, where \eqn{f_L} and \eqn{\delta} are independent Gaussian processes
-using the same base covariance type but separate parameter vectors. For example, use "ar1_mf_matern",
-"ar1_mf_matern_ard", or "ar1_mf_matern_estimate_shape".
-The last column of \code{gp_coords} must be 0 for low fidelity or 1 for high fidelity. All preceding columns are input coordinates for the GPs.
-Covariance parameters are ordered as [low-fidelity base parameters, discrepancy base parameters, rho].
+using the same base covariance type but separate parameter vectors. 
+\itemize{
+\item{ For example, use "ar1_mf_matern", "ar1_mf_matern_ard", or "ar1_mf_matern_estimate_shape".}
+\item{ The last column of \code{gp_coords} must be 0 for low fidelity or 1 for high fidelity. All preceding columns are input coordinates for the GPs.}
+\item{ Covariance parameters are ordered as [low-fidelity base parameters, discrepancy base parameters, rho].
 The two base blocks use the ordinary parameter ordering of the base covariance, and rho is unrestricted and
-can be negative. Any supported base covariance except "wendland" can be used. Correlation tapering and
-Gaussian-process random coefficients are currently not supported for this model. }
+can be negative.} 
+\item{ Any supported base covariance except "wendland" can be used. Correlation tapering and
+Gaussian-process random coefficients are currently not supported for this model. }}}
 }}
 
 \item{cov_fct_shape}{A \code{numeric} specifying the shape parameter of the covariance function 
@@ -165,10 +167,7 @@ for Gaussian processes. Available options:
 \item{"none": No approximation }
 \item{"vecchia": Vecchia approximation; see Sigrist (2022, JMLR) for more details.
 For "space_time_gneiting" and "ar1_mf_<base>", neighbors are selected by absolute correlation by default.
-Use "vecchia_euclidean" for Euclidean-distance selection. }
-\item{"vecchia_euclidean": Vecchia approximation with Euclidean-distance neighbor selection for
-"space_time_gneiting" and "ar1_mf_<base>". For multifidelity models, the last fidelity-indicator column
-is excluded from the Euclidean distance. }
+Use gp_approx = "vecchia_euclidean" for Euclidean-distance selection. }
 \item{"full_scale_vecchia": Vecchia-inducing points full-scale (VIF) approximation; 
 see Gyger, Furrer, and Sigrist (2025) for more details }
 \item{"tapering": The covariance function is multiplied by 

@@ -165,13 +165,7 @@ Model specification parameters
 
               f_H(x) = \rho f_L(x) + \delta(x),
 
-           where :math:`f_L` and :math:`\delta` are independent Gaussian processes with the same covariance-function type but separate parameter vectors. Equivalently, for fidelity indicators :math:`s,s'\in\{0,1\}`,
-
-           .. math::
-
-              \operatorname{Cov}\{f_s(x),f_{s'}(x')\}
-              = a_s a_{s'} k_L(x,x') + ss' k_\delta(x,x'),\qquad
-              a_s = 1+s(\rho-1).
+           where :math:`f_L` and :math:`\delta` are independent Gaussian processes with the same covariance-function type but separate parameter vectors.
 
          - The covariance parameters are ordered as ``[low-fidelity base parameters, discrepancy base parameters, rho]``. The two base-parameter blocks follow the ordinary ordering of ``<base>``. ``rho`` is unrestricted and can be negative.
 
@@ -193,9 +187,7 @@ Model specification parameters
 
       - ``vecchia`` : Vecchia approximation; see Sigrist (2022, JMLR) for more details
 
-         - For ``space_time_gneiting`` and ``ar1_mf_<base>``, neighbors are selected according to the largest absolute correlations by default.
-
-      - ``vecchia_euclidean`` : Vecchia approximation with Euclidean-distance neighbor selection for ``space_time_gneiting`` and ``ar1_mf_<base>``. For multifidelity models, distances are calculated using only the input coordinates; the last fidelity-indicator column is excluded.
+         - For ``space_time_gneiting`` and ``ar1_mf_<base>``, neighbors are selected according to the largest absolute correlations by default. Use gp_approx = ``vecchia_euclidean`` for Euclidean-distance selection.
 
       - ``full_scale_vecchia`` : Vecchia-inducing points full-scale (VIF) approximation; see Gyger, Furrer, and Sigrist (2025) for more details 
 
