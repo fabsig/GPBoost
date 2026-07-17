@@ -133,6 +133,16 @@
 #' i.e., with a different range parameter for every coordinate of ``gp_coords`` except 
 #' for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: 
 #' \eqn{ cov(s, s') = (\sigma^2/2)\left[ \left(s_1^2 + \sum_{k=2}^d (s_k/l_k)^2\right)^H + \left({s'}_1^2 + \sum_{k=2}^d ({s'}_k/l_k)^2\right)^H - \left((s_1-{s'}_1)^2 + \sum_{k=2}^d ((s_k-{s'}_k)/l_k)^2\right)^H \right] } }
+#' \item{ "ar1_mf_<base>": two-level autoregressive multifidelity covariance defined by
+#' \eqn{f_H(x)=\rho f_L(x)+\delta(x)}, where \eqn{f_L} and \eqn{\delta} are independent Gaussian processes
+#' using the same base covariance type but separate parameter vectors. For example, use "ar1_mf_matern",
+#' "ar1_mf_matern_ard", or "ar1_mf_matern_estimate_shape".
+#' The last column of \code{gp_coords} must be 0 for low fidelity or 1 for high fidelity. All preceding columns
+#' are passed to the base covariance; consequently, the fidelity column does not receive an ARD range parameter.
+#' Covariance parameters are ordered as [low-fidelity base parameters, discrepancy base parameters, rho].
+#' The two base blocks use the ordinary parameter ordering of the base covariance, and rho is unrestricted and
+#' can be negative. Any supported base covariance except "wendland" can be used. Correlation tapering and
+#' Gaussian-process random coefficients are currently not supported for this model. }
 #' }
 #' @param cov_fct_shape A \code{numeric} specifying the shape parameter of the covariance function 
 #' (e.g., smoothness parameter for Matern and Wendland covariance)  
@@ -141,7 +151,12 @@
 #' for Gaussian processes. Available options: 
 #' \itemize{
 #' \item{"none": No approximation }
-#' \item{"vecchia": Vecchia approximation; see Sigrist (2022, JMLR) for more details }
+#' \item{"vecchia": Vecchia approximation; see Sigrist (2022, JMLR) for more details.
+#' For "space_time_gneiting" and "ar1_mf_<base>", neighbors are selected by absolute correlation by default.
+#' Use "vecchia_euclidean" for Euclidean-distance selection. }
+#' \item{"vecchia_euclidean": Vecchia approximation with Euclidean-distance neighbor selection for
+#' "space_time_gneiting" and "ar1_mf_<base>". For multifidelity models, the last fidelity-indicator column
+#' is excluded from the Euclidean distance. }
 #' \item{"full_scale_vecchia": Vecchia-inducing points full-scale (VIF) approximation; 
 #' see Gyger, Furrer, and Sigrist (2025) for more details }
 #' \item{"tapering": The covariance function is multiplied by 
@@ -834,7 +849,44 @@ gpb.GPModel <- R6::R6Class(
         }
         private$cover_tree_radius <- as.numeric(cover_tree_radius)
         private$ind_points_selection <- as.character(ind_points_selection)
-        if (private$cov_function == "space_time_gneiting") {
+        if (startsWith(private$cov_function, "ar1_mf_")) {
+          if (private$dim_coords < 2L) {
+            stop("AR1 multifidelity covariance functions require at least one input coordinate and a fidelity indicator in the last column")
+          }
+          if (any(!(private$gp_coords[, private$dim_coords] %in% c(0, 1)))) {
+            stop("The last column of gp_coords must contain only 0 (low fidelity) and 1 (high fidelity) for AR1 multifidelity covariance functions")
+          }
+          base_cov_function <- substring(private$cov_function, nchar("ar1_mf_") + 1L)
+          if (base_cov_function == "wendland") {
+            stop("The Wendland covariance is not supported as a base covariance for AR1 multifidelity models")
+          }
+          dim_spatial <- private$dim_coords - 1L
+          if (base_cov_function == "space_time_gneiting") {
+            base_names <- c("sigma2", "a", "c", "alpha", "nu", "beta", "delta")
+          } else if (base_cov_function == "matern_space_time" || base_cov_function == "exponential_space_time") {
+            base_names <- c("GP_var", "GP_range_time", "GP_range_space")
+          } else if (base_cov_function == "matern_estimate_shape") {
+            base_names <- c("GP_var", "GP_range", "GP_smoothness")
+          } else if (base_cov_function == "matern_ard" || base_cov_function == "gaussian_ard" ||
+                     base_cov_function == "exponential_ard") {
+            base_names <- c("GP_var", paste0("GP_range_", seq_len(dim_spatial)))
+          } else if (base_cov_function == "matern_ard_estimate_shape") {
+            base_names <- c("GP_var", paste0("GP_range_", seq_len(dim_spatial)), "GP_smoothness")
+          } else if (base_cov_function == "linear") {
+            base_names <- "GP_var"
+          } else if (base_cov_function == "hurst" || base_cov_function == "hurst_ard") {
+            base_names <- c("GP_var", "H")
+            if (base_cov_function == "hurst_ard" && dim_spatial > 1L) {
+              base_names <- c(base_names, paste0("GP_range_", 2:dim_spatial))
+            }
+          } else {
+            base_names <- c("GP_var", "GP_range")
+          }
+          private$cov_par_names <- c(private$cov_par_names,
+                                     paste0("low_", base_names),
+                                     paste0("discrepancy_", base_names),
+                                     "rho")
+        } else if (private$cov_function == "space_time_gneiting") {
           private$cov_par_names <- c(private$cov_par_names,"sigma2", "a", "c", "alpha", "nu", "beta", "delta")
         } else if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range_time", "GP_range_space")
@@ -870,6 +922,9 @@ gpb.GPModel <- R6::R6Class(
         private$re_comp_names <- c(private$re_comp_names,"GP")
         # Set data for GP random coefficients
         if (!is.null(gp_rand_coef_data)) {
+          if (startsWith(private$cov_function, "ar1_mf_")) {
+            stop("AR1 multifidelity covariance functions are not supported for random coefficient Gaussian processes")
+          }
           if (is.numeric(gp_rand_coef_data)) {
             gp_rand_coef_data <- as.matrix(gp_rand_coef_data)
           }
@@ -2673,7 +2728,26 @@ gpb.GPModel <- R6::R6Class(
     },
     
     determine_num_cov_pars = function(likelihood) {
-      if (private$cov_function == "space_time_gneiting") {
+      if (startsWith(private$cov_function, "ar1_mf_")) {
+        base_cov_function <- substring(private$cov_function, nchar("ar1_mf_") + 1L)
+        dim_spatial <- private$dim_coords - 1L
+        if (base_cov_function == "space_time_gneiting") {
+          num_par_base <- 7L
+        } else if (base_cov_function == "matern_space_time" | base_cov_function == "exponential_space_time" |
+                   base_cov_function == "matern_estimate_shape") {
+          num_par_base <- 3L
+        } else if (base_cov_function == "matern_ard" | base_cov_function == "gaussian_ard" |
+                   base_cov_function == "exponential_ard" | base_cov_function == "hurst_ard") {
+          num_par_base <- 1L + dim_spatial
+        } else if (base_cov_function == "matern_ard_estimate_shape") {
+          num_par_base <- 2L + dim_spatial
+        } else if (base_cov_function == "linear") {
+          num_par_base <- 1L
+        } else {
+          num_par_base <- 2L
+        }
+        num_par_per_GP <- 2L * num_par_base + 1L
+      } else if (private$cov_function == "space_time_gneiting") {
         num_par_per_GP <- 7L
       } else if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time" | 
                  private$cov_function == "matern_estimate_shape") {

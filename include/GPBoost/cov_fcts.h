@@ -19,6 +19,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <memory>
 #if __has_include(<version>)
 #  include <version>   // collects all feature-test macros
 #endif
@@ -64,13 +65,23 @@ namespace GPBoost {
 			cov_calculated_based_on_coords_(other.cov_calculated_based_on_coords_),
 			need_coordinates_for_calculating_covariance_(other.need_coordinates_for_calculating_covariance_),
 			variance_on_the_diagonal_(other.variance_on_the_diagonal_),
-			use_precomputed_dist_for_calc_cov_(other.use_precomputed_dist_for_calc_cov_)
+			use_precomputed_dist_for_calc_cov_(other.use_precomputed_dist_for_calc_cov_),
+			is_ar1_multifidelity_(other.is_ar1_multifidelity_),
+			base_cov_fct_type_(other.base_cov_fct_type_),
+			num_cov_par_base_(other.num_cov_par_base_),
+			dim_coordinates_(other.dim_coordinates_)
 		{
+			if (other.base_cov_function_low_) {
+				base_cov_function_low_ = std::make_shared<CovFunction<T_mat>>(*other.base_cov_function_low_);
+				base_cov_function_discrepancy_ = std::make_shared<CovFunction<T_mat>>(*other.base_cov_function_discrepancy_);
+			}
 			// re-initialize the function pointers
-			InitializeCovFct();
-			InitializeCovFctGrad();
-			InitializeGetDistanceForCovFct();
-			InitializeGetDistanceForGradientCovFct();
+			if (!is_ar1_multifidelity_) {
+				InitializeCovFct();
+				InitializeCovFctGrad();
+				InitializeGetDistanceForCovFct();
+				InitializeGetDistanceForGradientCovFct();
+			}
 		}
 
 		/*!
@@ -92,6 +103,12 @@ namespace GPBoost {
 			bool apply_tapering,
 			int dim_coordinates,
 			bool use_precomputed_dist_for_calc_cov) {
+			const string_t ar1_mf_prefix = "ar1_mf_";
+			if (cov_fct_type.rfind(ar1_mf_prefix, 0) == 0) {
+				InitializeAR1Multifidelity(cov_fct_type.substr(ar1_mf_prefix.size()), cov_fct_type,
+					shape, taper_range, taper_shape, taper_mu, apply_tapering, dim_coordinates);
+				return;
+			}
 			if (cov_fct_type == "exponential_tapered") {
 				Log::REFatal("Covariance of type 'exponential_tapered' is discontinued. Use the option 'gp_approx = \"tapering\"' instead ");
 			}
@@ -100,6 +117,7 @@ namespace GPBoost {
 				Log::REFatal("Covariance of type '%s' is not supported ", cov_fct_type.c_str());
 			}
 			cov_fct_type_ = cov_fct_type;
+			dim_coordinates_ = dim_coordinates;
 			use_precomputed_dist_for_calc_cov_ = use_precomputed_dist_for_calc_cov;
 			if (cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard" ||
 				cov_fct_type_ == "matern_ard_estimate_shape" || cov_fct_type_ == "gaussian_ard" || 
@@ -242,7 +260,14 @@ namespace GPBoost {
 		}
 
 		bool IsSpaceTimeModel() const {
-			return(cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "space_time_gneiting");
+			return(cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "space_time_gneiting" ||
+				(is_ar1_multifidelity_ &&
+					(base_cov_fct_type_ == "matern_space_time" || base_cov_fct_type_ == "exponential_space_time" ||
+						base_cov_fct_type_ == "space_time_gneiting")));
+		}
+
+		bool IsAR1Multifidelity() const {
+			return(is_ar1_multifidelity_);
 		}
 
 		/*!
@@ -374,6 +399,13 @@ namespace GPBoost {
 		* \param pars Vector with covariance parameters 
 		*/
 		void CheckPars(const vec_t& pars) const {
+			if (is_ar1_multifidelity_) {
+				CHECK(pars.size() == num_cov_par_);
+				base_cov_function_low_->CheckPars(pars.segment(0, num_cov_par_base_));
+				base_cov_function_discrepancy_->CheckPars(pars.segment(num_cov_par_base_, num_cov_par_base_));
+				CHECK(pars[2 * num_cov_par_base_] > 0.);
+				return;
+			}
 			if (cov_fct_type_ == "space_time_gneiting") {
 				for (int i = 0; i < num_cov_par_; ++i) {//sigma2, a, c, alpha, nu, beta, delta
 					if (i == 3) {
@@ -402,6 +434,11 @@ namespace GPBoost {
 		* \param cov_pars Covariance parameters (on transformed scale)
 		*/
 		void CovarianceParameterRangeWarning(const vec_t& pars) const {
+			if (is_ar1_multifidelity_) {
+				base_cov_function_low_->CovarianceParameterRangeWarning(pars.segment(0, num_cov_par_base_));
+				base_cov_function_discrepancy_->CovarianceParameterRangeWarning(pars.segment(num_cov_par_base_, num_cov_par_base_));
+				return;
+			}
 			if (cov_fct_type_ == "matern_estimate_shape" || cov_fct_type_ == "matern_ard_estimate_shape") {
 				if (pars[num_cov_par_ - 1] > LARGE_SHAPE_WARNING_THRESHOLD_) {
 					Log::REInfo(LARGE_SHAPE_WARNING_);
@@ -419,6 +456,15 @@ namespace GPBoost {
 		* \param pars Vector with covariance parameters
 		*/
 		void CapPars(vec_t& pars) const {
+			if (is_ar1_multifidelity_) {
+				vec_t pars_low = pars.segment(0, num_cov_par_base_);
+				vec_t pars_discrepancy = pars.segment(num_cov_par_base_, num_cov_par_base_);
+				base_cov_function_low_->CapPars(pars_low);
+				base_cov_function_discrepancy_->CapPars(pars_discrepancy);
+				pars.segment(0, num_cov_par_base_) = pars_low;
+				pars.segment(num_cov_par_base_, num_cov_par_base_) = pars_discrepancy;
+				return;
+			}
 			if (cov_fct_type_ == "space_time_gneiting") {
 				if (pars[3] > 1.) {//alpha
 					pars[3] = 1.;
@@ -438,6 +484,18 @@ namespace GPBoost {
 		void TransformCovPars(double sigma2,
 			const vec_t& pars,
 			vec_t& pars_trans) const {
+			if (is_ar1_multifidelity_) {
+				CHECK(pars.size() == num_cov_par_);
+				pars_trans = vec_t(num_cov_par_);
+				vec_t pars_low_trans, pars_discrepancy_trans;
+				base_cov_function_low_->TransformCovPars(sigma2, pars.segment(0, num_cov_par_base_), pars_low_trans);
+				base_cov_function_discrepancy_->TransformCovPars(sigma2,
+					pars.segment(num_cov_par_base_, num_cov_par_base_), pars_discrepancy_trans);
+				pars_trans.segment(0, num_cov_par_base_) = pars_low_trans;
+				pars_trans.segment(num_cov_par_base_, num_cov_par_base_) = pars_discrepancy_trans;
+				pars_trans[2 * num_cov_par_base_] = std::exp(pars[2 * num_cov_par_base_]);
+				return;
+			}
 			pars_trans = pars;
 			pars_trans[0] = pars[0] / sigma2;
 			if (cov_fct_type_ == "matern") {
@@ -501,6 +559,18 @@ namespace GPBoost {
 		void TransformBackCovPars(double sigma2,
 			const vec_t& pars,
 			vec_t& pars_orig) const {
+			if (is_ar1_multifidelity_) {
+				CHECK(pars.size() == num_cov_par_);
+				pars_orig = vec_t(num_cov_par_);
+				vec_t pars_low_orig, pars_discrepancy_orig;
+				base_cov_function_low_->TransformBackCovPars(sigma2, pars.segment(0, num_cov_par_base_), pars_low_orig);
+				base_cov_function_discrepancy_->TransformBackCovPars(sigma2,
+					pars.segment(num_cov_par_base_, num_cov_par_base_), pars_discrepancy_orig);
+				pars_orig.segment(0, num_cov_par_base_) = pars_low_orig;
+				pars_orig.segment(num_cov_par_base_, num_cov_par_base_) = pars_discrepancy_orig;
+				pars_orig[2 * num_cov_par_base_] = std::log(pars[2 * num_cov_par_base_]);
+				return;
+			}
 			pars_orig = pars;
 			pars_orig[0] = sigma2 * pars[0];
 			if (cov_fct_type_ == "matern") {
@@ -569,6 +639,10 @@ namespace GPBoost {
 			bool is_symmmetric) const {
 			// some checks
 			CHECK(pars.size() == num_cov_par_);
+			if (is_ar1_multifidelity_) {
+				CalculateCovMatAR1Multifidelity(dist, coords, coords_pred, pars, sigma, is_symmmetric);
+				return;
+			}
 			CheckBesselAvailableForSpaceTimeGneiting(pars);
 			if (use_precomputed_dist_for_calc_cov_) {
 				CHECK(dist.rows() > 0);
@@ -687,6 +761,10 @@ namespace GPBoost {
 			bool is_symmmetric) const {
 			// some checks
 			CHECK(pars.size() == num_cov_par_);
+			if (is_ar1_multifidelity_) {
+				CalculateCovMatAR1Multifidelity(dist, coords, coords_pred, pars, sigma, is_symmmetric);
+				return;
+			}
 			CheckBesselAvailableForSpaceTimeGneiting(pars);
 			CHECK(dist.rows() > 0);//dist is used to define sigma
 			CHECK(dist.cols() > 0);
@@ -804,6 +882,9 @@ namespace GPBoost {
 			const vec_t& coords_pred,
 			const vec_t& pars) const {
 			CHECK(pars.size() == num_cov_par_);
+			if (is_ar1_multifidelity_) {
+				return CalculateCovarianceOneEntryAR1Multifidelity(coords, coords_pred, pars);
+			}
 			CheckBesselAvailableForSpaceTimeGneiting(pars);
 			if (need_coordinates_for_calculating_covariance_) {
 				if (coords.size() == 0 || coords_pred.size() == 0) {
@@ -986,6 +1067,36 @@ namespace GPBoost {
 		}//end MultiplyWendlandCorrelationTaper (double)
 
 		/*!
+		* \brief Calculates the derivative with respect to any covariance parameter, including variance parameters
+		*/
+		void CalculateGradientCovMatFull(const T_mat& dist,
+			const den_mat_t& coords,
+			const den_mat_t& coords_pred,
+			const T_mat& sigma,
+			const vec_t& pars,
+			T_mat& sigma_grad,
+			bool transf_scale,
+			double nugget_var,
+			int ind_par,
+			bool is_symmmetric) const {
+			CHECK(ind_par >= 0 && ind_par < num_cov_par_);
+			if (is_ar1_multifidelity_) {
+				CalculateGradientCovMatAR1Multifidelity(dist, coords, coords_pred, pars, sigma_grad,
+					transf_scale, nugget_var, ind_par, is_symmmetric);
+			}
+			else if (ind_par == 0) {
+				sigma_grad = sigma;
+				if (!transf_scale) {
+					sigma_grad /= pars[0];
+				}
+			}
+			else {
+				CalculateGradientCovMat(dist, coords, coords_pred, sigma, pars, sigma_grad,
+					transf_scale, nugget_var, ind_par - 1, is_symmmetric);
+			}
+		}
+
+		/*!
 		* \brief Calculates derivatives of the covariance matrix with respect to covariance parameters such as range and smoothness parameters (except marginal variance parameters)
 		* \param dist Distance matrix
 		* \param coords Coordinate matrix
@@ -1011,6 +1122,7 @@ namespace GPBoost {
 			int ind_par,
 			bool is_symmmetric) const {
 			CHECK(pars.size() == num_cov_par_);
+			CHECK(!is_ar1_multifidelity_);
 			CheckBesselAvailableForSpaceTimeGneitingGradient(pars, ind_par);
 			if (use_precomputed_dist_for_calc_cov_) {
 				CHECK(sigma.cols() == dist.cols());
@@ -1116,6 +1228,7 @@ namespace GPBoost {
 			int ind_par,
 			bool is_symmmetric) const {
 			CHECK(pars.size() == num_cov_par_);
+			CHECK(!is_ar1_multifidelity_);
 			CheckBesselAvailableForSpaceTimeGneitingGradient(pars, ind_par);
 			CHECK(sigma.cols() == sigma.rows());
 			if (use_precomputed_dist_for_calc_cov_) {
@@ -1269,6 +1382,34 @@ namespace GPBoost {
 			return sigma_grad;
 		}//end CalculateGradientCovarianceOneEntry
 
+		double CalculateGradientCovarianceOneEntryFull(const vec_t& coords,
+			const vec_t& coords_pred,
+			const vec_t& pars,
+			bool transf_scale,
+			double nugget_var,
+			int ind_par) const {
+			CHECK(ind_par >= 0 && ind_par < num_cov_par_);
+			if (is_ar1_multifidelity_) {
+				den_mat_t coords_mat(1, coords.size());
+				den_mat_t coords_pred_mat(1, coords_pred.size());
+				coords_mat.row(0) = coords.transpose();
+				coords_pred_mat.row(0) = coords_pred.transpose();
+				T_mat dist_mat(1, 1);
+				dist_mat.coeffRef(0, 0) = 0.;
+				T_mat sigma, sigma_grad;
+				CalculateCovMat(dist_mat, coords_mat, coords_pred_mat, pars, sigma, false);
+				CalculateGradientCovMatFull(dist_mat, coords_mat, coords_pred_mat, sigma, pars, sigma_grad,
+					transf_scale, nugget_var, ind_par, false);
+				return sigma_grad.coeff(0, 0);
+			}
+			if (ind_par == 0) {
+				const double covariance = CalculateCovarianceOneEntry(0., coords, coords_pred, pars);
+				return transf_scale ? covariance : covariance / pars[0];
+			}
+			return CalculateGradientCovarianceOneEntry(0., coords, coords_pred, pars,
+				transf_scale, nugget_var, ind_par - 1);
+		}
+
 		/*!
 		* \brief Find "reasonable" default values for the intial values of the covariance parameters (on transformed scale)
 		* \param dist Distance matrix
@@ -1285,6 +1426,18 @@ namespace GPBoost {
 			vec_t& pars,
 			double marginal_variance) const {
 			CHECK(pars.size() == num_cov_par_);
+			if (is_ar1_multifidelity_) {
+				CHECK(coords.cols() == dim_coordinates_);
+				const den_mat_t spatial_coords = coords.leftCols(dim_coordinates_ - 1);
+				vec_t pars_low(num_cov_par_base_);
+				vec_t pars_discrepancy(num_cov_par_base_);
+				base_cov_function_low_->FindInitCovPar(dist, spatial_coords, false, rng, pars_low, marginal_variance / 2.);
+				base_cov_function_discrepancy_->FindInitCovPar(dist, spatial_coords, false, rng, pars_discrepancy, marginal_variance / 2.);
+				pars.segment(0, num_cov_par_base_) = pars_low;
+				pars.segment(num_cov_par_base_, num_cov_par_base_) = pars_discrepancy;
+				pars[2 * num_cov_par_base_] = std::exp(1.);// q_rho = exp(rho), initialized at rho = 1
+				return;
+			}
 			pars[0] = marginal_variance;// marginal variance
 			if (num_cov_par_ > 1) {
 				// Range parameters
@@ -1530,6 +1683,241 @@ namespace GPBoost {
 		}//end FindInitCovPar
 
 	private:
+
+		void InitializeAR1Multifidelity(const string_t& base_cov_fct_type,
+			const string_t& cov_fct_type,
+			double shape,
+			double taper_range,
+			double taper_shape,
+			double taper_mu,
+			bool apply_tapering,
+			int dim_coordinates) {
+			if (dim_coordinates < 2) {
+				Log::REFatal("Covariance function '%s' requires at least one spatial coordinate and a fidelity indicator in the last coordinate column",
+					cov_fct_type.c_str());
+			}
+			if (base_cov_fct_type.empty() || base_cov_fct_type.rfind("ar1_mf_", 0) == 0) {
+				Log::REFatal("Invalid base covariance function in '%s'", cov_fct_type.c_str());
+			}
+			if (base_cov_fct_type == "wendland") {
+				Log::REFatal("Covariance function '%s' is currently not supported with a Wendland base covariance", cov_fct_type.c_str());
+			}
+			if (apply_tapering) {
+				Log::REFatal("Correlation tapering is currently not supported for covariance function '%s'", cov_fct_type.c_str());
+			}
+			is_ar1_multifidelity_ = true;
+			cov_fct_type_ = cov_fct_type;
+			base_cov_fct_type_ = base_cov_fct_type;
+			dim_coordinates_ = dim_coordinates;
+			shape_ = shape;
+			use_precomputed_dist_for_calc_cov_ = false;
+			is_isotropic_ = false;
+			use_scaled_coordinates_ = false;
+			redetermine_vecchia_neighbors_in_transformed_space_ = false;
+			cov_calculated_based_on_coords_ = true;
+			need_coordinates_for_calculating_covariance_ = true;
+			variance_on_the_diagonal_ = false;
+			const int spatial_dim = dim_coordinates - 1;
+			base_cov_function_low_ = std::make_shared<CovFunction<T_mat>>(base_cov_fct_type, shape,
+				taper_range, taper_shape, taper_mu, false, spatial_dim, false);
+			base_cov_function_discrepancy_ = std::make_shared<CovFunction<T_mat>>(base_cov_fct_type, shape,
+				taper_range, taper_shape, taper_mu, false, spatial_dim, false);
+			base_cov_fct_type_ = base_cov_function_low_->cov_fct_type_;//store the canonicalized alias
+			num_cov_par_base_ = base_cov_function_low_->num_cov_par_;
+			num_cov_par_ = 2 * num_cov_par_base_ + 1;
+			(void)taper_range;
+			(void)taper_shape;
+			(void)taper_mu;
+		}
+
+		void ValidateAndSplitAR1Coordinates(const den_mat_t& coords,
+			den_mat_t& spatial_coords,
+			vec_t& fidelity) const {
+			CHECK(coords.cols() == dim_coordinates_);
+			spatial_coords = coords.leftCols(dim_coordinates_ - 1);
+			fidelity = coords.col(dim_coordinates_ - 1);
+			for (int i = 0; i < fidelity.size(); ++i) {
+				if (!(TwoNumbersAreEqual<double>(fidelity[i], 0.) || TwoNumbersAreEqual<double>(fidelity[i], 1.))) {
+					Log::REFatal("The last coordinate column for covariance function '%s' must contain only 0 (low fidelity) and 1 (high fidelity), found %g",
+						cov_fct_type_.c_str(), fidelity[i]);
+				}
+			}
+		}
+
+		void ValidateAndSplitAR1Coordinates(const vec_t& coords,
+			vec_t& spatial_coords,
+			double& fidelity) const {
+			CHECK(coords.size() == dim_coordinates_);
+			spatial_coords = coords.head(dim_coordinates_ - 1);
+			fidelity = coords[dim_coordinates_ - 1];
+			if (!(TwoNumbersAreEqual<double>(fidelity, 0.) || TwoNumbersAreEqual<double>(fidelity, 1.))) {
+				Log::REFatal("The last coordinate entry for covariance function '%s' must be 0 (low fidelity) or 1 (high fidelity), found %g",
+					cov_fct_type_.c_str(), fidelity);
+			}
+		}
+
+		template <class T_aux = T_mat, typename std::enable_if<std::is_same<den_mat_t, T_aux>::value>::type* = nullptr>
+		void CombineAR1CovarianceMatrices(const T_mat& cov_low,
+			const T_mat& cov_discrepancy,
+			const vec_t& fidelity,
+			const vec_t& fidelity_pred,
+			double rho,
+			T_mat& sigma) const {
+			const vec_t loading = vec_t::Ones(fidelity.size()) + fidelity * (rho - 1.);
+			const vec_t loading_pred = vec_t::Ones(fidelity_pred.size()) + fidelity_pred * (rho - 1.);
+			sigma = cov_low;
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < sigma.rows(); ++i) {
+				for (int j = 0; j < sigma.cols(); ++j) {
+					sigma(i, j) = loading_pred[i] * loading[j] * cov_low(i, j) +
+						fidelity_pred[i] * fidelity[j] * cov_discrepancy(i, j);
+				}
+			}
+		}
+
+		template <class T_aux = T_mat, typename std::enable_if<std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr>
+		void CombineAR1CovarianceMatrices(const T_mat& cov_low,
+			const T_mat& cov_discrepancy,
+			const vec_t& fidelity,
+			const vec_t& fidelity_pred,
+			double rho,
+			T_mat& sigma) const {
+			const vec_t loading = vec_t::Ones(fidelity.size()) + fidelity * (rho - 1.);
+			const vec_t loading_pred = vec_t::Ones(fidelity_pred.size()) + fidelity_pred * (rho - 1.);
+			sigma = cov_low + cov_discrepancy;//use the union of both sparse patterns
+			for (int k = 0; k < sigma.outerSize(); ++k) {
+				for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
+					const int i = (int)it.row();
+					const int j = (int)it.col();
+					it.valueRef() = loading_pred[i] * loading[j] * cov_low.coeff(i, j) +
+						fidelity_pred[i] * fidelity[j] * cov_discrepancy.coeff(i, j);
+				}
+			}
+		}
+
+		void CalculateCovMatAR1Multifidelity(const T_mat& dist,
+			const den_mat_t& coords,
+			const den_mat_t& coords_pred,
+			const vec_t& pars,
+			T_mat& sigma,
+			bool is_symmetric) const {
+			den_mat_t spatial_coords, spatial_coords_pred;
+			vec_t fidelity, fidelity_pred;
+			ValidateAndSplitAR1Coordinates(coords, spatial_coords, fidelity);
+			if (is_symmetric) {
+				spatial_coords_pred = spatial_coords;
+				fidelity_pred = fidelity;
+			}
+			else {
+				ValidateAndSplitAR1Coordinates(coords_pred, spatial_coords_pred, fidelity_pred);
+			}
+			const vec_t pars_low = pars.segment(0, num_cov_par_base_);
+			const vec_t pars_discrepancy = pars.segment(num_cov_par_base_, num_cov_par_base_);
+			const double rho = std::log(pars[2 * num_cov_par_base_]);
+			T_mat cov_low, cov_discrepancy;
+			base_cov_function_low_->CalculateCovMat(dist, spatial_coords, spatial_coords_pred, pars_low, cov_low, is_symmetric);
+			base_cov_function_discrepancy_->CalculateCovMat(dist, spatial_coords, spatial_coords_pred,
+				pars_discrepancy, cov_discrepancy, is_symmetric);
+			CombineAR1CovarianceMatrices(cov_low, cov_discrepancy, fidelity, fidelity_pred, rho, sigma);
+		}
+
+		double CalculateCovarianceOneEntryAR1Multifidelity(const vec_t& coords,
+			const vec_t& coords_pred,
+			const vec_t& pars) const {
+			vec_t spatial_coords, spatial_coords_pred;
+			double fidelity, fidelity_pred;
+			ValidateAndSplitAR1Coordinates(coords, spatial_coords, fidelity);
+			ValidateAndSplitAR1Coordinates(coords_pred, spatial_coords_pred, fidelity_pred);
+			const double rho = std::log(pars[2 * num_cov_par_base_]);
+			const double loading = 1. + fidelity * (rho - 1.);
+			const double loading_pred = 1. + fidelity_pred * (rho - 1.);
+			const double cov_low = base_cov_function_low_->CalculateCovarianceOneEntry(0., spatial_coords,
+				spatial_coords_pred, pars.segment(0, num_cov_par_base_));
+			const double cov_discrepancy = base_cov_function_discrepancy_->CalculateCovarianceOneEntry(0.,
+				spatial_coords, spatial_coords_pred, pars.segment(num_cov_par_base_, num_cov_par_base_));
+			return loading * loading_pred * cov_low + fidelity * fidelity_pred * cov_discrepancy;
+		}
+
+		template <class T_aux = T_mat, typename std::enable_if<std::is_same<den_mat_t, T_aux>::value>::type* = nullptr>
+		void ScaleAR1GradientMatrix(const T_mat& gradient_base,
+			const vec_t& row_scale,
+			const vec_t& col_scale,
+			T_mat& sigma_grad) const {
+			sigma_grad = gradient_base;
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < sigma_grad.rows(); ++i) {
+				for (int j = 0; j < sigma_grad.cols(); ++j) {
+					sigma_grad(i, j) *= row_scale[i] * col_scale[j];
+				}
+			}
+		}
+
+		template <class T_aux = T_mat, typename std::enable_if<std::is_same<sp_mat_t, T_aux>::value || std::is_same<sp_mat_rm_t, T_aux>::value>::type* = nullptr>
+		void ScaleAR1GradientMatrix(const T_mat& gradient_base,
+			const vec_t& row_scale,
+			const vec_t& col_scale,
+			T_mat& sigma_grad) const {
+			sigma_grad = gradient_base;
+			for (int k = 0; k < sigma_grad.outerSize(); ++k) {
+				for (typename T_mat::InnerIterator it(sigma_grad, k); it; ++it) {
+					it.valueRef() *= row_scale[it.row()] * col_scale[it.col()];
+				}
+			}
+		}
+
+		void CalculateGradientCovMatAR1Multifidelity(const T_mat& dist,
+			const den_mat_t& coords,
+			const den_mat_t& coords_pred,
+			const vec_t& pars,
+			T_mat& sigma_grad,
+			bool transf_scale,
+			double nugget_var,
+			int ind_par,
+			bool is_symmetric) const {
+			den_mat_t spatial_coords, spatial_coords_pred;
+			vec_t fidelity, fidelity_pred;
+			ValidateAndSplitAR1Coordinates(coords, spatial_coords, fidelity);
+			if (is_symmetric) {
+				spatial_coords_pred = spatial_coords;
+				fidelity_pred = fidelity;
+			}
+			else {
+				ValidateAndSplitAR1Coordinates(coords_pred, spatial_coords_pred, fidelity_pred);
+			}
+			const vec_t pars_low = pars.segment(0, num_cov_par_base_);
+			const vec_t pars_discrepancy = pars.segment(num_cov_par_base_, num_cov_par_base_);
+			const double rho = std::log(pars[2 * num_cov_par_base_]);
+			const vec_t loading = vec_t::Ones(fidelity.size()) + fidelity * (rho - 1.);
+			const vec_t loading_pred = vec_t::Ones(fidelity_pred.size()) + fidelity_pred * (rho - 1.);
+			T_mat cov_low, cov_discrepancy;
+			base_cov_function_low_->CalculateCovMat(dist, spatial_coords, spatial_coords_pred, pars_low, cov_low, is_symmetric);
+			base_cov_function_discrepancy_->CalculateCovMat(dist, spatial_coords, spatial_coords_pred,
+				pars_discrepancy, cov_discrepancy, is_symmetric);
+			if (ind_par < num_cov_par_base_) {
+				T_mat gradient_low;
+				base_cov_function_low_->CalculateGradientCovMatFull(dist, spatial_coords, spatial_coords_pred,
+					cov_low, pars_low, gradient_low, transf_scale, nugget_var, ind_par, is_symmetric);
+				ScaleAR1GradientMatrix(gradient_low, loading_pred, loading, sigma_grad);
+			}
+			else if (ind_par < 2 * num_cov_par_base_) {
+				T_mat gradient_discrepancy;
+				base_cov_function_discrepancy_->CalculateGradientCovMatFull(dist, spatial_coords, spatial_coords_pred,
+					cov_discrepancy, pars_discrepancy, gradient_discrepancy, transf_scale, nugget_var,
+					ind_par - num_cov_par_base_, is_symmetric);
+				ScaleAR1GradientMatrix(gradient_discrepancy, fidelity_pred, fidelity, sigma_grad);
+			}
+			else {
+				const vec_t row_scale = fidelity_pred;
+				const vec_t col_scale = loading;
+				ScaleAR1GradientMatrix(cov_low, row_scale, col_scale, sigma_grad);
+				T_mat second_term;
+				ScaleAR1GradientMatrix(cov_low, loading_pred, fidelity, second_term);
+				sigma_grad += second_term;
+				if (!transf_scale) {
+					sigma_grad *= nugget_var;
+				}
+			}
+		}
 
 		void CheckBesselAvailableForSpaceTimeGneiting(const vec_t& pars) const {
 #if !HAS_STD_CYL_BESSEL_K
@@ -2833,6 +3221,17 @@ namespace GPBoost {
 		bool variance_on_the_diagonal_ = true;
 		/*! \brief If true, precomputed distances('dist') are used for calculating covariances, otherwise the coordinates are used('coords' and 'coords_pred') */
 		bool use_precomputed_dist_for_calc_cov_;
+		/*! \brief If true, this is a two-level autoregressive multifidelity covariance */
+		bool is_ar1_multifidelity_ = false;
+		/*! \brief Base covariance type used by both latent processes in an AR1 multifidelity covariance */
+		string_t base_cov_fct_type_;
+		/*! \brief Number of parameters of one base covariance in an AR1 multifidelity covariance */
+		int num_cov_par_base_ = 0;
+		/*! \brief Total coordinate dimension, including the fidelity indicator for an AR1 multifidelity covariance */
+		int dim_coordinates_ = 0;
+		/*! \brief Covariance functions for the low-fidelity process and the high-fidelity discrepancy */
+		std::shared_ptr<CovFunction<T_mat>> base_cov_function_low_;
+		std::shared_ptr<CovFunction<T_mat>> base_cov_function_discrepancy_;
 		/*! \brief for calculating finite differences  */
 		const double delta_step_ = 1e-6;// based on https://math.stackexchange.com/questions/815113/is-there-a-general-formula-for-estimating-the-step-size-h-in-numerical-different/819015#819015		
 		/*! \brief List of supported covariance functions */

@@ -466,6 +466,10 @@ namespace GPBoost {
 					start_dim = 1;
 					dist_funct = 2;
 				}
+				else if (covfct.rfind("ar1_mf_", 0) == 0) {
+					cov_fct_shape = re_comp->CovFunctionShape();
+					dist_funct = 0;//the generic GPU kernel does not implement composite multifidelity covariances
+				}
 				else {
 					cov_fct_shape = re_comp->CovFunctionShape();
 					dist_funct = 1;
@@ -992,6 +996,48 @@ namespace GPBoost {
 		}
 	}//end find_nearest_neighbors_Vecchia_fast
 
+	void find_nearest_neighbors_Vecchia_fast_AR1Aware(const den_mat_t& coords,
+		int num_data,
+		int num_neighbors,
+		std::vector<std::vector<int>>& neighbors,
+		std::vector<den_mat_t>& dist_obs_neighbors,
+		std::vector<den_mat_t>& dist_between_neighbors,
+		int start_at,
+		int end_search_at,
+		bool& check_has_duplicates,
+		const string_t& neighbor_selection,
+		RNG_t& gen,
+		bool save_distances,
+		bool GPU_use,
+		const std::shared_ptr<RECompGP<den_mat_t>>& re_comp) {
+		const bool is_ar1_multifidelity = re_comp->CovFunctionName().rfind("ar1_mf_", 0) == 0;
+		den_mat_t coords_neighbor_search;
+		if (is_ar1_multifidelity) {
+			CHECK(coords.cols() >= 2);
+			coords_neighbor_search = coords.leftCols(coords.cols() - 1);
+		}
+		else {
+			coords_neighbor_search = coords;
+		}
+		const bool duplicate_check_requested = check_has_duplicates;
+		bool duplicate_check_result = duplicate_check_requested && !is_ar1_multifidelity;
+		find_nearest_neighbors_Vecchia_fast(coords_neighbor_search, num_data, num_neighbors, neighbors,
+			dist_obs_neighbors, dist_between_neighbors, start_at, end_search_at, duplicate_check_result,
+			neighbor_selection, gen, save_distances, GPU_use);
+		if (duplicate_check_requested && is_ar1_multifidelity) {
+			duplicate_check_result = false;
+			for (int i = start_at; i < num_data && !duplicate_check_result; ++i) {
+				for (const int j : neighbors[i - start_at]) {
+					if ((coords.row(i) - coords.row(j)).lpNorm<2>() < EPSILON_NUMBERS) {
+						duplicate_check_result = true;
+						break;
+					}
+				}
+			}
+		}
+		check_has_duplicates = duplicate_check_result;
+	}//end find_nearest_neighbors_Vecchia_fast_AR1Aware
+
 	void find_nearest_neighbors_fast_internal(const int i,
 		const int num_data,
 		const int num_nearest_neighbors,
@@ -1149,9 +1195,28 @@ namespace GPBoost {
 		dist_between_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
 		if (!(re_comp->RedetermineVecchiaNeighborsInTransformedSpace()) && vecchia_neighbor_selection != "residual_correlation" && vecchia_neighbor_selection != "correlation") {
 			Log::REDebug("Starting nearest neighbor search for Vecchia approximation");
-			find_nearest_neighbors_Vecchia_fast(re_comp->GetCoords(), re_comp->GetNumUniqueREs(), num_neighbors,
-				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, has_duplicates,
+			den_mat_t coords_neighbor_search;
+			re_comp->GetCoordsForEuclideanNeighborSearch(coords_neighbor_search);
+			const bool is_ar1_multifidelity = re_comp->CovFunctionName().rfind("ar1_mf_", 0) == 0;
+			bool duplicate_check_result = is_ar1_multifidelity ? false : has_duplicates;
+			find_nearest_neighbors_Vecchia_fast(coords_neighbor_search, re_comp->GetNumUniqueREs(), num_neighbors,
+				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, duplicate_check_result,
 				vecchia_neighbor_selection, rng, save_distances_isotropic_cov_fct, GPU_use);
+			if (is_ar1_multifidelity && check_has_duplicates) {
+				has_duplicates = false;
+				const den_mat_t& coords_full = re_comp->GetCoords();
+				for (int i = 1; i < (int)nearest_neighbors_cluster_i.size() && !has_duplicates; ++i) {
+					for (const int j : nearest_neighbors_cluster_i[i]) {
+						if ((coords_full.row(i) - coords_full.row(j)).lpNorm<2>() < EPSILON_NUMBERS) {
+							has_duplicates = true;
+							break;
+						}
+					}
+				}
+			}
+			else {
+				has_duplicates = duplicate_check_result;
+			}
 			Log::REDebug("Nearest neighbors for Vecchia approximation found");
 			if (check_has_duplicates) {
 				has_duplicates_coords = has_duplicates_coords || has_duplicates;
@@ -1509,25 +1574,30 @@ namespace GPBoost {
 				if (calc_cov_factor) {
 					D_inv_cluster_i.coeffRef(i, i) += d_comp_j;
 				}
-				if (calc_gradient && estimate_cov_par_index[j * num_par_comp + nugget_offset_ind_est] > 0) {
-					if (!(exclude_marg_var_grad && j == 0)) {
-						if (transf_scale) {
-							D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = d_comp_j;//derivative of the covariance function wrt the variance
-						}
-						else {
-							if (j == 0) {
-								D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = 1.;//1's on the diagonal on the orignal scale
+				if (calc_gradient) {
+					const int ind_first_par = j * num_par_comp;
+					if (var_on_diag) {
+						if (estimate_cov_par_index[ind_first_par + nugget_offset_ind_est] > 0 &&
+							!(exclude_marg_var_grad && j == 0)) {
+							if (transf_scale) {
+								D_grad_cluster_i[ind_first_par].coeffRef(i, i) = d_comp_j;
 							}
 							else {
-								D_grad_cluster_i[j * num_par_comp].coeffRef(i, i) = z_outer_z_obs_neighbors_cluster_i[i][j - 1](0, 0);
+								D_grad_cluster_i[ind_first_par].coeffRef(i, i) =
+									j == 0 ? 1. : z_outer_z_obs_neighbors_cluster_i[i][j - 1](0, 0);
 							}
 						}
 					}
-					if (!var_on_diag){// add derivative of the covariance function wrt to other parameters (e.g. range) if it is non-zero on the diagonal
-						int ind_first_par = j * num_par_comp;
-						for (int ipar = 1; ipar < num_par_comp; ++ipar) {
-							if (estimate_cov_par_index[ind_first_par + ipar + nugget_offset_ind_est] > 0) {
-								D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) = re_comps_vecchia_cluster_i[j]->GetZSigmaZtGradDiagonal_ii(i, ipar, transf_scale, nugget_var);
+					else {
+						for (int ipar = 0; ipar < num_par_comp; ++ipar) {
+							if (estimate_cov_par_index[ind_first_par + ipar + nugget_offset_ind_est] > 0 &&
+								!(exclude_marg_var_grad && j == 0 && ipar == 0)) {
+								double grad_diag = re_comps_vecchia_cluster_i[j]->GetZSigmaZtGradDiagonal_ii(
+									i, ipar, transf_scale, nugget_var);
+								if (j > 0) {
+									grad_diag *= z_outer_z_obs_neighbors_cluster_i[i][j - 1](0, 0);
+								}
+								D_grad_cluster_i[ind_first_par + ipar].coeffRef(i, i) = grad_diag;
 							}
 						}
 					}
@@ -1731,9 +1801,9 @@ namespace GPBoost {
 			}
 			else {
 				if (!scale_coordinates) {
-					find_nearest_neighbors_Vecchia_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred,
+					find_nearest_neighbors_Vecchia_fast_AR1Aware(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred,
 						nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli, num_re_cli - 1, check_has_duplicates,
-						vecchia_neighbor_selection, rng, distances_saved, GPU_use);
+						vecchia_neighbor_selection, rng, distances_saved, GPU_use, re_comp);
 				}
 				else {
 					find_nearest_neighbors_Vecchia_fast(coords_scaled, num_re_cli + num_re_pred_cli, num_neighbors_pred,
@@ -1753,9 +1823,9 @@ namespace GPBoost {
 			}
 			else {
 				if (!scale_coordinates) {
-					find_nearest_neighbors_Vecchia_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred,
+					find_nearest_neighbors_Vecchia_fast_AR1Aware(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred,
 						nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, num_re_cli, -1, check_has_duplicates,
-						vecchia_neighbor_selection, rng, distances_saved, GPU_use);
+						vecchia_neighbor_selection, rng, distances_saved, GPU_use, re_comp);
 				}
 				else {
 					find_nearest_neighbors_Vecchia_fast(coords_scaled, num_re_cli + num_re_pred_cli, num_neighbors_pred,
@@ -2181,10 +2251,16 @@ namespace GPBoost {
 			const vec_t pars = re_comp->CovPars();
 			re_comp->ScaleCoordinates(pars, coords_all, coords_scaled);
 		}
-		if (!scale_coordinates) {
-			find_nearest_neighbors_Vecchia_fast(coords_all, num_data_tot, num_neighbors_pred,
+		if (vecchia_neighbor_selection == "correlation") {
+			den_mat_t chol_ip_cross_cov;
+			find_nearest_neighbors_Vecchia_FSA_fast(coords_all, num_data_tot, num_neighbors_pred, chol_ip_cross_cov,
+				vecchia_neighbor_selection, re_comps_vecchia, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i,
+				dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates, distances_saved, false, true, num_data_tot, GPU_use);
+		}
+		else if (!scale_coordinates) {
+			find_nearest_neighbors_Vecchia_fast_AR1Aware(coords_all, num_data_tot, num_neighbors_pred,
 				nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
-				vecchia_neighbor_selection, rng, distances_saved, GPU_use);
+				vecchia_neighbor_selection, rng, distances_saved, GPU_use, re_comp);
 		}
 		else {
 			find_nearest_neighbors_Vecchia_fast(coords_scaled, num_data_tot, num_neighbors_pred,
@@ -2451,10 +2527,17 @@ namespace GPBoost {
 			re_comp->ScaleCoordinates(pars, coords_all_unique, coords_unique_scaled);
 		}
 		if (CondObsOnly) {//find neighbors among both the observed locations only
-			if (!scale_coordinates) {
-				find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred,
+			if (vecchia_neighbor_selection == "correlation") {
+				den_mat_t chol_ip_cross_cov;
+				find_nearest_neighbors_Vecchia_FSA_fast(coords_all_unique, num_coord_unique, num_neighbors_pred, chol_ip_cross_cov,
+					vecchia_neighbor_selection, re_comps_vecchia, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i,
+					dist_between_neighbors_cluster_i, 0, num_coord_unique_obs - 1, check_has_duplicates, distances_saved,
+					true, false, num_coord_unique_obs, GPU_use);
+			}
+			else if (!scale_coordinates) {
+				find_nearest_neighbors_Vecchia_fast_AR1Aware(coords_all_unique, num_coord_unique, num_neighbors_pred,
 					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, num_coord_unique_obs - 1, check_has_duplicates,
-					vecchia_neighbor_selection, rng, distances_saved, GPU_use);
+					vecchia_neighbor_selection, rng, distances_saved, GPU_use, re_comp);
 			}
 			else {
 				find_nearest_neighbors_Vecchia_fast(coords_unique_scaled, num_coord_unique, num_neighbors_pred,
@@ -2464,10 +2547,17 @@ namespace GPBoost {
 			}
 		}
 		else {//find neighbors among both the observed and prediction locations
-			if (!scale_coordinates) {
-				find_nearest_neighbors_Vecchia_fast(coords_all_unique, num_coord_unique, num_neighbors_pred,
+			if (vecchia_neighbor_selection == "correlation") {
+				den_mat_t chol_ip_cross_cov;
+				find_nearest_neighbors_Vecchia_FSA_fast(coords_all_unique, num_coord_unique, num_neighbors_pred, chol_ip_cross_cov,
+					vecchia_neighbor_selection, re_comps_vecchia, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i,
+					dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates, distances_saved,
+					true, true, num_coord_unique_obs, GPU_use);
+			}
+			else if (!scale_coordinates) {
+				find_nearest_neighbors_Vecchia_fast_AR1Aware(coords_all_unique, num_coord_unique, num_neighbors_pred,
 					nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, 0, -1, check_has_duplicates,
-					vecchia_neighbor_selection, rng, distances_saved, GPU_use);
+					vecchia_neighbor_selection, rng, distances_saved, GPU_use, re_comp);
 			}
 			else {
 				find_nearest_neighbors_Vecchia_fast(coords_unique_scaled, num_coord_unique, num_neighbors_pred,

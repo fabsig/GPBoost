@@ -852,7 +852,8 @@ namespace GPBoost {
 			this->has_Z_ = false;
 			double taper_mu = 2.;
 			if (cov_fct == "wendland" || apply_tapering) {
-				taper_mu = GetTaperMu((int)coords.cols(), taper_shape);
+				const int taper_dim = cov_fct.rfind("ar1_mf_", 0) == 0 ? (int)coords.cols() - 1 : (int)coords.cols();
+				taper_mu = GetTaperMu(taper_dim, taper_shape);
 			}
 			is_cross_covariance_IP_ = false;
 			apply_tapering_ = apply_tapering;
@@ -940,6 +941,9 @@ namespace GPBoost {
 			bool apply_tapering,
 			bool apply_tapering_manually,
 			int dim_coordinates) {
+			if (cov_fct.rfind("ar1_mf_", 0) == 0) {
+				Log::REFatal("AR1 multifidelity covariance functions are not supported for random coefficient Gaussian processes");
+			}
 			this->num_data_ = (data_size_t)rand_coef_data.size();
 			dist_ = dist;
 			dist_saved_ = true;
@@ -991,6 +995,9 @@ namespace GPBoost {
 			bool apply_tapering_manually,
 			int dim_coordinates,
 			bool use_precomputed_dist_for_calc_cov) {
+			if (cov_fct.rfind("ar1_mf_", 0) == 0) {
+				Log::REFatal("AR1 multifidelity covariance functions are not supported for random coefficient Gaussian processes");
+			}
 			this->rand_coef_data_ = rand_coef_data;
 			this->is_rand_coef_ = true;
 			this->num_data_ = (data_size_t)rand_coef_data.size();
@@ -1036,7 +1043,8 @@ namespace GPBoost {
 			this->has_Z_ = false;
 			double taper_mu = 2.;
 			if (cov_fct == "wendland" || apply_tapering) {
-				taper_mu = GetTaperMu((int)coords.cols(), taper_shape);
+				const int taper_dim = cov_fct.rfind("ar1_mf_", 0) == 0 ? (int)coords.cols() - 1 : (int)coords.cols();
+				taper_mu = GetTaperMu(taper_dim, taper_shape);
 			}
 			is_cross_covariance_IP_ = true;
 			apply_tapering_ = apply_tapering;
@@ -1415,47 +1423,23 @@ namespace GPBoost {
 			if (!sigma_defined_) {
 				Log::REFatal("Sigma has not been calculated");
 			}
-			if (ind_par == 0) {//variance
-				if (transf_scale) {
-					return(GetZSigmaZt());
-				}
-				else {
-					double correct = 1. / this->cov_pars_[0];//divide sigma_ by cov_pars_[0]
-					if (this->is_rand_coef_ || this->has_Z_) {
-						return(std::make_shared<T_mat>(correct * this->Z_ * sigma_ * this->Z_.transpose()));
-					}
-					else {
-						return(std::make_shared<T_mat>(correct * sigma_));
-					}
-				}
+			T_mat Z_sigma_grad_Zt;
+			T_mat sigma_grad;
+			if (is_cross_covariance_IP_) {
+				(*cov_function_).CalculateGradientCovMatFull(*dist_, coords_ind_point_, coords_, sigma_, this->cov_pars_,
+					sigma_grad, transf_scale, nugget_var, ind_par, false);
 			}
-			else {//other parameters
-				CHECK(cov_function_->num_cov_par_ > 1);
-				T_mat Z_sigma_grad_Zt;
-				if (this->has_Z_) {
-					T_mat sigma_grad;
-					if (is_cross_covariance_IP_) {
-						(*cov_function_).template CalculateGradientCovMat<T_mat>(*dist_, coords_ind_point_, coords_, sigma_, this->cov_pars_, 
-							sigma_grad, transf_scale, nugget_var, ind_par - 1, false);
-					}
-					else {
-						(*cov_function_).template CalculateGradientCovMat<T_mat>(*dist_, coords_, coords_, sigma_, this->cov_pars_, 
-							sigma_grad, transf_scale, nugget_var, ind_par - 1, true);
-					}
-					Z_sigma_grad_Zt = this->Z_ * sigma_grad * this->Z_.transpose();
-				}
-				else {
-					if (is_cross_covariance_IP_) {
-						(*cov_function_).template CalculateGradientCovMat<T_mat>(*dist_, coords_ind_point_, coords_, sigma_, this->cov_pars_, 
-							Z_sigma_grad_Zt, transf_scale, nugget_var, ind_par - 1, false);
-					}
-					else {
-						(*cov_function_).template CalculateGradientCovMat<T_mat>(*dist_, coords_, coords_, sigma_, this->cov_pars_, 
-							Z_sigma_grad_Zt, transf_scale, nugget_var, ind_par - 1, true);
-					}
-				}
-				return(std::make_shared<T_mat>(Z_sigma_grad_Zt));
+			else {
+				(*cov_function_).CalculateGradientCovMatFull(*dist_, coords_, coords_, sigma_, this->cov_pars_,
+					sigma_grad, transf_scale, nugget_var, ind_par, true);
 			}
+			if (this->has_Z_) {
+				Z_sigma_grad_Zt = this->Z_ * sigma_grad * this->Z_.transpose();
+			}
+			else {
+				Z_sigma_grad_Zt = sigma_grad;
+			}
+			return(std::make_shared<T_mat>(Z_sigma_grad_Zt));
 		}//end GetZSigmaZtGrad
 
 		//Note: the following function is only called for T_mat == den_mat_t
@@ -1489,20 +1473,10 @@ namespace GPBoost {
 			}
 			if (calc_gradient) {
 				CHECK((int)calc_grad_index.size() == this->num_cov_par_);
-				if (calc_grad_index[0]) {
-					//gradient wrt to variance parameter
-					cov_grad[0] = cov_mat;
-					if (!transf_scale) {
-						cov_grad[0] /= this->cov_pars_[0];
-					}
-				}
-				if (cov_function_->num_cov_par_ > 1) {
-					//gradient wrt to range parameters
-					for (int ipar = 1; ipar < this->num_cov_par_; ++ipar) {
-						if (calc_grad_index[ipar]) {
-							(*cov_function_).template CalculateGradientCovMat<T_mat>(dist, coords, coords_pred, cov_mat, this->cov_pars_,
-								cov_grad[ipar], transf_scale, nugget_var, ipar - 1, is_symmmetric);
-						}
+				for (int ipar = 0; ipar < this->num_cov_par_; ++ipar) {
+					if (calc_grad_index[ipar]) {
+						(*cov_function_).CalculateGradientCovMatFull(dist, coords, coords_pred, cov_mat, this->cov_pars_,
+							cov_grad[ipar], transf_scale, nugget_var, ipar, is_symmmetric);
 					}
 				}
 			}
@@ -1524,41 +1498,21 @@ namespace GPBoost {
 			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
 			CHECK(i >= 0);
 			CHECK(i < num_random_effects_);
-			if (ind_par == 0) {//variance
-				if (cov_function_->variance_on_the_diagonal_) {
-					if (transf_scale) {
-						return (this->cov_pars_)[0];
-					}
-					else {
-						return 1.;
-					}
-				}//end variance_on_the_diagonal_
-				else {//!variance_on_the_diagonal_
-					if (transf_scale) {
-						return GetZSigmaZtij(i, i);
-					}
-					else {
-						return GetZSigmaZtij(i, i) / (this->cov_pars_)[0];
-					}
-				}//end !variance_on_the_diagonal_
-			}//end ind_par == 0
-			else {//other parameters
-				if (cov_function_->variance_on_the_diagonal_) {
-					return 0.;
+			if (cov_function_->variance_on_the_diagonal_) {
+				if (ind_par == 0) {
+					return transf_scale ? (this->cov_pars_)[0] : 1.;
 				}
-				else {//!variance_on_the_diagonal_
-					double dii = 0.;
-					vec_t coords;
-					if (this->coord_saved_) {
-						coords = this->coords_.row(i);
-					}
-					else {
-						Log::REFatal("The function 'GetZSigmaZtGradDiagonal_ii' is currently only implemented when 'coord_saved_' or 'dist_saved_' ");
-					}
-					const double gradii = cov_function_->CalculateGradientCovarianceOneEntry(dii, coords, coords, this->cov_pars_, transf_scale, nugget_var, ind_par - 1);
-					return(gradii);
-				}//end !variance_on_the_diagonal_
-			}//end other parameters
+				return 0.;
+			}
+			vec_t coords;
+			if (this->coord_saved_) {
+				coords = this->coords_.row(i);
+			}
+			else {
+				Log::REFatal("The function 'GetZSigmaZtGradDiagonal_ii' is currently only implemented when coordinates are saved");
+			}
+			return cov_function_->CalculateGradientCovarianceOneEntryFull(coords, coords, this->cov_pars_,
+				transf_scale, nugget_var, ind_par);
 		}//end GetZSigmaZtGradDiagonal_ii
 
 		/*!
@@ -1785,6 +1739,15 @@ namespace GPBoost {
 
 		const den_mat_t& GetCoords() const {
 			return(coords_);
+		}
+
+		void GetCoordsForEuclideanNeighborSearch(den_mat_t& coords) const {
+			if (cov_function_->IsAR1Multifidelity()) {
+				coords = coords_.leftCols(coords_.cols() - 1);
+			}
+			else {
+				coords = coords_;
+			}
 		}
 
 		/*!

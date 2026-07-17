@@ -4412,6 +4412,23 @@ class GPModel(object):
                     for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: 
                     cov(s, s') = (sigma2 / 2) * ( (s_1^2 + sum_{k=2}^d (s_k / l_k)^2)^H + (s'_1^2 + sum_{k=2}^d (s'_k / l_k)^2)^H - ((s_1 - s'_1)^2 + sum_{k=2}^d ((s_k - s'_k) / l_k)^2)^H )
 
+                - "ar1_mf_<base>":
+
+                    Two-level autoregressive multifidelity covariance defined by
+                    f_H(x) = rho * f_L(x) + delta(x), where f_L and delta are independent Gaussian
+                    processes using the same base covariance type but separate parameter vectors.
+                    For example, use "ar1_mf_matern", "ar1_mf_matern_ard", or
+                    "ar1_mf_matern_estimate_shape".
+
+                    The last column of 'gp_coords' must be 0 for low fidelity or 1 for high fidelity.
+                    All preceding columns are passed to <base>; consequently, the fidelity column does not
+                    receive an ARD range parameter. Covariance parameters are ordered as
+                    [low-fidelity base parameters, discrepancy base parameters, rho]. The two base blocks
+                    use the ordinary parameter ordering of <base>, and rho is unrestricted and can be negative.
+
+                    Any supported base covariance except "wendland" can be used. Correlation tapering and
+                    Gaussian-process random coefficients are currently not supported for this model.
+
             cov_fct_shape : float, optional (default=0.)
                 Shape parameter of the covariance function (e.g., smoothness parameter for Matern and Wendland covariance).
                 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
@@ -4425,6 +4442,14 @@ class GPModel(object):
                     - "vecchia":
 
                         Vecchia approximation; see Sigrist (2022, JMLR) for more details
+                        For "space_time_gneiting" and "ar1_mf_<base>", neighbors are selected by absolute
+                        correlation by default. Use "vecchia_euclidean" for Euclidean-distance selection.
+
+                    - "vecchia_euclidean":
+
+                        Vecchia approximation with Euclidean-distance neighbor selection for
+                        "space_time_gneiting" and "ar1_mf_<base>". For multifidelity models, the last
+                        fidelity-indicator column is excluded from the Euclidean distance.
 
                     - "full_scale_vecchia": 
                     
@@ -4913,7 +4938,39 @@ class GPModel(object):
                 if num_ind_points > 0:
                     self.num_ind_points = num_ind_points
             self.cover_tree_radius = cover_tree_radius
-            if self.cov_function == "space_time_gneiting":
+            if self.cov_function.startswith("ar1_mf_"):
+                if self.dim_coords < 2:
+                    raise ValueError("AR1 multifidelity covariance functions require at least one input coordinate and a fidelity indicator in the last column")
+                if not np.all(np.isin(self.gp_coords[:, -1], (0., 1.))):
+                    raise ValueError("The last column of gp_coords must contain only 0 (low fidelity) and 1 (high fidelity) for AR1 multifidelity covariance functions")
+                base_cov_function = self.cov_function[len("ar1_mf_"):]
+                if base_cov_function == "wendland":
+                    raise ValueError("The Wendland covariance is not supported as a base covariance for AR1 multifidelity models")
+                dim_spatial = self.dim_coords - 1
+                if base_cov_function == "space_time_gneiting":
+                    base_names = ["sigma2", "a", "c", "alpha", "nu", "beta", "delta"]
+                elif base_cov_function in ("matern_space_time", "exponential_space_time",
+                                           "matern_estimate_shape"):
+                    base_names = ["GP_var", "GP_range_time", "GP_range_space"] if "space_time" in base_cov_function \
+                        else ["GP_var", "GP_range", "GP_smoothness"]
+                elif base_cov_function in ("matern_ard", "gaussian_ard", "exponential_ard"):
+                    base_names = ["GP_var"] + ["GP_range_" + str(i + 1) for i in range(dim_spatial)]
+                elif base_cov_function == "matern_ard_estimate_shape":
+                    base_names = ["GP_var"] + ["GP_range_" + str(i + 1) for i in range(dim_spatial)] + ["GP_smoothness"]
+                elif base_cov_function == "linear":
+                    base_names = ["GP_var"]
+                elif base_cov_function in ("hurst", "hurst_ard"):
+                    base_names = ["GP_var", "H"]
+                    if base_cov_function == "hurst_ard":
+                        base_names += ["GP_range_" + str(i + 1) for i in range(1, dim_spatial)]
+                else:
+                    base_names = ["GP_var", "GP_range"]
+                self.cov_par_names.extend(
+                    ["low_" + name for name in base_names] +
+                    ["discrepancy_" + name for name in base_names] +
+                    ["rho"]
+                )
+            elif self.cov_function == "space_time_gneiting":
                 self.cov_par_names.extend(["sigma2", "a", "c", "alpha", "nu", "beta", "delta"])
             elif self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time":
                 self.cov_par_names.extend(["GP_var", "GP_range_time", "GP_range_space"])
@@ -4936,6 +4993,8 @@ class GPModel(object):
             gp_coords_c, _, _ = c_float_array(self.gp_coords.flatten(order='F'))
             # Set data for GP random coefficients
             if gp_rand_coef_data is not None:
+                if self.cov_function.startswith("ar1_mf_"):
+                    raise ValueError("AR1 multifidelity covariance functions are not supported for random coefficient Gaussian processes")
                 gp_rand_coef_data, gp_rand_coef_data_names = _format_check_data(data=gp_rand_coef_data,
                                                                                 get_variable_names=True,
                                                                                 data_name="gp_rand_coef_data",
@@ -5125,7 +5184,25 @@ class GPModel(object):
                 self.fit(y=self.y_loaded_from_file, params=params, offset=offset)
 
     def __determine_num_cov_pars(self, likelihood):
-        if self.cov_function == "space_time_gneiting":
+        if self.cov_function.startswith("ar1_mf_"):
+            base_cov_function = self.cov_function[len("ar1_mf_"):]
+            dim_spatial = self.dim_coords - 1
+            if base_cov_function == "space_time_gneiting":
+                num_par_base = 7
+            elif base_cov_function in ("matern_space_time", "exponential_space_time",
+                                       "matern_estimate_shape"):
+                num_par_base = 3
+            elif base_cov_function in ("matern_ard", "gaussian_ard", "exponential_ard",
+                                       "hurst_ard"):
+                num_par_base = 1 + dim_spatial
+            elif base_cov_function == "matern_ard_estimate_shape":
+                num_par_base = 2 + dim_spatial
+            elif base_cov_function == "linear":
+                num_par_base = 1
+            else:
+                num_par_base = 2
+            num_par_per_GP = 2 * num_par_base + 1
+        elif self.cov_function == "space_time_gneiting":
             num_par_per_GP = 7
         elif self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time" or \
             self.cov_function == "matern_estimate_shape":

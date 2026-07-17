@@ -450,11 +450,9 @@ namespace GPBoost {
 		max_it = std::min(max_it, num_re);
 		Sigma_L_k.resize(num_re, max_it);
 		Sigma_L_k.setZero();
-		double diag_ii = re_comp->GetMarginalVariance();
 		for (int h = 0; h < num_re; ++h) {
 			pi(h) = h;
-			//The diagonal of the covariance matrix equals the marginal variance and is the same for all entries (i,i). 
-			diag(h) = diag_ii;
+			diag(h) = re_comp->GetZSigmaZtij(h, h);
 		}
 		err = diag.lpNorm<1>();
 		while (m == 0 || (m < max_it && err > err_tol)) {

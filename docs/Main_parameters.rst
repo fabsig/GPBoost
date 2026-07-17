@@ -155,6 +155,28 @@ Model specification parameters
 
       - ``hurst_ard``: Hurst covariance function with with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate of ``gp_coords`` except for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: cov(s, s') = (sigma2 / 2) * ( (s_1^2 + sum_{k=2}^d (s_k / l_k)^2)^H + (s'_1^2 + sum_{k=2}^d (s'_k / l_k)^2)^H - ((s_1 - s'_1)^2 + sum_{k=2}^d ((s_k - s'_k) / l_k)^2)^H )
 
+      - ``ar1_mf_<base>``: Two-level autoregressive multifidelity covariance constructed from a supported base covariance function ``<base>``. For example, use ``ar1_mf_matern``, ``ar1_mf_matern_ard``, or ``ar1_mf_matern_estimate_shape``.
+
+         - The last column of ``gp_coords`` is the fidelity indicator and must equal 0 for low-fidelity observations and 1 for high-fidelity observations. All preceding columns are passed to the base covariance. In particular, for an ARD base, the fidelity column does not receive a range parameter.
+
+         - The model is
+
+           .. math::
+
+              f_H(x) = \rho f_L(x) + \delta(x),
+
+           where :math:`f_L` and :math:`\delta` are independent Gaussian processes with the same covariance-function type but separate parameter vectors. Equivalently, for fidelity indicators :math:`s,s'\in\{0,1\}`,
+
+           .. math::
+
+              \operatorname{Cov}\{f_s(x),f_{s'}(x')\}
+              = a_s a_{s'} k_L(x,x') + ss' k_\delta(x,x'),\qquad
+              a_s = 1+s(\rho-1).
+
+         - The covariance parameters are ordered as ``[low-fidelity base parameters, discrepancy base parameters, rho]``. The two base-parameter blocks follow the ordinary ordering of ``<base>``. ``rho`` is unrestricted and can be negative.
+
+         - All supported base covariance functions except ``wendland`` can be used. Correlation tapering and Gaussian-process random coefficients are currently not supported for ``ar1_mf_<base>``.
+
 -  ``cov_fct_shape`` : double, (default = 1.5)
 
    -  Shape parameter of the covariance function (e.g., smoothness parameter for Matern and Wendland covariance). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
@@ -167,7 +189,11 @@ Model specification parameters
 
       - ``none`` : No approximation
 
-      - ``vecchia`` : Vecchia approximation; see Sigrist (2022, JMLR for more details)
+      - ``vecchia`` : Vecchia approximation; see Sigrist (2022, JMLR) for more details
+
+         - For ``space_time_gneiting`` and ``ar1_mf_<base>``, neighbors are selected according to the largest absolute correlations by default.
+
+      - ``vecchia_euclidean`` : Vecchia approximation with Euclidean-distance neighbor selection for ``space_time_gneiting`` and ``ar1_mf_<base>``. For multifidelity models, distances are calculated using only the input coordinates; the last fidelity-indicator column is excluded.
 
       - ``full_scale_vecchia`` : Vecchia-inducing points full-scale (VIF) approximation; see Gyger, Furrer, and Sigrist (2025) for more details 
 
