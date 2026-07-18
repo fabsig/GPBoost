@@ -4264,6 +4264,14 @@ class GPModel(object):
 
                         Gamma likelihood with a log link function
 
+                    - "tweedie":
+
+                        Compound Poisson--Gamma Tweedie likelihood with a log link, variance phi * mu**p, and 1.01 < p < 1.99. Both phi and p are estimated.
+
+                    - "tweedie_fixed_p":
+
+                        The same Tweedie likelihood with p fixed through 'likelihood_additional_param'; only phi is estimated. The fixed power is mandatory and must satisfy 1.01 < p < 1.99.
+
                     - "lognormal":
                     
                         Log-normal likelihood with a log link function
@@ -4605,6 +4613,8 @@ class GPModel(object):
                     - df = 2 for 'likelihood = "t_fix_df"'
 
                     - quantile = 0.5 for likelihood = "asymmetric_laplace"
+
+                    - No default is used for 'tweedie_fixed_p'; its power must be supplied explicitly.
 
             free_raw_data : bool, optional (default=False)
                 If True, the data (groups, coordinates, covariate data for random coefficients) is freed in Python

@@ -2731,6 +2731,10 @@ namespace GPBoost {
 			return likelihood_[unique_clusters_[0]]->GetAuxPars();
 		}
 
+		void WarnIfTweediePowerAtBoundary() const {
+			likelihood_.at(unique_clusters_[0])->WarnIfTweediePowerAtBoundary();
+		}
+
 		/*!
 		* \brief Set aux_pars_
 		* \param aux_pars New values for aux_pars_

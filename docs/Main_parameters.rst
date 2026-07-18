@@ -63,6 +63,10 @@ Model specification parameters
 
       -  ``gamma`` : Gamma likelihood with a log link function
 
+      -  ``tweedie`` : Compound Poisson--Gamma Tweedie likelihood with a log link, ``Var(y | eta) = phi * mu^p``, ``mu = exp(eta)``, and ``1.01 < p < 1.99``. Both dispersion ``phi`` and power ``p`` are estimated
+
+      -  ``tweedie_fixed_p`` : The same Tweedie likelihood with ``p`` fixed through ``likelihood_additional_param`` and only ``phi`` estimated. The fixed power is mandatory and must satisfy ``1.01 < p < 1.99``. Fits at different fixed powers include the complete density and can therefore be compared by marginal log-likelihood for power profiling
+
       -  ``lognormal`` : Log-normal likelihood with a log link function
 
       -  ``beta`` : Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)

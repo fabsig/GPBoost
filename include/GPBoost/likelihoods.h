@@ -22,6 +22,11 @@
 *       - mu = mean(y) = exp(location_par), lambda = gamma / mu, gamma \in (0,\infty) (= aux_pars_[0])
 *		- Note: var(y) = mu^2 / gamma, lambda = rate, gamma = shape
 *
+* For "tweedie" and "tweedie_fixed_p", Y follows a compound Poisson--Gamma Tweedie law:
+*       - mu = exp(location_par), Var(Y | location_par) = phi * mu^p, 1.01 < p < 1.99
+*       - aux_pars_[0] = phi; aux_pars_[1] is a positive transformed power for "tweedie"
+*         and the fixed power on its original scale for "tweedie_fixed_p"
+*
 * For a "lognormal" likelihood, the following density is used:
 *   f(y) = 1 / ( y * sqrt(2*pi*sigma2) ) * exp( - ( log(y) - (eta - 0.5*sigma2) )^2 / (2*sigma2) ),  for y > 0
 *       - mu = mean(y) = exp(location_par) = exp(eta)
@@ -115,6 +120,7 @@
 #include <GPBoost/DF_utils.h>
 #include <GPBoost/utils.h>
 #include <GPBoost/CG_utils.h>
+#include <GPBoost/tweedie_utils.h>
 
 #include <string>
 #include <set>
@@ -230,6 +236,19 @@ namespace GPBoost {
 				num_aux_pars_ = 1;
 				num_aux_pars_estim_ = 1;
 			}//end "gamma"
+			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+				double p = 1.5;
+				if (likelihood_type_ == "tweedie_fixed_p") {
+					ValidateFixedTweediePower(additional_param);
+					p = additional_param;
+				}
+				aux_pars_ = { 1., likelihood_type_ == "tweedie" ? 1. : p };
+				names_aux_pars_ = { "dispersion", "power" };
+				num_aux_pars_ = 2;
+				num_aux_pars_estim_ = likelihood_type_ == "tweedie" ? 2 : 1;
+				information_ll_can_be_exact_zero_ = true;
+				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
+			}
 			else if (likelihood_type_ == "gamma_zero_inflated") {
 				if (approximation_type_ != "laplace") {
 					Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood_type_.c_str());
@@ -516,6 +535,32 @@ namespace GPBoost {
 			}
 		}//end constructor
 
+		void ValidateFixedTweediePower(double p) const {
+			if (TwoNumbersAreEqual<double>(p, -999.)) {
+				Log::REFatal("No value was provided for 'likelihood_additional_param'. For likelihood='tweedie_fixed_p', provide a fixed power p with %g < p < %g ", TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_);
+			}
+			if (!std::isfinite(p)) {
+				Log::REFatal("For likelihood='tweedie_fixed_p', 'likelihood_additional_param' must be a finite power p with %g < p < %g. Found p = %g ", TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_, p);
+			}
+			if (p <= 1. || p >= 2.) Log::REFatal("For likelihood='tweedie_fixed_p', only the compound Poisson--Gamma family with 1 < p < 2 is supported. Found p = %g ", p);
+			if (p <= TWEEDIE_POWER_LOWER_) Log::REFatal("For likelihood='tweedie_fixed_p', p = %g is too close to 1 for stable Tweedie density evaluation. Choose p > %g. Use likelihood='poisson' explicitly if appropriate ", p, TWEEDIE_POWER_LOWER_);
+			if (p >= TWEEDIE_POWER_UPPER_) Log::REFatal("For likelihood='tweedie_fixed_p', p = %g is too close to 2 for stable Tweedie density evaluation. Choose p < %g. Use likelihood='gamma' explicitly if appropriate ", p, TWEEDIE_POWER_UPPER_);
+		}
+
+		inline double GetTweediePower() const {
+			if (likelihood_type_ == "tweedie_fixed_p") return aux_pars_[1];
+			return TransformTweediePowerFromQ(aux_pars_[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_).p;
+		}
+
+		void WarnIfTweediePowerAtBoundary() const {
+			if (likelihood_type_ != "tweedie" || tweedie_boundary_warning_issued_) return;
+			const auto power = TransformTweediePowerFromQ(aux_pars_[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_);
+			if (power.p - TWEEDIE_POWER_LOWER_ < 1e-3 || TWEEDIE_POWER_UPPER_ - power.p < 1e-3) {
+				Log::REWarning("The Tweedie power optimizer saturated near the configured boundary (%g, %g), p = %g and dp/dtheta = %g. The estimate may be boundary-sensitive. Inspect a 'tweedie_fixed_p' likelihood and, if appropriate, use 'poisson' (if p close to 1) or 'gamma' (if p close to 2) likelihoods ", TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_, power.p, power.dp_dtheta);
+				tweedie_boundary_warning_issued_ = true;
+			}
+		}
+
 		/*!
 		* \brief Transform aux_pars such that they are in (0,infty)
 		* \param aux_pars_orig Original aux_pars
@@ -534,6 +579,12 @@ namespace GPBoost {
 			}//end likelihood_type_ == "zero_inflated_gamma"
 			else if (likelihood_type_ == "zoctn") {
 				aux_pars_trans[1] = std::exp(aux_pars_orig[1]);
+			}
+			else if (likelihood_type_ == "tweedie") {
+				if (!(aux_pars_orig[1] > TWEEDIE_POWER_LOWER_ && aux_pars_orig[1] < TWEEDIE_POWER_UPPER_) || !std::isfinite(aux_pars_orig[1])) {
+					Log::REFatal("For likelihood='tweedie', the initial power must satisfy %g < p < %g. Found p = %g.", TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_, aux_pars_orig[1]);
+				}
+				aux_pars_trans[1] = (aux_pars_orig[1] - TWEEDIE_POWER_LOWER_) / (TWEEDIE_POWER_UPPER_ - aux_pars_orig[1]);
 			}
 		}
 
@@ -558,6 +609,11 @@ namespace GPBoost {
 					Log::REFatal("BackTransformAuxPars: the transformed '%s' parameter (= %g) needs to be larger than 0 ", names_aux_pars_[1].c_str(), aux_pars_trans[1]);
 				}
 				aux_pars_orig[1] = std::log(aux_pars_trans[1]);
+			}
+			else if (likelihood_type_ == "tweedie") {
+				const auto transform = TransformTweediePowerFromQ(aux_pars_trans[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_);
+				if (!std::isfinite(transform.p)) Log::REFatal("BackTransformAuxPars: transformed Tweedie power parameter must be finite and > 0, found %g.", aux_pars_trans[1]);
+				aux_pars_orig[1] = transform.p;
 			}
 		}
 
@@ -602,7 +658,7 @@ namespace GPBoost {
 		* \brief Determine cap_change_mode_newton_
 		*/
 		void DetermineWhetherToCapChangeModeNewton() {
-			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				cap_change_mode_newton_ = true;
@@ -834,6 +890,14 @@ namespace GPBoost {
 					}
 				}
 			}
+			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+				bool any_positive = false;
+				for (data_size_t i = 0; i < num_data; ++i) {
+					if (!std::isfinite(y_data[i]) || y_data[i] < 0.) Log::REFatal("The response variable ('y') must be finite and nonnegative for likelihood = '%s', found %g.", likelihood_type_.c_str(), y_data[i]);
+					any_positive = any_positive || y_data[i] > 0.;
+				}
+				if (!any_positive) Log::REFatal("The response variable ('y') contains only zeros for likelihood = '%s'; at least one positive value is required.", likelihood_type_.c_str());
+			}
 			else if (likelihood_type_ == "zero_inflated_gamma" || likelihood_type_ == "zero_censored_power_transformed_normal") {
 				if (GPBoost::HasNegativeValues<T>(y_data, num_data)) {
 					Log::REFatal(" Must have y >= 0 for the response variable ('y') for likelihood = '%s', found negative value ", likelihood_type_.c_str());
@@ -942,7 +1006,7 @@ namespace GPBoost {
 				}
 				init_intercept = std::min(std::max(init_intercept, -3.0), 3.0); // avoid too small / large initial intercepts for better numerical stability
 			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				double sw = 0.0, avg = 0.;
@@ -1248,7 +1312,7 @@ namespace GPBoost {
 			double rand_eff_var,
 			const double* fixed_effects) const {
 			bool ret_val = false;
-			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				IsGaussianHeteroscedastic() || likelihood_type_ == "lognormal" ||
 				likelihood_type_ == "zero_inflated_gamma" || likelihood_type_ == "zero_censored_power_transformed_normal" ||
@@ -1331,6 +1395,26 @@ namespace GPBoost {
 				avg_log /= sw;
 				double s = log_avg - avg_log;
 				aux_pars_[0] = (3. - s + std::sqrt((s - 3.) * (s - 3.) + 24. * s)) / (12. * s);
+			}
+			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+				const double p = GetTweediePower();
+				double sum_y = 0., sum_w = 0.;
+				for (data_size_t i = 0; i < num_data; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.;
+					sum_y += w * y_data[i] / (fixed_effects == nullptr ? 1. : std::exp(fixed_effects[i]));
+					sum_w += w;
+				}
+				const double base_mean = std::max(sum_y / sum_w, 1e-12);
+				double pearson = 0.;
+				for (data_size_t i = 0; i < num_data; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.;
+					const double mu = std::max(base_mean * (fixed_effects == nullptr ? 1. : std::exp(fixed_effects[i])), 1e-12);
+					const double residual = y_data[i] - mu;
+					pearson += w * residual * residual / std::pow(mu, p);
+				}
+				double phi = pearson / sum_w;
+				if (!(phi > 0.) || !std::isfinite(phi)) phi = 1.;
+				aux_pars_[0] = std::min(std::max(phi, 1e-6), 1e6);
 			}
 			else if (likelihood_type_ == "negative_binomial") {
 				// Use a method of moments estimator				
@@ -1878,7 +1962,7 @@ namespace GPBoost {
 				C_mu = 1.;
 				C_sigma2 = 1.;
 			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				double sw = 0.0, mean = 0., sec_mom = 0;
@@ -1998,7 +2082,11 @@ namespace GPBoost {
 						"Will use the value provided in 'likelihood_additional_param' ", names_aux_pars_[1].c_str(), aux_pars[1], aux_pars_[1]);
 				}
 			}
+			if (likelihood_type_ == "tweedie_fixed_p" && !aux_pars_have_been_set_ && !TwoNumbersAreEqual<double>(aux_pars[1], aux_pars_[1])) {
+				Log::REWarning("The 'power' parameter provided in 'init_aux_pars' (= %g) and 'likelihood_additional_param' (= %g) are not equal. Will use the value provided in 'likelihood_additional_param'.", aux_pars[1], aux_pars_[1]);
+			}
 			if (IsGaussianLikelihood() || likelihood_type_ == "gamma" ||
+				likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "beta" || likelihood_type_ == "t" || likelihood_type_ == "lognormal" ||
 				likelihood_type_ == "beta_binomial" || likelihood_type_ == "zero_inflated_gamma" ||
@@ -2022,6 +2110,7 @@ namespace GPBoost {
 			aux_pars_original_ = aux_pars_;
 			BackTransformAuxPars(aux_pars_.data(), aux_pars_original_.data());
 			normalizing_constant_has_been_calculated_ = false;
+			if (likelihood_type_ == "tweedie") tweedie_boundary_warning_issued_ = false;
 			aux_pars_have_been_set_ = true;
 		}
 
@@ -2701,6 +2790,10 @@ namespace GPBoost {
 					else if (cg_preconditioner_type_ == "fitc") {
 						const den_mat_t* cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
 						if (it == 0 || information_changes_during_mode_finding_) {
+							if (HasZeroValueInformationLogLik()) {
+								Log::REFatal("FindModePostRandEffCalcMLLFSVA: 0's found in W (the diagonal Hessian or Fisher information of the negative log-likelihood). "
+									"The iterative FITC preconditioner requires W to be invertible. Try using another preconditioner or the Cholesky decomposition ");
+							}
 							information_ll_inv.array() = information_ll_.array().inverse();
 #pragma omp parallel for schedule(static)   
 							for (int i = 0; i < dim_mode_; ++i) {
@@ -4371,7 +4464,6 @@ namespace GPBoost {
 				vec_t tr_SigmaI_plus_W_inv_W_deriv, tr_PI_P_deriv_vec(dim_mode_), c_opt_vec;
 				den_mat_t Z_SigmaI_plus_W_inv_W_deriv_PI_Z, PI_Z(dim_mode_, num_rand_vec_trace_),
 					Z_PI_P_deriv_PI_Z;
-
 				if (grad_information_wrt_mode_non_zero_) {
 					W_deriv_rep = deriv_information_diag_loc_par.replicate(1, num_rand_vec_trace_);
 				}
@@ -7019,6 +7111,10 @@ namespace GPBoost {
 						Log::REFatal("PredictLaplaceApproxFSVA: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
 							"Cannot have negative values when using 'iterative' methods for predictive variances in Vecchia-Laplace approximations ");
 					}
+					if (HasZeroValueInformationLogLik()) {
+						Log::REFatal("PredictLaplaceApproxFSVA: 0's found in W (the diagonal Hessian or Fisher information of the negative log-likelihood). "
+							"Predictive variance calculations with iterative methods require W to be invertible. Try using the Cholesky decomposition ");
+					}
 					const den_mat_t* cross_cov_preconditioner;
 					vec_t information_ll_inv;
 					information_ll_inv.resize(dim_mode_);
@@ -7996,6 +8092,10 @@ namespace GPBoost {
 					cross_cov_preconditioner = nullptr;
 				}
 				else if (cg_preconditioner_type_ == "fitc") {
+					if (HasZeroValueInformationLogLik()) {
+						Log::REFatal("Sample_Posterior_LaplaceApprox_FSVA: 0's found in W (the diagonal Hessian or Fisher information of the negative log-likelihood). "
+							"Posterior sampling with the iterative FITC preconditioner requires W to be invertible. Try using another preconditioner or the Cholesky decomposition ");
+					}
 					information_ll_inv.resize(dim_mode_);
 					information_ll_inv.array() = information_ll_.array().inverse();
 					cross_cov_preconditioner = re_comps_cross_cov_preconditioner_cluster_i[0]->GetSigmaPtr();
@@ -8536,6 +8636,19 @@ namespace GPBoost {
 					pred_mean[i] = pm;
 				}
 			}
+			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+				CHECK(need_pred_latent_var_for_response_mean_);
+				const double phi = aux_pars_[0];
+				const double p = GetTweediePower();
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < (int)pred_mean.size(); ++i) {
+					const double m = pred_mean[i];
+					const double v = pred_var[i];
+					const double pm = std::exp(m + 0.5 * v);
+					if (predict_var) pred_var[i] = phi * std::exp(p * m + 0.5 * p * p * v) + std::exp(2. * m + v) * std::expm1(v);
+					pred_mean[i] = pm;
+				}
+			}
 			else if (likelihood_type_ == "negative_binomial") {
 				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
@@ -8920,12 +9033,22 @@ namespace GPBoost {
 				double sqrt2_sigma_hat = M_SQRT2 / std::sqrt(CalcDiagInformationLogLikOneSample(y_test_d, y_test_int, mode_integrand) + sigma2_inv);
 				double x_val;
 				double likelihood = 0.;
+				double log_normalizer = 0.;
+				if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+					const double p = GetTweediePower();
+					const auto power = likelihood_type_ == "tweedie" ? TransformTweediePowerFromQ(aux_pars_[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_) : TweediePowerTransform{ p, 0., 0. };
+					thread_local TweedieSpecialFunctionCache cache;
+					const auto normalizer = EvaluateTweedieLogNormalizer(y_test_d, std::log(aux_pars_[0]), p, power.dp_dtheta, power.d2p_dtheta2, TweedieDerivativeOrder::kValue, false, 1000000, &cache);
+					if (!normalizer.converged) Log::REFatal("Tweedie density series did not converge for test y=%g, phi=%g, p = %g.", y_test_d, aux_pars_[0], p);
+					log_normalizer = normalizer.log_a;
+				}
 				for (int j = 0; j < order_GH_; ++j) {
 					x_val = sqrt2_sigma_hat * GH_nodes_[j] + mode_integrand;
-					likelihood += adaptive_GH_weights_[j] * std::exp(LogLikelihoodOneSample(y_test_d, y_test_int, x_val)) * GPBoost::normalPDF(sqrt_sigma2_inv * (x_val - pred_mean[i]));
+					const double node_log_likelihood = likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ? LogLikTweedie(y_test_d, x_val, false) : LogLikelihoodOneSample(y_test_d, y_test_int, x_val);
+					likelihood += adaptive_GH_weights_[j] * std::exp(node_log_likelihood) * GPBoost::normalPDF(sqrt_sigma2_inv * (x_val - pred_mean[i]));
 				}
 				likelihood *= sqrt2_sigma_hat * sqrt_sigma2_inv;
-				ll += std::log(likelihood);
+				ll += std::log(likelihood) + log_normalizer;
 			}
 			return -ll;
 		}//end TestNegLogLikelihoodAdaptiveGHQuadrature
@@ -9104,7 +9227,7 @@ namespace GPBoost {
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_logit") {
 				return GPBoost::sigmoid_stable(value);
 			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return std::exp(value);
@@ -9255,7 +9378,7 @@ namespace GPBoost {
 				}
 				else if (!IsGaussianLikelihood() && !IsGaussianHeteroscedastic() &&
 					likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
-					likelihood_type_ != "poisson" && likelihood_type_ != "t" && likelihood_type_ != "beta" &&
+					likelihood_type_ != "poisson" && likelihood_type_ != "tweedie" && likelihood_type_ != "tweedie_fixed_p" && likelihood_type_ != "t" && likelihood_type_ != "beta" &&
 					likelihood_type_ != "zero_one_censored_transformed_beta" && likelihood_type_ != "zero_one_censored_shifted_gamma" &&
 					likelihood_type_ != "asymmetric_laplace" && likelihood_type_ != "quasi_bernoulli_probit" && likelihood_type_ != "quasi_bernoulli_logit") {
 					Log::REFatal("CalculateAuxQuantLogNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
@@ -9296,6 +9419,45 @@ namespace GPBoost {
 				}
 				else if (likelihood_type_ == "gamma") {
 					log_normalizing_constant_ = LogNormalizingConstantGamma();
+				}
+				else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+					const double phi = aux_pars_[0];
+					const double p = GetTweediePower();
+					const double log_phi = std::log(phi);
+					const auto transform = likelihood_type_ == "tweedie" ? TransformTweediePowerFromQ(aux_pars_[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_) : TweediePowerTransform{ p, 0., 0. };
+					const bool calc_power_deriv = likelihood_type_ == "tweedie";
+					double sum_a = 0., sum_rho = 0., sum_theta = 0.;
+					// Non-convergence is exceptional; record it and raise the error after the parallel region (Log::REFatal must not throw out of an OpenMP loop).
+					bool convergence_failure = false;
+					data_size_t fail_index = 0;
+					// Each thread uses its own persistent special-function cache (thread_local => reused across calls, e.g. when only phi changes).
+#pragma omp parallel for schedule(static) reduction(+:sum_a,sum_rho,sum_theta) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						thread_local TweedieSpecialFunctionCache cache;
+						const double w = has_weights_ ? weights_[i] : 1.;
+						const auto res = EvaluateTweedieLogNormalizer(y_data[i], log_phi, p, transform.dp_dtheta, transform.d2p_dtheta2, TweedieDerivativeOrder::kFirst, calc_power_deriv, 1000000, &cache);
+						if (!res.converged || !std::isfinite(res.log_a) || !std::isfinite(res.d_rho) || !std::isfinite(res.d_theta)) {
+#pragma omp critical
+							{
+								convergence_failure = true;
+								fail_index = i;
+							}
+						}
+						else {
+							sum_a += w * res.log_a;
+							sum_rho += w * res.d_rho;
+							sum_theta += w * res.d_theta;
+						}
+					}
+					if (convergence_failure) {
+						Log::REFatal("Tweedie density series did not converge for y=%g, phi=%g, p = %g.", y_data[fail_index], phi, p);
+					}
+					tweedie_sum_d_log_a_rho_ = sum_rho;
+					tweedie_sum_d_log_a_theta_ = sum_theta;
+					// Snapshot the parameters the cached normalizer aggregates correspond to (verified in CalcGradNegLogLikAuxPars).
+					tweedie_cached_phi_ = phi;
+					tweedie_cached_p_ = p;
+					log_normalizing_constant_ = sum_a;
 				}
 				else if (likelihood_type_ == "negative_binomial") {
 					log_normalizing_constant_ = LogNormalizingConstantNegBin(y_data_int);
@@ -9483,6 +9645,31 @@ namespace GPBoost {
 			return(norm_const);
 		}
 
+		inline double LogLikTweedie(double y, double eta, bool incl_norm_const) const {
+			const double phi = aux_pars_[0];
+			const double p = GetTweediePower();
+			const auto location = EvaluateTweedieLocation(y, eta, std::log(phi), p);
+			double ll = location.canonical;
+			if (incl_norm_const) {
+				const auto transform = likelihood_type_ == "tweedie" ? TransformTweediePowerFromQ(aux_pars_[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_) : TweediePowerTransform{ p, 0., 0. };
+				thread_local TweedieSpecialFunctionCache cache;
+				const auto res = EvaluateTweedieLogNormalizer(y, std::log(phi), p, transform.dp_dtheta, transform.d2p_dtheta2, TweedieDerivativeOrder::kValue, false, 1000000, &cache);
+				if (!res.converged) return std::numeric_limits<double>::quiet_NaN();
+				ll += res.log_a;
+			}
+			return ll;
+		}
+
+		inline double FirstDerivLogLikTweedie(double y, double eta) const {
+			const double p = GetTweediePower();
+			return EvaluateTweedieLocation(y, eta, std::log(aux_pars_[0]), p).score;
+		}
+
+		inline double InformationLogLikTweedie(double y, double eta) const {
+			const double p = GetTweediePower();
+			return EvaluateTweedieLocation(y, eta, std::log(aux_pars_[0]), p).information;
+		}
+
 		/*!
 		* \brief Evaluate the log-likelihood conditional on the latent variable (=location_par)
 		* \param y_data Response variable data if response variable is continuous
@@ -9534,6 +9721,13 @@ namespace GPBoost {
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					const double w = has_weights_ ? weights_[i] : 1.0;
 					ll += w * LogLikGamma(y_data[i], location_par[i], false);
+				}
+			}
+			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.;
+					ll += w * LogLikTweedie(y_data[i], location_par[i], false);
 				}
 			}
 			else if (likelihood_type_ == "negative_binomial") {
@@ -9663,6 +9857,9 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "gamma") {
 				return(LogLikGamma(y_data, location_par, true));
+			}
+			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+				return LogLikTweedie(y_data, location_par, true);
 			}
 			else if (likelihood_type_ == "negative_binomial") {
 				return(LogLikNegBin(y_data_int, location_par, true));
@@ -10057,6 +10254,13 @@ namespace GPBoost {
 					first_deriv_ll[i] = w * FirstDerivLogLikGamma(y_data[i], location_par[i]);
 				}
 			}
+			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.;
+					first_deriv_ll[i] = w * FirstDerivLogLikTweedie(y_data[i], location_par[i]);
+				}
+			}
 			else if (likelihood_type_ == "negative_binomial") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 				for (data_size_t i = 0; i < num_data_; ++i) {
@@ -10201,6 +10405,9 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "gamma") {
 				return(FirstDerivLogLikGamma(y_data, location_par));
+			}
+			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+				return FirstDerivLogLikTweedie(y_data, location_par);
 			}
 			else if (likelihood_type_ == "negative_binomial") {
 				return(FirstDerivLogLikNegBin(y_data_int, location_par));
@@ -10560,6 +10767,10 @@ namespace GPBoost {
 				CalcInformationLogLik_PerSample(y_data, y_data_int, location_par, called_during_mode_finding, information_ll_, off_diag_information_ll_);
 			}
 			if (HasNegativeValueInformationLogLik()) {
+				if (matrix_inversion_method_ == "iterative") {
+					Log::REFatal("CalcInformationLogLik: Negative values found in W (the diagonal Hessian or Fisher information of the negative log-likelihood). "
+						"Iterative matrix inversion requires W to be nonnegative.");
+				}
 				Log::REDebug("Negative values found in the (diagonal) Hessian / Fisher information for the Laplace approximation. "
 					"This is not necessarily a problem, but it could lead to non-positive definite matrices ");
 			}
@@ -10686,6 +10897,13 @@ namespace GPBoost {
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						information_ll[i] = w * SecondDerivNegLogLikGamma(y_data[i], location_par[i]);
+					}
+				}
+				else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.;
+						information_ll[i] = w * InformationLogLikTweedie(y_data[i], location_par[i]);
 					}
 				}
 				else if (likelihood_type_ == "negative_binomial") {
@@ -10902,6 +11120,9 @@ namespace GPBoost {
 				}
 				else if (likelihood_type_ == "gamma") {
 					return(SecondDerivNegLogLikGamma(y_data, location_par));
+				}
+				else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+					return InformationLogLikTweedie(y_data, location_par);
 				}
 				else if (likelihood_type_ == "negative_binomial") {
 					return(SecondDerivNegLogLikNegBin(y_data_int, location_par));
@@ -11530,6 +11751,14 @@ namespace GPBoost {
 						deriv_information_diag_loc_par[i] = w * -aux_pars_[0] * y_data[i] * std::exp(-location_par[i]);
 					}
 				}
+				else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+					const double p = GetTweediePower();
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.;
+						deriv_information_diag_loc_par[i] = w * EvaluateTweedieLocation(y_data[i], location_par[i], std::log(aux_pars_[0]), p).deriv_information_eta;
+					}
+				}
 				else if (likelihood_type_ == "negative_binomial") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -11817,7 +12046,7 @@ namespace GPBoost {
 		void CalcGradNegLogLikAuxPars(const double* y_data,
 			const int* y_data_int,
 			const double* location_par,
-			double* grad) const {
+			double* grad) {
 			if (likelihood_type_ == "gamma") {
 				CHECK(aux_normalizing_constant_has_been_calculated_);
 				//gradient for shape parameter is calculated on the log-scale
@@ -12143,6 +12372,33 @@ namespace GPBoost {
 				grad[0] = -dlogL_dlogk;     // gradient of *negative* log-likelihood
 				grad[1] = -dlogL_dlogxi;
 			} // end "zero_one_censored_shifted_gamma"
+			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+				// SetAuxPars() invalidates the normalizer cache. Some optimization paths evaluate the auxiliary
+				// gradient before reevaluating the objective, so refresh the cache here when necessary.
+				CalculateLogNormalizingConstant(y_data, y_data_int);
+				const double phi = aux_pars_[0];
+				const double p = GetTweediePower();
+				const double dp = likelihood_type_ == "tweedie" ? TransformTweediePowerFromQ(aux_pars_[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_).dp_dtheta : 0.;
+				// Verify that the normalizer-derivative aggregates correspond to the current auxiliary parameters.
+				CHECK(normalizing_constant_has_been_calculated_);
+				CHECK(TwoNumbersAreEqual<double>(tweedie_cached_phi_, phi));
+				CHECK(TwoNumbersAreEqual<double>(tweedie_cached_p_, p));
+				double canonical_sum = 0., power_sum = 0.;
+#pragma omp parallel for schedule(static) reduction(+:canonical_sum,power_sum)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.;
+					const double eta = location_par[i];
+					const auto location = EvaluateTweedieLocation(y_data[i], eta, std::log(phi), p);
+					canonical_sum += w * location.canonical;
+					if (likelihood_type_ == "tweedie") {
+						const double coefficient_a = eta / (2. - p) - 1. / ((2. - p) * (2. - p));
+						const double coefficient_b = eta / (p - 1.) + 1. / ((p - 1.) * (p - 1.));
+						power_sum += w * dp * TweedieSignedLogSum(coefficient_a, location.log_scaled_a, coefficient_b, location.log_scaled_b);
+					}
+				}
+				grad[0] = -tweedie_sum_d_log_a_rho_ + canonical_sum;
+				if (likelihood_type_ == "tweedie") grad[1] = -tweedie_sum_d_log_a_theta_ - power_sum;
+			}
 			else if (likelihood_type_ == "asymmetric_laplace") {
 				//gradient for scale parameter is calculated on the log-scale
 				double neg_log_grad = 0.;
@@ -12179,7 +12435,25 @@ namespace GPBoost {
 			double* second_deriv_loc_aux_par,
 			double* deriv_information_aux_par) const {
 			if (approximation_type_ == "laplace") {
-				if (likelihood_type_ == "gamma") {
+				if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+					CHECK(ind_aux_par == 0 || (likelihood_type_ == "tweedie" && ind_aux_par == 1));
+					const double dp = likelihood_type_ == "tweedie" ? TransformTweediePowerFromQ(aux_pars_[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_).dp_dtheta : 0.;
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.;
+						const double s = FirstDerivLogLikTweedie(y_data[i], location_par[i]);
+						const double information = InformationLogLikTweedie(y_data[i], location_par[i]);
+						if (ind_aux_par == 0) {
+							second_deriv_loc_aux_par[i] = -w * s;
+							deriv_information_aux_par[i] = -w * information;
+						}
+						else {
+							second_deriv_loc_aux_par[i] = -w * dp * location_par[i] * s;
+							deriv_information_aux_par[i] = w * dp * (s - location_par[i] * information);
+						}
+					}
+				}
+				else if (likelihood_type_ == "gamma") {
 					//note: gradient wrt to aux_pars_[0] on the log-scale
 					CHECK(ind_aux_par == 0);
 #pragma omp parallel for schedule(static)
@@ -12738,7 +13012,7 @@ namespace GPBoost {
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_logit") {
 				return GPBoost::sigmoid_stable(value);
 			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return std::exp(value);
@@ -12758,7 +13032,7 @@ namespace GPBoost {
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial") {
 				return GPBoost::sigmoid_stable(-value);
 			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return 1.;
@@ -12785,7 +13059,7 @@ namespace GPBoost {
 				//double exp_x = std::exp(value);
 				//return -exp_x / ((1. + exp_x) * (1. + exp_x));
 			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" ||
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return 0.;
@@ -14286,14 +14560,22 @@ namespace GPBoost {
 
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";
+		static constexpr double TWEEDIE_POWER_LOWER_ = 1.01;
+		static constexpr double TWEEDIE_POWER_UPPER_ = 1.99;
+		double tweedie_sum_d_log_a_rho_ = 0.;
+		double tweedie_sum_d_log_a_theta_ = 0.;
+		// Snapshot of (phi, p) that the cached normalizer aggregates above correspond to; used to verify cache freshness in CalcGradNegLogLikAuxPars.
+		double tweedie_cached_phi_ = std::numeric_limits<double>::quiet_NaN();
+		double tweedie_cached_p_ = std::numeric_limits<double>::quiet_NaN();
+		mutable bool tweedie_boundary_warning_issued_ = false;
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "gaussian_latent", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit",
-			"poisson", "gamma", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "gaussian_heteroscedastic_fixed_and_random", "lognormal", "beta_binomial",
+			"poisson", "gamma", "tweedie", "tweedie_fixed_p", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "gaussian_heteroscedastic_fixed_and_random", "lognormal", "beta_binomial",
 			"zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
 			"asymmetric_laplace" };
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> LIKELIHOODS_ONLY_LAPLACE_{ "binomial_probit", "binomial_logit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit", "gamma", "negative_binomial", "negative_binomial_1",
-			"beta", "beta_binomial", "zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma" };
+			"beta", "beta_binomial", "tweedie", "tweedie_fixed_p", "zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma" };
 		/*! \brief True if response variable has int type */
 		bool has_int_label_;
 		/*! \brief Number of additional parameters for likelihoods */

@@ -50,6 +50,8 @@ The variance is mu * (mu + r) / r, mu = mean, r = shape, with this parametrizati
 \item{ "negative_binomial_1": Negative binomial 1 (aka "nbinom1") likelihood with a log link function. 
 The variance is mu * (1 + phi), mu = mean, phi = dispersion, with this parametrization }
 \item{ "gamma": Gamma likelihood with a log link function }
+\item{ "tweedie": Compound Poisson--Gamma Tweedie likelihood with a log link, variance phi * mu^p, and 1.01 < p < 1.99. The dispersion phi and power p are estimated }
+\item{ "tweedie_fixed_p": The same Tweedie likelihood with p fixed through \code{likelihood_additional_param}; only phi is estimated. The fixed power must satisfy 1.01 < p < 1.99 }
 \item{ "lognormal": Log-normal likelihood with a log link function }
 \item{ "beta" : Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)}
 \item{ "t": t-distribution (e.g., for robust regression) }
@@ -100,6 +102,7 @@ If \code{likelihood_additional_param = NULL}, the following internal default val
 \itemize{
 \item{ df = 2 for likelihood = "t_fix_df" }
 \item{ quantile = 0.5 for likelihood = "asymmetric_laplace" }
+\item{ No default is used for likelihood = "tweedie_fixed_p"; a power strictly between 1.01 and 1.99 is required }
 }}
 
 \item{group_data}{A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 

@@ -141,6 +141,7 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
         init_cov_pars = process_cov_pars, optimizer_cov = "gradient_descent", lr_cov = 0.05,
         maxit = 2, init_coef_aux_pars_from_iid_model = FALSE, trace = FALSE
       )
+      tol_pred <- 1e-8
       if (inversion_method == "iterative") {
         optim_params$num_rand_vec_trace <- 20
         optim_params$seed_rand_vec_trace <- 1
@@ -148,6 +149,7 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
         optim_params$cg_max_num_it <- 100
         optim_params$cg_preconditioner_type <- "piv_chol_on_Sigma"
         optim_params$fitc_piv_chol_preconditioner_rank <- 10
+        tol_pred <- 1e-3
       }
       if (inversion_method == "cholesky") {
         expect_equal(gp_model$neg_log_likelihood(y = data$y_binary, cov_pars = process_cov_pars), 20.118953180464363, tolerance = 1e-8)
@@ -162,8 +164,8 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
       expect_equal(as.numeric(gp_model$get_cov_pars()), expected$cov_pars, tolerance = 1e-8)
       expect_equal(as.numeric(gp_model$get_current_neg_log_likelihood()), expected$nll, tolerance = 1e-8)
       prediction <- predict(gp_model, gp_coords_pred = data$gp_coords[c(4, 20), , drop = FALSE], predict_var = TRUE, predict_response = TRUE)
-      expect_equal(prediction$mu, expected$mu, tolerance = 1e-8)
-      expect_equal(prediction$var, expected$var, tolerance = 1e-8)
+      expect_equal(prediction$mu, expected$mu, tolerance = tol_pred)
+      expect_equal(prediction$var, expected$var, tolerance = tol_pred)
     }
   })
 

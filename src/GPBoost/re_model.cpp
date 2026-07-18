@@ -1369,16 +1369,19 @@ namespace GPBoost {
 		if (matrix_format_ == "sp_mat_t") {
 			aux_pars_temp = re_model_sp_->GetAuxPars();
 			re_model_sp_->BackTransformAuxPars(aux_pars_temp, aux_pars);
+			re_model_sp_->WarnIfTweediePowerAtBoundary();
 			re_model_sp_->GetNamesAuxPars(name);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			aux_pars_temp = re_model_sp_rm_->GetAuxPars();
 			re_model_sp_rm_->BackTransformAuxPars(aux_pars_temp, aux_pars);
+			re_model_sp_rm_->WarnIfTweediePowerAtBoundary();
 			re_model_sp_rm_->GetNamesAuxPars(name);
 		}
 		else {
 			aux_pars_temp = re_model_den_->GetAuxPars();
 			re_model_den_->BackTransformAuxPars(aux_pars_temp, aux_pars);
+			re_model_den_->WarnIfTweediePowerAtBoundary();
 			re_model_den_->GetNamesAuxPars(name);
 		}
 		if (calc_std_dev) {
