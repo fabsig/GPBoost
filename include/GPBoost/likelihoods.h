@@ -314,15 +314,8 @@ namespace GPBoost {
 				}
 			}//end "t"
 			else if (likelihood_type_ == "asymmetric_laplace") {
-				if (TwoNumbersAreEqual<double>(additional_param, -999.)) {
-					quantile_ = 0.5; // internal default value 
-				}
-				else if (additional_param <= 0. || additional_param >= 1.) {
-					Log::REFatal("The 'likelihood_additional_param' (quantile) is not between 0 and 1, found = %g ", additional_param);
-				}
-				else {
-					quantile_ = additional_param;
-				}
+				ValidateAsymmetricLaplaceQuantile(additional_param);
+				quantile_ = additional_param;
 				can_use_first_deriv_log_like_for_pred_mean_ = false;
 				aux_pars_ = { 1. };
 				names_aux_pars_ = { "scale" };
@@ -545,6 +538,18 @@ namespace GPBoost {
 			if (p <= 1. || p >= 2.) Log::REFatal("For likelihood='tweedie_fixed_p', only the compound Poisson--Gamma family with 1 < p < 2 is supported. Found p = %g ", p);
 			if (p <= TWEEDIE_POWER_LOWER_) Log::REFatal("For likelihood='tweedie_fixed_p', p = %g is too close to 1 for stable Tweedie density evaluation. Choose p > %g. Use likelihood='poisson' explicitly if appropriate ", p, TWEEDIE_POWER_LOWER_);
 			if (p >= TWEEDIE_POWER_UPPER_) Log::REFatal("For likelihood='tweedie_fixed_p', p = %g is too close to 2 for stable Tweedie density evaluation. Choose p < %g. Use likelihood='gamma' explicitly if appropriate ", p, TWEEDIE_POWER_UPPER_);
+		}
+
+		void ValidateAsymmetricLaplaceQuantile(double quantile) const {
+			if (TwoNumbersAreEqual<double>(quantile, -999.)) {
+				Log::REFatal("No value was provided for 'likelihood_additional_param'. For likelihood='asymmetric_laplace' (aliases 'quantile' and 'quantile_regression'), provide a quantile q with 0 < q < 1 ");
+			}
+			if (!std::isfinite(quantile)) {
+				Log::REFatal("For likelihood='asymmetric_laplace', 'likelihood_additional_param' must be a finite quantile q with 0 < q < 1. Found q = %g ", quantile);
+			}
+			if (quantile <= 0. || quantile >= 1.) {
+				Log::REFatal("For likelihood='asymmetric_laplace', 'likelihood_additional_param' must be a quantile q with 0 < q < 1. Found q = %g ", quantile);
+			}
 		}
 
 		inline double GetTweediePower() const {
@@ -8575,7 +8580,7 @@ namespace GPBoost {
 		* \param pred_var[in & out] Predictive variances of latent random effects for mean. The predicted variance for the response variables is written on this
 		* \param pred_var_mean Predictive mean of latent random effects for variance parameter in heteroscedastic models
 		* \param pred_var_var Predictive variances of latent random effects for variance parameter in heteroscedastic models
-		* \param predict_var If true, predictive reponse variances are also calculated
+		* \param predict_var If true, predictive response variances are also calculated
 		*/
 		void PredictResponse(vec_t& pred_mean,
 			vec_t& pred_var,
@@ -9216,7 +9221,7 @@ namespace GPBoost {
 		* \brief Transform from the latent to the response variable scale (often this is the inverse link function) conditional on the random and fixed effects
 		*			This is only used by the 'ConvertOutput()' function in regression_objective.hpp
 		*/
-		double TransformToReponseScale(const double value) const {
+		double TransformToResponseScale(const double value) const {
 			if (IsGaussianLikelihood() || likelihood_type_ == "t") {
 				return value;
 			}
@@ -9279,10 +9284,10 @@ namespace GPBoost {
 				}
 			}//end "zero_one_censored_shifted_gamma"
 			else {
-				Log::REFatal("TransformReponseScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				Log::REFatal("TransformToResponseScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 				return 0.;
 			}
-		}//end TransformToReponseScale
+		}//end TransformToResponseScale
 
 	private:
 

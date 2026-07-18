@@ -206,7 +206,7 @@ namespace LightGBM {
 
 		void ConvertOutput(const double* input, double* output) const override {
 			if (has_gp_model_) {
-				output[0] = re_model_->TransformToReponseScale(input[0]);
+				output[0] = re_model_->TransformToResponseScale(input[0]);
 			}
 			else {
 				if (sqrt_) {

@@ -453,7 +453,7 @@ namespace GPBoost {
 	* \param re_comps_vecchia Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components
 	* \param num_gp_rand_coef Number of random coefficient GPs
 	* \param num_gp_total Total number of GPs (random intercepts plus random coefficients)
-	* \param y_cluster_i Reponse variable data
+	* \param y_cluster_i Response variable data
 	* \param gauss_likelihood If true, the response variables have a Gaussian likelihood, otherwise not
 	* \param rng Random number generator
 	* \param calc_pred_cov If true, the covariance matrix is also calculated
@@ -533,7 +533,7 @@ namespace GPBoost {
 	* \param re_comps_vecchia Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components
 	* \param num_gp_rand_coef Number of random coefficient GPs
 	* \param num_gp_total Total number of GPs (random intercepts plus random coefficients)
-	* \param y_cluster_i Reponse variable data
+	* \param y_cluster_i Response variable data
 	* \param rng Random number generator
 	* \param calc_pred_cov If true, the covariance matrix is also calculated
 	* \param calc_pred_var If true, predictive variances are also calculated
@@ -574,7 +574,7 @@ namespace GPBoost {
 	* \param num_neighbors_pred The number of neighbors used in the Vecchia approximation for making predictions
 	* \param vecchia_neighbor_selection The way how neighbors are selected
 	* \param re_comps_vecchia Keys: labels of independent realizations of REs/GPs, values: vectors with individual RE/GP components
-	* \param y_cluster_i Reponse variable data
+	* \param y_cluster_i Response variable data
 	* \param rng Random number generator
 	* \param calc_pred_cov If true, the covariance matrix is also calculated
 	* \param calc_pred_var If true, predictive variances are also calculated

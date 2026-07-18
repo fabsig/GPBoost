@@ -184,15 +184,15 @@ namespace GPBoost {
 		}
 	}
 
-	double REModel::TransformToReponseScale(const double value) const {
+	double REModel::TransformToResponseScale(const double value) const {
 		if (matrix_format_ == "sp_mat_t") {
-			return(re_model_sp_->TransformToReponseScale(value));
+			return(re_model_sp_->TransformToResponseScale(value));
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
-			return(re_model_sp_rm_->TransformToReponseScale(value));
+			return(re_model_sp_rm_->TransformToResponseScale(value));
 		}
 		else {
-			return(re_model_den_->TransformToReponseScale(value));
+			return(re_model_den_->TransformToResponseScale(value));
 		}
 	}
 

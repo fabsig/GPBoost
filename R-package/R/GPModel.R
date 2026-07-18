@@ -38,7 +38,7 @@
 #' \itemize{ \item{ The degrees-of-freedom (df) can be set via the \code{likelihood_additional_param} parameter. The default is df = 2 }}
 #' }
 #' \item{ "quantile_regression" / "asymmetric_laplace" : an asymmetric Laplace likelihood for quantile regression, aliases: "asymmetric_laplace", "quantile_regression" 
-#' \itemize{ \item{ The quantile can be set via the \code{likelihood_additional_param} parameter. The default is quantile = 0.5 }}
+#' \itemize{ \item{ The quantile must be supplied through the \code{likelihood_additional_param} parameter and must be strictly between 0 and 1 }}
 #' }
 #' \item{ "zero_inflated_gamma": Zero-inflated gamma likelihood. 
 #' The log-transformed mean of the response variable equals the sum of fixed and random effects, E(y) = mu = exp(F(X) + Zb), 
@@ -76,10 +76,10 @@
 #' This is not to be confused with any auxiliary parameters that can be estimated and accessed through 
 #' the function \code{get_aux_pars} after estimation.
 #' Note that this \code{likelihood_additional_param} parameter is irrelevant for many likelihoods.
-#' If \code{likelihood_additional_param = NULL}, the following internal default values are used:
+#' If \code{likelihood_additional_param = NULL}, the following default and mandatory-value rules apply:
 #' \itemize{
 #' \item{ df = 2 for likelihood = "t_fix_df" }
-#' \item{ quantile = 0.5 for likelihood = "asymmetric_laplace" }
+#' \item{ No default is used for likelihood = "asymmetric_laplace"; a quantile strictly between 0 and 1 is required }
 #' \item{ No default is used for likelihood = "tweedie_fixed_p"; a power strictly between 1.01 and 1.99 is required }
 #' }
 #' @param group_data A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 

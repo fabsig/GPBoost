@@ -6363,20 +6363,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       tolerance_loc_3 <- 0.1
     }
 
-    expect_error( gp_model <- GPModel(group_data = group, likelihood = likelihood,
-                                      matrix_inversion_method = matrix_inversion_method, likelihood_additional_param=1.1) )
-    expect_error( gp_model <- GPModel(group_data = group, likelihood = likelihood,
-                                      matrix_inversion_method = matrix_inversion_method, likelihood_additional_param=-0.1) )
+    expect_error(GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = matrix_inversion_method,
+                         likelihood_additional_param = 1.1), "must be a quantile q with 0 < q < 1", fixed = TRUE)
+    expect_error(GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = matrix_inversion_method,
+                         likelihood_additional_param = -0.1), "must be a quantile q with 0 < q < 1", fixed = TRUE)
+    expect_error(GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = matrix_inversion_method,
+                         likelihood_additional_param = NA_real_), "must be a finite quantile q with 0 < q < 1", fixed = TRUE)
     # Evaluate negative log-likelihood
     gp_model <- GPModel(group_data = group, likelihood = likelihood,
                         matrix_inversion_method = matrix_inversion_method, likelihood_additional_param = quantile)
     nll_exp <- 273.0138019
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(lambda))
     expect_lt(abs(nll-nll_exp),tolerance_loc_1)
-    # default value for quantile
-    gp_model <- GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = matrix_inversion_method)
-    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(lambda))
-    expect_lt(abs(nll-nll_exp),tolerance_loc_1)
+    expect_error(GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = matrix_inversion_method),
+                 "No value was provided for 'likelihood_additional_param'", fixed = TRUE)
     gp_model <- GPModel(group_data = group, likelihood = likelihood,
                         matrix_inversion_method = matrix_inversion_method, likelihood_additional_param = quantile_up)
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(lambda))

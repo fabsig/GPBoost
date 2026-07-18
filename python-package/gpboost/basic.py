@@ -4292,7 +4292,7 @@ class GPModel(object):
 
                     - "quantile_regression" / "asymmetric_laplace" : an asymmetric Laplace likelihood for quantile regression, aliases: "asymmetric_laplace", "quantile_regression"
 
-                        - The quantile can be set via the 'likelihood_additional_param' parameter. The default is quantile = 0.5
+                        - The quantile must be supplied through 'likelihood_additional_param' and must be strictly between 0 and 1.
                     
                     - "zero_inflated_gamma":
                     
@@ -4603,16 +4603,16 @@ class GPModel(object):
                 (same values = same process realization)
             num_data : integer, optional (default=None) 
                 The number of samples. This is only used for iid models. 
-            likelihood_additional_param : float, optional (default=1.)
+            likelihood_additional_param : float, optional (default=None)
                  Additional parameter for the 'likelihood' which cannot be estimated for this 'likelihood' (e.g., degrees of freedom for 'likelihood = "t_fix_df"'). 
                  This is not to be confused with any auxiliary parameters that can be estimated and 
                  accessed through the function'get_aux_pars' after estimation.
                  Note that this 'likelihood_additional_param' parameter is irrelevant for many likelihoods.
-                 If 'likelihood_additional_param = None', the following internal default values are used:
+                 If 'likelihood_additional_param = None', the following default and mandatory-value rules apply:
 
                     - df = 2 for 'likelihood = "t_fix_df"'
 
-                    - quantile = 0.5 for likelihood = "asymmetric_laplace"
+                    - No default is used for likelihood = "asymmetric_laplace"; a quantile strictly between 0 and 1 is required.
 
                     - No default is used for 'tweedie_fixed_p'; its power must be supplied explicitly.
 

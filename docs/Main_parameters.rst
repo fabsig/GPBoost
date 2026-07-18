@@ -79,7 +79,7 @@ Model specification parameters
 
       - ``quantile_regression`` / ``asymmetric_laplace`` : an asymmetric Laplace likelihood for quantile regression, aliases: ``asymmetric_laplace``, ``quantile_regression``
 
-         - The quantile can be set via the ``likelihood_additional_param`` parameter. The default is quantile = 0.5
+         - The quantile must be supplied through ``likelihood_additional_param`` and must be strictly between 0 and 1
 
       -  ``zero_inflated_gamma`` : Zero-inflated gamma likelihood. The log-transformed mean of the response variable equals the sum of fixed and random effects, E(y) = mu = exp(F(X) + Zb), and the rate parameter equals (1-p0) * gamma / mu, where p0 is the zero-inflation probability and gamma the shape parameter. I.e., the rate parameter depends on F(X) + Zb, and p0 and gamma are (univariate auxiliary) parameters that are estimated. Note that E(y) = mu above refers the the mean of the entire distribution and not just the positive part
 
