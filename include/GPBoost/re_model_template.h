@@ -10916,7 +10916,7 @@ namespace GPBoost {
 		/*!
 		* \brief Analogous to 'CalcDCovParsOrigDLogTrans' but for the auxiliary (additional) parameters of non-Gaussian
 		*		 likelihoods (see 'TransformAuxPars' / 'BackTransformAuxPars' in likelihoods.h, e.g. a logit-type
-		*		 reparametrization for the second parameter of the "zero_inflated_gamma" likelihood).
+		*		 reparametrization for the second parameter of the "hurdle_gamma" likelihood).
 		* \param aux_pars_trans Auxiliary parameters on the internal (transformed) scale used for optimization (as returned by 'GetAuxPars')
 		* \param[out] d_orig_d_log_trans Vector of the same length as aux_pars_trans with d(BackTransformAuxPars(aux_pars_trans)_i) / d(log(aux_pars_trans_i))
 		*/

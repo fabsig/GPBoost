@@ -46,11 +46,11 @@
 #' \item{ "quantile_regression" / "asymmetric_laplace" : an asymmetric Laplace likelihood for quantile regression, aliases: "asymmetric_laplace", "quantile_regression" 
 #' \itemize{ \item{ The quantile must be supplied through the \code{likelihood_additional_param} parameter and must be strictly between 0 and 1 }}
 #' }
-#' \item{ "zero_inflated_gamma": Zero-inflated gamma likelihood. 
-#' The log-transformed mean of the response variable equals the sum of fixed and random effects, E(y) = mu = exp(F(X) + Zb), 
-#' and the rate parameter equals (1-p0) * gamma / mu, where p0 is the zero-inflation probability and gamma the shape parameter. 
-#' I.e., the rate parameter depends on F(X) + Zb, and p0 and gamma are (univariate auxiliary) parameters that are estimated. 
-#' Note that E(y) = mu above refers the the mean of the entire distribution and not just the positive part }
+#' \item{ "hurdle_gamma": The hurdle (or zero-inflated) gamma likelihood is intended for nonnegative continuous response variables with an excess probability of exact zeros. It combines a point mass at zero with a gamma distribution for positive observations.
+#' The log-transformed conditional mean of the positive part equals the sum of fixed and random effects,
+#' E(y | y > 0) = mu = exp(F(X) + Zb), and the gamma rate parameter equals gamma / mu, where gamma is
+#' the shape parameter. Consequently, the mean of the entire response distribution is E(y) = (1-p0) * mu. 
+#' Both the zero-probability parameter 'p0' and the shape parameter 'gamma' are estimated. }
 #' \item{ "zero_censored_power_transformed_normal": Likelihood of a censored and power-transformed normal variable 
 #' for modeling data with a point mass at 0 and a continuous distribution for y > 0. 
 #' The model used is Y = max(0,X)^lambda, X ~ N(mu, sigma^2), where mu = F(X) + Zb, 

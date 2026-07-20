@@ -63,21 +63,21 @@ Model specification parameters
 
       -  ``gamma`` : Gamma likelihood with a log link function
 
-      -  ``tweedie`` : Compound Poisson--Gamma Tweedie likelihood with a log link, ``Var(y | eta) = phi * mu^p``, ``mu = exp(eta)``, and ``1.01 < p < 1.99``. Both dispersion ``phi`` and power ``p`` are estimated
+      -  ``tweedie`` : Compound Poisson--Gamma Tweedie likelihood with a log link, where the latent predictor is 'eta', the mean is 'mu = exp(eta)', and 'Var(y | eta) = phi * mu^p', with '1.01 < p < 1.99'. Both dispersion 'phi' and power 'p' are estimated
 
-      -  ``tweedie_fixed_p`` : The same Tweedie likelihood with ``p`` fixed through ``likelihood_additional_param`` and only ``phi`` estimated. The fixed power is mandatory and must satisfy ``1.01 < p < 1.99``. Fits at different fixed powers include the complete density and can therefore be compared by marginal log-likelihood for power profiling
+      -  ``tweedie_fixed_p`` : The same Tweedie likelihood with 'p' fixed through ``likelihood_additional_param`` and only 'phi' estimated. The fixed power is mandatory and must satisfy '1.01 < p < 1.99'. Fits at different fixed powers include the complete density and can therefore be compared by marginal log-likelihood for power profiling
 
-      -  ``gpd`` : Generalized Pareto likelihood. The log scale parameter equals the latent predictor ``eta`` (sum of fixed and random effects), ``sigma = exp(eta)``, and the estimated auxiliary parameter is ``shape`` with the regular domain ``shape > -0.5``
+      -  ``gpd`` : Generalized Pareto likelihood. The log scale parameter equals the latent predictor 'eta' (sum of fixed and random effects), 'sigma = exp(eta)', and the estimated auxiliary parameter is 'shape' with the regular domain 'shape > -0.5'
 
-      -  ``egpd_power`` : Naveau extended generalized Pareto likelihood with carrier ``G(u) = u^kappa`` and auxiliary parameters ``shape, kappa``
+      -  ``egpd_power`` : Naveau extended generalized Pareto likelihood with carrier 'G(u) = u^kappa' and auxiliary parameters 'shape' and 'kappa'
 
-      -  ``egpd_power_mixture`` : Naveau power-mixture carrier with ordered exponents ``kappa2 = kappa1 + delta_kappa`` and auxiliary parameters ``shape, kappa1, delta_kappa, p``. Both exponent parameters are positive and ``0 < p < 1``
+      -  ``egpd_power_mixture`` : Naveau power-mixture carrier with ordered exponents 'kappa2 = kappa1 + delta_kappa' and auxiliary parameters 'shape', 'kappa1', 'delta_kappa', and 'p'. Both exponent parameters are positive and '0 < p < 1'
 
-      -  ``egpd_beta`` : Naveau beta-carrier extended generalized Pareto likelihood with auxiliary parameters ``shape, delta``
+      -  ``egpd_beta`` : Naveau beta-carrier extended generalized Pareto likelihood with auxiliary parameters 'shape' and 'delta'
 
-      -  ``egpd_power_beta`` : Naveau power-beta carrier with auxiliary parameters ``shape, delta, kappa``
+      -  ``egpd_power_beta`` : Naveau power-beta carrier with auxiliary parameters 'shape', 'delta', and 'kappa'
 
-         All five GPD/EGPD likelihoods require finite ``y > 0`` and use the Laplace approximation. Response means exist only for ``shape < 1`` and response variances only for ``shape < 0.5``; response prediction reports an error when the requested moment does not exist.
+         All five GPD/EGPD likelihoods require finite 'y > 0' and use the Laplace approximation. Response means exist only for 'shape < 1' and response variances only for 'shape < 0.5'; response prediction reports an error when the requested moment does not exist.
 
       -  ``lognormal`` : Log-normal likelihood with a log link function
 
@@ -93,7 +93,7 @@ Model specification parameters
 
          - The quantile must be supplied through ``likelihood_additional_param`` and must be strictly between 0 and 1
 
-      -  ``zero_inflated_gamma`` : Zero-inflated gamma likelihood. The log-transformed mean of the response variable equals the sum of fixed and random effects, E(y) = mu = exp(F(X) + Zb), and the rate parameter equals (1-p0) * gamma / mu, where p0 is the zero-inflation probability and gamma the shape parameter. I.e., the rate parameter depends on F(X) + Zb, and p0 and gamma are (univariate auxiliary) parameters that are estimated. Note that E(y) = mu above refers the the mean of the entire distribution and not just the positive part
+      -  ``hurdle_gamma`` : The hurdle (or zero-inflated) gamma likelihood is intended for nonnegative continuous response variables with an excess probability of exact zeros. It combines a point mass at zero with a gamma distribution for positive observations. The log-transformed conditional mean of the positive part equals the sum of fixed and random effects, E(y | y > 0) = mu = exp(F(X) + Zb), and the gamma rate parameter equals gamma / mu, where gamma is the shape parameter. Consequently, the mean of the entire response distribution is E(y) = (1-p0) * mu. Both the zero-probability parameter 'p0' and the shape parameter 'gamma' are estimated.
 
       -  ``zero_censored_power_transformed_normal`` : Likelihood of a censored and power-transformed normal variable for modeling data with a point mass at 0 and a continuous distribution for y > 0. The model used is Y = max(0,X)^lambda, X ~ N(mu, sigma^2), where mu = F(X) + Zb, and sigma and lambda are (auxiliary) parameters that are estimated. For more details on this model, see Sigrist et al. (2012, AOAS) "A dynamic nonstationary spatio-temporal model for short term prediction of precipitation"
 

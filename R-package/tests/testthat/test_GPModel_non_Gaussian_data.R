@@ -5852,10 +5852,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   }) # end hurst covariance
 
-  test_that("gamma_zero_inflated regression ", {
+  test_that("hurdle_gamma regression ", {
 
     params <- OPTIM_PARAMS_BFGS
-    likelihood <- "gamma_zero_inflated"
+    likelihood <- "hurdle_gamma"
 
     # Single level grouped random effects
     shape <- 2
@@ -5866,13 +5866,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     zeros <- sim_rand_unif(n=n, init_c=0.237985) <= p0
     y[zeros] <- 0
     y[!zeros] <- qgamma(sim_rand_unif(n=sum(!zeros), init_c=0.9632),
-                        rate = shape * (1-p0) / mu[!zeros], shape = shape)
+                        rate = shape / mu[!zeros], shape = shape)
 
     # Evaluate negative log-likelihood
     gp_model <- GPModel(group_data = group, likelihood = likelihood,
                         matrix_inversion_method = "cholesky")
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(shape, p0))
-    expect_lt(abs(nll-214.1086486),TOLERANCE_STRICT)
+    expect_lt(abs(nll-183.969936787735),TOLERANCE_STRICT)
 
     # Label needs to have the correct support
     yt <- y
@@ -5884,18 +5884,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
                                            y = y, X=X, params = params, matrix_inversion_method = "cholesky")
                     , file='NUL')
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.3200318902)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(gp_model$get_aux_pars()-c(2.4483553239, 0.4097899503))),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(0.09419103268, 1.14114390871))),TOLERANCE_STRICT)
-    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-179.8795333)),TOLERANCE_STRICT)
-    expect_equal(gp_model$get_num_optim_iter(), 12)
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.320275336481987)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-c(2.44668106228388, 0.41))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(0.110570439418453, 1.14091349210305))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-149.740800397881)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 11)
     # Prediction
     group_test <- c(1,3,3,9999)
     X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
     pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test,
                     predict_var=TRUE, predict_response = TRUE)
-    expected_mu <- c(0.8268865387, 0.8119288828, 1.0200853052, 4.0363906391)
-    expected_var <- c(1.052020624, 1.107172318, 1.747640980, 37.250886842)
+    expected_mu <- c(0.496045136495701, 0.487026288640262, 0.611858349604019, 2.42053564764981)
+    expected_var <- c(0.378967631666401, 0.398766848901543, 0.629384466420825, 13.4113083877069)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
 
@@ -5913,8 +5913,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-beta)),TOLERANCE_STRICT)
     pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test,
                     predict_var=TRUE, predict_response = TRUE)
-    expected_mu <- c(0.5306641671, 0.4454187734, 0.6644867269, 13.4637380350)
-    expected_var <- c(0.4880227930, 0.3945299769, 0.8780426111, 1050.6003608580)
+    expected_mu <- c(0.318398500262595, 0.267251264012491, 0.398692036129682, 8.07824282100101)
+    expected_var <- c(0.175688205479334, 0.142030791688895, 0.316095340009824, 378.216129908876)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
     filename <- tempfile(fileext = ".json")
@@ -5936,16 +5936,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     bst <- gpboost(data = dtrain, gp_model = gp_model,
                    nrounds = 30, learning_rate = 0.1, max_depth = 6,
                    min_data_in_leaf = 5, verbose = 0)
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.3104485748)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.336767936372357)),TOLERANCE_MEDIUM)
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_test,
                     predict_var = TRUE, pred_latent = TRUE)
-    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(-0.7431416878, 0.4340883965, 0.5288789088, 1.4472480695))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(-0.692053205065586, 0.460314799450466, 0.564020495003286, 1.47672658281785))),TOLERANCE_MEDIUM)
     # Predict response
     pred <- predict(bst, data = X_test, group_data_pred = group_test,
                     predict_var = TRUE, pred_latent = FALSE)
-    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.5046345278, 0.6630683102, 0.7289962071, 4.9652932385))),TOLERANCE_MEDIUM)
-    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.3294119159, 0.6226852538, 0.7526664778, 48.4078097968))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.301097074771284, 0.379042216360261, 0.420461653760034, 3.05713379562945))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.125668266783157, 0.218015764301311, 0.26826592998371, 20.1983185214085))), TOLERANCE_MEDIUM)
 
     # cv function
     dtrain <- gpb.Dataset(data = X, label = y)
@@ -5954,11 +5954,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                               nrounds = 100, early_stopping_rounds = 5,
                                               use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
                                               reuse_learning_rates_gp_model = FALSE) )
-    expect_lt(sum(abs(cvbst$best_score-1.93737469212861)),TOLERANCE_MEDIUM)
-    expect_gte(cvbst$best_iter, 10)
-    expect_lte(cvbst$best_iter, 12)
+    expect_lt(sum(abs(cvbst$best_score-1.63537873073932)),TOLERANCE_MEDIUM)
+    expect_gte(cvbst$best_iter, 12)
+    expect_lte(cvbst$best_iter, 14)
 
-  }) # end gamma_zero_inflated regression
+  }) # end hurdle_gamma regression
 
   test_that("zoctn regression ", {
 
