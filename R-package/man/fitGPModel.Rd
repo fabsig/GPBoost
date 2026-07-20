@@ -46,6 +46,12 @@ The variance is mu * (1 + phi), mu = mean, phi = dispersion, with this parametri
 \item{ "gamma": Gamma likelihood with a log link function }
 \item{ "tweedie": Compound Poisson--Gamma Tweedie likelihood with a log link, variance phi * mu^p, and 1.01 < p < 1.99. The dispersion phi and power p are estimated }
 \item{ "tweedie_fixed_p": The same Tweedie likelihood with p fixed through \code{likelihood_additional_param}; only phi is estimated. The fixed power must satisfy 1.01 < p < 1.99 }
+\item{ "gpd": Generalized Pareto likelihood for finite positive responses. The log scale parameter equals the latent predictor eta (sum of fixed and random effects), sigma = exp(eta), and the estimated auxiliary parameter is shape > -0.5 }
+\item{ "egpd_power": Naveau power-carrier extended generalized Pareto likelihood with auxiliary parameters shape and kappa }
+\item{ "egpd_power_mixture": Naveau ordered power-mixture carrier with auxiliary parameters shape, kappa1, delta_kappa, and p }
+\item{ "egpd_beta": Naveau beta-carrier extended generalized Pareto likelihood with auxiliary parameters shape and delta }
+\item{ "egpd_power_beta": Naveau power-beta carrier with auxiliary parameters shape, delta, and kappa }
+The GPD/EGPD likelihoods require finite y > 0. Response means exist for shape < 1 and response variances for shape < 0.5.
 \item{ "lognormal": Log-normal likelihood with a log link function }
 \item{ "beta" : Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)}
 \item{ "t": t-distribution (e.g., for robust regression) }

@@ -67,6 +67,18 @@ Model specification parameters
 
       -  ``tweedie_fixed_p`` : The same Tweedie likelihood with ``p`` fixed through ``likelihood_additional_param`` and only ``phi`` estimated. The fixed power is mandatory and must satisfy ``1.01 < p < 1.99``. Fits at different fixed powers include the complete density and can therefore be compared by marginal log-likelihood for power profiling
 
+      -  ``gpd`` : Generalized Pareto likelihood. The log scale parameter equals the latent predictor ``eta`` (sum of fixed and random effects), ``sigma = exp(eta)``, and the estimated auxiliary parameter is ``shape`` with the regular domain ``shape > -0.5``
+
+      -  ``egpd_power`` : Naveau extended generalized Pareto likelihood with carrier ``G(u) = u^kappa`` and auxiliary parameters ``shape, kappa``
+
+      -  ``egpd_power_mixture`` : Naveau power-mixture carrier with ordered exponents ``kappa2 = kappa1 + delta_kappa`` and auxiliary parameters ``shape, kappa1, delta_kappa, p``. Both exponent parameters are positive and ``0 < p < 1``
+
+      -  ``egpd_beta`` : Naveau beta-carrier extended generalized Pareto likelihood with auxiliary parameters ``shape, delta``
+
+      -  ``egpd_power_beta`` : Naveau power-beta carrier with auxiliary parameters ``shape, delta, kappa``
+
+         All five GPD/EGPD likelihoods require finite ``y > 0`` and use the Laplace approximation. Response means exist only for ``shape < 1`` and response variances only for ``shape < 0.5``; response prediction reports an error when the requested moment does not exist.
+
       -  ``lognormal`` : Log-normal likelihood with a log link function
 
       -  ``beta`` : Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)

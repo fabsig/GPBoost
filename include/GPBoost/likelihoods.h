@@ -121,6 +121,7 @@
 #include <GPBoost/utils.h>
 #include <GPBoost/CG_utils.h>
 #include <GPBoost/tweedie_utils.h>
+#include <GPBoost/egpd_utils.h>
 
 #include <string>
 #include <set>
@@ -230,7 +231,35 @@ namespace GPBoost {
 			if (user_defined_approximation_type_ != "none") {
 				approximation_type_ = user_defined_approximation_type_;
 			}
-			if (likelihood_type_ == "gamma") {
+			if (likelihood_type_ == "gpd") {
+				aux_pars_ = { 0.5 };
+				names_aux_pars_ = { "shape" };
+				num_aux_pars_ = num_aux_pars_estim_ = 1;
+			}
+			else if (likelihood_type_ == "egpd_power") {
+				aux_pars_ = { 0.5, 1. };
+				names_aux_pars_ = { "shape", "kappa" };
+				num_aux_pars_ = num_aux_pars_estim_ = 2;
+				information_ll_can_be_negative_ = true;
+			}
+			else if (likelihood_type_ == "egpd_power_mixture") {
+				aux_pars_ = { 0.5, 1., 1., 1. };
+				names_aux_pars_ = { "shape", "kappa1", "delta_kappa", "p" };
+				num_aux_pars_ = num_aux_pars_estim_ = 4;
+				information_ll_can_be_negative_ = true;
+			}
+			else if (likelihood_type_ == "egpd_beta") {
+				aux_pars_ = { 0.5, 1. };
+				names_aux_pars_ = { "shape", "delta" };
+				num_aux_pars_ = num_aux_pars_estim_ = 2;
+			}
+			else if (likelihood_type_ == "egpd_power_beta") {
+				aux_pars_ = { 0.5, 1., 1. };
+				names_aux_pars_ = { "shape", "delta", "kappa" };
+				num_aux_pars_ = num_aux_pars_estim_ = 3;
+				information_ll_can_be_negative_ = true;
+			}
+			else if (likelihood_type_ == "gamma") {
 				aux_pars_ = { 1. };//shape parameter
 				names_aux_pars_ = { "shape" };
 				num_aux_pars_ = 1;
@@ -514,6 +543,15 @@ namespace GPBoost {
 				}
 				weights_ = weights_learning_rate_.data();
 			}//end likelihood_learning_rate_ != 1.
+			if (IsEGPDLikelihood() && has_weights_) {
+				bool any_positive_weight = false;
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					if (!std::isfinite(weights_[i]) || weights_[i] < 0.) Log::REFatal("For likelihood='%s', all effective weights must be finite and nonnegative, found %g ", likelihood_type_.c_str(), weights_[i]);
+					any_positive_weight = any_positive_weight || weights_[i] > 0.;
+					information_ll_can_be_exact_zero_ = information_ll_can_be_exact_zero_ || weights_[i] == 0.;
+				}
+				if (!any_positive_weight) Log::REFatal("For likelihood='%s', at least one effective weight must be strictly positive ", likelihood_type_.c_str());
+			}
 			has_int_label_ = label_type() == "int";
 			if (iid_model_) {
 				maxit_mode_newton_ = 0;
@@ -526,6 +564,10 @@ namespace GPBoost {
 			if (kink_cliping_) {
 				armijo_condition_ = false;// kink-clipping changes the candidate point (projection), so it’s not on the line anymore where the Armijo condition thinks it is
 			}
+			// Response-scale conversion can be called concurrently without SetAuxPars() having been called
+			// first (e.g. when default auxiliary parameters are kept fixed). Populate the cache eagerly so
+			// all response-scale consumers are read-only from the start.
+			if (IsEGPDLikelihood()) RefreshEGPDMomentsCache();
 		}//end constructor
 
 		void ValidateFixedTweediePower(double p) const {
@@ -576,7 +618,22 @@ namespace GPBoost {
 			for (int i = 0; i < num_aux_pars_; ++i) {
 				aux_pars_trans[i] = aux_pars_orig[i];
 			}
-			if (likelihood_type_ == "zero_inflated_gamma") {
+			if (IsEGPDLikelihood()) {
+				if (!(std::isfinite(aux_pars_orig[0]) && aux_pars_orig[0] > -0.5)) Log::REFatal("For likelihood='%s', the 'shape' parameter must be finite and larger than -0.5, found %g ", likelihood_type_.c_str(), aux_pars_orig[0]);
+				aux_pars_trans[0] = aux_pars_orig[0] + 0.5;
+				for (int i = 1; i < num_aux_pars_; ++i) {
+					if (likelihood_type_ == "egpd_power_mixture" && i == 3) continue;
+					if (!(std::isfinite(aux_pars_orig[i]) && aux_pars_orig[i] > 0.)) Log::REFatal("For likelihood='%s', the '%s' parameter must be finite and larger than 0, found %g ", likelihood_type_.c_str(), names_aux_pars_[i].c_str(), aux_pars_orig[i]);
+				}
+				if (likelihood_type_ == "egpd_power_mixture") {
+					const double p = aux_pars_orig[3];
+					if (!(std::isfinite(p) && p > 0. && p < 1.)) Log::REFatal("For likelihood='egpd_power_mixture', the 'p' parameter must be finite and strictly between 0 and 1, found %g ", p);
+					const double log_odds = std::log(p) - std::log1p(-p);
+					aux_pars_trans[3] = std::exp(log_odds);
+					if (!(std::isfinite(aux_pars_trans[3]) && aux_pars_trans[3] > 0.)) Log::REFatal("For likelihood='egpd_power_mixture', the transformed 'p' parameter is not representable ");
+				}
+			}
+			else if (likelihood_type_ == "zero_inflated_gamma") {
 				if (!(aux_pars_orig[1] > 0. && aux_pars_orig[1] < 1.)) {
 					Log::REFatal("The '%s' parameter (= %g) needs to be larger than 0 and smaller than 1 ", names_aux_pars_[1].c_str(), aux_pars_orig[1]);
 				}
@@ -603,7 +660,17 @@ namespace GPBoost {
 			for (int i = 0; i < num_aux_pars_; ++i) {
 				aux_pars_orig[i] = aux_pars_trans[i];
 			}
-			if (likelihood_type_ == "zero_inflated_gamma") {
+			if (IsEGPDLikelihood()) {
+				for (int i = 0; i < num_aux_pars_; ++i) if (!(std::isfinite(aux_pars_trans[i]) && aux_pars_trans[i] > 0.)) Log::REFatal("BackTransformAuxPars: transformed '%s' parameter must be finite and larger than 0, found %g ", names_aux_pars_[i].c_str(), aux_pars_trans[i]);
+				aux_pars_orig[0] = aux_pars_trans[0] - 0.5;
+				if (!(aux_pars_orig[0] > -0.5)) Log::REFatal("BackTransformAuxPars: transformed 'shape' rounded onto the forbidden -0.5 boundary ");
+				if (likelihood_type_ == "egpd_power_mixture") {
+					const double odds = aux_pars_trans[3];
+					aux_pars_orig[3] = odds >= 1. ? 1. / (1. + 1. / odds) : odds / (1. + odds);
+					if (!(aux_pars_orig[3] > 0. && aux_pars_orig[3] < 1.) || !std::isfinite(aux_pars_trans[1] + aux_pars_trans[2])) Log::REFatal("BackTransformAuxPars: EGPD mixture parameters overflowed or rounded onto a boundary ");
+				}
+			}
+			else if (likelihood_type_ == "zero_inflated_gamma") {
 				if (!(aux_pars_trans[1] > 0.)) {
 					Log::REFatal("BackTransformAuxPars: the transformed '%s' parameter (= %g) needs to be larger than 0 ", names_aux_pars_[1].c_str(), aux_pars_trans[1]);
 				}
@@ -663,7 +730,7 @@ namespace GPBoost {
 		* \brief Determine cap_change_mode_newton_
 		*/
 		void DetermineWhetherToCapChangeModeNewton() {
-			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
+			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				cap_change_mode_newton_ = true;
@@ -726,6 +793,58 @@ namespace GPBoost {
 		*/
 		string_t GetLikelihood() const {
 			return(likelihood_type_);
+		}
+
+		bool IsEGPDLikelihood() const {
+			return likelihood_type_ == "gpd" || likelihood_type_ == "egpd_power" || likelihood_type_ == "egpd_power_mixture" || likelihood_type_ == "egpd_beta" || likelihood_type_ == "egpd_power_beta";
+		}
+
+		EGPDVariant GetEGPDVariant() const {
+			if (likelihood_type_ == "gpd") return EGPDVariant::kGPD;
+			if (likelihood_type_ == "egpd_power") return EGPDVariant::kPower;
+			if (likelihood_type_ == "egpd_power_mixture") return EGPDVariant::kPowerMixture;
+			if (likelihood_type_ == "egpd_beta") return EGPDVariant::kBeta;
+			return EGPDVariant::kPowerBeta;
+		}
+
+		EGPDParams GetEGPDParams() const {
+			EGPDParams pars;
+			pars.shape_shift = aux_pars_[0];
+			if (likelihood_type_ == "egpd_power") pars.kappa = aux_pars_[1];
+			else if (likelihood_type_ == "egpd_power_mixture") {
+				pars.kappa1 = aux_pars_[1]; pars.delta_kappa = aux_pars_[2]; pars.odds = aux_pars_[3];
+			}
+			else if (likelihood_type_ == "egpd_beta") pars.delta = aux_pars_[1];
+			else if (likelihood_type_ == "egpd_power_beta") { pars.delta = aux_pars_[1]; pars.kappa = aux_pars_[2]; }
+			return pars;
+		}
+
+		EGPDDerivatives EvaluateEGPD(double y, double eta) const {
+			EGPDDerivatives result;
+			CalcEGPDLogLikAndDerivatives(y, eta, GetEGPDParams(), GetEGPDVariant(), &result);
+			return result;
+		}
+
+		// The EGPD unit-scale moments depend only on the auxiliary parameters, not on the location or the
+		// data, but they require numerical quadrature. Refresh this cache only in single-threaded parameter
+		// update paths; response-scale consumers can then safely read it concurrently.
+		bool EGPDMomentsCacheMatchesAuxPars() const {
+			if (!egpd_moments_cache_initialized_) return false;
+			for (int i = 0; i < num_aux_pars_; ++i) {
+				if (egpd_moments_cache_aux_[i] != aux_pars_[i]) return false;
+			}
+			return true;
+		}
+
+		void RefreshEGPDMomentsCache() {
+			egpd_moments_cache_ = CalcEGPDUnitScaleMoments(GetEGPDParams(), GetEGPDVariant());
+			for (int i = 0; i < num_aux_pars_; ++i) egpd_moments_cache_aux_[i] = aux_pars_[i];
+			egpd_moments_cache_initialized_ = true;
+		}
+
+		const EGPDMoments& GetEGPDMoments() const {
+			CHECK(EGPDMomentsCacheMatchesAuxPars());
+			return egpd_moments_cache_;
 		}
 
 		bool IsGaussianLikelihood() const {
@@ -888,9 +1007,9 @@ namespace GPBoost {
 					}
 				}
 			}
-			else if (likelihood_type_ == "gamma" || likelihood_type_ == "lognormal") {
+			else if (likelihood_type_ == "gamma" || likelihood_type_ == "lognormal" || IsEGPDLikelihood()) {
 				for (data_size_t i = 0; i < num_data; ++i) {
-					if (y_data[i] <= 0.) {
+					if (!std::isfinite(y_data[i]) || y_data[i] <= 0.) {
 						Log::REFatal(" Must have y > 0 for the response variable ('y') for likelihood = '%s', found %g ", likelihood_type_.c_str(), y_data[i]);
 					}
 				}
@@ -1011,7 +1130,7 @@ namespace GPBoost {
 				}
 				init_intercept = std::min(std::max(init_intercept, -3.0), 3.0); // avoid too small / large initial intercepts for better numerical stability
 			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				double sw = 0.0, avg = 0.;
@@ -1317,7 +1436,7 @@ namespace GPBoost {
 			double rand_eff_var,
 			const double* fixed_effects) const {
 			bool ret_val = false;
-			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
+			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				IsGaussianHeteroscedastic() || likelihood_type_ == "lognormal" ||
 				likelihood_type_ == "zero_inflated_gamma" || likelihood_type_ == "zero_censored_power_transformed_normal" ||
@@ -1420,6 +1539,9 @@ namespace GPBoost {
 				double phi = pearson / sum_w;
 				if (!(phi > 0.) || !std::isfinite(phi)) phi = 1.;
 				aux_pars_[0] = std::min(std::max(phi, 1e-6), 1e6);
+			}
+			else if (IsEGPDLikelihood()) {
+				aux_pars_[0] = 0.5; // shape = 0 (exponential GPD base)
 			}
 			else if (likelihood_type_ == "negative_binomial") {
 				// Use a method of moments estimator				
@@ -1937,7 +2059,7 @@ namespace GPBoost {
 			}//end "asymmetric_laplace"
 			else if (likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 				likelihood_type_ != "binomial_probit" && likelihood_type_ != "binomial_logit" &&
-				likelihood_type_ != "poisson" && !IsGaussianHeteroscedastic() &&
+				likelihood_type_ != "poisson" && !IsGaussianHeteroscedastic() && !IsEGPDLikelihood() &&
 				likelihood_type_ != "quasi_bernoulli_probit" && likelihood_type_ != "quasi_bernoulli_logit") {
 				Log::REFatal("FindInitialAuxPars: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 			}
@@ -1967,7 +2089,7 @@ namespace GPBoost {
 				C_mu = 1.;
 				C_sigma2 = 1.;
 			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				double sw = 0.0, mean = 0., sec_mom = 0;
@@ -2090,7 +2212,7 @@ namespace GPBoost {
 			if (likelihood_type_ == "tweedie_fixed_p" && !aux_pars_have_been_set_ && !TwoNumbersAreEqual<double>(aux_pars[1], aux_pars_[1])) {
 				Log::REWarning("The 'power' parameter provided in 'init_aux_pars' (= %g) and 'likelihood_additional_param' (= %g) are not equal. Will use the value provided in 'likelihood_additional_param'.", aux_pars[1], aux_pars_[1]);
 			}
-			if (IsGaussianLikelihood() || likelihood_type_ == "gamma" ||
+			if (IsGaussianLikelihood() || IsEGPDLikelihood() || likelihood_type_ == "gamma" ||
 				likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "beta" || likelihood_type_ == "t" || likelihood_type_ == "lognormal" ||
@@ -2116,6 +2238,9 @@ namespace GPBoost {
 			BackTransformAuxPars(aux_pars_.data(), aux_pars_original_.data());
 			normalizing_constant_has_been_calculated_ = false;
 			if (likelihood_type_ == "tweedie") tweedie_boundary_warning_issued_ = false;
+			// Refresh in this single-threaded update path only when the parameters actually changed. Later
+			// response-scale transforms (e.g. boosting ConvertOutput) only read the cache.
+			if (IsEGPDLikelihood() && !EGPDMomentsCacheMatchesAuxPars()) RefreshEGPDMomentsCache();
 			aux_pars_have_been_set_ = true;
 		}
 
@@ -8587,7 +8712,8 @@ namespace GPBoost {
 			const vec_t& pred_var_mean,
 			const vec_t& pred_var_var,
 			bool predict_var) {
-			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
+			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit" || 
+				likelihood_type_ == "quasi_bernoulli_probit") {
 				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
@@ -8600,7 +8726,8 @@ namespace GPBoost {
 					}
 				}
 			}
-			else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") {
+			else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" || 
+				likelihood_type_ == "quasi_bernoulli_logit") {
 				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)pred_mean.size(); ++i) {
@@ -8652,6 +8779,25 @@ namespace GPBoost {
 					const double pm = std::exp(m + 0.5 * v);
 					if (predict_var) pred_var[i] = phi * std::exp(p * m + 0.5 * p * p * v) + std::exp(2. * m + v) * std::expm1(v);
 					pred_mean[i] = pm;
+				}
+			}
+			else if (IsEGPDLikelihood()) {
+				CHECK(need_pred_latent_var_for_response_mean_);
+				const auto& moments = GetEGPDMoments();
+				if (!moments.mean_exists) Log::REFatal("PredictResponse: the response mean does not exist for likelihood='%s' when shape >= 1 ", likelihood_type_.c_str());
+				if (predict_var && !moments.variance_exists) Log::REFatal("PredictResponse: the response variance does not exist for likelihood='%s' when shape >= 0.5 ", likelihood_type_.c_str());
+				if (moments.status != EGPDEvalStatus::kValid) Log::REFatal("PredictResponse: failed to calculate EGPD unit-scale moments ");
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < (int)pred_mean.size(); ++i) {
+					const double latent_mean = pred_mean[i];
+					const double latent_var = pred_var[i];
+					if (!(std::isfinite(latent_var) && latent_var >= 0.)) { pred_mean[i] = std::numeric_limits<double>::quiet_NaN(); if (predict_var) pred_var[i] = std::numeric_limits<double>::quiet_NaN(); continue; }
+					const double response_mean = moments.mean_unit_scale * std::exp(latent_mean + 0.5 * latent_var);
+					if (predict_var) {
+						const double unit_second = moments.variance_unit_scale + moments.mean_unit_scale * moments.mean_unit_scale;
+						pred_var[i] = unit_second * std::exp(2. * latent_mean + 2. * latent_var) - response_mean * response_mean;
+					}
+					pred_mean[i] = response_mean;
 				}
 			}
 			else if (likelihood_type_ == "negative_binomial") {
@@ -8730,7 +8876,7 @@ namespace GPBoost {
 				}
 			}
 			else if (IsGaussianHeteroscedastic()) {
-				// For 'gaussian_heteroscedastic' (fixed effects only), the caller sets pred_var_var = 0 since the log-error
+				// For 'gaussian_heteroscedastic' (fixed effects only), the caller sets 'pred_var_var' = 0 since the log-error
 				// variance is deterministic given the fixed effects (no random effect / GP posterior uncertainty)
 				if (predict_var) {
 #pragma omp parallel for schedule(static)
@@ -9232,6 +9378,11 @@ namespace GPBoost {
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_logit") {
 				return GPBoost::sigmoid_stable(value);
 			}
+			else if (IsEGPDLikelihood()) {
+				const auto& moments = GetEGPDMoments();
+				if (!moments.mean_exists || moments.status != EGPDEvalStatus::kValid) Log::REFatal("TransformToResponseScale: the EGPD response mean is unavailable ");
+				return moments.mean_unit_scale * std::exp(value);
+			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
@@ -9381,7 +9532,7 @@ namespace GPBoost {
 					}
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
-				else if (!IsGaussianLikelihood() && !IsGaussianHeteroscedastic() &&
+				else if (!IsGaussianLikelihood() && !IsGaussianHeteroscedastic() && !IsEGPDLikelihood() &&
 					likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 					likelihood_type_ != "poisson" && likelihood_type_ != "tweedie" && likelihood_type_ != "tweedie_fixed_p" && likelihood_type_ != "t" && likelihood_type_ != "beta" &&
 					likelihood_type_ != "zero_one_censored_transformed_beta" && likelihood_type_ != "zero_one_censored_shifted_gamma" &&
@@ -9413,7 +9564,10 @@ namespace GPBoost {
 			const int* y_data_int) {
 			if (!normalizing_constant_has_been_calculated_) {
 				CalculateAuxQuantLogNormalizingConstant(y_data, y_data_int);
-				if (likelihood_type_ == "poisson") {
+				if (IsEGPDLikelihood()) {
+					log_normalizing_constant_ = 0.;
+				}
+				else if (likelihood_type_ == "poisson") {
 					double aux_const = 0.;
 #pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:aux_const)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -9735,6 +9889,15 @@ namespace GPBoost {
 					ll += w * LogLikTweedie(y_data[i], location_par[i], false);
 				}
 			}
+			else if (IsEGPDLikelihood()) {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.;
+					if (w == 0.) continue;
+					const auto result = EvaluateEGPD(y_data[i], location_par[i]);
+					ll += result.status == EGPDEvalStatus::kValid ? w * result.log_likelihood : -std::numeric_limits<double>::infinity();
+				}
+			}
 			else if (likelihood_type_ == "negative_binomial") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
 				for (data_size_t i = 0; i < num_data_; ++i) {
@@ -9865,6 +10028,10 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
 				return LogLikTweedie(y_data, location_par, true);
+			}
+			else if (IsEGPDLikelihood()) {
+				const auto result = EvaluateEGPD(y_data, location_par);
+				return result.status == EGPDEvalStatus::kValid ? result.log_likelihood : -std::numeric_limits<double>::infinity();
 			}
 			else if (likelihood_type_ == "negative_binomial") {
 				return(LogLikNegBin(y_data_int, location_par, true));
@@ -10266,6 +10433,17 @@ namespace GPBoost {
 					first_deriv_ll[i] = w * FirstDerivLogLikTweedie(y_data[i], location_par[i]);
 				}
 			}
+			else if (IsEGPDLikelihood()) {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.;
+					if (w == 0.) first_deriv_ll[i] = 0.;
+					else {
+						const auto result = EvaluateEGPD(y_data[i], location_par[i]);
+						first_deriv_ll[i] = result.status == EGPDEvalStatus::kValid ? w * result.d_eta : std::numeric_limits<double>::quiet_NaN();
+					}
+				}
+			}
 			else if (likelihood_type_ == "negative_binomial") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 				for (data_size_t i = 0; i < num_data_; ++i) {
@@ -10413,6 +10591,10 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
 				return FirstDerivLogLikTweedie(y_data, location_par);
+			}
+			else if (IsEGPDLikelihood()) {
+				const auto result = EvaluateEGPD(y_data, location_par);
+				return result.status == EGPDEvalStatus::kValid ? result.d_eta : std::numeric_limits<double>::quiet_NaN();
 			}
 			else if (likelihood_type_ == "negative_binomial") {
 				return(FirstDerivLogLikNegBin(y_data_int, location_par));
@@ -10911,6 +11093,17 @@ namespace GPBoost {
 						information_ll[i] = w * InformationLogLikTweedie(y_data[i], location_par[i]);
 					}
 				}
+				else if (IsEGPDLikelihood()) {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.;
+						if (w == 0.) information_ll[i] = 0.;
+						else {
+							const auto result = EvaluateEGPD(y_data[i], location_par[i]);
+							information_ll[i] = result.status == EGPDEvalStatus::kValid ? -w * result.d2_eta : std::numeric_limits<double>::quiet_NaN();
+						}
+					}
+				}
 				else if (likelihood_type_ == "negative_binomial") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -11128,6 +11321,10 @@ namespace GPBoost {
 				}
 				else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
 					return InformationLogLikTweedie(y_data, location_par);
+				}
+				else if (IsEGPDLikelihood()) {
+					const auto result = EvaluateEGPD(y_data, location_par);
+					return result.status == EGPDEvalStatus::kValid ? -result.d2_eta : std::numeric_limits<double>::quiet_NaN();
 				}
 				else if (likelihood_type_ == "negative_binomial") {
 					return(SecondDerivNegLogLikNegBin(y_data_int, location_par));
@@ -11762,6 +11959,17 @@ namespace GPBoost {
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.;
 						deriv_information_diag_loc_par[i] = w * EvaluateTweedieLocation(y_data[i], location_par[i], std::log(aux_pars_[0]), p).deriv_information_eta;
+					}
+				}
+				else if (IsEGPDLikelihood()) {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.;
+						if (w == 0.) deriv_information_diag_loc_par[i] = 0.;
+						else {
+							const auto result = EvaluateEGPD(y_data[i], location_par[i]);
+							deriv_information_diag_loc_par[i] = result.status == EGPDEvalStatus::kValid ? -w * result.d3_eta : std::numeric_limits<double>::quiet_NaN();
+						}
 					}
 				}
 				else if (likelihood_type_ == "negative_binomial") {
@@ -12404,6 +12612,19 @@ namespace GPBoost {
 				grad[0] = -tweedie_sum_d_log_a_rho_ + canonical_sum;
 				if (likelihood_type_ == "tweedie") grad[1] = -tweedie_sum_d_log_a_theta_ - power_sum;
 			}
+			else if (IsEGPDLikelihood()) {
+				for (int j = 0; j < num_aux_pars_estim_; ++j) {
+					double score_sum = 0.;
+#pragma omp parallel for schedule(static) reduction(+:score_sum) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.;
+						if (w == 0.) continue;
+						const auto result = EvaluateEGPD(y_data[i], location_par[i]);
+						if (result.status == EGPDEvalStatus::kValid) score_sum += w * result.d_aux_optimizer[j];
+					}
+					grad[j] = -score_sum;
+				}
+			}
 			else if (likelihood_type_ == "asymmetric_laplace") {
 				//gradient for scale parameter is calculated on the log-scale
 				double neg_log_grad = 0.;
@@ -12455,6 +12676,22 @@ namespace GPBoost {
 						else {
 							second_deriv_loc_aux_par[i] = -w * dp * location_par[i] * s;
 							deriv_information_aux_par[i] = w * dp * (s - location_par[i] * information);
+						}
+					}
+				}
+				else if (IsEGPDLikelihood()) {
+					CHECK(ind_aux_par >= 0 && ind_aux_par < num_aux_pars_estim_);
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.;
+						if (w == 0.) { second_deriv_loc_aux_par[i] = 0.; deriv_information_aux_par[i] = 0.; }
+						else {
+							const auto result = EvaluateEGPD(y_data[i], location_par[i]);
+							if (result.status == EGPDEvalStatus::kValid) {
+								second_deriv_loc_aux_par[i] = w * result.d_eta_aux_optimizer[ind_aux_par];
+								deriv_information_aux_par[i] = -w * result.d2_eta_aux_optimizer[ind_aux_par];
+							}
+							else { second_deriv_loc_aux_par[i] = std::numeric_limits<double>::quiet_NaN(); deriv_information_aux_par[i] = std::numeric_limits<double>::quiet_NaN(); }
 						}
 					}
 				}
@@ -13017,6 +13254,11 @@ namespace GPBoost {
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_logit") {
 				return GPBoost::sigmoid_stable(value);
 			}
+			else if (IsEGPDLikelihood()) {
+				const auto& moments = GetEGPDMoments();
+				if (!moments.mean_exists || moments.status != EGPDEvalStatus::kValid) Log::REFatal("CondMeanLikelihood: the EGPD response mean is unavailable ");
+				return moments.mean_unit_scale * std::exp(value);
+			}
 			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
@@ -13037,7 +13279,7 @@ namespace GPBoost {
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial") {
 				return GPBoost::sigmoid_stable(-value);
 			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return 1.;
@@ -13064,7 +13306,7 @@ namespace GPBoost {
 				//double exp_x = std::exp(value);
 				//return -exp_x / ((1. + exp_x) * (1. + exp_x));
 			}
-			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
+			else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || likelihood_type_ == "zero_inflated_gamma") {
 				return 0.;
@@ -13087,6 +13329,11 @@ namespace GPBoost {
 				double exp_min_val = std::exp(-value);
 				return exp_min_val / ((1. + exp_min_val) * (1. + exp_min_val)) / (1. + aux_pars_[0]);
 			}
+			else if (IsEGPDLikelihood()) {
+				const auto& moments = GetEGPDMoments();
+				if (!moments.variance_exists || moments.status != EGPDEvalStatus::kValid) Log::REFatal("CondVarLikelihood: the EGPD response variance is unavailable ");
+				return moments.variance_unit_scale * std::exp(2. * value);
+			}
 			else {
 				Log::REFatal("CondVarLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
 				return 0.;
@@ -13100,6 +13347,9 @@ namespace GPBoost {
 		inline double FirstDerivLogCondVarLikelihood(const double value) const {
 			if (likelihood_type_ == "beta") {
 				return (-1. + 2. / (1. + std::exp(value)));
+			}
+			else if (IsEGPDLikelihood()) {
+				return 2.;
 			}
 			else {
 				Log::REFatal("FirstDerivLogCondVarLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
@@ -13115,6 +13365,9 @@ namespace GPBoost {
 			if (likelihood_type_ == "beta") {
 				double exp_x = std::exp(value);
 				return -2 * exp_x / ((1. + exp_x) * (1. + exp_x));
+			}
+			else if (IsEGPDLikelihood()) {
+				return 0.;
 			}
 			else {
 				Log::REFatal("SecondDerivLogCondVarLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
@@ -14573,14 +14826,19 @@ namespace GPBoost {
 		double tweedie_cached_phi_ = std::numeric_limits<double>::quiet_NaN();
 		double tweedie_cached_p_ = std::numeric_limits<double>::quiet_NaN();
 		mutable bool tweedie_boundary_warning_issued_ = false;
+		/*! \brief Cache of the EGPD unit-scale moments and the aux-parameter snapshot they correspond to (see GetEGPDMoments) */
+		EGPDMoments egpd_moments_cache_;
+		std::array<double, kMaxEGPDAuxPars> egpd_moments_cache_aux_{};
+		bool egpd_moments_cache_initialized_ = false;
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "gaussian_latent", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit",
 			"poisson", "gamma", "tweedie", "tweedie_fixed_p", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "gaussian_heteroscedastic_fixed_and_random", "lognormal", "beta_binomial",
 			"zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
-			"asymmetric_laplace" };
+			"asymmetric_laplace", "gpd", "egpd_power", "egpd_power_mixture", "egpd_beta", "egpd_power_beta" };
 		/*! \brief List of supported covariance likelihoods */
 		const std::set<string_t> LIKELIHOODS_ONLY_LAPLACE_{ "binomial_probit", "binomial_logit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit", "gamma", "negative_binomial", "negative_binomial_1",
-			"beta", "beta_binomial", "tweedie", "tweedie_fixed_p", "zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma" };
+			"beta", "beta_binomial", "tweedie", "tweedie_fixed_p", "zero_inflated_gamma", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
+			"gpd", "egpd_power", "egpd_power_mixture", "egpd_beta", "egpd_power_beta" };
 		/*! \brief True if response variable has int type */
 		bool has_int_label_;
 		/*! \brief Number of additional parameters for likelihoods */

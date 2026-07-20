@@ -4072,16 +4072,16 @@ namespace GPBoost {
 							}
 							else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
 								if (num_gp_rand_coef_ > 0) {
-									Log::REFatal("The Vecchia approximation for latent process(es) is currently not implemented when having random coefficients");
+									Log::REFatal("The Vecchia approximation for latent process(es) is currently not implemented when having random coefficients ");
 								}
 								if (gp_approx_ == "full_scale_vecchia") {
-									Log::REFatal("The full-scale Vecchia approximation for latent process(es) is currently not implemented");
+									Log::REFatal("The full-scale Vecchia approximation for latent process(es) is currently not implemented ");
 								}
 								if (sample_posterior) {
-									Log::REFatal("Posterior sampling is not implemented for latent process(es).");
+									Log::REFatal("Posterior sampling is not implemented for latent process(es) ");
 								}
 								if (sample_prior) {
-									Log::REFatal("Prior sampling is not implemented for latent process(es).");
+									Log::REFatal("Prior sampling is not implemented for latent process(es) ");
 								}
 								CalcPredVecchiaLatentObservedFirstOrder(false,
 									re_comp_gp->coords_, gp_coords_mat_pred, num_neighbors_pred_, vecchia_neighbor_selection_,
@@ -4089,7 +4089,7 @@ namespace GPBoost {
 									predict_cov_mat, predict_var, predict_response, mean_pred_id[0], cov_mat_pred_vecchia_id, var_pred_id[0], save_distances_isotropic_cov_fct_Vecchia_, GPU_use_);
 							}
 							else {
-								Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
+								Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation ", vecchia_pred_type_.c_str());
 							}
 							if (predict_var || predict_cov_mat) {
 								// subtract nugget variance in case latent process is predicted
@@ -4154,7 +4154,7 @@ namespace GPBoost {
 											predict_cov_mat, predict_var_or_response, false, false, GPU_use_);
 									}
 									else {
-										Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation.", vecchia_pred_type_.c_str());
+										Log::REFatal("Prediction type '%s' is not supported for the Veccia approximation ", vecchia_pred_type_.c_str());
 									}
 								}
 								else if (gp_approx_ == "vecchia") {
@@ -4342,7 +4342,6 @@ namespace GPBoost {
 						}
 						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id[0], var_pred_id[0], mean_pred_id[1], var_pred_id[1], predict_var);
 					}
-
 					// Write on output
 					int idx_start_post_sample = 0;
 					if (!sample_prior) {

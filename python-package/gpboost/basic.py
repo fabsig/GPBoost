@@ -4272,6 +4272,18 @@ class GPModel(object):
 
                         The same Tweedie likelihood with p fixed through 'likelihood_additional_param'; only phi is estimated. The fixed power is mandatory and must satisfy 1.01 < p < 1.99.
 
+                    - "gpd": generalized Pareto likelihood for finite positive responses. The log scale parameter equals the latent predictor eta (sum of fixed and random effects), sigma = exp(eta), and the estimated auxiliary parameter is shape > -0.5.
+
+                    - "egpd_power": Naveau power-carrier extended generalized Pareto likelihood with auxiliary parameters shape and kappa.
+
+                    - "egpd_power_mixture": Naveau ordered power-mixture carrier with auxiliary parameters shape, kappa1, delta_kappa, and p.
+
+                    - "egpd_beta": Naveau beta-carrier extended generalized Pareto likelihood with auxiliary parameters shape and delta.
+
+                    - "egpd_power_beta": Naveau power-beta carrier with auxiliary parameters shape, delta, and kappa.
+
+                        All GPD/EGPD likelihoods require finite y > 0. Response means exist for shape < 1 and response variances for shape < 0.5.
+
                     - "lognormal":
                     
                         Log-normal likelihood with a log link function
