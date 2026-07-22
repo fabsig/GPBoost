@@ -7357,6 +7357,13 @@ namespace GPBoost {
 					}
 				}
 			}
+			if (likelihood_.size() > 0 && likelihood_[unique_clusters_[0]]->IsZeroInflatedCount()) {
+				// The full-scale-Vecchia approximation is not supported for zero-inflated counts.
+				if (gp_approx_ == "full_scale_vecchia") {
+					Log::REFatal("gp_approx = 'full_scale_vecchia' is not supported for the zero-inflated count likelihood '%s'. Use gp_approx = 'vecchia' (with matrix_inversion_method = 'cholesky'), gp_approx = 'none', or grouped random effects ",
+						(likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
+				}
+			}
 			CHECK((int)estimate_cov_par_index_.size() == num_cov_par_);
 			if (grouped_RE_and_vecchia_GP_) {
 				CHECK(num_gp_total_ == 1);//currently only for one GP implemented

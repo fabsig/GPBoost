@@ -149,6 +149,55 @@ test_that("GPD covers grouped, crossed, Vecchia, and combined latent models", {
   expect_equal(unname(pred_combined$var), c(1.8530712810, 1.4954773708, 1.6724384879), tolerance=1e-4)
 })
 
+test_that("EGPD carriers with multiple observations at the same location (Vecchia, Cholesky and iterative)", {
+  # Many observations share the same coordinates -> the use_random_effects_indices_of_data_ Vecchia path. Covered carriers:
+  # gpd (aux: shape) and egpd_beta (aux: shape, delta). GPD-distributed responses are simulated and both carriers are fitted.
+  n <- 80
+  x <- 2 * sim_rand_unif_egpd(n, 0.17) - 1
+  nu_rep <- 30L
+  coords_rep_u <- cbind(sim_rand_unif_egpd(nu_rep, 0.23), sim_rand_unif_egpd(nu_rep, 0.61))
+  rep_idx <- rep(seq_len(nu_rep), length.out = n)
+  coords_rep <- coords_rep_u[rep_idx, ]
+  gp_cov_rep <- 0.1 * exp(-as.matrix(dist(coords_rep_u)) / 0.3) + diag(1e-10, nu_rep)
+  gp_eff_rep <- drop(t(chol(gp_cov_rep)) %*% qnorm(sim_rand_unif_egpd(nu_rep, 0.79)))[rep_idx]
+  eta_rep <- 0.15 + 0.3 * x + gp_eff_rep
+  y_rep <- sim_gpd_lcg(eta_rep, 0.1, 0.47)
+  params_chol <- list(maxit = 25, delta_rel_conv = 1e-5, init_coef_aux_pars_from_iid_model = FALSE)
+  params_iter <- list(maxit = 20, delta_rel_conv = 1e-4, cg_preconditioner_type = "vadu", num_rand_vec_trace = 200,
+                      cg_max_num_it = 300, cg_max_num_it_tridiag = 300, cg_delta_conv = 1e-7, init_coef_aux_pars_from_iid_model = FALSE)
+  init_aux <- list(gpd = c(0.05), egpd_beta = c(0.05, 1))
+  expected <- list(
+    gpd = list(
+      cholesky = list(aux = -0.1755019, coef = c(0.52490354, 0.03620733), cov = c(0.23144346, 0.02691741), nll = 116.4854,
+                      mu = c(1.194444, 1.213371, 1.291308), var = c(1.452638, 1.495390, 1.625194)),
+      iterative = list(aux = -0.1787143, coef = c(0.52956126, 0.01912643), cov = c(0.23614061, 0.03923343), nll = 116.4977,
+                       mu = c(1.202196, 1.235888, 1.261303), var = c(1.488869, 1.572646, 1.516421))),
+    egpd_beta = list(
+      cholesky = list(aux = c(0.3092383, 1.2882979), coef = c(-0.3577017, 0.1644255), cov = c(0.19462495, 0.03643538), nll = 128.3454,
+                      mu = c(1.275096, 1.282584, 1.231061), var = c(3.348404, 3.360593, 3.130387)),
+      iterative = list(aux = c(0.3274186, 1.2220556), coef = c(-0.3850626, 0.1604101), cov = c(0.17193140, 0.06874916), nll = 128.4917,
+                       mu = c(1.325761, 1.322082, 1.256015), var = c(3.911032, 3.872978, 3.422747))))
+  for (lik in c("gpd", "egpd_beta")) {
+    for (method in c("cholesky", "iterative")) {
+      params <- if (method == "cholesky") params_chol else params_iter
+      params$init_aux_pars <- init_aux[[lik]]
+      fit <- fitGPModel(gp_coords = coords_rep, gp_approx = "vecchia", num_neighbors = 12, matrix_inversion_method = method,
+                        y = y_rep, X = cbind(1, x), likelihood = lik, params = params)
+      reference <- expected[[lik]][[method]]
+      tolerance <- if (method == "cholesky") 1e-3 else 1e-2
+      expect_equal(unname(fit$get_aux_pars()), reference$aux, tolerance = tolerance)
+      expect_equal(unname(fit$get_coef()), reference$coef, tolerance = tolerance)
+      expect_equal(unname(fit$get_cov_pars()), reference$cov, tolerance = tolerance)
+      expect_equal(fit$get_current_neg_log_likelihood(), reference$nll, tolerance = tolerance)
+      evaluated <- fit$neg_log_likelihood(unname(fit$get_cov_pars()), y_rep, fixed_effects = drop(cbind(1, x) %*% fit$get_coef()), aux_pars = unname(fit$get_aux_pars()))
+      expect_equal(evaluated, reference$nll, tolerance = tolerance)
+      pred <- predict(fit, gp_coords_pred = coords_rep_u[1:3, ], X_pred = cbind(1, x[1:3]), predict_response = TRUE, predict_var = TRUE)
+      expect_equal(unname(pred$mu), reference$mu, tolerance = tolerance)
+      expect_equal(unname(pred$var), reference$var, tolerance = tolerance * 5)
+    }
+  }
+})
+
 test_that("EGPD response and auxiliary parameter validation is explicit", {
   expect_error(fitGPModel(group_data=1:3, y=c(1, 0, 2), likelihood="gpd"), "y > 0", fixed=TRUE)
   expect_error(fitGPModel(group_data=1:3, y=c(1, Inf, 2), likelihood="egpd_power"), "NaN or Inf")

@@ -113,6 +113,38 @@ test_that("Tweedie likelihood covers grouped, crossed, Vecchia, and combined mod
   pred_combined <- predict(fit_combined, group_data_pred=group1[1:3], gp_coords_pred=coords[1:3, ], X_pred=cbind(1, x[1:3]), predict_response=TRUE, predict_var=TRUE)
   expect_equal(unname(pred_combined$mu), c(1.2644083, 1.1316402, 0.9778109), tolerance=tolerance_cholesky)
   expect_equal(unname(pred_combined$var), c(1.2368039, 1.0198414, 0.8369473), tolerance=tolerance_cholesky)
+
+  # Vecchia GP with multiple observations at the same locations (the use_random_effects_indices_of_data_ path), Cholesky and iterative
+  nu_rep <- 40L
+  coords_rep_u <- cbind(sim_rand_unif(nu_rep, 0.19), sim_rand_unif(nu_rep, 0.53))
+  rep_idx <- rep(seq_len(nu_rep), length.out=n)
+  coords_rep <- coords_rep_u[rep_idx, ]
+  gp_cov_rep <- 0.25 * exp(-as.matrix(dist(coords_rep_u)) / 0.25) + diag(1e-10, nu_rep)
+  gp_eff_rep <- drop(t(chol(gp_cov_rep)) %*% qnorm(sim_rand_unif(nu_rep, 0.61)))[rep_idx]
+  eta_rep <- 0.2 + 0.4 * x + gp_eff_rep
+  y_rep <- sim_tweedie(exp(eta_rep), phi, p, 0.37, 0.83)
+  expected_rep <- list(
+    cholesky=list(aux=c(0.6281294, 1.55), coef=c(0.1889439, 0.5301197), cov=c(0.1435919, 0.055215), nll=160.5661,
+                  mu=c(1.2088353, 1.3688655, 0.7609807), var=c(0.9736622, 1.1826878, 0.4815947)),
+    iterative=list(aux=c(0.6237624, 1.55), coef=c(0.1960408, 0.5337103), cov=c(0.1472277, 0.0660624), nll=160.5628,
+                   mu=c(1.2209169, 1.3826488, 0.7664825), var=c(0.9818941, 1.2062249, 0.4878628)))
+  for (method in c("cholesky", "iterative")) {
+    params <- if (method == "cholesky") params_chol else params_vecchia_iter
+    fit_rep <- fitGPModel(gp_coords=coords_rep, gp_approx="vecchia", num_neighbors=15, matrix_inversion_method=method, y=y_rep, X=cbind(1, x),
+                          likelihood="tweedie_fixed_p", likelihood_additional_param=p, params=params)
+    reference <- expected_rep[[method]]
+    tolerance <- if (method == "cholesky") tolerance_cholesky else tolerance_iterative
+    expect_equal(unname(fit_rep$get_aux_pars()), reference$aux, tolerance=tolerance)
+    expect_identical(unname(fit_rep$get_aux_pars())[2], p)
+    expect_equal(unname(fit_rep$get_coef()), reference$coef, tolerance=tolerance)
+    expect_equal(unname(fit_rep$get_cov_pars()), reference$cov, tolerance=tolerance)
+    expect_equal(fit_rep$get_current_neg_log_likelihood(), reference$nll, tolerance=tolerance)
+    evaluated_nll <- fit_rep$neg_log_likelihood(unname(fit_rep$get_cov_pars()), y_rep, fixed_effects=drop(cbind(1, x) %*% fit_rep$get_coef()), aux_pars=unname(fit_rep$get_aux_pars()))
+    expect_equal(evaluated_nll, reference$nll, tolerance=tolerance)
+    pred_rep <- predict(fit_rep, gp_coords_pred=coords_rep_u[1:3, ], X_pred=cbind(1, x[1:3]), predict_response=TRUE, predict_var=TRUE)
+    expect_equal(unname(pred_rep$mu), reference$mu, tolerance=tolerance)
+    expect_equal(unname(pred_rep$var), reference$var, tolerance=tolerance*5)
+  }
 })
 
 test_that("Tweedie response validation and fixed-power interface are explicit", {

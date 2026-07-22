@@ -285,18 +285,36 @@ interact = pdp.PDPInteract(model=bst, df=Xpd.copy(), model_features=Xpd.columns,
                              feature_names=['variable_0','variable_1'],
                              n_classes=0, predict_kwds={"ignore_gp_model": True, "pred_latent": True})
 fig, axes = interact.plot(engine='matplotlib', plot_type='contour')
+
 """
-# Note: the above code is for pdpbox version 0.3.0 or latter, for earlier versions use:
-# pdp_dist = pdp.pdp_isolate(model=bst, dataset=Xpd, model_features=Xpd.columns,
-#                            feature='variable_0', num_grid_points=50,
-#                            predict_kwds={"ignore_gp_model": True, "pred_latent": True})
-# ax = pdp.pdp_plot(pdp_dist, 'variable_0', plot_lines=True, frac_to_plot=0.1)
-# interact = pdp.pdp_interact(model=bst, dataset=Xpd, model_features=Xpd.columns,
-#                              features=['variable_0','variable_1'],
-#                              predict_kwds={"ignore_gp_model": True, "pred_latent": True})
-# pdp.pdp_interact_plot(interact, ['variable_0','variable_1'], x_quantile=True,
-#                       plot_type='contour', plot_pdp=True) # Ignore the error message 'got an unexpected keyword argument 'contour_label_fontsize'' in 'pdp_interact_plot'
+NOTE (July 2026): version 0.3.0 of pdpbox's PDPInteract.plot(plot_type='contour') may fail with
+  "QuadContourSet.set() got an unexpected keyword argument 'N'"
+Cause: pdpbox calls matplotlib's contourf(..., N=level), but recent
+  matplotlib (>=3.9) removed the 'N' kwarg (the correct one is 'levels').
+Fix: in <site-packages>/pdpbox/pdp_utils.py, method _pdp_contour_plot,
+  change 'N=level' to 'levels=level'.
+Alternatively, monkey-patch before plotting:
+  import matplotlib.axes
+  _orig = matplotlib.axes.Axes.contourf
+  def _cf(self, *a, **k):
+      if "N" in k: k["levels"] = k.pop("N")
+      return _orig(self, *a, **k)
+  matplotlib.axes.Axes.contourf = _cf
 """
+
+"""
+NOTE: the above code is for pdpbox version 0.3.0 or latter, for earlier versions use:
+pdp_dist = pdp.pdp_isolate(model=bst, dataset=Xpd, model_features=Xpd.columns,
+                           feature='variable_0', num_grid_points=50,
+                           predict_kwds={"ignore_gp_model": True, "pred_latent": True})
+ax = pdp.pdp_plot(pdp_dist, 'variable_0', plot_lines=True, frac_to_plot=0.1)
+interact = pdp.pdp_interact(model=bst, dataset=Xpd, model_features=Xpd.columns,
+                             features=['variable_0','variable_1'],
+                             predict_kwds={"ignore_gp_model": True, "pred_latent": True})
+pdp.pdp_interact_plot(interact, ['variable_0','variable_1'], x_quantile=True,
+                      plot_type='contour', plot_pdp=True) # Ignore the error message 'got an unexpected keyword argument 'contour_label_fontsize'' in 'pdp_interact_plot'
+"""
+
 # SHAP values and dependence plots (note: shap version>=0.36.0 is required)
 import shap
 shap_values = shap.TreeExplainer(bst).shap_values(X)

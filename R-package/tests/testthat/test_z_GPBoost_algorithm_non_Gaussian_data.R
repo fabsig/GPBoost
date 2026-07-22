@@ -1839,12 +1839,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         # Train model
         gp_model <- GPModel(group_data = group_data_train, likelihood = "negative_binomial", matrix_inversion_method = inv_method)
         gp_model$set_optim_params(params=OPTIM_PARAMS_GAMMA)
-        bst <- gpboost(data = dtrain,
-                       gp_model = gp_model,
-                       nrounds = 30,
-                       learning_rate = 0.1,
-                       max_depth = 6,
-                       min_data_in_leaf = 5,
+        bst <- gpboost(data = dtrain, gp_model = gp_model, nrounds = 30,
+                       learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5,
                        verbose = 0)
         cov_pars_est <- c(0.5539764, 0.4821519 )
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),tolerance_loc_2)
@@ -1865,9 +1861,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         gp_model$set_optim_params(params=params_shape)
         bst <- gpboost(data = dtrain,  gp_model = gp_model, nrounds = 30,
                        learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5, verbose = 0)
-        cov_pars_est <- c(0.5693555853, 0.4920194242)
+        cov_pars_est <- c(0.5701868, 0.4876992)
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),tolerance_loc_3)
-        expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-2.768791332  )),tolerance_loc_3)
+        expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-3.105610326 )),tolerance_loc_3)
       }
     })
     

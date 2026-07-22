@@ -4294,7 +4294,7 @@ class GPModel(object):
                     
                     - "t":
 
-                        t-distribution (e.g., for robust regression)
+                        t-distribution (e.g., for robust regression). The default approximation is Fisher-Laplace: Fisher information is used for both mode finding and determinant evaluation.
 
                     - "t_fix_df":
 
@@ -4305,15 +4305,35 @@ class GPModel(object):
                     - "quantile_regression" / "asymmetric_laplace" : an asymmetric Laplace likelihood for quantile regression, aliases: "asymmetric_laplace", "quantile_regression"
 
                         - The quantile must be supplied through 'likelihood_additional_param' and must be strictly between 0 and 1.
+                        - The default approximation is Fisher-Laplace: Fisher information is used for both mode finding and determinant evaluation.
+                        - Enable the triangular-kernel-curvature (TKC) approximation by appending "_triangular_kernel_curvature" or the shorthand "_tkc",
+                          for example, "quantile_regression_tkc" or "asymmetric_laplace_triangular_kernel_curvature".
                     
-                    - "hurdle_gamma":
-                    
-                        The hurdle (or zero-inflated) gamma likelihood is intended for nonnegative continuous response variables with an excess probability of exact zeros. It combines a point mass at zero with a gamma distribution for positive observations.
-                        The log-transformed conditional mean of the positive part equals the sum of fixed and random effects,
-                        E(y | y > 0) = mu = exp(F(X) + Zb), and the gamma rate parameter equals gamma / mu, where gamma is
-                        the shape parameter. Consequently, the mean of the entire response distribution is E(y) = (1-p0) * mu. 
-                        Both the zero-probability parameter 'p0' and the shape parameter 'gamma' are estimated.
-                        
+                    - "hurdle_<base>" and "zero_inflated_<base>":
+
+                        Two-part likelihoods for response variables with an excess probability 'p0' of exact zeros. They combine a point mass 'p0' at zero
+                        with a base distribution for the remaining mass '1 - p0'. Use "hurdle_<base>" when the base has support 'y > 0' (positive continuous
+                        responses) and "zero_inflated_<base>" for counts (where the base can itself generate additional zeros). In both cases 'exp(F(X) + Zb)'
+                        is the mean or scale parameter of the (non-structural) base component - not the unconditional response mean - so E(y) = (1 - p0) * base_mean.
+                        The structural-zero probability 'p0' is estimated jointly with the base auxiliary parameters. Currently supported variants:
+
+                        - Hurdle (positive continuous base): "hurdle_gamma" (aux: shape), "hurdle_lognormal" (aux: log_variance), and the extreme-value bases
+                          "hurdle_gpd", "hurdle_egpd_power", "hurdle_egpd_power_mixture", "hurdle_egpd_beta", "hurdle_egpd_power_beta" (same aux parameters as the
+                          corresponding non-hurdle GPD/EGPD likelihoods, plus 'p0'). The alias "zero_inflated_gamma" maps to "hurdle_gamma".
+
+                        - Zero-inflated counts (integer y >= 0): "zero_inflated_poisson", "zero_inflated_negative_binomial" (aux: shape; aka "zero_inflated_nbinom2"),
+                          "zero_inflated_negative_binomial_1" (aux: dispersion; aka "zero_inflated_nbinom1"). Unsuffixed names default to combined
+                          Fisher-Laplace: the exact score and Fisher information (quasi-Fisher information for NB1) are used for mode finding, while the
+                          observed Hessian and its derivatives are used for the determinant. "_laplace" uses observed-Hessian curvature throughout;
+                          "_fisher_laplace" uses Fisher (quasi-Fisher for NB1) information throughout.
+
+                        - For both the hurdle (positive continuous) and the zero-inflated count families, the structural-zero probability can alternatively be modeled
+                          as a logistic regression on the covariates by inserting "regression" after the family prefix in the likelihood name (e.g. "hurdle_regression_gamma",
+                          "hurdle_regression_lognormal", "hurdle_regression_gpd", "zero_inflated_regression_poisson", "zero_inflated_regression_negative_binomial"). The zero
+                          probability is then pi_i = 1 / (1 + exp(-x_i'alpha)), modeled through a second fixed-effects-only predictor that reuses the same design matrix X
+                          as the response model (the response predictor carries the random effects, the zero predictor does not). The estimated zero-model coefficients
+                          alpha are returned alongside the response-model coefficients.
+
 
                     - "zero_censored_power_transformed_normal":
                     
@@ -4326,8 +4346,9 @@ class GPModel(object):
                     - "zoctn":
 
                         Zero-one censored transformed normal likelihood for modeling data in [0,1] with point masses at 0 and 1 
-                        and a continuous distribution on (0,1). The model used is Z ~ N(mu, sigma^2), W = max(min(Z,1),0), and Y = g(W), 
-                        where g(x) = expit(a + b * logit(x)) for x in (0,1), mu = F(X) + Zb, and sigma, a, and b are (auxiliary) 
+                        and a continuous distribution on (0,1). The model used is T ~ N(mu, sigma^2), W = max(min(T,1),0), and Y = g(W),
+                        where g(x) = expit(a + b * logit(x)) for x in (0,1), mu = F(X) + Z_RE u, u denotes the random effects, Z_RE is their design matrix,
+                        and sigma, a, and b are (auxiliary)
                         parameters that are estimated. For more details on this model, see Qiang and Sigrist (2026)
 
                     - "zero_one_censored_transformed_beta":
@@ -4347,12 +4368,12 @@ class GPModel(object):
 
                     - "gaussian_heteroscedastic_fixed_and_random":
 
-                        Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation
+                        Gaussian likelihood where both the mean and the variance are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation. Fisher-Laplace is the default and currently the only implemented approximation.
 
                     - "gaussian_heteroscedastic":
 
                         Gaussian likelihood where the mean is related to fixed and random effects and the log-error variance is related to fixed effects only
-                        (covariates and / or the GPBoost tree-boosting algorithm; no random effects / GPs for the variance)
+                        (covariates and / or the GPBoost tree-boosting algorithm; no random effects / GPs for the variance). Fisher-Laplace is the default and currently the only implemented approximation.
 
                     - Note: the first lines in the `likelihoods source file <https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h>`__ contain additional comments on the specific parametrizations used
 
@@ -4752,6 +4773,7 @@ class GPModel(object):
                        }
         self.num_sets_re = 1
         self.num_sets_fe = 1
+        self.second_fe_block_is_zero_model = False
         self.iid_model = False
 
         if (model_file is not None) or (model_dict is not None):
@@ -4790,6 +4812,10 @@ class GPModel(object):
             if model_dict.get("cluster_ids") is not None:
                 cluster_ids = np.array(model_dict.get("cluster_ids"))
             likelihood = model_dict.get("likelihood")
+            self.second_fe_block_is_zero_model = (
+                isinstance(likelihood, str) and
+                (likelihood.startswith("hurdle_regression_") or likelihood.startswith("zero_inflated_regression_"))
+            )
             likelihood_additional_param = model_dict.get("likelihood_additional_param")
             matrix_inversion_method = model_dict.get("matrix_inversion_method")
             if model_dict.get("weights") is not None:
@@ -4830,7 +4856,8 @@ class GPModel(object):
                         else:
                             self.coef_names.append(X_names[ii])
                     if self.num_sets_fe == 2:
-                        self.coef_names = self.coef_names + [name + "_scale" for name in self.coef_names]
+                        suffix = "_zero" if self.second_fe_block_is_zero_model else "_scale"
+                        self.coef_names = self.coef_names + [name + suffix for name in self.coef_names]
             self.model_fitted = model_dict.get("model_fitted")
             if self.model_fitted:
                 self.current_neg_log_likelihood_loaded_from_file = model_dict.get("current_neg_log_likelihood")
@@ -4848,6 +4875,9 @@ class GPModel(object):
             self.num_sets_fe = 2
         elif likelihood == "gaussian_heteroscedastic":
             self.num_sets_fe = 2
+        elif likelihood.startswith("hurdle_regression_") or likelihood.startswith("zero_inflated_regression_"):
+            self.num_sets_fe = 2
+            self.second_fe_block_is_zero_model = True
         self.cov_par_names = []
 
         self.matrix_inversion_method = matrix_inversion_method
@@ -5576,7 +5606,8 @@ class GPModel(object):
             for ii in range(self.num_covariates):
                 self.coef_names.append("Covariate_" + str(ii + 1) if X_names is None else X_names[ii])
             if self.num_sets_fe == 2:
-                self.coef_names = self.coef_names + [name + "_scale" for name in self.coef_names]
+                suffix = "_zero" if self.second_fe_block_is_zero_model else "_scale"
+                self.coef_names = self.coef_names + [name + suffix for name in self.coef_names]
         else:
             self.has_covariates = False
         # Set parameters for optimizer
