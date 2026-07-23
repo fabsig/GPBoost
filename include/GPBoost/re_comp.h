@@ -1251,11 +1251,18 @@ namespace GPBoost {
 			if (!dist_saved_ && !coord_saved_) {
 				Log::REFatal("Cannot determine initial covariance parameters if neither distances nor coordinates are given");
 			}
+			// 'dist_' is a null shared_ptr when distances have not been saved (e.g. Vecchia approximations, which
+			// only save coordinates). Evaluating '*dist_' in that case is undefined behavior: it segfaults on macOS
+			// (null-pointer dereference at a small offset) and is reported by UBSAN on Linux ("reference binding to
+			// null pointer"). Only dereference 'dist_' when distances were actually saved; otherwise pass an empty
+			// matrix, which the callee ignores because it then uses the coordinates instead.
+			const T_mat dist_dummy;
+			const T_mat& dist_ref = dist_saved_ ? *dist_ : dist_dummy;
 			if (apply_tapering_ || apply_tapering_manually_) {
-				cov_function_->FindInitCovPar(*dist_, coords_, false, rng, pars, marginal_variance);
+				cov_function_->FindInitCovPar(dist_ref, coords_, false, rng, pars, marginal_variance);
 			}
 			else {
-				cov_function_->FindInitCovPar(*dist_, coords_, dist_saved_, rng, pars, marginal_variance);
+				cov_function_->FindInitCovPar(dist_ref, coords_, dist_saved_, rng, pars, marginal_variance);
 			}
 		}//end FindInitCovPar
 

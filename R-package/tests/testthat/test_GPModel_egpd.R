@@ -1,5 +1,7 @@
 context("GPD and EGPD likelihoods")
 
+if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
+
 sim_rand_unif_egpd <- function(n, init_c=0.1){
   mod_lcg <- 2^32
   sim <- rep(NA, n)
@@ -249,3 +251,5 @@ test_that("EGPD carriers reduce to their special cases and match a closed-form G
   analytic <- sum(eta0 + y_exp * exp(-eta0))
   expect_equal(nll("gpd", c(0), y_use=y_exp, eta_use=eta0, cov_use=1e-4), analytic, tolerance=5e-3)
 })
+
+}

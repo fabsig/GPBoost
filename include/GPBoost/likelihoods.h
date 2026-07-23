@@ -6491,8 +6491,8 @@ namespace GPBoost {
 			bool call_for_std_dev_coef,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
-			const den_mat_t chol_ip_cross_cov,
-			const chol_den_mat_t chol_fact_sigma_ip,
+			const den_mat_t& chol_ip_cross_cov,
+			const chol_den_mat_t& chol_fact_sigma_ip,
 			data_size_t cluster_i,
 			REModelTemplate<T_mat, T_chol>* re_model,
 			const std::vector<int>& estimate_cov_par_index,
@@ -8535,8 +8535,8 @@ namespace GPBoost {
 			bool CondObsOnly,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
-			const den_mat_t chol_ip_cross_cov,
-			const chol_den_mat_t chol_fact_sigma_ip,
+			const den_mat_t& chol_ip_cross_cov,
+			const chol_den_mat_t& chol_fact_sigma_ip,
 			int num_gp,
 			data_size_t cluster_i,
 			REModelTemplate<T_mat, T_chol>* re_model) {
@@ -9028,12 +9028,12 @@ namespace GPBoost {
 		* \brief Sampling from the Laplace-approximated posterior when using a Full-scale Vecchia approximation
 		*/
 		void Sample_Posterior_LaplaceApprox_FSVA(const den_mat_t* cross_cov,
-			const den_mat_t Bt_D_inv_B_cross_cov,
-			const den_mat_t sigma_woodbury,
-			const chol_den_mat_t chol_fact_sigma_woodbury,
-			const chol_den_mat_t chol_fact_sigma_ip,
-			const chol_den_mat_t chol_fact_sigma_woodbury_2,
-			const den_mat_t chol_ip_cross_cov,
+			const den_mat_t& Bt_D_inv_B_cross_cov,
+			const den_mat_t& sigma_woodbury,
+			const chol_den_mat_t& chol_fact_sigma_woodbury,
+			const chol_den_mat_t& chol_fact_sigma_ip,
+			const chol_den_mat_t& chol_fact_sigma_woodbury_2,
+			const den_mat_t& chol_ip_cross_cov,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_preconditioner_cluster_i) {
 			CHECK(num_sets_re_ == 1);
 			int num_ip = (int)(*cross_cov).cols();

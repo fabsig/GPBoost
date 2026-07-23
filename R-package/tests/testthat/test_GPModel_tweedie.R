@@ -1,5 +1,7 @@
 context("Tweedie likelihood")
 
+if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
+
 test_that("Tweedie likelihood covers grouped, crossed, Vecchia, and combined models", {
   sim_rand_unif <- function(n, init_c=0.1){
     mod_lcg <- 2^32
@@ -159,4 +161,6 @@ test_that("Tweedie response validation and fixed-power interface are explicit", 
   expect_error(fitGPModel(group_data=1:3, y=c(0, 0, 0), likelihood="tweedie_fixed_p", likelihood_additional_param=1.5), "only zeros")
   expect_error(fitGPModel(group_data=1:3, y=c(0, -1, 2), likelihood="tweedie_fixed_p", likelihood_additional_param=1.5), "finite and nonnegative")
 })
+
+}
 

@@ -230,6 +230,12 @@ R_version_string <- paste(
 r_version_arg <- sprintf("-DCMAKE_R_VERSION='%s'", R_version_string)
 cmake_args <- c(cmake_args, r_version_arg)
 
+# Pass R's home directory so that, on macOS, the build can link against R's own
+# libomp (see CMakeLists.txt) instead of a second copy (e.g. Homebrew's). Loading
+# two OpenMP runtimes into the same process aborts with "OMP: Error #15".
+r_home_arg <- sprintf("-DCMAKE_R_HOME='%s'", normalizePath(R.home(), winslash = "/"))
+cmake_args <- c(cmake_args, r_home_arg)
+
 # the checks below might already run `cmake -G`. If they do, set this flag
 # to TRUE to avoid re-running it later
 makefiles_already_generated <- FALSE

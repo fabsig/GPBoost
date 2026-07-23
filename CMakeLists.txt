@@ -189,6 +189,16 @@ if(USE_OPENMP)
             set(USE_OPENMP OFF CACHE BOOL "Enable OpenMP" FORCE)
         endif()
     endif()
+    # On macOS, when building the R package, force the OpenMP target to use R's OWN libomp so that
+    # gpboost shares a single OpenMP runtime with R and its dependencies (e.g. data.table, which
+    # also uses OpenMP). CMake's detection above may otherwise select a different libomp (e.g.
+    # Homebrew's). Loading two different libomp copies into one process aborts at load with
+    # "OMP: Error #15: multiple copies of the OpenMP runtime" and can segfault. The Homebrew
+    # headers/flags (Apple Clang ships no omp.h) are kept; only the linked library is swapped.
+    if(__BUILD_FOR_R AND APPLE AND TARGET OpenMP::OpenMP_CXX AND EXISTS "${CMAKE_R_HOME}/lib/libomp.dylib")
+        set_property(TARGET OpenMP::OpenMP_CXX PROPERTY INTERFACE_LINK_LIBRARIES "${CMAKE_R_HOME}/lib/libomp.dylib")
+        message(STATUS "Building for R: linking R's own libomp at ${CMAKE_R_HOME}/lib/libomp.dylib (single OpenMP runtime)")
+    endif()
 endif(USE_OPENMP)
 
 if(USE_GPU)
