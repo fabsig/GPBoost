@@ -12,6 +12,9 @@
 #include <GPBoost/CG_utils.h>
 #include <cmath>
 #include <algorithm> // copy
+#include <iterator> // std::inserter, std::begin, std::end
+#include <numeric> // std::iota
+#include <limits> // std::numeric_limits
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
 

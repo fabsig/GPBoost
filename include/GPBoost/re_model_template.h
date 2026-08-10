@@ -30,6 +30,8 @@
 #include <mutex>
 #include <vector>
 #include <algorithm>    // std::shuffle
+#include <iterator>     // std::inserter, std::begin, std::end
+#include <numeric>      // std::iota
 #include <chrono>  // only for debugging
 #include <thread> // only for debugging
 

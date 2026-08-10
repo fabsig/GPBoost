@@ -148,6 +148,7 @@
 
 #define _USE_MATH_DEFINES // for M_SQRT1_2 and M_PI
 #include <cmath>
+#include <limits>
 
 #include <GPBoost/type_defs.h>
 #include <GPBoost/sparse_matrix_utils.h>

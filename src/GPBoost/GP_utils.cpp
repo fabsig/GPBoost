@@ -10,6 +10,9 @@
 #include <GPBoost/utils.h>
 #include <GPBoost/sparse_matrix_utils.h>
 #include <cmath>
+#include <algorithm> // std::set_difference
+#include <iterator> // std::inserter, std::begin, std::end
+#include <numeric> // std::iota
 
 #ifdef USE_CUDA_GP
 #include <cuda_runtime.h>

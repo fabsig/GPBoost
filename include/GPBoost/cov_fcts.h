@@ -24,6 +24,7 @@
 #  include <version>   // collects all feature-test macros
 #endif
 #include <cmath>
+#include <functional>
 
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;

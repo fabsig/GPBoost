@@ -10,6 +10,7 @@
 #define GPB_UTILS_H_
 
 #include <cmath>
+#include <limits>
 #include <GPBoost/type_defs.h>
 #include <algorithm>    // std::max, std::sort
 #include <numeric>      // std::iota
