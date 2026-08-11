@@ -27,7 +27,7 @@ if os.path.isfile(os.path.join(dir_path, 'VERSION.txt')):
     with open(os.path.join(dir_path, 'VERSION.txt')) as version_file:
         __version__ = version_file.read().strip()
 
-__all__ = ['Dataset', 'Booster', 'CVBooster',
+__all__ = ['Dataset', 'Booster', 'CVBooster', 'GPModel', 'get_nested_categories',
            'register_logger',
            'train', 'cv', 'grid_search_tune_parameters', 'tune_pars_TPE_algorithm_optuna',
            'GPBoostModel', 'GPBoostRegressor', 'GPBoostClassifier', 'GPBoostRanker',

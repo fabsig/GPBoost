@@ -828,6 +828,9 @@ class GPBoostModel(_GPBoostModelBase):
 
     def __sklearn_tags__(self):
         tags = super().__sklearn_tags__()
+        # keep in sync with '_more_tags' above, which scikit-learn no longer calls as of 1.7
+        tags.input_tags.allow_nan = True
+        tags.input_tags.sparse = True
         return tags
 
 

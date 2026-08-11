@@ -6,7 +6,14 @@ try:
     from pandas import concat
     from pandas import Series as pd_Series
     from pandas import DataFrame as pd_DataFrame
-    from pandas.api.types import is_sparse as is_dtype_sparse
+    try:
+        from pandas import SparseDtype as _pd_SparseDtype
+
+        def is_dtype_sparse(dtype):
+            """Check whether a pandas dtype is a sparse dtype."""
+            return isinstance(dtype, _pd_SparseDtype)
+    except ImportError:  # pandas < 1.0
+        from pandas.api.types import is_sparse as is_dtype_sparse
     PANDAS_INSTALLED = True
 except ImportError:
     PANDAS_INSTALLED = False
@@ -79,6 +86,28 @@ try:
             check_consistent_length(sample_weight, X)
             return sample_weight
 
+    # scikit-learn renamed 'force_all_finite' to 'ensure_all_finite' in 1.6
+    # and removed the old name in 1.8
+    from inspect import signature as _signature
+    if 'ensure_all_finite' in _signature(check_array).parameters:
+        def _rename_all_finite_kwarg(kwargs):
+            if 'force_all_finite' in kwargs:
+                kwargs['ensure_all_finite'] = kwargs.pop('force_all_finite')
+            return kwargs
+    else:
+        def _rename_all_finite_kwarg(kwargs):
+            if 'ensure_all_finite' in kwargs:
+                kwargs['force_all_finite'] = kwargs.pop('ensure_all_finite')
+            return kwargs
+
+    def _GPBoostCheckXY(X, y, **kwargs):
+        """Call sklearn's check_X_y independently of the scikit-learn version."""
+        return check_X_y(X, y, **_rename_all_finite_kwarg(kwargs))
+
+    def _GPBoostCheckArray(array, **kwargs):
+        """Call sklearn's check_array independently of the scikit-learn version."""
+        return check_array(array, **_rename_all_finite_kwarg(kwargs))
+
     SKLEARN_INSTALLED = True
     _GPBoostModelBase = BaseEstimator
     _GPBoostRegressorBase = RegressorMixin
@@ -87,8 +116,6 @@ try:
     GPBoostNotFittedError = NotFittedError
     _GPBoostStratifiedKFold = StratifiedKFold
     _GPBoostGroupKFold = GroupKFold
-    _GPBoostCheckXY = check_X_y
-    _GPBoostCheckArray = check_array
     _GPBoostCheckSampleWeight = _check_sample_weight
     _GPBoostAssertAllFinite = assert_all_finite
     _GPBoostCheckClassificationTargets = check_classification_targets

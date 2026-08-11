@@ -843,7 +843,7 @@ class _InnerPredictor:
                 lines = f.readlines()
                 nrow = len(lines)
                 preds = [float(token) for line in lines for token in line.split('\t')]
-                preds = np.array(preds, dtype=np.float64, copy=False)
+                preds = np.asarray(preds, dtype=np.float64)
         elif isinstance(data, scipy.sparse.csr_matrix):
             preds, nrow = self.__pred_for_csr(data, start_iteration, num_iteration, predict_type)
         elif isinstance(data, scipy.sparse.csc_matrix):
