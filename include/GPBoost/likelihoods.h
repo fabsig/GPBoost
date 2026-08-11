@@ -1146,12 +1146,18 @@ namespace GPBoost {
 			return result;
 		}
 
-		// The EGPD unit-scale moments depend only on the auxiliary parameters, not on the location or the
-		// data, but they require numerical quadrature. Refresh this cache only in single-threaded parameter
-		// update paths; response-scale consumers can then safely read it concurrently.
+		// The EGPD unit-scale moments depend only on the BASE EGPD auxiliary parameters (those read by
+		// GetEGPDParams(), i.e. the leading NumEGPDBaseAuxPars() entries of aux_pars_), not on the location, the
+		// data, or a hurdle structural-zero parameter p0. They require numerical quadrature, so they are cached.
+		// Note: the cache key must be indexed by NumEGPDBaseAuxPars() and not by num_aux_pars_ -- the latter is 5
+		// for 'hurdle_egpd_power_mixture' and would write past the end of the kMaxEGPDAuxPars(=4)-sized array.
+		// Refresh this cache only in single-threaded parameter update paths; response-scale consumers can then
+		// safely read it concurrently.
 		bool EGPDMomentsCacheMatchesAuxPars() const {
 			if (!egpd_moments_cache_initialized_) return false;
-			for (int i = 0; i < num_aux_pars_; ++i) {
+			const int nb = NumEGPDBaseAuxPars();
+			CHECK(nb <= kMaxEGPDAuxPars);
+			for (int i = 0; i < nb; ++i) {
 				if (egpd_moments_cache_aux_[i] != aux_pars_[i]) return false;
 			}
 			return true;
@@ -1159,7 +1165,9 @@ namespace GPBoost {
 
 		void RefreshEGPDMomentsCache() {
 			egpd_moments_cache_ = CalcEGPDUnitScaleMoments(GetEGPDParams(), GetEGPDVariant());
-			for (int i = 0; i < num_aux_pars_; ++i) egpd_moments_cache_aux_[i] = aux_pars_[i];
+			const int nb = NumEGPDBaseAuxPars();
+			CHECK(nb <= kMaxEGPDAuxPars);
+			for (int i = 0; i < nb; ++i) egpd_moments_cache_aux_[i] = aux_pars_[i];
 			egpd_moments_cache_initialized_ = true;
 		}
 
@@ -15990,18 +15998,16 @@ namespace GPBoost {
 			//#endif
 						// the above can lead to compiler crashes on some compilers
 			std::sort(idx.begin(), idx.end(), cmp);
-			num_groups_partition_data_ = num_data_ / group_size_;// ceiling division
+			// Floor division, but always at least one group as long as there is data: any remaining points
+			// (in particular all of them when num_data_ < group_size_) are merged into the last group below
+			num_groups_partition_data_ = (num_data_ > 0) ? std::max<data_size_t>(1, num_data_ / group_size_) : 0;
 			group_indices_data_.resize(num_groups_partition_data_);
 #pragma omp parallel for schedule(static)
 			for (data_size_t g = 0; g < num_groups_partition_data_; ++g) {
 				const data_size_t first = g * group_size_;
-				const data_size_t last = first + group_size_;
+				//the last group takes all remaining points, so it can be larger than group_size_
+				const data_size_t last = (g == num_groups_partition_data_ - 1) ? num_data_ : (first + group_size_);
 				group_indices_data_[g].assign(idx.begin() + first, idx.begin() + last);
-			}
-			//merge remaing points to last group
-			if (num_data_ % group_size_ != 0) {
-				const data_size_t tail_first = num_groups_partition_data_ * group_size_;
-				group_indices_data_.back().insert(group_indices_data_.back().end(), idx.begin() + tail_first, idx.end());
 			}
 		}//end DetermineGroupsOrderedMode_Inner
 

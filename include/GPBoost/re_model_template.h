@@ -7910,9 +7910,7 @@ namespace GPBoost {
 			vec_t cov_pars;
 			MaybeKeepVarianceConstant(cov_pars_in, cov_pars);
 			CHECK(cov_pars.size() == num_cov_par_);
-			if (ind_set_re > 0) {
-				CHECK(ind_set_re <= num_sets_re_);
-			}
+			CHECK(ind_set_re >= 0 && ind_set_re < num_sets_re_);// 0-based index into the sets of REs / GPs
 			vec_t cov_pars_orig;
 			TransformBackCovPars(cov_pars, cov_pars_orig);
 			double tot_var = 0.;
