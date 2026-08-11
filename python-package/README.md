@@ -91,8 +91,11 @@ pip install --no-binary :all: gpboost
 ##### Build with MinGW-w64 on Windows
 
 ```sh
-pip install gpboost --install-option=--mingw
+set GPBOOST_MINGW=1
+pip install --no-binary :all: gpboost
 ```
+
+(in **PowerShell**, use ``$env:GPBOOST_MINGW = "1"`` instead of ``set GPBOOST_MINGW=1``)
 
 * [CMake](https://cmake.org/) and [MinGW-w64](https://www.mingw-w64.org/) should be installed first.
 
@@ -112,20 +115,33 @@ python -m pip install .
 ##### Build with MinGW-w64 on Windows
 
 ```sh
-python setup.py install --mingw
+set GPBOOST_MINGW=1
+python -m pip install .
 ```
+
+(in **PowerShell**, use ``$env:GPBOOST_MINGW = "1"`` instead of ``set GPBOOST_MINGW=1``)
+
+##### Build options
+
+Build options are set via environment variables of the form ``GPBOOST_<OPTION>``, e.g. ``GPBOOST_MINGW=1`` or ``GPBOOST_CUDAGP=1``. Note that ``python setup.py install --<option>`` and ``pip install --install-option=--<option>`` do **not** work anymore since these mechanisms have been removed from ``setuptools`` and ``pip``.
 
 ### Build CUDA Version
 
 ```sh
-python setup.py install --cudagp
+git clone --recursive https://github.com/fabsig/GPBoost.git
+cd GPBoost/python-package
+GPBOOST_CUDAGP=1 python -m pip install .
 ```
+
+``GPBOOST_CUDAGP=1`` (CMake option ``USE_CUDA_GP``) enables CUDA acceleration for the Gaussian process and mixed effects model parts, which is what the ``GPU_use = True`` argument of ``GPModel`` requires. This is different from ``GPBOOST_CUDA=1`` (CMake option ``USE_CUDA``), which enables the experimental CUDA version of the tree boosting part inherited from LightGBM.
 
 For **macOS** and **Windows** users, the CUDA version is not supported.
 
 **CUDA** library is needed: details for installation can be found in [Installation Guide](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst#Build-CUDA-Version).
 
-
 <!--  
-If you get any errors during installation or due to any other reasons, you may want to build a dynamic library from source by any method you prefer and then just run ``python setup.py install --precompile``.
+
+Note: if you have previously built the C++ library in the root directory of the repository (i.e., there is a ``lib_gpboost.so`` file there), it is recommended to delete it before building the Python package to make sure that the Python package uses its own library file.
+
+If you get any errors during installation or due to any other reasons, you may want to build a dynamic library from source by any method you prefer and then just run ``GPBOOST_PRECOMPILE=1 python -m pip install .``.
 -->

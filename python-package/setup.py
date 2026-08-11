@@ -43,6 +43,33 @@ GPBOOST_OPTIONS = [
     ('opencl-library=', None, 'Path to OpenCL library')
 ]
 
+def option_to_attr(option_name: str) -> str:
+    return option_name.rstrip('=').replace('-', '_')
+
+
+def option_to_env_var(option_name: str) -> str:
+    return 'GPBOOST_' + option_to_attr(option_name).upper()
+
+
+def apply_env_options(command) -> None:
+    """Set build options from environment variables.
+
+    Command line options of ``setup.py`` cannot be passed through ``pip install``
+    anymore (``--install-option`` was removed in pip 23.1 and ``setup.py install``
+    in setuptools 80), so every option in ``GPBOOST_OPTIONS`` can alternatively be
+    set via an environment variable, e.g. ``GPBOOST_CUDAGP=1`` for ``--cudagp``.
+    """
+    for option_name, _, _ in GPBOOST_OPTIONS:
+        value = environ.get(option_to_env_var(option_name))
+        if value is None:
+            continue
+        attr = option_to_attr(option_name)
+        if option_name.endswith('='):  # option taking a value
+            setattr(command, attr, value)
+        else:  # boolean flag
+            setattr(command, attr, value.strip().lower() in {'1', 'on', 'true', 'yes'})
+
+
 def find_lib() -> List[str]:
     libpath_py = CURRENT_DIR / 'gpboost' / 'libpath.py'
     libpath = {'__file__': libpath_py}
@@ -274,6 +301,7 @@ class CustomBuildPy(build_py):
         self.precompile = False
         self.nomp = False
         self.bit32 = False
+        apply_env_options(self)
 
     def run(self) -> None:
         if (8 * struct.calcsize("P")) != 64:
@@ -318,6 +346,7 @@ class CustomBdistWheel(bdist_wheel):
         self.precompile = False
         self.nomp = False
         self.bit32 = False
+        apply_env_options(self)
 
     def finalize_options(self) -> None:
         bdist_wheel.finalize_options(self)

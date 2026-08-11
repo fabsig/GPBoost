@@ -18,14 +18,18 @@ def find_lib_path():
         return []
 
     curr_path = os.path.dirname(os.path.abspath(os.path.expanduser(__file__)))
+    # Paths of the Python package itself come first, paths of the source repository
+    # last. Otherwise a stale library from a previous root-level CMake build would
+    # shadow the one that was just built for the Python package.
     dll_path = [curr_path,
-                os.path.join(curr_path, '../../'),
                 os.path.join(curr_path, 'compile'),
-                os.path.join(curr_path, '../compile'),
-                os.path.join(curr_path, '../../lib/')]
+                os.path.join(curr_path, '../compile')]
     if system() in ('Windows', 'Microsoft'):
         dll_path.append(os.path.join(curr_path, '../compile/Release/'))
         dll_path.append(os.path.join(curr_path, '../compile/windows/x64/DLL/'))
+    dll_path.append(os.path.join(curr_path, '../../'))
+    dll_path.append(os.path.join(curr_path, '../../lib/'))
+    if system() in ('Windows', 'Microsoft'):
         dll_path.append(os.path.join(curr_path, '../../Release/'))
         dll_path.append(os.path.join(curr_path, '../../windows/x64/DLL/'))
         dll_path = [os.path.join(p, 'lib_gpboost.dll') for p in dll_path]
