@@ -7,7 +7,7 @@ import os
 import gpboost as gpb
 import numpy as np
 import pytest
-from pkg_resources import parse_version
+from packaging.version import parse as parse_version
 from sklearn import __version__ as sk_version
 from sklearn.base import clone
 from sklearn.datasets import load_svmlight_file, make_multilabel_classification
