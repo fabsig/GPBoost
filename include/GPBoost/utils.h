@@ -9,6 +9,7 @@
 #ifndef GPB_UTILS_H_
 #define GPB_UTILS_H_
 
+#include <atomic>
 #include <cmath>
 #include <limits>
 #include <GPBoost/type_defs.h>
@@ -134,11 +135,11 @@ namespace GPBoost {
 	/*! \brief Get number of non-zero entries in a matrix */
 	template <class T_mat1, typename std::enable_if <std::is_same<sp_mat_t, T_mat1>::value ||
 		std::is_same<sp_mat_rm_t, T_mat1>::value>::type* = nullptr >
-	int GetNumberNonZeros(const T_mat1 M) {
+	int GetNumberNonZeros(const T_mat1& M) {
 		return((int)M.nonZeros());
 	};
 	template <class T_mat1, typename std::enable_if <std::is_same<den_mat_t, T_mat1>::value>::type* = nullptr >
-	int GetNumberNonZeros(const T_mat1 M) {
+	int GetNumberNonZeros(const T_mat1& M) {
 		return((int)M.cols() * M.rows());
 	};
 
@@ -152,25 +153,25 @@ namespace GPBoost {
 		}
 	};
 
-	/*! \brief Determines the number of unique values of a vector up to a certain number (max_unique_values) */
-	inline int NumberUniqueValues(const vec_t vec,
+	/*! \brief Determines the number of unique values of a vector up to a certain number (max_unique_values).
+	*		Note: once more than 'max_unique_values' unique values have been found, the remaining entries are skipped,
+	*		so the returned count is only meaningful as "<= max_unique_values" vs. "more than max_unique_values" */
+	inline int NumberUniqueValues(const vec_t& vec,
 		int max_unique_values) {
 		std::unordered_set<double> unique_values;
-		bool found_more_uniques_than_max = false;
+		//atomic: the early-exit flag is read by all threads while one of them writes it
+		std::atomic<bool> found_more_uniques_than_max(false);
 #pragma omp parallel
 		{
 			std::unordered_set<double> local_set;
 #pragma omp for
 			for (data_size_t i = 0; i < (data_size_t)vec.size(); ++i) {
-				if (found_more_uniques_than_max) {
+				if (found_more_uniques_than_max.load(std::memory_order_relaxed)) {
 					continue;
 				}
 				local_set.insert(vec[i]);
 				if ((int)local_set.size() > max_unique_values) {
-#pragma omp critical
-					{
-						found_more_uniques_than_max = true;
-					}
+					found_more_uniques_than_max.store(true, std::memory_order_relaxed);
 				}
 			}
 #pragma omp critical
@@ -237,15 +238,18 @@ namespace GPBoost {
 	};
 
 	/*!
-	* \brief Sorts vectors a and b of length n based on decreasing values of a (source: suplementary code of Finley et al., 2019, JASA)
+	* \brief Sorts vectors a and b of length n based on increasing values of a, i.e., a[0] <= a[1] <= ... <= a[n-1]
+	*		(insertion sort; source: suplementary code of Finley et al., 2019, JASA).
+	*		Note: callers rely on the largest value ending up last (e.g. nearest-neighbour searches that keep the k
+	*		smallest distances and compare new candidates against a[n-1])
 	* \param a Vector which determines sorting order and which is also ordered
 	* \param b Vector which is ordered based on order in a
 	* \param n Length of vectors
 	*/
 	template <typename T>
-	void SortVectorsDecreasing(T* a, int* b, int n) {
+	void SortVectorsIncreasing(T* a, int* b, int n) {
 		int j, k, l;
-		double v;
+		T v;
 		for (j = 1; j <= n - 1; j++) {
 			k = j;
 			while (k > 0 && a[k] < a[k - 1]) {
@@ -271,20 +275,39 @@ namespace GPBoost {
 		RNG_t& gen,
 		std::vector<int>& indices,
 		const std::vector<int>& exclude) {
+		//Maximal number of random attempts per position before falling back to a deterministic scan. Without such a
+		//bound, the retry below spins forever whenever every admissible value of 0:r is already drawn or excluded
+		const int max_random_attempts = 100;
 		for (int r = N - k; r < N; ++r) {
-			int v = std::uniform_int_distribution<>(0, r)(gen);
-			int new_draw;
-			if (std::find(indices.begin(), indices.end(), v) == indices.end()) {
-				new_draw = v;
+			bool drawn = false;
+			for (int attempt = 0; attempt < max_random_attempts && !drawn; ++attempt) {
+				int v = std::uniform_int_distribution<>(0, r)(gen);
+				int new_draw;
+				if (std::find(indices.begin(), indices.end(), v) == indices.end()) {
+					new_draw = v;
+				}
+				else {
+					new_draw = r;
+				}
+				if (std::find(exclude.begin(), exclude.end(), new_draw) == exclude.end()) {
+					indices.push_back(new_draw);
+					drawn = true;
+				}
 			}
-			else {
-				new_draw = r;
+			if (!drawn) {
+				//Deterministic fallback: take the first admissible value. This terminates and still yields a valid
+				//sample (distinct and non-excluded); it only gives up the uniformity of this particular draw
+				for (int cand = 0; cand <= r && !drawn; ++cand) {
+					if (std::find(indices.begin(), indices.end(), cand) == indices.end() &&
+						std::find(exclude.begin(), exclude.end(), cand) == exclude.end()) {
+						indices.push_back(cand);
+						drawn = true;
+					}
+				}
 			}
-			if (std::find(exclude.begin(), exclude.end(), new_draw) == exclude.end()) {
-				indices.push_back(new_draw);
-			}
-			else {
-				r--;
+			if (!drawn) {
+				Log::REFatal("SampleIntNoReplaceExcludeSomeIndices: cannot sample %d indices from 0:%d "
+					"as too many of them are excluded ", k, N - 1);
 			}
 		}
 	}//end SampleIntNoReplaceExcludeSomeIndices
@@ -340,11 +363,11 @@ namespace GPBoost {
 	/*! \brief Convert a dense matrix to a matrix of type T_mat (dense or sparse) */
 	template <class T_mat1, typename std::enable_if <std::is_same<sp_mat_t, T_mat1>::value ||
 		std::is_same<sp_mat_rm_t, T_mat1>::value>::type* = nullptr >
-	inline void ConvertTo_T_mat_FromDense(const den_mat_t M, T_mat1& Mout) {
+	inline void ConvertTo_T_mat_FromDense(const den_mat_t& M, T_mat1& Mout) {
 		Mout = M.sparseView();
 	};
 	template <class T_mat1, typename std::enable_if< std::is_same<den_mat_t, T_mat1>::value>::type* = nullptr  >
-	inline void ConvertTo_T_mat_FromDense(const den_mat_t M, T_mat1& Mout) {
+	inline void ConvertTo_T_mat_FromDense(const den_mat_t& M, T_mat1& Mout) {
 		Mout = M;
 	};
 

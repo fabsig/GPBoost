@@ -196,6 +196,9 @@ namespace GPBoost {
 		vec_t& distances) {
 #pragma omp parallel for schedule(static)
 		for (int i = 0; i < data.rows(); ++i) {
+			//Note: the plain (non-squared) distance is used deliberately. Textbook k-means++ samples proportionally
+			//to D^2, but for selecting inducing points of a GP the gentler D weighting gives a better spread
+			//(D^2 puts a lot of mass on outlying points), and it is what the stored test values are based on
 			double distance = (data(i, Eigen::all) - means(0, Eigen::all)).lpNorm<2>();
 			if (distances[i] > distance || distances[i] < 0) {
 				distances[i] = distance;
@@ -219,8 +222,15 @@ namespace GPBoost {
 			if (i > 0) {
 				closest_distance(means.block(i - 1, 0, 1, means.cols()), data, distances);
 			}
-			// Pick a random point weighted by the distance from existing means
-			v = std::discrete_distribution<>(distances.data(), distances.data() + distances.size())(gen);
+			// Pick a random point weighted by the distance from the existing means.
+			// If every point coincides with an already chosen mean, all weights are zero and
+			// 'std::discrete_distribution' is undefined -> fall back to a uniform draw
+			if (distances.sum() > 0.) {
+				v = std::discrete_distribution<>(distances.data(), distances.data() + distances.size())(gen);
+			}
+			else {
+				v = std::uniform_int_distribution<>(0, (int)data.rows() - 1)(gen);
+			}
 			means(i, Eigen::all) = data(v, Eigen::all);
 		}
 	}// end random_plusplus
@@ -423,23 +433,26 @@ namespace GPBoost {
 			//'c' counts the nodes created at this level, so the valid rows of 'means' are 0,...,c-1
 			den_mat_t means_c = means.topRows(c);
 			CHECK(means_c.rows() > 0);
-			for (int ii = 0; ii < data.rows(); ++ii) {
-				vec_t distances_jj(means_c.rows());
+			//Assign every data point to the closest node (Voronoi cell), which is refined at the next level.
+			//Parallelize over the data points (the large dimension) rather than opening a parallel region per point
+			std::vector<int> closest_node(data.rows());
 #pragma omp parallel for schedule(static)
-				for (int jj = 0; jj < means_c.rows(); ++jj) {
-					distances_jj[jj] = (means_c(jj, Eigen::all) - data(ii, Eigen::all)).lpNorm<2>();
+			for (int ii = 0; ii < (int)data.rows(); ++ii) {
+				double smallest_distance = (means_c(0, Eigen::all) - data(ii, Eigen::all)).lpNorm<2>();
+				int ind_min_c = 0;
+				for (int jj = 1; jj < (int)means_c.rows(); ++jj) {
+					double distance = (means_c(jj, Eigen::all) - data(ii, Eigen::all)).lpNorm<2>();
+					if (distance < smallest_distance) {
+						smallest_distance = distance;
+						ind_min_c = jj;
+					}
 				}
-				//assign the data point to the closest node (Voronoi cell), which is refined at the next level
-				Eigen::Index ind_min_c;
-				distances_jj.minCoeff(&ind_min_c);
-				int i = (int)ind_min_c;
-				if (covert_points.find(i) == covert_points.end()) {
-					std::vector<int> id_min_c{ ii };
-					covert_points.insert({ i, id_min_c });
-				}
-				else {
-					covert_points[i].push_back(ii);
-				}
+				closest_node[ii] = ind_min_c;
+			}
+			//Insert serially with increasing 'ii' so that every 'covert_points' entry stays sorted
+			//('std::set_difference' above requires sorted input ranges)
+			for (int ii = 0; ii < (int)data.rows(); ++ii) {
+				covert_points[closest_node[ii]].push_back(ii);
 			}
 			R_neighbors.clear();
 			// R_neighbors

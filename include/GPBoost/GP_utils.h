@@ -477,7 +477,8 @@ namespace GPBoost {
 	Calculate the smallest distance between each of the data points and any of the input means.
 	* \param means data cluster means that determine the inducing points
 	* \param data data coordinates
-	* \param[out] distances smallest distance between each of the data points and any of the input means
+	* \param[out] distances smallest distance between each of the data points and any of the input means.
+	*		Entries that are negative on input are treated as "not yet set" and are always overwritten
 	*/
 	void closest_distance(const den_mat_t& means,
 		const den_mat_t& data,

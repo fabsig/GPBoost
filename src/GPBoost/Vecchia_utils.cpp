@@ -285,7 +285,7 @@ namespace GPBoost {
 				if (Q_dist[jj] < nn_dist[k - 1]) {
 					nn_dist[k - 1] = Q_dist[jj];
 					neighbors_i[k - 1] = Q[jj];
-					SortVectorsDecreasing<double>(nn_dist.data(), neighbors_i.data(), k);
+					SortVectorsIncreasing<double>(nn_dist.data(), neighbors_i.data(), k);
 				}
 			}
 		}
@@ -302,7 +302,7 @@ namespace GPBoost {
 				if (dist_vect[0] < nn_dist[k - 1]) {
 					nn_dist[k - 1] = dist_vect[0];
 					neighbors_i[k - 1] = jj;
-					SortVectorsDecreasing<double>(nn_dist.data(), neighbors_i.data(), k);
+					SortVectorsIncreasing<double>(nn_dist.data(), neighbors_i.data(), k);
 				}
 			}
 		}
@@ -436,7 +436,7 @@ namespace GPBoost {
 					if (dist_vect[0] < nn_corr[num_neighbors - 1]) {
 						nn_corr[num_neighbors - 1] = dist_vect[0];
 						neighbors[i - start_at][num_neighbors - 1] = jj;
-						SortVectorsDecreasing<double>(nn_corr.data(), neighbors[i - start_at].data(), num_neighbors);
+						SortVectorsIncreasing<double>(nn_corr.data(), neighbors[i - start_at].data(), num_neighbors);
 					}
 				}
 				//Save distances between points and neighbors
@@ -597,7 +597,7 @@ namespace GPBoost {
 										if (dist_vect[0] < dist_of_neighbors_per_tree[ii][size_smaller_k - 1]) {
 											dist_of_neighbors_per_tree[ii][size_smaller_k - 1] = dist_vect[0];
 											neighbors_per_tree[ii][size_smaller_k - 1] = jj;
-											SortVectorsDecreasing<double>(dist_of_neighbors_per_tree[ii].data(), neighbors_per_tree[ii].data(), size_smaller_k);
+											SortVectorsIncreasing<double>(dist_of_neighbors_per_tree[ii].data(), neighbors_per_tree[ii].data(), size_smaller_k);
 										}
 									}
 								}
@@ -730,7 +730,7 @@ namespace GPBoost {
 					if (dist(i, j) < nn_dist[num_neighbors - 1]) {
 						nn_dist[num_neighbors - 1] = dist(i, j);
 						neighbors[i][num_neighbors - 1] = j;
-						SortVectorsDecreasing<double>(nn_dist.data(), neighbors[i].data(), num_neighbors);
+						SortVectorsIncreasing<double>(nn_dist.data(), neighbors[i].data(), num_neighbors);
 					}
 				}
 			}
@@ -840,7 +840,7 @@ namespace GPBoost {
 								if (dist < nn_corr[num_neighbors - 1]) {
 									nn_corr[num_neighbors - 1] = dist;
 									neighbors[i - start_at][num_neighbors - 1] = jj;
-									SortVectorsDecreasing<double>(nn_corr.data(), neighbors[i - start_at].data(), num_neighbors);
+									SortVectorsIncreasing<double>(nn_corr.data(), neighbors[i - start_at].data(), num_neighbors);
 								}
 							}
 							//Save distances between points and neighbors
@@ -1081,7 +1081,7 @@ namespace GPBoost {
 						if (sed < nn_square_dist[num_nearest_neighbors - 1]) {
 							nn_square_dist[num_nearest_neighbors - 1] = sed;
 							neighbors_i[num_nearest_neighbors - 1] = sort_sum[down_i];
-							SortVectorsDecreasing<double>(nn_square_dist.data(), neighbors_i.data(), num_nearest_neighbors);
+							SortVectorsIncreasing<double>(nn_square_dist.data(), neighbors_i.data(), num_nearest_neighbors);
 						}
 					}
 				}
@@ -1099,7 +1099,7 @@ namespace GPBoost {
 						if (sed < nn_square_dist[num_nearest_neighbors - 1]) {
 							nn_square_dist[num_nearest_neighbors - 1] = sed;
 							neighbors_i[num_nearest_neighbors - 1] = sort_sum[up_i];
-							SortVectorsDecreasing<double>(nn_square_dist.data(), neighbors_i.data(), num_nearest_neighbors);
+							SortVectorsIncreasing<double>(nn_square_dist.data(), neighbors_i.data(), num_nearest_neighbors);
 						}
 					}
 				}
