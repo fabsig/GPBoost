@@ -420,14 +420,19 @@ namespace GPBoost {
 
 			}
 			// Voroni
-			den_mat_t means_c = means.topRows(c + 1);
+			//'c' counts the nodes created at this level, so the valid rows of 'means' are 0,...,c-1
+			den_mat_t means_c = means.topRows(c);
+			CHECK(means_c.rows() > 0);
 			for (int ii = 0; ii < data.rows(); ++ii) {
-				int i = 0;
 				vec_t distances_jj(means_c.rows());
 #pragma omp parallel for schedule(static)
 				for (int jj = 0; jj < means_c.rows(); ++jj) {
 					distances_jj[jj] = (means_c(jj, Eigen::all) - data(ii, Eigen::all)).lpNorm<2>();
 				}
+				//assign the data point to the closest node (Voronoi cell), which is refined at the next level
+				Eigen::Index ind_min_c;
+				distances_jj.minCoeff(&ind_min_c);
+				int i = (int)ind_min_c;
 				if (covert_points.find(i) == covert_points.end()) {
 					std::vector<int> id_min_c{ ii };
 					covert_points.insert({ i, id_min_c });
