@@ -196,3 +196,6 @@ miktex*.zip
 # GraphViz artifacts
 *.gv
 *.gv.*
+# Output of helpers/check_compiler_warnings.sh
+compiler_warnings.log
+compiler_warnings_gpboost.log
