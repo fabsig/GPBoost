@@ -26,6 +26,8 @@
 #ifndef _optim_bfgs_HPP
 #define _optim_bfgs_HPP
 
+#include <limits>
+
 /**
  * @brief The Broyden–Fletcher–Goldfarb–Shanno (BFGS) Quasi-Newton Optimization Algorithm
  *
@@ -264,7 +266,7 @@ internal::bfgs_impl(
             settings_inp->opt_iter = iter - 1;
         }
         //redetermine neighbors for the Vecchia approximation if applicable
-        Vec_t gradient_dummy(2);//"hack" for redermininig neighbors for the Vecchia approximation
+        Vec_t gradient_dummy(3);//"hack" for redermininig neighbors for the Vecchia approximation
         gradient_dummy[0] = 1.00000000001e30;
         gradient_dummy[1] = -1.00000000001e30;
         if (has_converged) {
@@ -289,6 +291,7 @@ internal::bfgs_impl(
             (iter % 1000 == 0 && iter < 10000) || (iter % 10000 == 0)) && (iter != iter_max)) {
             gradient_dummy[0] = -1.00000000001e30;//"hack" for printing nice logging information
             gradient_dummy[1] = 1.00000000001e30;
+            gradient_dummy[2] = std::numeric_limits<double>::quiet_NaN();//no objective value is available here (in contrast to 'nm'), NaN indicates that it should not be printed
             opt_objfn(x, &gradient_dummy, opt_data);
         }
     }

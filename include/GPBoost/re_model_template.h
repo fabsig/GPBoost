@@ -1037,10 +1037,14 @@ namespace GPBoost {
 							optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
 					}
 					else if (optimizer_cov_pars_has_been_set_ && !coef_optimizer_has_been_set_) {
+						//'optimizer_cov_pars_' is assigned to 'optimizer_coef_' below -> check that 'optimizer_cov_pars_'
+						//	(and not 'optimizer_coef_', which is only the default here) is supported for the coefficients
 						if ((gauss_likelihood_ && SUPPORTED_OPTIM_COEF_GAUSS_.find(optimizer_cov_pars_) == SUPPORTED_OPTIM_COEF_GAUSS_.end()) ||
-							(!gauss_likelihood_ && SUPPORTED_OPTIM_COEF_NONGAUSS_.find(optimizer_coef_) == SUPPORTED_OPTIM_COEF_NONGAUSS_.end())) {
-							Log::REFatal("Cannot use optimizer_cov = '%s' when optimizer_coef = '%s' ",
-								optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
+							(!gauss_likelihood_ && SUPPORTED_OPTIM_COEF_NONGAUSS_.find(optimizer_cov_pars_) == SUPPORTED_OPTIM_COEF_NONGAUSS_.end())) {
+							Log::REFatal("optimizer_cov = '%s' is not supported for the linear regression coefficients, but the same optimizer is used "
+								"for the covariance parameters and the coefficients if one of them is an external optimizer. "
+								"Set 'optimizer_coef' explicitly (e.g. to 'gradient_descent') if you want to use optimizer_cov = '%s' ",
+								optimizer_cov_pars_.c_str(), optimizer_cov_pars_.c_str());
 						}
 						else {
 							Log::REDebug("'%s' is also used for estimating regression coefficients (optimizer_coef = '%s' is ignored) ",
@@ -1061,6 +1065,12 @@ namespace GPBoost {
 					}
 				}
 			}//end has_covariates_
+			// The reconciliation above can set 'optimizer_cov_pars_' = 'optimizer_coef_'. Since the two lists of supported
+			// optimizers can differ, this can result in an unsupported optimizer for the covariance parameters -> re-check here
+			if (SUPPORTED_OPTIM_COV_PAR_.find(optimizer_cov_pars_) == SUPPORTED_OPTIM_COV_PAR_.end()) {
+				Log::REFatal("Optimizer option '%s' is not supported for covariance parameters. Note that the same optimizer is used for "
+					"the covariance parameters and the regression coefficients if one of them is an external optimizer ", optimizer_cov_pars_.c_str());
+			}
 			if (optimizer_cov_pars_ == "fisher_scoring" || optimizer_cov_pars_ == "newton" || optimizer_cov_pars_ == "nelder_mead") {
 				bool has_cov_par_not_estimated = std::any_of(estimate_cov_par_index_.begin(), estimate_cov_par_index_.end(), [](int x) { return x <= 0; });
 				if (has_cov_par_not_estimated) {
@@ -1452,6 +1462,13 @@ namespace GPBoost {
 							else if (optimizer_coef_ == "wls") {// coordinate descent using generalized least squares (only for Gaussian data)
 								ProfileOutCoef(fixed_effects, fixed_effects_vec);
 								EvalNegLogLikelihoodOnlyUpdateFixedEffects(cov_aux_pars[0], neg_log_likelihood_after_lin_coef_update_);
+							}
+							else {
+								//Only 'gradient_descent' and 'wls' update the coefficients in this internal optimization loop
+								//	(external optimizers do not reach this code). Without this check, any other value of
+								//	'optimizer_coef_' would silently leave the coefficients at their initial values
+								Log::REFatal("optimizer_coef = '%s' is not supported for estimating the linear regression coefficients "
+									"when using optimizer_cov = '%s' ", optimizer_coef_.c_str(), optimizer_cov_pars_.c_str());
 							}
 							// Reset lr_cov_ to its initial values in case beta changes substantially after lr_cov_ is very small
 							bool mode_hast_just_been_recalculated = false;
@@ -3945,7 +3962,7 @@ namespace GPBoost {
 						std::vector<int> uniques;//unique points
 						std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
 						DetermineUniqueDuplicateCoordsFast(gp_coords_mat_pred, num_data_per_cluster_pred[cluster_i], uniques, unique_idx);
-#pragma omp for schedule(static)
+#pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
 							random_effects_indices_of_data_pred[i] = unique_idx[i];
 						}

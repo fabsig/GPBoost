@@ -1196,7 +1196,6 @@ namespace GPBoost {
 					for (int i = 0; i < num_rows; ++i) {
 						sigma_grad(i, i) = variance_on_the_diagonal_ ? 0. : GradientCovFct_(cm, cm_num_deriv, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,
 							ind_par, i, i, GetDistanceForGradientCovFct_(i, i, dist, coords_ptr, coords_pred_ptr), sigma, coords_ptr, coords_pred_ptr);
-						sigma_grad(i, i) = 0.;
 						for (int j = i + 1; j < num_cols; ++j) {
 							const double dist_ij = GetDistanceForGradientCovFct_(i, j, dist, coords_ptr, coords_pred_ptr);
 							sigma_grad(i, j) = GradientCovFct_(cm, cm_num_deriv, par_aux, shape, par_aux_up, par_aux_down, pars_2_up, pars_2_down,

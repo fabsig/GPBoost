@@ -13,6 +13,7 @@
 #include <GPBoost/cov_fcts.h>
 #include <GPBoost/GP_utils.h>
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -164,13 +165,13 @@ namespace GPBoost {
 			int num_data_pred,
 			const double* const rand_coef_data_pred) const {
 			if (this->is_rand_coef_) {
-#pragma omp for schedule(static)
+#pragma omp parallel for schedule(static)
 				for (int i = 0; i < num_data_pred; ++i) {
 					pred_uncond_var[i] += this->cov_pars_[0] * rand_coef_data_pred[i] * rand_coef_data_pred[i];
 				}
 			}
 			else {
-#pragma omp for schedule(static)
+#pragma omp parallel for schedule(static)
 				for (int i = 0; i < num_data_pred; ++i) {
 					pred_uncond_var[i] += this->cov_pars_[0];
 				}
@@ -874,7 +875,7 @@ namespace GPBoost {
 				num_random_effects_ = (data_size_t)coords_.rows();
 				if (save_random_effects_indices_of_data_and_no_Z) {// create random_effects_indices_of_data_
 					this->random_effects_indices_of_data_ = std::vector<data_size_t>(this->num_data_);
-#pragma omp for schedule(static)
+#pragma omp parallel for schedule(static)
 					for (int i = 0; i < this->num_data_; ++i) {
 						this->random_effects_indices_of_data_[i] = unique_idx[i];
 					}
@@ -1065,7 +1066,7 @@ namespace GPBoost {
 					coords_ = coords(uniques, Eigen::all);
 				}
 				this->random_effects_indices_of_data_ = std::vector<data_size_t>(this->num_data_);
-#pragma omp for schedule(static)
+#pragma omp parallel for schedule(static)
 				for (int i = 0; i < this->num_data_; ++i) {
 					this->random_effects_indices_of_data_[i] = unique_idx[i];
 				}
@@ -1704,36 +1705,31 @@ namespace GPBoost {
 		* \brief Checks whether there are duplicates in the coordinates
 		*/
 		bool HasDuplicatedCoords() const {
-			bool has_duplicates = false;
+			//atomic: the early-exit flag is read by all threads while one of them writes it
+			std::atomic<bool> has_duplicates(false);
 			if (this->has_Z_) {
 				has_duplicates = (this->Z_).cols() != (this->Z_).rows();
 			}
 			else if (dist_saved_) {
-#pragma omp for schedule(static)
+#pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)dist_->rows(); ++i) {
-					if (has_duplicates) continue;
+					if (has_duplicates.load(std::memory_order_relaxed)) continue;
 					for (int j = i + 1; j < (int)dist_->cols(); ++j) {
-						if (has_duplicates) continue;
+						if (has_duplicates.load(std::memory_order_relaxed)) continue;
 						if ((*dist_).coeffRef(i, j) < EPSILON_NUMBERS) {
-#pragma omp critical
-							{
-								has_duplicates = true;
-							}
+							has_duplicates.store(true, std::memory_order_relaxed);
 						}
 					}
 				}
 			}//end dist_saved_
 			else if (coord_saved_) {
-#pragma omp for schedule(static)
+#pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)coords_.rows(); ++i) {
-					if (has_duplicates) continue;
+					if (has_duplicates.load(std::memory_order_relaxed)) continue;
 					for (int j = i + 1; j < (int)coords_.rows(); ++j) {
-						if (has_duplicates) continue;
+						if (has_duplicates.load(std::memory_order_relaxed)) continue;
 						if ((coords_.row(i) - coords_.row(j)).norm() < EPSILON_NUMBERS) {
-#pragma omp critical
-							{
-								has_duplicates = true;
-							}
+							has_duplicates.store(true, std::memory_order_relaxed);
 						}
 					}
 				}
@@ -1741,7 +1737,7 @@ namespace GPBoost {
 			else {
 				Log::REFatal("HasDuplicatedCoords: not implemented if !has_Z_ && !dist_saved_ && !coord_saved_");
 			}
-			return(has_duplicates);
+			return(has_duplicates.load(std::memory_order_relaxed));
 		}
 
 		const den_mat_t& GetCoords() const {

@@ -128,7 +128,7 @@ namespace GPBoost {
 		if (should_print_trace) {//print trace information
 			Log::REDebug("GPModel: parameters after optimization iteration number %d: ", (int)objfn_data->settings_->opt_iter + 1);
 			re_model_templ_->PrintTraceParameters(cov_pars, beta, aux_pars_ptr, objfn_data->learn_cov_aux_pars_);
-			if ((*gradient).size() == 3) {
+			if ((*gradient).size() == 3 && std::isfinite((*gradient)[2])) {//NaN indicates that no objective function value is available (e.g., for 'bfgs')
 				if (re_model_templ_->IsGaussLikelihood()) {
 					Log::REDebug("Negative log-likelihood: %g", (*gradient)[2]);
 				}
@@ -141,7 +141,8 @@ namespace GPBoost {
 			if (should_redetermine_neighbors_vecchia) {
 				re_model_templ_->SetNumIter((int)objfn_data->settings_->opt_iter);
 				bool force_redermination = false;
-				if ((*gradient)[2] >= 1e30 && (*gradient)[2] <= 1.00000000002e30){//hack to indicate that convergece has been achieved and nearest neighbors in Vecchia approximation should potentially been redetermined
+				//note: the size check is required since this function also accepts a 'gradient' of length 2 (see above)
+				if ((*gradient).size() == 3 && (*gradient)[2] >= 1e30 && (*gradient)[2] <= 1.00000000002e30){//hack to indicate that convergece has been achieved and nearest neighbors in Vecchia approximation should potentially been redetermined
 					force_redermination = true;
 				}
 				if (re_model_templ_->ShouldRedetermineNearestNeighborsVecchiaInducingPointsFITC(force_redermination)) {
