@@ -2303,12 +2303,12 @@ namespace GPBoost {
 				double sigma_init = 1.0;
 				CHECK(W0 > 0.0 && W0 < W);
 				double p0 = std::max(std::min(W0 / W, 1.0 - eps_p), eps_p);
-				const double a = GPBoost::normalQF(p0); // a = Phi^{-1}(p0)
-				if (std::fabs(a) > 1e-6) {
-					sigma_init = std::fabs(mu_pooled / a);
+				const double a_p0 = GPBoost::normalQF(p0); // a_p0 = Phi^{-1}(p0)
+				if (std::fabs(a_p0) > 1e-6) {
+					sigma_init = std::fabs(mu_pooled / a_p0);
 				}
 				else {
-					sigma_init = 1.0; // avoid division by near-zero a
+					sigma_init = 1.0; // avoid division by near-zero a_p0
 				}
 				sigma_init = std::max(sigma_init, eps_sigma);
 				// Helpers for tau, E[X|X>0], Var[X|X>0] at given (mu, sigma)
@@ -4484,7 +4484,7 @@ namespace GPBoost {
 			const sp_mat_t& D_inv,
 			const std::vector<sp_mat_t>& B_grad,
 			const std::vector<sp_mat_t>& D_grad,
-			std::vector<data_size_t> cum_num_rand_eff_cluster_i,
+			const std::vector<data_size_t>& cum_num_rand_eff_cluster_i,
 			bool calc_cov_grad,
 			bool calc_F_grad,
 			bool calc_aux_par_grad,
@@ -5266,8 +5266,8 @@ namespace GPBoost {
 			bool call_for_std_dev_coef,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_preconditioner_cluster_i,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_preconditioner_cluster_i,
-			const den_mat_t chol_ip_cross_cov_preconditioner,
-			const chol_den_mat_t chol_fact_sigma_ip_preconditioner,
+			const den_mat_t& chol_ip_cross_cov_preconditioner,
+			const chol_den_mat_t& chol_fact_sigma_ip_preconditioner,
 			const std::vector<int>& estimate_cov_par_index,
 			bool GPU_use) {
 			const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
@@ -9085,7 +9085,7 @@ namespace GPBoost {
 				vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
 				vec_t D_sqrt = D_inv_rm_.diagonal().cwiseInverse().cwiseSqrt();
 				vec_t W_D_inv, W_D_inv_inv, information_ll_inv;
-				const den_mat_t* cross_cov_preconditioner;
+				const den_mat_t* cross_cov_preconditioner = nullptr;
 				if (cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") {
 					W_D_inv = (information_ll_ + D_inv_rm_.diagonal());
 					W_D_inv_inv = W_D_inv.cwiseInverse();

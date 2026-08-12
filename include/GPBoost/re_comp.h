@@ -1758,7 +1758,7 @@ namespace GPBoost {
 		* \param ind Index vector of data points
 		* \param[out] coords_sub Subset of coordinates
 		*/
-		void GetSubSetCoords(std::vector<int> ind, 
+		void GetSubSetCoords(const std::vector<int>& ind, 
 			den_mat_t& coords_sub) const {
 			coords_sub = coords_(ind, Eigen::all);
 		}

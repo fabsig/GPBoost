@@ -7146,7 +7146,7 @@ namespace GPBoost {
 		* \brief Initialize matrices Z_ and related quantities used, e.g. when use_woodbury_identity_==true
 		*/
 		void InitializeMatricesForUseWoodburyIdentity() {
-			CHECK(use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_ || grouped_RE_and_vecchia_GP_);
+			CHECK((use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) || grouped_RE_and_vecchia_GP_);
 			Zt_ = std::map<data_size_t, sp_mat_t>();
 			cum_num_rand_eff_ = std::map<data_size_t, std::vector<data_size_t>>();
 			if (gauss_likelihood_) {
