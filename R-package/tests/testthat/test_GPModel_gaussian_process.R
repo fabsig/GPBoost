@@ -7,8 +7,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   TOLERANCE_LOOSE <- 1E-2
   TOLERANCE_MEDIUM <- 1e-3
   TOLERANCE_STRICT <- 1E-5
-  SKIP_BESSEL_COV_TESTS_ON_MACOS <- identical(Sys.info()[["sysname"]], "Darwin") &&
-    Sys.getenv("GPBOOST_RUN_BESSEL_COV_TESTS_ON_MACOS") != "true"
+  # Covariance functions with a general (non-fixed) smoothness need 'std::cyl_bessel_k', which is a C++17
+  # feature that is not provided by every standard library (in particular not by libc++, which is used by
+  # clang on macOS and in the clang sanitizer containers of R-hub / CRAN)
+  SKIP_BESSEL_COV_TESTS <- !gpboost:::has_std_cyl_bessel_k() &&
+    Sys.getenv("GPBOOST_RUN_BESSEL_COV_TESTS") != "true"
   
   DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent",
                                lr_cov = 0.1, use_nesterov_acc = TRUE,
@@ -89,7 +92,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 0.5)
     nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
     expect_lt(abs(nll - nll_exp), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 0.5 + 1E-6)
       nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
       expect_lt(abs(nll - nll_exp), TOLERANCE_STRICT)
@@ -102,7 +105,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
     nll_exp_mat <- 141.3502172
     expect_lt(abs(nll - nll_exp_mat), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-6)
       nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
       expect_lt(abs(nll - nll_exp_mat), TOLERANCE_MEDIUM)
@@ -115,7 +118,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
     nll_exp_mat <- 158.1111626
     expect_lt(abs(nll - nll_exp_mat), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 2.5 + 1E-6)
       nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
       expect_lt(abs(nll - nll_exp_mat), TOLERANCE_MEDIUM)
@@ -359,7 +362,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
                                              cov_fct_shape = 0.5 + 1e-6,
                                              y = y, params = params) , file='NUL')
@@ -383,7 +386,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), num_it_other)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
                                              cov_fct_shape = 1.5 - 1E-6, y = y, params = params_15) , file='NUL')
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_STRICT)
@@ -403,7 +406,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), num_it_other)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
                                              cov_fct_shape = 2.5 + 1E-3, y = y, params = params_25) , file='NUL')
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_MEDIUM)
@@ -420,7 +423,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 11)
     # Matern with shape estimated
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       params = OPTIM_PARAMS_BFGS
       params$init_cov_pars <- c(init_cov_pars_15, 1.5)
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern_estimate_shape",
@@ -1984,7 +1987,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
     # General shape
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-4,
                                              gp_approx = "tapering", cov_fct_taper_shape = 1, cov_fct_taper_range = 1e6,
                                              y = y, X = X,
@@ -2776,7 +2779,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll_1_5_exp <- 288.6072086
     expect_lt(abs(nll-nll_1_5_exp),TOLERANCE_STRICT)
     # General shape
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time", cov_fct_shape = 1.5 + 1E-5)
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
       expect_lt(abs(nll-nll_1_5_exp),TOLERANCE_MEDIUM)
@@ -2793,7 +2796,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), nrounds_1_5)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_1_5), TOLERANCE_STRICT)
     # General shape
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time",
                              cov_fct_shape = 1.5 + 1E-4, y = y, X = X, params = params_ST_15)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_1_5)),TOLERANCE_MEDIUM)
@@ -2982,7 +2985,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_mu <- c(1.965547011, 1.856092042, 2.429890300)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
 
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       cov_pars_nll_gneiting <- c(0.1,1,0.2,2,0.5,1.5,0.5,2)
       nll_exp <- 604.779654987741
       # Evaluate negative log-likelihood
@@ -3179,7 +3182,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     nll_1_5_exp <- 276.2341252
     expect_lt(abs(nll-nll_1_5_exp),TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       gp_model <- GPModel(gp_coords = coords_ARD, cov_function = "matern_ard", cov_fct_shape = 1.5 + 1E-5)
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
       expect_lt(abs(nll-nll_1_5_exp),TOLERANCE_MEDIUM)
@@ -3196,7 +3199,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), nrounds_1_5)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_1_5), TOLERANCE_STRICT)
     # General shape
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       gp_model <- fitGPModel(gp_coords = coords_ARD, cov_function = "matern_ard", 
                              cov_fct_shape = 1.5 - 1E-4, y = y, X = X, params = params_ARD_15)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_1_5)),TOLERANCE_MEDIUM)
@@ -3227,7 +3230,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Matern with shape estimated
     params_ARD_est_shape <- OPTIM_PARAMS_BFGS
     params_ARD_est_shape$init_cov_pars <- c(init_cov_pars_ARD,1.5)
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       capture.output(     gp_model <- fitGPModel(gp_coords = coords_ARD, cov_function = "matern_ard_estimate_shape",
                                                  y = y, X = X, params = params_ARD_est_shape), 
                       file='NUL')
@@ -3299,7 +3302,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
     if (Sys.getenv("GPBOOST_ADDITIONAL_SLOW_TESTS") == "GPBOOST_ADDITIONAL_SLOW_TESTS" &&
-        !SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+        !SKIP_BESSEL_COV_TESTS) {
       # Estimate shape, slow test
       capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, cov_function = "matern_ard_estimate_shape", cov_fct_shape = 0.5,
                                              gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none",
@@ -3692,7 +3695,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov_nn[c(1,5,9)])),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),1)
     # Estimate shape
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, cov_function = "matern_ard_estimate_shape", 
                                              gp_approx = "fitc", num_ind_points = 10, 
                                              ind_points_selection = "kmeans++",#"random" crashes for some reason

@@ -889,6 +889,17 @@ GPBOOST_C_EXPORT SEXP GPB_GetNumIt_R(
 );
 
 /*!
+* \brief Check whether the library has been compiled with support for the modified Bessel function
+*   of the second kind 'std::cyl_bessel_k' (a C++17 feature that is, e.g., not provided by libc++).
+*   Note: You should pre-allocate memory for has_bessel (length = 1)
+* \param[out] has_bessel 1 if 'std::cyl_bessel_k' is available, 0 otherwise
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT SEXP GPB_HasStdCylBesselK_R(
+	SEXP has_bessel
+);
+
+/*!
 * \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
 * \param handle Handle of REModel
 * \param num_data_pred Number of data points for which predictions are made

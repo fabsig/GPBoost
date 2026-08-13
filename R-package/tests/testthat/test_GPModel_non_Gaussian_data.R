@@ -8,8 +8,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   TOLERANCE_MEDIUM <- 1e-3
   TOLERANCE_STRICT_LOWER <- 1E-5
   TOLERANCE_STRICT <- 1E-6
-  SKIP_BESSEL_COV_TESTS_ON_MACOS <- identical(Sys.info()[["sysname"]], "Darwin") &&
-    Sys.getenv("GPBOOST_RUN_BESSEL_COV_TESTS_ON_MACOS") != "true"
+  # Covariance functions with a general (non-fixed) smoothness need 'std::cyl_bessel_k', which is a C++17
+  # feature that is not provided by every standard library (in particular not by libc++, which is used by
+  # clang on macOS and in the clang sanitizer containers of R-hub / CRAN)
+  SKIP_BESSEL_COV_TESTS <- !gpboost:::has_std_cyl_bessel_k() &&
+    Sys.getenv("GPBOOST_RUN_BESSEL_COV_TESTS") != "true"
 
   DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent", optimizer_coef = "gradient_descent",
                                use_nesterov_acc = TRUE, lr_cov=0.1, lr_coef = 0.1, maxit = 1000,
@@ -448,7 +451,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
 
     # Matern with shape estimated
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       params = OPTIM_PARAMS_BFGS
       params$init_cov_pars <- c(1,mean(dist(coords))/3,1.5)
       params$maxit=10
@@ -1702,7 +1705,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test)
     expect_lt(sum(abs(pred$mu-mu_matern)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-var_matern)),TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-4,
                                              likelihood = "bernoulli_probit", gp_approx = "none",
                                              y = y, X = X, params = params), file='NUL')
@@ -1731,7 +1734,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                     predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test) , file='NUL')
     expect_lt(sum(abs(pred$mu-mu_matern)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-var_matern)),TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-4,
                                              likelihood = "bernoulli_probit", gp_approx = "vecchia", num_neighbors = n-1,
                                              y = y, X = X, params = params, matrix_inversion_method = "cholesky"), file='NUL')
@@ -3526,7 +3529,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Matern with shape estimated
     params_ARD_est_shape <- OPTIM_PARAMS_BFGS
     params_ARD_est_shape$init_cov_pars <- c(init_cov_pars,1.5)
-    if (!SKIP_BESSEL_COV_TESTS_ON_MACOS) {
+    if (!SKIP_BESSEL_COV_TESTS) {
       capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard_estimate_shape",
                                              y = y, X = X, params = params_ARD_est_shape),
                       file='NUL')

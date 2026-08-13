@@ -256,3 +256,21 @@ gpb.check.wrapper_param <- function(main_param_name, params, alternative_kwarg_v
   params[[main_param_name]] <- alternative_kwarg_value
   return(params)
 }
+
+#' @title Check whether the modified Bessel function of the second kind is available
+#' @description Checks whether the GPBoost library has been compiled with support for
+#'              \code{std::cyl_bessel_k}. This is a C++17 feature which is not provided by every
+#'              standard library; in particular, libc++ (used by clang on macOS and in the clang
+#'              sanitizer containers of R-hub and CRAN) does not provide it. Covariance functions
+#'              with a general (i.e. not fixed to 0.5, 1.5, or 2.5) smoothness parameter require it.
+#' @return A \code{logical} of length one: \code{TRUE} if \code{std::cyl_bessel_k} is available
+#' @keywords internal
+#' @noRd
+has_std_cyl_bessel_k <- function() {
+  has_bessel <- integer(1L)
+  .Call(
+    GPB_HasStdCylBesselK_R
+    , has_bessel
+  )
+  return(has_bessel[1L] == 1L)
+}

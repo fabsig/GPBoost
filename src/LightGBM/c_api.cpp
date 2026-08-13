@@ -2915,6 +2915,12 @@ int GPB_GetNumIt(REModelHandle handle,
 	API_END();
 }
 
+int GPB_HasStdCylBesselK(int* has_bessel) {
+	API_BEGIN();
+	has_bessel[0] = HAS_STD_CYL_BESSEL_K;
+	API_END();
+}
+
 int GPB_SetPredictionData(REModelHandle handle,
 	int32_t num_data_pred,
 	const int32_t* cluster_ids_data_pred,

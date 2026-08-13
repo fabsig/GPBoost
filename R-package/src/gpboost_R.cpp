@@ -1102,6 +1102,13 @@ SEXP GPB_GetNumIt_R(SEXP handle,
 	return R_NilValue;
 }
 
+SEXP GPB_HasStdCylBesselK_R(SEXP has_bessel) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_HasStdCylBesselK(R_INT_PTR(has_bessel)));
+	R_API_END();
+	return R_NilValue;
+}
+
 SEXP GPB_SetPredictionData_R(SEXP handle,
 	SEXP num_data_pred,
 	SEXP cluster_ids_data_pred,
@@ -1429,6 +1436,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetInitCovPar_R"              , (DL_FUNC)&GPB_GetInitCovPar_R              , 2},
   {"GPB_GetCoef_R"                    , (DL_FUNC)&GPB_GetCoef_R                    , 3},
   {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 2},
+  {"GPB_HasStdCylBesselK_R"           , (DL_FUNC)&GPB_HasStdCylBesselK_R           , 1},
   {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 13},
   {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 21},
   {"GPB_PredictREModelTrainingDataRandomEffects_R", (DL_FUNC)&GPB_PredictREModelTrainingDataRandomEffects_R, 6},

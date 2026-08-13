@@ -1568,6 +1568,17 @@ GPBOOST_C_EXPORT int GPB_GetNumIt(REModelHandle handle,
     int* num_it);
 
 /*!
+* \brief Check whether the library has been compiled with support for the modified Bessel function
+*   of the second kind 'std::cyl_bessel_k'. This is a C++17 feature which is, e.g., not provided by
+*   libc++ (the standard library used by clang on macOS and in the clang sanitizer containers).
+*   Covariance functions with a general (non-fixed) smoothness require it.
+*   Note: You should pre-allocate memory for has_bessel (length = 1)
+* \param[out] has_bessel 1 if 'std::cyl_bessel_k' is available, 0 otherwise
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_HasStdCylBesselK(int* has_bessel);
+
+/*!
 * \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
 * \param handle Handle of REModel
 * \param num_data_pred Number of data points for which predictions are made
