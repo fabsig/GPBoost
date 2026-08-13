@@ -135,7 +135,9 @@ fi
 
 # The full compiler output is kept in this file so that it can still be inspected after the run
 # (in particular when there are many warnings and they scroll out of the terminal)
-LOG_FILE="${REPO_ROOT}/compiler_warnings.log"
+LOG_DIR="${REPO_ROOT}/temp"
+mkdir -p "${LOG_DIR}"
+LOG_FILE="${LOG_DIR}/compiler_warnings.log"
 : > "${LOG_FILE}"
 
 for SRC in ${SOURCES}; do
@@ -157,7 +159,7 @@ if grep -qE '(^|[^-])error:|fatal error:' "${LOG_FILE}"; then
   exit 2
 fi
 
-FILTERED_LOG="${REPO_ROOT}/compiler_warnings_gpboost.log"
+FILTERED_LOG="${LOG_DIR}/compiler_warnings_gpboost.log"
 # Keep only warning lines that refer to a file in include/GPBoost or src/GPBoost.
 # 'sort -u': a warning in a header is repeated for every translation unit that includes it
 grep 'warning:' "${LOG_FILE}" | grep -E "${OWN_CODE_PATTERN}" | sort -u > "${FILTERED_LOG}" || true
