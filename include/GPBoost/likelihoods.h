@@ -1445,7 +1445,11 @@ namespace GPBoost {
 			const data_size_t num_data,
 			double rand_eff_var,
 			const double* fixed_effects,
-			int ind_set_re) const {
+			int ind_set_re,
+			const double* weights = nullptr) const {
+			//'weights' can be used to pass weights that do not correspond to 'weights_' of this object
+			//	(e.g. the weights of ALL clusters and not only the ones of the cluster of this object)
+			const double* weights_ptr = (weights != nullptr) ? weights : weights_;
 			CHECK(rand_eff_var > 0.);
 			double init_intercept = 0.;
 			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" ||
@@ -1455,7 +1459,7 @@ namespace GPBoost {
 				double sw = 0.0, swy = 0.0;
 #pragma omp parallel for schedule(static) reduction(+:sw,swy)
 				for (data_size_t i = 0; i < num_data; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
+					const double w = has_weights_ ? weights_ptr[i] : 1.0;
 					swy += w * y_data[i];
 					sw += w;
 				}
@@ -1482,7 +1486,7 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static) reduction(+:avg, sw)
 					for (data_size_t i = 0; i < num_data; ++i) {
 						if (y_data[i] > 0.) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
+							const double w = has_weights_ ? weights_ptr[i] : 1.0;
 							avg += w * y_data[i];
 							sw += w;
 						}
@@ -1492,7 +1496,7 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static) reduction(+:avg, sw)
 					for (data_size_t i = 0; i < num_data; ++i) {
 						if (y_data[i] > 0.) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
+							const double w = has_weights_ ? weights_ptr[i] : 1.0;
 							avg += w * y_data[i] / std::exp(fixed_effects[i]);
 							sw += w;
 						}
@@ -1511,7 +1515,7 @@ namespace GPBoost {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:avg, sw)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double w = has_weights_ ? weights_ptr[i] : 1.0;
 						avg += w * y_data[i];
 						sw += w;
 					}
@@ -1519,7 +1523,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static) reduction(+:avg, sw)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double w = has_weights_ ? weights_ptr[i] : 1.0;
 						avg += w * y_data[i] / std::exp(fixed_effects[i]);
 						sw += w;
 					}
@@ -1548,7 +1552,7 @@ namespace GPBoost {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:init_intercept, sw)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double w = has_weights_ ? weights_ptr[i] : 1.0;
 						init_intercept += w * y_data[i];
 						sw += w;
 					}
@@ -1556,7 +1560,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static) reduction(+:init_intercept, sw)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double w = has_weights_ ? weights_ptr[i] : 1.0;
 						init_intercept += w * (y_data[i] - fixed_effects[i]);
 						sw += w;
 					}
@@ -1568,7 +1572,7 @@ namespace GPBoost {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:avg, sum_sq, sw)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double w = has_weights_ ? weights_ptr[i] : 1.0;
 						avg += w * y_data[i];
 						sum_sq += w * y_data[i] * y_data[i];
 						sw += w;
@@ -1578,7 +1582,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static) reduction(+:avg, sum_sq, sw, avg_exp_var_offset)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double w = has_weights_ ? weights_ptr[i] : 1.0;
 						double y_min_FE = y_data[i] - fixed_effects[i];
 						avg += w * y_min_FE;
 						sum_sq += w * y_min_FE * y_min_FE;
@@ -1609,7 +1613,7 @@ namespace GPBoost {
 				double sum_w_u_pos = 0.0;
 #pragma omp parallel for schedule(static) reduction(+:W, W0, Wpos, sum_w_u_pos)
 				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
+					const double w = has_weights_ ? weights_ptr[i] : 1.0;
 					const double yi = y_data[i];
 					W += w;
 					if (yi <= 0.0) {
@@ -1661,7 +1665,7 @@ namespace GPBoost {
 				// Positive-part contributions: Score: sum w * ( (u - mu) / sigma^2 ), Info : sum w * ( 1 / sigma^2 )
 #pragma omp parallel for schedule(static) reduction(+:S, I)
 				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
+					const double w = has_weights_ ? weights_ptr[i] : 1.0;
 					const double yi = y_data[i];
 					if (yi > 0.0) {
 						const double u = std::exp((1.0 / lambda) * std::log(yi));
@@ -1684,7 +1688,7 @@ namespace GPBoost {
 				double W = 0.0, W0 = 0.0, W1 = 0.0;
 #pragma omp parallel for schedule(static) reduction(+:sw_int,sum_x,W,W0,W1)
 				for (data_size_t i = 0; i < num_data; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
+					const double w = has_weights_ ? weights_ptr[i] : 1.0;
 					const double yi = y_data[i];
 					W += w;
 					if (yi <= 0.0) {
@@ -1751,7 +1755,7 @@ namespace GPBoost {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:sumz,cnt)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double w = has_weights_ ? weights_ptr[i] : 1.0;
 						const double yi = y_data[i];
 						if (!TwoNumbersAreEqual<double>(yi, 0.) && !TwoNumbersAreEqual<double>(yi, 1.)) {
 							sumz += w * (yi + xi);
@@ -1762,7 +1766,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static) reduction(+:sumz,cnt)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double w = has_weights_ ? weights_ptr[i] : 1.0;
 						const double yi = y_data[i];
 						if (!TwoNumbersAreEqual<double>(yi, 0.) && !TwoNumbersAreEqual<double>(yi, 1.)) {
 							sumz += w * (yi + xi) / std::exp(fixed_effects[i]);
@@ -1808,7 +1812,8 @@ namespace GPBoost {
 		bool ShouldHaveIntercept(const double* y_data,
 			const data_size_t num_data,
 			double rand_eff_var,
-			const double* fixed_effects) const {
+			const double* fixed_effects,
+			const double* weights = nullptr) const {
 			bool ret_val = false;
 			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || IsZeroInflatedCount() ||
@@ -1820,7 +1825,7 @@ namespace GPBoost {
 				ret_val = true;
 			}
 			else {
-				double beta_zero = FindInitialIntercept(y_data, num_data, rand_eff_var, fixed_effects, 0);
+				double beta_zero = FindInitialIntercept(y_data, num_data, rand_eff_var, fixed_effects, 0, weights);
 				if (std::abs(beta_zero) > 0.1) {
 					ret_val = true;
 				}
@@ -2603,7 +2608,9 @@ namespace GPBoost {
 			const data_size_t num_data,
 			const double* fixed_effects,
 			double& C_mu,
-			double& C_sigma2) const {
+			double& C_sigma2,
+			const double* weights = nullptr) const {
+			const double* weights_ptr = (weights != nullptr) ? weights : weights_;
 			if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" ||
 				likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 				likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zoctn" ||
@@ -2617,7 +2624,7 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (y_data[i] > 0.) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double w = has_weights_ ? weights_ptr[i] : 1.0;
 						mean += w * y_data[i];
 						sec_mom += w * y_data[i] * y_data[i];
 						sw += w;
@@ -2634,7 +2641,7 @@ namespace GPBoost {
 				double sw = 0.0, mean = 0., sec_mom = 0;
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
 				for (data_size_t i = 0; i < num_data; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
+					const double w = has_weights_ ? weights_ptr[i] : 1.0;
 					mean += w * y_data[i];
 					sec_mom += w * y_data[i] * y_data[i];
 					sw += w;
@@ -2691,7 +2698,7 @@ namespace GPBoost {
 				if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double w = has_weights_ ? weights_ptr[i] : 1.0;
 						mean += w * y_data[i];
 						sec_mom += w * y_data[i] * y_data[i];
 						sw += w;
@@ -2700,7 +2707,7 @@ namespace GPBoost {
 				else {
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
 					for (data_size_t i = 0; i < num_data; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double w = has_weights_ ? weights_ptr[i] : 1.0;
 						mean += w * y_data[i] - fixed_effects[i];
 						sec_mom += w * (y_data[i] - fixed_effects[i]) * (y_data[i] - fixed_effects[i]);
 						sw += w;
@@ -2793,6 +2800,18 @@ namespace GPBoost {
 			for (int i = 1; i < num_aux_pars_; ++i) {
 				name += "_SEP_" + names_aux_pars_[i];
 			}
+		}
+
+		/*! \brief True if (effective) weights are used */
+		bool HasWeights() const {
+			return(has_weights_);
+		}
+
+		/*! \brief Returns a pointer to the EFFECTIVE weights of this object (i.e. including a potential
+		* scaling by 'likelihood_learning_rate_'). The array has length 'num_data_', i.e. it only contains
+		* the weights of the cluster of this object. Returns nullptr if no weights are used */
+		const double* GetWeights() const {
+			return(has_weights_ ? weights_ : nullptr);
 		}
 
 		bool AuxParsHaveBeenSet() const {

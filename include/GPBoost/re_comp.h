@@ -1272,11 +1272,16 @@ namespace GPBoost {
 		*/
 		void CalcSigma() override {
 			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
+			//'dist_' is a null pointer if no distances have been saved ('dist_saved_ = false'). 'CalculateCovMat' only reads
+			//	'dist' if the distances have been precomputed, but '*dist_' on a null pointer is undefined behavior in any case
+			//	(UBSan: "reference binding to null pointer") -> use an empty dummy matrix instead
+			const T_mat dist_dummy;
+			const T_mat& dist_ref = (dist_ == nullptr) ? dist_dummy : *dist_;
 			if (is_cross_covariance_IP_) {
-				(*cov_function_).template CalculateCovMat<T_mat>(*dist_, coords_ind_point_, coords_, this->cov_pars_, sigma_, false);
+				(*cov_function_).template CalculateCovMat<T_mat>(dist_ref, coords_ind_point_, coords_, this->cov_pars_, sigma_, false);
 			}
 			else {
-				(*cov_function_).template CalculateCovMat<T_mat>(*dist_, coords_, coords_, this->cov_pars_, sigma_, true);
+				(*cov_function_).template CalculateCovMat<T_mat>(dist_ref, coords_, coords_, this->cov_pars_, sigma_, true);
 			}
 			sigma_defined_ = true;
 			if (apply_tapering_) {
@@ -1433,12 +1438,16 @@ namespace GPBoost {
 			}
 			T_mat Z_sigma_grad_Zt;
 			T_mat sigma_grad;
+			//see 'CalcSigma()': 'dist_' is a null pointer if no distances have been saved, and '*dist_' on a null
+			//	pointer is undefined behavior even if 'CalculateGradientCovMatFull' does not read the distances
+			const T_mat dist_dummy;
+			const T_mat& dist_ref = (dist_ == nullptr) ? dist_dummy : *dist_;
 			if (is_cross_covariance_IP_) {
-				(*cov_function_).CalculateGradientCovMatFull(*dist_, coords_ind_point_, coords_, sigma_, this->cov_pars_,
+				(*cov_function_).CalculateGradientCovMatFull(dist_ref, coords_ind_point_, coords_, sigma_, this->cov_pars_,
 					sigma_grad, transf_scale, nugget_var, ind_par, false);
 			}
 			else {
-				(*cov_function_).CalculateGradientCovMatFull(*dist_, coords_, coords_, sigma_, this->cov_pars_,
+				(*cov_function_).CalculateGradientCovMatFull(dist_ref, coords_, coords_, sigma_, this->cov_pars_,
 					sigma_grad, transf_scale, nugget_var, ind_par, true);
 			}
 			if (this->has_Z_) {

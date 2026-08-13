@@ -1247,6 +1247,11 @@ namespace GPBoost {
 				else {
 					beta_ = Eigen::Map<const vec_t>(init_coef, num_covariates_ * num_sets_fixed_effects_);
 				}
+				// The 'likelihood_' objects only hold the weights of their own cluster, but the functions below
+				//	calculate statistics over ALL data points (in the original order of 'y_data') -> collect the
+				//	effective weights (including a potential scaling by 'likelihood_learning_rate_') of all clusters
+				vec_t weights_all;
+				const double* weights_all_ptr = GetWeightsAllClusters(weights_all);
 				if (init_coef == nullptr || only_intercept_for_GPBoost_algo) {
 					if (has_intercept_) {
 						double tot_var_mean_re = GetTotalVarComps(cov_aux_pars.segment(0, num_cov_par_), 0);
@@ -1257,10 +1262,10 @@ namespace GPBoost {
 							if (y_data == nullptr) {
 								vec_t y_temp(num_data_);
 								GetY(y_temp.data());
-								beta_[num_covariates * igp + intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_temp.data(), num_data_, tot_var_mean_re, fixed_effects, igp);
+								beta_[num_covariates * igp + intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_temp.data(), num_data_, tot_var_mean_re, fixed_effects, igp, weights_all_ptr);
 							}
 							else {
-								beta_[num_covariates * igp + intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_data, num_data_, tot_var_mean_re, fixed_effects, igp);
+								beta_[num_covariates * igp + intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_data, num_data_, tot_var_mean_re, fixed_effects, igp, weights_all_ptr);
 							}
 						}
 					}
@@ -1276,14 +1281,24 @@ namespace GPBoost {
 				if (!gauss_likelihood_) {
 					fixed_effects_ptr = fixed_effects_vec.data();
 				}
-				// Determine constants C_mu and C_sigma2 used for checking whether step sizes for linear regression coefficients are clearly too large
-				if (y_data == nullptr) {
-					vec_t y_temp(num_data_);
-					GetY(y_temp.data());
-					likelihood_[unique_clusters_[0]]->FindConstantsCapTooLargeLearningRateCoef(y_temp.data(), num_data_, fixed_effects, C_mu_, C_sigma2_);
-				}
-				else {
-					likelihood_[unique_clusters_[0]]->FindConstantsCapTooLargeLearningRateCoef(y_data, num_data_, fixed_effects, C_mu_, C_sigma2_);
+				// Determine constants C_mu and C_sigma2 used for checking whether step sizes for linear regression coefficients
+				//	are clearly too large. These are only used in 'MaximalLearningRateCoef()', which is called from
+				//	'AvoidTooLargeLearningRateCoef()' (only for optimizer_coef_ == "gradient_descent") and from
+				//	'GetMaximalLearningRate()' of the lbfgs optimizers (only if the coefficients are not profiled out)
+				//	-> the (not entirely cheap) calculation can be skipped for all other optimizers
+				bool need_constants_cap_lr_coef = (optimizer_coef_ == "gradient_descent") ||
+					((optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright" ||
+						optimizer_cov_pars_ == "lbfgs_not_profile_out_nugget") && !(optimizer_coef_ == "wls" && gauss_likelihood_));
+				if (need_constants_cap_lr_coef) {
+					if (y_data == nullptr) {
+						vec_t y_temp(num_data_);
+						GetY(y_temp.data());
+						likelihood_[unique_clusters_[0]]->FindConstantsCapTooLargeLearningRateCoef(y_temp.data(), num_data_, fixed_effects, C_mu_, C_sigma2_, weights_all_ptr);
+					}
+					else {
+						likelihood_[unique_clusters_[0]]->FindConstantsCapTooLargeLearningRateCoef(y_data, num_data_, fixed_effects, C_mu_, C_sigma2_, weights_all_ptr);
+					}
+					C_mu_C_sigma2_have_been_calculated_ = true;
 				}
 			}//end if has_covariates_
 			if (!has_intercept_ && !called_in_GPBoost_algorithm && !find_learning_rate_for_GPBoost_algo && fixed_effects == nullptr) {
@@ -1294,7 +1309,9 @@ namespace GPBoost {
 				}
 				else {
 					double tot_var = GetTotalVarComps(cov_aux_pars.segment(0, num_cov_par_), 0);
-					if (likelihood_[unique_clusters_[0]]->ShouldHaveIntercept(y_data, num_data_, tot_var, fixed_effects)) {
+					vec_t weights_all_ic;
+					const double* weights_all_ic_ptr = GetWeightsAllClusters(weights_all_ic);
+					if (likelihood_[unique_clusters_[0]]->ShouldHaveIntercept(y_data, num_data_, tot_var, fixed_effects, weights_all_ic_ptr)) {
 						string_t msg = "There is no intercept (= a column of 1's) included in the covariates 'X' or there are no covariates. Consider including an intercept ";
 						if (has_covariates_) {
 							Log::REWarning(msg.c_str());
@@ -5411,6 +5428,13 @@ namespace GPBoost {
 		*/
 		double MaximalLearningRateCoef(const vec_t& beta,
 			const vec_t& neg_step_dir) const {
+			//'C_mu_' and 'C_sigma2_' are only calculated for the optimizers that need them (see 'OptimLinRegrCoefCovPar').
+			//	If this function is reached for another optimizer, they would be used uninitialized
+			if (!C_mu_C_sigma2_have_been_calculated_) {
+				Log::REFatal("MaximalLearningRateCoef: 'C_mu_' and 'C_sigma2_' have not been calculated. "
+					"'FindConstantsCapTooLargeLearningRateCoef' needs to be called for optimizer_cov = '%s' and optimizer_coef = '%s' ",
+					optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
+			}
 			vec_t lp_change = vec_t(num_data_ * num_sets_re_);
 			for (int igp = 0; igp < num_sets_re_; ++igp) {
 				lp_change.segment(igp * num_data_, num_data_) = X_ * (neg_step_dir.segment(num_covariates_ * igp, num_covariates_));
@@ -5765,6 +5789,9 @@ namespace GPBoost {
 		double C_mu_;
 		/*! \brief Constant C_sigma2_ used for checking whether step sizes for linear regression coefficients are clearly too large */
 		double C_sigma2_;
+		/*! \brief True if 'C_mu_' and 'C_sigma2_' have been calculated (this is only done for the optimizers that need them,
+		* see 'FindConstantsCapTooLargeLearningRateCoef' in 'OptimLinRegrCoefCovPar') */
+		bool C_mu_C_sigma2_have_been_calculated_ = false;
 		/*! \brief Constant used for checking whether step sizes for linear regression coefficients are clearly too large */
 		double C_MAX_CHANGE_COEF_ = 10.;
 		/*! \brief True if covariance parameters and potential auxiliary parameters have been etimated before in a previous boosting iteration (applies only to the GPBoost algorithm) */
@@ -8346,6 +8373,30 @@ namespace GPBoost {
 				}
 			}
 		}//end AvoidTooLargeLearningRatesCovAuxPars
+
+		/*!
+		* \brief Collect the effective weights of ALL clusters in the original order of the data
+		*		Every 'likelihood_[cluster_i]' object only holds the weights of its own cluster (and in the order of
+		*		that cluster), but several functions of the likelihood calculate statistics over all data points in
+		*		the original order (e.g. 'FindInitialIntercept'). Passing the weights of a single cluster together
+		*		with the response variable of all clusters would read past the end of that array.
+		* \param[out] weights_all Vector of length num_data_ to which the weights are written (not changed if there are no weights)
+		* \return Pointer to 'weights_all', or nullptr if no weights are used
+		*/
+		const double* GetWeightsAllClusters(vec_t& weights_all) const {
+			if (unique_clusters_.size() == 0 || !(likelihood_.at(unique_clusters_[0])->HasWeights())) {
+				return(nullptr);
+			}
+			weights_all = vec_t(num_data_);
+			for (const auto& cluster_i : unique_clusters_) {
+				const double* weights_cluster_i = likelihood_.at(cluster_i)->GetWeights();
+				CHECK(weights_cluster_i != nullptr);
+				for (int j = 0; j < num_data_per_cluster_.at(cluster_i); ++j) {
+					weights_all[data_indices_per_cluster_.at(cluster_i)[j]] = weights_cluster_i[j];
+				}
+			}
+			return(weights_all.data());
+		}//end GetWeightsAllClusters
 
 		/*!
 		* \brief Avoid too large learning rates for linear regression coefficients
