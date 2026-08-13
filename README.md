@@ -109,6 +109,8 @@ where G() is a so-called link function. See [here for a list of currently suppor
 
 - See the open issues on GitHub with an *enhancement* label
 
+**Note for contributors:** every contribution must pass the unit tests and the additional checks (CRAN compatibility, compiler warnings, ASan / UBSan sanitizer checks) described in the [Testing section of the R package README](https://github.com/fabsig/GPBoost/blob/master/R-package/README.md#testing).
+
 #### Software issues
 - Add [Python tests](https://github.com/fabsig/GPBoost/tree/master/tests) (see corresponding [R tests](https://github.com/fabsig/GPBoost/tree/master/R-package/tests))
 - Setting up a CI environment 
@@ -118,7 +120,6 @@ where G() is a so-called link function. See [here for a list of currently suppor
 - Support multivariate models, e.g., using coregionalization
 - Support areal models for spatial data such as CAR and SAR models
 - Support multiclass classification, i.e., multinomial likelihoods
-- Support sample weights for Gaussian likelihoods
 - Support other distances besides the Euclidean distance (e.g., great circle distance) for Gaussian processes
 
 ## References

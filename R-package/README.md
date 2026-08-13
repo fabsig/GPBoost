@@ -155,11 +155,37 @@ For **macOS** and **Windows** users, the CUDA version is not supported.
 
 ## Testing
 
-There is currently no integration service set up that automatically runs unit tests. However, any contribution needs to pass all unit tests in the `R-package/tests/testthat` directory. These tests can be run using the [run_tests_coverage_R_package.R](https://github.com/fabsig/GPBoost/blob/master/helpers/run_tests_coverage_R_package.R) file. In any case, make sure that you run the full set of tests by speciying the following environment variable
+There is currently no integration service set up that automatically runs unit tests. However, any contribution needs to pass all unit tests in the `R-package/tests/testthat` directory. These tests can be run using the [run_tests_coverage_R_package.R](https://github.com/fabsig/GPBoost/blob/master/helpers/run_tests_coverage_R_package.R) file. In any case, make sure that you run the full set of tests by specifying the following environment variable (see the [run_tests_coverage_R_package.R](https://github.com/fabsig/GPBoost/blob/master/helpers/run_tests_coverage_R_package.R) file):
 ```R
 Sys.setenv(GPBOOST_ALL_TESTS = "GPBOOST_ALL_TESTS")
 ```
 before running the tests in the `R-package/tests/testthat` directory.
+
+### Checks that need to be done for every change
+
+Whenever something new is added or changed, the following checks should be run in addition to the unit tests above.
+
+**1. CRAN compatibility** 
+
+Build the package with `sh build-cran-package.sh` (see [Build a CRAN Package](#build-a-cran-package)) and check it with
+
+```shell
+R CMD check --as-cran gpboost_*.tar.gz
+```
+
+**2. Compiler warnings** 
+
+Compile the C++ code with an extensive set of compiler warnings enabled:
+
+```shell
+sh helpers/check_compiler_warnings.sh
+```
+
+Use `sh helpers/check_compiler_warnings.sh --summary` to only get the counts per warning type. The script exits with a non-zero status if any warning is emitted.
+
+**3. AddressSanitizer (ASan) and UndefinedBehaviorSanitizer (UBSan) checks** 
+
+These detect, e.g., buffer overflows, use-after-free, signed integer overflow, and invalid shifts. They are run in the same Docker containers that R-hub and CRAN use. First create the package tarball with `sh build-cran-package.sh`, then run the `docker run ...` commands documented in [check_R_package_rhub.R](https://github.com/fabsig/GPBoost/blob/master/helpers/check_R_package_rhub.R). That file also documents how to install Docker, where the results are written, and how to interpret them. Note that these checks are slow (the entire C++ code is recompiled inside the container with instrumentation).
 
 ## Preparing a CRAN package
 
