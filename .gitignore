@@ -1,3 +1,4 @@
+*.ps1
 .vs/
 
 GPBoost_demo_cache/
@@ -196,6 +197,7 @@ miktex*.zip
 # GraphViz artifacts
 *.gv
 *.gv.*
-# Output of helpers/check_compiler_warnings.sh
+# Temporary output, e.g. of helpers/check_compiler_warnings.sh
+temp/
 compiler_warnings.log
 compiler_warnings_gpboost.log
