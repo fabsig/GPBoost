@@ -263,6 +263,7 @@ namespace GPBoost {
 				}
 			}
 			likelihood_type_ = likelihood;
+			CacheLikelihoodTypeDerivedQuantities();
 			if (user_defined_approximation_type_ != "none") {
 				approximation_type_ = user_defined_approximation_type_;
 			}
@@ -1057,6 +1058,23 @@ namespace GPBoost {
 		/*! \brief Recover the underlying constant-zero base likelihood name from a regression zero-model name by removing the
 		* "regression_" token that follows the family prefix, e.g. "hurdle_regression_gamma" -> "hurdle_gamma" and
 		* "zero_inflated_regression_poisson" -> "zero_inflated_poisson". Returns the input unchanged if the token is absent. */
+		/*! \brief Cache the quantities that only depend on 'likelihood_type_'. 'StripRegressionInfix' allocates and
+		* concatenates strings, and 'EGPDBaseType()' / 'GetEGPDVariant()' were called once PER OBSERVATION via
+		* 'EvaluateEGPD' and the hurdle / zero-inflated regression dispatch functions. Must be called whenever
+		* 'likelihood_type_' is assigned */
+		void CacheLikelihoodTypeDerivedQuantities() {
+			regression_base_type_ = StripRegressionInfix(likelihood_type_);
+			string_t t = regression_base_type_;
+			const string_t prefix = "hurdle_";
+			if (t.size() > prefix.size() && t.compare(0, prefix.size(), prefix) == 0) t = t.substr(prefix.size());
+			egpd_base_type_ = t;
+			if (t == "gpd") egpd_variant_ = EGPDVariant::kGPD;
+			else if (t == "egpd_power") egpd_variant_ = EGPDVariant::kPower;
+			else if (t == "egpd_power_mixture") egpd_variant_ = EGPDVariant::kPowerMixture;
+			else if (t == "egpd_beta") egpd_variant_ = EGPDVariant::kBeta;
+			else egpd_variant_ = EGPDVariant::kPowerBeta;
+		}
+
 		static string_t StripRegressionInfix(const string_t& name) {
 			const string_t infix = "_regression_";
 			const size_t pos = name.find(infix);
@@ -1065,8 +1083,8 @@ namespace GPBoost {
 		}
 
 		/*! \brief For a hurdle regression likelihood, the underlying constant-zero hurdle type (with the "regression_" token removed). */
-		string_t HurdleRegressionBaseType() const {
-			return StripRegressionInfix(likelihood_type_);
+		const string_t& HurdleRegressionBaseType() const {
+			return regression_base_type_;
 		}
 
 		/*! \brief True for hurdle likelihoods with a positive continuous base (point mass at zero + positive density; the zero part fully decouples from the response predictor eta). Includes both the constant-zero and the regression (fixed-effects) zero models. */
@@ -1075,11 +1093,8 @@ namespace GPBoost {
 		}
 
 		/*! \brief The underlying EGPD base type of a (possibly hurdle / hurdle-regression) EGPD likelihood, i.e. with any "hurdle_" prefix and "regression_" token stripped. */
-		string_t EGPDBaseType() const {
-			string_t t = StripRegressionInfix(likelihood_type_);
-			const string_t prefix = "hurdle_";
-			if (t.size() > prefix.size() && t.compare(0, prefix.size(), prefix) == 0) t = t.substr(prefix.size());
-			return t;
+		const string_t& EGPDBaseType() const {
+			return egpd_base_type_;
 		}
 
 		/*! \brief True for zero-inflated count likelihoods (constant or regression structural-zero model). The base count component can itself generate zeros. */
@@ -1098,8 +1113,8 @@ namespace GPBoost {
 		}
 
 		/*! \brief The underlying constant-zero count type for a zero-inflated count regression likelihood (with the "regression_" token removed). */
-		string_t ZICountRegressionBaseType() const {
-			return StripRegressionInfix(likelihood_type_);
+		const string_t& ZICountRegressionBaseType() const {
+			return regression_base_type_;
 		}
 
 		/*! \brief Stable log(exp(a) + exp(b)) */
@@ -1110,16 +1125,11 @@ namespace GPBoost {
 		}
 
 		EGPDVariant GetEGPDVariant() const {
-			const string_t base = EGPDBaseType();
-			if (base == "gpd") return EGPDVariant::kGPD;
-			if (base == "egpd_power") return EGPDVariant::kPower;
-			if (base == "egpd_power_mixture") return EGPDVariant::kPowerMixture;
-			if (base == "egpd_beta") return EGPDVariant::kBeta;
-			return EGPDVariant::kPowerBeta;
+			return egpd_variant_;
 		}
 
 		EGPDParams GetEGPDParams() const {
-			const string_t base = EGPDBaseType();
+			const string_t& base = EGPDBaseType();
 			EGPDParams pars;
 			pars.shape_shift = aux_pars_[0];
 			if (base == "egpd_power") pars.kappa = aux_pars_[1];
@@ -1202,6 +1212,7 @@ namespace GPBoost {
 				Log::REFatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
 			}
 			likelihood_type_ = likelihood;
+			CacheLikelihoodTypeDerivedQuantities();
 			chol_fact_pattern_analyzed_ = false;
 			DetermineWhetherToCapChangeModeNewton();
 		}
@@ -8250,7 +8261,7 @@ namespace GPBoost {
 							vec_t D_sqrt = D_inv_rm_.diagonal().cwiseInverse().cwiseSqrt();
 							Sigma_sqrt_rand_vec += B_rm_.triangularView<Eigen::UpLoType::UnitLower>().solve(D_sqrt.cwiseProduct(rand_vec_pred_I_1));
 							//z_i ~ N(0,Sigma^{-1})
-							vec_t Bt_D_inv_Sigma_sqrt_rand_vec = B_t_D_inv_rm_ * B_rm_ * Sigma_sqrt_rand_vec;
+							vec_t Bt_D_inv_Sigma_sqrt_rand_vec = B_t_D_inv_rm_ * (B_rm_ * Sigma_sqrt_rand_vec);
 							vec_t Sigma_inv_Sigma_sqrt_rand_vec = Bt_D_inv_Sigma_sqrt_rand_vec - Bt_D_inv_B_cross_cov * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * Bt_D_inv_Sigma_sqrt_rand_vec);
 							//z_i ~ N(0,(Sigma^{-1} + W))
 							vec_t rand_vec_pred_SigmaI_plus_W = Sigma_inv_Sigma_sqrt_rand_vec + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
@@ -9131,7 +9142,7 @@ namespace GPBoost {
 					vec_t Sigma_sqrt_rand_vec = chol_ip_cross_cov.transpose() * rand_vec_I_2_sim_post_.col(i);
 					Sigma_sqrt_rand_vec += B_rm_.triangularView<Eigen::UpLoType::UnitLower>().solve(D_sqrt.cwiseProduct(rand_vec_I_sim_post_.col(i)));
 					//z_i ~ N(0,Sigma^{-1})
-					vec_t Bt_D_inv_Sigma_sqrt_rand_vec = B_t_D_inv_rm_ * B_rm_ * Sigma_sqrt_rand_vec;
+					vec_t Bt_D_inv_Sigma_sqrt_rand_vec = B_t_D_inv_rm_ * (B_rm_ * Sigma_sqrt_rand_vec);
 					vec_t Sigma_inv_Sigma_sqrt_rand_vec = Bt_D_inv_Sigma_sqrt_rand_vec - Bt_D_inv_B_cross_cov * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * Bt_D_inv_Sigma_sqrt_rand_vec);
 					//z_i ~ N(0,(Sigma^{-1} + W))
 					vec_t rand_vec_pred_SigmaI_plus_W = Sigma_inv_Sigma_sqrt_rand_vec + W_diag_sqrt.cwiseProduct(rand_vec_I_3_sim_post_.col(i));
@@ -11956,9 +11967,13 @@ namespace GPBoost {
 		inline double LogLikGammaZeroInflated(double y, double location_par, bool incl_norm_const) const {
 			double ll = 0.0;
 			if (y > 0.0) {
-				const double q = 1. - aux_pars_original_[1];// = 1 - p0
 				ll = -aux_pars_[0] * (location_par + y * std::exp(-location_par));
 				if (incl_norm_const) {
+					//note: 'aux_pars_original_[1]' (= p0) must only be accessed if the normalizing constant is needed.
+					//	This function is also called for 'hurdle_regression_gamma' (via 'HurdleRegressionBaseLogLikLocDep',
+					//	always with incl_norm_const = false), where the structural zero is modeled by a second fixed-effects
+					//	block instead of by p0, i.e. where 'aux_pars_' only contains the shape parameter and index 1 does not exist
+					const double q = 1. - aux_pars_original_[1];// = 1 - p0
 					ll += std::log(q) + aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]) + (aux_pars_[0] - 1.0) * std::log(y);
 				}
 			}
@@ -17162,6 +17177,10 @@ namespace GPBoost {
 
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";
+		/*! \brief Cached quantities derived from 'likelihood_type_' (see CacheLikelihoodTypeDerivedQuantities) */
+		string_t regression_base_type_ = "gaussian";
+		string_t egpd_base_type_ = "gaussian";
+		EGPDVariant egpd_variant_ = EGPDVariant::kGPD;
 		static constexpr double TWEEDIE_POWER_LOWER_ = 1.01;
 		static constexpr double TWEEDIE_POWER_UPPER_ = 1.99;
 		double tweedie_sum_d_log_a_rho_ = 0.;
