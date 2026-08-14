@@ -187,6 +187,71 @@
 
 
 ##############################################################################################
+## Running the rchk check (analysis of the use of the R C API)
+##   rchk statically checks the C/C++ code for missing 'PROTECT' calls, i.e. for R objects that
+##   can be garbage collected while they are still in use. It does NOT run the tests, it only
+##   compiles the package (with clang/wllvm at '-O0') and then analyzes the resulting bitcode.
+##############################################################################################
+#
+# --- Windows PowerShell ---
+#
+    # docker run --rm -v "${PWD}:/check" `
+    #   -e MAKEFLAGS=-j4 `
+    #   ghcr.io/r-hub/containers/rchk `
+    #   r-check
+#
+# --- Git Bash ---
+#
+#     docker run --rm -v "$(pwd)":/check -e MAKEFLAGS=-j4 \
+#       ghcr.io/r-hub/containers/rchk r-check
+#
+# The findings are printed to the console (lines such as "[UP] unprotected variable ... while
+# calling allocating function ..." or "[PB] ... has possibly unprotected ...").
+#
+# A run without any findings looks like this:
+#
+#     Running bcheck
+#     ==== rchk bcheck =========================================
+#     ERROR: too many states (abstraction error?) in function strptime_internal
+#     ERROR: too many states (abstraction error?) in function bcEval_loop
+#     ERROR: too many states (abstraction error?) in function RunGenCollect
+#     Analyzed 111073 functions, traversed 354876 states.
+#     ------------------------------------------------------
+#
+# i.e. NO '[UP]' / '[PB]' line at all. The three "too many states" errors are not related to
+# GPBoost: 'strptime_internal', 'bcEval_loop' and 'RunGenCollect' are functions of R itself (the
+# date parser, the bytecode interpreter and the garbage collector), which are analyzed together
+# with the package. They are so large that rchk's abstract interpreter reaches its limit on the
+# number of states and gives up ON THESE FUNCTIONS ONLY. This happens for every package.
+#
+# 'objdump: Warning: Unrecognized form: 0x22 / 0x23' and the "DIE at offset ... refers to
+# abbreviation number ... which does not exist" that follows from them can be ignored, for the same
+# reason as the 'readelf' warnings described further above (DWARF 5 vs. old binutils).
+#
+# Note that the container only runs 'bcheck' (its 'rchk.sh' sets 'TOOLS=bcheck'); the additional
+# rchk tools 'maacheck' and 'fficheck' are not run.
+#
+# Since "no findings" produces no output of its own, every run should be checked for the following
+# failure mode, in which rchk never runs at all:
+#
+#   'rchk.sh' inside the container determines the package name with
+#       PACKAGE=`cat DESCRIPTION | grep "^Package:" | cut -d: -f2 | tr -d '[:blank:]'`
+#   '[:blank:]' is space and tab, it does NOT include the carriage return. On Windows, 'R CMD build'
+#   rewrites DESCRIPTION and writes it in text mode, i.e. with CRLF line endings. Without the
+#   normalization that 'build-cran-package.sh' now does at the end (it unpacks the tarball, converts
+#   DESCRIPTION back to LF and packs it again), PACKAGE becomes 'gpboost\r', the directory
+#   'packages/lib/gpboost\r' does not exist, and rchk aborts with
+#       Cannot find package gpboost (/opt/R/devel-rchk/packages/lib/gpboost does not exist).
+#   directly after '* DONE (gpboost)', i.e. AFTER a successful compilation and BEFORE any
+#   analysis. On the console this message looks garbled, because the '\r' it contains moves the
+#   cursor back to the beginning of the line. If this line appears, the tarball is too old and has
+#   to be rebuilt with 'sh build-cran-package.sh'.
+#
+# Note: the compilation warnings that this container prints come from clang, they are unrelated to
+# rchk itself and are also shown by 'helpers/check_compiler_warnings.sh'.
+
+
+##############################################################################################
 ## Why 'rhub::rhub_check()' is not used here
 ##############################################################################################
 # All functions of R-hub version 1 ('check()', 'check_for_cran()', 'check_with_sanitizers()',

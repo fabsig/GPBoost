@@ -2293,24 +2293,24 @@ namespace GPBoost {
 				const double eps_p = 1e-6;// probability clipping
 				const double eps_sigma = 1e-6;// lower bound for sigma
 				const double eps_var = 1e-12;// variance floor
-				double W = 0.0, W0 = 0.0, Wpos = 0.0;
+				double W = 0.0, W0 = 0.0;
 				double sw_mu = 0.0; // for pooled mu if fixed_effects != nullptr
 				if (fixed_effects == nullptr) {
-#pragma omp parallel for schedule(static) reduction(+:W,W0,Wpos)
+#pragma omp parallel for schedule(static) reduction(+:W,W0)
 					for (data_size_t i = 0; i < num_data; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						const double yi = y_data[i];
 						W += w;
-						if (yi <= 0.0) W0 += w; else Wpos += w;
+						if (yi <= 0.0) W0 += w;
 					}
 				}
 				else {
-#pragma omp parallel for schedule(static) reduction(+:W,W0,Wpos,sw_mu)
+#pragma omp parallel for schedule(static) reduction(+:W,W0,sw_mu)
 					for (data_size_t i = 0; i < num_data; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						const double yi = y_data[i];
 						W += w;
-						if (yi <= 0.0) W0 += w; else Wpos += w;
+						if (yi <= 0.0) W0 += w;
 						sw_mu += w * fixed_effects[i];
 					}
 				}

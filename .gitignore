@@ -1,6 +1,8 @@
 *.ps1
 .vs/
 
+gpboost/
+
 GPBoost_demo_cache/
 GPBoost_demo_files/
 European_GDP_spatial_grouped_data_cache/

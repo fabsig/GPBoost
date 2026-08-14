@@ -20,7 +20,10 @@ CURRENT_DATE=$(date +'%Y-%m-%d')
 
 # R packages cannot have versions like 3.0.0rc1, but
 # 3.0.0-1 is acceptable
-LGB_VERSION=$(cat VERSION.txt | sed "s/rc/-/g")
+# 'tr -d "\r"': on Windows, 'VERSION.txt' is checked out with CRLF line endings, and the carriage
+# return would otherwise end up in the strings that are substituted into 'configure.ac' and
+# 'DESCRIPTION' below
+LGB_VERSION=$(tr -d '\r' < VERSION.txt | sed "s/rc/-/g")
 
 # move relevant files
 cp -R R-package/* ${TEMP_R_DIR}
@@ -165,5 +168,25 @@ cd ${ORIG_WD}
 R CMD build \
     --keep-empty-dirs \
     gpboost_r
+
+# On Windows, 'R CMD build' rewrites DESCRIPTION (it normalizes the order of the fields) and writes
+# the file in text mode, i.e. with CRLF line endings, even when the DESCRIPTION it started from had
+# LF line endings. Tools that parse DESCRIPTION with plain shell commands can trip over the
+# carriage return. rchk, for example, determines the package name with
+#     PACKAGE=`cat DESCRIPTION | grep "^Package:" | cut -d: -f2 | tr -d '[:blank:]'`
+# '[:blank:]' is space and tab and does NOT include the carriage return, so the name becomes
+# 'gpboost\r', the directory 'packages/lib/gpboost\r' does not exist, and rchk aborts with
+#     Cannot find package gpboost (/opt/R/devel-rchk/packages/lib/gpboost does not exist).
+# right after a successful compilation and before running any of its analyses.
+# The DESCRIPTION inside the tarball is therefore converted back to LF here.
+TARBALL="gpboost_${LGB_VERSION}.tar.gz"
+if [ -f "${TARBALL}" ]; then
+    REPACK_DIR=$(mktemp -d)
+    tar -xzf "${TARBALL}" -C "${REPACK_DIR}"
+    tr -d '\r' < "${REPACK_DIR}/gpboost/DESCRIPTION" > "${REPACK_DIR}/gpboost/DESCRIPTION.lf"
+    mv "${REPACK_DIR}/gpboost/DESCRIPTION.lf" "${REPACK_DIR}/gpboost/DESCRIPTION"
+    (cd "${REPACK_DIR}" && tar -czf "${ORIG_WD}/${TARBALL}" gpboost)
+    rm -rf "${REPACK_DIR}"
+fi
 
 echo "Done building R package"
