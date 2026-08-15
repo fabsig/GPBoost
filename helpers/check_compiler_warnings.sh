@@ -57,15 +57,26 @@ CXX_VERSION=$("${CXX}" --version 2>/dev/null | head -1)
 echo "Compiler: ${CXX}"
 echo "          ${CXX_VERSION}"
 
-# GCC < 8 does not know several of the warning options used below
-CXX_MAJOR=$("${CXX}" -dumpversion 2>/dev/null | cut -d. -f1)
-case "${CXX_MAJOR}" in
-  ''|*[!0-9]*) CXX_MAJOR=0 ;;
+# Is this clang? Several of the warning options below only exist in GCC, and clang has useful
+# options of its own. Note that clang does not fail on an unknown '-W...' option, it only emits
+# "warning: unknown warning option", i.e. without this distinction the corresponding checks would
+# silently not be carried out
+IS_CLANG=0
+case "${CXX_VERSION}" in
+  *clang*|*Clang*) IS_CLANG=1 ;;
 esac
-if [ "${CXX_MAJOR}" -lt 8 ] 2>/dev/null; then
-  echo "ERROR: '${CXX}' is version ${CXX_MAJOR}, which is too old for this check (need >= 8)." >&2
-  echo "       On Windows, install Rtools and/or set CXX to the Rtools g++." >&2
-  exit 2
+
+if [ "${IS_CLANG}" -eq 0 ]; then
+  # GCC < 8 does not know several of the warning options used below
+  CXX_MAJOR=$("${CXX}" -dumpversion 2>/dev/null | cut -d. -f1)
+  case "${CXX_MAJOR}" in
+    ''|*[!0-9]*) CXX_MAJOR=0 ;;
+  esac
+  if [ "${CXX_MAJOR}" -lt 8 ] 2>/dev/null; then
+    echo "ERROR: '${CXX}' is version ${CXX_MAJOR}, which is too old for this check (need >= 8)." >&2
+    echo "       On Windows, install Rtools and/or set CXX to the Rtools g++." >&2
+    exit 2
+  fi
 fi
 
 # ---------------------------------------------------------------------------------------------
@@ -107,9 +118,23 @@ fi
 # Optimization is enabled since warnings such as -Wmaybe-uninitialized are only produced by the
 # optimizer, i.e. compiling with -O0 silently loses them
 # ---------------------------------------------------------------------------------------------
-WARNING_FLAGS="-Wall -Wextra \
+#
+# Some of these only exist in GCC, and clang has additional ones that GCC does not have. Running
+# the check with BOTH compilers is worthwhile, since their diagnostics differ considerably.
+#
+# clang only:
+# -Wconditional-uninitialized   a variable that is uninitialized on some of the paths to its use
+# -Wloop-analysis               e.g. a loop variable that is not modified in the loop body
+# -Wtautological-compare        comparisons that are always true or always false
+if [ "${IS_CLANG}" -eq 1 ]; then
+  WARNING_FLAGS="-Wall -Wextra \
+ -Wnull-dereference -Wcast-qual -Wshadow \
+ -Wconditional-uninitialized -Wloop-analysis -Wtautological-compare"
+else
+  WARNING_FLAGS="-Wall -Wextra \
  -Wduplicated-cond -Wduplicated-branches -Wlogical-op -Wnull-dereference \
  -Wshadow=local -Wcast-qual"
+fi
 
 # Warnings that are noise for this code base and are therefore switched off:
 # -Wignored-attributes : thousands of hits from Eigen's SIMD types used as template arguments
@@ -150,6 +175,18 @@ done
 # ---------------------------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------------------------
+# A '-W...' option that the compiler does not know is only a warning, i.e. the corresponding check
+# would silently not be carried out. This is reported as an error so that it cannot go unnoticed
+if grep -q "unknown warning option" "${LOG_FILE}"; then
+  echo ""
+  echo "ERROR: the compiler does not know the following warning option(s), so these checks were NOT"
+  echo "       carried out. Add them to the compiler-specific list in this script:"
+  grep -o "unknown warning option '[^']*'" "${LOG_FILE}" | sort -u
+  echo ""
+  echo "Full compiler output: ${LOG_FILE}"
+  exit 2
+fi
+
 if grep -qE '(^|[^-])error:|fatal error:' "${LOG_FILE}"; then
   echo ""
   echo "ERROR: compilation failed:"

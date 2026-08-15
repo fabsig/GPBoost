@@ -185,7 +185,7 @@ Use `sh helpers/check_compiler_warnings.sh --summary` to only get the counts per
 
 **3. AddressSanitizer (ASan) and UndefinedBehaviorSanitizer (UBSan) checks** 
 
-These detect, e.g., buffer overflows, use-after-free, signed integer overflow, and invalid shifts. They are run in the same Docker containers that R-hub and CRAN use. First create the package tarball with `sh build-cran-package.sh`, then run the `docker run ...` commands documented in [check_R_package_rhub.R](https://github.com/fabsig/GPBoost/blob/master/helpers/check_R_package_rhub.R). That file also documents how to install Docker, where the results are written, and how to interpret them. Note that these checks are slow (the entire C++ code is recompiled inside the container with instrumentation).
+The ASan and UBSan checks detect, e.g., buffer overflows, use-after-free, signed integer overflow, and invalid shifts. They are run in the same Docker containers that R-hub and CRAN use. First create the package tarball with `sh build-cran-package.sh`, then run the `docker run ...` commands documented in [check_R_package_rhub.R](https://github.com/fabsig/GPBoost/blob/master/helpers/check_R_package_rhub.R). That file also documents how to install Docker, where the results are written, and how to interpret them. Note that these checks are slow (the entire C++ code is recompiled inside the container with instrumentation).
 
 ## Preparing a CRAN package
 

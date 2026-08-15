@@ -187,6 +187,61 @@
 
 
 ##############################################################################################
+## Running the valgrind check (memcheck)
+##   valgrind runs the examples and the tests in an emulated CPU and checks every memory access.
+##   Compared to the ASan / UBSan runs above, its main additional benefit is that it detects READS
+##   OF UNINITIALIZED MEMORY, which ASan does not find. Buffer overflows and use-after-free are
+##   already covered by ASan.
+##############################################################################################
+#
+# --- Windows PowerShell ---
+#
+    # docker run --rm -v "${PWD}:/check" `
+    #   -e GPBOOST_ALL_TESTS=GPBOOST_ALL_TESTS `
+    #   -e MAKEFLAGS=-j4 `
+    #   ghcr.io/r-hub/containers/valgrind `
+    #   r-check
+#
+# --- Git Bash ---
+#
+#     docker run --rm -v "$(pwd)":/check \
+#       -e GPBOOST_ALL_TESTS=GPBOOST_ALL_TESTS \
+#       -e MAKEFLAGS=-j4 \
+#       ghcr.io/r-hub/containers/valgrind \
+#       r-check
+#
+# THIS CHECK IS VERY SLOW. Plan for an overnight run.
+#   - valgrind emulates the CPU, code runs roughly 20-50x slower than normally.
+#   - In addition, valgrind serializes ALL threads onto a single core, i.e. the multi-threading of
+#     GPBoost does not help at all here (in contrast to the ASan runs, where it does).
+#   - 'MAKEFLAGS=-j4' only speeds up the COMPILATION (which is not instrumented and thus normally
+#     fast), it has no influence on the run time of the tests.
+#
+# IMPORTANT: do NOT set 'CHECK_ARGS' for this container. In contrast to the containers above, it
+# already defines
+#     CHECK_ARGS=--use-valgrind --extra-arch --no-stop-on-test-error
+#     VALGRIND_OPTS=--track-origins=yes --leak-check=full
+# Setting '-e CHECK_ARGS=...' REPLACES this and thereby removes '--use-valgrind', so that a normal
+# 'R CMD check' without valgrind would run. Since 'r-check' then finds no valgrind output, the run
+# looks like it passed although nothing was checked at all. '--extra-arch' also already restricts
+# the check to the steps that run the compiled code (examples, tests, vignettes), which is why
+# '--no-manual' / '--no-build-vignettes' are not needed here.
+#
+# The findings are lines of the form '==<pid>== <message>' followed by a stack trace, e.g.
+# "Conditional jump or move depends on uninitialised value(s)" or "Invalid read of size 8".
+# 'r-check' searches the check output for lines matching '^==<number>==   at' and exits with
+# status 1 if it finds any (see also the description of 'r-check' further above).
+#
+# Note on 'VALGRIND_OPTS': the default contains '--leak-check=full', and R itself does not free all
+# of its memory. The reported leaks are therefore often not in GPBoost, and because the leak
+# reports also contain '==<pid>==   at' lines, they make 'r-check' report a failure. If this
+# becomes too noisy, a second run with
+#     -e VALGRIND_OPTS="--track-origins=yes --leak-check=no"
+# concentrates on the uninitialized memory reads. The default should be used for the first run,
+# since it is what CRAN runs.
+
+
+##############################################################################################
 ## Running the rchk check (analysis of the use of the R C API)
 ##   rchk statically checks the C/C++ code for missing 'PROTECT' calls, i.e. for R objects that
 ##   can be garbage collected while they are still in use. It does NOT run the tests, it only
@@ -249,6 +304,41 @@
 #
 # Note: the compilation warnings that this container prints come from clang, they are unrelated to
 # rchk itself and are also shown by 'helpers/check_compiler_warnings.sh'.
+
+
+##############################################################################################
+## Running the compiler warning check with clang
+##   'helpers/check_compiler_warnings.sh' compiles the C++ code with an extensive set of warnings
+##   enabled. On Windows it uses the Rtools g++. Running it with clang IN ADDITION is worthwhile:
+##   the two compilers have quite different diagnostics, and clang has warnings that GCC does not
+##   have at all, in particular '-Wconditional-uninitialized' (a variable that is uninitialized on
+##   some of the paths that lead to its use). The script selects the warning options depending on
+##   the compiler, see 'check_compiler_warnings.sh'.
+##   The container of the rchk check is used here simply because it contains a clang.
+##############################################################################################
+#
+# --- Windows PowerShell ---
+#
+    # docker run --rm -v "${PWD}:/check" -w /check ghcr.io/r-hub/containers/rchk `
+    #   sh -c "apt-get update -qq && apt-get install -y -qq libomp-14-dev > /dev/null 2>&1 && CXX=clang++ sh helpers/check_compiler_warnings.sh"
+#
+# --- Git Bash ---
+#
+#     docker run --rm -v "$(pwd)":/check -w /check ghcr.io/r-hub/containers/rchk \
+#       sh -c "apt-get update -qq && apt-get install -y -qq libomp-14-dev > /dev/null 2>&1 && CXX=clang++ sh helpers/check_compiler_warnings.sh"
+#
+# Three parts of this command are essential:
+#   - 'libomp-14-dev'. The container does contain a clang, but not the 'omp.h' of clang's OpenMP
+#     runtime. Without installing it, the compilation aborts with
+#         external_libs/eigen/Eigen/Core:63:10: fatal error: 'omp.h' file not found
+#   - '-w /check'. The script starts with 'cd "$(dirname "$0")/.."' and therefore has to be started
+#     inside the mounted folder.
+#   - 'CXX=clang++'. Without it, the script uses the first 'g++' that it finds.
+#
+# Note: clang does NOT abort on a '-W...' option that it does not know, it only writes
+# "warning: unknown warning option '...'" and continues. The corresponding check is then silently
+# not carried out, while the run still looks successful. 'check_compiler_warnings.sh' therefore
+# treats such a message as an error and aborts.
 
 
 ##############################################################################################
