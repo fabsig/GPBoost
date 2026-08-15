@@ -15,6 +15,7 @@
 #include <iterator> // std::inserter, std::begin, std::end
 #include <numeric> // std::iota
 #include <limits> // std::numeric_limits
+#include <atomic> // std::atomic
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
 
@@ -347,7 +348,9 @@ namespace GPBoost {
 			num_neighbors = end_search_at + 1;
 		}
 		int num_nearest_neighbors = num_neighbors;
-		bool has_duplicates = false;
+		//atomic: the flag is written in the parallel loops below while all threads read it to skip
+		//	the duplicate check once a duplicate has been found (a plain 'bool' is a data race)
+		std::atomic<bool> has_duplicates(false);
 		// For correlation matrix
 		std::shared_ptr<RECompGP<den_mat_t>> re_comp = std::dynamic_pointer_cast<RECompGP<den_mat_t>>(re_comps_vecchia_cluster_i[0]);
 		std::vector<den_mat_t> dummy_mat_grad;//help matrix
@@ -450,10 +453,7 @@ namespace GPBoost {
 					}
 					if (check_has_duplicates && !has_duplicates) {
 						if (dij < EPSILON_NUMBERS) {
-#pragma omp critical
-							{
 								has_duplicates = true;
-							}
 						}
 					}//end check_has_duplicates
 				}
@@ -640,10 +640,7 @@ namespace GPBoost {
 							}
 							if (check_has_duplicates && !has_duplicates) {
 								if (dij < EPSILON_NUMBERS) {
-#pragma omp critical
-									{
 										has_duplicates = true;
-									}
 								}
 							}//end check_has_duplicates
 						}
@@ -685,10 +682,7 @@ namespace GPBoost {
 					}
 					if (check_has_duplicates && !has_duplicates) {
 						if (dist_ij.value() < EPSILON_NUMBERS) {
-#pragma omp critical
-							{
 								has_duplicates = true;
-							}
 						}
 					}//end check_has_duplicates
 				}
@@ -775,7 +769,9 @@ namespace GPBoost {
 		else if (neighbor_selection != "nearest") {
 			Log::REFatal("find_nearest_neighbors_Vecchia_fast: neighbor_selection = '%s' is not supported ", neighbor_selection.c_str());
 		}
-		bool has_duplicates = false;
+		//atomic: the flag is written in the parallel loops below while all threads read it to skip
+		//	the duplicate check once a duplicate has been found (a plain 'bool' is a data race)
+		std::atomic<bool> has_duplicates(false);
 		int dim_coords = (int)coords.cols();
 		//Sort along the sum of the coordinates
 		std::vector<double> coords_sum(num_data);
@@ -854,10 +850,7 @@ namespace GPBoost {
 								}
 								if (check_has_duplicates && !has_duplicates) {
 									if (dij < EPSILON_NUMBERS) {
-#pragma omp critical
-										{
 											has_duplicates = true;
-										}
 									}
 								}//end check_has_duplicates
 							}
@@ -875,9 +868,13 @@ namespace GPBoost {
 							0, 0., EPSILON_NUMBERS, 3, neighbors, 0);
 					}
 					else {
+						//'find_nearest_neighbors_Vecchia_fast_GPU' takes a 'bool&', so a plain temporary is
+						//	passed here and written back (this call is not run in parallel)
+						bool has_duplicates_gpu = has_duplicates.load(std::memory_order_relaxed);
 						success = find_nearest_neighbors_Vecchia_fast_GPU(coords, num_data, num_neighbors, num_close_neighbors,
-							start_at, end_search_at, dim_coords, sort_sum, sort_inv_sum, coords_sum, neighbors, dist_obs_neighbors, save_distances, has_duplicates,
+							start_at, end_search_at, dim_coords, sort_sum, sort_inv_sum, coords_sum, neighbors, dist_obs_neighbors, save_distances, has_duplicates_gpu,
 							check_has_duplicates);
+						has_duplicates.store(has_duplicates_gpu, std::memory_order_relaxed);
 					}
 #endif 
 					if (!success) {
@@ -915,10 +912,7 @@ namespace GPBoost {
 						}
 						if (check_has_duplicates && !has_duplicates) {
 							if (dij < EPSILON_NUMBERS) {
-#pragma omp critical
-								{
 									has_duplicates = true;
-								}
 							}
 						}//end check_has_duplicates
 					}
@@ -949,10 +943,7 @@ namespace GPBoost {
 							}
 							if (check_has_duplicates && !has_duplicates) {
 								if (dij < EPSILON_NUMBERS) {
-#pragma omp critical
-									{
 										has_duplicates = true;
-									}
 								}
 							}//end check_has_duplicates
 						}
@@ -982,10 +973,7 @@ namespace GPBoost {
 					}
 					if (check_has_duplicates && !has_duplicates) {
 						if (dij < EPSILON_NUMBERS) {
-#pragma omp critical
-							{
 								has_duplicates = true;
-							}
 						}
 					}//end check_has_duplicates
 				}

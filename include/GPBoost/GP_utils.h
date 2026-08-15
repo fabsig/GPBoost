@@ -83,26 +83,42 @@ namespace GPBoost {
 			n_max_entry = (int)coords1.rows() * (int)coords2.rows();
 		}
 		triplets.reserve(n_max_entry);
-#pragma omp parallel for schedule(static)
-		for (int i = 0; i < coords2.rows(); ++i) {
-			int first_j = 0;
-			if (only_one_set_of_coords) {
-#pragma omp critical
-				{
-					triplets.emplace_back(i, i, 0.);
+		//every thread collects its triplets in its own vector and they are concatenated afterwards
+		int num_threads;
+#ifdef _OPENMP
+		num_threads = omp_get_max_threads();
+#else
+		num_threads = 1;
+#endif
+		std::vector<std::vector<Triplet_t>> triplets_private(num_threads);
+#pragma omp parallel
+		{
+			int thread_nb;
+#ifdef _OPENMP
+			thread_nb = omp_get_thread_num();
+#else
+			thread_nb = 0;
+#endif
+			std::vector<Triplet_t>& triplets_local = triplets_private[thread_nb];
+			triplets_local.reserve((size_t)n_max_entry / (size_t)num_threads + 64);
+#pragma omp for schedule(static)
+			for (int i = 0; i < coords2.rows(); ++i) {
+				int first_j = 0;
+				if (only_one_set_of_coords) {
+					triplets_local.emplace_back(i, i, 0.);
+					first_j = i + 1;
 				}
-				first_j = i + 1;
-			}
-			for (int j = first_j; j < coords1.rows(); ++j) {
-				double dist_i_j = (coords2.row(i) - coords1.row(j)).lpNorm<2>();
-#pragma omp critical
-				{
-					triplets.emplace_back(i, j, dist_i_j);
+				for (int j = first_j; j < coords1.rows(); ++j) {
+					double dist_i_j = (coords2.row(i) - coords1.row(j)).lpNorm<2>();
+					triplets_local.emplace_back(i, j, dist_i_j);
 					if (only_one_set_of_coords) {
-						triplets.emplace_back(j, i, dist_i_j);
+						triplets_local.emplace_back(j, i, dist_i_j);
 					}
 				}
 			}
+		}
+		for (auto& triplets_local : triplets_private) {
+			triplets.insert(triplets.end(), std::make_move_iterator(triplets_local.begin()), std::make_move_iterator(triplets_local.end()));
 		}
 		dist = T_mat(coords2.rows(), coords1.rows());
 		dist.setFromTriplets(triplets.begin(), triplets.end());
@@ -177,15 +193,29 @@ namespace GPBoost {
 		}
 		// Search for and calculate distances that are smaller than taper_range
 		//  using a fast approach based on results of Ra and Kim (1993)
-#pragma omp parallel for schedule(static)
-		for (int i = 0; i < coords2.rows(); ++i) {
-			if (only_one_set_of_coords) {
-#pragma omp critical
-				{
-					triplets.emplace_back(i, i, 0.);
+		//every thread collects its triplets in its own vector and they are concatenated afterwards
+		int num_threads;
+#ifdef _OPENMP
+		num_threads = omp_get_max_threads();
+#else
+		num_threads = 1;
+#endif
+		std::vector<std::vector<Triplet_t>> triplets_private(num_threads);
+#pragma omp parallel
+		{
+			int thread_nb;
+#ifdef _OPENMP
+			thread_nb = omp_get_thread_num();
+#else
+			thread_nb = 0;
+#endif
+			std::vector<Triplet_t>& triplets_local = triplets_private[thread_nb];
+#pragma omp for schedule(static)
+			for (int i = 0; i < coords2.rows(); ++i) {
+				if (only_one_set_of_coords) {
+					triplets_local.emplace_back(i, i, 0.);
 				}
-			}
-			bool down = true;
+				bool down = true;
 			bool up = true;
 			int up_i = sort_inv_sum[i];
 			int down_i = sort_inv_sum[i];
@@ -214,15 +244,12 @@ namespace GPBoost {
 							}
 							if (sed < taper_range_square) {
 								double dist_i_j = std::sqrt(sed);
-#pragma omp critical
-								{
-									if (only_one_set_of_coords) {
-										triplets.emplace_back(i, sort_sum[down_i], dist_i_j);
-										triplets.emplace_back(sort_sum[down_i], i, dist_i_j);
-									}
-									else {
-										triplets.emplace_back(i, sort_sum[down_i] - coords2.rows(), dist_i_j);
-									}
+								if (only_one_set_of_coords) {
+									triplets_local.emplace_back(i, sort_sum[down_i], dist_i_j);
+									triplets_local.emplace_back(sort_sum[down_i], i, dist_i_j);
+								}
+								else {
+									triplets_local.emplace_back(i, sort_sum[down_i] - coords2.rows(), dist_i_j);
 								}
 							}//end sed < taper_range_square
 						}//end smd <= dim_coords * taper_range_square
@@ -245,15 +272,12 @@ namespace GPBoost {
 							}
 							if (sed < taper_range_square) {
 								double dist_i_j = std::sqrt(sed);
-#pragma omp critical
-								{
-									if (only_one_set_of_coords) {
-										triplets.emplace_back(i, sort_sum[up_i], dist_i_j);
-										triplets.emplace_back(sort_sum[up_i], i, dist_i_j);
-									}
-									else {
-										triplets.emplace_back(i, sort_sum[up_i] - coords2.rows(), dist_i_j);
-									}
+								if (only_one_set_of_coords) {
+									triplets_local.emplace_back(i, sort_sum[up_i], dist_i_j);
+									triplets_local.emplace_back(sort_sum[up_i], i, dist_i_j);
+								}
+								else {
+									triplets_local.emplace_back(i, sort_sum[up_i] - coords2.rows(), dist_i_j);
 								}
 							}//end sed < taper_range_square
 						}//end smd <= dim_coords * taper_range_square
@@ -261,6 +285,10 @@ namespace GPBoost {
 				}//end up
 			}//end while (up || down)
 		}//end loop over data i
+		}//end #pragma omp parallel
+		for (auto& triplets_local : triplets_private) {
+			triplets.insert(triplets.end(), std::make_move_iterator(triplets_local.begin()), std::make_move_iterator(triplets_local.end()));
+		}
 
 // Old, slow version
 //#pragma omp parallel for schedule(static)

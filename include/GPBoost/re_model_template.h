@@ -28,6 +28,7 @@
 
 #include <memory>
 #include <mutex>
+#include <atomic>
 #include <vector>
 #include <algorithm>    // std::shuffle
 #include <iterator>     // std::inserter, std::begin, std::end
@@ -1115,15 +1116,14 @@ namespace GPBoost {
 				num_covariates_ = num_covariates;
 				X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_covariates_);
 				for (int icol = 0; icol < num_covariates_; ++icol) {
-					bool var_is_constant = true;
+					//atomic: the flag is written in the parallel loop below while all threads read it to
+					//	skip the remaining comparisons (a plain 'bool' is a data race)
+					std::atomic<bool> var_is_constant(true);
 #pragma omp parallel for schedule(static)
 					for (data_size_t i = 1; i < num_data_; ++i) {
-						if (var_is_constant) {
+						if (var_is_constant.load(std::memory_order_relaxed)) {
 							if (!(TwoNumbersAreEqual<double>(X_.coeff(i, icol), X_.coeff(0, icol)))) {
-#pragma omp critical
-								{
-									var_is_constant = false;
-								}
+								var_is_constant.store(false, std::memory_order_relaxed);
 							}
 						}
 					}
@@ -11923,7 +11923,25 @@ namespace GPBoost {
 					coords_pred_sum[i] = gp_coords_mat_pred(i, Eigen::all).sum();
 				}
 				den_mat_t sigma_ip_inv_cross_cov_T;
-#pragma omp parallel for schedule(static)
+				//every thread collects its triplets in its own vector and they are concatenated
+				//	afterwards, instead of one lock acquisition per matching pair of coordinates
+				int num_threads_fitc_corr;
+#ifdef _OPENMP
+				num_threads_fitc_corr = omp_get_max_threads();
+#else
+				num_threads_fitc_corr = 1;
+#endif
+				std::vector<std::vector<Triplet_t>> triplets_private(num_threads_fitc_corr);
+#pragma omp parallel
+				{
+					int thread_nb;
+#ifdef _OPENMP
+					thread_nb = omp_get_thread_num();
+#else
+					thread_nb = 0;
+#endif
+					std::vector<Triplet_t>& triplets_local = triplets_private[thread_nb];
+#pragma omp for schedule(static)
 				for (int ii = 0; ii < num_REs_pred; ++ii) {
 					double Sigma_ii;
 					if (re_comps_cross_cov_[cluster_i][0][0]->VarianceOnDiagonal()) {
@@ -11944,16 +11962,18 @@ namespace GPBoost {
 								{
 									if (!has_fitc_correction) {
 										has_fitc_correction = true;
-										sigma_ip_inv_cross_cov_T = chol_fact_sigma_ip_[cluster_i][0].solve((*cross_cov).transpose());
 										GPBoost::solve_linear_sys(chol_fact_sigma_ip_[cluster_i][0], (*cross_cov).transpose(), sigma_ip_inv_cross_cov_T, GPU_use_);
 									}
 								}
 								double fitc_corr_ij = Sigma_ii - (cross_cov_pred_ip.row(ii)).dot(sigma_ip_inv_cross_cov_T.col(jj));
-#pragma omp critical
-								triplets.push_back(Triplet_t(ii, jj, fitc_corr_ij));
+								triplets_local.push_back(Triplet_t(ii, jj, fitc_corr_ij));
 							}
 						}
 					}
+				}
+				}//end #pragma omp parallel
+				for (auto& triplets_local : triplets_private) {
+					triplets.insert(triplets.end(), std::make_move_iterator(triplets_local.begin()), std::make_move_iterator(triplets_local.end()));
 				}
 				if (has_fitc_correction) {
 					fitc_resid_pred_obs = sp_mat_t(num_REs_pred, num_REs_obs);
@@ -12324,6 +12344,17 @@ namespace GPBoost {
 								}
 #pragma omp parallel
 								{
+									//every thread accumulates into its own vectors and they are added up in a
+									//	single '#pragma omp critical' at the end. Doing this inside the loop would
+									//	mean two lock acquisitions per sample
+									vec_t stoch_part_pred_var_private = vec_t::Zero(stoch_part_pred_var.size());
+									vec_t diag_P_stoch_private, c_var_private, c_p_z_private, c_p_private;
+									if (cg_preconditioner_type_ == "fitc") {
+										diag_P_stoch_private = vec_t::Zero(diag_P_stoch.size());
+										c_var_private = vec_t::Zero(c_var.size());
+										c_p_z_private = vec_t::Zero(c_p_z.size());
+										c_p_private = vec_t::Zero(c_p.size());
+									}
 #pragma omp for nowait
 									for (int i = 0; i < nsim_var_pred; ++i) {
 										//z_i ~ N(0,I)
@@ -12357,17 +12388,21 @@ namespace GPBoost {
 											vec_t preconditioner_rand_vec_probe = diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * rand_vec_probe_pred;
 											vec_t rand_vec_probe_cv = sigma_resid_pred_obs * preconditioner_rand_vec_probe;
 											vec_t sample_P = rand_vec_probe_cv.cwiseProduct(rand_vec_probe_init);
-#pragma omp critical
-											{
-												diag_P_stoch += sample_P;
-												c_var.array() += (sample_P - diag_P).array().square();
-												c_p_z += (sample_P - diag_P).cwiseProduct(sample_sigma);
-												c_p += (sample_P - diag_P);
-											}
+											diag_P_stoch_private += sample_P;
+											c_var_private.array() += (sample_P - diag_P).array().square();
+											c_p_z_private += (sample_P - diag_P).cwiseProduct(sample_sigma);
+											c_p_private += (sample_P - diag_P);
 										}
+										stoch_part_pred_var_private += sample_sigma;
+									}
 #pragma omp critical
-										{
-											stoch_part_pred_var += sample_sigma;
+									{
+										stoch_part_pred_var += stoch_part_pred_var_private;
+										if (cg_preconditioner_type_ == "fitc") {
+											diag_P_stoch += diag_P_stoch_private;
+											c_var += c_var_private;
+											c_p_z += c_p_z_private;
+											c_p += c_p_private;
 										}
 									}
 								}

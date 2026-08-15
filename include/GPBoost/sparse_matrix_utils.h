@@ -192,35 +192,51 @@ namespace GPBoost {
 		const int* col_ptr = L.outerIndexPtr();
 		std::vector<Triplet_t> triplets;
 		triplets.reserve(R.nonZeros() * 5);
-		if (transpose) {
-#pragma omp parallel for schedule(static)
-			for (int j = 0; j < ncols_R; ++j) {
-				vec_t R_j = R_ptr->col(j);
-				sp_L_t_solve(val, row_idx, col_ptr, nrows_R, R_j.data());
-				for (int i = 0; i < nrows_R; ++i) {
-					if (std::abs(R_j[i]) > EPSILON_NUMBERS) {
-#pragma omp critical
-						{
-							triplets.emplace_back(i, j, R_j[i]);
+		//every thread collects its triplets in its own vector and they are concatenated afterwards
+		int num_threads;
+#ifdef _OPENMP
+		num_threads = omp_get_max_threads();
+#else
+		num_threads = 1;
+#endif
+		std::vector<std::vector<Triplet_t>> triplets_private(num_threads);
+#pragma omp parallel
+		{
+			int thread_nb;
+#ifdef _OPENMP
+			thread_nb = omp_get_thread_num();
+#else
+			thread_nb = 0;
+#endif
+			std::vector<Triplet_t>& triplets_local = triplets_private[thread_nb];
+			triplets_local.reserve((size_t)(R.nonZeros() * 5) / (size_t)num_threads + 64);
+			if (transpose) {
+#pragma omp for schedule(static)
+				for (int j = 0; j < ncols_R; ++j) {
+					vec_t R_j = R_ptr->col(j);
+					sp_L_t_solve(val, row_idx, col_ptr, nrows_R, R_j.data());
+					for (int i = 0; i < nrows_R; ++i) {
+						if (std::abs(R_j[i]) > EPSILON_NUMBERS) {
+							triplets_local.emplace_back(i, j, R_j[i]);
 						}
 					}
 				}
 			}
-		}
-		else {
-#pragma omp parallel for schedule(static)
-			for (int j = 0; j < ncols_R; ++j) {
-				vec_t R_j = R_ptr->col(j);
-				sp_L_solve(val, row_idx, col_ptr, nrows_R, R_j.data());
-				for (int i = 0; i < nrows_R; ++i) {
-					if (std::abs(R_j[i]) > EPSILON_NUMBERS) {
-#pragma omp critical
-						{
-							triplets.emplace_back(i, j, R_j[i]);
+			else {
+#pragma omp for schedule(static)
+				for (int j = 0; j < ncols_R; ++j) {
+					vec_t R_j = R_ptr->col(j);
+					sp_L_solve(val, row_idx, col_ptr, nrows_R, R_j.data());
+					for (int i = 0; i < nrows_R; ++i) {
+						if (std::abs(R_j[i]) > EPSILON_NUMBERS) {
+							triplets_local.emplace_back(i, j, R_j[i]);
 						}
 					}
 				}
 			}
+		}//end #pragma omp parallel
+		for (auto& triplets_local : triplets_private) {
+			triplets.insert(triplets.end(), std::make_move_iterator(triplets_local.begin()), std::make_move_iterator(triplets_local.end()));
 		}
 		X = T_mat_X(R.rows(), R.cols());//can be both sp_mat_t and sp_mat_rm_t
 		X.setFromTriplets(triplets.begin(), triplets.end());
