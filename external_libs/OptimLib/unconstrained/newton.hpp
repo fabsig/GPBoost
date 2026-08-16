@@ -121,7 +121,7 @@ internal::newton_impl(
     }
 
     Mat_t H(n_vals, n_vals);                    // hessian matrix
-    Vec_t grad(n_vals);                         // gradient vector
+    Vec_t grad = OPTIM_MATOPS_ZERO_VEC(n_vals);//ChangedForGPBoost: zero-initialized, 'EvalLLforOptimLib' reads the first entries before they are set                         // gradient vector
     Vec_t d = OPTIM_MATOPS_ZERO_VEC(n_vals);    // direction vector
 
     opt_objfn(x_p, &grad, &H, opt_data);

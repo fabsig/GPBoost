@@ -260,7 +260,7 @@ internal::cg_impl(
         x = transform(x, bounds_type, lower_bounds, upper_bounds);
     }
 
-    Vec_t grad(n_vals); // gradient
+    Vec_t grad = OPTIM_MATOPS_ZERO_VEC(n_vals);//ChangedForGPBoost: zero-initialized, 'EvalLLforOptimLib' reads the first entries before they are set // gradient
     box_objfn(x, &grad, opt_data);
 
     double grad_err = OPTIM_MATOPS_L2NORM(grad);

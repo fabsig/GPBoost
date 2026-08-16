@@ -201,7 +201,7 @@ internal::lbfgs_impl(
         x = transform(x, bounds_type, lower_bounds, upper_bounds);
     }
 
-    Vec_t grad(n_vals);                         // gradient vector
+    Vec_t grad = OPTIM_MATOPS_ZERO_VEC(n_vals);//ChangedForGPBoost: zero-initialized, 'EvalLLforOptimLib' reads the first entries before they are set                         // gradient vector
     Vec_t d = OPTIM_MATOPS_ZERO_VEC(n_vals);    // direction vector
     Mat_t s_mat = OPTIM_MATOPS_ZERO_MAT(n_vals, par_M);
     Mat_t y_mat = OPTIM_MATOPS_ZERO_MAT(n_vals, par_M);

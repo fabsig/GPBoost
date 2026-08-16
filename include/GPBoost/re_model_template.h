@@ -1116,8 +1116,7 @@ namespace GPBoost {
 				num_covariates_ = num_covariates;
 				X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_covariates_);
 				for (int icol = 0; icol < num_covariates_; ++icol) {
-					//atomic: the flag is written in the parallel loop below while all threads read it to
-					//	skip the remaining comparisons (a plain 'bool' is a data race)
+					//atomic: written and read concurrently in the parallel loop below
 					std::atomic<bool> var_is_constant(true);
 #pragma omp parallel for schedule(static)
 					for (data_size_t i = 1; i < num_data_; ++i) {
@@ -5815,17 +5814,17 @@ namespace GPBoost {
 		/*! \brief Constant c for Armijo's condition for the Nesterov momentum part. Needs to be in (0,1) */
 		const double C_ARMIJO_MOM_DEFAULT_ = 1e-4;
 		/*! \brief Directional derivative wrt covariance parameters for Armijo / Wolfe condition */
-		double dir_deriv_armijo_cov_pars_;
+		double dir_deriv_armijo_cov_pars_ = 0.;
 		/*! \brief Directional derivativet wrt auxiliary coefficients for Armijo / Wolfe condition */
-		double dir_deriv_armijo_aux_pars_;
+		double dir_deriv_armijo_aux_pars_ = 0.;
 		/*! \brief Directional derivative linear regression coefficients for Armijo / Wolfe condition */
-		double dir_deriv_armijo_coef_;
+		double dir_deriv_armijo_coef_ = 0.;
 		/*! \brief Momentum term directional derivative wrt covariance parameters for Armijo / Wolfe condition */
-		double mom_dir_deriv_armijo_cov_pars_;
+		double mom_dir_deriv_armijo_cov_pars_ = 0.;
 		/*! \brief Momentum term directional derivativet wrt auxiliary coefficients for Armijo / Wolfe condition */
-		double mom_dir_deriv_armijo_aux_pars_;
+		double mom_dir_deriv_armijo_aux_pars_ = 0.;
 		/*! \brief Momentum term directional derivative linear regression coefficients for Armijo / Wolfe condition */
-		double mom_dir_deriv_armijo_coef_;
+		double mom_dir_deriv_armijo_coef_ = 0.;
 		/*! \brief If true, the initial learning rates in every iteration are set such that there is a constant first order change */
 		bool learning_rate_constant_first_order_change_ = false;
 		/*! \brief If true, the learning rates are reset to initial values in every iteration (only for gradient_descent) */
@@ -8494,6 +8493,9 @@ namespace GPBoost {
 			}
 			if (armijo_condition_ && use_nesterov_acc) {
 				mom_dir_deriv_armijo_coef_ = grad.dot(beta - beta_after_grad_aux);
+			}
+			else {//as in 'CalcDirDerivArmijoAndLearningRateConstChangeCovAuxPars': the momentum term is not used
+				mom_dir_deriv_armijo_coef_ = 0.;
 			}
 		}//end CalcDirDerivArmijoAndLearningRateConstChangeCoef
 
@@ -11923,8 +11925,7 @@ namespace GPBoost {
 					coords_pred_sum[i] = gp_coords_mat_pred(i, Eigen::all).sum();
 				}
 				den_mat_t sigma_ip_inv_cross_cov_T;
-				//every thread collects its triplets in its own vector and they are concatenated
-				//	afterwards, instead of one lock acquisition per matching pair of coordinates
+				//every thread collects its triplets in its own vector and they are concatenated afterwards
 				int num_threads_fitc_corr;
 #ifdef _OPENMP
 				num_threads_fitc_corr = omp_get_max_threads();
@@ -12344,9 +12345,7 @@ namespace GPBoost {
 								}
 #pragma omp parallel
 								{
-									//every thread accumulates into its own vectors and they are added up in a
-									//	single '#pragma omp critical' at the end. Doing this inside the loop would
-									//	mean two lock acquisitions per sample
+									//every thread accumulates into its own vectors, added up in one '#pragma omp critical' at the end
 									vec_t stoch_part_pred_var_private = vec_t::Zero(stoch_part_pred_var.size());
 									vec_t diag_P_stoch_private, c_var_private, c_p_z_private, c_p_private;
 									if (cg_preconditioner_type_ == "fitc") {

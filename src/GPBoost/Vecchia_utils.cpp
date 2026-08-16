@@ -348,8 +348,7 @@ namespace GPBoost {
 			num_neighbors = end_search_at + 1;
 		}
 		int num_nearest_neighbors = num_neighbors;
-		//atomic: the flag is written in the parallel loops below while all threads read it to skip
-		//	the duplicate check once a duplicate has been found (a plain 'bool' is a data race)
+		//atomic: written and read concurrently in the parallel loops below
 		std::atomic<bool> has_duplicates(false);
 		// For correlation matrix
 		std::shared_ptr<RECompGP<den_mat_t>> re_comp = std::dynamic_pointer_cast<RECompGP<den_mat_t>>(re_comps_vecchia_cluster_i[0]);
@@ -769,8 +768,7 @@ namespace GPBoost {
 		else if (neighbor_selection != "nearest") {
 			Log::REFatal("find_nearest_neighbors_Vecchia_fast: neighbor_selection = '%s' is not supported ", neighbor_selection.c_str());
 		}
-		//atomic: the flag is written in the parallel loops below while all threads read it to skip
-		//	the duplicate check once a duplicate has been found (a plain 'bool' is a data race)
+		//atomic: written and read concurrently in the parallel loops below
 		std::atomic<bool> has_duplicates(false);
 		int dim_coords = (int)coords.cols();
 		//Sort along the sum of the coordinates
@@ -868,8 +866,7 @@ namespace GPBoost {
 							0, 0., EPSILON_NUMBERS, 3, neighbors, 0);
 					}
 					else {
-						//'find_nearest_neighbors_Vecchia_fast_GPU' takes a 'bool&', so a plain temporary is
-						//	passed here and written back (this call is not run in parallel)
+						//the GPU function takes a 'bool&', so a temporary is passed and written back
 						bool has_duplicates_gpu = has_duplicates.load(std::memory_order_relaxed);
 						success = find_nearest_neighbors_Vecchia_fast_GPU(coords, num_data, num_neighbors, num_close_neighbors,
 							start_at, end_search_at, dim_coords, sort_sum, sort_inv_sum, coords_sum, neighbors, dist_obs_neighbors, save_distances, has_duplicates_gpu,

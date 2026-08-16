@@ -172,6 +172,12 @@ namespace GPBoost {
 			mean_R_norm = R.colwise().norm().mean();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
+				//shrink to the iterations actually carried out (as in the early-convergence case
+				//	below), otherwise a caller reads uninitialized entries
+				for (int i = 0; i < t; ++i) {
+					Tdiags[i].conservativeResize(j, 1);
+					Tsubdiags[i].conservativeResize(j > 0 ? (j - 1) : 0, 1);
+				}
 				return;
 			}
 			if (mean_R_norm < delta_conv) {
@@ -211,6 +217,12 @@ namespace GPBoost {
 				}
 				return;
 			}
+		}
+		//the loop has run to the end: 'p' can have been reduced at the beginning of this function,
+		//	so shrink to the iterations that were actually carried out
+		for (int i = 0; i < t; ++i) {
+			Tdiags[i].conservativeResize(p, 1);
+			Tsubdiags[i].conservativeResize(p > 0 ? (p - 1) : 0, 1);
 		}
 		Log::REDebug("CGTridiagVecchiaLaplace: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
@@ -422,6 +434,12 @@ namespace GPBoost {
 			mean_R_norm = R.colwise().norm().mean();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
+				//shrink to the iterations actually carried out (as in the early-convergence case
+				//	below), otherwise a caller reads uninitialized entries
+				for (int i = 0; i < t; ++i) {
+					Tdiags[i].conservativeResize(j, 1);
+					Tsubdiags[i].conservativeResize(j > 0 ? (j - 1) : 0, 1);
+				}
 				return;
 			}
 			if (mean_R_norm < delta_conv) {
@@ -469,6 +487,12 @@ namespace GPBoost {
 				}
 				return;
 			}
+		}
+		//the loop has run to the end: 'p' can have been reduced at the beginning of this function,
+		//	so shrink to the iterations that were actually carried out
+		for (int i = 0; i < t; ++i) {
+			Tdiags[i].conservativeResize(p, 1);
+			Tsubdiags[i].conservativeResize(p > 0 ? (p - 1) : 0, 1);
 		}
 		Log::REDebug("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
@@ -649,6 +673,12 @@ namespace GPBoost {
 			mean_R_norm = R.colwise().norm().mean();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
+				//shrink to the iterations actually carried out (as in the early-convergence case
+				//	below), otherwise a caller reads uninitialized entries
+				for (int i = 0; i < t; ++i) {
+					Tdiags[i].conservativeResize(j, 1);
+					Tsubdiags[i].conservativeResize(j > 0 ? (j - 1) : 0, 1);
+				}
 				return;
 			}
 			if (mean_R_norm < delta_conv) {
@@ -700,6 +730,12 @@ namespace GPBoost {
 				}
 				return;
 			}
+		}
+		//the loop has run to the end: 'p' can have been reduced at the beginning of this function,
+		//	so shrink to the iterations that were actually carried out
+		for (int i = 0; i < t; ++i) {
+			Tdiags[i].conservativeResize(p, 1);
+			Tsubdiags[i].conservativeResize(p > 0 ? (p - 1) : 0, 1);
 		}
 		Log::REDebug("CGTridiagVIFLaplace: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
@@ -866,6 +902,12 @@ namespace GPBoost {
 			mean_R_norm = R.colwise().norm().mean();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
+				//shrink to the iterations actually carried out (as in the early-convergence case
+				//	below), otherwise a caller reads uninitialized entries
+				for (int i = 0; i < t; ++i) {
+					Tdiags[i].conservativeResize(j, 1);
+					Tsubdiags[i].conservativeResize(j > 0 ? (j - 1) : 0, 1);
+				}
 				return;
 			}
 			if (mean_R_norm < delta_conv) {
@@ -908,6 +950,12 @@ namespace GPBoost {
 				}
 				return;
 			}
+		}
+		//the loop has run to the end: 'p' can have been reduced at the beginning of this function,
+		//	so shrink to the iterations that were actually carried out
+		for (int i = 0; i < t; ++i) {
+			Tdiags[i].conservativeResize(p, 1);
+			Tsubdiags[i].conservativeResize(p > 0 ? (p - 1) : 0, 1);
 		}
 		Log::REDebug("CGTridiagVIFLaplace_Version_SigmaPlusWinv: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
@@ -1332,6 +1380,12 @@ namespace GPBoost {
 			mean_R_norm = R.colwise().norm().mean();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
+				//shrink to the iterations actually carried out (as in the early-convergence case
+				//	below), otherwise a caller reads uninitialized entries
+				for (int i = 0; i < t; ++i) {
+					Tdiags[i].conservativeResize(j, 1);
+					Tsubdiags[i].conservativeResize(j > 0 ? (j - 1) : 0, 1);
+				}
 				return;
 			}
 			if (mean_R_norm < delta_conv) {
@@ -1406,6 +1460,12 @@ namespace GPBoost {
 				}
 				return;
 			}
+		}
+		//the loop has run to the end: 'p' can have been reduced at the beginning of this function,
+		//	so shrink to the iterations that were actually carried out
+		for (int i = 0; i < t; ++i) {
+			Tdiags[i].conservativeResize(p, 1);
+			Tsubdiags[i].conservativeResize(p > 0 ? (p - 1) : 0, 1);
 		}
 		num_cg_steps = p;
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "

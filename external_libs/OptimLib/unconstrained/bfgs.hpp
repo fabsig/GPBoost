@@ -172,7 +172,7 @@ internal::bfgs_impl(
     const Mat_t I_mat = OPTIM_MATOPS_EYE(n_vals);
 
     Mat_t W = I_mat;                            // initial approx. to (inverse) Hessian 
-    Vec_t grad(n_vals);                         // gradient vector
+    Vec_t grad = OPTIM_MATOPS_ZERO_VEC(n_vals);//ChangedForGPBoost: zero-initialized, 'EvalLLforOptimLib' reads the first entries before they are set                         // gradient vector
     Vec_t d = OPTIM_MATOPS_ZERO_VEC(n_vals);    // direction vector
     Vec_t s = OPTIM_MATOPS_ZERO_VEC(n_vals);
     Vec_t y = OPTIM_MATOPS_ZERO_VEC(n_vals);

@@ -3541,8 +3541,14 @@ namespace GPBoost {
 							cg_max_num_it, it == 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
 						mode_update = information_ll_inv.asDiagonal() * mode_update_part;
 					}
+					if (has_NA_or_Inf) {
+						//'mode_update' has not (fully) been calculated and must not be used below
+						approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
+						Log::REDebug(NA_OR_INF_WARNING_);
+						break;
+					}
 				}//end iterative
-				else { // start Cholesky 
+				else { // start Cholesky
 					information_ll_inv.array() = information_ll_.array().inverse();
 					if (it == 0 || information_changes_during_mode_finding_) {
 						SigmaI_plus_W = SigmaI;
@@ -16230,20 +16236,24 @@ namespace GPBoost {
 					rand_vec_trace_I_, Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_,
 					cg_preconditioner_type_);
 			}
-			LogDetStochTridiag(Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, log_det_Sigma_W_plus_I, num_data, num_rand_vec_trace_);
-			if (cg_preconditioner_type_ == "fitc") {
-				log_det_Sigma_W_plus_I -= 2. * (((den_mat_t)chol_fact_sigma_ip_preconditioner.matrixL()).diagonal().array().log().sum());
-				log_det_Sigma_W_plus_I += information_ll_.array().log().sum();
-				log_det_Sigma_W_plus_I += 2. * ((den_mat_t)chol_fact_woodbury_preconditioner_.matrixL()).diagonal().array().log().sum();
-				log_det_Sigma_W_plus_I += diagonal_approx_preconditioner_.array().log().sum();
-			}
-			else {
-				log_det_Sigma_W_plus_I -= 2. * (((den_mat_t)chol_fact_sigma_ip.matrixL()).diagonal().array().log().sum()) + D_inv_rm_.diagonal().array().log().sum();
-				if (cg_preconditioner_type_ == "vifdu") {
-					log_det_Sigma_W_plus_I += W_D_inv.array().log().sum() + 2. * ((den_mat_t)chol_fact_sigma_woodbury_woodbury.matrixL()).diagonal().array().log().sum();
+			//'Tdiags_W_SigmaI' / 'Tsubdiags_W_SigmaI' are only fully valid if the CG did not find an
+			//	NA or Inf. The caller sets the log-likelihood to NA in that case anyway
+			if (!has_NA_or_Inf) {
+				LogDetStochTridiag(Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, log_det_Sigma_W_plus_I, num_data, num_rand_vec_trace_);
+				if (cg_preconditioner_type_ == "fitc") {
+					log_det_Sigma_W_plus_I -= 2. * (((den_mat_t)chol_fact_sigma_ip_preconditioner.matrixL()).diagonal().array().log().sum());
+					log_det_Sigma_W_plus_I += information_ll_.array().log().sum();
+					log_det_Sigma_W_plus_I += 2. * ((den_mat_t)chol_fact_woodbury_preconditioner_.matrixL()).diagonal().array().log().sum();
+					log_det_Sigma_W_plus_I += diagonal_approx_preconditioner_.array().log().sum();
 				}
 				else {
-					log_det_Sigma_W_plus_I += 2. * ((den_mat_t)chol_fact_sigma_woodbury.matrixL()).diagonal().array().log().sum();
+					log_det_Sigma_W_plus_I -= 2. * (((den_mat_t)chol_fact_sigma_ip.matrixL()).diagonal().array().log().sum()) + D_inv_rm_.diagonal().array().log().sum();
+					if (cg_preconditioner_type_ == "vifdu") {
+						log_det_Sigma_W_plus_I += W_D_inv.array().log().sum() + 2. * ((den_mat_t)chol_fact_sigma_woodbury_woodbury.matrixL()).diagonal().array().log().sum();
+					}
+					else {
+						log_det_Sigma_W_plus_I += 2. * ((den_mat_t)chol_fact_sigma_woodbury.matrixL()).diagonal().array().log().sum();
+					}
 				}
 			}
 		}//end CalcLogDetStochFSVA
