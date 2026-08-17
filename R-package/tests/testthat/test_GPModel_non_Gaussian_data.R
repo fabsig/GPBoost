@@ -21,6 +21,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   relax_tolerance <- function(tol) if (USE_STRICT_TOLERANCES) tol else max(2 * tol, 0.5)
   # Separate helper for ABSOLUTE differences of negative log-likelihoods (scale 100-1000 here)
   relax_tolerance_nll <- function(tol) if (USE_STRICT_TOLERANCES) tol else max(3 * tol, 3)
+  # Separate helper for the very strict tolerances (1e-6). 'relax_tolerance' must not be used for
+  # these, since its lower bound of 0.5 would make such a test meaningless. Deviations of a few 1e-6
+  # occur under valgrind in particular, which does not reproduce floating point arithmetic bit-wise
+  # (it rounds the 80 bit intermediate results of x87 to 64 bit and its libm differs)
+  relax_tolerance_strict <- function(tol) if (USE_STRICT_TOLERANCES) tol else 100 * tol
   # Covariance functions with a general (non-fixed) smoothness need 'std::cyl_bessel_k', which is a C++17
   # feature that is not provided by every standard library (in particular not by libc++, which is used by
   # clang on macOS and in the clang sanitizer containers of R-hub / CRAN)
@@ -3574,26 +3579,26 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            y = y, X=X, params = params, matrix_inversion_method = "cholesky"),
                     file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars)),TOLERANCE_MEDIUM)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef)),relax_tolerance_strict(TOLERANCE_STRICT))
     expect_equal(gp_model$get_num_optim_iter(), nrounds)
     # Prediction
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=n+2)
     pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = FALSE,
                     X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
-    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance_strict(TOLERANCE_STRICT))
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
     pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = FALSE,
                     X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
-    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance_strict(TOLERANCE_STRICT))
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only", num_neighbors_pred=n)
     pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = FALSE,
                     X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
-    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance_strict(TOLERANCE_STRICT))
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
     pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = FALSE,
                     X_pred = X_test, predict_var = TRUE, cov_pars = cov_pars_pred)
-    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance_strict(TOLERANCE_STRICT))
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),TOLERANCE_STRICT)
     # Prediction without prior model fitting
     capture.output( gp_model <- GPModel(gp_coords = coords_ARD, likelihood = likelihood,
