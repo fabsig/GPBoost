@@ -7516,8 +7516,11 @@ namespace GPBoost {
 			// calculate gradient wrt fixed effects
 			vec_t SigmaI_plus_W_inv_d_mll_d_mode;// for implicit derivative
 			if (grad_information_wrt_mode_non_zero_ && (calc_F_grad || calc_aux_par_grad)) {
+				// (Sigma^-1 + W)^-1 = W^-1 - W^-1*A^-1*W^-1 + W^-1*A^-1*Sigma_nm*(sigma_ip + Sigma_nm^T*A^-1*Sigma_nm)^-1*Sigma_nm^T*A^-1*W^-1
+				// with A = fitc_resid_diag + W^-1, so that W^-1*A^-1 = DW_plus_I_inv_diag = 1 / (W*fitc_resid_diag + 1).
+				// The middle factor must therefore be DW_plus_I_inv_diag itself (as in the diagonal above), not its inverse
 				SigmaI_plus_W_inv_d_mll_d_mode = WI.asDiagonal() * d_mll_d_mode -
-					DW_plus_I_inv_diag.cwiseInverse().asDiagonal() * (WI.asDiagonal() * d_mll_d_mode) +
+					DW_plus_I_inv_diag.asDiagonal() * (WI.asDiagonal() * d_mll_d_mode) +
 					L_inv_cross_cov_T_DW_plus_I_inv.transpose() * (L_inv_cross_cov_T_DW_plus_I_inv * d_mll_d_mode);
 			}
 			if (calc_F_grad) {

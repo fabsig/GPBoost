@@ -2446,9 +2446,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
                                            y = y, X=X, params = params, gp_approx = "fitc",
                                            num_ind_points = 50, ind_points_selection = "kmeans++") , file='NUL')
-    cov_pars_2 <- c(1.7324736196, 0.2309298927)
-    coefs_2 <- c(0.295343207, 1.652497060)
-    nll_2 <- 48.12118327
+    cov_pars_2 <- c(1.67443064, 0.23625418)
+    coefs_2 <- c(0.28845306, 1.62607540)
+    nll_2 <- 48.11931906
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_2)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coefs_2)),TOLERANCE_MEDIUM)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_2), TOLERANCE_MEDIUM)
@@ -2458,8 +2458,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Prediction
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test_v1, X_pred = X_test,
                     predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
-    mu_exp <- c(0.1490041762, 1.5004627917, 1.4013979652)
-    cov_exp <- c(0.8107949834558, 0.2819004861656, -0.0002747792541, 0.2819004861656, 0.6612259073134, -0.0001570211704, -0.0002747792541, -0.0001570211704, 0.3925457235401)
+    mu_exp <- c(0.16002215, 1.49343290, 1.37457340)
+    cov_exp <- c(0.80926655, 0.28066810, -0.00027551, 0.28066810, 0.65993096, -0.00015671, -0.00027551, -0.00015671, 0.39237780)
     expect_lt(sum(abs(pred$mu - mu_exp)),TOLERANCE_STRICT_LOWER)
     expect_lt(sum(abs(as.vector(pred$var) - cov_exp[c(1,5,9)])),TOLERANCE_STRICT_LOWER)
     expect_lt(sum(abs(pred$mu - pred_var_no_approx$mu)),0.5)
@@ -2477,8 +2477,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = "exponential", likelihood = "bernoulli_probit",
                                            y = y_multiple, X=X, params = params_mult, gp_approx = "fitc",
                                            num_ind_points = 12, ind_points_selection = "kmeans++")  , file='NUL')
-    cov_pars_2 <- c(5.14508166660, 0.07137513197)
-    coefs_2 <- c(1.545233283, 4.393281778)
+    cov_pars_2 <- c(4.58741750, 0.07401628)
+    coefs_2 <- c(1.47775348, 4.19935782)
     nll_2 <- 31.49300336
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_2)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coefs_2)),TOLERANCE_LOOSE)
@@ -3698,9 +3698,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            gp_approx = "fitc", num_ind_points = num_ind_points, ind_points_selection = "kmeans++",
                                            y = y, X = X, params = params),
                     file='NUL')
-    cov_pars_nn <- c(0.01979026, 0.04132530, 0.05094675, 0.07727957)
-    coef_nn <- c(-0.2554019,  0.1487383)
-    nll_opt_nn <- 68.46398
+    cov_pars_nn <- c(0.00006475, 0.02037307, 0.01531317, 0.14835818)
+    coef_nn <- c(-0.25715745, 0.14726729)
+    nll_opt_nn <- 68.46260798
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_nn)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_nn)),TOLERANCE_MEDIUM)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), TOLERANCE_MEDIUM)
@@ -4618,11 +4618,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output(gp_model_fitc_zcp <- fitGPModel(gp_coords = coords_zcp2, cov_function = "exponential",
                                                    likelihood = likelihood, gp_approx = "fitc", num_ind_points = 30,
                                                    y = y_zcp2, X = X_zcp2, params = optim_params_zcp2), file = "NUL")
-    expected_coef_fitc_zcp <- c(0.38444035, 1.58354745, -0.53086497, 0.99312464)
+    expected_coef_fitc_zcp <- c(0.39434746, 1.58272678, -0.53801543, 1.00172670)
     expect_lt(sum(abs(as.vector(gp_model_fitc_zcp$get_coef(std_err = FALSE)) - expected_coef_fitc_zcp)), TOLERANCE_NON_CONVEX)
-    expect_lt(sum(abs(as.vector(gp_model_fitc_zcp$get_cov_pars(std_err = FALSE)) - c(0.32275203, 0.16976262))), TOLERANCE_NON_CONVEX)
+    expect_lt(sum(abs(as.vector(gp_model_fitc_zcp$get_cov_pars(std_err = FALSE)) - c(0.32711281, 0.16804725))), TOLERANCE_NON_CONVEX)
     expect_lt(abs(as.vector(gp_model_fitc_zcp$get_aux_pars()) - 0.74748851), TOLERANCE_NON_CONVEX)
-    expect_lt(abs(gp_model_fitc_zcp$get_current_neg_log_likelihood() - 119.41292830), relax_tolerance_nll(TOLERANCE_MEDIUM))
+    expect_lt(abs(gp_model_fitc_zcp$get_current_neg_log_likelihood() - 119.41168559), relax_tolerance_nll(TOLERANCE_MEDIUM))
   }) #end zero_censored_power_transformed_normal_heteroscedastic likelihood
 
   test_that("beta regression ", {
