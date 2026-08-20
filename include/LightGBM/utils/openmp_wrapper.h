@@ -19,7 +19,7 @@
 inline int OMP_NUM_THREADS() {
   int ret = 1;
 #pragma omp parallel
-#pragma omp master
+#pragma omp single
   { ret = omp_get_num_threads(); }
   return ret;
 }

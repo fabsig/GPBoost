@@ -8,6 +8,8 @@
 */
 #ifndef GPB_SPARSE_MAT_H_
 #define GPB_SPARSE_MAT_H_
+
+#include <iterator>
 #include <memory>
 #include <GPBoost/type_defs.h>
 #include <LightGBM/utils/log.h>
