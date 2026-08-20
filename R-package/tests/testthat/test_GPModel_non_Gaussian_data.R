@@ -4469,6 +4469,162 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(gp_model_fsva_iter_vifdu$get_current_neg_log_likelihood() - 170.19579450), TOLERANCE_NON_CONVEX)
   })
 
+  test_that("zero_censored_power_transformed_normal_heteroscedastic likelihood for linear and GPBoost models ", {
+
+    likelihood <- "zero_censored_power_transformed_normal_heteroscedastic"
+    n_zcp <- 100
+    group_zcp <- rep(1:10, each = 10)
+    X_zcp <- cbind(rep(1, n_zcp), sim_rand_unif(n = n_zcp, init_c = 0.4231))
+    beta_mean_zcp <- c(0.4, 1.1)
+    beta_scale_zcp <- c(-0.3, 0.7)
+    lambda_zcp <- 0.75
+    gr_var_zcp <- 0.5
+    b_gr_zcp <- qnorm(sim_rand_unif(n = 10, init_c = 0.6412))
+    mean_true_zcp <- as.vector(X_zcp %*% beta_mean_zcp) + sqrt(gr_var_zcp) * b_gr_zcp[group_zcp]
+    log_sigma_true_zcp <- as.vector(X_zcp %*% beta_scale_zcp)
+    x_lat_zcp <- mean_true_zcp + qnorm(sim_rand_unif(n = n_zcp, init_c = 0.2871)) * exp(log_sigma_true_zcp)
+    y_zcp <- pmax(0, x_lat_zcp)^lambda_zcp
+    expect_equal(mean(y_zcp == 0), 0.2)
+
+    # Likelihood evaluated at given (not estimated) parameters: a pure formula check, independent of any optimizer
+    fe_given_zcp <- c(as.vector(X_zcp %*% c(0.2, 0.9)), as.vector(X_zcp %*% c(-0.2, 0.6)))
+    nll_given_zcp <- GPModel(group_data = group_zcp, likelihood = likelihood)$neg_log_likelihood(
+      cov_pars = 0.4, y = y_zcp, fixed_effects = fe_given_zcp, aux_pars = 0.8)
+    expect_lt(abs(nll_given_zcp - 121.92107768), TOLERANCE_MEDIUM)
+
+    # A fixed-effects-only log standard deviation requires a fixed effects term (covariates and / or GPBoost boosting)
+    expect_error(capture.output(fitGPModel(group_data = group_zcp, likelihood = likelihood, y = y_zcp,
+                                           params = list(maxit = 2, init_coef_aux_pars_from_iid_model = FALSE)), file = "NUL"))
+
+    ###################
+    ## Linear regression model (mean has a grouped random effect, log(sigma) is fixed-effects only)
+    ###################
+    capture.output(gp_model_zcp <- fitGPModel(group_data = group_zcp, likelihood = likelihood, y = y_zcp, X = X_zcp,
+                                              params = OPTIM_PARAMS_BFGS), file = "NUL")
+    coef_zcp <- as.vector(gp_model_zcp$get_coef(std_err = FALSE))
+    expect_equal(length(coef_zcp), 4L)
+    coef_zcp_std_err <- gp_model_zcp$get_coef(std_err = TRUE)
+    expect_equal(dim(coef_zcp_std_err), c(2L, 4L))
+    # Note: std. errs. must be strictly positive; a plain is.finite() check would not catch a regression where the
+    # log(sigma) block's std. errs. are silently left at their R-side zero-initialized default (0 is finite)
+    expect_true(all(coef_zcp_std_err["Std. err.", ] > 0))
+    expected_coef_zcp <- c(0.36913847, 1.60521687, -0.31152835, 0.91712942)
+    expect_lt(sum(abs(coef_zcp - expected_coef_zcp)), TOLERANCE_MEDIUM)
+    expect_lt(abs(as.vector(gp_model_zcp$get_cov_pars(std_err = FALSE)) - 0.28100193), TOLERANCE_MEDIUM)
+    expect_lt(abs(as.vector(gp_model_zcp$get_aux_pars()) - 0.69356420), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_zcp$get_current_neg_log_likelihood() - 117.92994175), TOLERANCE_MEDIUM)
+    # Prediction: response mean and variance
+    X_test_zcp <- cbind(rep(1, 3), c(0.1, 0.4, 0.8))
+    group_test_zcp <- c(1, 3, 11)
+    pred_zcp <- predict(gp_model_zcp, y = y_zcp, group_data_pred = group_test_zcp, X_pred = X_test_zcp,
+                        predict_var = TRUE, predict_response = TRUE)
+    expected_mu_zcp <- c(0.58594067, 1.16162775, 1.36155518)
+    expected_var_zcp <- c(0.27375042, 0.45183331, 0.76270513)
+    expect_lt(sum(abs(pred_zcp$mu - expected_mu_zcp)), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_zcp$var - expected_var_zcp)), TOLERANCE_MEDIUM)
+    X_zero_zcp <- matrix(0, nrow = n_zcp, ncol = ncol(X_zcp))
+    re_pred_train_zcp <- predict_training_data_random_effects(gp_model_zcp)
+    expected_re_pred_train_zcp <- c(-0.11992737, 0.81411976, 0.31298099, -0.05903340, -0.26484985,
+                                    0.41429315, -0.00512130, -0.57966632, 0.22550739, -0.71550754)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_zcp[, 1])) - expected_re_pred_train_zcp)), TOLERANCE_MEDIUM)
+    re_pred_train_zcp_var <- predict_training_data_random_effects(gp_model_zcp, predict_var = TRUE)
+    expected_re_pred_train_zcp_var <- c(0.07868473, 0.09165282, 0.08926593, 0.08715446, 0.09628326,
+                                        0.08000501, 0.07111215, 0.09147585, 0.08963245, 0.10161664)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_zcp_var[, 2])) - expected_re_pred_train_zcp_var)), TOLERANCE_MEDIUM)
+    pred_train_re_zcp <- predict(gp_model_zcp, y = y_zcp, group_data_pred = group_zcp, X_pred = X_zero_zcp,
+                                 predict_response = FALSE, predict_var = FALSE)
+    expect_lt(sum(abs(as.vector(re_pred_train_zcp[, 1]) - pred_train_re_zcp$mu)), TOLERANCE_STRICT)
+    # Predicting requires covariate data for the model's linear predictors (mean and log(sigma))
+    expect_error(predict(gp_model_zcp, y = y_zcp, group_data_pred = group_test_zcp,
+                         predict_var = TRUE, predict_response = TRUE))
+
+    ###################
+    ## No random effects at all (iid model, pure linear regression for the mean and log(sigma))
+    ###################
+    capture.output(gp_model_zcp_iid <- fitGPModel(likelihood = likelihood, y = y_zcp, X = X_zcp,
+                                                  params = OPTIM_PARAMS_BFGS), file = "NUL")
+    expected_coef_zcp_iid <- c(0.33506594, 1.67738386, -0.14336405, 0.78367073)
+    expect_lt(sum(abs(as.vector(gp_model_zcp_iid$get_coef(std_err = FALSE)) - expected_coef_zcp_iid)), TOLERANCE_MEDIUM)
+    expect_lt(abs(as.vector(gp_model_zcp_iid$get_aux_pars()) - 0.69198615), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_zcp_iid$get_current_neg_log_likelihood() - 121.71631164), TOLERANCE_MEDIUM)
+
+    ###################
+    ## GPBoost algorithm (tree-boosting): mean via a grouped random effect + trees, log(sigma) via a second tree ensemble
+    ###################
+    gp_model_zcp_boost <- GPModel(group_data = group_zcp, likelihood = likelihood)
+    gp_model_zcp_boost$set_optim_params(params = OPTIM_PARAMS_BFGS)
+    dtrain_zcp <- gpb.Dataset(data = X_zcp[, 2, drop = FALSE], label = y_zcp)
+    bst_zcp <- gpb.train(data = dtrain_zcp, gp_model = gp_model_zcp_boost, nrounds = 20, learning_rate = 0.05,
+                         max_depth = 2, min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)
+    pred_zcp_boost <- predict(bst_zcp, data = X_zcp[1:3, 2, drop = FALSE], group_data_pred = group_test_zcp,
+                              predict_var = TRUE, pred_latent = FALSE)
+    expect_lt(abs(as.vector(gp_model_zcp_boost$get_cov_pars(std_err = FALSE)) - 0.33950629), TOLERANCE_MEDIUM)
+    expect_lt(abs(as.vector(gp_model_zcp_boost$get_aux_pars()) - 0.67688028), TOLERANCE_MEDIUM)
+    expected_response_mean_boost_zcp <- c(0.78901313, 1.12780115, 0.99632895)
+    expected_response_var_boost_zcp <- c(0.36894119, 0.36648812, 0.57118598)
+    expect_lt(sum(abs(pred_zcp_boost$response_mean - expected_response_mean_boost_zcp)), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_zcp_boost$response_var - expected_response_var_boost_zcp)), TOLERANCE_MEDIUM)
+
+    ###################
+    ## Gaussian processes
+    ###################
+    n_zcp2 <- 100
+    X_zcp2 <- cbind(rep(1, n_zcp2), sim_rand_unif(n = n_zcp2, init_c = 0.1937))
+    coords_zcp2 <- matrix(sim_rand_unif(n = n_zcp2 * 2, init_c = 0.5713), ncol = 2)
+    Sigma_zcp2 <- 0.6 * exp(-as.matrix(dist(coords_zcp2)) / 0.15) + diag(1e-10, n_zcp2)
+    b_gp_zcp2 <- as.vector(t(chol(Sigma_zcp2)) %*% qnorm(sim_rand_unif(n = n_zcp2, init_c = 0.8123)))
+    mean_true_zcp2 <- as.vector(X_zcp2 %*% c(0.3, 1.0)) + b_gp_zcp2
+    log_sigma_true_zcp2 <- as.vector(X_zcp2 %*% c(-0.25, 0.6))
+    x_lat_zcp2 <- mean_true_zcp2 + qnorm(sim_rand_unif(n = n_zcp2, init_c = 0.3499)) * exp(log_sigma_true_zcp2)
+    y_zcp2 <- pmax(0, x_lat_zcp2)^lambda_zcp
+    expect_equal(mean(y_zcp2 == 0), 0.18)
+    optim_params_zcp2 <- list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", maxit = 300,
+                              init_coef_aux_pars_from_iid_model = FALSE)
+
+    # Likelihood evaluated at given (not estimated) parameters
+    nll_given_gp_zcp <- GPModel(gp_coords = coords_zcp2, cov_function = "exponential",
+                                likelihood = likelihood)$neg_log_likelihood(
+      cov_pars = c(1, mean(dist(coords_zcp2)) / 3), y = y_zcp2, fixed_effects = rep(0, 2 * n_zcp2), aux_pars = 0.8)
+    expect_lt(abs(nll_given_gp_zcp - 138.13953310), TOLERANCE_MEDIUM)
+
+    ## Dense GP ("Stable")
+    capture.output(gp_model_gp_zcp <- fitGPModel(gp_coords = coords_zcp2, cov_function = "exponential",
+                                                 likelihood = likelihood, y = y_zcp2, X = X_zcp2,
+                                                 params = optim_params_zcp2), file = "NUL")
+    expected_coef_gp_zcp <- c(0.39728925, 1.59833428, -0.49364796, 0.97995228)
+    expect_lt(sum(abs(as.vector(gp_model_gp_zcp$get_coef(std_err = FALSE)) - expected_coef_gp_zcp)), TOLERANCE_NON_CONVEX)
+    expect_lt(sum(abs(as.vector(gp_model_gp_zcp$get_cov_pars(std_err = FALSE)) - c(0.27394758, 0.18410689))), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(as.vector(gp_model_gp_zcp$get_aux_pars()) - 0.74483908), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(gp_model_gp_zcp$get_current_neg_log_likelihood() - 119.57095193), relax_tolerance_nll(TOLERANCE_MEDIUM))
+    coord_test_zcp <- coords_zcp2[1:3, , drop = FALSE] + 1e-3
+    pred_gp_zcp <- predict(gp_model_gp_zcp, y = y_zcp2, gp_coords_pred = coord_test_zcp,
+                           X_pred = X_zcp2[1:3, , drop = FALSE], predict_var = TRUE, predict_response = TRUE)
+    expected_mu_gp_zcp <- c(0.85507602, 1.93294194, 1.52508240)
+    expected_var_gp_zcp <- c(0.32915567, 0.81366804, 0.42213707)
+    expect_lt(sum(abs(pred_gp_zcp$mu - expected_mu_gp_zcp)), TOLERANCE_NON_CONVEX)
+    expect_lt(sum(abs(pred_gp_zcp$var - expected_var_gp_zcp)), TOLERANCE_NON_CONVEX)
+
+    ## GP with a Vecchia approximation. With num_neighbors = n - 1, Vecchia is exact and must match the dense GP fit
+    capture.output(gp_model_vecchia_zcp <- fitGPModel(gp_coords = coords_zcp2, cov_function = "exponential",
+                                                      likelihood = likelihood, gp_approx = "vecchia",
+                                                      num_neighbors = n_zcp2 - 1, vecchia_ordering = "none",
+                                                      matrix_inversion_method = "cholesky",
+                                                      y = y_zcp2, X = X_zcp2, params = optim_params_zcp2), file = "NUL")
+    expect_lt(sum(abs(as.vector(gp_model_vecchia_zcp$get_coef(std_err = FALSE)) - expected_coef_gp_zcp)), TOLERANCE_NON_CONVEX)
+    expect_lt(sum(abs(as.vector(gp_model_vecchia_zcp$get_cov_pars(std_err = FALSE)) - c(0.27394758, 0.18410689))), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(gp_model_vecchia_zcp$get_current_neg_log_likelihood() - 119.57095193), relax_tolerance_nll(TOLERANCE_MEDIUM))
+
+    ## GP with an FITC approximation
+    capture.output(gp_model_fitc_zcp <- fitGPModel(gp_coords = coords_zcp2, cov_function = "exponential",
+                                                   likelihood = likelihood, gp_approx = "fitc", num_ind_points = 30,
+                                                   y = y_zcp2, X = X_zcp2, params = optim_params_zcp2), file = "NUL")
+    expected_coef_fitc_zcp <- c(0.38444035, 1.58354745, -0.53086497, 0.99312464)
+    expect_lt(sum(abs(as.vector(gp_model_fitc_zcp$get_coef(std_err = FALSE)) - expected_coef_fitc_zcp)), TOLERANCE_NON_CONVEX)
+    expect_lt(sum(abs(as.vector(gp_model_fitc_zcp$get_cov_pars(std_err = FALSE)) - c(0.32275203, 0.16976262))), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(as.vector(gp_model_fitc_zcp$get_aux_pars()) - 0.74748851), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(gp_model_fitc_zcp$get_current_neg_log_likelihood() - 119.41292830), relax_tolerance_nll(TOLERANCE_MEDIUM))
+  }) #end zero_censored_power_transformed_normal_heteroscedastic likelihood
+
   test_that("beta regression ", {
 
     params <- OPTIM_PARAMS_BFGS

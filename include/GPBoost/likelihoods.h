@@ -106,6 +106,16 @@
 *		- Phi() and phi() denote the standard normal cumulative distribution and density functions
 *		- This corresponds to the model Y = max(0,X)^lambda, X ~ N(mu, sigma^2)
 *
+* For a "zero_censored_power_transformed_normal_heteroscedastic" likelihood, the same density is used, but sigma varies
+*	across observations and is modeled by a second location parameter block instead of by an auxiliary parameter:
+*   f(y) = Phi(a_0) * 1_{y=0} + 1_{y>0} * 1 / sigma * phi((y^(1/lambda) - mu) / sigma) * 1 / lambda * y^(1/lambda - 1)
+*       - mu = location_par (first block), sigma = exp(location_par2) (second block, i.e., log(sigma) = location_par2),
+*         a_0 = -mu / sigma, lambda \in (0,\infty) (= aux_pars_[0], the only auxiliary parameter)
+*       - mu = random + fixed effects; log(sigma) = fixed effects only (covariates and / or the GPBoost tree-boosting
+*         algorithm; no random effects / GPs for the standard deviation)
+*       - Note: the second block parametrizes the standard deviation sigma (not the variance sigma^2), matching the
+*         auxiliary parameter "sigma" of the homoscedastic variant above
+*
 * For a "asymmetric_laplace" (aka "quantile_regression") likelihood, the following density is used:
 *	f(y) = q * (1-q) * exp((y - location_par) * (I_{y < location_par} - q)
 *		- q = quantile, location_par = random + fixed effects
@@ -598,6 +608,17 @@ namespace GPBoost {
 				num_aux_pars_estim_ = 2;
 				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
 			}//end "zero_censored_power_transformed_normal"
+			else if (likelihood_type_ == "zero_censored_power_transformed_normal_heteroscedastic") {
+				// Same model as "zero_censored_power_transformed_normal", but log(sigma) is a second location parameter block
+				// related to fixed effects only (no random effects / GPs), so lambda is the only auxiliary parameter
+				aux_pars_ = { 1. };//lambda
+				names_aux_pars_ = { "lambda" };
+				num_aux_pars_ = 1;
+				num_aux_pars_estim_ = 1;
+				num_sets_re_ = 1;
+				num_sets_fixed_effects_ = 2;
+				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
+			}//end "zero_censored_power_transformed_normal_heteroscedastic"
 			else if (likelihood_type_ == "zoctn") {
 				aux_pars_ = { 1., 1., 1. };//sigma, transformed exp(a) (-> a = 0), and b
 				names_aux_pars_ = { "sigma", "a", "b" };
@@ -1202,6 +1223,30 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief True for the heteroscedastic zero-censored power-transformed normal likelihood, where the standard deviation
+		*		of the latent normal variable is modeled by a second, fixed-effects-only location parameter block
+		*		(location_par[i + num_data_] = log(sigma_i)) instead of by the auxiliary parameter "sigma"
+		*/
+		bool IsZeroCensPowNormHetero() const {
+			return(likelihood_type_ == "zero_censored_power_transformed_normal_heteroscedastic");
+		}
+
+		/*! \brief True for both zero-censored power-transformed normal likelihoods (homoscedastic and heteroscedastic) */
+		bool IsZeroCensPowNorm() const {
+			return(likelihood_type_ == "zero_censored_power_transformed_normal" || IsZeroCensPowNormHetero());
+		}
+
+		/*!
+		* \brief True for likelihoods whose second, fixed-effects-only location parameter block needs the diagonal of
+		*		(Sigma^-1 + W)^-1 for its gradient ('gaussian_heteroscedastic' and
+		*		'zero_censored_power_transformed_normal_heteroscedastic'). Used to force the calculation of that diagonal
+		*		in the gradient functions also when it is not needed for the mean / eta block
+		*/
+		bool SecondFEBlockNeedsSigmaIPlusWInvDiag() const {
+			return(likelihood_type_ == "gaussian_heteroscedastic" || IsZeroCensPowNormHetero());
+		}
+
+		/*!
 		* \brief Set the type of likelihood
 		* \param type Likelihood name
 		*/
@@ -1377,7 +1422,7 @@ namespace GPBoost {
 				}
 				if (!any_positive) Log::REFatal("The response variable ('y') contains only zeros for likelihood = '%s'; at least one positive value is required.", likelihood_type_.c_str());
 			}
-			else if (IsHurdlePositive() || likelihood_type_ == "zero_censored_power_transformed_normal") {
+			else if (IsHurdlePositive() || IsZeroCensPowNorm()) {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (!std::isfinite(y_data[i]) || y_data[i] < 0.) {
 						Log::REFatal(" Must have finite y >= 0 for the response variable ('y') for likelihood = '%s', found %g ", likelihood_type_.c_str(), y_data[i]);
@@ -1443,6 +1488,63 @@ namespace GPBoost {
 				Log::REFatal("CheckY: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
 			}
 		}//end CheckY
+
+		/*!
+		* \brief Method-of-moments anchors for the mean and the log standard deviation of the latent normal variable of the
+		*		'zero_censored_power_transformed_normal_heteroscedastic' likelihood at a given lambda. With u_i = y_i^(1/lambda)
+		*		for the positive observations, the latent X is a normal variable censored at 0, so that the zero fraction
+		*		p0 = Phi(a) with a = -mu / sigma anchors the standardized threshold, and the truncated normal identities
+		*		Var[X | X > 0] = sigma^2 * (1 + a * tau(a) - tau(a)^2) and E[X | X > 0] = mu + sigma * tau(a), with
+		*		tau(a) = phi(a) / (1 - Phi(a)), give sigma and mu from the sample moments of the u_i
+		* \param y_data Response variable data
+		* \param num_data Number of data points
+		* \param weights_ptr Sample weights (can be a nullptr if 'has_weights_' is false)
+		* \param lambda Power transformation parameter
+		* \param[out] mu_anchor Anchor for the mean of the latent normal variable
+		* \param[out] log_sigma_anchor Anchor for the log standard deviation of the latent normal variable
+		*/
+		void ZeroCensPowNormHeteroAnchors(const double* y_data,
+			const data_size_t num_data,
+			const double* weights_ptr,
+			double lambda,
+			double& mu_anchor,
+			double& log_sigma_anchor) const {
+			const double eps_p = 1e-6;// clipping for probabilities
+			double W = 0., W0 = 0., Wpos = 0., sum_u = 0., sum_u_sq = 0.;
+#pragma omp parallel for schedule(static) reduction(+:W, W0, Wpos, sum_u, sum_u_sq)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				const double w = has_weights_ ? weights_ptr[i] : 1.0;
+				W += w;
+				if (y_data[i] <= 0.) {
+					W0 += w;
+				}
+				else {
+					const double u = std::exp((1.0 / lambda) * std::log(y_data[i]));// u = y^(1/lambda) computed stably
+					Wpos += w;
+					sum_u += w * u;
+					sum_u_sq += w * u * u;
+				}
+			}
+			const double p0 = std::min(std::max(W0 / W, eps_p), 1. - eps_p);
+			const double a = GPBoost::normalQF(p0);// a = Phi^{-1}(p0) = -mu / sigma
+			const double tau = GPBoost::normalPDF(a) / std::max(1. - GPBoost::normalCDF(a), 1e-12);
+			const double var_factor = std::max(1. + a * tau - tau * tau, 1e-6);// Var[X | X > 0] / sigma^2
+			double sigma = 1., mu = 0.;
+			if (Wpos > 0.) {
+				const double mean_u = sum_u / Wpos;
+				const double var_u = std::max(sum_u_sq / Wpos - mean_u * mean_u, 1e-12);
+				sigma = std::sqrt(var_u / var_factor);
+				mu = mean_u - sigma * tau;
+			}
+			if (!(sigma > 0.) || !std::isfinite(sigma)) {
+				sigma = 1.;
+			}
+			if (!std::isfinite(mu)) {
+				mu = 0.;
+			}
+			mu_anchor = mu;
+			log_sigma_anchor = std::log(sigma);
+		}//end ZeroCensPowNormHeteroAnchors
 
 		/*!
 		* \brief Determine initial value for intercept (=constant)
@@ -1691,6 +1793,25 @@ namespace GPBoost {
 					init_intercept = mu_tilde + S / I;
 				}
 			}//end "zero_censored_power_transformed_normal"
+			else if (IsZeroCensPowNormHetero()) {
+				CHECK(ind_set_re == 0 || ind_set_re == 1);
+				double mu_anchor, log_sigma_anchor;
+				ZeroCensPowNormHeteroAnchors(y_data, num_data, weights_ptr, aux_pars_[0], mu_anchor, log_sigma_anchor);
+				// The anchors are on the scale of the total location parameters -> subtract the pooled fixed effects offsets
+				double sw = 0., off_mean = 0., off_log_sigma = 0.;
+				if (fixed_effects != nullptr) {
+#pragma omp parallel for schedule(static) reduction(+:sw, off_mean, off_log_sigma)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						const double w = has_weights_ ? weights_ptr[i] : 1.0;
+						sw += w;
+						off_mean += w * fixed_effects[i];
+						off_log_sigma += w * fixed_effects[i + num_data];
+					}
+					off_mean /= sw;
+					off_log_sigma /= sw;
+				}
+				init_intercept = (ind_set_re == 0) ? (mu_anchor - off_mean) : (log_sigma_anchor - off_log_sigma);
+			}//end "zero_censored_power_transformed_normal_heteroscedastic"
 			else if (likelihood_type_ == "zoctn") {
 				const double sigma = aux_pars_[0];
 				const double a = aux_pars_original_[1];
@@ -1829,7 +1950,7 @@ namespace GPBoost {
 			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || IsZeroInflatedCount() ||
 				IsGaussianHeteroscedastic() || likelihood_type_ == "lognormal" || IsHurdlePositive() ||
-				likelihood_type_ == "zero_censored_power_transformed_normal" ||
+				IsZeroCensPowNorm() ||
 				likelihood_type_ == "zoctn" || likelihood_type_ == "zero_one_censored_transformed_beta" ||
 				likelihood_type_ == "zero_one_censored_shifted_gamma" ||
 				likelihood_type_ == "asymmetric_laplace") {
@@ -2447,6 +2568,38 @@ namespace GPBoost {
 				aux_pars_[0] = sigma;
 				aux_pars_[1] = best_lambda;
 			}//end "zero_censored_power_transformed_normal"
+			else if (IsZeroCensPowNormHetero()) {
+				// lambda is the only auxiliary parameter here. Profile it out over a small grid: for each candidate lambda,
+				// the (homoscedastic) method-of-moments anchors give the pooled (mu, sigma) of the total location parameters,
+				// and the candidate maximizing the resulting censored log-likelihood is chosen
+				const double lambda_grid[] = { 0.25, 0.3333333333, 0.5, 0.6666666667, 0.75, 1.0, 1.25, 1.5, 2.0 };
+				const int nL = static_cast<int>(sizeof(lambda_grid) / sizeof(lambda_grid[0]));
+				double best_lambda = 1., best_ll = -std::numeric_limits<double>::infinity();
+				for (int k = 0; k < nL; ++k) {
+					const double lam = lambda_grid[k];
+					double mu_anchor, log_sigma_anchor;
+					ZeroCensPowNormHeteroAnchors(y_data, num_data, weights_, lam, mu_anchor, log_sigma_anchor);
+					const double mu = mu_anchor, sigma = std::exp(log_sigma_anchor);
+					double ll = 0.;
+#pragma omp parallel for schedule(static) reduction(+:ll)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						if (y_data[i] <= 0.) {
+							ll += w * GPBoost::normalLogCDF(-mu / sigma);
+						}
+						else {
+							const double logy = std::log(y_data[i]);
+							const double z = (std::exp(logy / lam) - mu) / sigma;
+							ll += w * (-0.5 * z * z - std::log(lam) - std::log(sigma) - M_LOGSQRT2PI + (1. / lam - 1.) * logy);
+						}
+					}
+					if (std::isfinite(ll) && ll > best_ll) {
+						best_ll = ll;
+						best_lambda = lam;
+					}
+				}
+				aux_pars_[0] = best_lambda;
+			}//end "zero_censored_power_transformed_normal_heteroscedastic"
 			else if (likelihood_type_ == "zoctn") {
 				// Rough init: sigma from y in (0,1), a=1, b=1
 				double sw_int = 0.0, sum_y = 0.0, sum_y_sq = 0.0;
@@ -2729,7 +2882,7 @@ namespace GPBoost {
 				C_mu = std::abs(mean);
 				C_sigma2 = sec_mom - mean * mean;
 			}//end "gaussian"|| likelihood_type_ == "zero_censored_power_transformed_normal" || likelihood_type_ == "asymmetric_laplace"
-			else if (IsGaussianHeteroscedastic()) {
+			else if (IsGaussianHeteroscedastic() || IsZeroCensPowNormHetero()) {
 				C_mu = 1e99;//not implemented
 				C_sigma2 = 1e99;
 			}
@@ -2774,7 +2927,7 @@ namespace GPBoost {
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "beta" || likelihood_type_ == "t" || likelihood_type_ == "lognormal" ||
 				likelihood_type_ == "beta_binomial" || IsHurdlePositive() || IsZeroInflatedCount() ||
-				likelihood_type_ == "zero_censored_power_transformed_normal" || likelihood_type_ == "zoctn" ||
+				IsZeroCensPowNorm() || likelihood_type_ == "zoctn" ||
 				likelihood_type_ == "zero_one_censored_transformed_beta" || likelihood_type_ == "zero_one_censored_shifted_gamma" ||
 				likelihood_type_ == "asymmetric_laplace") {
 				for (int i = 0; i < num_aux_pars_estim_; ++i) {
@@ -4319,7 +4472,7 @@ namespace GPBoost {
 			TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt, L_inv_Wsqrt, false);//L_inv_Wsqrt = L\Wsqrt
 			vec_t SigmaI_plus_W_inv_diag, d_mll_d_mode;
 			T_mat L_inv_Wsqrt_Sigma;
-			if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad || (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad)) {
+			if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad || (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad)) {
 				L_inv_Wsqrt_Sigma = L_inv_Wsqrt * (*Sigma);
 				//Log::REInfo("CalcGradNegMargLikelihoodLaplaceApproxStable: L_inv_ZtWZsqrt: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt));//Only for debugging
 				//Log::REInfo("CalcGradNegMargLikelihoodLaplaceApproxStable: L_inv_ZtWZsqrt_Sigma: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt_Sigma));//Only for debugging
@@ -4396,6 +4549,17 @@ namespace GPBoost {
 								0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
 						}
 					}
+					else if (IsZeroCensPowNormHetero()) {
+						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
+						fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							const data_size_t idx = random_effects_indices_of_data_[i];
+							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
+								w, SigmaI_plus_W_inv_diag[idx], SigmaI_plus_W_inv_d_mll_d_mode[idx]);
+						}
+					}
 					else if (IsRegressionZeroModel()) {
 						// Structural-zero block (zeta). Hurdle: direct score only (decoupled). Zero-inflated counts couple at zero counts:
 						// add log-det (via dJ_eta/dzeta) and implicit-through-mode (via l_eta_zeta), mirroring the eta block with W -> l_eta_zeta.
@@ -4433,6 +4597,16 @@ namespace GPBoost {
 							double dummy_mean_deriv, deriv_log_var;
 							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
 							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
+						}
+					}
+					else if (IsZeroCensPowNormHetero()) {
+						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
+						fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
+								w, SigmaI_plus_W_inv_diag[i], SigmaI_plus_W_inv_d_mll_d_mode[i]);
 						}
 					}
 					else if (IsRegressionZeroModel()) {
@@ -4795,6 +4969,31 @@ namespace GPBoost {
 							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_ZtWZ_inv_diag_data_scale[i];
 						}
 					}
+					if (IsZeroCensPowNormHetero()) {
+						// log(sigma) (zeta) block on the ITERATIVE grouped-RE path, computed separately from the eta block-0 above. The
+						// log-det term needs the data-scale diagonal of (Sigma^-1+ZtWZ)^-1: the ratio trick used for the eta block is not
+						// applicable here since dJ_eta/deta vanishes at all positive observations, so use a stochastic (Hutchinson)
+						// estimate against the raw (Cov = I) random vectors rand_vec_trace_I_ instead
+						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
+						den_mat_t SigmaI_plus_ZtWZ_inv_RV_I(dim_mode_, num_rand_vec_trace_);
+						bool has_NA_or_Inf_stoch_diag = false;
+						CGRandomEffectsMat(SigmaI_plus_ZtWZ_rm_, rand_vec_trace_I_, SigmaI_plus_ZtWZ_inv_RV_I, has_NA_or_Inf_stoch_diag,
+							dim_mode_, num_rand_vec_trace_, cg_max_num_it_, cg_delta_conv_, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+						if (has_NA_or_Inf_stoch_diag) Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
+						den_mat_t Z_SigmaI_plus_ZtWZ_inv_RV_I(num_data_, num_rand_vec_trace_), Z_RV_I(num_data_, num_rand_vec_trace_);
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_rand_vec_trace_; ++i) {
+							Z_SigmaI_plus_ZtWZ_inv_RV_I.col(i) = (*Zt_).transpose() * SigmaI_plus_ZtWZ_inv_RV_I.col(i);
+							Z_RV_I.col(i) = (*Zt_).transpose() * rand_vec_trace_I_.col(i);
+						}
+						const vec_t diag_data = (Z_SigmaI_plus_ZtWZ_inv_RV_I.cwiseProduct(Z_RV_I)).rowwise().mean();
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par[i], location_par[i + num_data_],
+								w, diag_data[i], Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode[i]);
+						}
+					}
 					if (IsRegressionZeroModel()) {
 						// Structural-zero (zeta) block on the ITERATIVE grouped-RE path. Computed separately from the eta block-0 above (which
 						// runs when grad_information_wrt_mode_non_zero_). Hurdle decouples -> direct score. Zero-inflated counts couple: add the
@@ -5045,6 +5244,19 @@ namespace GPBoost {
 							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_ZtWZ_inv_data_scale_i;
 						}
 					}
+					else if (IsZeroCensPowNormHetero()) {
+						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta, scaled by the data-scale diagonal
+						// ||L_inv*Zt.col||^2 of (Sigma^-1+ZtWZ)^-1) + implicit-through-mode (l_eta_zeta)
+						fixed_effect_grad.conservativeResize(dim_location_par_);
+						const vec_t Z_Ainv_d_mll_d_mode = (*Zt_).transpose() * (L_inv.transpose() * (L_inv * d_mll_d_mode));// = Z (Sigma^-1+ZtWZ)^-1 d_mll_d_mode (data scale)
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							const vec_t L_inv_Zt_col = L_inv * (*Zt_).col(i);
+							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par[i], location_par[i + num_data_],
+								w, L_inv_Zt_col.squaredNorm(), Z_Ainv_d_mll_d_mode[i]);
+						}
+					}
 					else if (IsRegressionZeroModel()) {
 						// Structural-zero block (zeta). Hurdle: direct score only (decoupled). Zero-inflated counts couple at zero counts:
 						// log-det via dJ_eta/dzeta (scaled by data-scale diagonal ||L_inv*Zt.col||^2) + implicit via l_eta_zeta (Z*(Sigma^-1+ZtWZ)^-1*d_mll_d_mode).
@@ -5191,6 +5403,22 @@ namespace GPBoost {
 						}
 					}
 				}
+					else if (IsZeroCensPowNormHetero()) {
+						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta).
+						// For an iid model there is no mode / random effect at all, so only the direct score remains
+						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							double diag = 0., impl = 0.;
+							if (!iid_model_) {
+								const data_size_t idx = random_effects_indices_of_data_[i];
+								diag = 1. / diag_SigmaI_plus_ZtWZ_[idx];
+								impl = d_mll_d_mode[idx] * diag;
+							}
+							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par[i], location_par[i + num_data_], w, diag, impl);
+						}
+					}
 					else if (IsRegressionZeroModel()) {
 						// Structural-zero block (zeta). Hurdle decouples from eta (dJ_eta/dzeta = l_eta_zeta = 0) -> direct score only.
 						// Zero-inflated counts COUPLE at zero counts: add the log-determinant term (through dJ_eta/dzeta) and the implicit
@@ -5526,7 +5754,7 @@ namespace GPBoost {
 						}//end loop j
 					}//end calc_cov_grad
 					//Calculate gradient wrt fixed effects
-					vec_t SigmaI_plus_W_inv_diag;
+					vec_t SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block;
 					if (grad_information_wrt_mode_non_zero_ && ((use_random_effects_indices_of_data_ && calc_F_grad) || calc_aux_par_grad)) {
 						//Stochastic Trace: Calculate diagonal of SigmaI_plus_W_inv for gradient of approx. marginal likelihood wrt. F
 						SigmaI_plus_W_inv_diag = d_log_det_Sigma_W_plus_I_d_mode;
@@ -5540,10 +5768,11 @@ namespace GPBoost {
 							}
 						}//end grad_information_wrt_mode_can_be_zero_for_some_points_
 					}
-					else if (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad) {
-						// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1), needed for the log-error variance's
-						// fixed-effect gradient below. The ratio trick used just above is not applicable here since
-						// deriv_information_diag_loc_par is identically zero (grad_information_wrt_mode_non_zero_ == false).
+					if (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad) {
+						// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1), needed for the second, fixed-effects-only
+						// block's gradient below. The ratio trick used just above is not applicable here: for
+						// 'gaussian_heteroscedastic' deriv_information_diag_loc_par is identically zero, and for
+						// 'zero_censored_power_transformed_normal_heteroscedastic' it vanishes at every positive observation.
 						// Note: rand_vec_trace_I_ is Cov = P (the 'fitc' preconditioner) here, not Cov = I (see
 						// FindModePostRandEffCalcMLLFSVA); the raw (Cov = I) vectors are rand_vec_trace_I2_. Solve
 						// (Sigma^-1+W) x_k = r_k for each column r_k via the push-through identity
@@ -5568,7 +5797,10 @@ namespace GPBoost {
 						if (has_NA_or_Inf_stoch_diag) {
 							Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
 						}
-						SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv_RV_I.cwiseProduct(rand_vec_trace_I2_)).rowwise().mean();
+						SigmaI_plus_W_inv_diag_2nd_block = (SigmaI_plus_W_inv_RV_I.cwiseProduct(rand_vec_trace_I2_)).rowwise().mean();
+						if (likelihood_type_ == "gaussian_heteroscedastic") {
+							SigmaI_plus_W_inv_diag = SigmaI_plus_W_inv_diag_2nd_block;// there is no eta-block version for this likelihood
+						}
 					}
 					if (calc_F_grad) {
 						if (use_random_effects_indices_of_data_) {
@@ -5589,6 +5821,19 @@ namespace GPBoost {
 									FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
 									fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
 										0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
+								}
+							}
+							else if (IsZeroCensPowNormHetero()) {
+								// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta).
+								// The log-det term uses the separate stochastic diagonal estimate computed above (the eta-block ratio trick
+								// is not usable here since dJ_eta/deta vanishes at every positive observation)
+								if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+								for (data_size_t i = 0; i < num_data_; ++i) {
+									const double w = has_weights_ ? weights_[i] : 1.0;
+									const data_size_t idx = random_effects_indices_of_data_[i];
+									fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
+										w, SigmaI_plus_W_inv_diag_2nd_block[idx], SigmaI_plus_W_inv_d_mll_d_mode[idx]);
 								}
 							}
 							else if (IsRegressionZeroModel()) {
@@ -5615,6 +5860,18 @@ namespace GPBoost {
 									double dummy_mean_deriv, deriv_log_var;
 									FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
 									fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
+								}
+							}
+							else if (IsZeroCensPowNormHetero()) {
+								// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta).
+								// The log-det term uses the separate stochastic diagonal estimate computed above (the eta-block ratio trick
+								// is not usable here since dJ_eta/deta vanishes at every positive observation)
+								fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+								for (data_size_t i = 0; i < num_data_; ++i) {
+									const double w = has_weights_ ? weights_[i] : 1.0;
+									fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
+										w, SigmaI_plus_W_inv_diag_2nd_block[i], SigmaI_plus_W_inv_d_mll_d_mode[i]);
 								}
 							}
 							else if (IsRegressionZeroModel()) {
@@ -6001,7 +6258,7 @@ namespace GPBoost {
 						}//end loop j
 					}//end calc_cov_grad
 					//Calculate gradient wrt fixed effects
-					vec_t SigmaI_plus_W_inv_diag;
+					vec_t SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block;
 					if (grad_information_wrt_mode_non_zero_ && ((use_random_effects_indices_of_data_ && calc_F_grad) || calc_aux_par_grad)) {
 						//Stochastic Trace: Calculate diagonal of SigmaI_plus_W_inv for gradient of approx. marginal likelihood wrt. F
 						SigmaI_plus_W_inv_diag = d_log_det_Sigma_W_plus_I_d_mode;
@@ -6015,8 +6272,8 @@ namespace GPBoost {
 							}
 						} //end grad_information_wrt_mode_can_be_zero_for_some_points_
 					}
-					else if (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad) {
-						// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1) using the raw (Cov = I) random vectors
+					if (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad) {
+						// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1) for the second, fixed-effects-only block, using the raw (Cov = I) random vectors
 						// rand_vec_trace_I2_ (for 'vifdu', rand_vec_trace_I_ is Cov = P, not I; for 'none' the two coincide,
 						// see FindModePostRandEffCalcMLLFSVA). CGFVIFLaplaceVec solves (Sigma^-1+W) directly here (no
 						// push-through needed, unlike the 'fitc' preconditioner case above)
@@ -6037,7 +6294,10 @@ namespace GPBoost {
 						if (has_NA_or_Inf_stoch_diag) {
 							Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
 						}
-						SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv_RV_I.cwiseProduct(rand_vec_trace_I2_)).rowwise().mean();
+						SigmaI_plus_W_inv_diag_2nd_block = (SigmaI_plus_W_inv_RV_I.cwiseProduct(rand_vec_trace_I2_)).rowwise().mean();
+						if (likelihood_type_ == "gaussian_heteroscedastic") {
+							SigmaI_plus_W_inv_diag = SigmaI_plus_W_inv_diag_2nd_block;// there is no eta-block version for this likelihood
+						}
 					}
 					if (calc_F_grad) {
 						if (use_random_effects_indices_of_data_) {
@@ -6058,6 +6318,19 @@ namespace GPBoost {
 									FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
 									fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
 										0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
+								}
+							}
+							else if (IsZeroCensPowNormHetero()) {
+								// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta).
+								// The log-det term uses the separate stochastic diagonal estimate computed above (the eta-block ratio trick
+								// is not usable here since dJ_eta/deta vanishes at every positive observation)
+								if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+								for (data_size_t i = 0; i < num_data_; ++i) {
+									const double w = has_weights_ ? weights_[i] : 1.0;
+									const data_size_t idx = random_effects_indices_of_data_[i];
+									fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
+										w, SigmaI_plus_W_inv_diag_2nd_block[idx], SigmaI_plus_W_inv_d_mll_d_mode[idx]);
 								}
 							}
 							else if (IsRegressionZeroModel()) {
@@ -6084,6 +6357,18 @@ namespace GPBoost {
 									double dummy_mean_deriv, deriv_log_var;
 									FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
 									fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
+								}
+							}
+							else if (IsZeroCensPowNormHetero()) {
+								// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta).
+								// The log-det term uses the separate stochastic diagonal estimate computed above (the eta-block ratio trick
+								// is not usable here since dJ_eta/deta vanishes at every positive observation)
+								fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+								for (data_size_t i = 0; i < num_data_; ++i) {
+									const double w = has_weights_ ? weights_[i] : 1.0;
+									fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
+										w, SigmaI_plus_W_inv_diag_2nd_block[i], SigmaI_plus_W_inv_d_mll_d_mode[i]);
 								}
 							}
 							else if (IsRegressionZeroModel()) {
@@ -6363,7 +6648,7 @@ namespace GPBoost {
 				// Calcul
 				if (calc_F_grad || calc_aux_par_grad) {
 					if (!calc_cov_grad_internal) {
-						if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad)) {
+						if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad)) {
 							SigmaI_plus_W_inv = D_inv;
 							CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_W_inv, true);
 							den_mat_t SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
@@ -6395,7 +6680,7 @@ namespace GPBoost {
 							SigmaI_plus_W_inv_d_mll_d_mode = information_ll_.cwiseInverse().asDiagonal() * (SigmaI_plus_W_inv_d_mll_d_mode_part - sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov * chol_fact_sigma_woodbury_2.solve((*cross_cov).transpose() * SigmaI_plus_W_inv_d_mll_d_mode_part));
 						}
 					}
-					else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad)) {
+					else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad)) {
 						SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv.diagonal().array() + SigmaI_plus_W_inv_diag.array()).matrix();
 					}
 				}
@@ -6418,6 +6703,17 @@ namespace GPBoost {
 								FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
 								fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
 									0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
+							}
+						}
+						else if (IsZeroCensPowNormHetero()) {
+							// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
+							if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+							for (data_size_t i = 0; i < num_data_; ++i) {
+								const double w = has_weights_ ? weights_[i] : 1.0;
+								const data_size_t idx = random_effects_indices_of_data_[i];
+								fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
+									w, SigmaI_plus_W_inv_diag[idx], SigmaI_plus_W_inv_d_mll_d_mode[idx]);
 							}
 						}
 						else if (IsRegressionZeroModel()) {
@@ -6446,6 +6742,16 @@ namespace GPBoost {
 								double dummy_mean_deriv, deriv_log_var;
 								FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
 								fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
+							}
+						}
+						else if (IsZeroCensPowNormHetero()) {
+							// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
+							fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+							for (data_size_t i = 0; i < num_data_; ++i) {
+								const double w = has_weights_ ? weights_[i] : 1.0;
+								fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
+									w, SigmaI_plus_W_inv_diag[i], SigmaI_plus_W_inv_d_mll_d_mode[i]);
 							}
 						}
 						else if (IsRegressionZeroModel()) {
@@ -6565,7 +6871,7 @@ namespace GPBoost {
 			if (grad_information_wrt_mode_non_zero_) {
 				CalcFirstDerivInformationLocPar(y_data, y_data_int, location_par_ptr, deriv_information_diag_loc_par, deriv_information_diag_loc_par_data_scale);
 			}
-			vec_t d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_off_diag;
+			vec_t d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block, SigmaI_plus_W_inv_off_diag;
 			if (matrix_inversion_method_ == "iterative") {
 				if (cg_preconditioner_type_ == "vecchia_response") {
 					Log::REFatal("Calculation of gradients is currently not correctly implemented for the '%s' preconditioner ", cg_preconditioner_type_.c_str());
@@ -6711,12 +7017,13 @@ namespace GPBoost {
 						}//end grad_information_wrt_mode_can_be_zero_for_some_points_
 					}
 				}
-				else if (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad) {
-					// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1) (RE/mode-scale, dimension dim_mode_), needed
-					// for the log-error variance's fixed-effect gradient below. The ratio trick used just above
-					// (d_log_det_Sigma_W_plus_I_d_mode / deriv_information_diag_loc_par) is not applicable here since
-					// deriv_information_diag_loc_par is identically zero (grad_information_wrt_mode_non_zero_ == false: the
-					// mean's Fisher information exp(-log-error-variance) does not depend on the mode). Instead, solve
+				if (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad) {
+					// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1) (RE/mode-scale, dimension dim_mode_), needed for the
+					// second, fixed-effects-only block's gradient below. The ratio trick used just above
+					// (d_log_det_Sigma_W_plus_I_d_mode / deriv_information_diag_loc_par) is not applicable here: for
+					// 'gaussian_heteroscedastic' deriv_information_diag_loc_par is identically zero (the mean's Fisher information
+					// exp(-log-error-variance) does not depend on the mode), and for
+					// 'zero_censored_power_transformed_normal_heteroscedastic' it vanishes at every positive observation. Instead, solve
 					// (Sigma^-1+W) x_k = r_k for each column r_k of the raw (Cov = I) random vectors rand_vec_trace_I_ (already
 					// generated above for the log-determinant's stochastic trace estimation) using the existing,
 					// preconditioner-agnostic single-vector solver (it internally performs the required push-through for
@@ -6737,7 +7044,10 @@ namespace GPBoost {
 					if (has_NA_or_Inf_stoch_diag) {
 						Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
 					}
-					SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv_RV_I.cwiseProduct(rand_vec_trace_I_)).rowwise().mean();
+					SigmaI_plus_W_inv_diag_2nd_block = (SigmaI_plus_W_inv_RV_I.cwiseProduct(rand_vec_trace_I_)).rowwise().mean();
+					if (likelihood_type_ == "gaussian_heteroscedastic") {
+						SigmaI_plus_W_inv_diag = SigmaI_plus_W_inv_diag_2nd_block;// there is no eta-block version for this likelihood
+					}
 				}
 				//Calculate gradient wrt additional likelihood parameters
 				if (calc_aux_par_grad) {
@@ -6884,9 +7194,10 @@ namespace GPBoost {
 				}//end calc_cov_grad_internal
 				if (calc_F_grad || calc_aux_par_grad) {
 					if (!calc_cov_grad_internal) {
-						if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad)) {
+						if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad)) {
 							sp_mat_t L_inv_sqr = L_inv.cwiseProduct(L_inv);
 							SigmaI_plus_W_inv_diag = L_inv_sqr.transpose() * vec_t::Ones(L_inv_sqr.rows());// diagonal of (Sigma^-1 + W) ^ -1
+						SigmaI_plus_W_inv_diag_2nd_block = SigmaI_plus_W_inv_diag;
 						}
 						if (grad_information_wrt_mode_non_zero_) {
 							if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
@@ -6900,9 +7211,10 @@ namespace GPBoost {
 							SigmaI_plus_W_inv_d_mll_d_mode = L_inv.transpose() * (L_inv * d_mll_d_mode);
 						}
 					}
-					else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad) ||
+					else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad) ||
 						(IsZeroInflatedCountRegression() && grad_information_wrt_mode_non_zero_ && calc_F_grad)) {// the zeta-block log-det term of a zero-inflated count regression needs the diagonal of (Sigma^-1+W)^-1
 						SigmaI_plus_W_inv_diag = SigmaI_plus_W_inv.diagonal();
+					SigmaI_plus_W_inv_diag_2nd_block = SigmaI_plus_W_inv_diag;
 					}
 				}//end calc_F_grad || calc_aux_par_grad
 				// calculate gradient wrt additional likelihood parameters
@@ -6976,6 +7288,17 @@ namespace GPBoost {
 								0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
 						}
 					}
+					else if (IsZeroCensPowNormHetero()) {
+						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
+						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							const data_size_t idx = random_effects_indices_of_data_[i];
+							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
+								w, SigmaI_plus_W_inv_diag_2nd_block[idx], SigmaI_plus_W_inv_d_mll_d_mode[idx]);
+						}
+					}
 					else if (IsRegressionZeroModel()) {
 						// Structural-zero block (zeta): hurdle -> direct score; zero-inflated counts add log-det (dJ_eta/dzeta) + implicit (l_eta_zeta) via RegressionZeroModel_dZetaDense
 						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
@@ -7002,6 +7325,16 @@ namespace GPBoost {
 							double dummy_mean_deriv, deriv_log_var;
 							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
 							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
+						}
+					}
+					else if (IsZeroCensPowNormHetero()) {
+						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
+						fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
+								w, SigmaI_plus_W_inv_diag_2nd_block[i], SigmaI_plus_W_inv_d_mll_d_mode[i]);
 						}
 					}
 					else if (IsRegressionZeroModel()) {
@@ -7096,7 +7429,7 @@ namespace GPBoost {
 			vec_t WI = information_ll_.cwiseInverse();
 			vec_t DW_plus_I_inv_diag, SigmaI_plus_W_inv_diag, d_mll_d_mode;
 			den_mat_t L_inv_cross_cov_T_DW_plus_I_inv;
-			if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad || (likelihood_type_ == "gaussian_heteroscedastic" && calc_F_grad)) {
+			if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad || (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad)) {
 				DW_plus_I_inv_diag = (information_ll_.array() * fitc_resid_diag.array() + 1.).matrix().cwiseInverse();
 				L_inv_cross_cov_T_DW_plus_I_inv = (*cross_cov).transpose() * (DW_plus_I_inv_diag.asDiagonal());
 				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_dense_Newton_, L_inv_cross_cov_T_DW_plus_I_inv, L_inv_cross_cov_T_DW_plus_I_inv, false);
@@ -7207,6 +7540,17 @@ namespace GPBoost {
 								0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
 						}
 					}
+					else if (IsZeroCensPowNormHetero()) {
+						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
+						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							const data_size_t idx = random_effects_indices_of_data_[i];
+							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
+								w, SigmaI_plus_W_inv_diag[idx], SigmaI_plus_W_inv_d_mll_d_mode[idx]);
+						}
+					}
 					else if (IsRegressionZeroModel()) {
 						// Structural-zero block (zeta): hurdle -> direct score; zero-inflated counts add log-det (dJ_eta/dzeta) + implicit (l_eta_zeta) via RegressionZeroModel_dZetaDense
 #pragma omp parallel for schedule(static)
@@ -7232,6 +7576,16 @@ namespace GPBoost {
 							double dummy_mean_deriv, deriv_log_var;
 							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
 							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
+						}
+					}
+					else if (IsZeroCensPowNormHetero()) {
+						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
+						fixed_effect_grad.conservativeResize(dim_location_par_);
+#pragma omp parallel for schedule(static)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
+								w, SigmaI_plus_W_inv_diag[i], SigmaI_plus_W_inv_d_mll_d_mode[i]);
 						}
 					}
 					else if (IsRegressionZeroModel()) {
@@ -10020,6 +10374,24 @@ namespace GPBoost {
 					pred_mean[i] = EY;
 				}
 			}//end "zero_censored_power_transformed_normal"
+			else if (IsZeroCensPowNormHetero()) {
+				// As above, but sigma_i = exp(pred_var_mean[i]) is the prediction of the second, fixed-effects-only location
+				// parameter block (the caller sets pred_var_var = 0 since that block is deterministic given the fixed effects)
+				const double lambda = aux_pars_[0];
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < (int)pred_mean.size(); ++i) {
+					const double m = pred_mean[i];
+					const double v = std::max(pred_var[i], 0.0);
+					const double sigma = std::exp(pred_var_mean[i]);
+					const double s = std::sqrt(std::max(v + sigma * sigma, 0.0));
+					const double EY = TruncPowerNormalMomentGH(m, s, lambda);
+					if (predict_var) {
+						const double EY2 = TruncPowerNormalMomentGH(m, s, 2.0 * lambda);
+						pred_var[i] = std::max(0.0, EY2 - EY * EY);
+					}
+					pred_mean[i] = EY;
+				}
+			}//end "zero_censored_power_transformed_normal_heteroscedastic"
 			else if (likelihood_type_ == "zoctn") {
 				CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
@@ -10355,6 +10727,10 @@ namespace GPBoost {
 			else if (likelihood == string_t("zero-censored-power-normal")) {
 				return "zero_censored_power_transformed_normal";
 			}
+			else if (likelihood == string_t("zero-censored-power-normal-heteroscedastic") ||
+				likelihood == string_t("zero_censored_power_transformed_normal_het")) {
+				return "zero_censored_power_transformed_normal_heteroscedastic";
+			}
 			else if (likelihood == string_t("quantile") || likelihood == string_t("quantile_regression")) {
 				return "asymmetric_laplace";
 			}
@@ -10519,6 +10895,15 @@ namespace GPBoost {
 					return std::exp(aux_pars_[1] * std::log(value));
 				}
 			}
+			else if (IsZeroCensPowNormHetero()) {
+				// Same transformation Y = max(0,X)^lambda as above; lambda is aux_pars_[0] here (sigma is a location parameter block)
+				if (value <= 0.) {
+					return 0.;
+				}
+				else {
+					return std::exp(aux_pars_[0] * std::log(value));
+				}
+			}
 			else if (likelihood_type_ == "zoctn") {
 				if (value <= 0.) {
 					return 0.;
@@ -10651,7 +11036,7 @@ namespace GPBoost {
 					}
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
-				else if (likelihood_type_ == "zero_censored_power_transformed_normal") {
+				else if (IsZeroCensPowNorm()) {
 					double s_logy_pos = 0.0;
 #pragma omp parallel for schedule(static) reduction(+:s_logy_pos)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -10922,6 +11307,20 @@ namespace GPBoost {
 					}
 					log_normalizing_constant_ = w_pos * (-std::log(aux_pars_[1]) - std::log(aux_pars_[0]) - M_LOGSQRT2PI);// Per positive y: -log(lambda) -log(sigma) - 0.5*log(2*pi)
 					log_normalizing_constant_ += ((1.0 / aux_pars_[1]) - 1.0) * aux_log_normalizing_constant_;// Add the Jacobian term: (1/lambda - 1) * sum_{y>0} w * log(y)
+				}
+				else if (IsZeroCensPowNormHetero()) {
+					// As above, but -log(sigma_i) = -location_par2_i depends on the location parameter and is therefore part
+					// of the per-sample log-likelihood instead of this constant
+					double w_pos = 0.0;
+#pragma omp parallel for schedule(static) reduction(+:w_pos)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						if (y_data[i] > 0.0) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							w_pos += w;
+						}
+					}
+					log_normalizing_constant_ = w_pos * (-std::log(aux_pars_[0]) - M_LOGSQRT2PI);// Per positive y: -log(lambda) - 0.5*log(2*pi)
+					log_normalizing_constant_ += ((1.0 / aux_pars_[0]) - 1.0) * aux_log_normalizing_constant_;// Jacobian term: (1/lambda - 1) * sum_{y>0} w * log(y)
 				}
 				else if (likelihood_type_ == "zoctn") {
 					const double sigma = aux_pars_[0];
@@ -11253,6 +11652,13 @@ namespace GPBoost {
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					const double w = has_weights_ ? weights_[i] : 1.0;
 					ll += w * LogLikZeroCensPowNorm(y_data[i], location_par[i], false);
+				}
+			}
+			else if (IsZeroCensPowNormHetero()) {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					ll += w * LogLikZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_], false);
 				}
 			}
 			else if (likelihood_type_ == "zoctn") {
@@ -12010,6 +12416,103 @@ namespace GPBoost {
 			}
 		}
 
+		// ---------------------------------------------------------------------------------------------------------
+		// Heteroscedastic zero-censored power-transformed normal: Y = max(0,X)^lambda, X ~ N(mu, sigma^2) with
+		//   mu = loc_eta (block 0, fixed + random effects) and log(sigma) = loc_zeta (block 1, fixed effects only).
+		//   For y = 0:  l = log Phi(a0),                     a0 = -mu / sigma,  r = phi(a0) / Phi(a0)
+		//   For y > 0:  l = -log(lambda) - loc_zeta - log(sqrt(2*pi)) + (1/lambda - 1) * log(y) - z^2 / 2,
+		//               u = y^(1/lambda),  z = (u - mu) / sigma
+		// All eta derivatives coincide with those of the homoscedastic variant with sigma replaced by sigma_i, and all
+		// zeta derivatives coincide with the (log-scale) "sigma" auxiliary parameter derivatives of that variant.
+		// ---------------------------------------------------------------------------------------------------------
+		inline double LogLikZeroCensPowNormHetero(double y, double loc_eta, double loc_zeta, bool incl_norm_const) const {
+			const double sigma = std::exp(loc_zeta);
+			if (y <= 0.0) {
+				return GPBoost::normalLogCDF(-loc_eta / sigma);// log Phi(a0)
+			}
+			const double lambda = aux_pars_[0];
+			const double u = std::exp((1.0 / lambda) * std::log(y));// y^(1/lambda)
+			const double z = (u - loc_eta) / sigma;
+			double ll = -0.5 * z * z - loc_zeta;
+			if (incl_norm_const) {
+				ll += -std::log(lambda) - M_LOGSQRT2PI + (1.0 / lambda - 1.0) * std::log(y);
+			}
+			return ll;
+		}
+
+		/*! \brief First derivative of the heteroscedastic zero-censored power-transformed normal log-likelihood wrt eta (= mu) */
+		inline double FirstDerivLogLikZeroCensPowNormHetero(double y, double loc_eta, double loc_zeta) const {
+			const double sigma = std::exp(loc_zeta);
+			if (y <= 0.0) {
+				return -(1.0 / sigma) * GPBoost::InvMillsRatioNormalPhi(-loc_eta / sigma);
+			}
+			const double u = std::exp((1.0 / aux_pars_[0]) * std::log(y));
+			return (u - loc_eta) / (sigma * sigma);// = z / sigma
+		}
+
+		/*! \brief Observed information (= negative second derivative) of the heteroscedastic zero-censored power-transformed normal log-likelihood wrt eta */
+		inline double SecondDerivNegLogLikZeroCensPowNormHetero(double y, double loc_eta, double loc_zeta) const {
+			const double sigma = std::exp(loc_zeta);
+			if (y <= 0.0) {
+				const double a0 = -loc_eta / sigma;
+				const double r = GPBoost::InvMillsRatioNormalPhi(a0);
+				return (1.0 / (sigma * sigma)) * r * (a0 + r);
+			}
+			return 1.0 / (sigma * sigma);
+		}
+
+		/*! \brief Derivative wrt eta of the eta-block information of the heteroscedastic zero-censored power-transformed normal log-likelihood */
+		inline double DerivInformationZeroCensPowNormHetero(double y, double loc_eta, double loc_zeta) const {
+			if (y > 0.0) {
+				return 0.0;// the information 1 / sigma^2 does not depend on eta for positive observations
+			}
+			const double sigma = std::exp(loc_zeta);
+			const double a0 = -loc_eta / sigma;
+			const double r = GPBoost::InvMillsRatioNormalPhi(a0);
+			return (r / (sigma * sigma * sigma)) * ((a0 + r) * (a0 + 2.0 * r) - 1.0);
+		}
+
+		/*!
+		* \brief Quantities of the second, fixed-effects-only location parameter block (zeta = log(sigma)) of the
+		*		heteroscedastic zero-censored power-transformed normal likelihood at one observation
+		* \param[out] dZeta Score l_zeta = d log f / d zeta
+		* \param[out] lEtaZeta Cross derivative d^2 log f / (d eta d zeta)
+		* \param[out] dJetadZeta Derivative of the eta-block information wrt zeta
+		*/
+		inline void ZeroCensPowNormHeteroZetaQuantities(double y, double loc_eta, double loc_zeta,
+			double& dZeta, double& lEtaZeta, double& dJetadZeta) const {
+			const double sigma = std::exp(loc_zeta);
+			if (y <= 0.0) {
+				const double a0 = -loc_eta / sigma;
+				const double r = GPBoost::InvMillsRatioNormalPhi(a0);
+				dZeta = r * loc_eta / sigma;
+				lEtaZeta = r * (1.0 + ((a0 + r) * loc_eta) / sigma) / sigma;
+				dJetadZeta = r * ((loc_eta * (1.0 - (a0 + r) * (a0 + 2.0 * r))) / (sigma * sigma * sigma) - 2.0 * (a0 + r) / (sigma * sigma));
+			}
+			else {
+				const double u = std::exp((1.0 / aux_pars_[0]) * std::log(y));
+				const double z = (u - loc_eta) / sigma;
+				dZeta = -1.0 + z * z;
+				lEtaZeta = -2.0 * z / sigma;
+				dJetadZeta = -2.0 / (sigma * sigma);
+			}
+		}
+
+		/*!
+		* \brief zeta-block (= log(sigma)) gradient of the negative approximate marginal log-likelihood at one observation of the
+		*		heteroscedastic zero-censored power-transformed normal likelihood: the direct score, the log-determinant term
+		*		(through dJ_eta/dzeta) and the implicit term through the mode (through l_{eta,zeta})
+		* \param w Sample weight
+		* \param diag Data-scale diagonal entry of (Sigma^-1 + W)^-1 at this observation
+		* \param inv_d_mll_d_mode Data-scale entry of (Sigma^-1 + W)^-1 * d_mll_d_mode at this observation
+		*/
+		inline double ZeroCensPowNormHeteroZetaGrad(double y, double loc_eta, double loc_zeta, double w,
+			double diag, double inv_d_mll_d_mode) const {
+			double dZeta, lEtaZeta, dJetadZeta;
+			ZeroCensPowNormHeteroZetaQuantities(y, loc_eta, loc_zeta, dZeta, lEtaZeta, dJetadZeta);
+			return -w * dZeta + 0.5 * (w * dJetadZeta) * diag + (w * lEtaZeta) * inv_d_mll_d_mode;
+		}
+
 		inline double LogLikZeroOneCensTransfNorm(double y, double location_par, bool incl_norm_const) const {
 			const double sigma = aux_pars_[0];
 			if (y <= 0.0) {
@@ -12322,6 +12825,14 @@ namespace GPBoost {
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					const double w = has_weights_ ? weights_[i] : 1.0;
 					first_deriv_ll[i] = w * FirstDerivLogLikZeroCensPowNorm(y_data[i], location_par[i]);
+				}
+			}
+			else if (IsZeroCensPowNormHetero()) {
+				// Only the mean / eta is a mode / random effect here; log(sigma) (location_par[i + num_data_]) is a fixed effect
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					first_deriv_ll[i] = w * FirstDerivLogLikZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_]);
 				}
 			}
 			else if (likelihood_type_ == "zoctn") {
@@ -13023,6 +13534,13 @@ namespace GPBoost {
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						information_ll[i] = w * SecondDerivNegLogLikZeroCensPowNorm(y_data[i], location_par[i]);
+					}
+				}
+				else if (IsZeroCensPowNormHetero()) {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						information_ll[i] = w * SecondDerivNegLogLikZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_]);
 					}
 				}
 				else if (likelihood_type_ == "zoctn") {
@@ -14003,6 +14521,13 @@ namespace GPBoost {
 						}
 					}
 				}//end "zero_censored_power_transformed_normal"
+				else if (IsZeroCensPowNormHetero()) {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						deriv_information_diag_loc_par[i] = w * DerivInformationZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_]);
+					}
+				}//end "zero_censored_power_transformed_normal_heteroscedastic"
 				else if (likelihood_type_ == "zoctn") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -14474,6 +14999,23 @@ namespace GPBoost {
 				grad[0] = -grad_log_sigma;
 				grad[1] = -grad_log_lambda;
 			}//end "zero_censored_power_transformed_normal"
+			else if (IsZeroCensPowNormHetero()) {
+				// lambda is the only auxiliary parameter (sigma is the second location parameter block). Zeros do not depend on lambda
+				const double lambda = aux_pars_[0];
+				double grad_log_lambda = 0.0;
+#pragma omp parallel for schedule(static) reduction(+:grad_log_lambda)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					if (y_data[i] > 0.0) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						const double s = std::exp(location_par[i + num_data_]);
+						const double logy = std::log(y_data[i]);
+						const double u = std::exp(logy / lambda);
+						const double z = (u - location_par[i]) / s;
+						grad_log_lambda += w * (-1.0 - (logy / lambda) + (z * u * logy) / (lambda * s));// d/d log(lambda) log f
+					}
+				}
+				grad[0] = -grad_log_lambda;
+			}//end "zero_censored_power_transformed_normal_heteroscedastic"
 			else if (likelihood_type_ == "zoctn") {
 				const double a = aux_pars_original_[1];
 				const double b = aux_pars_[2];
@@ -15137,6 +15679,23 @@ namespace GPBoost {
 						deriv_information_aux_par[i] = w * dinfo;
 					}
 				}//end "zero_censored_power_transformed_normal"
+				else if (IsZeroCensPowNormHetero()) {
+					CHECK(ind_aux_par == 0);// lambda is the only auxiliary parameter
+					const double lambda = aux_pars_[0];
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						double sdl = 0.0;// second_deriv_loc_aux_par
+						if (y_data[i] > 0.0) {
+							const double s = std::exp(location_par[i + num_data_]);
+							const double logy = std::log(y_data[i]);
+							const double u = std::exp(logy / lambda);
+							sdl = -u * logy / (lambda * s * s);//d^2/deta d log(lambda) log f at y>0
+						}// zeros do not depend on lambda
+						second_deriv_loc_aux_par[i] = w * sdl;
+						deriv_information_aux_par[i] = 0.0;// the eta-block information does not depend on lambda
+					}
+				}//end "zero_censored_power_transformed_normal_heteroscedastic"
 				else if (likelihood_type_ == "zoctn") {
 					// aux_pars_ = { sigma, a, b }, derivatives on the log-scale
 					CHECK(ind_aux_par == 0 || ind_aux_par == 1 || ind_aux_par == 2);
@@ -17206,7 +17765,8 @@ namespace GPBoost {
 		/*! \brief List of supported likelihoods */
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "gaussian_latent", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit",
 			"poisson", "gamma", "tweedie", "tweedie_fixed_p", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "gaussian_heteroscedastic_fixed_and_random", "lognormal", "beta_binomial",
-			"hurdle_gamma", "hurdle_lognormal", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
+			"hurdle_gamma", "hurdle_lognormal", "zero_censored_power_transformed_normal", "zero_censored_power_transformed_normal_heteroscedastic",
+			"zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
 			"asymmetric_laplace", "gpd", "egpd_power", "egpd_power_mixture", "egpd_beta", "egpd_power_beta",
 			"zero_inflated_poisson", "zero_inflated_negative_binomial", "zero_inflated_negative_binomial_1",
 			"hurdle_gpd", "hurdle_egpd_power", "hurdle_egpd_power_mixture", "hurdle_egpd_beta", "hurdle_egpd_power_beta",
@@ -17215,7 +17775,8 @@ namespace GPBoost {
 			"zero_inflated_regression_poisson", "zero_inflated_regression_negative_binomial", "zero_inflated_regression_negative_binomial_1" };
 		/*! \brief List of likelihoods that work only for a standard Laplace approximation */
 		const std::set<string_t> LIKELIHOODS_ONLY_LAPLACE_{ "binomial_probit", "binomial_logit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit", "gamma", "negative_binomial",
-			"beta", "beta_binomial", "tweedie", "tweedie_fixed_p", "hurdle_gamma", "hurdle_lognormal", "zero_censored_power_transformed_normal", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
+			"beta", "beta_binomial", "tweedie", "tweedie_fixed_p", "hurdle_gamma", "hurdle_lognormal", "zero_censored_power_transformed_normal",
+			"zero_censored_power_transformed_normal_heteroscedastic", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
 			"gpd", "egpd_power", "egpd_power_mixture", "egpd_beta", "egpd_power_beta",
 			"hurdle_gpd", "hurdle_egpd_power", "hurdle_egpd_power_mixture", "hurdle_egpd_beta", "hurdle_egpd_power_beta",
 			"hurdle_regression_gamma", "hurdle_regression_lognormal", "hurdle_regression_gpd", "hurdle_regression_egpd_power",

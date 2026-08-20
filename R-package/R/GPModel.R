@@ -76,7 +76,11 @@
 #' The model used is Y = max(0,X)^lambda, X ~ N(mu, sigma^2), where mu = F(X) + Zb, 
 #' and sigma and lambda are (auxiliary) parameters that are estimated. 
 #' For more details on this model, see Sigrist et al. (2012, AOAS) "A dynamic nonstationary spatio-temporal model for short term prediction of precipitation" }
-#' \item{ "zoctn": Zero-one censored transformed normal likelihood for modeling data in [0,1] with point masses at 0 and 1 
+#' \item{ "zero_censored_power_transformed_normal_heteroscedastic": As "zero_censored_power_transformed_normal", but the
+#' standard deviation sigma of the latent normal variable varies across observations: log(sigma) = F_2(X) is related to
+#' fixed effects only (covariates and / or the GPBoost tree-boosting algorithm; no random effects / GPs for sigma), while
+#' mu = F(X) + Zb is related to both fixed and random effects. lambda is then the only (auxiliary) parameter that is estimated }
+#' \item{ "zoctn": Zero-one censored transformed normal likelihood for modeling data in [0,1] with point masses at 0 and 1
 #' and a continuous distribution on (0,1). The model used is T ~ N(mu, sigma^2), W = max(min(T,1),0), and Y = g(W),
 #' where g(x) = expit(a + b * logit(x)) for x in (0,1), mu = F(X) + Z_RE u, u denotes the random effects, Z_RE is their design matrix,
 #' and sigma, a, and b are (auxiliary) parameters
@@ -712,7 +716,10 @@ gpb.GPModel <- R6::R6Class(
       if (likelihood == "gaussian_heteroscedastic_fixed_and_random") {
         private$num_sets_re = 2
         private$num_sets_fe = 2
-      } else if (likelihood == "gaussian_heteroscedastic") {
+      } else if (likelihood == "gaussian_heteroscedastic" ||
+                 likelihood == "zero_censored_power_transformed_normal_heteroscedastic") {
+        # A second fixed-effects-only predictor: the log-error variance for "gaussian_heteroscedastic" and
+        # the log standard deviation of the latent normal variable for the zero-censored power-transformed normal
         private$num_sets_fe = 2
       } else if (grepl("^(hurdle|zero_inflated)_regression_", likelihood)) {
         # Hurdle / zero-inflated regression zero model (e.g. "hurdle_regression_gamma", "zero_inflated_regression_poisson"):
