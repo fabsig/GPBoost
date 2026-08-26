@@ -1247,6 +1247,55 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief True for likelihoods with a second, fixed-effects-only block of the location parameter (the "zeta" block,
+		*		location_par[i + num_data_]): the log-error variance of 'gaussian_heteroscedastic', the log(sigma) of
+		*		'zero_censored_power_transformed_normal_heteroscedastic', and the structural-zero predictor of a hurdle /
+		*		zero-inflated count regression. The gradient of all of these is calculated by 'CalcSecondFEBlockFixedEffectGrad'.
+		*		NOTE: this excludes 'gaussian_heteroscedastic_fixed_and_random', whose second block is a genuine second set of
+		*		random effects (num_sets_re_ == 2) and is handled by the loops over 'num_sets_re_'
+		*/
+		bool HasSecondFEBlock() const {
+			return(likelihood_type_ == "gaussian_heteroscedastic" || IsZeroCensPowNormHetero() || IsRegressionZeroModel());
+		}
+
+		/*!
+		* \brief True if 'CalcSecondFEBlockFixedEffectGrad' reads its 'diag' argument, i.e. if the zeta block has a
+		*		log-determinant term. False only for a zero model that contributes nothing but the direct score (a hurdle
+		*		regression, which decouples exactly, or a zero-inflated count regression whose coupled terms are dropped).
+		*		Lets a caller skip an expensive calculation of that diagonal
+		* \param include_coupled_zi_terms As in 'CalcSecondFEBlockFixedEffectGrad'
+		*/
+		bool SecondFEBlockGradNeedsDiag(bool include_coupled_zi_terms) const {
+			if (iid_model_) {
+				return false;// no random effect / mode at all, so both correction terms vanish
+			}
+			return(!IsRegressionZeroModel() || (!IsHurdleRegression() && include_coupled_zi_terms));
+		}
+
+		/*!
+		* \brief True if 'CalcSecondFEBlockFixedEffectGrad' reads its 'impl' argument, i.e. if the zeta block has an
+		*		implicit-through-the-mode term. Additionally false for 'gaussian_heteroscedastic', whose zeta block has no
+		*		mode at all (l_eta_zeta = 0)
+		* \param include_coupled_zi_terms As in 'CalcSecondFEBlockFixedEffectGrad'
+		*/
+		bool SecondFEBlockGradNeedsImpl(bool include_coupled_zi_terms) const {
+			return(SecondFEBlockGradNeedsDiag(include_coupled_zi_terms) && likelihood_type_ != "gaussian_heteroscedastic");
+		}
+
+		/*!
+		* \brief Pick the diagonal of (Sigma^-1+W)^-1 that the zeta block's log-determinant term has to use, for the
+		*		approximations that calculate a separate estimate of it for that block. The heteroscedastic likelihoods use
+		*		the separate estimate, since for them the eta block's version is not usable (dJ_eta/deta vanishes where it
+		*		matters, see 'SecondFEBlockNeedsSigmaIPlusWInvDiag'), whereas a zero-model regression uses the eta block's
+		*		version (for which no separate estimate is calculated in the first place)
+		* \param eta_block_diag The diagonal calculated for the eta block
+		* \param second_block_diag The diagonal calculated separately for the zeta block
+		*/
+		const vec_t& SecondFEBlockZetaDiag(const vec_t& eta_block_diag, const vec_t& second_block_diag) const {
+			return SecondFEBlockNeedsSigmaIPlusWInvDiag() ? second_block_diag : eta_block_diag;
+		}
+
+		/*!
 		* \brief Set the type of likelihood
 		* \param type Likelihood name
 		*/
@@ -4402,6 +4451,227 @@ namespace GPBoost {
 		}//end FindModePostRandEffCalcMLLFITC
 
 		/*!
+		* \brief Stochastic (Hutchinson) estimate of the DATA-scale diagonal of Z (Sigma^-1 + Z^T W Z)^-1 Z^T on the iterative
+		*       grouped random effects path. Needed for the log-determinant term of the second (zeta) block's fixed-effect
+		*       gradient: the ratio trick used for the eta block is not applicable there since dJ_eta/deta vanishes at all
+		*       observations that matter for these likelihoods.
+		*       NOTE: 'SigmaI_plus_ZtWZ_inv_RV_' cannot be reused here since it is solved against the preconditioned vectors
+		*       'rand_vec_trace_P_' (Cov = P, the preconditioner), whereas an unbiased diagonal estimate requires solving
+		*       against the raw vectors 'rand_vec_trace_I_' (Cov = I, generated for the log-determinant's trace estimation)
+		* \return The estimated diagonal, of length num_data_
+		*/
+		vec_t CalcStochDataScaleDiagSigmaIPlusZtWZInv() const {
+			CHECK(rand_vec_trace_I_.rows() == dim_mode_);
+			CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
+			den_mat_t SigmaI_plus_ZtWZ_inv_RV_I(dim_mode_, num_rand_vec_trace_);
+			bool has_NA_or_Inf_stoch_diag = false;
+			CGRandomEffectsMat(SigmaI_plus_ZtWZ_rm_, rand_vec_trace_I_, SigmaI_plus_ZtWZ_inv_RV_I, has_NA_or_Inf_stoch_diag,
+				dim_mode_, num_rand_vec_trace_, cg_max_num_it_, cg_delta_conv_, cg_preconditioner_type_,
+				L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+			if (has_NA_or_Inf_stoch_diag) {
+				Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
+			}
+			den_mat_t Z_SigmaI_plus_ZtWZ_inv_RV_I(num_data_, num_rand_vec_trace_), Z_RV_I(num_data_, num_rand_vec_trace_);
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < num_rand_vec_trace_; ++i) {
+				Z_SigmaI_plus_ZtWZ_inv_RV_I.col(i) = (*Zt_).transpose() * SigmaI_plus_ZtWZ_inv_RV_I.col(i);
+				Z_RV_I.col(i) = (*Zt_).transpose() * rand_vec_trace_I_.col(i);
+			}
+			return (Z_SigmaI_plus_ZtWZ_inv_RV_I.cwiseProduct(Z_RV_I)).rowwise().mean();
+		}//end CalcStochDataScaleDiagSigmaIPlusZtWZInv
+
+		/*!
+		* \brief Calculate the gradient of the negative Laplace-approximated marginal log-likelihood wrt the fixed effects of
+		*       the second, fixed-effects-only block of the location parameter (the "zeta" block, see 'HasSecondFEBlock').
+		*       All likelihoods with such a block share the same three-term structure
+		*           d(-mll)/dzeta_i = -w_i * (dl/dzeta)_i  +  0.5 * w_i * (dJ_eta/dzeta)_i * diag_i  +  w_i * (l_eta_zeta)_i * impl_i,
+		*       i.e., direct score + log-determinant term + implicit-through-the-mode term, and they differ only in the three
+		*       likelihood-specific quantities (dl/dzeta, dJ_eta/dzeta, l_eta_zeta). The likelihood is dispatched once here,
+		*       outside the loops over the data, so that no per-observation type comparison is done.
+		*       The eta block of 'fixed_effect_grad' must already have been filled in by the caller.
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (both blocks, i.e. of length dim_location_par_)
+		* \param information_data_scale Diagonal of W on the DATA scale. Only read for 'gaussian_heteroscedastic', for which
+		*       w * dJ_eta/dzeta = -W and l_eta_zeta = 0
+		* \param diag Diagonal of (Sigma^-1+W)^-1 (or its Z-projected / stochastic analogue) used by the log-determinant term.
+		*       May be left empty if 'SecondFEBlockGradNeedsDiag' is false, in which case it is not read
+		* \param impl (Sigma^-1+W)^-1 * dmll/dmode (or its Z-projected analogue) used by the implicit-derivative term.
+		*       May be left empty if 'SecondFEBlockGradNeedsImpl' is false, in which case it is not read
+		* \param index_map Maps a data index into 'diag' and 'impl'. Pass nullptr if those two are already on the data scale
+		* \param include_coupled_zi_terms If false, only the direct score is used for a zero-inflated count regression. This is
+		*       needed for the approximations on which the coupled terms would require a data-scale diagonal of (Sigma^-1+W)^-1
+		*       that is only available as a stochastic estimate (the gradient is then approximate for ZI counts). Has no effect
+		*       for hurdle regressions (which decouple exactly, l_eta_zeta = dJ_eta/dzeta = 0) or the heteroscedastic likelihoods
+		* \param[out] fixed_effect_grad Gradient wrt fixed effects. Grown to 'dim_location_par_' if needed (the eta block, which
+		*       the caller has already written, is preserved)
+		*/
+		void CalcSecondFEBlockFixedEffectGrad(const double* y_data,
+			const int* y_data_int,
+			const double* location_par,
+			const vec_t& information_data_scale,
+			const vec_t& diag,
+			const vec_t& impl,
+			const data_size_t* index_map,
+			bool include_coupled_zi_terms,
+			vec_t& fixed_effect_grad) const {
+			CHECK(HasSecondFEBlock());
+			// 'fixed_effect_grad' was sized to num_data_ by the caller's 'fixed_effect_grad = -first_deriv_ll_' (first_deriv_ll_
+			// is not aware of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the eta block
+			if (fixed_effect_grad.size() < dim_location_par_) {
+				fixed_effect_grad.conservativeResize(dim_location_par_);
+			}
+			// For an iid model there is no random effect / mode at all, so both the log-determinant and the
+			// implicit-through-the-mode term vanish and neither 'diag' / 'impl' nor 'index_map' is read (see
+			// 'SecondFEBlockGradNeedsDiag'). 'iid_model_' is false for every approximation other than the
+			// only-one-grouped-RE one, so this is a no-op there
+			const bool has_mode = !iid_model_;
+			if (likelihood_type_ == "gaussian_heteroscedastic") {
+				// Gradient wrt the fixed effects of the log-error variance. There is no random effect / mode for this block,
+				// so there is no implicit derivative (through the mode) here, i.e. l_eta_zeta = 0
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					double dummy_mean_deriv, deriv_log_var;
+					FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_], dummy_mean_deriv, deriv_log_var);
+					double log_det_term = 0.;
+					if (has_mode) {
+						log_det_term = 0.5 * information_data_scale[i] * diag[index_map == nullptr ? i : index_map[i]];
+					}
+					fixed_effect_grad[i + num_data_] = -w * deriv_log_var - log_det_term;
+				}
+			}
+			else if (IsZeroCensPowNormHetero()) {
+				// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					double diag_i = 0., impl_i = 0.;
+					if (has_mode) {
+						const data_size_t idx = index_map == nullptr ? i : index_map[i];
+						diag_i = diag[idx];
+						impl_i = impl[idx];
+					}
+					fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par[i], location_par[i + num_data_],
+						w, diag_i, impl_i);
+				}
+			}
+			else {//IsRegressionZeroModel()
+				// Structural-zero block (zeta). Hurdle decouples from eta (dJ_eta/dzeta = l_eta_zeta = 0) -> direct score only.
+				// Zero-inflated counts COUPLE at zero counts, so the log-determinant and implicit terms are added as well
+				if (IsHurdleRegression()) {
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						fixed_effect_grad[i + num_data_] = -w * HurdleRegression_dZeta(y_data[i], location_par[i + num_data_]);
+					}
+				}
+				else if (!include_coupled_zi_terms || !has_mode) {
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						ZICountRegQuant o; ZICountRegressionQuantities(y_data_int[i], location_par[i], location_par[i + num_data_], o);
+						fixed_effect_grad[i + num_data_] = -w * o.dZeta;
+					}
+				}
+				else {
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data_; ++i) {
+						const double w = has_weights_ ? weights_[i] : 1.0;
+						const data_size_t idx = index_map == nullptr ? i : index_map[i];
+						ZICountRegQuant o; ZICountRegressionQuantities(y_data_int[i], location_par[i], location_par[i + num_data_], o);
+						fixed_effect_grad[i + num_data_] = -w * o.dZeta +
+							0.5 * (w * RegressionZeroModel_dInfodZeta(location_par[i], location_par[i + num_data_], o)) * diag[idx] +
+							(w * o.lEtaZeta) * impl[idx];
+					}
+				}
+			}
+		}//end CalcSecondFEBlockFixedEffectGrad
+
+		/*!
+		* \brief Accumulate the two data-scale sums that appear in the gradient wrt an additional likelihood parameter in
+		*       every Laplace approximation: the log-determinant term sum_i (dW/daux)_i * ((Sigma^-1+W)^-1)_ii and the
+		*       implicit-derivative term sum_i (d^2l / (dlocpar daux))_i * ((Sigma^-1+W)^-1 dmll/dmode)_i.
+		*       The mapping from the data scale to the mode scale (Z^T aggregation vs. identity) is resolved internally
+		*       via 'use_random_effects_indices_of_data_', and the implicit-derivative term is only accumulated if
+		*       'grad_information_wrt_mode_non_zero_'.
+		* \param deriv_information_aux_par dW/daux on the data scale
+		* \param second_deriv_loc_aux_par d^2l / (dlocpar daux) on the data scale
+		* \param SigmaI_plus_W_inv_diag Diagonal of (Sigma^-1+W)^-1 on the mode scale
+		* \param SigmaI_plus_W_inv_d_mll_d_mode (Sigma^-1+W)^-1 dmll/dmode on the mode scale
+		* \param accumulate_log_det If false, 'd_detmll_d_aux_par' is left untouched (used when the log-determinant term is
+		*       obtained from a stochastic trace estimator instead of this exact sum)
+		* \param[out] d_detmll_d_aux_par Log-determinant term, accumulated into (not overwritten)
+		* \param[out] implicit_derivative Implicit-derivative term, accumulated into (not overwritten)
+		*/
+		void AccumulateAuxParGradTerms(const vec_t& deriv_information_aux_par,
+			const vec_t& second_deriv_loc_aux_par,
+			const vec_t& SigmaI_plus_W_inv_diag,
+			const vec_t& SigmaI_plus_W_inv_d_mll_d_mode,
+			bool accumulate_log_det,
+			double& d_detmll_d_aux_par,
+			double& implicit_derivative) const {
+			double d_detmll = 0., implicit_deriv = 0.;
+			if (use_random_effects_indices_of_data_) {
+#pragma omp parallel for schedule(static) reduction(+:d_detmll, implicit_deriv)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const data_size_t idx = random_effects_indices_of_data_[i];
+					if (accumulate_log_det) {
+						d_detmll += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[idx];
+					}
+					if (grad_information_wrt_mode_non_zero_) {
+						implicit_deriv += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[idx];
+					}
+				}
+			}
+			else {
+#pragma omp parallel for schedule(static) reduction(+:d_detmll, implicit_deriv)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					if (accumulate_log_det) {
+						d_detmll += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[i];
+					}
+					if (grad_information_wrt_mode_non_zero_) {
+						implicit_deriv += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
+					}
+				}
+			}
+			d_detmll_d_aux_par += d_detmll;
+			implicit_derivative += implicit_deriv;
+		}//end AccumulateAuxParGradTerms
+
+		/*!
+		* \brief Calculate the gradient of the negative Laplace-approximated marginal log-likelihood wrt the additional
+		*       likelihood parameters for the approximations in which the diagonal of (Sigma^-1+W)^-1 is available exactly
+		*       (i.e., all Cholesky-based variants). The stochastic (iterative) variants cannot use this since they obtain
+		*       the log-determinant term from a trace estimator; they call 'AccumulateAuxParGradTerms' directly.
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter
+		* \param SigmaI_plus_W_inv_diag Diagonal of (Sigma^-1+W)^-1 on the mode scale
+		* \param SigmaI_plus_W_inv_d_mll_d_mode (Sigma^-1+W)^-1 dmll/dmode on the mode scale
+		* \param[out] aux_par_grad Gradient wrt additional likelihood parameters (needs to be preallocated of size num_aux_pars_estim_)
+		*/
+		void CalcAuxParGradLaplaceExactDiag(const double* y_data,
+			const int* y_data_int,
+			const double* location_par,
+			const vec_t& SigmaI_plus_W_inv_diag,
+			const vec_t& SigmaI_plus_W_inv_d_mll_d_mode,
+			double* aux_par_grad) {// not const: 'CalcGradNegLogLikAuxPars' is non-const
+			vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
+			vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
+			vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
+			CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par, neg_likelihood_deriv.data());
+			for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
+				CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
+				double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
+				AccumulateAuxParGradTerms(deriv_information_aux_par, second_deriv_loc_aux_par, SigmaI_plus_W_inv_diag,
+					SigmaI_plus_W_inv_d_mll_d_mode, true, d_detmll_d_aux_par, implicit_derivative);
+				aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par + implicit_derivative;
+			}
+			SetGradAuxParsNotEstimated(aux_par_grad);
+		}//end CalcAuxParGradLaplaceExactDiag
+
+		/*!
 		* \brief Calculate the gradient of the negative Laplace-approximated marginal log-likelihood wrt covariance parameters,
 		*       fixed effects (e.g., for linear regression coefficients), and additional likelihood-related parameters.
 		*       Calculations are done using a numerically stable variant based on factorizing ("inverting") B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
@@ -4536,133 +4806,27 @@ namespace GPBoost {
 								information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 						}
 					}
-					if (likelihood_type_ == "gaussian_heteroscedastic") {
-						// Gradient wrt the fixed effects of the log-error variance. There is no random effect / mode for this
-						// block, so there is no implicit derivative (through the mode) here (see reasoning in
-						// 'CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale')
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							double dummy_mean_deriv, deriv_log_var;
-							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
-							fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
-								0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-						}
+					if (HasSecondFEBlock()) {
+						CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
+							SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_, true, fixed_effect_grad);
 					}
-					else if (IsZeroCensPowNormHetero()) {
-						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
-						fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							const data_size_t idx = random_effects_indices_of_data_[i];
-							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
-								w, SigmaI_plus_W_inv_diag[idx], SigmaI_plus_W_inv_d_mll_d_mode[idx]);
-						}
-					}
-					else if (IsRegressionZeroModel()) {
-						// Structural-zero block (zeta). Hurdle: direct score only (decoupled). Zero-inflated counts couple at zero counts:
-						// add log-det (via dJ_eta/dzeta) and implicit-through-mode (via l_eta_zeta), mirroring the eta block with W -> l_eta_zeta.
-						if (IsHurdleRegression()) {
-#pragma omp parallel for schedule(static)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								const double w = has_weights_ ? weights_[i] : 1.0;
-								fixed_effect_grad[i + num_data_] = -w * RegressionZeroModel_dZeta(y_data, y_data_int, i, location_par_ptr[i], location_par_ptr[i + num_data_]);
-							}
-						}
-						else {
-#pragma omp parallel for schedule(static)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								const double w = has_weights_ ? weights_[i] : 1.0;
-								const data_size_t idx = random_effects_indices_of_data_[i];
-								ZICountRegQuant o; ZICountRegressionQuantities(y_data_int[i], location_par_ptr[i], location_par_ptr[i + num_data_], o);
-								fixed_effect_grad[i + num_data_] = -w * o.dZeta + 0.5 * (w * RegressionZeroModel_dInfodZeta(location_par_ptr[i], location_par_ptr[i + num_data_], o)) * SigmaI_plus_W_inv_diag[idx] + (w * o.lEtaZeta) * SigmaI_plus_W_inv_d_mll_d_mode[idx];
-							}
-						}
-					}
-				}
+				}//end use_random_effects_indices_of_data_
 				else {
 					fixed_effect_grad = -first_deriv_ll_;
 					if (grad_information_wrt_mode_non_zero_) {
 						vec_t d_mll_d_F_implicit = (SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 						fixed_effect_grad += d_mll_d_mode - d_mll_d_F_implicit;
 					}
-					if (likelihood_type_ == "gaussian_heteroscedastic") {
-						// 'fixed_effect_grad = -first_deriv_ll_' above sized this to num_data_ (first_deriv_ll_ is not aware
-						// of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the mean block
-						fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							double dummy_mean_deriv, deriv_log_var;
-							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
-							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
-						}
+					if (HasSecondFEBlock()) {
+						CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
+							SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, nullptr, true, fixed_effect_grad);
 					}
-					else if (IsZeroCensPowNormHetero()) {
-						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
-						fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
-								w, SigmaI_plus_W_inv_diag[i], SigmaI_plus_W_inv_d_mll_d_mode[i]);
-						}
-					}
-					else if (IsRegressionZeroModel()) {
-						fixed_effect_grad.conservativeResize(dim_location_par_);
-						if (IsHurdleRegression()) {
-#pragma omp parallel for schedule(static)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								const double w = has_weights_ ? weights_[i] : 1.0;
-								fixed_effect_grad[i + num_data_] = -w * RegressionZeroModel_dZeta(y_data, y_data_int, i, location_par_ptr[i], location_par_ptr[i + num_data_]);
-							}
-						}
-						else {
-#pragma omp parallel for schedule(static)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								const double w = has_weights_ ? weights_[i] : 1.0;
-								ZICountRegQuant o; ZICountRegressionQuantities(y_data_int[i], location_par_ptr[i], location_par_ptr[i + num_data_], o);
-								fixed_effect_grad[i + num_data_] = -w * o.dZeta + 0.5 * (w * RegressionZeroModel_dInfodZeta(location_par_ptr[i], location_par_ptr[i + num_data_], o)) * SigmaI_plus_W_inv_diag[i] + (w * o.lEtaZeta) * SigmaI_plus_W_inv_d_mll_d_mode[i];
-							}
-						}
-					}
-				}
+				}//end !use_random_effects_indices_of_data_
 			}//end calc_F_grad
 			// calculate gradient wrt additional likelihood parameters
 			if (calc_aux_par_grad) {
-				vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
-				vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
-				vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
-				vec_t d_mode_d_aux_par;
-				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
-				for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
-					double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
-					if (use_random_effects_indices_of_data_) {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-							if (grad_information_wrt_mode_non_zero_) {
-								implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
-							}
-						}
-					}
-					else {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[i];
-							if (grad_information_wrt_mode_non_zero_) {
-								implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
-							}
-						}
-					}
-					aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par;
-					if (grad_information_wrt_mode_non_zero_) {
-						aux_par_grad[ind_ap] += implicit_derivative;
-					}
-				}
-				SetGradAuxParsNotEstimated(aux_par_grad);
+				CalcAuxParGradLaplaceExactDiag(y_data, y_data_int, location_par_ptr, SigmaI_plus_W_inv_diag,
+					SigmaI_plus_W_inv_d_mll_d_mode, aux_par_grad);
 			}//end calc_aux_par_grad
 		}//end CalcGradNegMargLikelihoodLaplaceApproxStable
 
@@ -4934,99 +5098,23 @@ namespace GPBoost {
 					if (grad_information_wrt_mode_non_zero_) {
 						fixed_effect_grad += 0.5 * trace_SigmaI_plus_ZtWZ_inv_Zt_W_deriv_loc_par_Z - Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode.cwiseProduct(information_ll_);
 					}
-					else if (likelihood_type_ == "gaussian_heteroscedastic") {
-						// Stochastic (Hutchinson) estimate of the data-scale diagonal of Z (Sigma^-1 + Z^T W Z)^-1 Z^T, needed
-						// for the log-error variance's fixed-effect gradient (see the Cholesky branch above for the exact,
-						// non-stochastic analogue). The existing SigmaI_plus_ZtWZ_inv_RV_ cannot be reused here since it is
-						// solved against the preconditioned vectors rand_vec_trace_P_ (Cov = P, the preconditioner), whereas
-						// an unbiased diagonal estimate requires solving against the raw vectors rand_vec_trace_I_ (Cov = I,
-						// already generated above for the log-determinant's stochastic trace estimation)
-						// 'fixed_effect_grad = -first_deriv_ll_' above sized this to num_data_ (first_deriv_ll_ is not aware
-						// of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the mean block
-						fixed_effect_grad.conservativeResize(dim_location_par_);
-						CHECK(rand_vec_trace_I_.rows() == dim_mode_);
-						CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
-						den_mat_t SigmaI_plus_ZtWZ_inv_RV_I(dim_mode_, num_rand_vec_trace_);
-						bool has_NA_or_Inf_stoch_diag = false;
-						CGRandomEffectsMat(SigmaI_plus_ZtWZ_rm_, rand_vec_trace_I_, SigmaI_plus_ZtWZ_inv_RV_I, has_NA_or_Inf_stoch_diag,
-							dim_mode_, num_rand_vec_trace_, cg_max_num_it_, cg_delta_conv_, cg_preconditioner_type_,
-							L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
-						if (has_NA_or_Inf_stoch_diag) {
-							Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
+					// Second (zeta) block on the ITERATIVE grouped-RE path, calculated separately from the eta block above. Its
+					// log-determinant term needs the DATA-scale diagonal of (Sigma^-1+ZtWZ)^-1, which is only available as a
+					// stochastic estimate here (the ratio trick used for the eta block is not applicable since dJ_eta/deta
+					// vanishes at the observations that matter for these likelihoods). Note that 'gaussian_heteroscedastic'
+					// only reaches this point with grad_information_wrt_mode_non_zero_ == false (its information does not
+					// depend on the mode), which is why the eta-block branch above and this one are mutually exclusive for it
+					if (HasSecondFEBlock()) {
+						// This branch is entered unconditionally, whereas the zeta block of 'gaussian_heteroscedastic' used to be
+						// calculated only when the eta-block branch above was NOT entered. The two are equivalent only as long as
+						// that likelihood's information does not depend on the mode, which is asserted here
+						CHECK(likelihood_type_ != "gaussian_heteroscedastic" || !grad_information_wrt_mode_non_zero_);
+						vec_t diag_data;
+						if (SecondFEBlockGradNeedsDiag(grad_information_wrt_mode_non_zero_)) {
+							diag_data = CalcStochDataScaleDiagSigmaIPlusZtWZInv();
 						}
-						den_mat_t Z_SigmaI_plus_ZtWZ_inv_RV_I(num_data_, num_rand_vec_trace_), Z_RV_I(num_data_, num_rand_vec_trace_);
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_rand_vec_trace_; ++i) {
-							Z_SigmaI_plus_ZtWZ_inv_RV_I.col(i) = (*Zt_).transpose() * SigmaI_plus_ZtWZ_inv_RV_I.col(i);
-							Z_RV_I.col(i) = (*Zt_).transpose() * rand_vec_trace_I_.col(i);
-						}
-						vec_t SigmaI_plus_ZtWZ_inv_diag_data_scale = (Z_SigmaI_plus_ZtWZ_inv_RV_I.cwiseProduct(Z_RV_I)).rowwise().mean();
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							double dummy_mean_deriv, deriv_log_var;
-							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_], dummy_mean_deriv, deriv_log_var);
-							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_ZtWZ_inv_diag_data_scale[i];
-						}
-					}
-					if (IsZeroCensPowNormHetero()) {
-						// log(sigma) (zeta) block on the ITERATIVE grouped-RE path, computed separately from the eta block-0 above. The
-						// log-det term needs the data-scale diagonal of (Sigma^-1+ZtWZ)^-1: the ratio trick used for the eta block is not
-						// applicable here since dJ_eta/deta vanishes at all positive observations, so use a stochastic (Hutchinson)
-						// estimate against the raw (Cov = I) random vectors rand_vec_trace_I_ instead
-						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-						den_mat_t SigmaI_plus_ZtWZ_inv_RV_I(dim_mode_, num_rand_vec_trace_);
-						bool has_NA_or_Inf_stoch_diag = false;
-						CGRandomEffectsMat(SigmaI_plus_ZtWZ_rm_, rand_vec_trace_I_, SigmaI_plus_ZtWZ_inv_RV_I, has_NA_or_Inf_stoch_diag,
-							dim_mode_, num_rand_vec_trace_, cg_max_num_it_, cg_delta_conv_, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
-						if (has_NA_or_Inf_stoch_diag) Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
-						den_mat_t Z_SigmaI_plus_ZtWZ_inv_RV_I(num_data_, num_rand_vec_trace_), Z_RV_I(num_data_, num_rand_vec_trace_);
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_rand_vec_trace_; ++i) {
-							Z_SigmaI_plus_ZtWZ_inv_RV_I.col(i) = (*Zt_).transpose() * SigmaI_plus_ZtWZ_inv_RV_I.col(i);
-							Z_RV_I.col(i) = (*Zt_).transpose() * rand_vec_trace_I_.col(i);
-						}
-						const vec_t diag_data = (Z_SigmaI_plus_ZtWZ_inv_RV_I.cwiseProduct(Z_RV_I)).rowwise().mean();
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par[i], location_par[i + num_data_],
-								w, diag_data[i], Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode[i]);
-						}
-					}
-					if (IsRegressionZeroModel()) {
-						// Structural-zero (zeta) block on the ITERATIVE grouped-RE path. Computed separately from the eta block-0 above (which
-						// runs when grad_information_wrt_mode_non_zero_). Hurdle decouples -> direct score. Zero-inflated counts couple: add the
-						// log-det term (via dInfo/dzeta and the stochastic Hutchinson data-scale diagonal of (Sigma^-1+ZtWZ)^-1) and the
-						// implicit term (via l_eta_zeta and Z*(Sigma^-1+ZtWZ)^-1*d_mll_d_mode, already computed for the eta block).
-						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-						if (IsHurdleRegression() || !grad_information_wrt_mode_non_zero_) {
-#pragma omp parallel for schedule(static)
-							for (data_size_t iz = 0; iz < num_data_; ++iz) {
-								const double wz = has_weights_ ? weights_[iz] : 1.0;
-								fixed_effect_grad[iz + num_data_] = -wz * RegressionZeroModel_dZeta(y_data, y_data_int, iz, location_par[iz], location_par[iz + num_data_]);
-							}
-						}
-						else {
-							den_mat_t SigmaI_plus_ZtWZ_inv_RV_I(dim_mode_, num_rand_vec_trace_);
-							bool has_NA_or_Inf_stoch_diag = false;
-							CGRandomEffectsMat(SigmaI_plus_ZtWZ_rm_, rand_vec_trace_I_, SigmaI_plus_ZtWZ_inv_RV_I, has_NA_or_Inf_stoch_diag,
-								dim_mode_, num_rand_vec_trace_, cg_max_num_it_, cg_delta_conv_, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
-							if (has_NA_or_Inf_stoch_diag) Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
-							den_mat_t Z_SigmaI_plus_ZtWZ_inv_RV_I(num_data_, num_rand_vec_trace_), Z_RV_I(num_data_, num_rand_vec_trace_);
-#pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_rand_vec_trace_; ++i) {
-								Z_SigmaI_plus_ZtWZ_inv_RV_I.col(i) = (*Zt_).transpose() * SigmaI_plus_ZtWZ_inv_RV_I.col(i);
-								Z_RV_I.col(i) = (*Zt_).transpose() * rand_vec_trace_I_.col(i);
-							}
-							const vec_t diag_data = (Z_SigmaI_plus_ZtWZ_inv_RV_I.cwiseProduct(Z_RV_I)).rowwise().mean();// stochastic data-scale diagonal of (Sigma^-1+ZtWZ)^-1
-#pragma omp parallel for schedule(static)
-							for (data_size_t iz = 0; iz < num_data_; ++iz) {
-								const double wz = has_weights_ ? weights_[iz] : 1.0;
-								ZICountRegQuant o; ZICountRegressionQuantities(y_data_int[iz], location_par[iz], location_par[iz + num_data_], o);
-								fixed_effect_grad[iz + num_data_] = -wz * o.dZeta + 0.5 * (wz * RegressionZeroModel_dInfodZeta(location_par[iz], location_par[iz + num_data_], o)) * diag_data[iz] + (wz * o.lEtaZeta) * Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode[iz];
-							}
-						}
+						CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par.data(), information_ll_, diag_data,
+							Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode, nullptr, grad_information_wrt_mode_non_zero_, fixed_effect_grad);
 					}
 				}//end calc_F_grad
 				// calculate gradient wrt additional likelihood parameters
@@ -5227,58 +5315,21 @@ namespace GPBoost {
 						vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = (((d_mll_d_mode.transpose() * L_inv.transpose()) * L_inv) * (*Zt_)) * information_ll_.asDiagonal();
 						fixed_effect_grad += d_detmll_d_F - d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W;
 					}//end grad_information_wrt_mode_non_zero_
-					if (likelihood_type_ == "gaussian_heteroscedastic") {
-						// Gradient wrt the fixed effects of the log-error variance. There is no random effect / mode for this
-						// block, so there is no implicit derivative (through the mode) here. 'L_inv * Zt.col(i)' squared-norm
-						// is the data-scale diagonal of (Sigma^-1 + Zt*W*Z)^-1 at observation i (see the mean's d_detmll_d_F above)
-						// 'fixed_effect_grad = -first_deriv_ll_' above sized this to num_data_ (first_deriv_ll_ is not aware
-						// of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the mean block
-						fixed_effect_grad.conservativeResize(dim_location_par_);
+					if (HasSecondFEBlock()) {
+						vec_t diag_data, Z_Ainv_d_mll_d_mode;
+						if (SecondFEBlockGradNeedsDiag(true)) {
+							// data-scale diagonal of (Sigma^-1 + Zt*W*Z)^-1, i.e. ||L_inv * Zt.col(i)||^2 (see the mean's d_detmll_d_F above)
+							diag_data.resize(num_data_);
 #pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_data_; ++i) {
-							vec_t L_inv_Zt_col_i = L_inv * (*Zt_).col(i);
-							double SigmaI_plus_ZtWZ_inv_data_scale_i = L_inv_Zt_col_i.squaredNorm();
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							double dummy_mean_deriv, deriv_log_var;
-							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_], dummy_mean_deriv, deriv_log_var);
-							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_ZtWZ_inv_data_scale_i;
-						}
-					}
-					else if (IsZeroCensPowNormHetero()) {
-						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta, scaled by the data-scale diagonal
-						// ||L_inv*Zt.col||^2 of (Sigma^-1+ZtWZ)^-1) + implicit-through-mode (l_eta_zeta)
-						fixed_effect_grad.conservativeResize(dim_location_par_);
-						const vec_t Z_Ainv_d_mll_d_mode = (*Zt_).transpose() * (L_inv.transpose() * (L_inv * d_mll_d_mode));// = Z (Sigma^-1+ZtWZ)^-1 d_mll_d_mode (data scale)
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							const vec_t L_inv_Zt_col = L_inv * (*Zt_).col(i);
-							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par[i], location_par[i + num_data_],
-								w, L_inv_Zt_col.squaredNorm(), Z_Ainv_d_mll_d_mode[i]);
-						}
-					}
-					else if (IsRegressionZeroModel()) {
-						// Structural-zero block (zeta). Hurdle: direct score only (decoupled). Zero-inflated counts couple at zero counts:
-						// log-det via dJ_eta/dzeta (scaled by data-scale diagonal ||L_inv*Zt.col||^2) + implicit via l_eta_zeta (Z*(Sigma^-1+ZtWZ)^-1*d_mll_d_mode).
-						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-						if (IsHurdleRegression()) {
-#pragma omp parallel for schedule(static)
-							for (data_size_t iz = 0; iz < num_data_; ++iz) {
-								const double wz = has_weights_ ? weights_[iz] : 1.0;
-								fixed_effect_grad[iz + num_data_] = -wz * RegressionZeroModel_dZeta(y_data, y_data_int, iz, location_par[iz], location_par[iz + num_data_]);
+							for (data_size_t i = 0; i < num_data_; ++i) {
+								diag_data[i] = (L_inv * (*Zt_).col(i)).squaredNorm();
 							}
 						}
-						else {
-							const vec_t Z_Ainv_d_mll_d_mode = (*Zt_).transpose() * (L_inv.transpose() * (L_inv * d_mll_d_mode));// = Z (Sigma^-1+ZtWZ)^-1 d_mll_d_mode (data scale)
-#pragma omp parallel for schedule(static)
-							for (data_size_t iz = 0; iz < num_data_; ++iz) {
-								const double wz = has_weights_ ? weights_[iz] : 1.0;
-								const vec_t L_inv_Zt_col = L_inv * (*Zt_).col(iz);
-								const double diag_iz = L_inv_Zt_col.squaredNorm();// data-scale diagonal of (Sigma^-1+ZtWZ)^-1
-								ZICountRegQuant o; ZICountRegressionQuantities(y_data_int[iz], location_par[iz], location_par[iz + num_data_], o);
-								fixed_effect_grad[iz + num_data_] = -wz * o.dZeta + 0.5 * (wz * RegressionZeroModel_dInfodZeta(location_par[iz], location_par[iz + num_data_], o)) * diag_iz + (wz * o.lEtaZeta) * Z_Ainv_d_mll_d_mode[iz];
-							}
+						if (SecondFEBlockGradNeedsImpl(true)) {
+							Z_Ainv_d_mll_d_mode = (*Zt_).transpose() * (L_inv.transpose() * (L_inv * d_mll_d_mode));// = Z (Sigma^-1+ZtWZ)^-1 d_mll_d_mode (data scale)
 						}
+						CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par.data(), information_ll_, diag_data,
+							Z_Ainv_d_mll_d_mode, nullptr, true, fixed_effect_grad);
 					}
 				}//end calc_F_grad
 				// calculate gradient wrt additional likelihood parameters
@@ -5387,62 +5438,19 @@ namespace GPBoost {
 							d_mll_d_mode[random_effects_indices_of_data_[i]] * information_ll_data_scale_[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];//=implicit derivative = d_mll_d_mode * d_mode_d_F
 					}
 				}
-				if (likelihood_type_ == "gaussian_heteroscedastic") {
-					// Gradient wrt the fixed effects of the log-error variance. There is no random effect / mode for this block,
-					// so there is no implicit derivative (through the mode) here; W (= information_ll_data_scale_, the mean's Fisher
-					// information) does not depend on the mode either (grad_information_wrt_mode_non_zero_ == false), so there is
-					// also no term capturing how the mean's mode would change with the log-error variance
-#pragma omp parallel for schedule(static)
-					for (int i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						double dummy_mean_deriv, deriv_log_var;
-						FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_], dummy_mean_deriv, deriv_log_var);
-						fixed_effect_grad[i + num_data_] = -w * deriv_log_var;
-						if (!iid_model_) {
-							fixed_effect_grad[i + num_data_] -= 0.5 * information_ll_data_scale_[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];
+				if (HasSecondFEBlock()) {
+					// NOTE: unlike the other approximations, this one stores the DIAGONAL OF (Sigma^-1+ZtWZ) ITSELF rather than
+					// of its inverse, so the reciprocal has to be formed here to match the convention of the gradient function
+					vec_t zeta_diag, zeta_impl;
+					if (SecondFEBlockGradNeedsDiag(true)) {
+						zeta_diag = diag_SigmaI_plus_ZtWZ_.cwiseInverse();
+						if (SecondFEBlockGradNeedsImpl(true)) {
+							zeta_impl = d_mll_d_mode.cwiseProduct(zeta_diag);
 						}
 					}
+					CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par.data(), information_ll_data_scale_,
+						zeta_diag, zeta_impl, random_effects_indices_of_data_, true, fixed_effect_grad);
 				}
-					else if (IsZeroCensPowNormHetero()) {
-						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta).
-						// For an iid model there is no mode / random effect at all, so only the direct score remains
-						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							double diag = 0., impl = 0.;
-							if (!iid_model_) {
-								const data_size_t idx = random_effects_indices_of_data_[i];
-								diag = 1. / diag_SigmaI_plus_ZtWZ_[idx];
-								impl = d_mll_d_mode[idx] * diag;
-							}
-							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par[i], location_par[i + num_data_], w, diag, impl);
-						}
-					}
-					else if (IsRegressionZeroModel()) {
-						// Structural-zero block (zeta). Hurdle decouples from eta (dJ_eta/dzeta = l_eta_zeta = 0) -> direct score only.
-						// Zero-inflated counts COUPLE at zero counts: add the log-determinant term (through dJ_eta/dzeta) and the implicit
-						// term (through the mode, via l_eta_zeta), mirroring the eta block above with dJ_eta/deta and W (=information_ll)
-						// replaced by dJ_eta/dzeta and l_eta_zeta (both zero for hurdle, so the same code reduces to the direct term).
-						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-						if (IsHurdleRegression() || iid_model_) {
-#pragma omp parallel for schedule(static)
-							for (data_size_t iz = 0; iz < num_data_; ++iz) {
-								const double wz = has_weights_ ? weights_[iz] : 1.0;
-								fixed_effect_grad[iz + num_data_] = -wz * RegressionZeroModel_dZeta(y_data, y_data_int, iz, location_par[iz], location_par[iz + num_data_]);
-							}
-						}
-						else {
-#pragma omp parallel for schedule(static)
-							for (data_size_t iz = 0; iz < num_data_; ++iz) {
-								const double wz = has_weights_ ? weights_[iz] : 1.0;
-								const data_size_t idx = random_effects_indices_of_data_[iz];
-								ZICountRegQuant o; ZICountRegressionQuantities(y_data_int[iz], location_par[iz], location_par[iz + num_data_], o);
-								const double inv_diag = 1. / diag_SigmaI_plus_ZtWZ_[idx];
-								fixed_effect_grad[iz + num_data_] = -wz * o.dZeta + 0.5 * (wz * RegressionZeroModel_dInfodZeta(location_par[iz], location_par[iz + num_data_], o)) * inv_diag + d_mll_d_mode[idx] * (wz * o.lEtaZeta) * inv_diag;
-							}
-						}
-					}
 			}//end calc_F_grad
 			// calculate gradient wrt additional likelihood parameters
 			if (calc_aux_par_grad) {
@@ -5812,38 +5820,14 @@ namespace GPBoost {
 										information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 								}
 							}
-							if (likelihood_type_ == "gaussian_heteroscedastic") {
-								fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-								for (data_size_t i = 0; i < num_data_; ++i) {
-									const double w = has_weights_ ? weights_[i] : 1.0;
-									double dummy_mean_deriv, deriv_log_var;
-									FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
-									fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
-										0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-								}
-							}
-							else if (IsZeroCensPowNormHetero()) {
-								// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta).
-								// The log-det term uses the separate stochastic diagonal estimate computed above (the eta-block ratio trick
-								// is not usable here since dJ_eta/deta vanishes at every positive observation)
-								if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-								for (data_size_t i = 0; i < num_data_; ++i) {
-									const double w = has_weights_ ? weights_[i] : 1.0;
-									const data_size_t idx = random_effects_indices_of_data_[i];
-									fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
-										w, SigmaI_plus_W_inv_diag_2nd_block[idx], SigmaI_plus_W_inv_d_mll_d_mode[idx]);
-								}
-							}
-							else if (IsRegressionZeroModel()) {
-								// Structural-zero block (zeta): hurdle -> direct score (exact). For zero-inflated counts the coupled log-det term would need the FSVA data-scale diagonal of (Sigma^-1+W)^-1, which is only a stochastic estimate here; coupled terms omitted -> alpha approximate for ZI counts on FSVA.
-								if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-								for (data_size_t iz = 0; iz < num_data_; ++iz) {
-									const double wz = has_weights_ ? weights_[iz] : 1.0;
-									fixed_effect_grad[iz + num_data_] = -wz * RegressionZeroModel_dZeta(y_data, y_data_int, iz, location_par_ptr[iz], location_par_ptr[iz + num_data_]);
-								}
+							if (HasSecondFEBlock()) {
+								// 'include_coupled_zi_terms' is false: for a zero-inflated count regression the coupled log-determinant
+								// term would need the data-scale diagonal of (Sigma^-1+W)^-1, which is only a stochastic estimate here,
+								// so those terms are omitted -> the alpha gradient is approximate for ZI counts on this approximation.
+								// 'SigmaI_plus_W_inv_diag_2nd_block' is the stochastic diagonal estimated above; for
+								// 'gaussian_heteroscedastic' it is the same vector as 'SigmaI_plus_W_inv_diag'
+								CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
+									SigmaI_plus_W_inv_diag_2nd_block, SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_, false, fixed_effect_grad);
 							}
 						}
 						else {
@@ -5852,36 +5836,9 @@ namespace GPBoost {
 								vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 								fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
 							}
-							if (likelihood_type_ == "gaussian_heteroscedastic") {
-								fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-								for (data_size_t i = 0; i < num_data_; ++i) {
-									const double w = has_weights_ ? weights_[i] : 1.0;
-									double dummy_mean_deriv, deriv_log_var;
-									FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
-									fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
-								}
-							}
-							else if (IsZeroCensPowNormHetero()) {
-								// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta).
-								// The log-det term uses the separate stochastic diagonal estimate computed above (the eta-block ratio trick
-								// is not usable here since dJ_eta/deta vanishes at every positive observation)
-								fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-								for (data_size_t i = 0; i < num_data_; ++i) {
-									const double w = has_weights_ ? weights_[i] : 1.0;
-									fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
-										w, SigmaI_plus_W_inv_diag_2nd_block[i], SigmaI_plus_W_inv_d_mll_d_mode[i]);
-								}
-							}
-							else if (IsRegressionZeroModel()) {
-								// Structural-zero block (zeta): hurdle -> direct score (exact). For zero-inflated counts the coupled log-det term would need the FSVA data-scale diagonal of (Sigma^-1+W)^-1, which is only a stochastic estimate here; coupled terms omitted -> alpha approximate for ZI counts on FSVA.
-								if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-								for (data_size_t iz = 0; iz < num_data_; ++iz) {
-									const double wz = has_weights_ ? weights_[iz] : 1.0;
-									fixed_effect_grad[iz + num_data_] = -wz * RegressionZeroModel_dZeta(y_data, y_data_int, iz, location_par_ptr[iz], location_par_ptr[iz + num_data_]);
-								}
+							if (HasSecondFEBlock()) {
+								CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
+									SigmaI_plus_W_inv_diag_2nd_block, SigmaI_plus_W_inv_d_mll_d_mode, nullptr, false, fixed_effect_grad);
 							}
 						}
 					}
@@ -5953,34 +5910,13 @@ namespace GPBoost {
 										d_detmll_d_aux_par -= c_opt * (tr_PI_P_deriv - tr_D_inv_plus_W_inv_W_deriv);
 										d_detmll_d_aux_par += (deriv_information_aux_par.array() * information_ll_.cwiseInverse().array()).sum();
 									}
-									if (use_random_effects_indices_of_data_) {
-#pragma omp parallel for schedule(static) reduction(+:implicit_derivative)
-										for (data_size_t i = 0; i < num_data_; ++i) {
-											implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
-										}
-									}
-									else {
-#pragma omp parallel for schedule(static) reduction(+:implicit_derivative)
-										for (data_size_t i = 0; i < num_data_; ++i) {
-											implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
-										}
-									}
+									// the log-determinant term is obtained from the stochastic trace estimator above, only the implicit derivative is summed here
+									AccumulateAuxParGradTerms(deriv_information_aux_par, second_deriv_loc_aux_par, SigmaI_plus_W_inv_diag,
+										SigmaI_plus_W_inv_d_mll_d_mode, false, d_detmll_d_aux_par, implicit_derivative);
 								}
 								else {//deriv_information_diag_loc_par is non-zero everywhere (!deriv_information_loc_par_has_zero )
-									if (use_random_effects_indices_of_data_) {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-										for (data_size_t i = 0; i < num_data_; ++i) {
-											d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-											implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
-										}
-									}
-									else {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-										for (data_size_t i = 0; i < num_data_; ++i) {
-											d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[i];
-											implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
-										}
-									}
+									AccumulateAuxParGradTerms(deriv_information_aux_par, second_deriv_loc_aux_par, SigmaI_plus_W_inv_diag,
+										SigmaI_plus_W_inv_d_mll_d_mode, true, d_detmll_d_aux_par, implicit_derivative);
 								}
 							}//end if grad_information_wrt_mode_non_zero_
 							else {// grad_information_wrt_mode is zero
@@ -6309,38 +6245,14 @@ namespace GPBoost {
 										information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 								}
 							}
-							if (likelihood_type_ == "gaussian_heteroscedastic") {
-								fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-								for (data_size_t i = 0; i < num_data_; ++i) {
-									const double w = has_weights_ ? weights_[i] : 1.0;
-									double dummy_mean_deriv, deriv_log_var;
-									FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
-									fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
-										0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-								}
-							}
-							else if (IsZeroCensPowNormHetero()) {
-								// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta).
-								// The log-det term uses the separate stochastic diagonal estimate computed above (the eta-block ratio trick
-								// is not usable here since dJ_eta/deta vanishes at every positive observation)
-								if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-								for (data_size_t i = 0; i < num_data_; ++i) {
-									const double w = has_weights_ ? weights_[i] : 1.0;
-									const data_size_t idx = random_effects_indices_of_data_[i];
-									fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
-										w, SigmaI_plus_W_inv_diag_2nd_block[idx], SigmaI_plus_W_inv_d_mll_d_mode[idx]);
-								}
-							}
-							else if (IsRegressionZeroModel()) {
-								// Structural-zero block (zeta): hurdle -> direct score (exact). For zero-inflated counts the coupled log-det term would need the FSVA data-scale diagonal of (Sigma^-1+W)^-1, which is only a stochastic estimate here; coupled terms omitted -> alpha approximate for ZI counts on FSVA.
-								if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-								for (data_size_t iz = 0; iz < num_data_; ++iz) {
-									const double wz = has_weights_ ? weights_[iz] : 1.0;
-									fixed_effect_grad[iz + num_data_] = -wz * RegressionZeroModel_dZeta(y_data, y_data_int, iz, location_par_ptr[iz], location_par_ptr[iz + num_data_]);
-								}
+							if (HasSecondFEBlock()) {
+								// 'include_coupled_zi_terms' is false: for a zero-inflated count regression the coupled log-determinant
+								// term would need the data-scale diagonal of (Sigma^-1+W)^-1, which is only a stochastic estimate here,
+								// so those terms are omitted -> the alpha gradient is approximate for ZI counts on this approximation.
+								// 'SigmaI_plus_W_inv_diag_2nd_block' is the stochastic diagonal estimated above; for
+								// 'gaussian_heteroscedastic' it is the same vector as 'SigmaI_plus_W_inv_diag'
+								CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
+									SigmaI_plus_W_inv_diag_2nd_block, SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_, false, fixed_effect_grad);
 							}
 						}
 						else {
@@ -6349,36 +6261,9 @@ namespace GPBoost {
 								vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 								fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
 							}
-							if (likelihood_type_ == "gaussian_heteroscedastic") {
-								fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-								for (data_size_t i = 0; i < num_data_; ++i) {
-									const double w = has_weights_ ? weights_[i] : 1.0;
-									double dummy_mean_deriv, deriv_log_var;
-									FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
-									fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
-								}
-							}
-							else if (IsZeroCensPowNormHetero()) {
-								// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta).
-								// The log-det term uses the separate stochastic diagonal estimate computed above (the eta-block ratio trick
-								// is not usable here since dJ_eta/deta vanishes at every positive observation)
-								fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-								for (data_size_t i = 0; i < num_data_; ++i) {
-									const double w = has_weights_ ? weights_[i] : 1.0;
-									fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
-										w, SigmaI_plus_W_inv_diag_2nd_block[i], SigmaI_plus_W_inv_d_mll_d_mode[i]);
-								}
-							}
-							else if (IsRegressionZeroModel()) {
-								// Structural-zero block (zeta): hurdle -> direct score (exact). For zero-inflated counts the coupled log-det term would need the FSVA data-scale diagonal of (Sigma^-1+W)^-1, which is only a stochastic estimate here; coupled terms omitted -> alpha approximate for ZI counts on FSVA.
-								if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-								for (data_size_t iz = 0; iz < num_data_; ++iz) {
-									const double wz = has_weights_ ? weights_[iz] : 1.0;
-									fixed_effect_grad[iz + num_data_] = -wz * RegressionZeroModel_dZeta(y_data, y_data_int, iz, location_par_ptr[iz], location_par_ptr[iz + num_data_]);
-								}
+							if (HasSecondFEBlock()) {
+								CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
+									SigmaI_plus_W_inv_diag_2nd_block, SigmaI_plus_W_inv_d_mll_d_mode, nullptr, false, fixed_effect_grad);
 							}
 						}
 					}
@@ -6444,34 +6329,13 @@ namespace GPBoost {
 											d_detmll_d_aux_par = (SigmaI_plus_W_inv_Z_.cwiseProduct(deriv_information_aux_par.asDiagonal() * PI_Z)).colwise().sum().mean();
 										}
 									}
-									if (use_random_effects_indices_of_data_) {
-#pragma omp parallel for schedule(static) reduction(+:implicit_derivative)
-										for (data_size_t i = 0; i < num_data_; ++i) {
-											implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
-										}
-									}
-									else {
-#pragma omp parallel for schedule(static) reduction(+:implicit_derivative)
-										for (data_size_t i = 0; i < num_data_; ++i) {
-											implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
-										}
-									}
+									// the log-determinant term is obtained from the stochastic trace estimator above, only the implicit derivative is summed here
+									AccumulateAuxParGradTerms(deriv_information_aux_par, second_deriv_loc_aux_par, SigmaI_plus_W_inv_diag,
+										SigmaI_plus_W_inv_d_mll_d_mode, false, d_detmll_d_aux_par, implicit_derivative);
 								}
 								else {//deriv_information_diag_loc_par is non-zero everywhere (!deriv_information_loc_par_has_zero )
-									if (use_random_effects_indices_of_data_) {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-										for (data_size_t i = 0; i < num_data_; ++i) {
-											d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-											implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
-										}
-									}
-									else {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-										for (data_size_t i = 0; i < num_data_; ++i) {
-											d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[i];
-											implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
-										}
-									}
+									AccumulateAuxParGradTerms(deriv_information_aux_par, second_deriv_loc_aux_par, SigmaI_plus_W_inv_diag,
+										SigmaI_plus_W_inv_d_mll_d_mode, true, d_detmll_d_aux_par, implicit_derivative);
 								}
 							}//end if grad_information_wrt_mode_non_zero_
 							else {// grad_information_wrt_mode is zero
@@ -6695,35 +6559,12 @@ namespace GPBoost {
 									information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 							}
 						}
-						if (likelihood_type_ == "gaussian_heteroscedastic") {
-#pragma omp parallel for schedule(static)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								const double w = has_weights_ ? weights_[i] : 1.0;
-								double dummy_mean_deriv, deriv_log_var;
-								FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
-								fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
-									0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-							}
-						}
-						else if (IsZeroCensPowNormHetero()) {
-							// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
-							if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								const double w = has_weights_ ? weights_[i] : 1.0;
-								const data_size_t idx = random_effects_indices_of_data_[i];
-								fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
-									w, SigmaI_plus_W_inv_diag[idx], SigmaI_plus_W_inv_d_mll_d_mode[idx]);
-							}
-						}
-						else if (IsRegressionZeroModel()) {
-							// Structural-zero block (zeta): hurdle -> direct score (exact). For zero-inflated counts the coupled log-det term would need the FSVA data-scale diagonal of (Sigma^-1+W)^-1, which is only a stochastic estimate here; coupled terms omitted -> alpha approximate for ZI counts on FSVA.
-							if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-							for (data_size_t iz = 0; iz < num_data_; ++iz) {
-								const double wz = has_weights_ ? weights_[iz] : 1.0;
-								fixed_effect_grad[iz + num_data_] = -wz * RegressionZeroModel_dZeta(y_data, y_data_int, iz, location_par_ptr[iz], location_par_ptr[iz + num_data_]);
-							}
+						if (HasSecondFEBlock()) {
+							// 'include_coupled_zi_terms' is false: for a zero-inflated count regression the coupled log-determinant
+							// term would need the FSVA data-scale diagonal of (Sigma^-1+W)^-1, which is only a stochastic estimate
+							// here, so those terms are omitted -> the alpha gradient is approximate for ZI counts on FSVA
+							CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
+								SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_, false, fixed_effect_grad);
 						}
 					}
 					else {
@@ -6732,70 +6573,16 @@ namespace GPBoost {
 							vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 							fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
 						}
-						if (likelihood_type_ == "gaussian_heteroscedastic") {
-							// 'fixed_effect_grad = -first_deriv_ll_' above sized this to num_data_ (first_deriv_ll_ is not aware
-							// of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the mean block
-							fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								const double w = has_weights_ ? weights_[i] : 1.0;
-								double dummy_mean_deriv, deriv_log_var;
-								FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
-								fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
-							}
-						}
-						else if (IsZeroCensPowNormHetero()) {
-							// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
-							fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								const double w = has_weights_ ? weights_[i] : 1.0;
-								fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
-									w, SigmaI_plus_W_inv_diag[i], SigmaI_plus_W_inv_d_mll_d_mode[i]);
-							}
-						}
-						else if (IsRegressionZeroModel()) {
-							// Structural-zero block (zeta): hurdle -> direct score (exact). For zero-inflated counts the coupled log-det term would need the FSVA data-scale diagonal of (Sigma^-1+W)^-1, which is only a stochastic estimate here; coupled terms omitted -> alpha approximate for ZI counts on FSVA.
-							if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-							for (data_size_t iz = 0; iz < num_data_; ++iz) {
-								const double wz = has_weights_ ? weights_[iz] : 1.0;
-								fixed_effect_grad[iz + num_data_] = -wz * RegressionZeroModel_dZeta(y_data, y_data_int, iz, location_par_ptr[iz], location_par_ptr[iz + num_data_]);
-							}
+						if (HasSecondFEBlock()) {
+							CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
+								SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, nullptr, false, fixed_effect_grad);
 						}
 					}
 				}//end calc_F_grad
 				// calculate gradient wrt additional likelihood parameters
 				if (calc_aux_par_grad) {
-					vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
-					vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
-					vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
-					vec_t d_mode_d_aux_par;
-					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
-					for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
-						double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
-						if (use_random_effects_indices_of_data_) {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-								if (grad_information_wrt_mode_non_zero_) {
-									implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
-								}
-							}
-						}
-						else {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[i];
-								if (grad_information_wrt_mode_non_zero_) {
-									implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
-								}
-							}
-						}
-						aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par + implicit_derivative;
-					}
-					SetGradAuxParsNotEstimated(aux_par_grad);
+					CalcAuxParGradLaplaceExactDiag(y_data, y_data_int, location_par_ptr, SigmaI_plus_W_inv_diag,
+						SigmaI_plus_W_inv_d_mll_d_mode, aux_par_grad);
 				}//end calc_aux_par_grad
 			}
 		}//end CalcGradNegMargLikelihoodLaplaceApproxFSVA
@@ -7073,34 +6860,13 @@ namespace GPBoost {
 								else {
 									CalcLogDetStochDerivAuxParVecchia(deriv_information_aux_par, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z, WI_WI_plus_Sigma_inv_Z, d_detmll_d_aux_par, re_comps_cross_cov_cluster_i);
 								}
-								if (use_random_effects_indices_of_data_) {
-#pragma omp parallel for schedule(static) reduction(+:implicit_derivative)
-									for (data_size_t i = 0; i < num_data_; ++i) {
-										implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
-									}
-								}
-								else {
-#pragma omp parallel for schedule(static) reduction(+:implicit_derivative)
-									for (data_size_t i = 0; i < num_data_; ++i) {
-										implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
-									}
-								}
+								// the log-determinant term is obtained from the stochastic trace estimator above, only the implicit derivative is summed here
+								AccumulateAuxParGradTerms(deriv_information_aux_par, second_deriv_loc_aux_par, SigmaI_plus_W_inv_diag,
+									SigmaI_plus_W_inv_d_mll_d_mode, false, d_detmll_d_aux_par, implicit_derivative);
 							}
 							else {//deriv_information_diag_loc_par is non-zero everywhere (!deriv_information_loc_par_has_zero )
-								if (use_random_effects_indices_of_data_) {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-									for (data_size_t i = 0; i < num_data_; ++i) {
-										d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-										implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
-									}
-								}
-								else {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-									for (data_size_t i = 0; i < num_data_; ++i) {
-										d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[i];
-										implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
-									}
-								}
+								AccumulateAuxParGradTerms(deriv_information_aux_par, second_deriv_loc_aux_par, SigmaI_plus_W_inv_diag,
+									SigmaI_plus_W_inv_d_mll_d_mode, true, d_detmll_d_aux_par, implicit_derivative);
 							}
 						}//end if grad_information_wrt_mode_non_zero_
 						else {// grad_information_wrt_mode is zero
@@ -7220,35 +6986,8 @@ namespace GPBoost {
 				// calculate gradient wrt additional likelihood parameters
 				if (calc_aux_par_grad) {
 					CHECK(num_sets_re_ == 1);
-					vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
-					vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
-					vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
-					vec_t d_mode_d_aux_par;
-					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
-					for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
-						double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
-						if (use_random_effects_indices_of_data_) {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-								if (grad_information_wrt_mode_non_zero_) {
-									implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
-								}
-							}
-						}
-						else {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-							for (data_size_t i = 0; i < num_data_; ++i) {
-								d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[i];
-								if (grad_information_wrt_mode_non_zero_) {
-									implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
-								}
-							}
-						}
-						aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par + implicit_derivative;
-					}
-					SetGradAuxParsNotEstimated(aux_par_grad);
+					CalcAuxParGradLaplaceExactDiag(y_data, y_data_int, location_par_ptr, SigmaI_plus_W_inv_diag,
+						SigmaI_plus_W_inv_d_mll_d_mode, aux_par_grad);
 				}//end calc_aux_par_grad
 			}//end Cholesky decomposition
 			// Calculate gradient wrt fixed effects
@@ -7275,38 +7014,10 @@ namespace GPBoost {
 							}
 						}
 					}
-					if (likelihood_type_ == "gaussian_heteroscedastic") {
-						// Gradient wrt the fixed effects of the log-error variance. There is no random effect / mode for this
-						// block, so there is no implicit derivative (through the mode) here (see reasoning in
-						// 'CalcGradNegMargLikelihoodLaplaceApproxOnlyOneGroupedRECalculationsOnREScale')
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							double dummy_mean_deriv, deriv_log_var;
-							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
-							fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
-								0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-						}
-					}
-					else if (IsZeroCensPowNormHetero()) {
-						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
-						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							const data_size_t idx = random_effects_indices_of_data_[i];
-							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
-								w, SigmaI_plus_W_inv_diag_2nd_block[idx], SigmaI_plus_W_inv_d_mll_d_mode[idx]);
-						}
-					}
-					else if (IsRegressionZeroModel()) {
-						// Structural-zero block (zeta): hurdle -> direct score; zero-inflated counts add log-det (dJ_eta/dzeta) + implicit (l_eta_zeta) via RegressionZeroModel_dZetaDense
-						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t iz = 0; iz < num_data_; ++iz) {
-							const double wz = has_weights_ ? weights_[iz] : 1.0;
-							fixed_effect_grad[iz + num_data_] = RegressionZeroModel_dZetaDense(y_data, y_data_int, iz, location_par_ptr[iz], location_par_ptr[iz + num_data_], wz, SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_[iz]);
-						}
+					if (HasSecondFEBlock()) {
+						CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
+							SecondFEBlockZetaDiag(SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block),
+							SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_, true, fixed_effect_grad);
 					}
 				}
 				else {
@@ -7315,36 +7026,10 @@ namespace GPBoost {
 						vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 						fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
 					}
-					if (likelihood_type_ == "gaussian_heteroscedastic") {
-						// 'fixed_effect_grad = -first_deriv_ll_' above sized this to num_data_ (first_deriv_ll_ is not aware
-						// of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the mean block
-						fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							double dummy_mean_deriv, deriv_log_var;
-							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
-							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
-						}
-					}
-					else if (IsZeroCensPowNormHetero()) {
-						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
-						fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
-								w, SigmaI_plus_W_inv_diag_2nd_block[i], SigmaI_plus_W_inv_d_mll_d_mode[i]);
-						}
-					}
-					else if (IsRegressionZeroModel()) {
-						// Structural-zero block (zeta): hurdle -> direct score; zero-inflated counts add log-det (dJ_eta/dzeta) + implicit (l_eta_zeta) via RegressionZeroModel_dZetaDense
-						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t iz = 0; iz < num_data_; ++iz) {
-							const double wz = has_weights_ ? weights_[iz] : 1.0;
-							fixed_effect_grad[iz + num_data_] = RegressionZeroModel_dZetaDense(y_data, y_data_int, iz, location_par_ptr[iz], location_par_ptr[iz + num_data_], wz, SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, iz);
-						}
+					if (HasSecondFEBlock()) {
+						CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
+							SecondFEBlockZetaDiag(SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block),
+							SigmaI_plus_W_inv_d_mll_d_mode, nullptr, true, fixed_effect_grad);
 					}
 				}
 			}//end calc_F_grad
@@ -7533,34 +7218,9 @@ namespace GPBoost {
 								information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 						}
 					}
-					if (likelihood_type_ == "gaussian_heteroscedastic") {
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							double dummy_mean_deriv, deriv_log_var;
-							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
-							fixed_effect_grad[i + num_data_] = -w * deriv_log_var -
-								0.5 * information_ll_data_scale_[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-						}
-					}
-					else if (IsZeroCensPowNormHetero()) {
-						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
-						if (fixed_effect_grad.size() < dim_location_par_) fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							const data_size_t idx = random_effects_indices_of_data_[i];
-							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
-								w, SigmaI_plus_W_inv_diag[idx], SigmaI_plus_W_inv_d_mll_d_mode[idx]);
-						}
-					}
-					else if (IsRegressionZeroModel()) {
-						// Structural-zero block (zeta): hurdle -> direct score; zero-inflated counts add log-det (dJ_eta/dzeta) + implicit (l_eta_zeta) via RegressionZeroModel_dZetaDense
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							fixed_effect_grad[i + num_data_] = RegressionZeroModel_dZetaDense(y_data, y_data_int, i, location_par_ptr[i], location_par_ptr[i + num_data_], w, SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_[i]);
-						}
+					if (HasSecondFEBlock()) {
+						CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
+							SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_, true, fixed_effect_grad);
 					}
 				}
 				else {
@@ -7569,71 +7229,16 @@ namespace GPBoost {
 						vec_t d_mll_d_F_implicit = (SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 						fixed_effect_grad += d_mll_d_mode - d_mll_d_F_implicit;
 					}
-					if (likelihood_type_ == "gaussian_heteroscedastic") {
-						// 'fixed_effect_grad = -first_deriv_ll_' above sized this to num_data_ (first_deriv_ll_ is not aware
-						// of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the mean block
-						fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							double dummy_mean_deriv, deriv_log_var;
-							FirstDerivLogLikGaussianHeteroscedastic(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_], dummy_mean_deriv, deriv_log_var);
-							fixed_effect_grad[i + num_data_] = -w * deriv_log_var - 0.5 * information_ll_[i] * SigmaI_plus_W_inv_diag[i];
-						}
-					}
-					else if (IsZeroCensPowNormHetero()) {
-						// log(sigma) block (zeta): direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
-						fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							fixed_effect_grad[i + num_data_] = ZeroCensPowNormHeteroZetaGrad(y_data[i], location_par_ptr[i], location_par_ptr[i + num_data_],
-								w, SigmaI_plus_W_inv_diag[i], SigmaI_plus_W_inv_d_mll_d_mode[i]);
-						}
-					}
-					else if (IsRegressionZeroModel()) {
-						fixed_effect_grad.conservativeResize(dim_location_par_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							fixed_effect_grad[i + num_data_] = RegressionZeroModel_dZetaDense(y_data, y_data_int, i,
-								location_par_ptr[i], location_par_ptr[i + num_data_], w, SigmaI_plus_W_inv_diag,
-								SigmaI_plus_W_inv_d_mll_d_mode, i);
-						}
+					if (HasSecondFEBlock()) {
+						CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
+							SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, nullptr, true, fixed_effect_grad);
 					}
 				}
 			}//end calc_F_grad
 			// calculate gradient wrt additional likelihood parameters
 			if (calc_aux_par_grad) {
-				vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
-				vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
-				vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
-				vec_t d_mode_d_aux_par;
-				CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
-				for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
-					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
-					double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
-					if (use_random_effects_indices_of_data_) {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]];
-							if (grad_information_wrt_mode_non_zero_) {
-								implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
-							}
-						}
-					}
-					else {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							d_detmll_d_aux_par += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[i];
-							if (grad_information_wrt_mode_non_zero_) {
-								implicit_derivative += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
-							}
-						}
-					}
-					aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par + implicit_derivative;
-				}
-				SetGradAuxParsNotEstimated(aux_par_grad);
+				CalcAuxParGradLaplaceExactDiag(y_data, y_data_int, location_par_ptr, SigmaI_plus_W_inv_diag,
+					SigmaI_plus_W_inv_d_mll_d_mode, aux_par_grad);
 			}//end calc_aux_par_grad
 		}//end CalcGradNegMargLikelihoodLaplaceApproxFITC
 
@@ -12266,17 +11871,9 @@ namespace GPBoost {
 			ZICountRegQuant o; ZICountRegressionQuantities(y_data_int[iz], loc_eta, loc_zeta, o);
 			return o.dZeta;
 		}
-		/*! rief Structural-zero block (zeta) gradient of the negative Laplace marginal log-likelihood at one observation, for the
-		* dense / Vecchia / FITC / FSVA gradient functions that represent the implicit derivative via the vectors SigmaI_plus_W_inv_diag
-		* (data-mapped diagonal of (Sigma^-1+W)^-1) and SigmaI_plus_W_inv_d_mll_d_mode ((Sigma^-1+W)^-1 d_mll_d_mode). Hurdle: dJ_eta/dzeta =
-		* l_eta_zeta = 0, so this reduces to the direct score -w*dZeta and never indexes the two vectors (which are empty when
-		* grad_information_wrt_mode_non_zero_ is false). Zero-inflated counts add the log-det (dJ_eta/dzeta) and implicit (l_eta_zeta) terms. */
-		inline double RegressionZeroModel_dZetaDense(const double* y_data, const int* y_data_int, data_size_t i, double loc_eta, double loc_zeta,
-			double w, const vec_t& SigmaI_plus_W_inv_diag, const vec_t& SigmaI_plus_W_inv_d_mll_d_mode, data_size_t idx) const {
-			if (IsHurdleRegression()) return -w * HurdleRegression_dZeta(y_data[i], loc_zeta);
-			ZICountRegQuant o; ZICountRegressionQuantities(y_data_int[i], loc_eta, loc_zeta, o);
-			return -w * o.dZeta + 0.5 * (w * RegressionZeroModel_dInfodZeta(loc_eta, loc_zeta, o)) * SigmaI_plus_W_inv_diag[idx] + (w * o.lEtaZeta) * SigmaI_plus_W_inv_d_mll_d_mode[idx];
-		}
+		// NOTE: the former 'RegressionZeroModel_dZetaDense' was removed here: all of its callers now go through
+		// 'CalcSecondFEBlockFixedEffectGrad', which dispatches on the likelihood once instead of calling
+		// 'IsHurdleRegression()' (a chain of string comparisons) once per observation
 
 		inline double LogLikGamma(double y, double location_par, bool incl_norm_const) const {
 			double ll = -aux_pars_[0] * (location_par + y * std::exp(-location_par));
