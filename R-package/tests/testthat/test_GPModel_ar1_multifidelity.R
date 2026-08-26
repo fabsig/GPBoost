@@ -149,16 +149,10 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     expect_equal(as.numeric(exact_model$get_current_neg_log_likelihood()), 16.364965896631873, tolerance = 1e-8)
 
     for (inversion_method in c("cholesky", "iterative")) {
-      # The stochastic PREDICTION of the iterative method depends on the number of OpenMP threads ('seed_rand_vec_trace'
-      # only makes the fit reproducible: 'cov_pars' and the nll below are bit-identical for 1, 2, 10 and 16 threads,
-      # whereas the predicted mean differs by up to 3.5e-3, which is above the 1e-3 tolerance used here). The thread
-      # count is therefore pinned for the iterative case, so that the expected predictions below do not depend on the
-      # machine or on the session's 'OMP_NUM_THREADS' (e.g. 'R CMD check' caps the number of OpenMP threads)
       gp_model <- GPModel(
         gp_coords = data$gp_coords, cov_function = "ar1_mf_exponential", likelihood = "bernoulli_probit",
         gp_approx = "vecchia", num_neighbors = 6, vecchia_ordering = "none",
-        matrix_inversion_method = inversion_method,
-        num_parallel_threads = if (inversion_method == "iterative") 1L else NULL
+        matrix_inversion_method = inversion_method
       )
       optim_params <- list(
         init_cov_pars = process_cov_pars, optimizer_cov = "gradient_descent", lr_cov = 0.05,
@@ -172,7 +166,13 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
         optim_params$cg_max_num_it <- 100
         optim_params$cg_preconditioner_type <- "piv_chol_on_Sigma"
         optim_params$fitc_piv_chol_preconditioner_rank <- 10
-        tol_pred <- 1e-3
+        # 'seed_rand_vec_trace' only makes the fit reproducible: 'cov_pars' and the nll below are bit-identical for any
+        # number of OpenMP threads, whereas the stochastic prediction is not. Measured against the values below (which
+        # were recorded with 16 threads), the largest deviation over 1, 2, 3, 4, 6, 8, 10, 12 and 16 threads is 3.5e-3,
+        # so the tolerance has to accommodate that. Note: this must NOT be solved by setting 'num_parallel_threads' on
+        # the model, since that calls omp_set_num_threads() and thereby changes the thread count of every model built
+        # later in the same R process, i.e. of all test files that run after this one
+        tol_pred <- 1e-2
       }
       if (inversion_method == "cholesky") {
         expect_equal(gp_model$neg_log_likelihood(y = data$y_binary, cov_pars = process_cov_pars), 20.118953180464363, tolerance = 1e-8)
@@ -182,7 +182,7 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
         cholesky = list(cov_pars = c(1.1208846731049009, 0.2837165041795852, 0.5265774974772421, 0.1241828718058514, -0.1234287872320286),
                         nll = 17.743260933163558, mu = c(0.8232655588081717, 0.6753089735531903), var = c(0.1454993784884405, 0.2192667637917268)),
         iterative = list(cov_pars = c(1.1055593547491722, 0.2824705662808080, 0.5300671780510321, 0.1250140324130210, -0.1027052545776411),
-                         nll = 17.577849124499139, mu = c(0.8272584508034939, 0.6812133592385567), var = c(0.1429019063776971, 0.2171617184334778)))
+                         nll = 17.577849124499139, mu = c(0.8237742637310388, 0.6794675882713714), var = c(0.1451702261454237, 0.2177913847600575)))
       expected <- expected_fit[[inversion_method]]
       expect_equal(as.numeric(gp_model$get_cov_pars()), expected$cov_pars, tolerance = relax_tolerance(1e-8))
       expect_equal(as.numeric(gp_model$get_current_neg_log_likelihood()), expected$nll, tolerance = relax_tolerance(1e-8))

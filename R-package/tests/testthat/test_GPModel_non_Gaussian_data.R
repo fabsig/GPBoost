@@ -1978,7 +1978,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         predict_var = TRUE, predict_response = FALSE,
                                         cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
         expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
-        expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),2*tolerance_loc_1)
+        # This stochastic predictive variance varies strongly with the number of OpenMP threads: it is 0.04 with 16
+        # threads but 0.19 with a single one, so it used to pass by only 4% of a 2*tolerance_loc_1 (= 0.2) budget while
+        # the thread-induced change alone is 0.15. Use 4*tolerance_loc_1 so that intermediate thread counts also pass
+        expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])),4*tolerance_loc_1)
         # Likelihood evaluation
         nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_pred_eval, y=y)
         expect_lt(abs(nll-expected_nll),tolerance_loc_1)
@@ -4539,9 +4542,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                          predict_var = TRUE, predict_response = TRUE))
 
     # The log(sigma) block gradient combines direct-score, log-determinant and implicit-mode terms. Verify that the full
-    # Laplace objective is stationary in EVERY coefficient direction (mean block and log(sigma) block) at the optimum.
-    # This needs its own tightly converged fit: with the default delta_rel_conv = 1e-6 of OPTIM_PARAMS_BFGS the optimizer
-    # stops while the gradient is still ~3e-2 in ALL directions, including the long-established mean block, so such a fit
+    # Laplace objective is stationary in every coefficient direction (mean block and log(sigma) block) at the optimum.
+    # This needs its own tightly converged fit: with the default delta_rel_conv = 1e-6, the optimizer
+    # stops while the gradient is still ~3e-2 in all directions, including the long-established mean block, so such a fit
     # would measure the optimizer's stopping tolerance rather than the correctness of the gradient
     capture.output(gp_model_zcp_tight <- fitGPModel(group_data = group_zcp, likelihood = likelihood, y = y_zcp, X = X_zcp, params = c(OPTIM_PARAMS_BFGS, list(delta_rel_conv = 1e-12))), file = "NUL")
     coef_zcp_fd <- as.vector(gp_model_zcp_tight$get_coef(std_err = FALSE))
@@ -5019,7 +5022,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                               nrounds = 100, early_stopping_rounds = 5,
                                               use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
                                               reuse_learning_rates_gp_model = FALSE) )
-    expect_lt(sum(abs(cvbst$best_score-1.22029815715316)),TOLERANCE_MEDIUM)
+    # The cross-validation score aggregates a boosting run over several folds and depends on the number of OpenMP
+    # threads: measured against the value below, the deviation is 2.5e-4 with a single thread and 1.5e-3 with 16, i.e.
+    # the thread-induced change alone exceeds TOLERANCE_MEDIUM (1e-3). This is the only assertion in the suite whose
+    # pass/fail outcome flips with the thread count, so it needs a tolerance that accommodates that variation
+    expect_lt(sum(abs(cvbst$best_score-1.22029815715316)),TOLERANCE_LOOSE)
     expect_equal(cvbst$best_iter, 8)
 
   }) # end lognormal regression
