@@ -1707,7 +1707,12 @@ namespace GPBoost {
 						y_v[i] = y_data[i] - fixed_effects[i];
 					}
 				}
-				init_intercept = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);
+				if (has_weights_) {
+					init_intercept = GPBoost::CalculateWeightedQuantile(y_v, weights_ptr, 0.5);//weighted median
+				}
+				else {
+					init_intercept = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);
+				}
 			}//end "t"
 			else if (IsGaussianLikelihood() || (IsGaussianHeteroscedastic() && ind_set_re == 0)) {
 				double sw = 0.0;
@@ -1960,22 +1965,29 @@ namespace GPBoost {
 				init_intercept = std::log(mu);
 			}//end "zero_one_censored_shifted_gamma"
 			else if (likelihood_type_ == "asymmetric_laplace") {
-				//				std::vector<double> y_v;//calculate sample quantile
-				//				if (fixed_effects == nullptr) {
-				//					y_v.assign(y_data, y_data + num_data);
-				//				}
-				//				else {
-				//					y_v = std::vector<double>(num_data);
-				//#pragma omp parallel for schedule(static)
-				//					for (data_size_t i = 0; i < num_data; ++i) {
-				//						y_v[i] = y_data[i] - fixed_effects[i];
-				//					}
-				//				}
-				//				int pos_quant = (int)(num_data * quantile_);
-				//				std::nth_element(y_v.begin(), y_v.begin() + pos_quant, y_v.end());
-				//				init_intercept = y_v[pos_quant];
-				init_intercept = 0.;
-				// Note: the marginal likelihood can be quite flat for small lambda / aux_pars_[0] and convergence problems can occur when the intercept is initialized with a "large" non-zero value -> use zero instead
+				std::vector<double> y_v;//calculate sample quantile
+				if (fixed_effects == nullptr) {
+					y_v.assign(y_data, y_data + num_data);
+				}
+				else {
+					y_v.resize(num_data);
+#pragma omp parallel for schedule(static)
+					for (data_size_t i = 0; i < num_data; ++i) {
+						y_v[i] = y_data[i] - fixed_effects[i];
+					}
+				}
+
+				if (has_weights_) {
+					init_intercept = GPBoost::CalculateWeightedQuantile(y_v, weights_ptr, quantile_);
+				}
+				else {
+					data_size_t pos_quant =
+						static_cast<data_size_t>(std::ceil(quantile_ * num_data)) - 1;
+					pos_quant = std::min(pos_quant, num_data - 1);
+
+					std::nth_element(y_v.begin(), y_v.begin() + pos_quant, y_v.end());
+					init_intercept = y_v[pos_quant];
+				}
 			}//end "asymmetric_laplace"
 			else {
 				Log::REFatal("FindInitialIntercept: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
@@ -2153,12 +2165,14 @@ namespace GPBoost {
 						y_v[i] = y_data[i] - fixed_effects[i];
 					}
 				}
-				double median = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);
+				double median = has_weights_ ? GPBoost::CalculateWeightedQuantile(y_v, weights_, 0.5) :
+					GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);
 #pragma omp parallel for schedule(static)
 				for (data_size_t i = 0; i < num_data; ++i) {
 					y_v[i] = std::abs(y_v[i] - median);
 				}
-				aux_pars_[0] = 1.4826 * GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);//MAD
+				aux_pars_[0] = 1.4826 * (has_weights_ ? GPBoost::CalculateWeightedQuantile(y_v, weights_, 0.5) :
+					GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v));//MAD
 				if (aux_pars_[0] <= EPSILON_NUMBERS) {
 					// use IQR if MAD is zero
 					if (fixed_effects == nullptr) {
@@ -2170,12 +2184,19 @@ namespace GPBoost {
 							y_v[i] = y_data[i] - fixed_effects[i];
 						}
 					}
-					int pos = (int)(num_data * 0.25);
-					std::nth_element(y_v.begin(), y_v.begin() + pos, y_v.end());
-					double q25 = y_v[pos];
-					pos = (int)(num_data * 0.75);
-					std::nth_element(y_v.begin(), y_v.begin() + pos, y_v.end());
-					double q75 = y_v[pos];
+					double q25, q75;
+					if (has_weights_) {
+						q25 = GPBoost::CalculateWeightedQuantile(y_v, weights_, 0.25);
+						q75 = GPBoost::CalculateWeightedQuantile(y_v, weights_, 0.75);
+					}
+					else {
+						int pos = (int)(num_data * 0.25);
+						std::nth_element(y_v.begin(), y_v.begin() + pos, y_v.end());
+						q25 = y_v[pos];
+						pos = (int)(num_data * 0.75);
+						std::nth_element(y_v.begin(), y_v.begin() + pos, y_v.end());
+						q75 = y_v[pos];
+					}
 					aux_pars_[0] = (q75 - q25) / 1.349;
 				}
 			}//end "t"
@@ -2780,23 +2801,26 @@ namespace GPBoost {
 			else if (likelihood_type_ == "asymmetric_laplace") {
 				// Use MLE for initial scale assuming location_par is zero
 				double aux_sum = 0.;
+				sw = 0.;
 				if (fixed_effects == nullptr) {
-#pragma omp parallel for schedule(static) reduction(+:aux_sum)
+#pragma omp parallel for schedule(static) reduction(+:aux_sum, sw)
 					for (data_size_t i = 0; i < num_data; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						double indicator = (y_data[i] <= 0.) ? 1.0 : 0.0;
 						aux_sum += w * y_data[i] * (indicator - quantile_);
+						sw += w;
 					}
 				}
 				else {
-#pragma omp parallel for schedule(static) reduction(+:aux_sum)
+#pragma omp parallel for schedule(static) reduction(+:aux_sum, sw)
 					for (data_size_t i = 0; i < num_data; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						double indicator = (y_data[i] <= fixed_effects[i]) ? 1.0 : 0.0;
 						aux_sum += w * (y_data[i] - fixed_effects[i]) * (indicator - quantile_);
+						sw += w;
 					}
 				}
-				aux_pars_[0] = -aux_sum / num_data;
+				aux_pars_[0] = -aux_sum / sw;
 			}//end "asymmetric_laplace"
 			else if (likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 				likelihood_type_ != "binomial_probit" && likelihood_type_ != "binomial_logit" &&
@@ -2877,12 +2901,14 @@ namespace GPBoost {
 						y_v[i] = y_data[i] - fixed_effects[i];
 					}
 				}
-				C_mu = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);
+				C_mu = has_weights_ ? GPBoost::CalculateWeightedQuantile(y_v, weights_ptr, 0.5) :
+					GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);
 #pragma omp parallel for schedule(static)
 				for (data_size_t i = 0; i < num_data; ++i) {
 					y_v[i] = std::abs(y_v[i] - C_mu);
 				}
-				C_sigma2 = 1.4826 * GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);//MAD
+				C_sigma2 = 1.4826 * (has_weights_ ? GPBoost::CalculateWeightedQuantile(y_v, weights_ptr, 0.5) :
+					GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v));//MAD
 				C_sigma2 = C_sigma2 * C_sigma2;
 				if (C_sigma2 <= EPSILON_NUMBERS) {
 					// use IQR if MAD is zero
@@ -2895,12 +2921,19 @@ namespace GPBoost {
 							y_v[i] = y_data[i] - fixed_effects[i];
 						}
 					}
-					int pos = (int)(num_data * 0.25);
-					std::nth_element(y_v.begin(), y_v.begin() + pos, y_v.end());
-					double q25 = y_v[pos];
-					pos = (int)(num_data * 0.75);
-					std::nth_element(y_v.begin(), y_v.begin() + pos, y_v.end());
-					double q75 = y_v[pos];
+					double q25, q75;
+					if (has_weights_) {
+						q25 = GPBoost::CalculateWeightedQuantile(y_v, weights_ptr, 0.25);
+						q75 = GPBoost::CalculateWeightedQuantile(y_v, weights_ptr, 0.75);
+					}
+					else {
+						int pos = (int)(num_data * 0.25);
+						std::nth_element(y_v.begin(), y_v.begin() + pos, y_v.end());
+						q25 = y_v[pos];
+						pos = (int)(num_data * 0.75);
+						std::nth_element(y_v.begin(), y_v.begin() + pos, y_v.end());
+						q75 = y_v[pos];
+					}
 					C_sigma2 = (q75 - q25) / 1.349;
 					C_sigma2 = C_sigma2 * C_sigma2;
 				}

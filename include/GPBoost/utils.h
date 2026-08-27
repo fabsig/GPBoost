@@ -204,6 +204,41 @@ namespace GPBoost {
 	};
 
 	/*!
+	* \brief Finds the weighted sample quantile of a vector of values: the smallest value for which the
+	*		cumulative weight reaches quantile * (total weight). For all weights being equal, this coincides
+	*		with the order statistic at position ceil(quantile * n) - 1.
+	* \param values Vector with values
+	* \param weights Weights (non-negative), one for every entry of 'values'
+	* \param quantile Quantile with 0 < quantile < 1
+	* \return Weighted quantile
+	*/
+	inline double CalculateWeightedQuantile(const std::vector<double>& values,
+		const double* weights,
+		double quantile) {
+		CHECK(values.size() > 0);
+		CHECK(weights != nullptr);
+		int num_el = (int)values.size();
+		std::vector<int> idx(num_el);
+		std::iota(idx.begin(), idx.end(), 0);
+		std::sort(idx.begin(), idx.end(), [&values](int a, int b) { return values[a] < values[b]; });
+		double sum_w = 0.;
+#pragma omp parallel for schedule(static) reduction(+:sum_w)
+		for (int i = 0; i < num_el; ++i) {
+			sum_w += weights[i];
+		}
+		double target = quantile * sum_w, cum_w = 0.;
+		double quant = values[idx[num_el - 1]];// fallback in case of numerical inaccuracies
+		for (int i = 0; i < num_el; ++i) {
+			cum_w += weights[idx[i]];
+			if (cum_w >= target) {
+				quant = values[idx[i]];
+				break;
+			}
+		}
+		return(quant);
+	};//end CalculateWeightedQuantile
+
+	/*!
 	* \brief Finds the mean of the vector vec
 	* \param[out] vec Vector with values 
 	* \return Mean
