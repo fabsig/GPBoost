@@ -978,6 +978,25 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(nll-149.4422184),1E-5)
   })
   
+  test_that("Random coefficient Gaussian processes with covariance functions that do not use distances ", {
+
+    # Covariance functions which are not isotropic do not save distances but use the coordinates.
+    #   Random coefficient GPs thus need the coordinates of the corresponding intercept GP
+    y <- eps_svc + xi
+    # An ARD covariance function with equal range parameters is the same as the isotropic version
+    gp_model_iso <- GPModel(gp_coords = coords, cov_function = "exponential", gp_rand_coef_data = Z_SVC)
+    gp_model_ard <- GPModel(gp_coords = coords, cov_function = "exponential_ard", gp_rand_coef_data = Z_SVC)
+    nll_iso <- gp_model_iso$neg_log_likelihood(cov_pars = c(0.5, 1.2, 0.2, 0.8, 0.3, 1.1, 0.15), y = y)
+    nll_ard <- gp_model_ard$neg_log_likelihood(cov_pars = c(0.5, 1.2, 0.2, 0.2, 0.8, 0.3, 0.3, 1.1, 0.15, 0.15), y = y)
+    expect_lt(abs(nll_iso - nll_ard), TOLERANCE_STRICT)
+    # Estimation works for such covariance functions
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern_ard", cov_fct_shape = 1.5,
+                                           gp_rand_coef_data = Z_SVC, y = y,
+                                           params = list(maxit = 2, init_coef_aux_pars_from_iid_model = FALSE)), file='NUL')
+    expect_equal(length(gp_model$get_cov_pars()), 10)
+
+  })
+
   test_that("Names of covariance parameters for random coefficient Gaussian processes ", {
 
     # The names of a random coefficient GP are the name of the random coefficient followed by the

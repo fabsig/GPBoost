@@ -917,7 +917,8 @@ namespace GPBoost {
 
 		/*!
 		* \brief Constructor for random coefficient Gaussian processes
-		* \param dist Pointer to distance matrix of corresponding base intercept GP
+		* \param dist Pointer to distance matrix of corresponding base intercept GP (can be a null pointer if no distances have been saved, e.g., for non-isotropic covariance functions)
+		* \param coords Coordinates (=features) of corresponding base intercept GP. These are needed for covariance functions which are not calculated based on precomputed distances (e.g., non-isotropic ones)
 		* \param base_effect_has_Z Indicate whether the corresponding base GP has an incidence matrix Z or not
 		* \param Z Pointer to incidence matrix Z of corresponding base intercept GP
 		* \param rand_coef_data Covariate data for random coefficient
@@ -931,6 +932,7 @@ namespace GPBoost {
 		* \param dim_coordinates Dimension of input coordinates / features
 		*/
 		RECompGP(std::shared_ptr<T_mat> dist,
+			const den_mat_t& coords,
 			bool base_effect_has_Z,
 			sp_mat_t* Z,
 			const std::vector<double>& rand_coef_data,
@@ -947,14 +949,21 @@ namespace GPBoost {
 			}
 			this->num_data_ = (data_size_t)rand_coef_data.size();
 			dist_ = dist;
-			dist_saved_ = true;
+			//Distances are not saved for all covariance functions (e.g., non-isotropic ones). In this case, 'dist' is a
+			//	null pointer and the covariances are calculated based on the coordinates of the base intercept GP
+			dist_saved_ = (dist_ != nullptr);
+			coords_ = coords;
+			coord_saved_ = coords_.rows() > 0;
+			if (!dist_saved_ && !coord_saved_) {
+				Log::REFatal("RECompGP: neither distances nor coordinates are given for a random coefficient Gaussian process");
+			}
 			this->rand_coef_data_ = rand_coef_data;
 			this->is_rand_coef_ = true;
 			this->has_Z_ = true;
 			is_cross_covariance_IP_ = false;
 			apply_tapering_ = apply_tapering;
 			apply_tapering_manually_ = apply_tapering_manually;
-			cov_function_ = std::shared_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering, dim_coordinates, true));
+			cov_function_ = std::shared_ptr<CovFunction<T_mat>>(new CovFunction<T_mat>(cov_fct, shape, taper_range, taper_shape, taper_mu, apply_tapering, dim_coordinates, dist_saved_));
 			has_compact_cov_fct_ = (COMPACT_SUPPORT_COVS_.find(cov_function_->cov_fct_type_) != COMPACT_SUPPORT_COVS_.end()) || apply_tapering_;
 			this->num_cov_par_ = cov_function_->num_cov_par_;
 			sp_mat_t coef_W(this->num_data_, this->num_data_);
@@ -967,8 +976,10 @@ namespace GPBoost {
 			else {
 				this->Z_ = coef_W;
 			}
-			coord_saved_ = false;
 			num_random_effects_ = (data_size_t)this->Z_.cols();
+			if (coord_saved_) {
+				CHECK((data_size_t)coords_.rows() == num_random_effects_);
+			}
 		}
 
 		/*!

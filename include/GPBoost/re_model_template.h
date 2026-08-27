@@ -7613,7 +7613,7 @@ namespace GPBoost {
 						}
 						std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp_]);
 						re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
-							re_comp->dist_, re_comp->has_Z_, &re_comp->Z_, rand_coef_data,
+							re_comp->dist_, re_comp->coords_, re_comp->has_Z_, &re_comp->Z_, rand_coef_data,
 							cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
 							re_comp->GetTaperMu(), gp_approx_ == "tapering", false, dim_gp_coords_)));
 					}
