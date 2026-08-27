@@ -6588,20 +6588,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
                                            y = y, X=X, params = params, matrix_inversion_method = matrix_inversion_method)
                     , file='NUL')
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.4084587961)),tolerance_loc_1)
-    expect_lt(sum(abs(gp_model$get_aux_pars()-0.2692574357 )),tolerance_loc_1)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.1244755503, 2.0742575413))),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.8153285415)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-0.2688162279 )),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.3044197085, 2.0765502256))),tolerance_loc_1)
     expect_false(gp_model$can_calculate_standard_errors_coef())
     expect_equal(gp_model$get_coef(std_err = TRUE), gp_model$get_coef(std_err = FALSE))
-    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-116.0977714))),tolerance_loc_1)
-    expect_equal(gp_model$get_num_optim_iter(), 26)
+    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-117.1841035))),tolerance_loc_1)
+    expect_equal(gp_model$get_num_optim_iter(), 12)
     # Prediction
     group_test <- c(1,3,3,9999)
     X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
     pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test,
                     predict_var=TRUE, predict_response = FALSE)
-    expected_mu <- c(-1.1616043209, -0.1975149513, 0.2173365570, 1.9497819910)
-    expected_var <- c(0.02707738212, 0.02707738212, 0.02707738212, 0.40845879613)
+    expected_mu <- c(-1.3426948213, -0.2126176767, 0.2026923684, 1.7721305171)
+    expected_var <- c(0.02791522088, 0.02791522088, 0.02791522088, 0.81532854155)
     expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
     expect_lt(sum(abs(pred$var-expected_var)),tolerance_loc_1)
 
@@ -6617,33 +6617,70 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "asymmetric_laplace_tkc", likelihood_additional_param = quantile,
                                            y = y, X=X, params = params, matrix_inversion_method = matrix_inversion_method)
                     , file='NUL')
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.8394014953)),tolerance_loc_1)
-    expect_lt(sum(abs(gp_model$get_aux_pars()-0.2624250578  )),tolerance_loc_1)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.0781216681,  2.15088413307))),tolerance_loc_1)
-    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-116.8881252))),tolerance_loc_1)
-    expect_equal(gp_model$get_num_optim_iter(), 7)
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.8230834628)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-0.2712208559  )),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.1344325423,  2.0358682043))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-116.1202151))),tolerance_loc_1)
+    expect_equal(gp_model$get_num_optim_iter(), 8)
     pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test,
                     predict_var=TRUE, predict_response = FALSE)
-    expected_mu <- c(-1.1535637346, -0.1641307384, 0.2660460883, 2.0727624650)
-    expected_var <- c(0.02012959075, 0.02012959075, 0.02012959075, 0.83940149528)
+    expected_mu <- c(-1.1523666445, -0.1685696229, 0.2386040180, 1.9014356621)
+    expected_var <- c(0.03667225147, 0.03667225147, 0.03667225147, 0.82308346280)
     expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
     expect_lt(sum(abs(pred$var-expected_var)),tolerance_loc_1)
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "asymmetric_laplace_tkc_not_fisher_mode_finding", likelihood_additional_param = quantile,
                                            y = y, X=X, params = params, matrix_inversion_method = matrix_inversion_method)
                     , file='NUL')
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.8491388894)),tolerance_loc_1)
-    expect_lt(sum(abs(gp_model$get_aux_pars()-0.2472040762 )),tolerance_loc_1)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.1574045859, 2.0308585745))),tolerance_loc_1)
-    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-116.0833909))),tolerance_loc_1)
-    expect_equal(gp_model$get_num_optim_iter(), 8)
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.7758838459)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-0.2545291278 )),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.0654253707, 2.0782768412))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-114.9476599))),tolerance_loc_1)
+    expect_equal(gp_model$get_num_optim_iter(), 15)
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "asymmetric_laplace_tkc_var_cor_pred_freq_asym", likelihood_additional_param = quantile,
                                            y = y, X=X, params = params, matrix_inversion_method = matrix_inversion_method)
                     , file='NUL')
     pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test,
                     predict_var=TRUE, predict_response = FALSE)
-    expected_var_cor <- c(0.02667148236, 0.02667148236, 0.02667148236, 0.83940149528)
+    expected_var_cor <- c(0.02840872148, 0.02840872148, 0.02840872148, 0.82308346280)
     expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_1)
     expect_lt(sum(abs(pred$var-expected_var_cor)),tolerance_loc_1)
+
+    # Initializing coefficients and auxiliary parameters from an iid model
+    #   (this is the default, all fits above use 'init_coef_aux_pars_from_iid_model = FALSE')
+    params_init_iid <- params
+    params_init_iid$init_coef_aux_pars_from_iid_model <- TRUE
+    capture.output( gp_model_iid_init <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
+                                                    y = y, X=X, params = params_init_iid, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model_iid_init$get_cov_pars(std_err = FALSE)-0.4132224030)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model_iid_init$get_aux_pars()-0.2690114464)),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model_iid_init$get_coef(std_err = FALSE))-c(-0.0468007689, 2.0773708217))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model_iid_init$get_current_neg_log_likelihood()-116.2091326))),tolerance_loc_1)
+    # the initialization from an iid model finds a better optimum than the one from the marginal sample quantile alone
+    expect_lt(gp_model_iid_init$get_current_neg_log_likelihood(), 117.1841035)
+
+    # Non-zero true intercept: the initial intercept is the marginal sample quantile of y and estimation is
+    #   thus equivariant under a location shift of y (the results below are those of the fits above with the
+    #   intercept shifted by 'shift'). Note: when initializing the intercept with zero (which was done before),
+    #   the intercept stays far away from its true value and the estimated variance of the random effects is
+    #   much too large (approx. 42 instead of approx. 0.82 for the data below)
+    shift <- 9.9 # true intercept becomes 0.1 + 9.9 = 10
+    y_shift <- y + shift
+    capture.output( gp_model_shift <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
+                                                 y = y_shift, X=X, params = params, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model_shift$get_cov_pars(std_err = FALSE)-0.8153285415)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model_shift$get_aux_pars()-0.2688162279)),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model_shift$get_coef(std_err = FALSE))-c(-0.3044197085 + shift, 2.0765502256))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model_shift$get_current_neg_log_likelihood()-117.1841035))),tolerance_loc_1)
+    # same when initializing from an iid model
+    capture.output( gp_model_shift <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
+                                                 y = y_shift, X=X, params = params_init_iid, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model_shift$get_cov_pars(std_err = FALSE)-0.4132224030)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model_shift$get_aux_pars()-0.2690114464)),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model_shift$get_coef(std_err = FALSE))-c(-0.0468007689 + shift, 2.0773708217))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model_shift$get_current_neg_log_likelihood()-116.2091326))),tolerance_loc_1)
 
     ## GPBoost algorithm
     dtrain <- gpb.Dataset(data = X, label = y)
@@ -6654,18 +6691,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    nrounds = 30, learning_rate = 0.1, max_depth = 6,
                    min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)
     tolerance_gpboost <- 0.16
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.5001946367)),tolerance_gpboost)
-    expect_lt(sum(abs(gp_model$get_aux_pars()-0.2376101798)),tolerance_gpboost)
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.4967306854)),tolerance_gpboost)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-0.2378196222)),tolerance_gpboost)
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_test,
                     predict_var = TRUE, pred_latent = TRUE)
-    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(-1.0044756435, 0.2829850837, 0.9178465299, 2.0115131704))),tolerance_gpboost)
+    # larger tolerance for the same reason as for the random effect means below: most runs reproduce the
+    #   values below exactly, but deviations of about 0.18 have been observed
+    expect_lt(sum(abs(tail(pred$fixed_effect, n=4)-c(-0.9585873450, 0.4262452431, 0.9630491993, 2.0000429180))), 0.3)
     # larger tolerance: the GP model is refitted in every boosting iteration and the parallel
     #   reductions in this refit are not bit-wise reproducible, so the random effect means vary
     #   slightly between runs ('deterministic = TRUE' only makes the tree building deterministic).
     #   Deviations of about 0.3 have been observed with the default tolerance of 0.16
-    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0.1565934542, -0.3479826551, -0.3479826551, 0.0000000000))), 0.5)
-    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c( 0.02160785924, 0.02160785924, 0.02160785924, 0.50019463669))), tolerance_gpboost)
+    expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0.2324522564, -0.2957041199, -0.2957041199, 0.0000000000))), 0.5)
+    expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c( 0.02163779030, 0.02163779030, 0.02163779030, 0.49673068540))), tolerance_gpboost)
 
     # cv function
     dtrain <- gpb.Dataset(data = X, label = y)
@@ -6675,11 +6714,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model,
                                     nrounds = 100, early_stopping_rounds = 5, metric="test_neg_log_likelihood",
                                     use_gp_model_for_validation = TRUE, folds = folds, verbose = 0), file='NUL')
-    expect_lte(cvbst$best_score,1.46839423428633*(1+tolerance_loc_3))
-    expect_gte(cvbst$best_score,1.46839423428633*(1-tolerance_loc_3))
-    nit <- 37
-    expect_lte(cvbst$best_iter, nit+4)
-    expect_gte(cvbst$best_iter, nit-4)
+    # the CV results below vary between runs since the GP model is refitted in every boosting iteration
+    #   (see the comment above): scores of 1.460 - 1.585 and best iterations of 23 - 35 have been observed
+    expect_lte(cvbst$best_score,1.52*(1+tolerance_loc_3))
+    expect_gte(cvbst$best_score,1.52*(1-tolerance_loc_3))
+    nit <- 29
+    expect_lte(cvbst$best_iter, nit+10)
+    expect_gte(cvbst$best_iter, nit-10)
 
     gp_model <- GPModel(group_data = group, likelihood = likelihood,
                         matrix_inversion_method = matrix_inversion_method, likelihood_additional_param = quantile)
@@ -6687,11 +6728,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model,
                                     nrounds = 100, early_stopping_rounds = 5, metric="quantile",
                                     use_gp_model_for_validation = TRUE, folds = folds, verbose = 0), file='NUL')
-    expect_lte(cvbst$best_score,0.377186925273971*(1+tolerance_loc_3))
-    expect_gte(cvbst$best_score,0.377186925273971*(1-tolerance_loc_3))
-    nit <- 59
-    expect_lte(cvbst$best_iter, nit+4)
-    expect_gte(cvbst$best_iter, nit-30)
+    # same as above: scores of 0.390 - 0.436 and best iterations of 23 - 42 have been observed
+    expect_lte(cvbst$best_score,0.413*(1+tolerance_loc_3))
+    expect_gte(cvbst$best_score,0.413*(1-tolerance_loc_3))
+    nit <- 32
+    expect_lte(cvbst$best_iter, nit+15)
+    expect_gte(cvbst$best_iter, nit-15)
 
     # }
 
