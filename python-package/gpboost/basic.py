@@ -4969,25 +4969,23 @@ class GPModel(object):
                         raise ValueError(
                             "Length of 'drop_intercept_group_rand_effect' does not match number of random effects")
                 self.drop_intercept_group_rand_effect = deepcopy(drop_intercept_group_rand_effect)
-                offset = 0
-                if likelihood != "gaussian":
-                    offset = -1
                 counter_re = np.zeros(self.num_group_re, dtype=int)
                 for ii in range(self.num_group_rand_coef):
                     if group_rand_coef_data_names is None:
-                        new_name = self.cov_par_names[self.ind_effect_group_rand_coef[ii] + offset] + "_rand_coef_nb_" \
+                        new_name = self.cov_par_names[self.ind_effect_group_rand_coef[ii] - 1] + "_rand_coef_nb_" \
                                    + str(int(counter_re[self.ind_effect_group_rand_coef[ii] - 1] + 1))
                         counter_re[self.ind_effect_group_rand_coef[ii] - 1] = counter_re[
                                                                                   self.ind_effect_group_rand_coef[
                                                                                       ii] - 1] + 1
                     else:
-                        new_name = self.cov_par_names[self.ind_effect_group_rand_coef[ii] + offset] + "_rand_coef_" + \
+                        new_name = self.cov_par_names[self.ind_effect_group_rand_coef[ii] - 1] + "_rand_coef_" + \
                                    group_rand_coef_data_names[ii]
                     self.cov_par_names.append(new_name)
                     self.re_comp_names.append(new_name)
                 if self.drop_intercept_group_rand_effect is not None:
                     if self.drop_intercept_group_rand_effect.sum() > 0:
-                        for i in np.arange(0, self.num_group_re):
+                        # Delete in reverse order such that the indices of the remaining entries do not change
+                        for i in np.arange(self.num_group_re - 1, -1, -1):
                             if self.drop_intercept_group_rand_effect[i]:
                                 del self.cov_par_names[i]
                                 del self.re_comp_names[i]

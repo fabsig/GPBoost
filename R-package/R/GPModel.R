@@ -830,18 +830,14 @@ gpb.GPModel <- R6::R6Class(
           ind_effect_group_rand_coef <- as.vector(ind_effect_group_rand_coef)
           private$ind_effect_group_rand_coef <- ind_effect_group_rand_coef
           private$drop_intercept_group_rand_effect <- drop_intercept_group_rand_effect
-          offset = 1
-          if(likelihood != "gaussian"){
-            offset = 0
-          }
           counter_re <- rep(1,private$num_group_re)
           for (ii in 1:private$num_group_rand_coef) {
             if (is.null(colnames(private$group_rand_coef_data))) {
-              new_name <- paste0(private$cov_par_names[ind_effect_group_rand_coef[ii]+offset],
+              new_name <- paste0(private$cov_par_names[ind_effect_group_rand_coef[ii]],
                                  "_rand_coef_nb_",counter_re[ind_effect_group_rand_coef[ii]])
               counter_re[ind_effect_group_rand_coef[ii]] <- counter_re[ind_effect_group_rand_coef[ii]] + 1
             } else {
-              new_name <- paste0(private$cov_par_names[ind_effect_group_rand_coef[ii]+offset],
+              new_name <- paste0(private$cov_par_names[ind_effect_group_rand_coef[ii]],
                                  "_rand_coef_",colnames(private$group_rand_coef_data)[ii])
             }
             private$cov_par_names <- c(private$cov_par_names,new_name)
