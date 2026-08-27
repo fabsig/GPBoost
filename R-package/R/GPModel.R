@@ -938,31 +938,19 @@ gpb.GPModel <- R6::R6Class(
           private$cov_par_names <- c(private$cov_par_names,"sigma2", "a", "c", "alpha", "nu", "beta", "delta")
         } else if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range_time", "GP_range_space")
-        } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | 
+        } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" |
                    private$cov_function == "exponential_ard") {
-          if (is.null(colnames(gp_coords))) {
-            private$cov_par_names <- c(private$cov_par_names,"GP_var", paste0("GP_range_",1:private$dim_coords))
-          } else {
-            private$cov_par_names <- c(private$cov_par_names,"GP_var", paste0("GP_range_",colnames(gp_coords)))
-          }
+          private$cov_par_names <- c(private$cov_par_names,"GP_var", paste0("GP_range_",1:private$dim_coords))
         } else if (private$cov_function == "wendland" || private$cov_function == "linear" || private$cov_function == "linear_no_woodbury") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var")
         } else if (private$cov_function == "matern_estimate_shape") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range", "GP_smoothness")
         } else if (private$cov_function == "matern_ard_estimate_shape") {
-          if (is.null(colnames(gp_coords))) {
-            private$cov_par_names <- c(private$cov_par_names,"GP_var", paste0("GP_range_",1:private$dim_coords), "GP_smoothness")
-          } else {
-            private$cov_par_names <- c(private$cov_par_names,"GP_var", paste0("GP_range_",colnames(gp_coords)), "GP_smoothness")
-          }
+          private$cov_par_names <- c(private$cov_par_names,"GP_var", paste0("GP_range_",1:private$dim_coords), "GP_smoothness")
         } else if (private$cov_function == "hurst" || private$cov_function == "hurst_ard") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "H")
-          if (private$cov_function == "hurst_ard") {
-            if (is.null(colnames(gp_coords))) {
-              private$cov_par_names <- c(private$cov_par_names,paste0("GP_range_",2:private$dim_coords))
-            } else {
-              private$cov_par_names <- c(private$cov_par_names,paste0("GP_range_",colnames(gp_coords)[2:private$dim_coords]))
-            }
+          if (private$cov_function == "hurst_ard" && private$dim_coords > 1L) {
+            private$cov_par_names <- c(private$cov_par_names,paste0("GP_range_",2:private$dim_coords))
           }
         } else {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range")
@@ -993,110 +981,35 @@ gpb.GPModel <- R6::R6Class(
           private$num_gp_rand_coef <- as.integer(dim(gp_rand_coef_data)[2])
           private$gp_rand_coef_data <- gp_rand_coef_data
           gp_rand_coef_data <- as.vector(matrix(private$gp_rand_coef_data)) #convert to correct format for sending to C
+          # The covariance parameters of a random coefficient GP have the name of the random
+          #   coefficient followed by the same suffixes as the ones of the corresponding intercept GP
+          if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
+            par_name_suffixes <- c("_var", "_range_time", "_range_space")
+          } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | 
+                     private$cov_function == "exponential_ard") {
+            par_name_suffixes <- c("_var", paste0("_range_",1:private$dim_coords))
+          } else if (private$cov_function == "wendland" || private$cov_function == "linear" || private$cov_function == "linear_no_woodbury") {
+            par_name_suffixes <- "_var"
+          } else if (private$cov_function == "matern_estimate_shape") {
+            par_name_suffixes <- c("_var", "_range", "_smoothness")
+          } else if (private$cov_function == "matern_ard_estimate_shape") {
+            par_name_suffixes <- c("_var", paste0("_range_",1:private$dim_coords), "_smoothness")
+          } else if (private$cov_function == "hurst" || private$cov_function == "hurst_ard") {
+            par_name_suffixes <- c("_var", "_H")
+            if (private$cov_function == "hurst_ard" && private$dim_coords > 1L) {
+              par_name_suffixes <- c(par_name_suffixes, paste0("_range_",2:private$dim_coords))
+            }
+          } else {
+            par_name_suffixes <- c("_var", "_range")
+          }
           for (ii in 1:private$num_gp_rand_coef) {
             if (is.null(colnames(private$gp_rand_coef_data))) {
-              if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
-                private$cov_par_names <- c(private$cov_par_names,
-                                           paste0("GP_rand_coef_nb_", ii,"_var"),
-                                           paste0("GP_rand_coef_nb_", ii,"_range_time"),
-                                           paste0("GP_rand_coef_nb_", ii,"_range_space"))
-              } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | 
-                         private$cov_function == "exponential_ard") {
-                if (is.null(colnames(gp_coords))) {
-                  private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
-                                             paste0(paste0("GP_rand_coef_nb_", ii,"_var"),1:private$dim_coords))
-                } else {
-                  private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
-                                             paste0(paste0("GP_rand_coef_nb_", ii,"_range"),colnames(gp_coords)))
-                }
-              } else if (private$cov_function == "wendland" || private$cov_function == "linear" || private$cov_function == "linear_no_woodbury") {
-                private$cov_par_names <- c(private$cov_par_names,
-                                           paste0("GP_rand_coef_nb_", ii,"_var"))
-              } else if (private$cov_function == "matern_estimate_shape") {
-                private$cov_par_names <- c(private$cov_par_names,
-                                           paste0("GP_rand_coef_nb_", ii,"_var"),
-                                           paste0("GP_rand_coef_nb_", ii,"_range"),
-                                           paste0("GP_rand_coef_nb_", ii,"_smoothness"))
-              } else if (private$cov_function == "matern_ard_estimate_shape") {
-                if (is.null(colnames(gp_coords))) {
-                  private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
-                                             paste0(paste0("GP_rand_coef_nb_", ii,"_var"),1:private$dim_coords),
-                                             paste0("GP_rand_coef_nb_", ii,"_smoothness"))
-                } else {
-                  private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
-                                             paste0(paste0("GP_rand_coef_nb_", ii,"_range"),colnames(gp_coords)),
-                                             paste0("GP_rand_coef_nb_", ii,"_smoothness"))
-                }
-              }  else if (private$cov_function == "hurst" || private$cov_function == "hurst_ard") {
-                private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
-                                           paste0("GP_rand_coef_nb_", ii,"_H"))
-                if (private$cov_function == "hurst_ard") {
-                  if (is.null(colnames(gp_coords))) {
-                    private$cov_par_names <- c(private$cov_par_names, 
-                                               paste0(paste0("GP_rand_coef_nb_", ii,"_var"),2:private$dim_coords))
-                  } else {
-                    private$cov_par_names <- c(private$cov_par_names, 
-                                               paste0(paste0("GP_rand_coef_nb_", ii,"_range"),colnames(gp_coords)[2:private$dim_coords]))
-                  }
-                }
-              }
-              else {
-                private$cov_par_names <- c(private$cov_par_names,
-                                           paste0("GP_rand_coef_nb_", ii,"_var"),
-                                           paste0("GP_rand_coef_nb_", ii,"_range"))
-              }
+              rand_coef_name <- paste0("GP_rand_coef_nb_", ii)
             } else {
-              if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
-                private$cov_par_names <- c(private$cov_par_names,
-                                           paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"),
-                                           paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_range_time"),
-                                           paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_range_space"))
-              } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | 
-                         private$cov_function == "exponential_ard") {
-                if (is.null(colnames(gp_coords))) {
-                  private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
-                                             paste0(paste0("GP_rand_coef_nb_", colnames(private$gp_rand_coef_data)[ii],"_var"),1:private$dim_coords))
-                } else {
-                  private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
-                                             paste0(paste0("GP_rand_coef_nb_", colnames(private$gp_rand_coef_data)[ii],"_range"),colnames(gp_coords)))
-                }
-              } else if (private$cov_function == "wendland" || private$cov_function == "linear" || private$cov_function == "linear_no_woodbury") {
-                private$cov_par_names <- c(private$cov_par_names,
-                                           paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"))
-              }  else if (private$cov_function == "matern_estimate_shape") {
-                private$cov_par_names <- c(private$cov_par_names,
-                                           paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"),
-                                           paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_range"),
-                                           paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_smoothness"))
-              } else if (private$cov_function == "matern_ard_estimate_shape") {
-                if (is.null(colnames(gp_coords))) {
-                  private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
-                                             paste0(paste0("GP_rand_coef_nb_", colnames(private$gp_rand_coef_data)[ii],"_var"),1:private$dim_coords),
-                                             paste0("GP_rand_coef_nb_", ii,"_smoothness"))
-                } else {
-                  private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
-                                             paste0(paste0("GP_rand_coef_nb_", colnames(private$gp_rand_coef_data)[ii],"_range"),colnames(gp_coords)),
-                                             paste0("GP_rand_coef_nb_", ii,"_smoothness"))
-                }
-              } else if (private$cov_function == "hurst" || private$cov_function == "hurst_ard") {
-                private$cov_par_names <- c(private$cov_par_names,paste0("GP_rand_coef_nb_", ii,"_var"), 
-                                           paste0("GP_rand_coef_nb_", ii,"_H"))
-                if (private$cov_function == "hurst_ard") {
-                  if (is.null(colnames(gp_coords))) {
-                    private$cov_par_names <- c(private$cov_par_names,
-                                               paste0(paste0("GP_rand_coef_nb_", colnames(private$gp_rand_coef_data)[ii],"_var"),2:private$dim_coords))
-                  } else {
-                    private$cov_par_names <- c(private$cov_par_names, 
-                                               paste0(paste0("GP_rand_coef_nb_", colnames(private$gp_rand_coef_data)[ii],"_range"),colnames(gp_coords)[2:private$dim_coords]))
-                  }
-                }
-              } else {
-                private$cov_par_names <- c(private$cov_par_names,
-                                           paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_var"),
-                                           paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii],"_range"))
-              }
+              rand_coef_name <- paste0("GP_rand_coef_", colnames(private$gp_rand_coef_data)[ii])
             }
-            private$re_comp_names <- c(private$re_comp_names,paste0("GP_rand_coef_nb_", ii))
+            private$cov_par_names <- c(private$cov_par_names, paste0(rand_coef_name, par_name_suffixes))
+            private$re_comp_names <- c(private$re_comp_names, rand_coef_name)
           }
         } # End set data for GP random coefficients
       } # End set data for Gaussian process part

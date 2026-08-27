@@ -978,6 +978,78 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(nll-149.4422184),1E-5)
   })
   
+  test_that("Names of covariance parameters for random coefficient Gaussian processes ", {
+
+    # The names of a random coefficient GP are the name of the random coefficient followed by the
+    #   same suffixes as the ones of the corresponding intercept GP. They are checked here on the
+    #   model object itself since no estimation is required for this
+    Z_SVC_no_names <- Z_SVC
+    colnames(Z_SVC_no_names) <- NULL
+    model_names <- function(cov_function, gp_rand_coef_data, ...) {
+      capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = cov_function,
+                                          gp_rand_coef_data = gp_rand_coef_data, ...), file='NUL')
+      gp_model$.__enclos_env__$private
+    }
+
+    # Covariate data for the random coefficients without column names
+    private_model <- model_names("exponential", Z_SVC_no_names)
+    expect_equal(private_model$cov_par_names,
+                 c("Error_var", "GP_var", "GP_range",
+                   "GP_rand_coef_nb_1_var", "GP_rand_coef_nb_1_range",
+                   "GP_rand_coef_nb_2_var", "GP_rand_coef_nb_2_range"))
+    expect_equal(private_model$re_comp_names,
+                 c("GP", "GP_rand_coef_nb_1", "GP_rand_coef_nb_2"))
+    # Column names of the covariate data are used if provided
+    private_model <- model_names("exponential", Z_SVC)
+    expect_equal(private_model$cov_par_names,
+                 c("Error_var", "GP_var", "GP_range",
+                   "GP_rand_coef_var1_var", "GP_rand_coef_var1_range",
+                   "GP_rand_coef_var2_var", "GP_rand_coef_var2_range"))
+    expect_equal(private_model$re_comp_names,
+                 c("GP", "GP_rand_coef_var1", "GP_rand_coef_var2"))
+    # ARD covariance functions: one range parameter per input dimension
+    expect_equal(model_names("matern_ard", Z_SVC, cov_fct_shape = 1.5)$cov_par_names,
+                 c("Error_var", "GP_var", "GP_range_1", "GP_range_2",
+                   "GP_rand_coef_var1_var", "GP_rand_coef_var1_range_1", "GP_rand_coef_var1_range_2",
+                   "GP_rand_coef_var2_var", "GP_rand_coef_var2_range_1", "GP_rand_coef_var2_range_2"))
+    expect_equal(model_names("exponential_ard", Z_SVC_no_names)$cov_par_names,
+                 c("Error_var", "GP_var", "GP_range_1", "GP_range_2",
+                   "GP_rand_coef_nb_1_var", "GP_rand_coef_nb_1_range_1", "GP_rand_coef_nb_1_range_2",
+                   "GP_rand_coef_nb_2_var", "GP_rand_coef_nb_2_range_1", "GP_rand_coef_nb_2_range_2"))
+    # Covariance functions with an estimated smoothness parameter
+    expect_equal(model_names("matern_estimate_shape", Z_SVC)$cov_par_names,
+                 c("Error_var", "GP_var", "GP_range", "GP_smoothness",
+                   "GP_rand_coef_var1_var", "GP_rand_coef_var1_range", "GP_rand_coef_var1_smoothness",
+                   "GP_rand_coef_var2_var", "GP_rand_coef_var2_range", "GP_rand_coef_var2_smoothness"))
+    expect_equal(model_names("matern_ard_estimate_shape", Z_SVC)$cov_par_names,
+                 c("Error_var", "GP_var", "GP_range_1", "GP_range_2", "GP_smoothness",
+                   "GP_rand_coef_var1_var", "GP_rand_coef_var1_range_1", "GP_rand_coef_var1_range_2", "GP_rand_coef_var1_smoothness",
+                   "GP_rand_coef_var2_var", "GP_rand_coef_var2_range_1", "GP_rand_coef_var2_range_2", "GP_rand_coef_var2_smoothness"))
+    # Hurst covariance functions
+    expect_equal(model_names("hurst", Z_SVC)$cov_par_names,
+                 c("Error_var", "GP_var", "H",
+                   "GP_rand_coef_var1_var", "GP_rand_coef_var1_H",
+                   "GP_rand_coef_var2_var", "GP_rand_coef_var2_H"))
+    expect_equal(model_names("hurst_ard", Z_SVC)$cov_par_names,
+                 c("Error_var", "GP_var", "H", "GP_range_2",
+                   "GP_rand_coef_var1_var", "GP_rand_coef_var1_H", "GP_rand_coef_var1_range_2",
+                   "GP_rand_coef_var2_var", "GP_rand_coef_var2_H", "GP_rand_coef_var2_range_2"))
+    # Space-time covariance functions
+    expect_equal(model_names("matern_space_time", Z_SVC, cov_fct_shape = 1.5)$cov_par_names,
+                 c("Error_var", "GP_var", "GP_range_time", "GP_range_space",
+                   "GP_rand_coef_var1_var", "GP_rand_coef_var1_range_time", "GP_rand_coef_var1_range_space",
+                   "GP_rand_coef_var2_var", "GP_rand_coef_var2_range_time", "GP_rand_coef_var2_range_space"))
+    # Covariance functions with only a variance parameter
+    expect_equal(model_names("wendland", Z_SVC, cov_fct_taper_range = 0.5)$cov_par_names,
+                 c("Error_var", "GP_var", "GP_rand_coef_var1_var", "GP_rand_coef_var2_var"))
+    # Non-Gaussian likelihood: there is no "Error_var" parameter
+    expect_equal(model_names("exponential", Z_SVC, likelihood = "bernoulli_probit")$cov_par_names,
+                 c("GP_var", "GP_range",
+                   "GP_rand_coef_var1_var", "GP_rand_coef_var1_range",
+                   "GP_rand_coef_var2_var", "GP_rand_coef_var2_range"))
+
+  })
+
   test_that("Gaussian process model with cluster_id's not constant ", {
     
     y <- eps + xi

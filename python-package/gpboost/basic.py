@@ -5097,71 +5097,34 @@ class GPModel(object):
                 gp_rand_coef_data_c, _, _ = c_float_array(self.gp_rand_coef_data.flatten(order='F'))
                 if self.cov_function == "space_time_gneiting":
                     raise ValueError("The 'space_time_gneiting' covariance function does currently not support random coefficients")
+                # The covariance parameters of a random coefficient GP have the name of the random
+                #   coefficient followed by the same suffixes as the ones of the corresponding intercept GP
+                if self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time":
+                    par_name_suffixes = ["_var", "_range_time", "_range_space"]
+                elif (self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard" or
+                      self.cov_function == "exponential_ard"):
+                    par_name_suffixes = ["_var"] + ["_range_" + str(i + 1) for i in range(0, self.dim_coords)]
+                elif self.cov_function == "wendland" or self.cov_function == "linear" or self.cov_function == "linear_no_woodbury":
+                    par_name_suffixes = ["_var"]
+                elif self.cov_function == "matern_estimate_shape":
+                    par_name_suffixes = ["_var", "_range", "_smoothness"]
+                elif self.cov_function == "matern_ard_estimate_shape":
+                    par_name_suffixes = (["_var"] + ["_range_" + str(i + 1) for i in range(0, self.dim_coords)] +
+                                         ["_smoothness"])
+                elif self.cov_function == "hurst" or self.cov_function == "hurst_ard":
+                    par_name_suffixes = ["_var", "_H"]
+                    if self.cov_function == "hurst_ard":
+                        par_name_suffixes = (par_name_suffixes +
+                                             ["_range_" + str(i + 1) for i in range(1, self.dim_coords)])
+                else:
+                    par_name_suffixes = ["_var", "_range"]
                 for ii in range(self.num_gp_rand_coef):
                     if gp_rand_coef_data_names is None:
-                        if self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time":
-                            self.cov_par_names.extend(
-                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
-                                 "GP_rand_coef_nb_" + str(ii + 1) + "_range_time",
-                                 "GP_rand_coef_nb_" + str(ii + 1) + "_range_space"])
-                        elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard" or \
-                                self.cov_function == "exponential_ard":
-                            self.cov_par_names.extend(
-                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var"] +
-                                 ["GP_rand_coef_nb_" + str(ii + 1) + str(i+1) for i in range(0,self.dim_coords)])
-                        elif self.cov_function == "wendland" or self.cov_function == "linear" or self.cov_function == "linear_no_woodbury":
-                            self.cov_par_names.extend(["GP_rand_coef_nb_" + str(ii + 1) + "_var"])
-                        elif self.cov_function == "matern_estimate_shape":
-                            self.cov_par_names.extend(
-                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
-                                 "GP_rand_coef_nb_" + str(ii + 1) + "_range",
-                                 "GP_rand_coef_nb_" + str(ii + 1) + "_smoothness"])
-                        elif self.cov_function == "matern_ard_estimate_shape":
-                            self.cov_par_names.extend(
-                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var"] +
-                                 ["GP_rand_coef_nb_" + str(ii + 1) + str(i+1) for i in range(0,self.dim_coords)] + 
-                                 ["GP_rand_coef_nb_" + str(ii + 1) + "_smoothness"])
-                        elif self.cov_function == "hurst"  or self.cov_function == "hurst_ard":
-                            self.cov_par_names.extend(["GP_rand_coef_nb_" + str(ii + 1) + "_var"] + ["GP_rand_coef_nb_" + str(ii + 1) + "_H"])
-                            if self.cov_function == "hurst_ard":
-                                 self.cov_par_names.extend(["GP_rand_coef_nb_" + str(ii + 1) + str(i+1) for i in range(1,self.dim_coords)])
-                        else:
-                            self.cov_par_names.extend(
-                                ["GP_rand_coef_nb_" + str(ii + 1) + "_var",
-                                 "GP_rand_coef_nb_" + str(ii + 1) + "_range"])
-                        self.re_comp_names.append("GP_rand_coef_nb_" + str(ii + 1))
+                        rand_coef_name = "GP_rand_coef_nb_" + str(ii + 1)
                     else:
-                        if self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time":
-                            self.cov_par_names.extend(
-                                ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
-                                 "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range_time",
-                                 "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range_space"])
-                        elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard" or \
-                                self.cov_function == "exponential_ard":
-                            self.cov_par_names.extend(
-                                ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"] +
-                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + str(i+1) for i in range(0,self.dim_coords)])
-                        elif self.cov_function == "wendland" or self.cov_function == "linear" or self.cov_function == "linear_no_woodbury":
-                            self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"])
-                        elif self.cov_function == "matern_estimate_shape":
-                            self.cov_par_names.extend(
-                                ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
-                                 "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range",
-                                 "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_smoothness"])
-                        elif self.cov_function == "matern_ard_estimate_shape":
-                            self.cov_par_names.extend(
-                                ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"] +
-                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + str(i+1) for i in range(0,self.dim_coords)] + 
-                                 ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_smoothness"])
-                        elif self.cov_function == "hurst"  or self.cov_function == "hurst_ard":
-                            self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var"] + ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_H"])
-                            if self.cov_function == "hurst_ard":
-                                 self.cov_par_names.extend(["GP_rand_coef_" + gp_rand_coef_data_names[ii] + str(i+1) for i in range(1,self.dim_coords)])
-                        else:
-                            self.cov_par_names.extend(
-                                ["GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_var",
-                                 "GP_rand_coef_" + gp_rand_coef_data_names[ii] + "_range"])
-                        self.re_comp_names.append("GP_rand_coef_" + gp_rand_coef_data_names[ii])
+                        rand_coef_name = "GP_rand_coef_" + gp_rand_coef_data_names[ii]
+                    self.cov_par_names.extend([rand_coef_name + suffix for suffix in par_name_suffixes])
+                    self.re_comp_names.append(rand_coef_name)
         if self.num_sets_re == 2:
             self.cov_par_names = self.cov_par_names + [name + "_scale" for name in self.cov_par_names] 
             self.re_comp_names = self.re_comp_names + [name + "_scale" for name in self.re_comp_names]        
