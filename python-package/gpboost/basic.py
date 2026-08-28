@@ -6130,9 +6130,12 @@ class GPModel(object):
         # can trigger warning messages) before printing anything, so that any such warnings are
         # not interleaved with the output below
         cov_pars = self.get_cov_pars(std_err=std_err, format_pandas=True)
+        # standard errors of the regression coefficients cannot be calculated for all likelihoods (e.g., not for
+        #   "asymmetric_laplace"). 'get_coef' then returns only the estimates
+        std_err_coef = std_err and self._can_calculate_standard_errors_coef()
         if self.has_covariates:
-            coefs = self.get_coef(std_err=std_err, format_pandas=True)
-            if std_err:
+            coefs = self.get_coef(std_err=std_err_coef, format_pandas=True)
+            if std_err_coef:
                 z_values = np.array(coefs.iloc[0] / coefs.iloc[1])
                 p_values = 2 * scipy.stats.norm.cdf(-np.abs(z_values))
         num_aux_pars = self._get_num_aux_pars()
@@ -6176,7 +6179,7 @@ class GPModel(object):
         if self.has_covariates:
             print("-----------------------------------------------------")
             print("Linear regression coefficients (fixed effects):")
-            if std_err:
+            if std_err_coef:
                 coefs_t = coefs.transpose()
                 print(round(pd.concat([coefs_t, pd.DataFrame({"z value": z_values, "P(>|z|)": p_values},
                                                            index=coefs_t.index)], axis=1), 4))

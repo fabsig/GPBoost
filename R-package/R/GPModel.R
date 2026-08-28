@@ -2555,9 +2555,12 @@ gpb.GPModel <- R6::R6Class(
       # not interleaved with the output below
       cov_pars <- self$get_cov_pars(std_err = std_err)
       has_covariates <- private$has_covariates
+      # standard errors of the regression coefficients cannot be calculated for all likelihoods (e.g., not for
+      #   'asymmetric_laplace'). 'get_coef' then returns only the estimates
+      std_err_coef <- std_err && self$can_calculate_standard_errors_coef()
       if (has_covariates) {
-        coefs <- self$get_coef(std_err = std_err)
-        if (std_err) {
+        coefs <- self$get_coef(std_err = std_err_coef)
+        if (std_err_coef) {
           z_values <- coefs[1,] / coefs[2,]
           p_values <- 2 * exp(pnorm(-abs(z_values), log.p = TRUE))
         }
@@ -2622,7 +2625,7 @@ gpb.GPModel <- R6::R6Class(
       if (has_covariates) {
         cat("-----------------------------------------------------\n")
         cat("Linear regression coefficients (fixed effects):\n")
-        if (std_err) {
+        if (std_err_coef) {
           coefs_summary <- cbind(t(coefs),"z value"=z_values,"P(>|z|)"=p_values)
           print(round(coefs_summary,4))
         } else {
