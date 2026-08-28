@@ -2790,7 +2790,9 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	bool init_coef_aux_pars_from_iid_model,
 	const int* estimate_cov_par_index,
 	int m_lbfgs,
-	double delta_conv_mode_finding) {
+	double delta_conv_mode_finding,
+	int max_num_restarts_lbfgs,
+	bool cold_restart_lbfgs) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetOptimConfig(init_cov_pars,
@@ -2822,7 +2824,9 @@ int GPB_SetOptimConfig(REModelHandle handle,
 		init_coef_aux_pars_from_iid_model,
 		estimate_cov_par_index,
 		m_lbfgs, 
-		delta_conv_mode_finding);
+		delta_conv_mode_finding,
+		max_num_restarts_lbfgs,
+		cold_restart_lbfgs);
 	API_END();
 }
 

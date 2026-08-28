@@ -1024,6 +1024,44 @@ namespace GPBoost {
 			na_or_inf_during_last_call_to_find_mode_ = na_or_inf_during_second_last_call_to_find_mode_;
 		}
 
+		/*!
+		* \brief Save the current mode (and 'SigmaI_mode_') so that it can be restored later with 'RestoreModeState()'.
+		*		This is used, e.g., for restarts of the optimizer ('max_num_restarts_lbfgs'): mode finding can be
+		*		start-dependent for non-smooth likelihoods, and the objective function values of an optimizer are
+		*		thus only reproducible if the corresponding modes are restored as well
+		* \param[out] mode Current mode
+		* \param[out] SigmaI_mode Current 'SigmaI_mode_' (not used if 'has_SigmaI_mode_' is false)
+		*/
+		void SaveModeState(vec_t& mode,
+			vec_t& SigmaI_mode) const {
+			mode = mode_;
+			if (has_SigmaI_mode_) {
+				SigmaI_mode = SigmaI_mode_;
+			}
+		}
+
+		/*!
+		* \brief Restore a mode that has been saved with 'SaveModeState()'. The mode is used as starting value for
+		*		the next call of a mode finding algorithm
+		* \param mode Mode
+		* \param SigmaI_mode 'SigmaI_mode_' (not used if 'has_SigmaI_mode_' is false)
+		*/
+		void RestoreModeState(const vec_t& mode,
+			const vec_t& SigmaI_mode) {
+			CHECK((int)mode.size() == dim_mode_);
+			mode_ = mode;
+			mode_previous_value_ = mode_;
+			if (has_SigmaI_mode_) {
+				CHECK((int)SigmaI_mode.size() == dim_mode_);
+				SigmaI_mode_ = SigmaI_mode;
+				SigmaI_mode_previous_value_ = SigmaI_mode_;
+			}
+			mode_initialized_ = true;
+			mode_is_zero_ = false;
+			na_or_inf_during_last_call_to_find_mode_ = false;
+			na_or_inf_during_second_last_call_to_find_mode_ = false;
+		}
+
 		/*! \brief Destructor */
 		~Likelihood() {
 		}

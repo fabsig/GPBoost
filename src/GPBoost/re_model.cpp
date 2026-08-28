@@ -297,7 +297,9 @@ namespace GPBoost {
 		bool init_coef_aux_pars_from_iid_model,
 		const int* estimate_cov_par_index,
 		int m_lbfgs,
-		double delta_conv_mode_finding) {
+		double delta_conv_mode_finding,
+		int max_num_restarts_lbfgs,
+		bool cold_restart_lbfgs) {
 		// Initial covariance parameters
 		if (init_cov_pars != nullptr) {
 			vec_t init_cov_pars_orig = Eigen::Map<const vec_t>(init_cov_pars, num_cov_pars_);
@@ -355,19 +357,19 @@ namespace GPBoost {
 			re_model_sp_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
 				cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace,
-				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars, estimate_cov_par_index, m_lbfgs, delta_conv_mode_finding);
+				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars, estimate_cov_par_index, m_lbfgs, delta_conv_mode_finding, max_num_restarts_lbfgs, cold_restart_lbfgs);
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
 			re_model_sp_rm_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
 				cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace,
-				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars, estimate_cov_par_index, m_lbfgs, delta_conv_mode_finding);
+				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars, estimate_cov_par_index, m_lbfgs, delta_conv_mode_finding, max_num_restarts_lbfgs, cold_restart_lbfgs);
 		}
 		else {
 			re_model_den_->SetOptimConfig(lr, acc_rate_cov, max_iter, delta_rel_conv, use_nesterov_acc, nesterov_schedule_version,
 				optimizer, momentum_offset, convergence_criterion, lr_coef, acc_rate_coef, optimizer_coef,
 				cg_max_num_it, cg_max_num_it_tridiag, cg_delta_conv, num_rand_vec_trace, reuse_rand_vec_trace,
-				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars, estimate_cov_par_index, m_lbfgs, delta_conv_mode_finding);
+				cg_preconditioner_type, seed_rand_vec_trace, piv_chol_rank, estimate_aux_pars, estimate_cov_par_index, m_lbfgs, delta_conv_mode_finding, max_num_restarts_lbfgs, cold_restart_lbfgs);
 		}
 	}//end SetOptimConfig
 
@@ -449,7 +451,9 @@ namespace GPBoost {
 			estimate_aux_pars_iid,
 			estimate_cov_par_index_iid.data(),
 			re_model->m_lbfgs_,
-			re_model->delta_conv_mode_finding_);
+			re_model->delta_conv_mode_finding_,
+			re_model->max_num_restarts_lbfgs_,
+			re_model->cold_restart_lbfgs_);
 		if (init_aux_pars_given_ && NumAuxPars() > 0) {
 			CHECK(re_model_iid->NumAuxPars() == NumAuxPars());
 			re_model_iid->SetAuxPars(re_model->GetAuxPars());

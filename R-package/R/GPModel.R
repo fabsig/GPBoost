@@ -458,6 +458,20 @@
 #'                \item{momentum_offset: \code{integer} (Default = 2, only relevant for "gradient_descent")}. 
 #'                Number of iterations for which no momentum is applied in the beginning. If momentum_offset = -999, internal default values are used.
 #'                \item{m_lbfgs: \code{integer} (Default = 6)}. Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer. If m_lbfgs = -999, internal default values are used
+#'                \item{cold_restart_lbfgs: \code{boolean} (Default = TRUE)}. If TRUE, restarts of the "lbfgs" optimizers are
+#'                "cold" restarts: the regression coefficients, the auxiliary parameters, and the modes of the Laplace
+#'                approximations are reset to their initial values and only the covariance parameters are kept. Such restarts
+#'                can escape a local optimum in which the optimizer is stuck. If FALSE, "warm" restarts are done: the
+#'                optimization simply continues from the current parameters with a re-initialized approximate Hessian.
+#'                Only relevant if \code{max_num_restarts_lbfgs} > 0. Note that every cold restart is a full optimization
+#'                with up to \code{maxit} iterations, and the number of iterations reported is the sum over all restarts
+#'                \item{max_num_restarts_lbfgs: \code{integer} (Default = 0)}. Maximal number of restarts of the "lbfgs" optimizers
+#'                after they have terminated. A restart continues from the current parameters with a re-initialized approximate Hessian
+#'                (and, for non-Gaussian likelihoods, re-initialized modes of the Laplace approximations if this does not deteriorate the objective function).
+#'                Restarts are only done as long as the negative log-likelihood still decreases by more than \code{delta_rel_conv} and
+#'                as long as the total number of iterations is below \code{maxit}. This can help when the line search of "lbfgs" fails
+#'                and the optimizer thus terminates prematurely without having converged. This can happen, e.g., for the
+#'                \code{"asymmetric_laplace"} (= quantile regression) likelihood, whose approximate marginal likelihood is not smooth
 #'                \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8)}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 #'            }
 #' @param offset A \code{numeric} \code{vector} with 
@@ -1387,6 +1401,8 @@ gpb.GPModel <- R6::R6Class(
         , private$params[["estimate_cov_par_index"]]
         , private$params[["m_lbfgs"]]
         , private$params[["delta_conv_mode_finding"]]
+        , private$params[["max_num_restarts_lbfgs"]]
+        , private$params[["cold_restart_lbfgs"]]
       )
       return(invisible(self))
     },
@@ -2736,6 +2752,8 @@ gpb.GPModel <- R6::R6Class(
           init_coef_aux_pars_from_iid_model = TRUE,
           estimate_cov_par_index = -1L,
           m_lbfgs = -999L, # default value is set in C++
+          max_num_restarts_lbfgs = -999L, # default value is set in C++
+          cold_restart_lbfgs = TRUE,
           delta_conv_mode_finding = -999 # default value is set in C++
     ),
     num_sets_re = 1,
@@ -2817,11 +2835,12 @@ gpb.GPModel <- R6::R6Class(
                           "momentum_offset", "cg_max_num_it", "cg_max_num_it_tridiag",
                           "num_rand_vec_trace", "seed_rand_vec_trace",
                           "fitc_piv_chol_preconditioner_rank", "estimate_cov_par_index", 
-                          "m_lbfgs")
+                          "m_lbfgs", "max_num_restarts_lbfgs")
       character_params <- c("optimizer_cov", "convergence_criterion",
                             "optimizer_coef", "cg_preconditioner_type")
       logical_params <- c("use_nesterov_acc", "trace",  
-                          "reuse_rand_vec_trace", "estimate_aux_pars", "init_coef_aux_pars_from_iid_model")
+                          "reuse_rand_vec_trace", "estimate_aux_pars", "init_coef_aux_pars_from_iid_model",
+                          "cold_restart_lbfgs")
       if (!is.null(params[["init_cov_pars"]])) {
         if (is.vector(params[["init_cov_pars"]])) {
           if (storage.mode(params[["init_cov_pars"]]) != "double") {

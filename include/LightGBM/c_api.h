@@ -1431,6 +1431,8 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 *        only regression coefficients are initialized from an iid model.
 * \param estimate_cov_par_index If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, estimate_cov_par_index[i] is then bool and indicates which ones are estimated
 * \param m_lbfgs Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer. If m_lbfgs = -999, internal default values are used
+* \param max_num_restarts_lbfgs Maximal number of restarts of the lbfgs optimizers after they have terminated. If max_num_restarts_lbfgs = -999, internal default values are used
+* \param cold_restart_lbfgs If true, restarts of the lbfgs optimizers are "cold" restarts, otherwise "warm" restarts (only relevant if max_num_restarts_lbfgs > 0)
 * \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 * \return 0 when succeed, -1 when failure happens
 */
@@ -1464,7 +1466,9 @@ GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
     bool init_coef_aux_pars_from_iid_model,
     const int* estimate_cov_par_index,
     int m_lbfgs,
-    double delta_conv_mode_finding);
+    double delta_conv_mode_finding,
+    int max_num_restarts_lbfgs,
+    bool cold_restart_lbfgs);
 
 /*!
 * \brief Find parameters that minimize the negative log-ligelihood (=MLE)

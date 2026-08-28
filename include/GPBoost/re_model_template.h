@@ -713,6 +713,56 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Reset the modes of the Laplace approximations to zero (does nothing for a Gaussian likelihood).
+		*		This is used, e.g., for restarts of the optimizer ('max_num_restarts_lbfgs') to make sure that
+		*		the modes are not warm-started differently in different restarts
+		*/
+		void InitializeModes() {
+			if (!gauss_likelihood_) {
+				for (const auto& cluster_i : unique_clusters_) {
+					likelihood_[cluster_i]->InitializeModeAvec();
+				}
+			}
+		}
+
+		/*!
+		* \brief Save the current modes of all clusters so that they can be restored later with 'RestoreModeStates()'.
+		*		Mode finding can be start-dependent for non-smooth likelihoods. The objective function values of an
+		*		optimizer are thus only reproducible if the corresponding modes are restored as well
+		* \param[out] modes Current modes of all clusters
+		* \param[out] SigmaI_modes Current 'SigmaI_mode_'s of all clusters
+		*/
+		void SaveModeStates(std::vector<vec_t>& modes,
+			std::vector<vec_t>& SigmaI_modes) const {
+			modes.resize(unique_clusters_.size());
+			SigmaI_modes.resize(unique_clusters_.size());
+			if (!gauss_likelihood_) {
+				int ic = 0;
+				for (const auto& cluster_i : unique_clusters_) {
+					likelihood_.at(cluster_i)->SaveModeState(modes[ic], SigmaI_modes[ic]);
+					ic++;
+				}
+			}
+		}
+
+		/*!
+		* \brief Restore modes that have been saved with 'SaveModeStates()'
+		* \param modes Modes of all clusters
+		* \param SigmaI_modes 'SigmaI_mode_'s of all clusters
+		*/
+		void RestoreModeStates(const std::vector<vec_t>& modes,
+			const std::vector<vec_t>& SigmaI_modes) {
+			if (!gauss_likelihood_) {
+				CHECK(modes.size() == unique_clusters_.size());
+				int ic = 0;
+				for (const auto& cluster_i : unique_clusters_) {
+					likelihood_[cluster_i]->RestoreModeState(modes[ic], SigmaI_modes[ic]);
+					ic++;
+				}
+			}
+		}
+
+		/*!
 		* \brief Set configuration parameters for the optimizer
 		* \param lr_cov Learning rate for covariance parameters. If lr_cov = -999, internal default values are used
 		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0). If acc_rate_cov = -999, internal default values are used
@@ -738,6 +788,8 @@ namespace GPBoost {
 		* \param estimate_cov_par_index If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, estimate_cov_par_index[i] is then bool and indicates which ones are estimated
 		* \param m_lbfgs Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer. If m_lbfgs = -999, internal default values are used
 		* \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
+		* \param max_num_restarts_lbfgs Maximal number of restarts of the lbfgs optimizers after they have terminated. If max_num_restarts_lbfgs = -999, internal default values are used
+		* \param cold_restart_lbfgs If true, restarts of the lbfgs optimizers are "cold" restarts, otherwise "warm" restarts (only relevant if max_num_restarts_lbfgs > 0)
 		*/
 		void SetOptimConfig(double lr_cov,
 			double acc_rate_cov,
@@ -762,7 +814,9 @@ namespace GPBoost {
 			bool estimate_aux_pars,
 			const int* estimate_cov_par_index,
 			int m_lbfgs,
-			double delta_conv_mode_finding) {
+			double delta_conv_mode_finding,
+			int max_num_restarts_lbfgs,
+			bool cold_restart_lbfgs) {
 			if (acc_rate_cov > 0.) {
 				acc_rate_cov_ = acc_rate_cov;
 			}
@@ -946,6 +1000,13 @@ namespace GPBoost {
 			else if (!TwoNumbersAreEqual<double>(delta_conv_mode_finding, -999.)) {
 				Log::REFatal("delta_conv_mode_finding is not > 0, found = %g ", delta_conv_mode_finding);
 			}
+			if (max_num_restarts_lbfgs >= 0) {
+				max_num_restarts_lbfgs_ = max_num_restarts_lbfgs;
+			}
+			else if (max_num_restarts_lbfgs != -999) {
+				Log::REFatal("max_num_restarts_lbfgs is not >= 0, found = %d ", max_num_restarts_lbfgs);
+			}
+			cold_restart_lbfgs_ = cold_restart_lbfgs;
 			SetPropertiesLikelihood();
 		}//end SetOptimConfig
 
@@ -1409,28 +1470,114 @@ namespace GPBoost {
 					Log::REDebug("Initial %s: %g", ll_str.c_str(), neg_log_likelihood_);
 				}
 				if (OPTIM_EXTERNAL_.find(optimizer_cov_pars_) != OPTIM_EXTERNAL_.end()) {
-					OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
-						delta_rel_conv_, convergence_criterion_, num_it, learn_covariance_parameters,
-						optimizer_cov_pars_, profile_out_error_variance_, profile_out_coef,
-						neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call,
-						m_lbfgs_);
-					// Check for NA or Inf
-					if (optimizer_cov_pars_ == "bfgs_optim_lib" || optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
-						if (learn_covariance_parameters) {
-							for (int i = 0; i < (int)cov_aux_pars.size(); ++i) {
-								if (std::isnan(cov_aux_pars[i]) || std::isinf(cov_aux_pars[i])) {
-									na_or_inf_occurred = true;
+					// 'max_num_restarts_lbfgs_' restarts of the lbfgs optimizers are done either as "warm" restarts
+					//	(cold_restart_lbfgs_ = false, done in 'OptimExternal': the optimization simply continues from the
+					//	current parameters with a re-initialized approximate Hessian) or as "cold" restarts
+					//	(cold_restart_lbfgs_ = true, done here: the regression coefficients, the auxiliary parameters, and
+					//	the modes are reset to their initial values, only the covariance parameters are kept). Cold restarts
+					//	can escape a local optimum in which the optimizer is stuck, warm restarts cannot. Every cold restart
+					//	is a full optimization with up to 'max_iter_' iterations, and the number of iterations reported is
+					//	the sum over all restarts. The parameters of the best restart are returned
+					bool do_cold_restarts = cold_restart_lbfgs_ && max_num_restarts_lbfgs_ > 0 &&
+						(optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright");
+					int max_num_cold_restarts = do_cold_restarts ? max_num_restarts_lbfgs_ : 0;
+					int num_restarts_in_optim_external = do_cold_restarts ? 0 : max_num_restarts_lbfgs_;
+					int num_it_total = 0;
+					double nll_best = std::numeric_limits<double>::infinity(), nll_lag1_cold_restart = std::numeric_limits<double>::infinity();
+					vec_t cov_aux_pars_best, beta_best;
+					std::vector<vec_t> modes_best, SigmaI_modes_best;
+					bool last_cold_restart_is_best = false;
+					for (int cold_restart = 0; cold_restart <= max_num_cold_restarts; ++cold_restart) {
+						if (cold_restart > 0) {
+							// Reset the regression coefficients, the auxiliary parameters, and the modes to their initial
+							//	values. The covariance parameters are kept at their current values
+							if (estimate_aux_pars_) {
+								cov_aux_pars.segment(num_cov_par_, NumAuxPars()) = cov_aux_pars_init.segment(num_cov_par_, NumAuxPars());
+								SetAuxPars(cov_aux_pars.data() + num_cov_par_);
+							}
+							if (has_covariates_) {
+								beta_ = beta_init;
+							}
+							InitializeModes();
+							string_t reset_str = gauss_likelihood_ ? "The regression coefficients and the auxiliary parameters are reset to " :
+								"The regression coefficients, the auxiliary parameters, and the modes are reset to ";
+							string_t ll_str = gauss_likelihood_ ? "negative log-likelihood" : "approximate negative marginal log-likelihood";
+							Log::REDebug(" ");
+							Log::REDebug(("GPModel: the optimization is restarted ('cold' restart number %d) after %d iterations. " +
+								reset_str + "their initial values, the covariance parameters are kept. Current " + ll_str + ": %g ").c_str(),
+								cold_restart, num_it_total, neg_log_likelihood_);
+						}
+						OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
+							delta_rel_conv_, convergence_criterion_, num_it, learn_covariance_parameters,
+							optimizer_cov_pars_, profile_out_error_variance_, profile_out_coef,
+							neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_,
+							cold_restart == 0 && reuse_m_bfgs_from_previous_call,//restarts use a re-initialized approximate Hessian
+							m_lbfgs_, num_restarts_in_optim_external);
+						num_it_total += num_it;
+						// Check for NA or Inf
+						if (optimizer_cov_pars_ == "bfgs_optim_lib" || optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
+							if (learn_covariance_parameters) {
+								for (int i = 0; i < (int)cov_aux_pars.size(); ++i) {
+									if (std::isnan(cov_aux_pars[i]) || std::isinf(cov_aux_pars[i])) {
+										na_or_inf_occurred = true;
+									}
 								}
 							}
-						}
-						if (has_covariates_ && !na_or_inf_occurred) {
-							for (int i = 0; i < (int)beta_.size(); ++i) {
-								if (std::isnan(beta_[i]) || std::isinf(beta_[i])) {
-									na_or_inf_occurred = true;
+							if (has_covariates_ && !na_or_inf_occurred) {
+								for (int i = 0; i < (int)beta_.size(); ++i) {
+									if (std::isnan(beta_[i]) || std::isinf(beta_[i])) {
+										na_or_inf_occurred = true;
+									}
 								}
 							}
+						} // end check for NA or Inf
+						if (!do_cold_restarts || na_or_inf_occurred) {
+							break;
 						}
-					} // end check for NA or Inf
+						// Re-evaluate the objective function at the parameters returned by the optimizer: the internal state
+						//	(in particular the modes) does not necessarily correspond to these parameters, and the objective
+						//	function values of different cold restarts are otherwise not comparable
+						if (has_covariates_) {
+							UpdateFixedEffects(beta_, fixed_effects, fixed_effects_vec);
+							fixed_effects_ptr = fixed_effects_vec.data();
+						}
+						if (estimate_aux_pars_) {
+							SetAuxPars(cov_aux_pars.data() + num_cov_par_);
+						}
+						CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);
+						last_cold_restart_is_best = neg_log_likelihood_ < nll_best;
+						if (last_cold_restart_is_best) {
+							nll_best = neg_log_likelihood_;
+							cov_aux_pars_best = cov_aux_pars;
+							beta_best = beta_;
+							SaveModeStates(modes_best, SigmaI_modes_best);
+						}
+						if (cold_restart >= max_num_cold_restarts) {
+							break;
+						}
+						if (cold_restart > 0) {// a cold restart is always done after the first optimization since it cannot be known whether the optimizer has terminated prematurely
+							double rel_improvement = (nll_lag1_cold_restart - neg_log_likelihood_) / std::max(std::abs(nll_lag1_cold_restart), 1.);
+							if (rel_improvement <= delta_rel_conv_) {
+								break;
+							}
+						}
+						nll_lag1_cold_restart = neg_log_likelihood_;
+					}//end loop over cold restarts
+					if (do_cold_restarts && !na_or_inf_occurred && !last_cold_restart_is_best && cov_aux_pars_best.size() > 0) {//'cov_aux_pars_best.size() == 0' if no cold restart has ever been the best one (e.g., if NA or Inf occurred in all of them)
+						// a cold restart can end at a worse point than a previous one -> return the best point found
+						cov_aux_pars = cov_aux_pars_best;
+						if (has_covariates_) {
+							beta_ = beta_best;
+							UpdateFixedEffects(beta_, fixed_effects, fixed_effects_vec);
+							fixed_effects_ptr = fixed_effects_vec.data();
+						}
+						if (estimate_aux_pars_) {
+							SetAuxPars(cov_aux_pars.data() + num_cov_par_);
+						}
+						RestoreModeStates(modes_best, SigmaI_modes_best);
+						CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);//re-evaluate to also reset all quantities depending on the mode
+					}
+					num_it = num_it_total;
 				} // end use of external optimizer
 				else {
 					// Start optimization with internal optimizers such as "gradient_descent" or "fisher_scoring"
@@ -1729,7 +1876,7 @@ namespace GPBoost {
 						delta_rel_conv_, convergence_criterion_, num_it,
 						learn_covariance_parameters, "nelder_mead", profile_out_error_variance_, false,
 						neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call,
-						m_lbfgs_);
+						m_lbfgs_, 0);
 				}
 				if (num_it == max_iter_) {
 					Log::REDebug("GPModel: no convergence after the maximal number of iterations "
@@ -5849,6 +5996,11 @@ namespace GPBoost {
 		bool estimate_cov_par_index_has_been_set_ = false;
 		// Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer
 		int m_lbfgs_ = 6;
+		// Maximal number of restarts of the lbfgs optimizers after they have terminated (0 = no restarts)
+		int max_num_restarts_lbfgs_ = 0;
+		// If true, restarts of the lbfgs optimizers are "cold" restarts (regression coefficients, auxiliary parameters,
+		//	and modes are reset to their initial values), otherwise "warm" restarts
+		bool cold_restart_lbfgs_ = true;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */

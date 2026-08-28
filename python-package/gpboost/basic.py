@@ -4776,6 +4776,8 @@ class GPModel(object):
                        "init_coef_aux_pars_from_iid_model": True,
                        "estimate_cov_par_index": np.array([-1], dtype=np.int32),
                        "m_lbfgs": -999, # default value is set in C++
+                       "max_num_restarts_lbfgs": -999, # default value is set in C++
+                       "cold_restart_lbfgs": True,
                        "delta_conv_mode_finding": -999. # default value is set in C++
                        }
         self.num_sets_re = 1
@@ -5517,6 +5519,24 @@ class GPModel(object):
                 - m_lbfgs : integer, optional (default = 6)
                     Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer.
                     If m_lbfgs = -999, internal default values are used.
+                - cold_restart_lbfgs : bool, optional (default = True)
+                    If True, restarts of the "lbfgs" optimizers are "cold" restarts: the regression coefficients,
+                    the auxiliary parameters, and the modes of the Laplace approximations are reset to their initial
+                    values and only the covariance parameters are kept. Such restarts can escape a local optimum in
+                    which the optimizer is stuck. If False, "warm" restarts are done: the optimization simply continues
+                    from the current parameters with a re-initialized approximate Hessian. Only relevant if
+                    max_num_restarts_lbfgs > 0. Note that every cold restart is a full optimization with up to 'maxit'
+                    iterations, and the number of iterations reported is the sum over all restarts.
+                - max_num_restarts_lbfgs : integer, optional (default = 0)
+                    Maximal number of restarts of the "lbfgs" optimizers after they have terminated. A restart continues
+                    from the current parameters with a re-initialized approximate Hessian (and, for non-Gaussian
+                    likelihoods, re-initialized modes of the Laplace approximations if this does not deteriorate the
+                    objective function). Restarts are only done as long
+                    as the negative log-likelihood still decreases by more than 'delta_rel_conv' and as long as the total
+                    number of iterations is below 'maxit'. This can help when the line search of "lbfgs" fails and the
+                    optimizer thus terminates prematurely without having converged (e.g., for the "asymmetric_laplace"
+                    likelihood, whose approximate marginal likelihood is not smooth).
+                    If max_num_restarts_lbfgs = -999, internal default values are used.
                 - delta_conv_mode_finding : double, optional (default = 1e-8)
                     Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods.
                     If delta_conv_mode_finding = -999, internal default values are used.
@@ -5821,6 +5841,24 @@ class GPModel(object):
                 - m_lbfgs : integer, optional (default = 6)
                     Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer.
                     If m_lbfgs = -999, internal default values are used.
+                - cold_restart_lbfgs : bool, optional (default = True)
+                    If True, restarts of the "lbfgs" optimizers are "cold" restarts: the regression coefficients,
+                    the auxiliary parameters, and the modes of the Laplace approximations are reset to their initial
+                    values and only the covariance parameters are kept. Such restarts can escape a local optimum in
+                    which the optimizer is stuck. If False, "warm" restarts are done: the optimization simply continues
+                    from the current parameters with a re-initialized approximate Hessian. Only relevant if
+                    max_num_restarts_lbfgs > 0. Note that every cold restart is a full optimization with up to 'maxit'
+                    iterations, and the number of iterations reported is the sum over all restarts.
+                - max_num_restarts_lbfgs : integer, optional (default = 0)
+                    Maximal number of restarts of the "lbfgs" optimizers after they have terminated. A restart continues
+                    from the current parameters with a re-initialized approximate Hessian (and, for non-Gaussian
+                    likelihoods, re-initialized modes of the Laplace approximations if this does not deteriorate the
+                    objective function). Restarts are only done as long
+                    as the negative log-likelihood still decreases by more than 'delta_rel_conv' and as long as the total
+                    number of iterations is below 'maxit'. This can help when the line search of "lbfgs" fails and the
+                    optimizer thus terminates prematurely without having converged (e.g., for the "asymmetric_laplace"
+                    likelihood, whose approximate marginal likelihood is not smooth).
+                    If max_num_restarts_lbfgs = -999, internal default values are used.
                 - delta_conv_mode_finding : double, optional (default = 1e-8)
                     Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods.
                     If delta_conv_mode_finding = -999, internal default values are used.
@@ -5890,7 +5928,9 @@ class GPModel(object):
             ctypes.c_bool(self.params["init_coef_aux_pars_from_iid_model"]),
             self.params["estimate_cov_par_index"].ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
             ctypes.c_int(self.params["m_lbfgs"]),
-            ctypes.c_double(self.params["delta_conv_mode_finding"])))
+            ctypes.c_double(self.params["delta_conv_mode_finding"]),
+            ctypes.c_int(self.params["max_num_restarts_lbfgs"]),
+            ctypes.c_bool(self.params["cold_restart_lbfgs"])))
         return self
 
     def _get_optim_params(self):

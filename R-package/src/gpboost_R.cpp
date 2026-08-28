@@ -946,7 +946,9 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 	SEXP init_coef_aux_pars_from_iid_model,
 	SEXP estimate_cov_par_index,
 	SEXP m_lbfgs,
-	SEXP delta_conv_mode_finding) {
+	SEXP delta_conv_mode_finding,
+	SEXP max_num_restarts_lbfgs,
+	SEXP cold_restart_lbfgs) {
 	SEXP optimizer_aux = PROTECT(Rf_asChar(optimizer));
 	SEXP convergence_criterion_aux = PROTECT(Rf_asChar(convergence_criterion));
 	SEXP optimizer_coef_aux = PROTECT(Rf_asChar(optimizer_coef));
@@ -986,7 +988,9 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 		Rf_asLogical(init_coef_aux_pars_from_iid_model),
 		R_INT_PTR(estimate_cov_par_index),
 		Rf_asInteger(m_lbfgs),
-		Rf_asReal(delta_conv_mode_finding)));
+		Rf_asReal(delta_conv_mode_finding),
+		Rf_asInteger(max_num_restarts_lbfgs),
+		Rf_asLogical(cold_restart_lbfgs)));
 	R_API_END();
 	UNPROTECT(4);
 	return R_NilValue;
@@ -1425,7 +1429,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 3},
   {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 32},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 31},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 33},
   {"GPB_CanCalculateStandardErrorsCovPars_R", (DL_FUNC)&GPB_CanCalculateStandardErrorsCovPars_R, 2},
   {"GPB_CanCalculateStandardErrorsAuxPars_R", (DL_FUNC)&GPB_CanCalculateStandardErrorsAuxPars_R, 2},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},

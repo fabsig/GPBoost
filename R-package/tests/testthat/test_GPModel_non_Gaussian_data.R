@@ -6659,6 +6659,42 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # the initialization from an iid model finds a better optimum than the one from the marginal sample quantile alone
     expect_lt(gp_model_iid_init$get_current_neg_log_likelihood(), 117.1841035)
 
+    # Restarts of lbfgs ('max_num_restarts_lbfgs'). The approximate marginal likelihood of the 'asymmetric_laplace'
+    #   likelihood is not smooth. The line search of lbfgs can thus fail, in which case lbfgs terminates without
+    #   having converged (this happens for the fits above) and the variance of the random effects is estimated too large
+    # "Cold" restarts (the default): the regression coefficients, the auxiliary parameters, and the modes are reset
+    #   to their initial values and only the covariance parameters are kept
+    params_restart <- params
+    params_restart$max_num_restarts_lbfgs <- 4L
+    capture.output( gp_model_restart <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
+                                                   y = y, X=X, params = params_restart, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model_restart$get_cov_pars(std_err = FALSE)-0.4043949065)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model_restart$get_aux_pars()-0.2691821831)),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model_restart$get_coef(std_err = FALSE))-c(-0.1675955800, 2.0823192468))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model_restart$get_current_neg_log_likelihood()-116.0987748))),tolerance_loc_1)
+    # the restarts find a better optimum than the fit without restarts (nll = 117.1841035, cov_par = 0.8153285415)
+    expect_lt(gp_model_restart$get_current_neg_log_likelihood(), 117.1841035)
+    # "Warm" restarts: the optimization simply continues from the current parameters with a re-initialized approximate Hessian
+    params_restart$cold_restart_lbfgs <- FALSE
+    capture.output( gp_model_restart <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
+                                                   y = y, X=X, params = params_restart, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model_restart$get_cov_pars(std_err = FALSE)-0.3911419164)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model_restart$get_aux_pars()-0.2627505058)),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model_restart$get_coef(std_err = FALSE))-c(-0.1511262175, 2.0765580689))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model_restart$get_current_neg_log_likelihood()-116.1066752))),tolerance_loc_1)
+    # no restarts are done by default -> same results as above (for both 'cold_restart_lbfgs' options)
+    params_restart$cold_restart_lbfgs <- TRUE
+    params_restart$max_num_restarts_lbfgs <- 0L
+    capture.output( gp_model_restart <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
+                                                   y = y, X=X, params = params_restart, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model_restart$get_cov_pars(std_err = FALSE)-0.8153285415)),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model_restart$get_current_neg_log_likelihood()-117.1841035))),tolerance_loc_1)
+    expect_error(fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
+                            y = y, X=X, params = list(max_num_restarts_lbfgs = -1L)), "max_num_restarts_lbfgs is not >= 0", fixed = TRUE)
+
     # Non-zero true intercept: the initial intercept is the marginal sample quantile of y and estimation is
     #   thus equivariant under a location shift of y (the results below are those of the fits above with the
     #   intercept shifted by 'shift'). Note: when initializing the intercept with zero (which was done before),

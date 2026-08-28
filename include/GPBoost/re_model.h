@@ -190,6 +190,8 @@ namespace GPBoost {
 		* \param estimate_cov_par_index If estimate_cov_par_index[0] >= 0, some covariance parameters might not be estimated, estimate_cov_par_index[i] is then bool and indicates which ones are estimated
 		* \param m_lbfgs Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer. If m_lbfgs = -999, internal default values are used
 		* \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
+		* \param max_num_restarts_lbfgs Maximal number of restarts of the lbfgs optimizers after they have terminated. If max_num_restarts_lbfgs = -999, internal default values are used
+		* \param cold_restart_lbfgs If true, restarts of the lbfgs optimizers are "cold" restarts, otherwise "warm" restarts (only relevant if max_num_restarts_lbfgs > 0)
 		*/
 		void SetOptimConfig(double* init_cov_pars,
 			double lr,
@@ -220,7 +222,9 @@ namespace GPBoost {
 			bool init_coef_aux_pars_from_iid_model,
 			const int* estimate_cov_par_index,
 			int m_lbfgs,
-			double delta_conv_mode_finding);
+			double delta_conv_mode_finding,
+			int max_num_restarts_lbfgs,
+			bool cold_restart_lbfgs);
 
 		/*!
 		* \brief Reset cov_pars_ (to their initial values).

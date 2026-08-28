@@ -154,6 +154,20 @@ set_optim_params(gp_model, params = list())
     \item{momentum_offset: \code{integer} (Default = 2, only relevant for "gradient_descent")}. 
     Number of iterations for which no momentum is applied in the beginning. If momentum_offset = -999, internal default values are used.
     \item{m_lbfgs: \code{integer} (Default = 6)}. Number of corrections to approximate the inverse Hessian matrix for the "lbfgs" optimizer. If m_lbfgs = -999, internal default values are used
+    \item{cold_restart_lbfgs: \code{boolean} (Default = TRUE)}. If TRUE, restarts of the "lbfgs" optimizers are
+    "cold" restarts: the regression coefficients, the auxiliary parameters, and the modes of the Laplace
+    approximations are reset to their initial values and only the covariance parameters are kept. Such restarts
+    can escape a local optimum in which the optimizer is stuck. If FALSE, "warm" restarts are done: the
+    optimization simply continues from the current parameters with a re-initialized approximate Hessian.
+    Only relevant if \code{max_num_restarts_lbfgs} > 0. Note that every cold restart is a full optimization
+    with up to \code{maxit} iterations, and the number of iterations reported is the sum over all restarts
+    \item{max_num_restarts_lbfgs: \code{integer} (Default = 0)}. Maximal number of restarts of the "lbfgs" optimizers
+    after they have terminated. A restart continues from the current parameters with a re-initialized approximate Hessian
+    (and, for non-Gaussian likelihoods, re-initialized modes of the Laplace approximations if this does not deteriorate the objective function).
+    Restarts are only done as long as the negative log-likelihood still decreases by more than \code{delta_rel_conv} and
+    as long as the total number of iterations is below \code{maxit}. This can help when the line search of "lbfgs" fails
+    and the optimizer thus terminates prematurely without having converged. This can happen, e.g., for the
+    \code{"asymmetric_laplace"} (= quantile regression) likelihood, whose approximate marginal likelihood is not smooth
     \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8)}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 }}
 }

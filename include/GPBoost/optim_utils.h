@@ -21,6 +21,12 @@ namespace GPBoost {
 	template<typename T_mat, typename T_chol>
 	class REModelTemplate;
 
+	/*! \brief Maximal relative increase in the negative log-likelihood that is accepted when the modes are re-initialized
+	*		for a restart of the lbfgs optimizers (see 'max_num_restarts_lbfgs' in 'OptimExternal'). Mode finding from a
+	*		cold start is usually slightly worse than from a warm start. A large increase indicates, however, that mode
+	*		finding does not converge from a cold start, and the re-initialized modes are then discarded */
+	const double MAX_REL_INCREASE_NLL_MODE_REINIT_ = 0.01;
+
 	// Auxiliary class for passing data to EvalLLforNMOptimLib for OpimtLib
 	template<typename T_mat, typename T_chol>
 	class OptDataOptimLib {
@@ -558,6 +564,11 @@ namespace GPBoost {
 	* \param initial_step_factor Only for 'lbfgs': The initial step length in the first iteration is this factor divided by the search direction (i.e. gradient)
 	* \param reuse_m_bfgs_from_previous_call If true, the approximate Hessian for the LBFGS are kept at the values from a previous call and not re-initialized (applies only to LBFGSSolver)
 	* \param m_lbfgs Number of corrections to approximate the inverse Hessian matrix for the lbfgs optimizer
+	* \param max_num_restarts_lbfgs Maximal number of restarts of the lbfgs optimizers after they have terminated (only for 'lbfgs' and
+	*		'lbfgs_linesearch_nocedal_wright'). A restart continues from the current parameters with a re-initialized approximate Hessian.
+	*		Restarts are only done as long as the objective function still decreases by more than 'delta_rel_conv' and as long as the total
+	*		number of iterations is below 'max_iter'. This can help when the line search fails (e.g., for non-smooth approximate marginal
+	*		likelihoods such as the one of the 'asymmetric_laplace' likelihood), since lbfgs then terminates without having converged
 	*/
 	template<typename T_mat, typename T_chol>
 	void OptimExternal(REModelTemplate<T_mat, T_chol>* re_model_templ,
@@ -578,8 +589,9 @@ namespace GPBoost {
 		const double* aux_pars,
 		bool has_covariates,
 		double initial_step_factor,
-		bool reuse_m_bfgs_from_previous_call, 
-		int m_lbfgs) {
+		bool reuse_m_bfgs_from_previous_call,
+		int m_lbfgs,
+		int max_num_restarts_lbfgs) {
 		// Some checks
 		if (re_model_templ->EstimateAuxPars()) {
 			CHECK(num_cov_par + nb_aux_pars == (int)cov_pars.size());
@@ -663,15 +675,91 @@ namespace GPBoost {
 			param_LBFGSpp.initial_step_factor = initial_step_factor;
 			EvalLLforLBFGSpp<T_mat, T_chol> ll_fun(re_model_templ, fixed_effects, learn_cov_aux_pars,
 				cov_pars.segment(0, num_cov_par), profile_out_error_variance, profile_out_regression_coef);
-			if (optimizer == "lbfgs") {
-				param_LBFGSpp.linesearch = 1;//LBFGS_LINESEARCH_BACKTRACKING_ARMIJO
-				LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchBacktracking> solver(param_LBFGSpp);
-				num_it = solver.minimize(ll_fun, pars_init, neg_log_likelihood, reuse_m_bfgs_from_previous_call, re_model_templ->GetMBFGS());
-			}
-			else if (optimizer == "lbfgs_linesearch_nocedal_wright") {
-				param_LBFGSpp.linesearch = 3;//LBFGS_LINESEARCH_BACKTRACKING_STRONG_WOLFE
-				LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchNocedalWright> solver(param_LBFGSpp);
-				num_it = solver.minimize(ll_fun, pars_init, neg_log_likelihood, reuse_m_bfgs_from_previous_call, re_model_templ->GetMBFGS());
+			// A single run of lbfgs can terminate without having converged, in particular when the line search fails
+			//	(this happens, e.g., for non-smooth approximate marginal likelihoods). 'max_num_restarts_lbfgs' restarts
+			//	are then done from the current parameters with a re-initialized approximate Hessian (the first search
+			//	direction after a restart is the steepest descent direction, which is always a descent direction) and,
+			//	for non-Gaussian likelihoods, with re-initialized modes of the Laplace approximations (the latter only if
+			//	this does not make the objective function much worse, see below).
+			//	Restarting stops as soon as the objective function does not decrease by more than 'delta_rel_conv' anymore.
+			//	The best point found is returned together with its modes
+			num_it = 0;
+			bool do_restarts = max_num_restarts_lbfgs > 0, last_point_is_best = false;
+			double nll_lag1 = std::numeric_limits<double>::infinity(), nll_best = std::numeric_limits<double>::infinity();
+			vec_t pars_best, grad_dummy(pars_init.size());
+			std::vector<vec_t> modes_best, SigmaI_modes_best;// the modes corresponding to 'pars_best'
+			for (int restart = 0; restart <= max_num_restarts_lbfgs; ++restart) {
+				if (restart > 0) {
+					// The modes are re-initialized for a restart since this can help to escape a point in which lbfgs
+					//	has been stuck. But mode finding can be start-dependent for non-smooth likelihoods, and starting
+					//	from zero can result in a much worse mode (and thus a much worse objective function) than the
+					//	current warm start. The re-initialized modes are thus only kept if the objective function does
+					//	not become worse by more than 'MAX_REL_INCREASE_NLL_MODE_REINIT_'
+					std::vector<vec_t> modes_before, SigmaI_modes_before;
+					re_model_templ->SaveModeStates(modes_before, SigmaI_modes_before);
+					double nll_before_reinit = neg_log_likelihood;
+					re_model_templ->InitializeModes();
+					double nll_after_reinit = ll_fun(pars_init, grad_dummy, true, false);
+					if (nll_after_reinit > nll_before_reinit + MAX_REL_INCREASE_NLL_MODE_REINIT_ * std::max(std::abs(nll_before_reinit), 1.)) {
+						re_model_templ->RestoreModeStates(modes_before, SigmaI_modes_before);// the following call to 'minimize' re-evaluates the objective function and thus also the other quantities depending on the mode
+						Log::REDebug("GPModel lbfgs: the re-initialized modes are discarded for restart number %d since the approximate negative marginal "
+							"log-likelihood increases from %g to %g ", restart, nll_before_reinit, nll_after_reinit);
+					}
+				}
+				param_LBFGSpp.max_iterations = max_iter - num_it;//the restarts share the total budget of 'max_iter' iterations
+				bool reuse_m_bfgs = reuse_m_bfgs_from_previous_call && restart == 0;//restarts use a re-initialized approximate Hessian
+				int num_it_restart = 0;
+				if (optimizer == "lbfgs") {
+					param_LBFGSpp.linesearch = 1;//LBFGS_LINESEARCH_BACKTRACKING_ARMIJO
+					LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchBacktracking> solver(param_LBFGSpp);
+					num_it_restart = solver.minimize(ll_fun, pars_init, neg_log_likelihood, reuse_m_bfgs, re_model_templ->GetMBFGS());
+				}
+				else if (optimizer == "lbfgs_linesearch_nocedal_wright") {
+					param_LBFGSpp.linesearch = 3;//LBFGS_LINESEARCH_BACKTRACKING_STRONG_WOLFE
+					LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchNocedalWright> solver(param_LBFGSpp);
+					num_it_restart = solver.minimize(ll_fun, pars_init, neg_log_likelihood, reuse_m_bfgs, re_model_templ->GetMBFGS());
+				}
+				num_it += num_it_restart;
+				double nll_current = neg_log_likelihood;
+				if (do_restarts) {
+					// The internal state (in particular the modes) does not necessarily correspond to the point returned by
+					//	the optimizer (e.g., after a failed line search, the optimizer resets its parameters to those of the
+					//	previous iteration, but the modes correspond to the last point at which the objective function has
+					//	been evaluated) -> re-evaluate the objective function once at the returned point. The modes are saved
+					//	afterwards such that this value can be reproduced when the best point is restored below
+					nll_current = ll_fun(pars_init, grad_dummy, true, false);
+					neg_log_likelihood = nll_current;
+					last_point_is_best = nll_current < nll_best;
+					if (last_point_is_best) {
+						nll_best = nll_current;
+						pars_best = pars_init;
+						re_model_templ->SaveModeStates(modes_best, SigmaI_modes_best);
+					}
+				}
+				if (restart >= max_num_restarts_lbfgs || num_it >= max_iter) {
+					break;
+				}
+				if (restart > 0) {// a restart is always done after the first run since it cannot be known whether lbfgs has terminated prematurely
+					double rel_improvement = (nll_lag1 - nll_current) / std::max(std::abs(nll_lag1), 1.);
+					if (rel_improvement <= delta_rel_conv) {
+						break;
+					}
+				}
+				nll_lag1 = nll_current;
+				string_t ll_str = re_model_templ->IsGaussLikelihood() ? "negative log-likelihood" : "approximate negative marginal log-likelihood";
+				Log::REDebug(" ");
+				Log::REDebug(("GPModel: the optimization is restarted ('warm' restart number %d) after %d iterations. "
+					"The optimization continues from the current parameters with a re-initialized approximate Hessian. "
+					"Current " + ll_str + ": %g ").c_str(),
+					restart + 1, num_it, nll_current);
+			}//end loop over restarts
+			if (do_restarts && !last_point_is_best && pars_best.size() > 0) {//'pars_best.size() == 0' if no restart has ever been the best one (e.g., if NA or Inf occurred in all of them)
+				// a restart can end at a worse point than a previous one -> return the best point found. The modes
+				//	corresponding to this point are restored such that the re-evaluation below reproduces the objective
+				//	function value obtained by the optimizer (mode finding is deterministic given the starting mode)
+				pars_init = pars_best;
+				re_model_templ->RestoreModeStates(modes_best, SigmaI_modes_best);
+				neg_log_likelihood = ll_fun(pars_init, grad_dummy, true, false);//re-evaluate to also reset the profiled-out variables and all quantities depending on the mode
 			}
 		}
 		//else if (optimizer == "adadelta") {// adadelta currently not supported as default settings do not always work
