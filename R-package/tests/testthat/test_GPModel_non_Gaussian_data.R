@@ -6672,18 +6672,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model_restart$get_cov_pars(std_err = FALSE)-0.4043949065)),tolerance_loc_1)
     expect_lt(sum(abs(gp_model_restart$get_aux_pars()-0.2691821831)),tolerance_loc_1)
     expect_lt(sum(abs(as.vector(gp_model_restart$get_coef(std_err = FALSE))-c(-0.1675955800, 2.0823192468))),tolerance_loc_1)
-    expect_lt(sum(abs((gp_model_restart$get_current_neg_log_likelihood()-116.0987748))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model_restart$get_current_neg_log_likelihood()-116.0987752))),tolerance_loc_1)
     # the restarts find a better optimum than the fit without restarts (nll = 117.1841035, cov_par = 0.8153285415)
     expect_lt(gp_model_restart$get_current_neg_log_likelihood(), 117.1841035)
-    # "Warm" restarts: the optimization simply continues from the current parameters with a re-initialized approximate Hessian
+    # "Warm" restarts: the optimization simply continues from the current parameters with a re-initialized approximate
+    #   Hessian. For the data below, the restarts do not find a better optimum (this is not the case in general)
     params_restart$cold_restart_lbfgs <- FALSE
     capture.output( gp_model_restart <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
                                                    y = y, X=X, params = params_restart, matrix_inversion_method = matrix_inversion_method)
                     , file='NUL')
-    expect_lt(sum(abs(gp_model_restart$get_cov_pars(std_err = FALSE)-0.3911419164)),tolerance_loc_1)
-    expect_lt(sum(abs(gp_model_restart$get_aux_pars()-0.2627505058)),tolerance_loc_1)
-    expect_lt(sum(abs(as.vector(gp_model_restart$get_coef(std_err = FALSE))-c(-0.1511262175, 2.0765580689))),tolerance_loc_1)
-    expect_lt(sum(abs((gp_model_restart$get_current_neg_log_likelihood()-116.1066752))),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model_restart$get_cov_pars(std_err = FALSE)-0.8153285416)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model_restart$get_aux_pars()-0.2688162279)),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model_restart$get_coef(std_err = FALSE))-c(-0.3044197085, 2.0765502256))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model_restart$get_current_neg_log_likelihood()-117.1840987))),tolerance_loc_1)
     # no restarts are done by default -> same results as above (for both 'cold_restart_lbfgs' options)
     params_restart$cold_restart_lbfgs <- TRUE
     params_restart$max_num_restarts_lbfgs <- 0L
@@ -6894,8 +6895,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y_v <- as.vector(L_v %*% b_v) + as.vector(X_v %*% beta_v) + xi_v
     num_neighbors_v <- 30
 
-    tol_vecchia <- 0.035 # covariance / auxiliary parameters, their standard errors, and coefficient estimates
+    tol_vecchia <- 0.035 # covariance / auxiliary parameters and coefficient estimates
     tol_vecchia_coef_se <- 0.12 # standard errors of regression coefficients (see note above)
+    # The standard errors of covariance parameters of a non-Gaussian likelihood are obtained from a Hessian that is
+    # approximated with finite differences of a gradient which itself relies on an iterative mode finding algorithm
+    # (see 'CalcHessianCovParAuxPars'). They are thus much less accurate than the estimates themselves and are only
+    # compared with a loose tolerance (the standard error of the GP variance below differs by a factor of about 2)
+    tol_vecchia_cov_pars_se <- 0.1
     # The standard errors of the regression coefficients are NaN if the numerically approximated Hessian is not
     # positive definite (see 'CalcStdDevCoefNonGaussian', which warns and returns NaN in that case). The Hessian is
     # obtained from finite differences of an approximated gradient, so whether it is positive definite depends on
@@ -6920,7 +6926,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                gp_approx = "vecchia", num_neighbors = num_neighbors_v,
                                likelihood = "t_fix_df", likelihood_additional_param = 100,
                                y = y_v, X = X_v, params = OPTIM_PARAMS_BFGS)
-    cov_pars_t_v <- c(0.731926050658421, 0.075588626901931, 0.0469233950753127, 0.00678002822650866)
+    cov_pars_t_v <- c(0.731926050658421, 0.165268656957100, 0.0469233950753127, 0.0196482643721000)
     aux_pars_t_v <- c(0.215485446742063, 0.134997889593886, 100, NaN)
     coef_t_v <- c(0.958738169312722, 0.0196912670065139, 1.09862570873013, 0.0328225530709028)
     nll_t_v <- 535.896092489469
@@ -6942,15 +6948,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Compare the Gaussian and t_fix_df (df=100, ~ Gaussian) models (see note above on tolerances)
     # GP variance and range: same parametrization in both models -> compare directly
     expect_lt(abs(cov_pars_t_v_result[1] - cov_pars_v[3]), tol_vecchia) # GP variance estimate
-    expect_lt(abs(cov_pars_t_v_result[2] - cov_pars_v[4]), tol_vecchia) # GP variance standard error
+    expect_lt(abs(cov_pars_t_v_result[2] - cov_pars_v[4]), tol_vecchia_cov_pars_se) # GP variance standard error
     expect_lt(abs(cov_pars_t_v_result[3] - cov_pars_v[5]), tol_vecchia) # GP range estimate
-    expect_lt(abs(cov_pars_t_v_result[4] - cov_pars_v[6]), tol_vecchia) # GP range standard error
+    expect_lt(abs(cov_pars_t_v_result[4] - cov_pars_v[6]), tol_vecchia_cov_pars_se) # GP range standard error
     # Idiosyncratic (nugget) error: convert the t scale parameter (and its standard error, via the delta
     # method) to the implied noise variance, as in the grouped random effects model above
     implied_var_v <- aux_pars_t_v_result[1]^2 * 100 / 98
     se_implied_var_v <- 2 * aux_pars_t_v_result[1] * (100 / 98) * aux_pars_t_v_result[2]
     expect_lt(abs(implied_var_v - cov_pars_v[1]), tol_vecchia) # estimate
-    expect_lt(abs(se_implied_var_v - cov_pars_v[2]), tol_vecchia) # standard error
+    expect_lt(abs(se_implied_var_v - cov_pars_v[2]), tol_vecchia_cov_pars_se) # standard error
     # Linear regression coefficients: estimates agree well; standard errors are compared with a much
     # looser tolerance since they are calculated very differently for the two likelihoods (see note above)
     expect_lt(sum(abs(coef_t_v_result[c(1,3)] - coef_v[c(1,3)])), tol_vecchia) # estimates

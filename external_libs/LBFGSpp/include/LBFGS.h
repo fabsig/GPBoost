@@ -100,6 +100,7 @@ public:
 
         // Evaluate function and compute gradient
         fx = f(x, m_grad, true, true);
+        f.SetLag1Modes(); // ChangedForGPBoost: save the modes of the initial point, they are reset to these values if the first line search is not successful
 
         std::string init_coef_str = "";
         if (f.HasCovariates())
@@ -230,6 +231,7 @@ public:
             // Potentially redetermine nearest neighbors for Vecchia approximation
             f.SetNumIter(k - 1);
             f.SetLag1ProfiledOutVariables();
+            f.SetLag1Modes(); // ChangedForGPBoost: the modes of an accepted iterate, they are reset to these values if the next line search is not successful
             if (f.LearnCovarianceParameters() && f.ShouldRedetermineNearestNeighborsVecchiaInducingPointsFITC(has_converged))
             {
                 f.RedetermineNearestNeighborsVecchiaInducingPointsFITC(has_converged); // called only in certain iterations if gp_approx == "vecchia" and neighbors are selected based on correlations and not distances

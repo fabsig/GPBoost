@@ -5529,9 +5529,8 @@ class GPModel(object):
                     iterations, and the number of iterations reported is the sum over all restarts.
                 - max_num_restarts_lbfgs : integer, optional (default = 0)
                     Maximal number of restarts of the "lbfgs" optimizers after they have terminated. A restart continues
-                    from the current parameters with a re-initialized approximate Hessian (and, for non-Gaussian
-                    likelihoods, re-initialized modes of the Laplace approximations if this does not deteriorate the
-                    objective function). Restarts are only done as long
+                    from the current parameters with a re-initialized approximate Hessian. What else is reset
+                    depends on 'cold_restart_lbfgs'. Restarts are only done as long
                     as the negative log-likelihood still decreases by more than 'delta_rel_conv' and as long as the total
                     number of iterations is below 'maxit'. This can help when the line search of "lbfgs" fails and the
                     optimizer thus terminates prematurely without having converged (e.g., for the "asymmetric_laplace"
@@ -5851,9 +5850,8 @@ class GPModel(object):
                     iterations, and the number of iterations reported is the sum over all restarts.
                 - max_num_restarts_lbfgs : integer, optional (default = 0)
                     Maximal number of restarts of the "lbfgs" optimizers after they have terminated. A restart continues
-                    from the current parameters with a re-initialized approximate Hessian (and, for non-Gaussian
-                    likelihoods, re-initialized modes of the Laplace approximations if this does not deteriorate the
-                    objective function). Restarts are only done as long
+                    from the current parameters with a re-initialized approximate Hessian. What else is reset
+                    depends on 'cold_restart_lbfgs'. Restarts are only done as long
                     as the negative log-likelihood still decreases by more than 'delta_rel_conv' and as long as the total
                     number of iterations is below 'maxit'. This can help when the line search of "lbfgs" fails and the
                     optimizer thus terminates prematurely without having converged (e.g., for the "asymmetric_laplace"

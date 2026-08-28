@@ -717,6 +717,15 @@ namespace GPBoost {
 		*		This is used, e.g., for restarts of the optimizer ('max_num_restarts_lbfgs') to make sure that
 		*		the modes are not warm-started differently in different restarts
 		*/
+		void SetLineSearchHasNotBeenSuccessful(bool line_search_has_not_been_successful) {
+			line_search_has_not_been_successful_ = line_search_has_not_been_successful;
+		}
+
+		/*!
+		* rief Reset the modes of the Laplace approximations to zero (does nothing for a Gaussian likelihood).
+		*		This is used, e.g., for restarts of the optimizer ('max_num_restarts_lbfgs') to make sure that
+		*		the modes are not warm-started differently in different restarts
+		*/
 		void InitializeModes() {
 			if (!gauss_likelihood_) {
 				for (const auto& cluster_i : unique_clusters_) {
@@ -1439,6 +1448,8 @@ namespace GPBoost {
 					RedetermineNearestNeighborsVecchiaInducingPointsFITC(true);//called if gp_approx_ == "vecchia" or  gp_approx_ == "full_scale_vecchia" and neighbors are selected based on correlations and not distances or gp_approx_ == "fitc" with ard kernel
 				}
 				bool na_or_inf_occurred = false;
+				bool max_iter_reached = false;//true if the maximal number of iterations has been reached (for cold restarts: in the last restart, since 'num_it' is the sum over all restarts)
+				line_search_has_not_been_successful_ = false;
 				if ((optimizer_cov_pars_ != "lbfgs" && optimizer_cov_pars_ != "lbfgs_linesearch_nocedal_wright") ||
 					(gauss_likelihood_ && (profile_out_coef || profile_out_error_variance_))) {
 					//Calculate initial log-likelihood whenever not lbfgs or also when maxit = 0 or some variables are later profiled out
@@ -1514,6 +1525,7 @@ namespace GPBoost {
 							cold_restart == 0 && reuse_m_bfgs_from_previous_call,//restarts use a re-initialized approximate Hessian
 							m_lbfgs_, num_restarts_in_optim_external);
 						num_it_total += num_it;
+						max_iter_reached = num_it >= max_iter_;//'num_it' is the number of iterations of this (cold) restart, 'num_it_total' the sum over all restarts
 						// Check for NA or Inf
 						if (optimizer_cov_pars_ == "bfgs_optim_lib" || optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
 							if (learn_covariance_parameters) {
@@ -1534,17 +1546,11 @@ namespace GPBoost {
 						if (!do_cold_restarts || na_or_inf_occurred) {
 							break;
 						}
-						// Re-evaluate the objective function at the parameters returned by the optimizer: the internal state
-						//	(in particular the modes) does not necessarily correspond to these parameters, and the objective
-						//	function values of different cold restarts are otherwise not comparable
-						if (has_covariates_) {
-							UpdateFixedEffects(beta_, fixed_effects, fixed_effects_vec);
-							fixed_effects_ptr = fixed_effects_vec.data();
-						}
-						if (estimate_aux_pars_) {
-							SetAuxPars(cov_aux_pars.data() + num_cov_par_);
-						}
-						CalcCovFactorOrModeAndNegLL(cov_aux_pars.segment(0, num_cov_par_), fixed_effects_ptr);
+						// Keep track of the best cold restart. The modes are saved as well since mode finding can be
+						//	start-dependent, and the objective function value of this restart can thus only be reproduced
+						//	when restoring the modes together with the parameters below. Note: the modes correspond to the
+						//	parameters returned by the optimizer also when a line search has not been successful
+						//	(see 'SetLag1Modes()' in optim_utils.h)
 						last_cold_restart_is_best = neg_log_likelihood_ < nll_best;
 						if (last_cold_restart_is_best) {
 							nll_best = neg_log_likelihood_;
@@ -1878,13 +1884,19 @@ namespace GPBoost {
 						neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call,
 						m_lbfgs_, 0);
 				}
-				if (num_it == max_iter_) {
+				if (max_iter_reached || num_it == max_iter_) {
 					Log::REDebug("GPModel: no convergence after the maximal number of iterations "
 						"(%d, nb. likelihood evaluations = %d) ", max_iter_, num_ll_evaluations_);
 				}
 				else {
 					Log::REDebug("GPModel: parameter estimation finished after %d iteration "
 						"(nb. likelihood evaluations = %d) ", num_it, num_ll_evaluations_);
+				}
+				if (line_search_has_not_been_successful_ && !called_in_GPBoost_algorithm) {
+					Log::REWarning("GPModel: the optimizer '%s' has terminated since its line search has not been successful "
+						"and not since it has converged. The estimated parameters are thus potentially not (local) maximizers "
+						"of the (approximate) log-likelihood. Consider restarting the optimizer by setting the parameter "
+						"'max_num_restarts_lbfgs' to a value larger than 0 (see also 'cold_restart_lbfgs') ", optimizer_cov_pars_.c_str());
 				}
 				PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta_, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
 				if (gauss_likelihood_) {
@@ -6001,6 +6013,9 @@ namespace GPBoost {
 		// If true, restarts of the lbfgs optimizers are "cold" restarts (regression coefficients, auxiliary parameters,
 		//	and modes are reset to their initial values), otherwise "warm" restarts
 		bool cold_restart_lbfgs_ = true;
+		// True if the last line search of an lbfgs optimizer has not been successful. The optimizer has then terminated
+		//	without having converged (set in the line search routines of LBFGSpp)
+		bool line_search_has_not_been_successful_ = false;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */

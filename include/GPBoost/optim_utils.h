@@ -21,12 +21,6 @@ namespace GPBoost {
 	template<typename T_mat, typename T_chol>
 	class REModelTemplate;
 
-	/*! \brief Maximal relative increase in the negative log-likelihood that is accepted when the modes are re-initialized
-	*		for a restart of the lbfgs optimizers (see 'max_num_restarts_lbfgs' in 'OptimExternal'). Mode finding from a
-	*		cold start is usually slightly worse than from a warm start. A large increase indicates, however, that mode
-	*		finding does not converge from a cold start, and the re-initialized modes are then discarded */
-	const double MAX_REL_INCREASE_NLL_MODE_REINIT_ = 0.01;
-
 	// Auxiliary class for passing data to EvalLLforNMOptimLib for OpimtLib
 	template<typename T_mat, typename T_chol>
 	class OptDataOptimLib {
@@ -227,6 +221,8 @@ namespace GPBoost {
 		vec_t cov_pars_;//vector of covariance parameters (only used in case the covariance parameters are not estimated)
 		bool profile_out_error_variance_;// If true, the error variance sigma is profiled out (= use closed-form expression for error / nugget variance)
 		bool profile_out_regression_coef_;// If true, the linear regression coefficients are profiled out (= use closed-form WLS expression)
+		std::vector<vec_t> modes_lag1_, SigmaI_modes_lag1_;// modes of the Laplace approximations at the last accepted iterate of the optimizer (see 'SetLag1Modes()')
+		bool modes_lag1_have_been_set_ = false;
 
 		EvalLLforLBFGSpp(REModelTemplate<T_mat, T_chol>* re_model_templ,
 			const double* fixed_effects,
@@ -394,6 +390,36 @@ namespace GPBoost {
 		*/
 		void ResetProfiledOutVariablesToLag1() {
 			re_model_templ_->ResetProfiledOutVariablesToLag1(profile_out_error_variance_, profile_out_regression_coef_);
+		}
+
+		/*!
+		* \brief Save the current modes of the Laplace approximations as lag1 modes (does nothing for a Gaussian likelihood).
+		*		This is called once per accepted iterate of the optimizer. The modes are changed by every evaluation of the
+		*		objective function, in particular also by the candidate points of a line search. If a line search is not
+		*		successful and the optimizer thus goes back to the parameters of the previous iterate, the modes need to be
+		*		reset accordingly with 'ResetModesToLag1()'. Otherwise, the modes do not correspond to the parameters of the
+		*		optimizer, and the objective function value of the optimizer can then not be reproduced anymore
+		*/
+		void SetLag1Modes() {
+			re_model_templ_->SaveModeStates(modes_lag1_, SigmaI_modes_lag1_);
+			modes_lag1_have_been_set_ = true;
+		}
+
+		/*!
+		* \brief Report that a line search has not been successful, i.e., that no step length satisfying the convergence
+		*		criteria of the line search has been found. The optimizer then terminates without having converged
+		*/
+		void SetLineSearchHasNotBeenSuccessful() {
+			re_model_templ_->SetLineSearchHasNotBeenSuccessful(true);
+		}
+
+		/*!
+		* \brief Reset the modes of the Laplace approximations to their lag1 modes (see 'SetLag1Modes()')
+		*/
+		void ResetModesToLag1() {
+			if (modes_lag1_have_been_set_) {
+				re_model_templ_->RestoreModeStates(modes_lag1_, SigmaI_modes_lag1_);
+			}
 		}
 
 		/*!
@@ -678,9 +704,8 @@ namespace GPBoost {
 			// A single run of lbfgs can terminate without having converged, in particular when the line search fails
 			//	(this happens, e.g., for non-smooth approximate marginal likelihoods). 'max_num_restarts_lbfgs' restarts
 			//	are then done from the current parameters with a re-initialized approximate Hessian (the first search
-			//	direction after a restart is the steepest descent direction, which is always a descent direction) and,
-			//	for non-Gaussian likelihoods, with re-initialized modes of the Laplace approximations (the latter only if
-			//	this does not make the objective function much worse, see below).
+			//	direction after a restart is the steepest descent direction, which is always a descent direction). Nothing
+			//	else is changed ("warm" restart), see 'cold_restart_lbfgs' in re_model_template.h for "cold" restarts.
 			//	Restarting stops as soon as the objective function does not decrease by more than 'delta_rel_conv' anymore.
 			//	The best point found is returned together with its modes
 			num_it = 0;
@@ -689,23 +714,6 @@ namespace GPBoost {
 			vec_t pars_best, grad_dummy(pars_init.size());
 			std::vector<vec_t> modes_best, SigmaI_modes_best;// the modes corresponding to 'pars_best'
 			for (int restart = 0; restart <= max_num_restarts_lbfgs; ++restart) {
-				if (restart > 0) {
-					// The modes are re-initialized for a restart since this can help to escape a point in which lbfgs
-					//	has been stuck. But mode finding can be start-dependent for non-smooth likelihoods, and starting
-					//	from zero can result in a much worse mode (and thus a much worse objective function) than the
-					//	current warm start. The re-initialized modes are thus only kept if the objective function does
-					//	not become worse by more than 'MAX_REL_INCREASE_NLL_MODE_REINIT_'
-					std::vector<vec_t> modes_before, SigmaI_modes_before;
-					re_model_templ->SaveModeStates(modes_before, SigmaI_modes_before);
-					double nll_before_reinit = neg_log_likelihood;
-					re_model_templ->InitializeModes();
-					double nll_after_reinit = ll_fun(pars_init, grad_dummy, true, false);
-					if (nll_after_reinit > nll_before_reinit + MAX_REL_INCREASE_NLL_MODE_REINIT_ * std::max(std::abs(nll_before_reinit), 1.)) {
-						re_model_templ->RestoreModeStates(modes_before, SigmaI_modes_before);// the following call to 'minimize' re-evaluates the objective function and thus also the other quantities depending on the mode
-						Log::REDebug("GPModel lbfgs: the re-initialized modes are discarded for restart number %d since the approximate negative marginal "
-							"log-likelihood increases from %g to %g ", restart, nll_before_reinit, nll_after_reinit);
-					}
-				}
 				param_LBFGSpp.max_iterations = max_iter - num_it;//the restarts share the total budget of 'max_iter' iterations
 				bool reuse_m_bfgs = reuse_m_bfgs_from_previous_call && restart == 0;//restarts use a re-initialized approximate Hessian
 				int num_it_restart = 0;
@@ -722,13 +730,10 @@ namespace GPBoost {
 				num_it += num_it_restart;
 				double nll_current = neg_log_likelihood;
 				if (do_restarts) {
-					// The internal state (in particular the modes) does not necessarily correspond to the point returned by
-					//	the optimizer (e.g., after a failed line search, the optimizer resets its parameters to those of the
-					//	previous iteration, but the modes correspond to the last point at which the objective function has
-					//	been evaluated) -> re-evaluate the objective function once at the returned point. The modes are saved
-					//	afterwards such that this value can be reproduced when the best point is restored below
-					nll_current = ll_fun(pars_init, grad_dummy, true, false);
-					neg_log_likelihood = nll_current;
+					// Keep track of the best restart. The modes are saved as well since mode finding can be start-dependent,
+					//	and the objective function value of this restart can thus only be reproduced when restoring the modes
+					//	together with the parameters below. Note: the modes correspond to the parameters returned by the
+					//	optimizer also when a line search has not been successful (see 'SetLag1Modes()' in optim_utils.h)
 					last_point_is_best = nll_current < nll_best;
 					if (last_point_is_best) {
 						nll_best = nll_current;

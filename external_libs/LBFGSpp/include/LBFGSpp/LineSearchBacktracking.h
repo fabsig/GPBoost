@@ -130,7 +130,9 @@ public:
         if (iter >= param.max_linesearch)
         {
             x.noalias() = xp;
+            f.SetLineSearchHasNotBeenSuccessful(); // ChangedForGPBoost
             f.ResetProfiledOutVariablesToLag1();
+            f.ResetModesToLag1(); // ChangedForGPBoost: the modes need to be reset as well, otherwise they correspond to the last candidate point of the line search and not to 'xp'
             fx = fx_init;
             step = 0.;
             Log::REDebug("GPModel lbfgs: the line search routine reached the maximum number of iterations");

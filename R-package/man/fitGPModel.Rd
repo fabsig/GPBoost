@@ -467,8 +467,8 @@ fixed effects linear regression term (if there is one)}
     Only relevant if \code{max_num_restarts_lbfgs} > 0. Note that every cold restart is a full optimization
     with up to \code{maxit} iterations, and the number of iterations reported is the sum over all restarts
     \item{max_num_restarts_lbfgs: \code{integer} (Default = 0)}. Maximal number of restarts of the "lbfgs" optimizers
-    after they have terminated. A restart continues from the current parameters with a re-initialized approximate Hessian
-    (and, for non-Gaussian likelihoods, re-initialized modes of the Laplace approximations if this does not deteriorate the objective function).
+    after they have terminated. A restart continues from the current parameters with a re-initialized approximate Hessian.
+    What else is reset depends on \code{cold_restart_lbfgs}.
     Restarts are only done as long as the negative log-likelihood still decreases by more than \code{delta_rel_conv} and
     as long as the total number of iterations is below \code{maxit}. This can help when the line search of "lbfgs" fails
     and the optimizer thus terminates prematurely without having converged. This can happen, e.g., for the
