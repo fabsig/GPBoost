@@ -881,11 +881,13 @@ GPBOOST_C_EXPORT SEXP GPB_GetCoef_R(
 );
 
 /*!
-* \brief Get / export the number of iterations until convergence
-*   Note: You should pre-allocate memory for num_it (length = 1)
+* \brief Get / export the convergence status of the last parameter estimation
 * \param handle Handle of REModel
-* \param[out] num_it Number of iterations for convergence
-* \return 0 when succeed, -1 when failure happens
+* \param[out] convergence_status 0 = converged, 1 = the maximal number of iterations has been reached,
+*   2 = no convergence since the line search of an lbfgs optimizer has not been successful and it could not
+*   be verified that nothing more can be gained (i.e., restarts have either not been done or they still
+*   improved the objective function when the last one was done)
+* \return R NULL value
 */
 GPBOOST_C_EXPORT SEXP GPB_GetConvergenceStatus_R(
 	SEXP handle,
@@ -893,10 +895,10 @@ GPBOOST_C_EXPORT SEXP GPB_GetConvergenceStatus_R(
 );
 
 /*!
-* rief Get the number of iterations for parameter estimation
+* \brief Get the number of iterations for parameter estimation
 * \param handle Handle of REModel
 * \param[out] num_it Number of iterations for parameter estimation
-* eturn R NULL value
+* \return R NULL value
 */
 GPBOOST_C_EXPORT SEXP GPB_GetNumIt_R(
 	SEXP handle,

@@ -2587,9 +2587,11 @@ gpb.GPModel <- R6::R6Class(
         aic <- 2*npar - 2*ll
         bic <- npar*log(self$get_num_data()) - 2*ll
       }
-      # 0 = converged, 1 = maximal number of iterations reached, 2 = the line search of an lbfgs optimizer
-      #   has not been successful (the number of iterations cannot be used for this since it is the sum over
-      #   all restarts if 'max_num_restarts_lbfgs' > 0)
+      # 0 = converged, 1 = the maximal number of iterations has been reached, 2 = no convergence since the
+      #   line search of an lbfgs optimizer has not been successful and it could not be verified that nothing
+      #   more can be gained (i.e., restarts have either not been done or they still improved the log-likelihood
+      #   when the last one was done). Note: the number of iterations cannot be used for determining this since
+      #   it is the sum over all restarts if 'max_num_restarts_lbfgs' > 0
       convergence_status <- 0L
       if (!private$model_has_been_loaded_from_saved_file && model_fitted) {
         convergence_status <- private$get_convergence_status()
@@ -2665,10 +2667,13 @@ gpb.GPModel <- R6::R6Class(
       } else if (convergence_status == 2L) {
         cat("-----------------------------------------------------\n")
         if (is.null(private$params$max_num_restarts_lbfgs) || private$params$max_num_restarts_lbfgs <= 0) {
-          cat("Note: no convergence, the line search of the optimizer has not been successful.\n")
-          cat("      Consider setting 'max_num_restarts_lbfgs' to a value larger than 0\n")
-        } else {# restarts have already been done
-          cat("Note: no convergence, the line search of the optimizer has not been successful\n")
+          cat("Note: the line search of the optimizer has not been successful. The parameters can be a\n")
+          cat("      (local) optimum, but the optimizer can also have stopped prematurely. Set\n")
+          cat("      'max_num_restarts_lbfgs' to a value larger than 0 to check this\n")
+        } else {# restarts have been done and they still improved the objective function
+          cat("Note: no convergence, the restarts of the optimizer still improved the log-likelihood\n")
+          cat("      when the maximal number of restarts was reached. Consider increasing\n")
+          cat("      'max_num_restarts_lbfgs'\n")
         }
       }
       cat("=====================================================\n")
@@ -2677,8 +2682,10 @@ gpb.GPModel <- R6::R6Class(
   ), # end public
   
   private = list(
-    # Convergence status of the last parameter estimation: 0 = converged, 1 = maximal number of
-    #   iterations reached, 2 = the line search of an lbfgs optimizer has not been successful
+    # Convergence status of the last parameter estimation: 0 = converged, 1 = the maximal number of
+    #   iterations has been reached, 2 = no convergence since the line search of an lbfgs optimizer has
+    #   not been successful and it could not be verified that nothing more can be gained (i.e., restarts
+    #   have either not been done or they still improved the log-likelihood when the last one was done)
     get_convergence_status = function() {
       convergence_status <- integer(1)
       .Call(

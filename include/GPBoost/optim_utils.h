@@ -741,14 +741,17 @@ namespace GPBoost {
 						re_model_templ->SaveModeStates(modes_best, SigmaI_modes_best);
 					}
 				}
-				if (restart >= max_num_restarts_lbfgs || num_it >= max_iter) {
-					break;
-				}
+				// Note: the improvement is checked before the maximal number of restarts, see the corresponding comment
+				//	for the "cold" restarts in re_model_template.h
 				if (restart > 0) {// a restart is always done after the first run since it cannot be known whether lbfgs has terminated prematurely
 					double rel_improvement = (nll_lag1 - nll_current) / std::max(std::abs(nll_lag1), 1.);
 					if (rel_improvement <= delta_rel_conv) {
+						re_model_templ->SetRestartsHaveStoppedWithoutImprovement(true);//a restart did not improve the objective function anymore
 						break;
 					}
+				}
+				if (restart >= max_num_restarts_lbfgs || num_it >= max_iter) {
+					break;
 				}
 				nll_lag1 = nll_current;
 				string_t ll_str = re_model_templ->IsGaussLikelihood() ? "negative log-likelihood" : "approximate negative marginal log-likelihood";

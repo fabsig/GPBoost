@@ -1562,20 +1562,23 @@ GPBOOST_C_EXPORT int GPB_GetCoef(REModelHandle handle,
     bool calc_std_dev);
 
 /*!
-* \brief Get / export the number of iterations until convergence
-*   Note: You should pre-allocate memory for num_it (length = 1)
+* \brief Get / export the convergence status of the last parameter estimation
+*   Note: You should pre-allocate memory for convergence_status (length = 1)
 * \param handle Handle of REModel
-* \param[out] num_it Number of iterations for convergence
+* \param[out] convergence_status 0 = converged, 1 = the maximal number of iterations has been reached,
+*   2 = no convergence since the line search of an lbfgs optimizer has not been successful and it could not
+*   be verified that nothing more can be gained (i.e., restarts have either not been done or they still
+*   improved the objective function when the last one was done)
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_GetConvergenceStatus(REModelHandle handle,
     int* convergence_status);
 
 /*!
-* rief Get the number of iterations for parameter estimation
+* \brief Get the number of iterations for parameter estimation
 * \param handle Handle of REModel
 * \param[out] num_it Number of iterations for parameter estimation
-* eturn 0 when succeed, -1 when failure happens
+* \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_GetNumIt(REModelHandle handle,
     int* num_it);

@@ -713,16 +713,27 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Reset the modes of the Laplace approximations to zero (does nothing for a Gaussian likelihood).
-		*		This is used, e.g., for restarts of the optimizer ('max_num_restarts_lbfgs') to make sure that
-		*		the modes are not warm-started differently in different restarts
+		* \brief Convergence status of the last parameter estimation
+		* \return 0 = converged, 1 = the maximal number of iterations has been reached,
+		*		2 = no convergence since the line search of an lbfgs optimizer has not been successful and
+		*		it could not be verified that nothing more can be gained (i.e., restarts have either not been
+		*		done or they still improved the objective function when the last one was done)
 		*/
 		int GetConvergenceStatus() const {
 			return(convergence_status_);
 		}
 
 		/*!
-		* rief Report that a line search of an lbfgs optimizer has not been successful
+		* \brief Report whether the restarts of an lbfgs optimizer ('max_num_restarts_lbfgs') have stopped
+		*		since a restart did not improve the objective function anymore
+		* \param restarts_have_stopped_without_improvement True if the restarts have stopped without an improvement
+		*/
+		void SetRestartsHaveStoppedWithoutImprovement(bool restarts_have_stopped_without_improvement) {
+			restarts_have_stopped_without_improvement_ = restarts_have_stopped_without_improvement;
+		}
+
+		/*!
+		* \brief Report that a line search of an lbfgs optimizer has not been successful
 		* \param line_search_has_not_been_successful True if a line search has not been successful
 		*/
 		void SetLineSearchHasNotBeenSuccessful(bool line_search_has_not_been_successful) {
@@ -730,7 +741,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* rief Reset the modes of the Laplace approximations to zero (does nothing for a Gaussian likelihood).
+		* \brief Reset the modes of the Laplace approximations to zero (does nothing for a Gaussian likelihood).
 		*		This is used, e.g., for restarts of the optimizer ('max_num_restarts_lbfgs') to make sure that
 		*		the modes are not warm-started differently in different restarts
 		*/
@@ -1458,6 +1469,7 @@ namespace GPBoost {
 				bool na_or_inf_occurred = false;
 				bool max_iter_reached = false;//true if the maximal number of iterations has been reached (for cold restarts: in the last restart, since 'num_it' is the sum over all restarts)
 				line_search_has_not_been_successful_ = false;
+				restarts_have_stopped_without_improvement_ = false;
 				convergence_status_ = 0;
 				if ((optimizer_cov_pars_ != "lbfgs" && optimizer_cov_pars_ != "lbfgs_linesearch_nocedal_wright") ||
 					(gauss_likelihood_ && (profile_out_coef || profile_out_error_variance_))) {
@@ -1573,14 +1585,18 @@ namespace GPBoost {
 							beta_best = beta_;
 							SaveModeStates(modes_best, SigmaI_modes_best);
 						}
-						if (cold_restart >= max_num_cold_restarts) {
-							break;
-						}
+						// Note: the improvement is checked before the maximal number of restarts. Otherwise, it is not known
+						//	whether the last restart has still improved the objective function when the maximal number of
+						//	restarts is reached, and it can thus not be distinguished whether more restarts could help or not
 						if (cold_restart > 0) {// a cold restart is always done after the first optimization since it cannot be known whether the optimizer has terminated prematurely
 							double rel_improvement = (nll_lag1_cold_restart - neg_log_likelihood_) / std::max(std::abs(nll_lag1_cold_restart), 1.);
 							if (rel_improvement <= delta_rel_conv_) {
+								restarts_have_stopped_without_improvement_ = true;//a restart did not improve the objective function anymore
 								break;
 							}
+						}
+						if (cold_restart >= max_num_cold_restarts) {// the maximal number of restarts is reached while the restarts still improve the objective function
+							break;
 						}
 						nll_lag1_cold_restart = neg_log_likelihood_;
 					}//end loop over cold restarts
@@ -1908,18 +1924,30 @@ namespace GPBoost {
 					Log::REDebug("GPModel: parameter estimation finished after %d iteration "
 						"(nb. likelihood evaluations = %d) ", num_it, num_ll_evaluations_);
 				}
-				if (line_search_has_not_been_successful_ && convergence_status_ == 0) {
+				if (line_search_has_not_been_successful_ && convergence_status_ == 0 && !restarts_have_stopped_without_improvement_) {
+					// An unsuccessful line search does not necessarily mean that the optimizer has not converged: at a
+					//	(local) optimum, no step length can satisfy the sufficient decrease condition anymore. The two
+					//	cases can be distinguished when restarts are done: if a restart does not improve the objective
+					//	function anymore, there is likely nothing more to be gained and the optimizer has thus converged
 					convergence_status_ = 2;
 				}
 				if (line_search_has_not_been_successful_ && !called_in_GPBoost_algorithm) {
-					string_t restart_str = "";
-					if (max_num_restarts_lbfgs_ <= 0) {// restarts have not been done -> suggest them
-						restart_str = " Consider restarting the optimizer by setting the parameter 'max_num_restarts_lbfgs' "
-							"to a value larger than 0 (see also 'cold_restart_lbfgs')";
+					if (convergence_status_ == 2) {
+						string_t restart_str = " Consider restarting the optimizer by setting the parameter "
+							"'max_num_restarts_lbfgs' to a value larger than 0 (see also 'cold_restart_lbfgs') to check this "
+							"and to potentially find a better optimum";
+						if (max_num_restarts_lbfgs_ > 0) {// restarts have been done but they were still improving when they were stopped
+							restart_str = " The restarts of the optimizer still improved the objective function when the maximal "
+								"number of restarts was reached. Consider increasing 'max_num_restarts_lbfgs'";
+						}
+						Log::REDebug(("GPModel: the optimizer '%s' has terminated since its line search has not been successful. "
+							"This can mean that no further progress is possible (the parameters are then essentially a local "
+							"optimum) or that the optimizer has stopped prematurely." + restart_str + " ").c_str(), optimizer_cov_pars_.c_str());
 					}
-					Log::REDebug(("GPModel: the optimizer '%s' has terminated since its line search has not been successful "
-						"and not since it has converged. The estimated parameters are thus potentially not (local) maximizers "
-						"of the (approximate) log-likelihood." + restart_str + " ").c_str(), optimizer_cov_pars_.c_str());
+					else {
+						Log::REDebug("GPModel: the last line search of the optimizer '%s' has not been successful, but the restarts "
+							"did not improve the objective function anymore. The optimizer has thus likely converged ", optimizer_cov_pars_.c_str());
+					}
 				}
 				PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta_, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
 				if (gauss_likelihood_) {
@@ -6039,8 +6067,14 @@ namespace GPBoost {
 		// True if the last line search of an lbfgs optimizer has not been successful. The optimizer has then terminated
 		//	without having converged (set in the line search routines of LBFGSpp)
 		bool line_search_has_not_been_successful_ = false;
+		// True if restarts of an lbfgs optimizer have been done and they have been stopped since the last restart
+		//	did not improve the objective function anymore. There is then likely nothing more to be gained, i.e., the
+		//	optimizer has converged in a practical sense even if its last line search has not been successful
+		bool restarts_have_stopped_without_improvement_ = false;
 		// Convergence status of the last optimization: 0 = converged, 1 = maximal number of iterations reached,
-		//	2 = the line search of an lbfgs optimizer has not been successful
+		//	2 = no convergence since the line search of an lbfgs optimizer has not been successful and it could not
+		//	be verified that nothing more can be gained (i.e., restarts have either not been done or they still
+		//	improved the objective function when the last one was done)
 		int convergence_status_ = 0;
 
 		// MATRIX INVERSION PROPERTIES

@@ -6148,9 +6148,11 @@ class GPModel(object):
             if self.iid_model: npar = npar - 1 # do not count variance component
             aic = 2 * npar - 2 * ll
             bic = npar * np.log(self.num_data) - 2 * ll
-        # 0 = converged, 1 = maximal number of iterations reached, 2 = the line search of an lbfgs optimizer
-        #   has not been successful (the number of iterations cannot be used for this since it is the sum over
-        #   all restarts if 'max_num_restarts_lbfgs' > 0)
+        # 0 = converged, 1 = the maximal number of iterations has been reached, 2 = no convergence since the
+        #   line search of an lbfgs optimizer has not been successful and it could not be verified that nothing
+        #   more can be gained (i.e., restarts have either not been done or they still improved the log-likelihood
+        #   when the last one was done). Note: the number of iterations cannot be used for determining this since
+        #   it is the sum over all restarts if 'max_num_restarts_lbfgs' > 0
         convergence_status = 0
         if not self.model_has_been_loaded_from_saved_file and self.model_fitted:
             convergence_status = self._get_convergence_status()
@@ -6199,10 +6201,13 @@ class GPModel(object):
         elif convergence_status == 2:
             print("-----------------------------------------------------")
             if self.params["max_num_restarts_lbfgs"] <= 0:
-                print("Note: no convergence, the line search of the optimizer has not been successful.")
-                print("      Consider setting 'max_num_restarts_lbfgs' to a value larger than 0")
-            else:  # restarts have already been done
-                print("Note: no convergence, the line search of the optimizer has not been successful")
+                print("Note: the line search of the optimizer has not been successful. The parameters can be a")
+                print("      (local) optimum, but the optimizer can also have stopped prematurely. Set")
+                print("      'max_num_restarts_lbfgs' to a value larger than 0 to check this")
+            else:  # restarts have been done and they still improved the objective function
+                print("Note: no convergence, the restarts of the optimizer still improved the log-likelihood")
+                print("      when the maximal number of restarts was reached. Consider increasing")
+                print("      'max_num_restarts_lbfgs'")
         print("=====================================================")
         return self
 
