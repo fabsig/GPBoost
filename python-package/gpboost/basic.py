@@ -6148,8 +6148,12 @@ class GPModel(object):
             if self.iid_model: npar = npar - 1 # do not count variance component
             aic = 2 * npar - 2 * ll
             bic = npar * np.log(self.num_data) - 2 * ll
-        no_convergence = (not self.model_has_been_loaded_from_saved_file and
-                          self.params["maxit"] == self._get_num_optim_iter())
+        # 0 = converged, 1 = maximal number of iterations reached, 2 = the line search of an lbfgs optimizer
+        #   has not been successful (the number of iterations cannot be used for this since it is the sum over
+        #   all restarts if 'max_num_restarts_lbfgs' > 0)
+        convergence_status = 0
+        if not self.model_has_been_loaded_from_saved_file and self.model_fitted:
+            convergence_status = self._get_convergence_status()
 
         # Now print everything
         print("=====================================================")
@@ -6189,9 +6193,16 @@ class GPModel(object):
             print("-----------------------------------------------------")
             print("Additional parameters:")
             print(round(aux_pars.transpose(), 4))
-        if no_convergence:
+        if convergence_status == 1:
             print("-----------------------------------------------------")
             print("Note: no convergence after the maximal number of iterations")
+        elif convergence_status == 2:
+            print("-----------------------------------------------------")
+            if self.params["max_num_restarts_lbfgs"] <= 0:
+                print("Note: no convergence, the line search of the optimizer has not been successful.")
+                print("      Consider setting 'max_num_restarts_lbfgs' to a value larger than 0")
+            else:  # restarts have already been done
+                print("Note: no convergence, the line search of the optimizer has not been successful")
         print("=====================================================")
         return self
 
@@ -7057,6 +7068,8 @@ class GPModel(object):
             c_str(likelihood)))
     
     def _can_calculate_standard_errors_cov_pars(self):
+        if self._get_likelihood_name() == "asymmetric_laplace":
+            return False  # no standard errors for quantile regression, see '_can_calculate_standard_errors_coef'
         out = ctypes.c_int64(0)
         _safe_call(_LIB.GPB_CanCalculateStandardErrorsCovPars(
             self.handle,
@@ -7064,14 +7077,26 @@ class GPModel(object):
         return bool(out.value)
 
     def _can_calculate_standard_errors_aux_pars(self):
+        if self._get_likelihood_name() == "asymmetric_laplace":
+            return False  # no standard errors for quantile regression, see '_can_calculate_standard_errors_coef'
         out = ctypes.c_int64(0)
         _safe_call(_LIB.GPB_CanCalculateStandardErrorsAuxPars(
             self.handle,
             ctypes.byref(out)))
         return bool(out.value)
 
+    # For quantile regression ("asymmetric_laplace"), no standard errors are calculated: the (approximate)
+    #   marginal likelihood is a pseudo-likelihood which is not smooth, and standard errors obtained from its
+    #   (approximated) Hessian are not valid
     def _can_calculate_standard_errors_coef(self):
         return self._get_likelihood_name() != "asymmetric_laplace"
+
+    def _get_convergence_status(self):
+        convergence_status = ctypes.c_int(0)
+        _safe_call(_LIB.GPB_GetConvergenceStatus(
+            self.handle,
+            ctypes.byref(convergence_status)))
+        return convergence_status.value
 
     def _get_num_optim_iter(self):
         num_it = ctypes.c_int64(0)

@@ -1568,6 +1568,15 @@ GPBOOST_C_EXPORT int GPB_GetCoef(REModelHandle handle,
 * \param[out] num_it Number of iterations for convergence
 * \return 0 when succeed, -1 when failure happens
 */
+GPBOOST_C_EXPORT int GPB_GetConvergenceStatus(REModelHandle handle,
+    int* convergence_status);
+
+/*!
+* rief Get the number of iterations for parameter estimation
+* \param handle Handle of REModel
+* \param[out] num_it Number of iterations for parameter estimation
+* eturn 0 when succeed, -1 when failure happens
+*/
 GPBOOST_C_EXPORT int GPB_GetNumIt(REModelHandle handle,
     int* num_it);
 

@@ -887,6 +887,17 @@ GPBOOST_C_EXPORT SEXP GPB_GetCoef_R(
 * \param[out] num_it Number of iterations for convergence
 * \return 0 when succeed, -1 when failure happens
 */
+GPBOOST_C_EXPORT SEXP GPB_GetConvergenceStatus_R(
+	SEXP handle,
+	SEXP convergence_status
+);
+
+/*!
+* rief Get the number of iterations for parameter estimation
+* \param handle Handle of REModel
+* \param[out] num_it Number of iterations for parameter estimation
+* eturn R NULL value
+*/
 GPBOOST_C_EXPORT SEXP GPB_GetNumIt_R(
 	SEXP handle,
 	SEXP num_it

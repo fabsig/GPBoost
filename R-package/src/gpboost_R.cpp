@@ -1097,6 +1097,15 @@ SEXP GPB_GetCoef_R(SEXP handle,
 	return R_NilValue;
 }
 
+SEXP GPB_GetConvergenceStatus_R(SEXP handle,
+	SEXP convergence_status) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetConvergenceStatus(R_ExternalPtrAddr(handle),
+		R_INT_PTR(convergence_status)));
+	R_API_END();
+	return R_NilValue;
+}
+
 SEXP GPB_GetNumIt_R(SEXP handle,
 	SEXP num_it) {
 	R_API_BEGIN();
@@ -1440,6 +1449,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetInitCovPar_R"              , (DL_FUNC)&GPB_GetInitCovPar_R              , 2},
   {"GPB_GetCoef_R"                    , (DL_FUNC)&GPB_GetCoef_R                    , 3},
   {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 2},
+  {"GPB_GetConvergenceStatus_R"       , (DL_FUNC)&GPB_GetConvergenceStatus_R       , 2},
   {"GPB_HasStdCylBesselK_R"           , (DL_FUNC)&GPB_HasStdCylBesselK_R           , 1},
   {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 13},
   {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 21},

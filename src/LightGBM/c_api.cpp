@@ -2911,6 +2911,14 @@ int GPB_GetCoef(REModelHandle handle,
 	API_END();
 }
 
+int GPB_GetConvergenceStatus(REModelHandle handle,
+	int* convergence_status) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	convergence_status[0] = ref_remodel->GetConvergenceStatus();
+	API_END();
+}
+
 int GPB_GetNumIt(REModelHandle handle,
 	int* num_it) {
 	API_BEGIN();

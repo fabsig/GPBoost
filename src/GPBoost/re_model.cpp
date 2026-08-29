@@ -1283,6 +1283,18 @@ namespace GPBoost {
 		return(num_it_);
 	}
 
+	int REModel::GetConvergenceStatus() const {
+		if (matrix_format_ == "sp_mat_t") {
+			return(re_model_sp_->GetConvergenceStatus());
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			return(re_model_sp_rm_->GetConvergenceStatus());
+		}
+		else {
+			return(re_model_den_->GetConvergenceStatus());
+		}
+	}
+
 	int REModel::GetNumSetsFixedEffects() const {
 		return(num_sets_fixed_effects_);
 	}

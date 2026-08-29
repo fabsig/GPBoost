@@ -468,6 +468,12 @@ namespace GPBoost {
 
 		int GetNumIt() const;
 
+		/*!
+		* rief Convergence status of the last parameter estimation
+		* eturn 0 = converged, 1 = maximal number of iterations reached, 2 = the line search of an lbfgs optimizer has not been successful
+		*/
+		int GetConvergenceStatus() const;
+
 		int GetNumSetsFixedEffects() const;
 
 		int GetNumData() const;

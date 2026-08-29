@@ -2371,6 +2371,9 @@ gpb.GPModel <- R6::R6Class(
     },
     
     can_calculate_standard_errors_cov_pars = function() {
+      if (self$get_likelihood_name() == "asymmetric_laplace") {
+        return(FALSE)# no standard errors for quantile regression, see 'can_calculate_standard_errors_coef'
+      }
       out <- integer(1)
       .Call(
         GPB_CanCalculateStandardErrorsCovPars_R
@@ -2381,6 +2384,9 @@ gpb.GPModel <- R6::R6Class(
     },
 
     can_calculate_standard_errors_aux_pars = function() {
+      if (self$get_likelihood_name() == "asymmetric_laplace") {
+        return(FALSE)# no standard errors for quantile regression, see 'can_calculate_standard_errors_coef'
+      }
       out <- integer(1)
       .Call(
         GPB_CanCalculateStandardErrorsAuxPars_R
@@ -2390,6 +2396,9 @@ gpb.GPModel <- R6::R6Class(
       return(as.logical(out))
     },
 
+    # For quantile regression ('asymmetric_laplace'), no standard errors are calculated: the (approximate)
+    #   marginal likelihood is a pseudo-likelihood which is not smooth, and standard errors obtained from its
+    #   (approximated) Hessian are not valid
     can_calculate_standard_errors_coef = function() {
       return(self$get_likelihood_name() != "asymmetric_laplace")
     },
@@ -2578,8 +2587,13 @@ gpb.GPModel <- R6::R6Class(
         aic <- 2*npar - 2*ll
         bic <- npar*log(self$get_num_data()) - 2*ll
       }
-      no_convergence <- (!private$model_has_been_loaded_from_saved_file) &&
-        (private$params$maxit == self$get_num_optim_iter())
+      # 0 = converged, 1 = maximal number of iterations reached, 2 = the line search of an lbfgs optimizer
+      #   has not been successful (the number of iterations cannot be used for this since it is the sum over
+      #   all restarts if 'max_num_restarts_lbfgs' > 0)
+      convergence_status <- 0L
+      if (!private$model_has_been_loaded_from_saved_file && model_fitted) {
+        convergence_status <- private$get_convergence_status()
+      }
 
       # Now print everything
       cat("=====================================================\n")
@@ -2645,9 +2659,17 @@ gpb.GPModel <- R6::R6Class(
           print(round(aux_pars,4))
         }
       }
-      if (no_convergence) {
+      if (convergence_status == 1L) {
         cat("-----------------------------------------------------\n")
         cat("Note: no convergence after the maximal number of iterations\n")
+      } else if (convergence_status == 2L) {
+        cat("-----------------------------------------------------\n")
+        if (is.null(private$params$max_num_restarts_lbfgs) || private$params$max_num_restarts_lbfgs <= 0) {
+          cat("Note: no convergence, the line search of the optimizer has not been successful.\n")
+          cat("      Consider setting 'max_num_restarts_lbfgs' to a value larger than 0\n")
+        } else {# restarts have already been done
+          cat("Note: no convergence, the line search of the optimizer has not been successful\n")
+        }
       }
       cat("=====================================================\n")
     }
@@ -2655,6 +2677,17 @@ gpb.GPModel <- R6::R6Class(
   ), # end public
   
   private = list(
+    # Convergence status of the last parameter estimation: 0 = converged, 1 = maximal number of
+    #   iterations reached, 2 = the line search of an lbfgs optimizer has not been successful
+    get_convergence_status = function() {
+      convergence_status <- integer(1)
+      .Call(
+        GPB_GetConvergenceStatus_R
+        , private$handle
+        , convergence_status
+      )
+      return(convergence_status)
+    },
     handle = NULL,
     likelihood_additional_param = -999, # default is set in C++
     num_data = NULL,

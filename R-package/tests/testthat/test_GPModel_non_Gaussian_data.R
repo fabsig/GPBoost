@@ -6591,8 +6591,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.8153285415)),tolerance_loc_1)
     expect_lt(sum(abs(gp_model$get_aux_pars()-0.2688162279 )),tolerance_loc_1)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.3044197085, 2.0765502256))),tolerance_loc_1)
+    # no standard errors are calculated for quantile regression (the approximate marginal likelihood is a
+    #   pseudo-likelihood which is not smooth)
     expect_false(gp_model$can_calculate_standard_errors_coef())
+    expect_false(gp_model$can_calculate_standard_errors_cov_pars())
+    expect_false(gp_model$can_calculate_standard_errors_aux_pars())
     expect_equal(gp_model$get_coef(std_err = TRUE), gp_model$get_coef(std_err = FALSE))
+    expect_equal(gp_model$get_cov_pars(std_err = TRUE), gp_model$get_cov_pars(std_err = FALSE))
+    expect_equal(gp_model$get_aux_pars(std_err = TRUE), gp_model$get_aux_pars(std_err = FALSE))
     expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-117.1841035))),tolerance_loc_1)
     expect_equal(gp_model$get_num_optim_iter(), 12)
     # Prediction
@@ -6933,8 +6939,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_t_v_result <- as.vector(gp_model_t_v$get_cov_pars(std_err = TRUE))
     aux_pars_t_v_result <- as.vector(gp_model_t_v$get_aux_pars(std_err = TRUE))
     coef_t_v_result <- as.vector(gp_model_t_v$get_coef(std_err = TRUE))
-    expect_lt(sum(abs(cov_pars_t_v_result-cov_pars_t_v)),relax_tolerance(TOLERANCE_STRICT))
-    expect_lt(sum(abs(aux_pars_t_v_result[1:3]-aux_pars_t_v[1:3])),relax_tolerance(TOLERANCE_STRICT))
+    expect_lt(sum(abs(cov_pars_t_v_result[c(1,3)]-cov_pars_t_v[c(1,3)])),relax_tolerance(TOLERANCE_STRICT))# estimates
+    # The standard errors of covariance and auxiliary parameters are obtained from a Hessian that is approximated
+    #   with finite differences of a gradient which itself relies on an iterative mode finding algorithm (see
+    #   'CalcHessianCovParAuxPars'). They are thus not reproducible to the same accuracy as the estimates: differences
+    #   of a few 1e-6 have been observed between builds (the standard errors below are of the order of 0.02 - 0.17)
+    expect_lt(sum(abs(cov_pars_t_v_result[c(2,4)]-cov_pars_t_v[c(2,4)])),relax_tolerance(TOLERANCE_MEDIUM))# standard errors
+    expect_lt(sum(abs(aux_pars_t_v_result[1]-aux_pars_t_v[1])),relax_tolerance(TOLERANCE_STRICT))# estimate
+    expect_lt(sum(abs(aux_pars_t_v_result[2:3]-aux_pars_t_v[2:3])),relax_tolerance(TOLERANCE_MEDIUM))# standard error and fixed df
     expect_true(is.nan(aux_pars_t_v_result[4])) # no standard error for the fixed (not estimated) degrees-of-freedom parameter
     expect_lt(sum(abs(coef_t_v_result[c(1,3)]-coef_t_v[c(1,3)])),relax_tolerance(TOLERANCE_STRICT))
     if (coef_se_available(coef_t_v_result)) expect_lt(sum(abs(coef_t_v_result[c(2,4)]-coef_t_v[c(2,4)])),relax_tolerance(TOLERANCE_STRICT))
