@@ -150,10 +150,9 @@ namespace GPBoost {
 #endif
 			}
 			GPU_use_ = can_use_cuda;
-			if (num_parallel_threads > 0) {
-				Eigen::setNbThreads(num_parallel_threads);
-				omp_set_num_threads(num_parallel_threads);
-			}
+			// Note: the number of threads is not set here. It is set (and reset again afterwards) by the
+			//	'ParallelThreadsScope' objects created in the corresponding functions of 'REModel', see utils.h
+			num_parallel_threads_ = num_parallel_threads;
 			CHECK(num_data > 0);
 			num_data_ = num_data;
 			//Initialize RNG
@@ -6384,6 +6383,9 @@ namespace GPBoost {
 
 		/*! Use GPU */
 		bool GPU_use_ = false;
+		/*! \brief Number of parallel threads requested for this model (<= 0 means that the default number of threads is
+		* used). Note: the number of threads is set by the 'ParallelThreadsScope' objects in 'REModel', see utils.h */
+		int num_parallel_threads_ = -1;
 
 		/*! \brief Nesterov schedule */
 		static double NesterovSchedule(int iter,

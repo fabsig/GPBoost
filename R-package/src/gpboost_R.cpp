@@ -1122,6 +1122,20 @@ SEXP GPB_HasStdCylBesselK_R(SEXP has_bessel) {
 	return R_NilValue;
 }
 
+SEXP GPB_GetNumParallelThreads_R(SEXP num_threads) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetNumParallelThreads(R_INT_PTR(num_threads)));
+	R_API_END();
+	return R_NilValue;
+}
+
+SEXP GPB_SetNumParallelThreads_R(SEXP num_threads) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_SetNumParallelThreads(Rf_asInteger(num_threads)));
+	R_API_END();
+	return R_NilValue;
+}
+
 SEXP GPB_SetPredictionData_R(SEXP handle,
 	SEXP num_data_pred,
 	SEXP cluster_ids_data_pred,
@@ -1451,6 +1465,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 2},
   {"GPB_GetConvergenceStatus_R"       , (DL_FUNC)&GPB_GetConvergenceStatus_R       , 2},
   {"GPB_HasStdCylBesselK_R"           , (DL_FUNC)&GPB_HasStdCylBesselK_R           , 1},
+  {"GPB_GetNumParallelThreads_R"      , (DL_FUNC)&GPB_GetNumParallelThreads_R      , 1},
+  {"GPB_SetNumParallelThreads_R"      , (DL_FUNC)&GPB_SetNumParallelThreads_R      , 1},
   {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 13},
   {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 21},
   {"GPB_PredictREModelTrainingDataRandomEffects_R", (DL_FUNC)&GPB_PredictREModelTrainingDataRandomEffects_R, 6},

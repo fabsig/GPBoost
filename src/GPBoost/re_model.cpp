@@ -56,6 +56,7 @@ namespace GPBoost {
 		likelihood_additional_param_ = likelihood_additional_param;
 		seed_ = seed;
 		num_parallel_threads_ = num_parallel_threads;
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		GPU_use_ = GPU_use;
 		has_weights_ = has_weights;
 		if (has_weights_ && weights != nullptr) {
@@ -488,6 +489,7 @@ namespace GPBoost {
 		const double* fixed_effects,
 		bool called_in_GPBoost_algorithm,
 		bool reuse_learning_rates_from_previous_call) {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		if (y_data != nullptr) {
 			InitializeCovParsIfNotDefined(y_data, fixed_effects);
 			// Note: y_data can be null_ptr for non-Gaussian data. For non-Gaussian data, the function 'InitializeCovParsIfNotDefined' is called in 'SetY'
@@ -553,6 +555,7 @@ namespace GPBoost {
 		const double* covariate_data,
 		int num_covariates,
 		const double* fixed_effects) {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		InitializeCovParsIfNotDefined(y_data, fixed_effects);
 		double* init_coef_ptr;
 		num_covariates_ = num_covariates;
@@ -636,6 +639,7 @@ namespace GPBoost {
 	}//end OptimLinRegrCoefCovPar
 
 	void REModel::FindInitialValueBoosting(const double* fixed_effects) {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		CHECK(cov_pars_initialized_);
 		vec_t covariate_data(GetNumData());
 		covariate_data.setOnes();
@@ -702,6 +706,7 @@ namespace GPBoost {
 		const double* new_score,
 		bool reuse_learning_rates_from_previous_call,
 		double& lr) {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		CHECK(cov_pars_initialized_);
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->OptimLinRegrCoefCovPar(nullptr,
@@ -759,6 +764,7 @@ namespace GPBoost {
 		const double* fixed_effects,
 		bool InitializeModeCovMat,
 		bool CalcModePostRandEff_already_done) {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		vec_t cov_pars_trafo;
 		if (cov_pars == nullptr) {
 			if (y_data != nullptr) {
@@ -811,6 +817,7 @@ namespace GPBoost {
 	}
 
 	void REModel::CalcGradient(double* y, const double* fixed_effects, bool calc_cov_factor) {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		if (y != nullptr) {
 			InitializeCovParsIfNotDefined(y, fixed_effects);
 		}
@@ -923,6 +930,7 @@ namespace GPBoost {
 	}
 
 	void REModel::GetCovPar(double* cov_par, bool calc_std_dev) {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		if ((int)cov_pars_.size() != num_cov_pars_) {
 			Log::REFatal("Covariance parameters have not been estimated or correctly set ");
 		}
@@ -992,6 +1000,7 @@ namespace GPBoost {
 	}
 
 	void REModel::GetCoef(double* coef, bool calc_std_dev) {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		if ((int)coef_.size() != num_coef_) {
 			Log::REFatal("Regresion coefficients have not been estimated or correctly set ");
 		}
@@ -1038,6 +1047,7 @@ namespace GPBoost {
 		double cg_delta_conv_pred,
 		int nsim_var_pred,
 		int rank_pred_approx_matrix_lanczos) {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->SetPredictionData(num_data_pred,
 				cluster_ids_data_pred,
@@ -1103,6 +1113,7 @@ namespace GPBoost {
 		const double* fixed_effects,
 		const double* fixed_effects_pred,
 		bool suppress_calc_cov_factor) {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		bool calc_cov_factor = true;
 		vec_t cov_pars_pred_trans;
 		if (cov_pars_pred != nullptr) {
@@ -1223,6 +1234,7 @@ namespace GPBoost {
 		double* out_predict,
 		const double* fixed_effects,
 		bool calc_var) const {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		bool calc_cov_factor = true;
 		vec_t cov_pars_pred_trans;
 		if (cov_pars_pred != nullptr) {
@@ -1314,6 +1326,7 @@ namespace GPBoost {
 	void REModel::NewtonUpdateLeafValues(const int* data_leaf_index,
 		const int num_leaves,
 		double* leaf_values) const {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->NewtonUpdateLeafValues(data_leaf_index, num_leaves, leaf_values, cov_pars_[0]);
 		}
@@ -1461,6 +1474,7 @@ namespace GPBoost {
 		const double* pred_mean,
 		const double* pred_var,
 		const data_size_t num_data) {
+		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		if (GetLikelihood() == "gaussian") {
 			double aux_par = 1. / (std::sqrt(cov_pars_[0]));
 			SetAuxPars(&aux_par);

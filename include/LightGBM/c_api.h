@@ -1595,6 +1595,23 @@ GPBOOST_C_EXPORT int GPB_GetNumIt(REModelHandle handle,
 GPBOOST_C_EXPORT int GPB_HasStdCylBesselK(int* has_bessel);
 
 /*!
+* \brief Get the number of threads that OMP currently uses for parallelization
+*   Note: You should pre-allocate memory for num_threads (length = 1)
+* \param[out] num_threads Number of threads
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetNumParallelThreads(int* num_threads);
+
+/*!
+* \brief Set the number of threads used by OMP and Eigen for the entire process. Note: models for which a number
+*   of threads has been specified ('num_parallel_threads') are not affected by this, since they set (and reset)
+*   the number of threads themselves whenever they do calculations
+* \param num_threads Number of threads. If num_threads <= 0, the default number of threads is used
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_SetNumParallelThreads(int num_threads);
+
+/*!
 * \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
 * \param handle Handle of REModel
 * \param num_data_pred Number of data points for which predictions are made

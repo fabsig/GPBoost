@@ -2933,6 +2933,20 @@ int GPB_HasStdCylBesselK(int* has_bessel) {
 	API_END();
 }
 
+int GPB_GetNumParallelThreads(int* num_threads) {
+	API_BEGIN();
+	num_threads[0] = omp_get_max_threads();
+	API_END();
+}
+
+int GPB_SetNumParallelThreads(int num_threads) {
+	API_BEGIN();
+	int num_threads_used = num_threads > 0 ? num_threads : GPBoost::DefaultNumParallelThreads();
+	omp_set_num_threads(num_threads_used);
+	Eigen::setNbThreads(num_threads_used);
+	API_END();
+}
+
 int GPB_SetPredictionData(REModelHandle handle,
 	int32_t num_data_pred,
 	const int32_t* cluster_ids_data_pred,

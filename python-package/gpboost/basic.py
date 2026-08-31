@@ -79,6 +79,48 @@ def get_nested_categories(outer_var, inner_var):
     return nested_var
 
 
+def get_num_threads():
+    """Get the number of threads that OMP currently uses for parallelization.
+
+    Note that models for which the number of threads has been specified via the
+    'num_parallel_threads' argument of GPModel are not affected by this number: such models set
+    (and reset) the number of threads themselves whenever they do calculations.
+
+    Returns
+    -------
+    num_threads : int
+        The number of threads currently used by OMP
+
+    :Authors:
+        Fabio Sigrist
+    """
+    num_threads = ctypes.c_int(0)
+    _safe_call(_LIB.GPB_GetNumParallelThreads(ctypes.byref(num_threads)))
+    return num_threads.value
+
+
+def set_num_threads(num_threads):
+    """Set the number of threads used by OMP and Eigen in the entire process.
+
+    Note that models for which the number of threads has been specified via the
+    'num_parallel_threads' argument of GPModel are not affected by this: such models set (and
+    reset) the number of threads themselves whenever they do calculations.
+
+    Parameters
+    ----------
+    num_threads : int
+        The number of threads. If num_threads is not positive, the default number of threads is
+        used (the number of threads used when the library was loaded)
+
+    :Authors:
+        Fabio Sigrist
+    """
+    if not isinstance(num_threads, (int, np.integer)):
+        raise ValueError('num_threads needs to be an integer')
+    _safe_call(_LIB.GPB_SetNumParallelThreads(ctypes.c_int(num_threads)))
+
+
+
 def _normalize_native_string(func):
     """Join log messages from native library which come by chunks."""
     msg_normalized = []

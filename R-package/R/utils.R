@@ -274,3 +274,52 @@ has_std_cyl_bessel_k <- function() {
   )
   return(has_bessel[1L] == 1L)
 }
+
+#' @title Get the number of threads used for parallelization
+#' @description Returns the number of threads that OMP currently uses for parallelization.
+#'              Note that models for which the number of threads has been specified via the
+#'              \code{num_parallel_threads} argument of \code{\link{GPModel}} are not affected by
+#'              this number: such models set (and reset) the number of threads themselves whenever
+#'              they do calculations.
+#' @return An \code{integer} of length one: the number of threads currently used by OMP
+#' @author Fabio Sigrist
+#' @examples
+#' num_threads <- gpb.get.num.threads()
+#' @rdname gpb.get.num.threads
+#' @export
+gpb.get.num.threads <- function() {
+  num_threads <- integer(1L)
+  .Call(
+    GPB_GetNumParallelThreads_R
+    , num_threads
+  )
+  return(num_threads[1L])
+}
+
+#' @title Set the number of threads used for parallelization
+#' @description Sets the number of threads used by OMP and Eigen in the entire R process.
+#'              Note that models for which the number of threads has been specified via the
+#'              \code{num_parallel_threads} argument of \code{\link{GPModel}} are not affected by
+#'              this: such models set (and reset) the number of threads themselves whenever they do
+#'              calculations.
+#' @param num_threads An \code{integer} specifying the number of threads. If \code{num_threads} is
+#'                    not positive, the default number of threads is used (the number of threads
+#'                    used when the package was loaded)
+#' @return This function does not return anything
+#' @author Fabio Sigrist
+#' @examples
+#' num_threads_old <- gpb.get.num.threads()
+#' gpb.set.num.threads(2L)
+#' gpb.set.num.threads(num_threads_old)
+#' @rdname gpb.set.num.threads
+#' @export
+gpb.set.num.threads <- function(num_threads) {
+  if (!is.numeric(num_threads) || length(num_threads) != 1L || is.na(num_threads)) {
+    stop('gpb.set.num.threads: num_threads needs to be an integer of length one')
+  }
+  .Call(
+    GPB_SetNumParallelThreads_R
+    , as.integer(num_threads)
+  )
+  return(invisible(NULL))
+}

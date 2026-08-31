@@ -17,10 +17,71 @@
 #include <numeric>      // std::iota
 #include <unordered_set>
 #include <LightGBM/utils/log.h>
+#include <LightGBM/utils/openmp_wrapper.h>
 
 using LightGBM::Log;
 
 namespace GPBoost {
+
+	/*!
+	* \brief Number of threads that are used when no number of threads is explicitly requested. This is the number of
+	*		threads that OMP uses when this function is called for the first time (i.e., before any model has changed
+	*		it), which is usually determined by the environment variable 'OMP_NUM_THREADS' or the number of cores
+	* \return Default number of parallel threads
+	*/
+	inline int DefaultNumParallelThreads() {
+		static const int default_num_parallel_threads = omp_get_max_threads();
+		return(default_num_parallel_threads);
+	}
+
+	/*!
+	* \brief Sets the number of threads used by OMP and Eigen and restores the previously used numbers of threads when
+	*		the object goes out of scope again.
+	*		Both 'omp_set_num_threads()' and 'Eigen::setNbThreads()' change the number of threads of the entire process
+	*		and not only the one of a single model. Every operation of an 'REModel' that does calculations thus creates
+	*		such an object, which makes the number of threads a property of the operation: models with different numbers
+	*		of threads can be used alongside each other, and a model does not change the number of threads used by other
+	*		models or by other libraries in the same process. If no number of threads is requested (i.e., if
+	*		'num_threads' is not positive), 'DefaultNumParallelThreads()' is used, i.e., an operation of a model for
+	*		which no number of threads has been specified always uses the default number of threads and not, e.g., a
+	*		number of threads that has been set by another model or by the boosting part of the library
+	*/
+	class ParallelThreadsScope {
+	public:
+		/*!
+		* \brief Constructor
+		* \param num_threads Number of threads to use. If num_threads <= 0, 'DefaultNumParallelThreads()' is used
+		*/
+		explicit ParallelThreadsScope(int num_threads) {
+			int num_threads_used = num_threads > 0 ? num_threads : DefaultNumParallelThreads();
+			num_threads_previous_omp_ = omp_get_max_threads();
+			num_threads_previous_eigen_ = Eigen::nbThreads();
+			if (num_threads_used != num_threads_previous_omp_ || num_threads_used != num_threads_previous_eigen_) {
+				omp_set_num_threads(num_threads_used);
+				Eigen::setNbThreads(num_threads_used);
+				num_threads_have_been_changed_ = true;
+			}
+		}
+
+		/*! \brief Destructor. Restores the numbers of threads used before */
+		~ParallelThreadsScope() {
+			if (num_threads_have_been_changed_) {
+				omp_set_num_threads(num_threads_previous_omp_);
+				Eigen::setNbThreads(num_threads_previous_eigen_);
+			}
+		}
+
+		ParallelThreadsScope(const ParallelThreadsScope&) = delete;
+		ParallelThreadsScope& operator=(const ParallelThreadsScope&) = delete;
+
+	private:
+		/*! \brief Number of threads used by OMP before this object has been created */
+		int num_threads_previous_omp_;
+		/*! \brief Number of threads used by Eigen before this object has been created */
+		int num_threads_previous_eigen_;
+		/*! \brief True if the numbers of threads have been changed and thus need to be restored */
+		bool num_threads_have_been_changed_ = false;
+	};
 
 	/*! \brief Tolerance level when comparing two numbers for equality */
 	const double EPSILON_NUMBERS = 1e-10;
