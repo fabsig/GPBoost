@@ -1,7 +1,10 @@
 *.ps1
 .vs/
 
-gpboost/
+# Anchored to the repository root. Without the leading slash this pattern also matched
+# 'include/GPBoost/' and 'python-package/gpboost/' on case-insensitive file systems, which
+# silently excluded newly added files in those directories from 'git add'
+/gpboost/
 
 GPBoost_demo_cache/
 GPBoost_demo_files/
