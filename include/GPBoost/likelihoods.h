@@ -10682,6 +10682,19 @@ namespace GPBoost {
 			}
 		}//end ReduceToModeScale
 
+		/*!
+		* \brief Sum of the sample weights (= num_data_ if no weights are used)
+		*			The log-likelihood contribution of every sample is multiplied by its weight, so the parts of the
+		*			logarithmic normalizing constant that are identical for all samples must be scaled by this sum and
+		*			not by the number of samples
+		*/
+		double SumOfWeights() const {
+			if (!has_weights_) {
+				return (double)num_data_;
+			}
+			return SumOverSamplesWeighted([](data_size_t) { return 1.; });
+		}//end SumOfWeights
+
 		/*! \brief Report that the calling function does not support the current likelihood */
 		void NotSupportedForLikelihood(const char* caller) const {
 			Log::REFatal("%s: Likelihood of type '%s' is not supported ", caller, likelihood_type_.c_str());
@@ -10999,18 +11012,18 @@ namespace GPBoost {
 					log_normalizing_constant_ = w_pos * log_q + LogNormalizingConstantNegBin1(y_data_int);
 				}
 				else if (likelihood_type_ == "beta") {
-					log_normalizing_constant_ = num_data_ * std::lgamma(aux_pars_[0]);
+					log_normalizing_constant_ = SumOfWeights() * std::lgamma(aux_pars_[0]);
 				}
 				else if (likelihood_type_ == "t") {
-					log_normalizing_constant_ = num_data_ * (-std::log(aux_pars_[0]) +
+					log_normalizing_constant_ = SumOfWeights() * (-std::log(aux_pars_[0]) +
 						std::lgamma((aux_pars_[1] + 1.) / 2.) - 0.5 * std::log(aux_pars_[1]) -
 						std::lgamma(aux_pars_[1] / 2.) - 0.5 * std::log(M_PI));
 				}
 				else if (IsGaussianLikelihood()) {
-					log_normalizing_constant_ = -num_data_ * (M_LOGSQRT2PI + 0.5 * std::log(aux_pars_[0]));
+					log_normalizing_constant_ = -SumOfWeights() * (M_LOGSQRT2PI + 0.5 * std::log(aux_pars_[0]));
 				}
 				else if (IsGaussianHeteroscedastic()) {
-					log_normalizing_constant_ = -num_data_ * M_LOGSQRT2PI;
+					log_normalizing_constant_ = -SumOfWeights() * M_LOGSQRT2PI;
 				}
 				else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" || 
 					likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit") {
@@ -11020,7 +11033,7 @@ namespace GPBoost {
 					log_normalizing_constant_ = aux_log_normalizing_constant_;
 				}
 				else if (likelihood_type_ == "lognormal") {
-					log_normalizing_constant_ = aux_log_normalizing_constant_ - (double)num_data_ * (M_LOGSQRT2PI + 0.5 * std::log(aux_pars_[0]));
+					log_normalizing_constant_ = aux_log_normalizing_constant_ - SumOfWeights() * (M_LOGSQRT2PI + 0.5 * std::log(aux_pars_[0]));
 				}
 				else if (likelihood_type_ == "hurdle_lognormal") {
 					const double p0 = aux_pars_original_[1];
@@ -11122,7 +11135,7 @@ namespace GPBoost {
 					log_normalizing_constant_ = (k - 1.0) * s_log_yxi_int - w_int * std::lgamma(k);
 				}
 				else if (likelihood_type_ == "asymmetric_laplace") {
-					log_normalizing_constant_ = num_data_ * (std::log(quantile_) + std::log(1. - quantile_) - std::log(aux_pars_[0]));
+					log_normalizing_constant_ = SumOfWeights() * (std::log(quantile_) + std::log(1. - quantile_) - std::log(aux_pars_[0]));
 				}
 				else {
 					NotSupportedForLikelihood(__func__);
@@ -11151,7 +11164,7 @@ namespace GPBoost {
 			}
 			else {
 				return((aux_pars_[0] - 1.) * aux_log_normalizing_constant_ +
-					num_data_ * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0])));
+					SumOfWeights() * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0])));
 			}
 		}
 
@@ -11169,7 +11182,7 @@ namespace GPBoost {
 			CHECK(aux_normalizing_constant_has_been_calculated_);
 			const double aux_const = SumOverSamplesWeighted([&](data_size_t i) { return std::lgamma(y_data_int[i] + aux_pars_[0]); });
 			double norm_const = aux_const + aux_log_normalizing_constant_ +
-				num_data_ * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]));
+				SumOfWeights() * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]));
 			return(norm_const);
 		}
 
@@ -13831,7 +13844,7 @@ namespace GPBoost {
 					const double w = has_weights_ ? weights_[i] : 1.0;
 					neg_log_grad += w * (location_par[i] + y_data[i] * std::exp(-location_par[i]));
 				}
-				neg_log_grad -= num_data_ * (std::log(aux_pars_[0]) + 1. - GPBoost::digamma(aux_pars_[0]));
+				neg_log_grad -= SumOfWeights() * (std::log(aux_pars_[0]) + 1. - GPBoost::digamma(aux_pars_[0]));
 				neg_log_grad -= aux_log_normalizing_constant_;
 				neg_log_grad *= aux_pars_[0];
 				grad[0] = neg_log_grad;
@@ -13846,7 +13859,7 @@ namespace GPBoost {
 					double y_plus_r = y_data_int[i] + aux_pars_[0];
 					neg_log_grad += w * aux_pars_[0] * (-GPBoost::digamma(y_plus_r) + std::log(mu_plus_r) + y_plus_r / mu_plus_r);
 				}
-				neg_log_grad += num_data_ * aux_pars_[0] * (GPBoost::digamma(aux_pars_[0]) - std::log(aux_pars_[0]) - 1);
+				neg_log_grad += SumOfWeights() * aux_pars_[0] * (GPBoost::digamma(aux_pars_[0]) - std::log(aux_pars_[0]) - 1);
 				grad[0] = neg_log_grad;
 			}
 			else if (likelihood_type_ == "negative_binomial_1") {
@@ -13887,10 +13900,10 @@ namespace GPBoost {
 						neg_log_grad_df += w * (-aux_pars_[1] * std::log(1 + res_sq / nu_sigma2) + (aux_pars_[1] + 1.) / (1. + nu_sigma2 / res_sq));
 					}
 				}
-				neg_log_grad_scale += num_data_;
+				neg_log_grad_scale += SumOfWeights();
 				grad[0] = neg_log_grad_scale;
 				if (estimate_df_t_) {
-					neg_log_grad_df += num_data_ * (-1. + aux_pars_[1] * (GPBoost::digamma((aux_pars_[1] + 1) / 2.) - GPBoost::digamma(aux_pars_[1] / 2.)));
+					neg_log_grad_df += SumOfWeights() * (-1. + aux_pars_[1] * (GPBoost::digamma((aux_pars_[1] + 1) / 2.) - GPBoost::digamma(aux_pars_[1] / 2.)));
 					neg_log_grad_df /= -2.;
 					grad[1] = neg_log_grad_df;
 				}
@@ -13905,7 +13918,7 @@ namespace GPBoost {
 					neg_log_grad += w * resid * resid;
 				}
 				neg_log_grad *= -0.5 / aux_pars_[0];
-				neg_log_grad += 0.5 * num_data_;
+				neg_log_grad += 0.5 * SumOfWeights();
 				grad[0] = neg_log_grad;
 			}//end "gaussian"
 			else if (likelihood_type_ == "lognormal") {
@@ -14349,7 +14362,7 @@ namespace GPBoost {
 					double indicator = (y_data[i] <= location_par[i]) ? 1.0 : 0.0;
 					neg_log_grad += w * (y_data[i] - location_par[i]) * (indicator - quantile_) / aux_pars_[0];
 				}
-				neg_log_grad += num_data_;
+				neg_log_grad += SumOfWeights();
 				grad[0] = neg_log_grad;
 			}//end "asymmetric_laplace"
 			else if (num_aux_pars_estim_ > 0) {
