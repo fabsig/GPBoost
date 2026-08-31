@@ -1022,6 +1022,10 @@ namespace GPBoost {
 				SigmaI_mode_ = SigmaI_mode_previous_value_;
 			}
 			na_or_inf_during_last_call_to_find_mode_ = na_or_inf_during_second_last_call_to_find_mode_;
+			// See the comment in 'RestoreModeState()': all quantities that depend on the mode are not
+			//	recalculated here, i.e., the mode is only used as starting value for the next call to a
+			//	mode finding algorithm, which recalculates all of them
+			mode_has_been_calculated_ = false;
 		}
 
 		/*!
@@ -1060,6 +1064,12 @@ namespace GPBoost {
 			mode_is_zero_ = false;
 			na_or_inf_during_last_call_to_find_mode_ = false;
 			na_or_inf_during_second_last_call_to_find_mode_ = false;
+			// All quantities that depend on the mode ('first_deriv_ll_', 'information_ll_', the Cholesky factors,
+			//	'approx_marginal_ll_', ...) have been calculated for the mode that is discarded here. They are
+			//	not recalculated (this cannot be done here since it requires the covariance matrix / its factorization),
+			//	i.e., the restored mode is only used as starting value for the next call to a mode finding algorithm,
+			//	which recalculates all of them
+			mode_has_been_calculated_ = false;
 		}
 
 		/*! \brief Destructor */

@@ -5,9 +5,13 @@ Sys.setenv(OMP_NUM_THREADS = "10") # can be faster to limit the number of CPU th
 # Run unit tests locally
 library(testthat)
 library(gpboost)
+
 Sys.setenv(GPBOOST_ALL_TESTS = "GPBOOST_ALL_TESTS")
 # Sys.setenv(GPBOOST_ADDITIONAL_SLOW_TESTS = "GPBOOST_ADDITIONAL_SLOW_TESTS")
 # Sys.setenv(NO_GPBOOST_ALGO_TESTS = "NO_GPBOOST_ALGO_TESTS") # If this is set, the (slow) GPBoost algorithm tests are not run
+
+options(testthat.summary.max_reports = 100)
+
 path_tests = paste0(getwd(),.Platform$file.sep,file.path("R-package","tests","testthat"))
 
 system.time({ test_dir(path_tests, reporter = "summary") }) ## Approx. 7 mins (as of 01.02.2024 and on a Laptop with an i7-12800H processor and compiled with MSVC)

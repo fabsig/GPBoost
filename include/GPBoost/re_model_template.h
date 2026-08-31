@@ -750,6 +750,7 @@ namespace GPBoost {
 				for (const auto& cluster_i : unique_clusters_) {
 					likelihood_[cluster_i]->InitializeModeAvec();
 				}
+				modes_have_been_reset_ = true;
 			}
 		}
 
@@ -787,6 +788,7 @@ namespace GPBoost {
 					likelihood_[cluster_i]->RestoreModeState(modes[ic], SigmaI_modes[ic]);
 					ic++;
 				}
+				modes_have_been_reset_ = true;
 			}
 		}
 
@@ -2185,6 +2187,15 @@ namespace GPBoost {
 			bool save_psi_inv_for_FI,
 			const double* fixed_effects,
 			bool call_for_std_dev_coef) {
+			if (!gauss_likelihood_ && modes_have_been_reset_) {
+				// The gradients are calculated below without finding the modes of the Laplace approximations anew, i.e.,
+				//	using quantities that have been calculated when the modes have been found the last time
+				//	('first_deriv_ll_', 'information_ll_', the Cholesky factors, ...). If the modes have been reset after
+				//	this (e.g., since a line search has not been successful or since NA or Inf has occurred), these
+				//	quantities correspond to modes and parameters that have been discarded, and the modes and the
+				//	covariance matrices thus need to be calculated anew for the current parameters
+				CalcCovFactorOrModeAndNegLL(cov_pars_in, fixed_effects);
+			}
 			vec_t cov_pars;
 			MaybeKeepVarianceConstant(cov_pars_in, cov_pars);
 			if ((gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") && calc_cov_aux_par_grad) {
@@ -2840,6 +2851,7 @@ namespace GPBoost {
 			for (const auto& cluster_i : unique_clusters_) {
 				likelihood_[cluster_i]->ResetModeToPreviousValue();
 			}
+			modes_have_been_reset_ = true;
 		}
 
 		/*!
@@ -3512,7 +3524,9 @@ namespace GPBoost {
 			vec_t cov_pars;
 			MaybeKeepVarianceConstant(cov_pars_in, cov_pars);
 			//1. Factorize covariance matrix
-			if (calc_cov_factor) {
+			//	Note: the modes also need to be found anew if they have been reset after the last mode finding
+			//	(e.g., since a line search has not been successful or since NA or Inf has occurred), see 'CalcGradPars()'
+			if (calc_cov_factor || (!gauss_likelihood_ && modes_have_been_reset_)) {
 				SetCovParsComps(cov_pars);
 				CalcCovFactor(true, 1.);
 				if (!gauss_likelihood_) {//not gauss_likelihood_
@@ -6064,6 +6078,11 @@ namespace GPBoost {
 		// If true, restarts of the lbfgs optimizers are "cold" restarts (regression coefficients, auxiliary parameters,
 		//	and modes are reset to their initial values), otherwise "warm" restarts
 		bool cold_restart_lbfgs_ = true;
+		// True if the modes of the Laplace approximations have been reset (to zero, to a previous value, or to a saved
+		//	value) after the last mode finding. All quantities that depend on the modes ('first_deriv_ll_',
+		//	'information_ll_', the Cholesky factors, ...) then correspond to modes and parameters that have been
+		//	discarded and they need to be calculated anew before, e.g., gradients can be calculated (see 'CalcGradPars()')
+		bool modes_have_been_reset_ = false;
 		// True if the last line search of an lbfgs optimizer has not been successful. The optimizer has then terminated
 		//	without having converged (set in the line search routines of LBFGSpp)
 		bool line_search_has_not_been_successful_ = false;
@@ -9033,9 +9052,7 @@ namespace GPBoost {
 					acc_rate_cov *= 0.5;
 					if (!gauss_likelihood_) {
 						// Reset mode to previous value since also parameters are discarded
-						for (const auto& cluster_i : unique_clusters_) {
-							likelihood_[cluster_i]->ResetModeToPreviousValue();
-						}
+						ResetLaplaceApproxModeToPreviousValue();
 					}
 				}
 			}//end loop over learnig rate halving procedure
@@ -9471,9 +9488,7 @@ namespace GPBoost {
 					acc_rate_coef *= 0.5;
 					if (!gauss_likelihood_) {
 						// Reset mode to previous value since also parameters are discarded
-						for (const auto& cluster_i : unique_clusters_) {
-							likelihood_[cluster_i]->ResetModeToPreviousValue();
-						}
+						ResetLaplaceApproxModeToPreviousValue();
 					}
 				}
 			}
@@ -9588,6 +9603,7 @@ namespace GPBoost {
 				mll += mll_cluster_i;
 			}
 			num_ll_evaluations_++;
+			modes_have_been_reset_ = false;//all quantities that depend on the modes have been recalculated
 			return(mll);
 		}//CalcModePostRandEffCalcMLL
 

@@ -161,7 +161,22 @@ if (length(keyword_args) > 0L) {
 }
 
 # Make a new temporary folder to work in
-unlink(x = TEMP_R_DIR, recursive = TRUE)
+# Note: unlink() does not fail when files cannot be removed since they are locked by another process
+#       (e.g., a running R session that has loaded the package, a compiler of a previous build that has
+#       not terminated, or a file synchronization service). Leftovers of a previous build (in particular
+#       the object files in 'src/build') make the below 'R CMD build' fail with a confusing error message
+#       ("copying to build directory failed"). We thus check here that the directory is really gone
+unlink(x = TEMP_R_DIR, recursive = TRUE, force = TRUE)
+if (dir.exists(TEMP_R_DIR)) {
+  stop(sprintf(
+    paste0(
+      "The temporary build directory '%s' could not be removed. Some of its files are likely locked by "
+      , "another process. Close all R sessions that have loaded the package and any running compiler, then "
+      , "remove the directory manually and try again"
+    )
+    , TEMP_R_DIR
+  ))
+}
 dir.create(TEMP_R_DIR)
 
 # copy in the relevant files
