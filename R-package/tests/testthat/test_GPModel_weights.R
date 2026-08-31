@@ -229,6 +229,115 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     expect_equal(nll_replicated - nll_weights, expected_difference, tolerance = TOLERANCE_WEIGHTS)
   })
 
+  test_that("integer 'weights' equal replication when estimating a second fixed effects block", {
+    # 'CalcSecondFEBlockFixedEffectGrad' is the only weight-aware function of the Laplace approximation
+    # machinery (everything else there consumes the already weighted 'first_deriv_ll_' and
+    # 'information_ll_'), so this covers the gradient of the second, fixed-effects-only block.
+    # The achieved objective is compared tightly and the parameters only loosely: these likelihoods
+    # have flat directions near the optimum, along which the estimates drift by ~1e-3 while the
+    # negative log-likelihood agrees to ~1e-7 relative
+    X <- cbind(rep(1, n), sim_rand_unif(n, init_c = 0.256))
+    latent <- as.vector(X %*% c(0.3, 0.7)) + b[group]
+    log_var <- as.vector(X %*% c(-0.5, 1.2))
+    y_two_blocks <- list(
+      gaussian_heteroscedastic = latent + qnorm(u1) * exp(0.5 * log_var),
+      hurdle_regression_gamma = ifelse(u1 < 0.3, 0, qgamma(u2, shape = 2, rate = 2 / exp(latent))),
+      zero_inflated_regression_poisson = ifelse(u1 < 0.3, 0, qpois(u2, lambda = exp(latent))))
+
+    for (lik in names(y_two_blocks)) {
+      y <- y_two_blocks[[lik]]
+      params <- list(trace = FALSE, maxit = 200)
+      capture.output(fit_weights <- fitGPModel(group_data = group, y = y, X = X, likelihood = lik,
+                                               weights = weights, params = params), file = "NUL")
+      capture.output(fit_replicated <- fitGPModel(group_data = group[idx_rep], y = y[idx_rep],
+                                                  X = X[idx_rep, ], likelihood = lik, params = params), file = "NUL")
+      # the weighted and the replicated objective are the same function, so their optima must agree
+      expect_equal(fit_weights$get_current_neg_log_likelihood(),
+                   fit_replicated$get_current_neg_log_likelihood(),
+                   tolerance = 1e-5, info = lik)
+      expect_equal(as.vector(fit_weights$get_coef()), as.vector(fit_replicated$get_coef()),
+                   tolerance = 5e-3, info = lik)
+      expect_equal(as.vector(fit_weights$get_cov_pars()), as.vector(fit_replicated$get_cov_pars()),
+                   tolerance = 5e-3, info = lik)
+    }
+  })
+
+  test_that("integer 'weights' equal replication for the predictive distribution", {
+    # Sample weights enter prediction only through the mode (nothing in 'likelihoods_predict.h' reads
+    # 'weights_'; the only "weights" there are the Gauss-Hermite quadrature weights), so the
+    # replication invariant applies to the predicted latent and response mean and variance as well.
+    # Predictions are made at given (not estimated) parameters, so this is independent of the optimizer
+    group_pred <- c(1L, 5L, 17L, 40L, 999L)# four observed groups and one unobserved group
+
+    for (lik in c("bernoulli_logit", "poisson", "negative_binomial", "gamma", "lognormal", "t",
+                  "beta", "tweedie", "zero_inflated_poisson", "hurdle_gamma", "gpd")) {
+      y <- sim_y(lik)
+      capture.output(model_weights <- make_model(lik, group, weights), file = "NUL")
+      capture.output(model_replicated <- make_model(lik, group[idx_rep], NULL), file = "NUL")
+      aux_pars <- perturbed_aux_pars(model_weights)
+      if (!is.null(aux_pars)) {
+        model_weights$set_optim_params(params = list(init_aux_pars = aux_pars))
+        model_replicated$set_optim_params(params = list(init_aux_pars = aux_pars))
+      }
+      for (predict_response in c(FALSE, TRUE)) {
+        pred_weights <- model_weights$predict(y = y, group_data_pred = group_pred, cov_pars = 0.4,
+                                              predict_var = TRUE, predict_response = predict_response)
+        pred_replicated <- model_replicated$predict(y = y[idx_rep], group_data_pred = group_pred, cov_pars = 0.4,
+                                                    predict_var = TRUE, predict_response = predict_response)
+        expect_equal(as.vector(pred_weights$mu), as.vector(pred_replicated$mu),
+                     tolerance = TOLERANCE_WEIGHTS, info = paste(lik, "mean", predict_response))
+        expect_equal(as.vector(pred_weights$var), as.vector(pred_replicated$var),
+                     tolerance = TOLERANCE_WEIGHTS, info = paste(lik, "var", predict_response))
+      }
+    }
+  })
+
+  test_that("'weights' are handled consistently by a Vecchia approximated GP", {
+    # The replication invariant cannot be used with a Vecchia approximation, because replicating a row
+    # duplicates a coordinate and thereby changes the conditioning sets, i.e. the approximation itself.
+    # Note also that a Vecchia approximation does NOT converge to the exact GP as the number of
+    # neighbors grows here (a relative gap of about 3e-3 remains at m = n - 1), so the two cannot be
+    # compared at a tight tolerance either.
+    # What can be checked is consistency: none of the mode finding / gradient / prediction functions of
+    # any matrix approximation reads 'weights_' (they consume the already weighted 'first_deriv_ll_'
+    # and 'information_ll_'), so introducing sample weights must not change how well the Vecchia
+    # approximation tracks the exact GP. This is a sentinel against weight-specific code being added to
+    # that path; the correctness of the weighting itself is established by the exact cases above
+    n_gp <- 100L
+    coords <- cbind(sim_rand_unif(n_gp, init_c = 0.11), sim_rand_unif(n_gp, init_c = 0.37))
+    weights_gp <- 0.5 + 1.5 * sim_rand_unif(n_gp, init_c = 0.55)# non-integer weights are fine here
+    u_gp <- sim_rand_unif(n_gp, init_c = 0.213)
+
+    for (lik in c("bernoulli_logit", "poisson", "negative_binomial", "gamma", "t", "gpd")) {
+      y_gp <- switch(lik,
+        bernoulli_logit = as.numeric(u_gp < 0.5),
+        poisson = qpois(u_gp, lambda = 1.5),
+        negative_binomial = qnbinom(u_gp, size = 2, mu = 1.5),
+        gamma = qgamma(u_gp, shape = 2, rate = 2 / 1.5),
+        t = qt(u_gp, df = 4) * 0.3,
+        gpd = qexp(u_gp) * 1.5)
+      relative_gap <- rep(NA_real_, 2)
+      for (i in 1:2) {
+        w_i <- if (i == 1) NULL else weights_gp
+        make_gp <- function(approx) {
+          args <- list(gp_coords = coords, cov_function = "exponential", likelihood = lik, gp_approx = approx)
+          if (approx == "vecchia") args$num_neighbors <- 30L
+          if (!is.null(w_i)) args$weights <- w_i
+          do.call(GPModel, args)
+        }
+        capture.output(model_exact <- make_gp("none"), file = "NUL")
+        capture.output(model_vecchia <- make_gp("vecchia"), file = "NUL")
+        aux_pars <- perturbed_aux_pars(model_exact)
+        nll_exact <- model_exact$neg_log_likelihood(cov_pars = c(0.5, 0.2), y = y_gp, aux_pars = aux_pars)
+        nll_vecchia <- model_vecchia$neg_log_likelihood(cov_pars = c(0.5, 0.2), y = y_gp, aux_pars = aux_pars)
+        expect_true(is.finite(nll_exact) && is.finite(nll_vecchia), info = lik)
+        relative_gap[i] <- abs(nll_vecchia - nll_exact) / max(1, abs(nll_exact))
+      }
+      # the weighted gap must stay of the same order as the unweighted one (observed ratio is about 0.85)
+      expect_lt(relative_gap[2], 5 * relative_gap[1] + 1e-6)
+    }
+  })
+
   test_that("the 'test_neg_log_likelihood' metric works for 't' with both approximation types", {
     # 'CalcDiagInformationLogLikOneSample' (used only by the adaptive Gauss-Hermite quadrature behind
     # the 'test_neg_log_likelihood' metric) used to support 't' for 'fisher_laplace' only, so that the
