@@ -35,13 +35,8 @@ namespace GPBoost {
 		ChecksBeforeModeFinding();
 		fixed_effects_ = fixed_effects;
 		// Initialize variables
-		if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
-			InitializeModeAvec();
-		}
-		else {
-			mode_previous_value_ = mode_;
+		if (InitializeModeForModeFinding()) {
 			SigmaI_mode_previous_value_ = SigmaI_mode_;
-			na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			mode_ = (*Sigma) * SigmaI_mode_;//initialize mode with Sigma^(t+1) * a = Sigma^(t+1) * (Sigma^t)^(-1) * mode^t, where t+1 = current iteration. Otherwise the initial approx_marginal_ll is not correct since SigmaI_mode != Sigma^(-1)mode
 			// The alternative way of intializing SigmaI_mode_ = Sigma^(-1) mode_ requires an additional linear solve
 			//T_mat Sigma_stable = (*Sigma);
@@ -116,11 +111,7 @@ namespace GPBoost {
 				}
 				UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 				approx_marginal_ll_new = -0.5 * (SigmaI_mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr);// Calculate new objective function
-				if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
-					std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					lr_mode *= 0.5;
-				}
-				else {//approx_marginal_ll_new >= approx_marginal_ll
+				if (AcceptModeUpdate(approx_marginal_ll_new, approx_marginal_ll, grad_dot_direction, lr_mode)) {
 					break;
 				}
 			}// end loop over learnig rate halving procedure
@@ -154,8 +145,7 @@ namespace GPBoost {
 			mode_has_been_calculated_ = true;
 			na_or_inf_during_last_call_to_find_mode_ = false;
 		}
-		mode_is_zero_ = false;
-		num_it_mode_finding_ = it;
+		FinalizeModeFinding(it);
 		//Log::REInfo("FindModePostRandEffCalcMLLStable: finished after %d iterations ", it);//for debugging
 		//Log::REInfo("mode_[0:2] = %g, %g, %g, LogLikelihood = %g", mode_[0], mode_[1], mode_[2], LogLikelihood(y_data, y_data_int, location_par_ptr));//for debugging
 		//Log::REInfo("it = %d, first_deriv_ll_[0:2] = %g, %g, %g, information_ll_[0:2] = %g, %g, %g", it,
@@ -177,13 +167,7 @@ namespace GPBoost {
 		CHECK(!kink_cliping_);
 		fixed_effects_ = fixed_effects;
 		// Initialize variables
-		if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
-			InitializeModeAvec();
-		}
-		else {
-			mode_previous_value_ = mode_;
-			na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-		}
+		InitializeModeForModeFinding();
 		vec_t location_par;
 		double* location_par_ptr_dummy;//not used
 		UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
@@ -279,11 +263,7 @@ namespace GPBoost {
 				// Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 				UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr_dummy);
 				approx_marginal_ll_new = -0.5 * (mode_new.dot((*SigmaI_ptr) * mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
-				if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
-					std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					lr_mode *= 0.5;
-				}
-				else {//approx_marginal_ll_new >= approx_marginal_ll
+				if (AcceptModeUpdate(approx_marginal_ll_new, approx_marginal_ll, grad_dot_direction, lr_mode)) {
 					break;
 				}
 			}// end loop over learnig rate halving procedure
@@ -413,8 +393,7 @@ namespace GPBoost {
 			mode_has_been_calculated_ = true;
 			na_or_inf_during_last_call_to_find_mode_ = false;
 		}
-		mode_is_zero_ = false;
-		num_it_mode_finding_ = it;
+		FinalizeModeFinding(it);
 	}//end FindModePostRandEffCalcMLLGroupedRE
 
 	template <typename T_mat, typename T_chol>
@@ -426,13 +405,7 @@ namespace GPBoost {
 		ChecksBeforeModeFinding();
 		fixed_effects_ = fixed_effects;
 		// Initialize variables
-		if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
-			InitializeModeAvec();
-		}
-		else {
-			mode_previous_value_ = mode_;
-			na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-		}
+		InitializeModeForModeFinding();
 		vec_t location_par(dim_location_par_);//location parameter = mode of random effects + fixed effects (+ possibly additional fixed-effects-only blocks)
 		double* location_par_ptr_dummy;//not used
 		UpdateLocationParNewMode(mode_, fixed_effects, location_par, &location_par_ptr_dummy);
@@ -475,11 +448,7 @@ namespace GPBoost {
 				}
 				UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr_dummy);
 				approx_marginal_ll_new = -0.5 / sigma2 * (mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par.data());// Calculate new objective function
-				if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
-					std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					lr_mode *= 0.5;
-				}
-				else {//approx_marginal_ll_new >= approx_marginal_ll
+				if (AcceptModeUpdate(approx_marginal_ll_new, approx_marginal_ll, grad_dot_direction, lr_mode)) {
 					break;
 				}
 			}// end loop over learnig rate halving procedure
@@ -508,8 +477,7 @@ namespace GPBoost {
 			mode_has_been_calculated_ = true;
 			na_or_inf_during_last_call_to_find_mode_ = false;
 		}
-		mode_is_zero_ = false;
-		num_it_mode_finding_ = it;
+		FinalizeModeFinding(it);
 		//Log::REInfo("FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale: finished after %d iterations ", it);//for debugging
 		//Log::REInfo("mode_[0:2] = %g, %g, %g, LogLikelihood = %g", mode_[0], mode_[1], mode_[2], LogLikelihood(y_data, y_data_int, location_par.data()));//for debugging
 	}//end FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale
@@ -546,13 +514,7 @@ namespace GPBoost {
 		den_mat_t sigma_ip_stable = sigma_ip;
 		sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
 		// Initialize variables
-		if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
-			InitializeModeAvec();
-		}
-		else {
-			mode_previous_value_ = mode_;
-			na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-		}
+		InitializeModeForModeFinding();
 		vec_t location_par;//location parameter = mode of random effects + fixed effects
 		double* location_par_ptr;
 		vec_t rhs, B_mode, D_inv_B_mode, B_t_D_inv_B_mode, cross_cov_B_t_D_inv_B_mode,
@@ -740,11 +702,7 @@ namespace GPBoost {
 				cross_cov_B_t_D_inv_B_mode = Bt_D_inv_B_cross_cov.transpose() * mode_new;
 				wood_inv_cross_cov_B_t_D_inv_B_mode = chol_fact_sigma_woodbury.solve(cross_cov_B_t_D_inv_B_mode);
 				approx_marginal_ll_new = -0.5 * ((B_mode.dot(D_inv * B_mode)) - cross_cov_B_t_D_inv_B_mode.dot(wood_inv_cross_cov_B_t_D_inv_B_mode)) + LogLikelihood(y_data, y_data_int, location_par_ptr);
-				if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
-					std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					lr_mode *= 0.5;
-				}
-				else {//approx_marginal_ll_new >= approx_marginal_ll
+				if (AcceptModeUpdate(approx_marginal_ll_new, approx_marginal_ll, grad_dot_direction, lr_mode)) {
 					break;
 				}
 			}// end loop over learnig rate halving procedure
@@ -883,8 +841,7 @@ namespace GPBoost {
 				approx_marginal_ll -= ((den_mat_t)chol_fact_sigma_woodbury_woodbury_.matrixL()).diagonal().array().log().sum();
 			}
 		}
-		mode_is_zero_ = false;
-		num_it_mode_finding_ = it;
+		FinalizeModeFinding(it);
 		//Log::REInfo("FindModePostRandEffCalcMLLFSVA: finished after %d iterations, mode_[0:2] = %g, %g, %g ", it, mode_[0], mode_[1], mode_[2]);//for debugging
 	}//end FindModePostRandEffCalcMLLFSVA
 
@@ -907,13 +864,7 @@ namespace GPBoost {
 		ChecksBeforeModeFinding();
 		fixed_effects_ = fixed_effects;
 		// Initialize variables
-		if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
-			InitializeModeAvec();
-		}
-		else {
-			mode_previous_value_ = mode_;
-			na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
-		}
+		InitializeModeForModeFinding();
 		vec_t location_par;//location parameter = mode of random effects + fixed effects
 		double* location_par_ptr;
 		vec_t rhs, B_mode, mode_new, mode_update(dim_mode_);
@@ -1075,11 +1026,7 @@ namespace GPBoost {
 						approx_marginal_ll_new += -0.5 * ((B_mode.segment(dim_mode_per_set_re_ * igp, dim_mode_per_set_re_)).dot(D_inv[igp] * (B_mode.segment(dim_mode_per_set_re_ * igp, dim_mode_per_set_re_))));
 					}
 				}
-				if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
-					std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					lr_mode *= 0.5;
-				}
-				else {//approx_marginal_ll_new >= approx_marginal_ll
+				if (AcceptModeUpdate(approx_marginal_ll_new, approx_marginal_ll, grad_dot_direction, lr_mode)) {
 					break;
 				}
 			}// end loop over learnig rate halving procedure
@@ -1169,8 +1116,7 @@ namespace GPBoost {
 				}
 			}
 		}
-		mode_is_zero_ = false;
-		num_it_mode_finding_ = it;
+		FinalizeModeFinding(it);
 		//Log::REInfo("FindModePostRandEffCalcMLLVecchia: finished after %d iterations ", it);//for debugging
 		//Log::REInfo("mode_[0:1,(last-1):last] = %g, %g, %g, %g, LogLikelihood = %g", mode_[0], mode_[1], mode_[dim_mode_ - 2], mode_[dim_mode_-1], LogLikelihood(y_data, y_data_int, location_par_ptr));//for debugging
 		//Log::REInfo("it = %d, first_deriv_ll_[0:2] = %g, %g, %g, information_ll_[0:2] = %g, %g, %g", it,
@@ -1194,13 +1140,8 @@ namespace GPBoost {
 		CHECK((int)((*cross_cov).cols()) == num_ip);
 		CHECK((int)fitc_resid_diag.size() == dim_mode_);
 		// Initialize variables
-		if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
-			InitializeModeAvec();
-		}
-		else {
-			mode_previous_value_ = mode_;
+		if (InitializeModeForModeFinding()) {
 			SigmaI_mode_previous_value_ = SigmaI_mode_;
-			na_or_inf_during_second_last_call_to_find_mode_ = na_or_inf_during_last_call_to_find_mode_;
 			vec_t v_aux_mode = chol_fact_sigma_ip.solve((*cross_cov).transpose() * SigmaI_mode_);
 			mode_ = ((*cross_cov) * v_aux_mode) + (fitc_resid_diag.asDiagonal() * SigmaI_mode_);//initialize mode with Sigma^(t+1) * a = Sigma^(t+1) * (Sigma^t)^(-1) * mode^t, where t+1 = current iteration. Otherwise the initial approx_marginal_ll is not correct since SigmaI_mode != Sigma^(-1)mode
 			// Note: avoid the inversion of Sigma = (cross_cov * sigma_ip^-1 * cross_cov^T + fitc_resid_diag) with the Woodbury formula since fitc_resid_diag can be zero.
@@ -1300,11 +1241,7 @@ namespace GPBoost {
 				//CapChangeModeUpdateNewton(mode_new);//not done since SigmaI_mode would also have to be modified accordingly. TODO: implement this?
 				UpdateLocationParNewMode(mode_new, fixed_effects, location_par, &location_par_ptr); // Update location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)
 				approx_marginal_ll_new = -0.5 * (SigmaI_mode_new.dot(mode_new)) + LogLikelihood(y_data, y_data_int, location_par_ptr);// Calculate new objective function
-				if (approx_marginal_ll_new < (approx_marginal_ll + c_armijo_ * lr_mode * grad_dot_direction) ||
-					std::isnan(approx_marginal_ll_new) || std::isinf(approx_marginal_ll_new)) {
-					lr_mode *= 0.5;
-				}
-				else {//approx_marginal_ll_new >= approx_marginal_ll
+				if (AcceptModeUpdate(approx_marginal_ll_new, approx_marginal_ll, grad_dot_direction, lr_mode)) {
 					break;
 				}
 			}// end loop over learnig rate halving procedure
@@ -1352,8 +1289,7 @@ namespace GPBoost {
 			approx_marginal_ll += 0.5 * D_plus_WI_inv_diag.array().log().sum();
 			approx_marginal_ll -= 0.5 * information_ll_.array().log().sum();
 		}
-		mode_is_zero_ = false;
-		num_it_mode_finding_ = it;
+		FinalizeModeFinding(it);
 	}//end FindModePostRandEffCalcMLLFITC
 
 	template <typename T_mat, typename T_chol>
