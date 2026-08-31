@@ -1582,7 +1582,7 @@ namespace GPBoost {
 			}
 			else if (!IsGaussianLikelihood() && likelihood_type_ != "t" && !IsGaussianHeteroscedastic() &&
 				likelihood_type_ != "asymmetric_laplace") {
-				Log::REFatal("CheckY: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 			}
 		}//end CheckY
 
@@ -2038,7 +2038,7 @@ namespace GPBoost {
 				}
 			}//end "asymmetric_laplace"
 			else {
-				Log::REFatal("FindInitialIntercept: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 			}
 			return(init_intercept);
 		}//end FindInitialIntercept
@@ -2874,7 +2874,7 @@ namespace GPBoost {
 				likelihood_type_ != "binomial_probit" && likelihood_type_ != "binomial_logit" &&
 				likelihood_type_ != "poisson" && !IsGaussianHeteroscedastic() && !IsEGPDLikelihood() &&
 				likelihood_type_ != "quasi_bernoulli_probit" && likelihood_type_ != "quasi_bernoulli_logit") {
-				Log::REFatal("FindInitialAuxPars: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 			}
 			aux_pars_original_ = aux_pars_;
 			BackTransformAuxPars(aux_pars_.data(), aux_pars_original_.data());
@@ -3017,7 +3017,7 @@ namespace GPBoost {
 				C_sigma2 = 1e99;
 			}
 			else {
-				Log::REFatal("FindConstantsCapTooLargeLearningRateCoef: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 			}
 			if (C_mu < 1.) {
 				C_mu = 1.;
@@ -10176,7 +10176,7 @@ namespace GPBoost {
 				}
 			}
 			else {
-				Log::REFatal("PredictResponse: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 			}
 		}//end PredictResponse
 
@@ -10632,12 +10632,78 @@ namespace GPBoost {
 				}
 			}//end "zero_one_censored_shifted_gamma"
 			else {
-				Log::REFatal("TransformToResponseScale: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 				return 0.;
 			}
 		}//end TransformToResponseScale
 
 	private:
+
+		/*!
+		* \brief Apply a per-sample kernel to all data points and write the results, multiplied by the sample weights, to 'out'
+		*			This factors out the OpenMP loop that is used by the per-sample log-likelihood, gradient, and information calculations
+		* \param[out] out Vector of length at least num_data_
+		* \param kernel Callable that takes a sample index and returns the unweighted value for this sample
+		*/
+		template <class Kernel>
+		void ForEachSampleWeighted(vec_t& out, Kernel kernel) const {
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				const double w = has_weights_ ? weights_[i] : 1.0;
+				out[i] = w * kernel(i);
+			}
+		}//end ForEachSampleWeighted
+
+		/*!
+		* \brief Sum a per-sample kernel over all data points, weighted by the sample weights
+		* \param kernel Callable that takes a sample index and returns the unweighted value for this sample
+		* \return sum_i w_i * kernel(i)
+		*/
+		template <class Kernel>
+		double SumOverSamplesWeighted(Kernel kernel) const {
+			double sum_kernel = 0.;
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:sum_kernel)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				const double w = has_weights_ ? weights_[i] : 1.0;
+				sum_kernel += w * kernel(i);
+			}
+			return sum_kernel;
+		}//end SumOverSamplesWeighted
+
+		/*!
+		* \brief Aggregate a per-sample quantity to the scale of the modes (= Z^T v), separately for every set of random effects
+		* \param v_data_scale Vector of length num_data_ * num_sets_re_ on the scale of the data
+		* \param[out] v_mode_scale Vector of length dim_mode_per_set_re_ * num_sets_re_ on the scale of the modes
+		*/
+		void ReduceToModeScale(const vec_t& v_data_scale, vec_t& v_mode_scale) const {
+			for (int igp = 0; igp < num_sets_re_; ++igp) {
+				CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_,
+					v_data_scale.data() + num_data_ * igp, v_mode_scale.data() + dim_mode_per_set_re_ * igp, true);
+			}
+		}//end ReduceToModeScale
+
+		/*! \brief Report that the calling function does not support the current likelihood */
+		void NotSupportedForLikelihood(const char* caller) const {
+			Log::REFatal("%s: Likelihood of type '%s' is not supported ", caller, likelihood_type_.c_str());
+		}
+
+		/*! \brief Report that the calling function does not support the current likelihood in combination with 'approximation_type' */
+		void NotSupportedForLikelihoodAndApproximation(const char* caller, const string_t& approximation_type) const {
+			Log::REFatal("%s: Likelihood of type '%s' is not supported for approximation_type = '%s' ", caller, likelihood_type_.c_str(), approximation_type.c_str());
+		}
+
+		/*! \brief True for the likelihoods for which the single-sample functions (used only by 'TestNegLogLikelihoodAdaptiveGHQuadrature()') are not implemented */
+		bool NotImplementedForOneSample() const {
+			return likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
+				likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit";
+		}
+
+		/*! \brief Report that the calling single-sample function is not implemented for the current likelihood */
+		void FatalOneSampleNotImplemented(const char* caller) const {
+			Log::REFatal("%s: not implemented for likelihood = '%s'. If this error happened during the GPBoost algorithm, use another 'metric' instead of the (default) 'test_neg_log_likelihood' metric ", caller, likelihood_type_.c_str());
+		}
+
+
 
 		/*!
 		* \brief Calculate the part of the logarithmic normalizing constant of the likelihood that does not depend neither on aux_pars_ nor on location_par
@@ -10766,7 +10832,7 @@ namespace GPBoost {
 					likelihood_type_ != "poisson" && likelihood_type_ != "tweedie" && likelihood_type_ != "tweedie_fixed_p" && likelihood_type_ != "t" && likelihood_type_ != "beta" &&
 					likelihood_type_ != "zero_one_censored_transformed_beta" && likelihood_type_ != "zero_one_censored_shifted_gamma" &&
 					likelihood_type_ != "asymmetric_laplace" && likelihood_type_ != "quasi_bernoulli_probit" && likelihood_type_ != "quasi_bernoulli_logit") {
-					Log::REFatal("CalculateAuxQuantLogNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
+					NotSupportedForLikelihood(__func__);
 				}
 				aux_normalizing_constant_has_been_calculated_ = true;
 			}
@@ -10822,12 +10888,7 @@ namespace GPBoost {
 					log_normalizing_constant_ = w_zero * log_p0 + w_pos * log_q;
 				}
 				else if (likelihood_type_ == "poisson") {
-					double aux_const = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:aux_const)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						aux_const += w * LogNormalizingConstantPoissonOneSample(y_data_int[i]);
-					}
+					const double aux_const = SumOverSamplesWeighted([&](data_size_t i) { return LogNormalizingConstantPoissonOneSample(y_data_int[i]); });
 					log_normalizing_constant_ = aux_const;
 				}
 				else if (likelihood_type_ == "gamma") {
@@ -11064,7 +11125,7 @@ namespace GPBoost {
 					log_normalizing_constant_ = num_data_ * (std::log(quantile_) + std::log(1. - quantile_) - std::log(aux_pars_[0]));
 				}
 				else {
-					Log::REFatal("CalculateLogNormalizingConstant: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
+					NotSupportedForLikelihood(__func__);
 				}
 				normalizing_constant_has_been_calculated_ = true;
 			}
@@ -11106,12 +11167,7 @@ namespace GPBoost {
 
 		inline double LogNormalizingConstantNegBin(const int* y_data_int) {
 			CHECK(aux_normalizing_constant_has_been_calculated_);
-			double aux_const = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:aux_const)
-			for (data_size_t i = 0; i < num_data_; ++i) {
-				const double w = has_weights_ ? weights_[i] : 1.0;
-				aux_const += w * std::lgamma(y_data_int[i] + aux_pars_[0]);
-			}
+			const double aux_const = SumOverSamplesWeighted([&](data_size_t i) { return std::lgamma(y_data_int[i] + aux_pars_[0]); });
 			double norm_const = aux_const + aux_log_normalizing_constant_ +
 				num_data_ * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]));
 			return(norm_const);
@@ -11126,12 +11182,7 @@ namespace GPBoost {
 		inline double LogNormalizingConstantNegBin1(const int* y_data_int) {
 			CHECK(aux_normalizing_constant_has_been_calculated_);
 			const double log_1_min_p = std::log(aux_pars_[0] / (1.0 + aux_pars_[0]));// log(1‑p)
-			double aux_const = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:aux_const)
-			for (data_size_t i = 0; i < num_data_; ++i) {
-				const double w = has_weights_ ? weights_[i] : 1.0;
-				aux_const += w * y_data_int[i] * log_1_min_p;
-			}
+			const double aux_const = SumOverSamplesWeighted([&](data_size_t i) { return y_data_int[i] * log_1_min_p; });
 			double norm_const = aux_const + aux_log_normalizing_constant_;
 			return(norm_const);
 		}
@@ -11168,6 +11219,49 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Dispatch on 'likelihood_type_' and call 'visit' with a kernel that evaluates the log-likelihood of one sample
+		*			(without the sample weight). This is the single place where the mapping from a likelihood to its log-likelihood
+		*			formula is defined; it is shared by the calculation over all samples ('LogLikelihood') and by the single-sample
+		*			version ('LogLikelihoodOneSample'). Only likelihoods with a single location parameter block whose log-likelihood
+		*			is a plain function of (y, eta) are covered here; the remaining ones are handled by the callers
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		* \param incl_norm_const If true, the normalizing constant is included in the log-likelihood of every sample
+		* \param visit Callable that is invoked with the selected kernel (a callable that takes a sample index)
+		* \return True if the current likelihood is covered here, false otherwise
+		*/
+		template <class Visitor>
+		bool VisitLogLikKernel(const double* y_data,
+			const int* y_data_int,
+			const double* location_par,
+			bool incl_norm_const,
+			Visitor visit) const {
+			if (likelihood_type_ == "bernoulli_probit") visit([&](data_size_t i) { return LogLikBernoulliProbit(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "bernoulli_logit") visit([&](data_size_t i) { return LogLikBernoulliLogit<int>(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "poisson") visit([&](data_size_t i) { return LogLikPoisson(y_data_int[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "gamma") visit([&](data_size_t i) { return LogLikGamma(y_data[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") visit([&](data_size_t i) { return LogLikTweedie(y_data[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "negative_binomial") visit([&](data_size_t i) { return LogLikNegBin(y_data_int[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "negative_binomial_1") visit([&](data_size_t i) { return LogLikNegBin1(y_data_int[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "zero_inflated_poisson") visit([&](data_size_t i) { return LogLikZeroInflatedPoisson(y_data_int[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") visit([&](data_size_t i) { return LogLikZeroInflatedNegBinFamily(y_data_int[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "beta") visit([&](data_size_t i) { return LogLikBeta(y_data[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "t") visit([&](data_size_t i) { return LogLikT(y_data[i], location_par[i], incl_norm_const); });
+			else if (IsGaussianLikelihood()) visit([&](data_size_t i) { return LogLikGaussian(y_data[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "lognormal") visit([&](data_size_t i) { return LogLikLogNormal(y_data[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "hurdle_gamma") visit([&](data_size_t i) { return LogLikGammaZeroInflated(y_data[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "hurdle_lognormal") visit([&](data_size_t i) { return LogLikLogNormalZeroInflated(y_data[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "zero_censored_power_transformed_normal") visit([&](data_size_t i) { return LogLikZeroCensPowNorm(y_data[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "zoctn") visit([&](data_size_t i) { return LogLikZeroOneCensTransfNorm(y_data[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "zero_one_censored_transformed_beta") visit([&](data_size_t i) { return LogLikZeroOneCensTransfBeta(y_data[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") visit([&](data_size_t i) { return LogLikZeroOneCensGamma(y_data[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "asymmetric_laplace") visit([&](data_size_t i) { return LogLikAsymLaplace(y_data[i], location_par[i], incl_norm_const); });
+			else return false;
+			return true;
+		}//end VisitLogLikKernel
+
+		/*!
 		* \brief Evaluate the log-likelihood conditional on the latent variable (=location_par)
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
@@ -11178,56 +11272,7 @@ namespace GPBoost {
 			const double* location_par) {
 			CalculateLogNormalizingConstant(y_data, y_data_int);
 			double ll = 0.;
-			if (likelihood_type_ == "bernoulli_probit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikBernoulliProbit(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "bernoulli_logit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikBernoulliLogit<int>(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikBinomialProbit(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikBernoulliLogit<double>(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikPoisson(y_data_int[i], location_par[i], false);
-				}
-			}
-			else if (likelihood_type_ == "gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikGamma(y_data[i], location_par[i], false);
-				}
-			}
-			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.;
-					ll += w * LogLikTweedie(y_data[i], location_par[i], false);
-				}
-			}
-			else if (IsEGPDLikelihood() || IsHurdleEGPD()) {
+			if (IsEGPDLikelihood() || IsHurdleEGPD()) {
 				const bool hurdle = IsHurdleEGPD();
 #pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
 				for (data_size_t i = 0; i < num_data_; ++i) {
@@ -11238,82 +11283,11 @@ namespace GPBoost {
 					ll += result.status == EGPDEvalStatus::kValid ? w * result.log_likelihood : -std::numeric_limits<double>::infinity();
 				}
 			}
-			else if (likelihood_type_ == "negative_binomial") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikNegBin(y_data_int[i], location_par[i], false);
-				}
+			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
+				ll += SumOverSamplesWeighted([&](data_size_t i) { return LogLikBinomialProbit(y_data[i], location_par[i]); });
 			}
-			else if (likelihood_type_ == "negative_binomial_1") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikNegBin1(y_data_int[i], location_par[i], false);
-				}
-			}
-			else if (likelihood_type_ == "zero_inflated_poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikZeroInflatedPoisson(y_data_int[i], location_par[i], false);
-				}
-			}
-			else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikZeroInflatedNegBinFamily(y_data_int[i], location_par[i], false);
-				}
-			}
-			else if (likelihood_type_ == "beta") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikBeta(y_data[i], location_par[i], false);
-				}
-			}
-			else if (likelihood_type_ == "t") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikT(y_data[i], location_par[i], false);
-				}
-			}
-			else if (IsGaussianLikelihood()) {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikGaussian(y_data[i], location_par[i], false);
-				}
-			}
-			else if (IsGaussianHeteroscedastic()) {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_], false);
-				}
-			}
-			else if (IsHurdleRegression()) {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikHurdleRegression(y_data[i], location_par[i], location_par[i + num_data_]);
-				}
-			}
-			else if (IsZeroInflatedCountRegression()) {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t iz = 0; iz < num_data_; ++iz) {
-					const double wz = has_weights_ ? weights_[iz] : 1.0;
-					ll += wz * LogLikZICountRegression(y_data_int[iz], location_par[iz], location_par[iz + num_data_]);
-				}
-			}
-			else if (likelihood_type_ == "lognormal") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikLogNormal(y_data[i], location_par[i], false);
-				}
+			else if (likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") {
+				ll += SumOverSamplesWeighted([&](data_size_t i) { return LogLikBernoulliLogit<double>(y_data[i], location_par[i]); });
 			}
 			else if (likelihood_type_ == "beta_binomial") {
 				CHECK(has_weights_);
@@ -11322,64 +11296,21 @@ namespace GPBoost {
 					ll += LogLikBetaBinomial(y_data[i], location_par[i], weights_[i]);
 				}
 			}
-			else if (likelihood_type_ == "hurdle_gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikGammaZeroInflated(y_data[i], location_par[i], false);
-				}
+			else if (IsGaussianHeteroscedastic()) {
+				ll += SumOverSamplesWeighted([&](data_size_t i) { return LogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_], false); });
 			}
-			else if (likelihood_type_ == "hurdle_lognormal") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikLogNormalZeroInflated(y_data[i], location_par[i], false);
-				}
+			else if (IsHurdleRegression()) {
+				ll += SumOverSamplesWeighted([&](data_size_t i) { return LogLikHurdleRegression(y_data[i], location_par[i], location_par[i + num_data_]); });
 			}
-			else if (likelihood_type_ == "zero_censored_power_transformed_normal") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikZeroCensPowNorm(y_data[i], location_par[i], false);
-				}
+			else if (IsZeroInflatedCountRegression()) {
+				ll += SumOverSamplesWeighted([&](data_size_t iz) { return LogLikZICountRegression(y_data_int[iz], location_par[iz], location_par[iz + num_data_]); });
 			}
 			else if (IsZeroCensPowNormHetero()) {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_], false);
-				}
+				ll += SumOverSamplesWeighted([&](data_size_t i) { return LogLikZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_], false); });
 			}
-			else if (likelihood_type_ == "zoctn") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikZeroOneCensTransfNorm(y_data[i], location_par[i], false);
-				}
-			}
-			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikZeroOneCensTransfBeta(y_data[i], location_par[i], false);
-				}
-			}
-			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikZeroOneCensGamma(y_data[i], location_par[i], false);
-				}
-			}
-			else if (likelihood_type_ == "asymmetric_laplace") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					ll += w * LogLikAsymLaplace(y_data[i], location_par[i], false);
-				}
-			}
-			else {
-				Log::REFatal("LogLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+			else if (!VisitLogLikKernel(y_data, y_data_int, location_par, false,
+				[&](auto kernel) { ll += SumOverSamplesWeighted(kernel); })) {
+				NotSupportedForLikelihood(__func__);
 			}
 			//Log::REInfo("ll = %g, log_normalizing_constant_ = %g", ll, log_normalizing_constant_);//for debugging
 			ll += log_normalizing_constant_;
@@ -11396,86 +11327,27 @@ namespace GPBoost {
 		inline double LogLikelihoodOneSample(double y_data,
 			int y_data_int,
 			double location_par) const {
-			if (likelihood_type_ == "bernoulli_probit") {
-				return(LogLikBernoulliProbit(y_data_int, location_par));
+			if (NotImplementedForOneSample()) {
+				FatalOneSampleNotImplemented(__func__);
+				return(0.);
 			}
-			else if (likelihood_type_ == "bernoulli_logit") {
-				return(LogLikBernoulliLogit<int>(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "poisson") {
-				return(LogLikPoisson(y_data_int, location_par, true));
-			}
-			else if (likelihood_type_ == "gamma") {
-				return(LogLikGamma(y_data, location_par, true));
-			}
-			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
-				return LogLikTweedie(y_data, location_par, true);
-			}
-			else if (IsEGPDLikelihood()) {
+			if (IsEGPDLikelihood()) {
 				const auto result = EvaluateEGPD(y_data, location_par);
 				return result.status == EGPDEvalStatus::kValid ? result.log_likelihood : -std::numeric_limits<double>::infinity();
 			}
-			else if (IsHurdleEGPD()) {
+			if (IsHurdleEGPD()) {
 				if (y_data <= 0.) return std::log(aux_pars_original_[num_aux_pars_ - 1]);// log(p0)
 				const auto result = EvaluateEGPD(y_data, location_par);
 				if (result.status != EGPDEvalStatus::kValid) return -std::numeric_limits<double>::infinity();
 				return result.log_likelihood + std::log1p(-aux_pars_original_[num_aux_pars_ - 1]);// + log(q)
 			}
-			else if (likelihood_type_ == "negative_binomial") {
-				return(LogLikNegBin(y_data_int, location_par, true));
+			double ll = -1e99;
+			if (!VisitLogLikKernel(&y_data, &y_data_int, &location_par, true,
+				[&](auto kernel) { ll = kernel(0); })) {
+				NotSupportedForLikelihood(__func__);
 			}
-			else if (likelihood_type_ == "negative_binomial_1") {
-				return(LogLikNegBin1(y_data_int, location_par, true));
-			}
-			else if (likelihood_type_ == "zero_inflated_poisson") {
-				return(LogLikZeroInflatedPoisson(y_data_int, location_par, true));
-			}
-			else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") {
-				return(LogLikZeroInflatedNegBinFamily(y_data_int, location_par, true));
-			}
-			else if (likelihood_type_ == "beta") {
-				return LogLikBeta(y_data, location_par, true);
-			}
-			else if (likelihood_type_ == "t") {
-				return(LogLikT(y_data, location_par, true));
-			}
-			else if (IsGaussianLikelihood()) {
-				return(LogLikGaussian(y_data, location_par, true));
-			}
-			else if (likelihood_type_ == "lognormal") {
-				return(LogLikLogNormal(y_data, location_par, true));
-			}
-			else if (likelihood_type_ == "hurdle_gamma") {
-				return(LogLikGammaZeroInflated(y_data, location_par, true));
-			}
-			else if (likelihood_type_ == "hurdle_lognormal") {
-				return(LogLikLogNormalZeroInflated(y_data, location_par, true));
-			}
-			else if (likelihood_type_ == "zero_censored_power_transformed_normal") {
-				return LogLikZeroCensPowNorm(y_data, location_par, true);
-			}
-			else if (likelihood_type_ == "zoctn") {
-				return LogLikZeroOneCensTransfNorm(y_data, location_par, true);
-			}
-			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
-				return LogLikZeroOneCensTransfBeta(y_data, location_par, true);
-			}
-			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") {
-				return LogLikZeroOneCensGamma(y_data, location_par, true);
-			}
-			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
-				likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit") {
-				Log::REFatal("LogLikelihoodOneSample: not implemented for likelihood = '%s'. If this error happened during the GPBoost algorithm, use another 'metric' instead of the (default) 'test_neg_log_likelihood' metric ", likelihood_type_.c_str());
-				return(0.);
-			}
-			else if (likelihood_type_ == "asymmetric_laplace") {
-				return(LogLikAsymLaplace(y_data, location_par, true));
-			}
-			else {
-				Log::REFatal("LogLikelihoodOneSample: Likelihood of type '%s' is not supported ", likelihood_type_.c_str());
-				return(-1e99);
-			}
-		}//end LogLikelihood
+			return(ll);
+		}//end LogLikelihoodOneSample
 
 		inline double LogLikBernoulliProbit(int y, double location_par) const {
 			if (y == 0) {
@@ -11644,24 +11516,24 @@ namespace GPBoost {
 		// The expected information E[(d log L / d eta)^2] does not depend on the realized y, so (unlike the observed Hessian,
 		// which is negative at some zero counts) it is guaranteed nonnegative. This makes W >= 0, which stabilizes mode finding
 		// and enables the iterative matrix-inversion methods (Vecchia, crossed grouped REs).
-		/*! rief Base kind of a zero-inflated count likelihood: 0 = Poisson, 1 = NB1, 2 = NB2. */
+		/*! \brief Base kind of a zero-inflated count likelihood: 0 = Poisson, 1 = NB1, 2 = NB2. */
 		inline int ZICountBaseKind() const {
 			const string_t b = IsZeroInflatedCountRegression() ? ZICountRegressionBaseType() : likelihood_type_;
 			if (b == "zero_inflated_negative_binomial") return 2;
 			if (b == "zero_inflated_negative_binomial_1") return 1;
 			return 0;
 		}
-		/*! rief Constant structural-zero probability pi = p0 (untransformed) for a constant zero-inflated count. */
+		/*! \brief Constant structural-zero probability pi = p0 (untransformed) for a constant zero-inflated count. */
 		inline double ZICountConstantP0() const {
 			return aux_pars_original_[(likelihood_type_ == "zero_inflated_poisson") ? 0 : 1];
 		}
-		/*! rief Fill the base zero-mass quantities for a given base kind (0 = Poisson, 1 = NB1, 2 = NB2). */
+		/*! \brief Fill the base zero-mass quantities for a given base kind (0 = Poisson, 1 = NB1, 2 = NB2). */
 		inline void FillZeroMassZICountKind(double mu, ZICountZeroMass& z, int kind) const {
 			if (kind == 2) FillZeroMassNegBin(mu, aux_pars_[0], z);
 			else if (kind == 1) FillZeroMassNegBin1(mu, aux_pars_[0], z);
 			else { z.b0 = -mu; z.s0 = -mu; z.t0 = -mu; z.u0 = -mu; z.g0 = 0.; z.h0 = 0.; z.k0 = 0.; }// Poisson
 		}
-		/*! rief Base-count Fisher information wrt eta (mu = exp(eta)). Exact for Poisson (mu) and NB2 (mu*kappa/(kappa+mu)).
+		/*! \brief Base-count Fisher information wrt eta (mu = exp(eta)). Exact for Poisson (mu) and NB2 (mu*kappa/(kappa+mu)).
 		* NB1 has NO closed-form exact Fisher information wrt eta (it is r^2*Var(digamma(Y+r)) with r = mu/phi, an infinite sum
 		* over the NB1 pmf), so the GLM/quasi expected information mu^2/Var(Y) = mu/(1+phi) is used instead -- a QUASI-Fisher
 		* information. kind: 0 = Poisson, 1 = NB1, 2 = NB2. */
@@ -11670,7 +11542,7 @@ namespace GPBoost {
 			if (kind == 1) return mu / (1. + aux_pars_[0]);// NB1, quasi-Fisher (phi = aux_pars_[0])
 			return mu;// Poisson, exact
 		}
-		/*! rief Fisher (expected) information of a zero-inflated count wrt eta:
+		/*! \brief Fisher (expected) information of a zero-inflated count wrt eta:
 		*   E[(d log L / d eta)^2] = D * v^2 * s0^2 + (1 - pi) * (I_base - f0 * s0^2)  >= 0,  D = pi + (1-pi) f0, v = (1-pi) f0 / D.
 		* Exact for Poisson/NB2; quasi (via the NB1 base) for NB1. */
 		inline double ZICountFisherInfoEta(double mu, double pi, const ZICountZeroMass& z, int kind) const {
@@ -11681,7 +11553,7 @@ namespace GPBoost {
 			const double fisher = D * v * v * z.s0 * z.s0 + q * (ZICountBaseFisherInfoEta(mu, kind) - f0 * z.s0 * z.s0);
 			return fisher > 0. ? fisher : 0.;// provably >= 0 for Poisson/NB2; guard tiny negatives from the NB1 quasi-Fisher
 		}
-		/*! rief Fisher information wrt eta with the base aux parameter (kappa/phi) and pi given explicitly, for numerical
+		/*! \brief Fisher information wrt eta with the base aux parameter (kappa/phi) and pi given explicitly, for numerical
 		* derivatives wrt the auxiliary parameters (dFisher/d log(shape) and dFisher/d rho). */
 		inline double ZICountFisherInfoEtaExplicit(double mu, double pi, int kind, double base_aux) const {
 			ZICountZeroMass z;
@@ -11927,7 +11799,7 @@ namespace GPBoost {
 			o.lEtaZeta = -v * w * z.s0;
 			o.dJetadZeta = v * w * (z.t0 + (w - v) * z.s0 * z.s0);
 		}
-		/*! rief Derivative of the eta-block information W wrt zeta at one zero-inflated count regression observation, for the
+		/*! \brief Derivative of the eta-block information W wrt zeta at one zero-inflated count regression observation, for the
 		* zeta-block log-determinant gradient term: the observed dJ_eta/dzeta for the Laplace approximation, or d Fisher_eta / d zeta
 		* (numerical central difference; Fisher_eta depends on zeta through pi = sigmoid(zeta)) for the fisher_laplace approximation. */
 		inline double RegressionZeroModel_dInfodZeta(double loc_eta, double loc_zeta, const ZICountRegQuant& o) const {
@@ -12308,10 +12180,7 @@ namespace GPBoost {
 			const double* location_par) {
 			if (use_random_effects_indices_of_data_) {
 				CalcFirstDerivLogLik_PerSample(y_data, y_data_int, location_par, first_deriv_ll_data_scale_);
-				for (int igp = 0; igp < num_sets_re_; ++igp) {
-					CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_,
-						first_deriv_ll_data_scale_.data() + num_data_ * igp, first_deriv_ll_.data() + dim_mode_per_set_re_ * igp, true);
-				}
+				ReduceToModeScale(first_deriv_ll_data_scale_, first_deriv_ll_);
 			}
 			else {//!use_random_effects_indices_of_data_
 				CalcFirstDerivLogLik_PerSample(y_data, y_data_int, location_par, first_deriv_ll_);
@@ -12319,66 +12188,61 @@ namespace GPBoost {
 		}//end CalcFirstDerivLogLik
 
 		/*!
-		* \brief Calculate the first derivative of the log-likelihood with respect to the location parameter per sample
+		* \brief Dispatch on 'likelihood_type_' and call 'visit' with a kernel that evaluates the first derivative of the
+		*			log-likelihood with respect to the location parameter for one sample (without the sample weight).
+		*			This is the single place where the mapping from a likelihood to its first-derivative formula is defined;
+		*			it is shared by the calculation over all samples ('CalcFirstDerivLogLik_PerSample') and by the single-sample
+		*			version ('CalcFirstDerivLogLikOneSample'). Only likelihoods with a single location parameter block whose
+		*			derivative is a plain function of (y, eta) are covered here; the remaining ones are handled by the callers
 		* \param y_data Response variable data if response variable is continuous
 		* \param y_data_int Response variable data if response variable is integer-valued
 		* \param location_par Location parameter (random plus fixed effects)
-		* \param[out] first_deriv_ll First derivative
+		* \param visit Callable that is invoked with the selected kernel (a callable that takes a sample index)
+		* \return True if the current likelihood is covered here, false otherwise
+		*/
+		template <class Visitor>
+		bool VisitFirstDerivLogLikKernel(const double* y_data,
+			const int* y_data_int,
+			const double* location_par,
+			Visitor visit) const {
+			if (likelihood_type_ == "bernoulli_probit") visit([&](data_size_t i) { return FirstDerivLogLikBernoulliProbit(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "bernoulli_logit") visit([&](data_size_t i) { return FirstDerivLogLikBernoulliLogit<int>(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") visit([&](data_size_t i) { return FirstDerivLogLikBinomialProbit(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") visit([&](data_size_t i) { return FirstDerivLogLikBernoulliLogit<double>(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "poisson") visit([&](data_size_t i) { return FirstDerivLogLikPoisson(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "gamma") visit([&](data_size_t i) { return FirstDerivLogLikGamma(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") visit([&](data_size_t i) { return FirstDerivLogLikTweedie(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "negative_binomial") visit([&](data_size_t i) { return FirstDerivLogLikNegBin(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "negative_binomial_1") visit([&](data_size_t i) { return FirstDerivLogLikNegBin1(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "zero_inflated_poisson") visit([&](data_size_t i) { return FirstDerivLogLikZeroInflatedPoisson(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") visit([&](data_size_t i) { return FirstDerivLogLikZeroInflatedNegBinFamily(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "beta") visit([&](data_size_t i) { return FirstDerivLogLikBeta(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "t") visit([&](data_size_t i) { return FirstDerivLogLikT(y_data[i], location_par[i]); });
+			else if (IsGaussianLikelihood()) visit([&](data_size_t i) { return FirstDerivLogLikGaussian(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "lognormal") visit([&](data_size_t i) { return FirstDerivLogLikLogNormal(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "hurdle_gamma") visit([&](data_size_t i) { return FirstDerivLogLikGammaZeroInflated(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "hurdle_lognormal") visit([&](data_size_t i) { return FirstDerivLogLikLogNormalZeroInflated(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "zero_censored_power_transformed_normal") visit([&](data_size_t i) { return FirstDerivLogLikZeroCensPowNorm(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "zoctn") visit([&](data_size_t i) { return FirstDerivLogLikZeroOneCensTransfNorm(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "zero_one_censored_transformed_beta") visit([&](data_size_t i) { return FirstDerivLogLikZeroOneCensTransfBeta(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") visit([&](data_size_t i) { return FirstDerivLogLikZeroOneCensGamma(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "asymmetric_laplace") visit([&](data_size_t i) { return FirstDerivLogLikAsymLaplace(y_data[i], location_par[i]); });
+			else return false;
+			return true;
+		}//end VisitFirstDerivLogLikKernel
+
+		/*!
+		* \brief Calculate the first derivative of the log-likelihood with respect to the location parameter for every sample
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		* \param[out] first_deriv_ll First derivative of the log-likelihood with respect to the location parameter
 		*/
 		void CalcFirstDerivLogLik_PerSample(const double* y_data,
 			const int* y_data_int,
 			const double* location_par,
 			vec_t& first_deriv_ll) {
-			if (likelihood_type_ == "bernoulli_probit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikBernoulliProbit(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "bernoulli_logit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikBernoulliLogit<int>(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikBinomialProbit(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikBernoulliLogit<double>(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikPoisson(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikGamma(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.;
-					first_deriv_ll[i] = w * FirstDerivLogLikTweedie(y_data[i], location_par[i]);
-				}
-			}
-			else if (IsEGPDLikelihood() || IsHurdleEGPD()) {
+			if (IsEGPDLikelihood() || IsHurdleEGPD()) {
 				const bool hurdle = IsHurdleEGPD();
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 				for (data_size_t i = 0; i < num_data_; ++i) {
@@ -12388,55 +12252,6 @@ namespace GPBoost {
 						const auto result = EvaluateEGPD(y_data[i], location_par[i]);
 						first_deriv_ll[i] = result.status == EGPDEvalStatus::kValid ? w * result.d_eta : std::numeric_limits<double>::quiet_NaN();
 					}
-				}
-			}
-			else if (likelihood_type_ == "negative_binomial") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikNegBin(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "negative_binomial_1") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikNegBin1(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "zero_inflated_poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikZeroInflatedPoisson(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikZeroInflatedNegBinFamily(y_data_int[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "beta") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikBeta(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "t") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikT(y_data[i], location_par[i]);
-				}
-			}
-			else if (IsGaussianLikelihood()) {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikGaussian(y_data[i], location_par[i]);
 				}
 			}
 			else if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
@@ -12452,19 +12267,15 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "gaussian_heteroscedastic") {
 				// Only the mean is a mode / random effect here; the log-error variance (location_par[i + num_data_]) is a fixed effect
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikGaussianHeteroscedasticMean(y_data[i], location_par[i], location_par[i + num_data_]);
-				}
+				ForEachSampleWeighted(first_deriv_ll, [&](data_size_t i) { return FirstDerivLogLikGaussianHeteroscedasticMean(y_data[i], location_par[i], location_par[i + num_data_]); });
+			}
+			else if (IsZeroCensPowNormHetero()) {
+				// Only the mean / eta is a mode / random effect here; log(sigma) (location_par[i + num_data_]) is a fixed effect
+				ForEachSampleWeighted(first_deriv_ll, [&](data_size_t i) { return FirstDerivLogLikZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_]); });
 			}
 			else if (IsHurdleRegression()) {
 				// Random effects live on the response predictor eta (block 0); this is the block-0 score used for mode finding.
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * HurdleRegression_dEta(y_data[i], location_par[i]);
-				}
+				ForEachSampleWeighted(first_deriv_ll, [&](data_size_t i) { return HurdleRegression_dEta(y_data[i], location_par[i]); });
 			}
 			else if (IsZeroInflatedCountRegression()) {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -12474,13 +12285,6 @@ namespace GPBoost {
 					first_deriv_ll[iz] = wz * o.dEta;
 				}
 			}
-			else if (likelihood_type_ == "lognormal") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikLogNormal(y_data[i], location_par[i]);
-				}
-			}
 			else if (likelihood_type_ == "beta_binomial") {
 				CHECK(has_weights_);
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -12488,73 +12292,13 @@ namespace GPBoost {
 					first_deriv_ll[i] = FirstDerivLogLikBetaBinomial(y_data[i], location_par[i], weights_[i]);
 				}
 			}
-			else if (likelihood_type_ == "hurdle_gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					first_deriv_ll[i] = FirstDerivLogLikGammaZeroInflated(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "hurdle_lognormal") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikLogNormalZeroInflated(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "zero_censored_power_transformed_normal") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikZeroCensPowNorm(y_data[i], location_par[i]);
-				}
-			}
-			else if (IsZeroCensPowNormHetero()) {
-				// Only the mean / eta is a mode / random effect here; log(sigma) (location_par[i + num_data_]) is a fixed effect
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_]);
-				}
-			}
-			else if (likelihood_type_ == "zoctn") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikZeroOneCensTransfNorm(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikZeroOneCensTransfBeta(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikZeroOneCensGamma(y_data[i], location_par[i]);
-				}
-			}
-			else if (likelihood_type_ == "asymmetric_laplace") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					const double w = has_weights_ ? weights_[i] : 1.0;
-					first_deriv_ll[i] = w * FirstDerivLogLikAsymLaplace(y_data[i], location_par[i]);
-				}
-				if (approximation_type_ == "triangular_kernel_curvature") {
-					sum_first_deriv_ = 0.;//can be left at 0. since linear differences cancel each other in positive and negative directions in 'GoodnessFit_TKC_approx' and 'NegativeHessian_TKC_Approx_AsymLaplace'
-//					double sum_first_deriv = 0.;
-//#pragma omp parallel for schedule(static) reduction(+:sum_first_deriv) if (num_data_ >= 128)
-//					for (data_size_t i = 0; i < num_data_; ++i) {
-//						sum_first_deriv += first_deriv_ll[i];
-//					}
-//					sum_first_deriv_ = sum_first_deriv;
-				}
-			}
 			else {
-				Log::REFatal("CalcFirstDerivLogLik_PerSample: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				if (!VisitFirstDerivLogLikKernel(y_data, y_data_int, location_par, [&](auto kernel) { ForEachSampleWeighted(first_deriv_ll, kernel); })) {
+					NotSupportedForLikelihood(__func__);
+				}
+				if (likelihood_type_ == "asymmetric_laplace" && approximation_type_ == "triangular_kernel_curvature") {
+					sum_first_deriv_ = 0.;//can be left at 0. since linear differences cancel each other in positive and negative directions in 'GoodnessFit_TKC_approx' and 'NegativeHessian_TKC_Approx_AsymLaplace'
+				}
 			}
 		}//end CalcFirstDerivLogLik_PerSample
 
@@ -12568,84 +12312,21 @@ namespace GPBoost {
 		inline double CalcFirstDerivLogLikOneSample(double y_data,
 			int y_data_int,
 			double location_par) const {
-			if (likelihood_type_ == "bernoulli_probit") {
-				return(FirstDerivLogLikBernoulliProbit(y_data_int, location_par));
+			if (NotImplementedForOneSample()) {
+				FatalOneSampleNotImplemented(__func__);
+				return(0.);
 			}
-			else if (likelihood_type_ == "bernoulli_logit") {
-				return(FirstDerivLogLikBernoulliLogit<int>(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "poisson") {
-				return(FirstDerivLogLikPoisson(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "gamma") {
-				return(FirstDerivLogLikGamma(y_data, location_par));
-			}
-			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
-				return FirstDerivLogLikTweedie(y_data, location_par);
-			}
-			else if (IsEGPDLikelihood()) {
+			if (IsEGPDLikelihood() || IsHurdleEGPD()) {
+				if (IsHurdleEGPD() && y_data <= 0.) return 0.;
 				const auto result = EvaluateEGPD(y_data, location_par);
 				return result.status == EGPDEvalStatus::kValid ? result.d_eta : std::numeric_limits<double>::quiet_NaN();
 			}
-			else if (IsHurdleEGPD()) {
-				if (y_data <= 0.) return 0.;
-				const auto result = EvaluateEGPD(y_data, location_par);
-				return result.status == EGPDEvalStatus::kValid ? result.d_eta : std::numeric_limits<double>::quiet_NaN();
+			double first_deriv = 0.;
+			if (!VisitFirstDerivLogLikKernel(&y_data, &y_data_int, &location_par,
+				[&](auto kernel) { first_deriv = kernel(0); })) {
+				NotSupportedForLikelihood(__func__);
 			}
-			else if (likelihood_type_ == "negative_binomial") {
-				return(FirstDerivLogLikNegBin(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "negative_binomial_1") {
-				return(FirstDerivLogLikNegBin1(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "zero_inflated_poisson") {
-				return(FirstDerivLogLikZeroInflatedPoisson(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") {
-				return(FirstDerivLogLikZeroInflatedNegBinFamily(y_data_int, location_par));
-			}
-			else if (likelihood_type_ == "beta") {
-				return(FirstDerivLogLikBeta(y_data, location_par));
-			}
-			else if (likelihood_type_ == "t") {
-				return(FirstDerivLogLikT(y_data, location_par));
-			}
-			else if (IsGaussianLikelihood()) {
-				return(FirstDerivLogLikGaussian(y_data, location_par));
-			}
-			else if (likelihood_type_ == "lognormal") {
-				return(FirstDerivLogLikLogNormal(y_data, location_par));
-			}
-			else if (likelihood_type_ == "hurdle_gamma") {
-				return(FirstDerivLogLikGammaZeroInflated(y_data, location_par));
-			}
-			else if (likelihood_type_ == "hurdle_lognormal") {
-				return(FirstDerivLogLikLogNormalZeroInflated(y_data, location_par));
-			}
-			else if (likelihood_type_ == "zero_censored_power_transformed_normal") {
-				return FirstDerivLogLikZeroCensPowNorm(y_data, location_par);
-			}
-			else if (likelihood_type_ == "zoctn") {
-				return FirstDerivLogLikZeroOneCensTransfNorm(y_data, location_par);
-			}
-			else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
-				return FirstDerivLogLikZeroOneCensTransfBeta(y_data, location_par);
-			}
-			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") {
-				return FirstDerivLogLikZeroOneCensGamma(y_data, location_par);
-			}
-			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
-				likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit") {
-				Log::REFatal("CalcFirstDerivLogLikOneSample: not implemented for likelihood = '%s'. If this error happened during the GPBoost algorithm, use another 'metric' instead of the (default) 'test_neg_log_likelihood' metric ", likelihood_type_.c_str());
-				return(0.);
-			}
-			else if (likelihood_type_ == "asymmetric_laplace") {
-				return(FirstDerivLogLikAsymLaplace(y_data, location_par));
-			}
-			else {
-				Log::REFatal("CalcFirstDerivLogLikOneSample: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
-				return(0.);
-			}
+			return(first_deriv);
 		}//end CalcFirstDerivLogLikOneSample
 
 		inline double FirstDerivLogLikBernoulliProbit(int y, double location_par) const {
@@ -12947,10 +12628,7 @@ namespace GPBoost {
 			bool called_during_mode_finding) {
 			if (use_random_effects_indices_of_data_) {
 				CalcInformationLogLik_PerSample(y_data, y_data_int, location_par, called_during_mode_finding, information_ll_data_scale_, off_diag_information_ll_data_scale_);
-				for (int igp = 0; igp < num_sets_re_; ++igp) {
-					CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_,
-						information_ll_data_scale_.data() + num_data_ * igp, information_ll_.data() + dim_mode_per_set_re_ * igp, true);
-				}
+				ReduceToModeScale(information_ll_data_scale_, information_ll_);
 				if (information_has_off_diagonal_) {
 					CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_, off_diag_information_ll_data_scale_.data(), off_diag_information_ll_.data(), true);
 				}
@@ -13025,6 +12703,70 @@ namespace GPBoost {
 		}//end CalcInformationLogLik
 
 		/*!
+		* \brief Dispatch on 'likelihood_type_' and call 'visit' with a kernel that evaluates the OBSERVED information
+		*			(the second derivative of the negative log-likelihood with respect to the location parameter) of one sample
+		*			(without the sample weight). This is the single place where the mapping from a likelihood to its observed
+		*			information formula is defined; it is shared by the calculation over all samples
+		*			('CalcInformationLogLik_PerSample') and by the single-sample version ('CalcDiagInformationLogLikOneSample').
+		*			Only likelihoods with a single location parameter block whose information is a plain function of (y, eta)
+		*			are covered here; the remaining ones are handled by the callers
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param location_par Location parameter (random plus fixed effects)
+		* \param visit Callable that is invoked with the selected kernel (a callable that takes a sample index)
+		* \return True if the current likelihood is covered here, false otherwise
+		*/
+		template <class Visitor>
+		bool VisitObservedInformationKernel(const double* y_data,
+			const int* y_data_int,
+			const double* location_par,
+			Visitor visit) const {
+			if (likelihood_type_ == "bernoulli_probit") visit([&](data_size_t i) { return SecondDerivNegLogLikBernoulliProbit(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "bernoulli_logit") visit([&](data_size_t i) { return SecondDerivNegLogLikBernoulliLogit(location_par[i]); });
+			else if (likelihood_type_ == "poisson") visit([&](data_size_t i) { return SecondDerivNegLogLikPoisson(location_par[i]); });
+			else if (likelihood_type_ == "gamma") visit([&](data_size_t i) { return SecondDerivNegLogLikGamma(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") visit([&](data_size_t i) { return InformationLogLikTweedie(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "negative_binomial") visit([&](data_size_t i) { return SecondDerivNegLogLikNegBin(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "negative_binomial_1") visit([&](data_size_t i) { return SecondDerivNegLogLikNegBin1(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "zero_inflated_poisson") visit([&](data_size_t i) { return SecondDerivNegLogLikZeroInflatedPoisson(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") visit([&](data_size_t i) { return SecondDerivNegLogLikZeroInflatedNegBinFamily(y_data_int[i], location_par[i]); });
+			else if (likelihood_type_ == "beta") visit([&](data_size_t i) { return SecondDerivNegLogLikBeta(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "t") visit([&](data_size_t i) { return SecondDerivNegLogLikT(y_data[i], location_par[i]); });
+			else if (IsGaussianLikelihood()) visit([FI = SecondDerivNegLogLikGaussian()](data_size_t) { return FI; });
+			else if (likelihood_type_ == "lognormal") visit([FI = SecondDerivNegLogLikLogNormal()](data_size_t) { return FI; });
+			else if (likelihood_type_ == "hurdle_gamma") visit([&](data_size_t i) { return SecondDerivNegLogLikGammaZeroInflated(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "hurdle_lognormal") visit([&](data_size_t i) { return SecondDerivNegLogLikLogNormalZeroInflated(y_data[i]); });
+			else if (likelihood_type_ == "zero_censored_power_transformed_normal") visit([&](data_size_t i) { return SecondDerivNegLogLikZeroCensPowNorm(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "zoctn") visit([&](data_size_t i) { return SecondDerivNegLogLikZeroOneCensTransfNorm(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "zero_one_censored_transformed_beta") visit([&](data_size_t i) { return SecondDerivNegLogLikZeroOneCensTransfBeta(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") visit([&](data_size_t i) { return SecondDerivNegLogLikZeroOneCensGamma(y_data[i], location_par[i]); });
+			else return false;
+			return true;
+		}//end VisitObservedInformationKernel
+
+		/*!
+		* \brief Dispatch on 'likelihood_type_' and call 'visit' with a kernel that evaluates the FISHER (expected) information
+		*			with respect to the location parameter of one sample (without the sample weight). Shared by
+		*			'CalcInformationLogLik_PerSample' and 'CalcDiagInformationLogLikOneSample'. Only likelihoods with a single
+		*			location parameter block are covered here; the remaining ones are handled by the callers
+		* \param location_par Location parameter (random plus fixed effects)
+		* \param visit Callable that is invoked with the selected kernel (a callable that takes a sample index)
+		* \return True if the current likelihood is covered here, false otherwise
+		*/
+		template <class Visitor>
+		bool VisitFisherInformationKernel(const double* location_par,
+			Visitor visit) const {
+			if (likelihood_type_ == "bernoulli_logit") visit([&](data_size_t i) { return SecondDerivNegLogLikBernoulliLogit(location_par[i]); });
+			else if (likelihood_type_ == "poisson") visit([&](data_size_t i) { return SecondDerivNegLogLikPoisson(location_par[i]); });
+			else if (likelihood_type_ == "t") visit([FI = FisherInformationT()](data_size_t) { return FI; });
+			else if (IsGaussianLikelihood()) visit([FI = SecondDerivNegLogLikGaussian()](data_size_t) { return FI; });
+			else if (likelihood_type_ == "lognormal") visit([FI = SecondDerivNegLogLikLogNormal()](data_size_t) { return FI; });
+			else if (likelihood_type_ == "asymmetric_laplace") visit([FI = FisherInformationOneSampleAsymLaplace()](data_size_t) { return FI; });
+			else return false;
+			return true;
+		}//end VisitFisherInformationKernel
+
+		/*!
 		* Calculate the information per sample., i.e., either (i) the Hessian of the negative log-likelihood, (ii) the Fisher information (=expected Hessian), or (iii) sometimes an approximate quasi-Fisher information.
 		*			This is usually the second derivative of the negative log-likelihood with respect to the location parameter, i.e., the observed FI.
 		*			This is usually a diagonal matrix and only its diagonal part is calculated.
@@ -13049,49 +12791,7 @@ namespace GPBoost {
 				approximation_type_local = approximation_type_;
 			}
 			if (approximation_type_local == "laplace") {
-				if (likelihood_type_ == "bernoulli_probit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikBernoulliProbit(y_data_int[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikBernoulliLogit(location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikBinomialProbit(y_data[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikPoisson(location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikGamma(y_data[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.;
-						information_ll[i] = w * InformationLogLikTweedie(y_data[i], location_par[i]);
-					}
-				}
-				else if (IsEGPDLikelihood() || IsHurdleEGPD()) {
+				if (IsEGPDLikelihood() || IsHurdleEGPD()) {
 					const bool hurdle = IsHurdleEGPD();
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -13103,55 +12803,11 @@ namespace GPBoost {
 						}
 					}
 				}
-				else if (likelihood_type_ == "negative_binomial") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikNegBin(y_data_int[i], location_par[i]);
-					}
+				else if (likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") {
+					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return SecondDerivNegLogLikBernoulliLogit(location_par[i]); });
 				}
-				else if (likelihood_type_ == "negative_binomial_1") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikNegBin1(y_data_int[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "zero_inflated_poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikZeroInflatedPoisson(y_data_int[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikZeroInflatedNegBinFamily(y_data_int[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "beta") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikBeta(y_data[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "t") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikT(y_data[i], location_par[i]);
-					}
-				}
-				else if (IsGaussianLikelihood()) {
-					const double FI = SecondDerivNegLogLikGaussian();
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * FI;
-					}
+				else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
+					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return SecondDerivNegLogLikBinomialProbit(y_data[i], location_par[i]); });
 				}
 				else if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -13165,14 +12821,6 @@ namespace GPBoost {
 						}
 					}
 				}
-				else if (likelihood_type_ == "lognormal") {
-					const double FI = SecondDerivNegLogLikLogNormal();
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * FI;
-					}
-				}
 				else if (likelihood_type_ == "beta_binomial") {
 					CHECK(has_weights_);
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -13180,27 +12828,9 @@ namespace GPBoost {
 						information_ll[i] = SecondDerivNegLogLikBetaBinomial(y_data[i], location_par[i], weights_[i]);
 					}
 				}
-				else if (likelihood_type_ == "hurdle_gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikGammaZeroInflated(y_data[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "hurdle_lognormal") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikLogNormalZeroInflated(y_data[i]);
-					}
-				}
 				else if (IsHurdleRegression()) {
 					// Block-0 (eta) observed information used for the Laplace mode / random effects
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * HurdleRegression_Jeta(y_data[i], location_par[i]);
-					}
+					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return HurdleRegression_Jeta(y_data[i], location_par[i]); });
 				}
 				else if (IsZeroInflatedCountRegression()) {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -13210,75 +12840,17 @@ namespace GPBoost {
 						information_ll[iz] = wz * o.Jeta;
 					}
 				}
-				else if (likelihood_type_ == "zero_censored_power_transformed_normal") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikZeroCensPowNorm(y_data[i], location_par[i]);
-					}
-				}
 				else if (IsZeroCensPowNormHetero()) {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_]);
-					}
+					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return SecondDerivNegLogLikZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_]); });
 				}
-				else if (likelihood_type_ == "zoctn") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikZeroOneCensTransfNorm(y_data[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikZeroOneCensTransfBeta(y_data[i], location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "zero_one_censored_shifted_gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikZeroOneCensGamma(y_data[i], location_par[i]);
-					}
-				}
-				else {
-					Log::REFatal("CalcInformationLogLik_PerSample: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				else if (!VisitObservedInformationKernel(y_data, y_data_int, location_par,
+					[&](auto kernel) { ForEachSampleWeighted(information_ll, kernel); })) {
+					NotSupportedForLikelihood(__func__);
 				}
 			}//end approximation_type_local == "laplace"
 			else if (approximation_type_local == "fisher_laplace") {
-				if (likelihood_type_ == "bernoulli_logit" || likelihood_type_ == "binomial_logit") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikBernoulliLogit(location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * SecondDerivNegLogLikPoisson(location_par[i]);
-					}
-				}
-				else if (likelihood_type_ == "t") {
-					const double FI = FisherInformationT();
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * FI;
-					}
-				}
-				else if (IsGaussianLikelihood()) {
-					const double FI = SecondDerivNegLogLikGaussian();
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * FI;
-					}
+				if (likelihood_type_ == "binomial_logit") {
+					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return SecondDerivNegLogLikBernoulliLogit(location_par[i]); });
 				}
 				else if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -13292,69 +12864,40 @@ namespace GPBoost {
 				}
 				else if (likelihood_type_ == "gaussian_heteroscedastic") {
 					// Only the mean is a mode / random effect here; the log-error variance (location_par[i + num_data_]) is a fixed effect
+					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return FisherInformationGaussianHeteroscedasticMean(location_par[i + num_data_]); });
+				}
+				else if (IsZeroInflatedCount()) {
+					// Fisher (expected) information wrt eta of a zero-inflated count (does not depend on y -> nonnegative).
+					const int kind = ZICountBaseKind();
+					const bool reg = IsZeroInflatedCountRegression();
+					const double pi_const = reg ? 0. : ZICountConstantP0();
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * FisherInformationGaussianHeteroscedasticMean(location_par[i + num_data_]);
+						const double mu = std::exp(location_par[i]);
+						const double pi = reg ? GPBoost::sigmoid_stable(location_par[i + num_data_]) : pi_const;
+						ZICountZeroMass z; FillZeroMassZICountKind(mu, z, kind);
+						information_ll[i] = w * ZICountFisherInfoEta(mu, pi, z, kind);
 					}
 				}
-				else if (likelihood_type_ == "lognormal") {
-					const double FI = SecondDerivNegLogLikLogNormal();
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * FI;
-					}
+				else if (likelihood_type_ == "negative_binomial_1") {
+					// Base NB1: QUASI-Fisher information mu/(1+phi) (no closed-form exact Fisher wrt eta). Used for mode finding only;
+					// the determinant/gradient uses the observed Hessian (approximation_type_ = "laplace").
+					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return std::exp(location_par[i]) / (1. + aux_pars_[0]); });
 				}
-				else if (likelihood_type_ == "asymmetric_laplace") {
-					const double FI = FisherInformationOneSampleAsymLaplace();
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * FI;
-					}
-				}
-					else if (IsZeroInflatedCount()) {
-						// Fisher (expected) information wrt eta of a zero-inflated count (does not depend on y -> nonnegative).
-						const int kind = ZICountBaseKind();
-						const bool reg = IsZeroInflatedCountRegression();
-						const double pi_const = reg ? 0. : ZICountConstantP0();
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							const double mu = std::exp(location_par[i]);
-							const double pi = reg ? GPBoost::sigmoid_stable(location_par[i + num_data_]) : pi_const;
-							ZICountZeroMass z; FillZeroMassZICountKind(mu, z, kind);
-							information_ll[i] = w * ZICountFisherInfoEta(mu, pi, z, kind);
-						}
-					}
-					else if (likelihood_type_ == "negative_binomial_1") {
-						// Base NB1: QUASI-Fisher information mu/(1+phi) (no closed-form exact Fisher wrt eta). Used for mode finding only;
-						// the determinant/gradient uses the observed Hessian (approximation_type_ = "laplace").
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							const double w = has_weights_ ? weights_[i] : 1.0;
-							information_ll[i] = w * std::exp(location_par[i]) / (1. + aux_pars_[0]);
-						}
-					}
-				else {
-					Log::REFatal("CalcInformationLogLik_PerSample: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_local.c_str());
+				else if (!VisitFisherInformationKernel(location_par,
+					[&](auto kernel) { ForEachSampleWeighted(information_ll, kernel); })) {
+					NotSupportedForLikelihoodAndApproximation(__func__, approximation_type_local);
 				}
 			}//end approximation_type_local == "fisher_laplace"
 			else if (approximation_type_local == "triangular_kernel_curvature") {
 				if (likelihood_type_ == "asymmetric_laplace") {
 					FindDeltaMode_TKC_Approx(y_data, y_data_int, location_par);
 					double neg_curvature = NegativeHessian_TKC_Approx_AsymLaplace(delta_location_par_);
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						information_ll[i] = w * neg_curvature;
-					}
+					ForEachSampleWeighted(information_ll, [&](data_size_t) { return neg_curvature; });
 				}
 				else {
-					Log::REFatal("CalcDiagInformationLogLik: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_local.c_str());
+					NotSupportedForLikelihoodAndApproximation(__func__, approximation_type_local);
 				}
 			}//end approximation_type_local == "triangular_kernel_curvature"
 			else {
@@ -13373,104 +12916,29 @@ namespace GPBoost {
 			int y_data_int,
 			double location_par) const {
 			if (approximation_type_ == "laplace") {
-				if (likelihood_type_ == "bernoulli_probit") {
-					return(SecondDerivNegLogLikBernoulliProbit(y_data_int, location_par));
-				}
-				else if (likelihood_type_ == "bernoulli_logit") {
-					return(SecondDerivNegLogLikBernoulliLogit(location_par));
-				}
-				else if (likelihood_type_ == "poisson") {
-					return(SecondDerivNegLogLikPoisson(location_par));
-				}
-				else if (likelihood_type_ == "gamma") {
-					return(SecondDerivNegLogLikGamma(y_data, location_par));
-				}
-				else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
-					return InformationLogLikTweedie(y_data, location_par);
-				}
-				else if (IsEGPDLikelihood()) {
-					const auto result = EvaluateEGPD(y_data, location_par);
-					return result.status == EGPDEvalStatus::kValid ? -result.d2_eta : std::numeric_limits<double>::quiet_NaN();
-				}
-				else if (IsHurdleEGPD()) {
-					if (y_data <= 0.) return 0.;
-					const auto result = EvaluateEGPD(y_data, location_par);
-					return result.status == EGPDEvalStatus::kValid ? -result.d2_eta : std::numeric_limits<double>::quiet_NaN();
-				}
-				else if (likelihood_type_ == "negative_binomial") {
-					return(SecondDerivNegLogLikNegBin(y_data_int, location_par));
-				}
-				else if (likelihood_type_ == "negative_binomial_1") {
-					return(SecondDerivNegLogLikNegBin1(y_data_int, location_par));
-				}
-				else if (likelihood_type_ == "zero_inflated_poisson") {
-					return(SecondDerivNegLogLikZeroInflatedPoisson(y_data_int, location_par));
-				}
-				else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") {
-					return(SecondDerivNegLogLikZeroInflatedNegBinFamily(y_data_int, location_par));
-				}
-				else if (likelihood_type_ == "beta") {
-					return(SecondDerivNegLogLikBeta(y_data, location_par));
-				}
-				else if (IsGaussianLikelihood()) {
-					return(SecondDerivNegLogLikGaussian());
-				}
-				else if (likelihood_type_ == "lognormal") {
-					return(SecondDerivNegLogLikLogNormal());
-				}
-				else if (likelihood_type_ == "hurdle_gamma") {
-					return(SecondDerivNegLogLikGammaZeroInflated(y_data, location_par));
-				}
-				else if (likelihood_type_ == "hurdle_lognormal") {
-					return(SecondDerivNegLogLikLogNormalZeroInflated(y_data));
-				}
-				else if (likelihood_type_ == "zero_censored_power_transformed_normal") {
-					return SecondDerivNegLogLikZeroCensPowNorm(y_data, location_par);
-				}
-				else if (likelihood_type_ == "zoctn") {
-					return SecondDerivNegLogLikZeroOneCensTransfNorm(y_data, location_par);
-				}
-				else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
-					return SecondDerivNegLogLikZeroOneCensTransfBeta(y_data, location_par);
-				}
-				else if (likelihood_type_ == "zero_one_censored_shifted_gamma") {
-					return SecondDerivNegLogLikZeroOneCensGamma(y_data, location_par);
-				}
-				else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
-					likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit") {
-					Log::REFatal("CalcDiagInformationLogLikOneSample: not implemented for likelihood = '%s'. If this error happened during the GPBoost algorithm, use another 'metric' instead of the (default) 'test_neg_log_likelihood' metric ", likelihood_type_.c_str());
+				if (NotImplementedForOneSample()) {
+					FatalOneSampleNotImplemented(__func__);
 					return(0.);
 				}
-				else {
-					Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
-					return(1.);
+				if (IsEGPDLikelihood() || IsHurdleEGPD()) {
+					if (IsHurdleEGPD() && y_data <= 0.) return 0.;
+					const auto result = EvaluateEGPD(y_data, location_par);
+					return result.status == EGPDEvalStatus::kValid ? -result.d2_eta : std::numeric_limits<double>::quiet_NaN();
 				}
+				double information = 1.;
+				if (!VisitObservedInformationKernel(&y_data, &y_data_int, &location_par,
+					[&](auto kernel) { information = kernel(0); })) {
+					NotSupportedForLikelihoodAndApproximation(__func__, approximation_type_);
+				}
+				return(information);
 			}//end approximation_type_ == "laplace"
 			else if (approximation_type_ == "fisher_laplace") {
-				if (likelihood_type_ == "bernoulli_logit") {
-					return(SecondDerivNegLogLikBernoulliLogit(location_par));
+				double information = 1.;
+				if (!VisitFisherInformationKernel(&location_par,
+					[&](auto kernel) { information = kernel(0); })) {
+					NotSupportedForLikelihoodAndApproximation(__func__, approximation_type_);
 				}
-				else if (likelihood_type_ == "poisson") {
-					return(SecondDerivNegLogLikPoisson(location_par));
-				}
-				else if (likelihood_type_ == "t") {
-					return(FisherInformationT());
-				}
-				else if (IsGaussianLikelihood()) {
-					return(SecondDerivNegLogLikGaussian());
-				}
-				else if (likelihood_type_ == "lognormal") {
-					return(SecondDerivNegLogLikLogNormal());
-				}
-				else if (likelihood_type_ == "asymmetric_laplace") {
-					return(FisherInformationOneSampleAsymLaplace());
-				}
-				else {
-					Log::REFatal("CalcDiagInformationLogLikOneSample: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
-					return(1.);
-				}
+				return(information);
 			}//end approximation_type_ == "fisher_laplace"
 			else {
 				Log::REFatal("CalcDiagInformationLogLikOneSample: approximation_type '%s' is not supported ", approximation_type_.c_str());
@@ -14019,40 +13487,20 @@ namespace GPBoost {
 					}
 				}
 				else if (likelihood_type_ == "poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						deriv_information_diag_loc_par[i] = w * std::exp(location_par[i]);
-					}
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return std::exp(location_par[i]); });
 				}
 				else if (likelihood_type_ == "zero_inflated_poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						deriv_information_diag_loc_par[i] = w * DerivInformationLocParZeroInflatedPoisson(y_data_int[i], location_par[i]);
-					}
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return DerivInformationLocParZeroInflatedPoisson(y_data_int[i], location_par[i]); });
 				}
 				else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						deriv_information_diag_loc_par[i] = w * DerivInformationLocParZeroInflatedNegBinFamily(y_data_int[i], location_par[i]);
-					}
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return DerivInformationLocParZeroInflatedNegBinFamily(y_data_int[i], location_par[i]); });
 				}
 				else if (likelihood_type_ == "gamma") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						deriv_information_diag_loc_par[i] = w * -aux_pars_[0] * y_data[i] * std::exp(-location_par[i]);
-					}
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return -aux_pars_[0] * y_data[i] * std::exp(-location_par[i]); });
 				}
 				else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
 					const double p = GetTweediePower();
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.;
-						deriv_information_diag_loc_par[i] = w * EvaluateTweedieLocation(y_data[i], location_par[i], std::log(aux_pars_[0]), p).deriv_information_eta;
-					}
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return EvaluateTweedieLocation(y_data[i], location_par[i], std::log(aux_pars_[0]), p).deriv_information_eta; });
 				}
 				else if (IsEGPDLikelihood() || IsHurdleEGPD()) {
 					const bool hurdle = IsHurdleEGPD();
@@ -14132,11 +13580,7 @@ namespace GPBoost {
 					}
 				}
 				else if (IsHurdleRegression()) {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						deriv_information_diag_loc_par[i] = w * HurdleRegression_dJetadEta(y_data[i], location_par[i]);
-					}
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return HurdleRegression_dJetadEta(y_data[i], location_par[i]); });
 				}
 				else if (IsZeroInflatedCountRegression()) {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -14203,11 +13647,7 @@ namespace GPBoost {
 					}
 				}//end "zero_censored_power_transformed_normal"
 				else if (IsZeroCensPowNormHetero()) {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						deriv_information_diag_loc_par[i] = w * DerivInformationZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_]);
-					}
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return DerivInformationZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_]); });
 				}//end "zero_censored_power_transformed_normal_heteroscedastic"
 				else if (likelihood_type_ == "zoctn") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -14296,8 +13736,7 @@ namespace GPBoost {
 					}
 				} // end "zero_one_censored_shifted_gamma"
 				else {
-					Log::REFatal("CalcFirstDerivInformationLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
+					NotSupportedForLikelihoodAndApproximation(__func__, approximation_type_);
 				}
 			}//end approximation_type_ == "laplace"
 			else if (approximation_type_ == "fisher_laplace") {
@@ -14314,11 +13753,7 @@ namespace GPBoost {
 					}
 				}
 				else if (likelihood_type_ == "poisson") {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						deriv_information_diag_loc_par[i] = w * std::exp(location_par[i]);
-					}
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return std::exp(location_par[i]); });
 				}
 				else if (likelihood_type_ == "t") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
@@ -14333,11 +13768,7 @@ namespace GPBoost {
 					}
 				}
 				else if (IsGaussianHeteroscedastic()) {
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
-						const double w = has_weights_ ? weights_[i] : 1.0;
-						deriv_information_diag_loc_par[i] = w * -std::exp(-location_par[i + num_data_]);
-					}
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return -std::exp(-location_par[i + num_data_]); });
 				}
 					else if (IsZeroInflatedCount()) {
 						// d Fisher / d eta by central differences (the Fisher information is a smooth function of eta = log mu).
@@ -14357,8 +13788,7 @@ namespace GPBoost {
 						}
 					}
 				else {
-					Log::REFatal("CalcFirstDerivInformationLocPar_PerSample: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
+					NotSupportedForLikelihoodAndApproximation(__func__, approximation_type_);
 				}
 			}// end approximation_type_ == "fisher_laplace"
 			else if (approximation_type_ == "triangular_kernel_curvature" || approximation_type_ == "constant_curvature_manual") {
@@ -14923,7 +14353,7 @@ namespace GPBoost {
 				grad[0] = neg_log_grad;
 			}//end "asymmetric_laplace"
 			else if (num_aux_pars_estim_ > 0) {
-				Log::REFatal("CalcGradNegLogLikAuxPars: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 			}
 		}//end CalcGradNegLogLikAuxPars
 
@@ -15603,8 +15033,7 @@ namespace GPBoost {
 					}
 				} // end "zero_one_censored_shifted_gamma"
 				else if (num_aux_pars_estim_ > 0) {
-					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
+					NotSupportedForLikelihoodAndApproximation(__func__, approximation_type_);
 				}
 			}//end approximation_type_ == "laplace"
 			else if (approximation_type_ == "fisher_laplace") {
@@ -15740,8 +15169,7 @@ namespace GPBoost {
 						}
 					}
 				else if (num_aux_pars_estim_ > 0) {
-					Log::REFatal("CalcSecondDerivNegLogLikAuxParsLocPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
+					NotSupportedForLikelihoodAndApproximation(__func__, approximation_type_);
 				}
 			}// end approximation_type_ == "fisher_laplace"
 			else if (approximation_type_ == "triangular_kernel_curvature" || approximation_type_ == "constant_curvature_manual") {
@@ -15763,8 +15191,7 @@ namespace GPBoost {
 					}
 				}// end "asymmetric_laplace"
 				else if (num_aux_pars_estim_ > 0) {
-					Log::REFatal("CalcSecondDerivLogLikFirstDerivInformationAuxPar: Likelihood of type '%s' is not supported for approximation_type = '%s' ",
-						likelihood_type_.c_str(), approximation_type_.c_str());
+					NotSupportedForLikelihoodAndApproximation(__func__, approximation_type_);
 				}
 			}//end approximation_type_ == "triangular_kernel_curvature"
 			else {
@@ -15812,7 +15239,7 @@ namespace GPBoost {
 				return std::exp(value);
 			}
 			else {
-				Log::REFatal("CondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 				return 0.;
 			}
 		}
@@ -15835,7 +15262,7 @@ namespace GPBoost {
 				return (1. / value);
 			}
 			else {
-				Log::REFatal("FirstDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 				return 0.;
 			}
 		}
@@ -15862,7 +15289,7 @@ namespace GPBoost {
 				return (-1. / (value * value));
 			}
 			else {
-				Log::REFatal("SecondDerivLogCondMeanLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 				return 0.;
 			}
 		}
@@ -15882,7 +15309,7 @@ namespace GPBoost {
 				return moments.variance_unit_scale * std::exp(2. * value);
 			}
 			else {
-				Log::REFatal("CondVarLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 				return 0.;
 			}
 		}
@@ -15899,7 +15326,7 @@ namespace GPBoost {
 				return 2.;
 			}
 			else {
-				Log::REFatal("FirstDerivLogCondVarLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 				return 0.;
 			}
 		}
@@ -15917,7 +15344,7 @@ namespace GPBoost {
 				return 0.;
 			}
 			else {
-				Log::REFatal("SecondDerivLogCondVarLikelihood: Likelihood of type '%s' is not supported.", likelihood_type_.c_str());
+				NotSupportedForLikelihood(__func__);
 				return 0.;
 			}
 		}
