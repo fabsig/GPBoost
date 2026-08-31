@@ -6720,6 +6720,27 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_error(fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
                             y = y, X=X, params = list(max_num_restarts_lbfgs = -1L)), "max_num_restarts_lbfgs is not >= 0", fixed = TRUE)
 
+    # Line search of Nocedal and Wright (the default line search of lbfgs is a backtracking one). In contrast to the
+    #   backtracking line search, this line search can return the best point found so far instead of the point that
+    #   has been evaluated last (namely if the strong Wolfe condition is not satisfied when the maximal number of line
+    #   search iterations is reached). The modes of the Laplace approximations then need to be restored accordingly,
+    #   otherwise they correspond to a point that has been rejected by the line search (see 'SaveModesLo()' in
+    #   optim_utils.h). This matters in particular for non-smooth likelihoods such as this one, for which mode finding
+    #   is start-dependent
+    params_nw <- params
+    params_nw$optimizer_cov <- "lbfgs_linesearch_nocedal_wright"
+    params_nw$optimizer_coef <- "lbfgs_linesearch_nocedal_wright"
+    capture.output( gp_model_nw <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
+                                              y = y, X=X, params = params_nw, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model_nw$get_cov_pars(std_err = FALSE)-0.4107693823)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model_nw$get_aux_pars()-0.2683705872)),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model_nw$get_coef(std_err = FALSE))-c(-0.1347096134, 2.0887629560))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model_nw$get_current_neg_log_likelihood()-116.1152356))),tolerance_loc_1)
+    expect_equal(gp_model_nw$get_num_optim_iter(), 17)
+    # this line search finds a better optimum than the backtracking one for the data below (nll = 117.1840987)
+    expect_lt(gp_model_nw$get_current_neg_log_likelihood(), 117.1840987)
+
     # Non-zero true intercept: the initial intercept is the marginal sample quantile of y and estimation is
     #   thus equivariant under a location shift of y (the results below are those of the fits above with the
     #   intercept shifted by 'shift'). Note: when initializing the intercept with zero (which was done before),

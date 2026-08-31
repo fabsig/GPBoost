@@ -223,6 +223,8 @@ namespace GPBoost {
 		bool profile_out_regression_coef_;// If true, the linear regression coefficients are profiled out (= use closed-form WLS expression)
 		std::vector<vec_t> modes_lag1_, SigmaI_modes_lag1_;// modes of the Laplace approximations at the last accepted iterate of the optimizer (see 'SetLag1Modes()')
 		bool modes_lag1_have_been_set_ = false;
+		std::vector<vec_t> modes_lo_, SigmaI_modes_lo_;// modes of the Laplace approximations at the best point found so far in a line search (see 'SaveModesLo()')
+		bool modes_lo_have_been_set_ = false;
 
 		EvalLLforLBFGSpp(REModelTemplate<T_mat, T_chol>* re_model_templ,
 			const double* fixed_effects,
@@ -419,6 +421,31 @@ namespace GPBoost {
 		void ResetModesToLag1() {
 			if (modes_lag1_have_been_set_) {
 				re_model_templ_->RestoreModeStates(modes_lag1_, SigmaI_modes_lag1_);
+			}
+		}
+
+		/*!
+		* \brief Save the current modes of the Laplace approximations as the modes of the best point found so far in a
+		*		line search ('x_lo' in 'LineSearchNocedalWright'). This function must be called whenever the current
+		*		point of a line search becomes this best point, since a line search can return the best point found so
+		*		far instead of the point that has been evaluated last (namely if the strong Wolfe condition is not
+		*		satisfied when the maximal number of line search iterations is reached). The modes are then restored
+		*		with 'RestoreModesLo()'. Otherwise, the modes correspond to a point that has been rejected by the line
+		*		search and not to the point that is returned by it
+		*/
+		void SaveModesLo() {
+			re_model_templ_->SaveModeStates(modes_lo_, SigmaI_modes_lo_);
+			modes_lo_have_been_set_ = true;
+		}
+
+		/*!
+		* \brief Restore the modes that have been saved with 'SaveModesLo()'. Note that all other quantities that
+		*		depend on the modes (and the covariance matrices) are recalculated for the restored modes when the
+		*		gradient is calculated the next time, see 'CalcGradPars()' in re_model_template.h
+		*/
+		void RestoreModesLo() {
+			if (modes_lo_have_been_set_) {
+				re_model_templ_->RestoreModeStates(modes_lo_, SigmaI_modes_lo_);
 			}
 		}
 

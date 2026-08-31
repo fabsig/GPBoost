@@ -124,6 +124,7 @@ public:
         // We also need to save x and grad for step=step_lo, since we want to return the best
         // step size along the path when strong Wolfe condition is not met
         Vector x_lo = xp, grad_lo = grad;
+        f.SaveModesLo(); // ChangedForGPBoost: the modes of the Laplace approximations currently correspond to 'xp' = 'x_lo'
 
         // STEP 1: Bracketing Phase
         //   Find a range guaranteed to contain a step satisfying strong Wolfe.
@@ -172,6 +173,7 @@ public:
             // Move x and grad to x_lo and grad_lo, respectively
             x_lo.swap(x);
             grad_lo.swap(grad);
+            f.SaveModesLo(); // ChangedForGPBoost: the modes correspond to the point that has just been evaluated, which is now 'x_lo'
 
             if (dg >= Scalar(0))
                 break;  // Case (3)
@@ -257,6 +259,7 @@ public:
                 // Move x and grad to x_lo and grad_lo, respectively
                 x_lo.swap(x);
                 grad_lo.swap(grad);
+                f.SaveModesLo(); // ChangedForGPBoost: the modes correspond to the point that has just been evaluated, which is now 'x_lo'
             }
 
             iter++;
@@ -286,6 +289,9 @@ public:
                     // Move {x, grad}_lo back
                     x.swap(x_lo);
                     grad.swap(grad_lo);
+                    // ChangedForGPBoost: the modes need to be moved back as well, otherwise they correspond to the
+                    //  last candidate point of the zoom phase, which has been rejected, and not to 'x_lo'
+                    f.RestoreModesLo();
                 }
                 return;
             }
