@@ -172,6 +172,7 @@
 #include <set>
 #include <vector>
 #include <algorithm>
+#include <functional>
 
 // used in 'DetermineGroupsOrderedMode_Inner()'
 // can lead to compiler crashes on some compilers
@@ -256,6 +257,7 @@ namespace GPBoost {
 			if (kink_cliping_) {
 				Log::REInfo("kink_clipping activated");
 			}
+			likelihood = ParseLikelihoodAliasModeRefinement(likelihood);
 			likelihood = ParseLikelihoodAliasVarianceCorrection(likelihood);
 			likelihood = ParseLikelihoodAliasModeFindingMethod(likelihood);
 			likelihood = ParseLikelihoodAliasApproximationType(likelihood);
@@ -263,6 +265,10 @@ namespace GPBoost {
 			likelihood = ParseLikelihoodAlias(likelihood);
 			if (SUPPORTED_LIKELIHOODS_.find(likelihood) == SUPPORTED_LIKELIHOODS_.end()) {
 				Log::REFatal("Likelihood of type '%s' is not supported ", likelihood.c_str());
+			}
+			if (mode_refinement_ != ModeRefinement::kNone && likelihood != "asymmetric_laplace") {
+				Log::REFatal("The '_ssn_alm' mode refinement is currently only supported for 'likelihood' = 'asymmetric_laplace' "
+					"(aliases 'quantile' and 'quantile_regression'), found '%s' ", likelihood.c_str());
 			}
 			if (LIKELIHOODS_ONLY_LAPLACE_.find(likelihood) != LIKELIHOODS_ONLY_LAPLACE_.end() && approximation_type_ != "laplace") {
 				Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood.c_str());
@@ -1209,7 +1215,8 @@ namespace GPBoost {
 		* \param type Likelihood name
 		*/
 		void SetLikelihood(const string_t& type) {
-			string_t likelihood = ParseLikelihoodAlias(type);
+			string_t likelihood = ParseLikelihoodAliasModeRefinement(type);
+			likelihood = ParseLikelihoodAlias(likelihood);
 			likelihood = ParseLikelihoodAliasModeFindingMethod(likelihood);
 			if (SUPPORTED_LIKELIHOODS_.find(likelihood) == SUPPORTED_LIKELIHOODS_.end()) {
 				Log::REFatal("Likelihood of type '%s' is not supported.", likelihood.c_str());
@@ -1734,6 +1741,60 @@ namespace GPBoost {
 			const vec_t& fitc_resid_diag,
 			double& approx_marginal_ll,
 			bool GPU_use);
+
+		/*!
+		* \brief Refine the posterior mode of an 'asymmetric_laplace' likelihood with a semismooth Newton method applied to
+		*			the subproblems of an augmented Lagrangian method (SSN-ALM). This is the common, approximation-independent
+		*			driver: it performs the exact KKT check that gates the refinement, the observation-scale prox and
+		*			multiplier updates, the line search on the reduced augmented Lagrangian, and the outer penalty updates.
+		*			The only approximation-specific ingredient is the linear solve with the generalized Hessian, which is
+		*			passed in by the calling 'FindModePostRandEffCalcMLL*' routine.
+		*			On success 'mode_', 'Qmode', 'location_par' / '*location_par_ptr', and 'approx_marginal_ll' (the
+		*			log-posterior at the mode, i.e., without the log-determinant term) are updated consistently. The mode is
+		*			only accepted if it improves the exact non-smooth MAP objective, so the refinement can never make the
+		*			returned mode worse than the one found by the quasi-Newton iteration
+		* \param y_data Response variable data if response variable is continuous
+		* \param y_data_int Response variable data if response variable is integer-valued
+		* \param fixed_effects Fixed effects component of the location parameter
+		* \param solve_H Solves '(Q + Z^T W Z) d = rhs' for 'd', where W is the active-set curvature in the convention of
+		*			'information_ll_' (see 'AggregateActiveSetToInformationScale'). Must return false if the solve failed.
+		*			It must not overwrite any member matrix or factorization that the final Laplace approximation uses
+		* \param apply_Q Applies the prior precision Q to a vector. Along the semismooth Newton steps 'Q b' is maintained
+		*			incrementally as 'Q d = -g - Z^T W Z d', which avoids an application of Q per line search step but
+		*			accumulates rounding errors; if this callback is not empty, it is used to recompute 'Q b' exactly once
+		*			per outer iteration. Pass an empty function on the branches where Q is not available cheaply
+		* \param[in,out] Qmode Q * mode_ (the prior precision applied to the mode), maintained by the driver
+		* \param[in,out] location_par Location parameter (see 'UpdateLocationParNewMode')
+		* \param[in,out] location_par_ptr Pointer to the location parameter
+		* \param[in,out] approx_marginal_ll Log-posterior at the mode without the log-determinant term
+		* \return True if the mode was changed
+		*/
+		bool RefineModeAsymLaplaceSSNALM(const double* y_data,
+			const int* y_data_int,
+			const double* fixed_effects,
+			const std::function<bool(const vec_t&, const vec_t&, vec_t&)>& solve_H,
+			const std::function<void(const vec_t&, vec_t&)>& apply_Q,
+			vec_t& Qmode,
+			vec_t& location_par,
+			double** location_par_ptr,
+			double& approx_marginal_ll);
+
+		/*!
+		* \brief Matrix-free preconditioned conjugate gradient for the semismooth Newton system '(Q + Z^T W Z) d = rhs' of
+		*			the SSN-ALM refinement, used by the branches with 'matrix_inversion_method_ == "iterative"'.
+		*			A Jacobi (diagonal) preconditioner is used since the active-set curvature 'rho * A' contains exact zeros,
+		*			which is incompatible with the preconditioners of the Laplace approximation that rely on W^(-1)
+		*			(in particular the FITC preconditioner of the Vecchia and full-scale Vecchia branches)
+		* \param apply_H Applies the generalized Hessian to a vector
+		* \param diag_H Diagonal of the generalized Hessian (must be strictly positive)
+		* \param rhs Right-hand side
+		* \param[out] sol Solution
+		* \return True if the solve succeeded
+		*/
+		bool SolveSSNALMCG(const std::function<void(const vec_t&, vec_t&)>& apply_H,
+			const vec_t& diag_H,
+			const vec_t& rhs,
+			vec_t& sol) const;
 
 		/*!
 		* \brief Stochastic (Hutchinson) estimate of the DATA-scale diagonal of Z (Sigma^-1 + Z^T W Z)^-1 Z^T on the iterative
@@ -2613,6 +2674,28 @@ namespace GPBoost {
 				if (likelihood.substr(likelihood.size() - 14) == string_t("_kink_clipping")) {
 					kink_cliping_ = true;
 					return likelihood.substr(0, likelihood.size() - 14);
+				}
+			}
+			return likelihood;
+		}
+
+		/*!
+		* \brief Parse the suffix that enables the SSN-ALM (semismooth Newton with an augmented Lagrangian method) refinement
+		*			of the posterior mode. '_ssn_alm' runs the refinement only when the exact non-smooth KKT conditions are
+		*			violated after the (Fisher) quasi-Newton mode finding, '_ssn_alm_always' runs it unconditionally (this is
+		*			mainly meant for testing and for measuring the cost of the refinement)
+		*/
+		string_t ParseLikelihoodAliasModeRefinement(const string_t& likelihood) {
+			if (likelihood.size() > 15) {
+				if (likelihood.substr(likelihood.size() - 15) == string_t("_ssn_alm_always")) {
+					mode_refinement_ = ModeRefinement::kSSNALMAlways;
+					return likelihood.substr(0, likelihood.size() - 15);
+				}
+			}
+			if (likelihood.size() > 8) {
+				if (likelihood.substr(likelihood.size() - 8) == string_t("_ssn_alm")) {
+					mode_refinement_ = ModeRefinement::kSSNALMIfNeeded;
+					return likelihood.substr(0, likelihood.size() - 8);
 				}
 			}
 			return likelihood;
@@ -4261,6 +4344,14 @@ namespace GPBoost {
 		void CalcFirstDerivLogLik(const double* y_data,
 			const int* y_data_int,
 			const double* location_par) {
+			if (ssn_alm_exact_subgradient_valid_) {
+				// After the SSN-ALM refinement the mode is stationary for an interior subgradient of the check loss at the
+				// observations that lie exactly on a kink. Recomputing the score with the endpoint convention would break
+				// the identity 'Q b = Z^T first_deriv_ll_' on which the gradients of the approximate marginal likelihood
+				// and the predictive distributions rely, so the exact subgradient of the refinement is used instead
+				SetFirstDerivLogLikFromDataScale(ssn_alm_exact_subgradient_);
+				return;
+			}
 			if (use_random_effects_indices_of_data_) {
 				CalcFirstDerivLogLik_PerSample(y_data, y_data_int, location_par, first_deriv_ll_data_scale_);
 				ReduceToModeScale(first_deriv_ll_data_scale_, first_deriv_ll_);
@@ -4269,6 +4360,20 @@ namespace GPBoost {
 				CalcFirstDerivLogLik_PerSample(y_data, y_data_int, location_par, first_deriv_ll_);
 			}
 		}//end CalcFirstDerivLogLik
+
+		/*!
+		* \brief Set 'first_deriv_ll_' (and 'first_deriv_ll_data_scale_') from a score that is given on the observation scale
+		* \param first_deriv_data_scale Score of length num_data_, already multiplied by the sample weights
+		*/
+		void SetFirstDerivLogLikFromDataScale(const vec_t& first_deriv_data_scale) {
+			if (use_random_effects_indices_of_data_) {
+				first_deriv_ll_data_scale_ = first_deriv_data_scale;
+				ReduceToModeScale(first_deriv_ll_data_scale_, first_deriv_ll_);
+			}
+			else {
+				first_deriv_ll_ = first_deriv_data_scale;
+			}
+		}//end SetFirstDerivLogLikFromDataScale
 
 		/*!
 		* \brief Dispatch on 'likelihood_type_' and call 'visit' with a kernel that evaluates the first derivative of the
@@ -6345,6 +6450,7 @@ namespace GPBoost {
 		* \return True if the previous mode was kept (and saved), false if the mode was (re-)initialized to zero
 		*/
 		bool InitializeModeForModeFinding() {
+			ssn_alm_exact_subgradient_valid_ = false;//the stored subgradient belongs to the mode of the previous call
 			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
 				InitializeModeAvec();
 				return false;
@@ -6525,6 +6631,301 @@ namespace GPBoost {
 			const den_mat_t& WI_WI_plus_Sigma_inv_Z,
 			double& d_detmll_d_aux_par,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) const;
+
+		// -------------------------------------------------------------------------------------------------------------
+		// SSN-ALM helpers. The variables of the augmented Lagrangian (the residual variable 'z', the multiplier
+		// 'lambda', and the active set 'A') all live on the observation scale; only the gradient 'Q b + Z^T lambda^+'
+		// and the generalized Hessian 'Q + rho Z^T A Z' are formed on the scale of the modes. All of these are O(n)
+		// componentwise operations, the linear solve with 'Q + rho Z^T A Z' is provided by the calling
+		// 'FindModePostRandEffCalcMLL*' routine
+		// -------------------------------------------------------------------------------------------------------------
+
+		/*! \brief True if the SSN-ALM refinement of the mode should be applied after the quasi-Newton mode finding */
+		bool UseSSNALMRefinement() const {
+			return mode_refinement_ != ModeRefinement::kNone && likelihood_type_ == "asymmetric_laplace" &&
+				!iid_model_ && maxit_mode_newton_ > 0 && num_sets_re_ == 1;
+		}
+
+		/*! \brief True if the design matrix Z that relates the latent variables to the observations is the identity */
+		bool HasIdentityZ() const {
+			return !use_random_effects_indices_of_data_ && !use_Z_;
+		}
+
+		/*!
+		* \brief Bounds of the dual box B = prod_i [l_i, u_i] of the asymmetric Laplace likelihood, i.e., w_i / sigma times
+		*			the subdifferential of the check loss rho_tau at 0: l_i = w_i (tau - 1) / sigma, u_i = w_i tau / sigma.
+		*			Observations with a zero (effective) weight get the degenerate box {0}, which is correct since they do
+		*			not contribute to the likelihood
+		* \param[out] lower Lower bounds l, of length num_data_
+		* \param[out] upper Upper bounds u, of length num_data_
+		*/
+		void CalcAsymLaplaceALMDualBounds(vec_t& lower,
+			vec_t& upper) const {
+			const double inv_scale = 1. / aux_pars_[0];
+			lower.resize(num_data_);
+			upper.resize(num_data_);
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				const double w = has_weights_ ? weights_[i] : 1.;
+				lower[i] = w * (quantile_ - 1.) * inv_scale;
+				upper[i] = w * quantile_ * inv_scale;
+			}
+		}//end CalcAsymLaplaceALMDualBounds
+
+		/*!
+		* \brief Componentwise proximal operator of sum_i w_i / sigma * rho_tau(z_i) with the penalty rho, i.e., the exact
+		*			solution of the z-subproblem of the augmented Lagrangian, together with the implied multiplier and the
+		*			generalized derivative (the active set).
+		*			Note: an observation with w_i = 0 has the identity as its prox and must not enter the active set even
+		*			though z_i = 0 whenever v_i = 0, which is why the active set is determined from the thresholds and the
+		*			weight and not from a comparison of z_i with 0
+		* \param v Argument of the prox, v = r - lambda / rho, of length num_data_
+		* \param rho Penalty parameter of the augmented Lagrangian
+		* \param[out] z Prox value
+		* \param[out] lambda_plus Implied multiplier lambda^+ = rho (z - v)
+		* \param[out] active Active set indicator A_i = 1{z_i = 0 and w_i > 0}
+		*/
+		void CalcAsymLaplaceALMProx(const vec_t& v,
+			double rho,
+			vec_t& z,
+			vec_t& lambda_plus,
+			vec_t& active) const {
+			const double inv_rho_scale = 1. / (rho * aux_pars_[0]);
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				const double w = has_weights_ ? weights_[i] : 1.;
+				const double a = w * quantile_ * inv_rho_scale, c = w * (1. - quantile_) * inv_rho_scale;
+				if (v[i] > a) {
+					z[i] = v[i] - a;
+					active[i] = 0.;
+				}
+				else if (v[i] < -c) {
+					z[i] = v[i] + c;
+					active[i] = 0.;
+				}
+				else {
+					z[i] = 0.;
+					active[i] = (w > 0.) ? 1. : 0.;
+				}
+				lambda_plus[i] = rho * (z[i] - v[i]);
+			}
+		}//end CalcAsymLaplaceALMProx
+
+		/*!
+		* \brief Apply Z^T to a vector on the observation scale (identity, incidence matrix, or a general sparse Z)
+		* \param v_data Vector of length num_data_
+		* \param[out] Zt_v Vector of length dim_mode_
+		*/
+		void ApplyZtToDataVector(const vec_t& v_data,
+			vec_t& Zt_v) const {
+			if (use_random_effects_indices_of_data_) {
+				Zt_v.resize(dim_mode_);
+				ReduceToModeScale(v_data, Zt_v);
+			}
+			else if (use_Z_) {
+				Zt_v = (*Zt_) * v_data;
+			}
+			else {
+				Zt_v = v_data;
+			}
+		}//end ApplyZtToDataVector
+
+		/*!
+		* \brief Map the observation-scale active set of the semismooth Newton system to the representation that the
+		*			'FindModePostRandEffCalcMLL*' routines use for 'information_ll_', i.e., aggregated with Z^T if Z is an
+		*			incidence matrix and left on the data scale if a general sparse Z is used. The linear solve of a branch
+		*			can then reuse its existing 'Sigma^-1 + Z^T W Z' algebra with W = rho * A
+		* \param active Active set indicator of length num_data_
+		* \param rho Penalty parameter of the augmented Lagrangian
+		* \param[out] W_ssn Active-set curvature of length dim_deriv_ll_
+		*/
+		void AggregateActiveSetToInformationScale(const vec_t& active,
+			double rho,
+			vec_t& W_ssn) const {
+			if (use_random_effects_indices_of_data_) {
+				const vec_t rho_active = rho * active;
+				W_ssn.resize(dim_mode_);
+				ReduceToModeScale(rho_active, W_ssn);
+			}
+			else {
+				W_ssn = rho * active;// data scale if use_Z_, identical to the scale of the modes otherwise
+			}
+		}//end AggregateActiveSetToInformationScale
+
+		/*!
+		* \brief Apply Z^T W Z to a vector on the scale of the modes, with W in the convention of 'information_ll_'
+		* \param W_ssn Active-set curvature as returned by 'AggregateActiveSetToInformationScale'
+		* \param x Vector of length dim_mode_
+		* \param[out] out Vector of length dim_mode_
+		*/
+		void ApplyZtWZToModeVector(const vec_t& W_ssn,
+			const vec_t& x,
+			vec_t& out) const {
+			if (use_Z_) {
+				out = (*Zt_) * (W_ssn.cwiseProduct((*Zt_).transpose() * x));
+			}
+			else {// Z^T W Z is diagonal for Z = I and for an incidence matrix Z, for which W_ssn is already aggregated
+				out = W_ssn.cwiseProduct(x);
+			}
+		}//end ApplyZtWZToModeVector
+
+		/*!
+		* \brief Residuals r = y - eta on the observation scale
+		* \param y_data Response variable data
+		* \param location_par Location parameter eta (random plus fixed effects)
+		* \param[out] resid Residuals, of length num_data_
+		*/
+		void CalcAsymLaplaceResidual(const double* y_data,
+			const double* location_par,
+			vec_t& resid) const {
+			resid.resize(num_data_);
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				resid[i] = y_data[i] - location_par[i];
+			}
+		}//end CalcAsymLaplaceResidual
+
+		/*!
+		* \brief Normalized KKT residual of the exact non-smooth MAP problem, used as the gate after the quasi-Newton
+		*			mode finding. For Z = I this is the exact natural residual ||Qb - Pi_B(Qb + r)|| / (1 + ||Qb||), which
+		*			is zero if and only if 'mode_' is an exact MAP. For a general Z, Qb does not determine the
+		*			observation-scale dual vector uniquely, and the endpoint subgradient alpha^F_i = u_i if r_i > 0 and
+		*			l_i otherwise is used instead. That criterion can over-trigger the refinement when the exact solution
+		*			needs an interior subgradient at a kink, but it can never certify a wrong mode
+		* \param Qmode Q * mode_, i.e., the gradient of the prior quadratic
+		* \param resid Residuals r = y - eta
+		* \return Normalized KKT residual
+		*/
+		double CalcAsymLaplaceKKTResidual(const vec_t& Qmode,
+			const vec_t& resid,
+			vec_t& alpha) const {
+			vec_t lower, upper;
+			CalcAsymLaplaceALMDualBounds(lower, upper);
+			if (HasIdentityZ()) {
+				alpha = (Qmode + resid).cwiseMax(lower).cwiseMin(upper);
+			}
+			else {
+				alpha.resize(num_data_);
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					alpha[i] = (resid[i] > 0.) ? upper[i] : lower[i];
+				}
+			}
+			vec_t Zt_alpha;
+			ApplyZtToDataVector(alpha, Zt_alpha);
+			return (Qmode - Zt_alpha).norm() / (1. + Qmode.norm());
+		}//end CalcAsymLaplaceKKTResidual
+
+		/*!
+		* \brief Try to certify that the current mode solves the non-smooth MAP problem exactly and, if that succeeds,
+		*			store the certifying subgradient so that 'CalcFirstDerivLogLik' returns it instead of the endpoint
+		*			convention. Two candidate duals are tried: the one produced by the augmented Lagrangian (which can
+		*			certify an interior subgradient for a general Z) and, as a fallback, the projection / endpoint dual of
+		*			'CalcAsymLaplaceKKTResidual'. Nothing is cached if neither is within the tolerance, so an unconverged
+		*			refinement never advertises an exact score; the mode itself may still be returned, it is then simply
+		*			an improved but not certified mode with the ordinary endpoint score
+		* \param Qmode Q * mode_
+		* \param resid Residuals r = y - eta at the current mode
+		* \param alpha_alm Dual alpha = -lambda^+ of the augmented Lagrangian, empty if none is available
+		* \return The KKT residual that describes the current mode
+		*/
+		double CertifyAsymLaplaceSubgradient(const vec_t& Qmode,
+			const vec_t& resid,
+			const vec_t& alpha_alm) {
+			ssn_alm_exact_subgradient_valid_ = false;
+			// The residual is recomputed here from the mode and the dual that are actually returned rather than taken
+			//	from the iteration that produced them, so that the certification cannot be invalidated by any later
+			//	change of the mode
+			double kkt_alm = std::numeric_limits<double>::infinity();
+			if ((data_size_t)alpha_alm.size() == num_data_) {
+				kkt_alm = CalcAsymLaplaceDualKKTResidual(Qmode, resid, alpha_alm);
+			}
+			if (kkt_alm <= DELTA_CONV_SSN_ALM_) {
+				ssn_alm_exact_subgradient_ = alpha_alm;
+				ssn_alm_exact_subgradient_valid_ = true;
+				SetFirstDerivLogLikFromDataScale(ssn_alm_exact_subgradient_);
+				return kkt_alm;
+			}
+			vec_t alpha;
+			const double kkt = CalcAsymLaplaceKKTResidual(Qmode, resid, alpha);
+			if (kkt <= DELTA_KKT_GATE_SSN_ALM_) {
+				ssn_alm_exact_subgradient_ = alpha;
+				ssn_alm_exact_subgradient_valid_ = true;
+				SetFirstDerivLogLikFromDataScale(ssn_alm_exact_subgradient_);
+				return kkt;
+			}
+			return std::min(kkt, kkt_alm);
+		}//end CertifyAsymLaplaceSubgradient
+
+		/*!
+		* \brief Violation of the exact optimality conditions of the non-smooth MAP problem by a given observation-scale
+		*			dual: the normalized stationarity residual 'Qb = Z^T alpha' and the normalized complementarity residual
+		*			'alpha in w / sigma * d rho_tau(r)'. Unlike 'CalcAsymLaplaceKKTResidual', which has to guess the dual,
+		*			this is exact for a general Z and for a dual that is interior at a kink
+		* \param Qmode Q * mode_
+		* \param resid Residuals r = y - eta
+		* \param alpha Observation-scale dual (alpha = -lambda^+ for a dual produced by the augmented Lagrangian)
+		* \return max(eta_stationarity, eta_complementarity)
+		*/
+		double CalcAsymLaplaceDualKKTResidual(const vec_t& Qmode,
+			const vec_t& resid,
+			const vec_t& alpha) const {
+			vec_t lower, upper;
+			CalcAsymLaplaceALMDualBounds(lower, upper);
+			vec_t Zt_alpha;
+			ApplyZtToDataVector(alpha, Zt_alpha);
+			const double eta_s = (Qmode - Zt_alpha).norm() / (1. + Qmode.norm());
+			const vec_t p = (alpha + resid).cwiseMax(lower).cwiseMin(upper);
+			const double eta_c = (alpha - p).norm() / (1. + alpha.norm());
+			return std::max(eta_s, eta_c);
+		}//end CalcAsymLaplaceDualKKTResidual
+
+		/*!
+		* \brief Stopping criterion of the outer augmented Lagrangian iterations: the optimality violation of the dual
+		*			alpha = -lambda^+ plus the primal feasibility of the residual variable z of the subproblem. The primal
+		*			term is internal to the augmented Lagrangian and is deliberately not part of the certification of the
+		*			mode in 'CertifyAsymLaplaceSubgradient'
+		* \param Qmode Q * mode_
+		* \param resid Residuals r = y - eta
+		* \param z Prox value
+		* \param lambda_plus Implied multiplier
+		* \return max(eta_stationarity, eta_complementarity, eta_primal)
+		*/
+		double CalcAsymLaplaceKKTResidualDual(const vec_t& Qmode,
+			const vec_t& resid,
+			const vec_t& z,
+			const vec_t& lambda_plus) const {
+			const double eta_p = (z - resid).norm() / (1. + resid.norm());
+			return std::max(CalcAsymLaplaceDualKKTResidual(Qmode, resid, -lambda_plus), eta_p);
+		}//end CalcAsymLaplaceKKTResidualDual
+
+		/*!
+		* \brief Reduced augmented Lagrangian phi(b) = 1/2 b^T Q b + sum_i w_i / sigma * rho_tau(z_i) + rho / 2 ||z - v||^2
+		*			with v = r - lambda / rho and z = prox(v). This is the objective of the line search of the inner
+		*			semismooth Newton iteration; it must not be replaced by the log-posterior of the original problem.
+		*			Terms that are constant in b are omitted
+		* \param mode Mode b
+		* \param Qmode Q * b
+		* \param v Argument of the prox
+		* \param z Prox value
+		* \param rho Penalty parameter of the augmented Lagrangian
+		* \return Value of phi
+		*/
+		double CalcAsymLaplaceReducedALMObjective(const vec_t& mode,
+			const vec_t& Qmode,
+			const vec_t& v,
+			const vec_t& z,
+			double rho) const {
+			const double inv_scale = 1. / aux_pars_[0];
+			double loss = 0.;
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:loss)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				const double w = has_weights_ ? weights_[i] : 1.;
+				const double diff = z[i] - v[i];
+				loss += w * inv_scale * ((z[i] > 0.) ? quantile_ * z[i] : (quantile_ - 1.) * z[i]) + 0.5 * rho * diff * diff;
+			}
+			return 0.5 * mode.dot(Qmode) + loss;
+		}//end CalcAsymLaplaceReducedALMObjective
 
 		/*!
 		* \brief Apply kink-wise clipping for the asymmetric Laplace likelihood.
@@ -6849,6 +7250,49 @@ namespace GPBoost {
 		const double* fixed_effects_ = nullptr;
 		/*! \brief If true, this is an iid model without a random effects / GP component */
 		bool iid_model_ = false;
+
+		// -------------------------------------------------------------------------------------------------------------
+		// SSN-ALM: exact non-smooth refinement of the posterior mode for the 'asymmetric_laplace' likelihood.
+		// The (Fisher) quasi-Newton mode finding uses a smooth fixed-point iteration with the endpoint convention for the
+		// score at the kinks of the check loss and can therefore stall at points that do not satisfy the exact
+		// (sub-differential) MAP optimality conditions. If enabled, the mode is certified with an exact KKT check after
+		// the quasi-Newton loop and, if the check fails, refined with a semismooth Newton method applied to the
+		// subproblems of an augmented Lagrangian method (see 'RefineModeAsymLaplaceSSNALM').
+		// Note: the active-set curvature 'rho * Z^T A Z' of the semismooth Newton system exists only to solve the
+		//		augmented Lagrangian subproblem. It is not used as the curvature of the Laplace approximation.
+		// -------------------------------------------------------------------------------------------------------------
+		/*! \brief Options for refining the posterior mode after the quasi-Newton mode finding (currently 'asymmetric_laplace' only) */
+		enum class ModeRefinement { kNone, kSSNALMIfNeeded, kSSNALMAlways };
+		/*! \brief Selected mode refinement, set by 'ParseLikelihoodAliasModeRefinement' from the likelihood name */
+		ModeRefinement mode_refinement_ = ModeRefinement::kNone;
+		/*! \brief Multiplier of the augmented Lagrangian on the observation scale (length num_data_, not dim_mode_) */
+		vec_t ssn_alm_lambda_;
+		/*! \brief Tolerance of the normalized KKT residual below which the quasi-Newton mode is certified and returned */
+		static constexpr double DELTA_KKT_GATE_SSN_ALM_ = 1e-6;
+		/*! \brief Tolerance of the normalized KKT residuals for terminating the outer augmented Lagrangian iterations */
+		static constexpr double DELTA_CONV_SSN_ALM_ = 1e-6;
+		/*! \brief Maximal number of outer (multiplier update) iterations of the augmented Lagrangian method */
+		static constexpr int MAXIT_SSN_ALM_OUTER_ = 10;
+		/*! \brief Maximal number of inner semismooth Newton iterations per augmented Lagrangian subproblem */
+		static constexpr int MAXIT_SSN_ALM_INNER_ = 20;
+		/*! \brief Growth factor of the penalty parameter 'rho' after every outer iteration */
+		static constexpr double SSN_ALM_RHO_GROWTH_ = 2.;
+		/*! \brief Maximal penalty parameter, as a multiple of its initial value */
+		static constexpr double SSN_ALM_RHO_MAX_MULT_ = 1e4;
+		/*! \brief Number of outer augmented Lagrangian iterations of the last call (diagnostics) */
+		int num_it_mode_finding_ssn_alm_outer_ = 0;
+		/*! \brief Total number of accepted semismooth Newton steps of the last call (diagnostics) */
+		int num_it_mode_finding_ssn_ = 0;
+		/*! \brief True if the KKT gate failed and the refinement was run in the last call (diagnostics) */
+		bool ssn_alm_was_needed_ = false;
+		/*! \brief Normalized KKT residual of the quasi-Newton mode of the last call (diagnostics, -1 if not calculated) */
+		double ssn_alm_initial_kkt_resid_ = -1.;
+		/*! \brief Normalized KKT residual of the returned mode of the last call (diagnostics, -1 if not calculated) */
+		double ssn_alm_final_kkt_resid_ = -1.;
+		/*! \brief Exact KKT subgradient alpha = -lambda^+ of the refined mode on the observation scale (see 'CalcFirstDerivLogLik') */
+		vec_t ssn_alm_exact_subgradient_;
+		/*! \brief True if 'ssn_alm_exact_subgradient_' corresponds to the current mode and must be used as the score */
+		bool ssn_alm_exact_subgradient_valid_ = false;
 
 		/*! \brief Type of likelihood  */
 		string_t likelihood_type_ = "gaussian";

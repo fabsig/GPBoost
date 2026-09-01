@@ -6821,6 +6821,145 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   }) # end asymmetric_laplace regression
 
+  test_that("asymmetric_laplace likelihood with the SSN-ALM mode refinement ", {
+
+    # The (Fisher) quasi-Newton mode finding of the asymmetric Laplace likelihood uses the endpoint convention
+    #   for the score at the kinks of the check loss and can stall at points that are not the exact non-smooth
+    #   MAP. The '_ssn_alm' suffix enables a semismooth Newton method applied to the subproblems of an augmented
+    #   Lagrangian method, which is run after the quasi-Newton loop if an exact KKT check fails ('_ssn_alm_always'
+    #   skips the check). The refinement can never return a worse mode, so the negative log-likelihood must
+    #   decrease (weakly) for every random effects structure and every matrix approximation
+    quantile_asym_laplace <- function(q, alpha, lambda) {
+      res <- rep(NA, length(q))
+      ind <- q <= alpha
+      res[ind] <- log(q[ind]/alpha) * lambda / (1-alpha)
+      res[!ind] <- -log((1-q[!ind])/(1-alpha)) * lambda / alpha
+      return(res)
+    }
+    quantile <- 0.7
+    lambda <- 0.25
+    error <- quantile_asym_laplace(q = sim_rand_unif(n = n, init_c = 0.651), alpha = quantile, lambda = lambda)
+    y <- as.vector(Z1 %*% b_gr_1 + X %*% beta + error)
+    fixed_effects <- as.vector(X %*% beta)
+    tol <- relax_tolerance_nll(TOLERANCE_STRICT)
+
+    # 'nll_ssn' returns the negative log-likelihood without and with the refinement. The two variants of the
+    #   suffix must agree here: the exact KKT check never certifies a mode that is not the exact MAP
+    nll_ssn <- function(cov_pars, base_likelihood = "asymmetric_laplace", optim_params = NULL, ...) {
+      vapply(c("", "_ssn_alm", "_ssn_alm_always"), function(sfx) {
+        gp_model <- GPModel(likelihood = paste0(base_likelihood, sfx),
+                            likelihood_additional_param = quantile, ...)
+        if (!is.null(optim_params)) gp_model$set_optim_params(params = optim_params)
+        gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y, aux_pars = c(lambda),
+                                    fixed_effects = fixed_effects)
+      }, numeric(1))
+    }
+    # Checks that the refinement lowers the negative log-likelihood by the expected amount and that the
+    #   gated and the unconditional variant give the same result
+    expect_ssn <- function(nll, expected_base, expected_ssn) {
+      expect_lt(abs(nll[[1]] - expected_base), tol)
+      expect_lt(abs(nll[[2]] - expected_ssn), tol)
+      expect_equal(nll[[2]], nll[[3]])
+      expect_lte(nll[[2]], nll[[1]])
+    }
+
+    ## One grouped random effect (Z is an incidence matrix, the SSN system is diagonal)
+    expect_ssn(nll_ssn(c(0.9), group_data = group), 138.9898225, 138.9648429)
+    ## Same with the triangular kernel curvature Laplace approximation: the refinement changes the mode, the
+    ##   inferential curvature of the determinant must still be the TKC one and not the SSN active set
+    expect_ssn(nll_ssn(c(0.9), base_likelihood = "asymmetric_laplace_tkc", group_data = group),
+               141.5811521, 140.6629934)
+    ## Two crossed grouped random effects (general sparse Z)
+    expect_ssn(nll_ssn(c(0.9, 0.6), group_data = cbind(group, group2)), 148.5871268, 148.3692190)
+    expect_ssn(nll_ssn(c(0.9, 0.6), group_data = cbind(group, group2),
+                       matrix_inversion_method = "iterative"), 148.4716563, 148.2538536)
+    ## Gaussian process, all matrix approximations
+    expect_ssn(nll_ssn(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential"),
+               174.8555513, 174.3157800)
+    expect_ssn(nll_ssn(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
+                       gp_approx = "vecchia", num_neighbors = 20), 174.6832113, 174.2094239)
+    expect_ssn(nll_ssn(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
+                       gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = "iterative"),
+               174.7652059, 174.2784359)
+    expect_ssn(nll_ssn(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
+                       gp_approx = "fitc", num_ind_points = 30), 172.4871945, 172.1303044)
+    expect_ssn(nll_ssn(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
+                       gp_approx = "full_scale_vecchia", num_ind_points = 30, num_neighbors = 20),
+               174.7149656, 174.2474945)
+    expect_ssn(nll_ssn(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
+                       gp_approx = "full_scale_vecchia", num_ind_points = 30, num_neighbors = 20,
+                       matrix_inversion_method = "iterative",
+                       optim_params = list(fitc_piv_chol_preconditioner_rank = 30, seed_rand_vec_trace = 1,
+                                           num_rand_vec_trace = 200)),
+               174.7950602, 174.3385303)
+    ## Grouped random effects combined with a GP
+    expect_ssn(nll_ssn(c(0.9, 0.9, 0.2), group_data = group, gp_coords = coords,
+                       cov_function = "exponential"), 147.5915422, 146.6669310)
+
+    ## Sample weights, including zero weights (an observation with a zero weight must not enter the active
+    ##   set of the SSN system even though its prox value is zero)
+    weights <- rep(1, n)
+    weights[1:10] <- 0
+    weights[11:20] <- 3
+    nll_w <- vapply(c("", "_ssn_alm_always"), function(sfx) {
+      gp_model <- GPModel(group_data = group, likelihood = paste0("asymmetric_laplace", sfx),
+                          likelihood_additional_param = quantile, weights = weights)
+      gp_model$neg_log_likelihood(cov_pars = c(0.9), y = y, aux_pars = c(lambda), fixed_effects = fixed_effects)
+    }, numeric(1))
+    expect_lt(abs(nll_w[[1]] - 157.4794379), tol)
+    expect_lt(abs(nll_w[[2]] - 157.4537383), tol)
+
+    ## Estimation. Solving the mode finding problem exactly makes the approximate marginal likelihood a
+    ##   well-defined function of the parameters, which is what the outer optimizer needs
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "asymmetric_laplace",
+                                           likelihood_additional_param = quantile, y = y, X = X,
+                                           params = OPTIM_PARAMS_BFGS), file = 'NUL')
+    capture.output( gp_model_ssn <- fitGPModel(group_data = group, likelihood = "asymmetric_laplace_ssn_alm",
+                                               likelihood_additional_param = quantile, y = y, X = X,
+                                               params = OPTIM_PARAMS_BFGS), file = 'NUL')
+    expect_lte(gp_model_ssn$get_current_neg_log_likelihood(),
+               gp_model$get_current_neg_log_likelihood() + relax_tolerance_nll(TOLERANCE_MEDIUM))
+    expect_lt(abs(gp_model_ssn$get_current_neg_log_likelihood() - 136.6570215), relax_tolerance_nll(TOLERANCE_STRICT))
+    expect_equal(gp_model_ssn$get_likelihood_name(), "asymmetric_laplace")
+
+    ## Many observations exactly on a kink. With Z = I the exact mode has residuals that are exactly zero, and the
+    ##   mode is then only stationary for an interior subgradient of the check loss, which the endpoint convention of
+    ##   the quasi-Newton phase cannot produce. The refinement publishes the certifying subgradient instead, so that
+    ##   'Q b = Z^T first_deriv_ll_' continues to hold and the gradients stay consistent with the mode
+    y_kink <- round(y * 4) / 4# lots of duplicated responses
+    nll_kink <- vapply(c("", "_ssn_alm", "_ssn_alm_always"), function(sfx) {
+      gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                          likelihood = paste0("asymmetric_laplace", sfx), likelihood_additional_param = quantile)
+      gp_model$neg_log_likelihood(cov_pars = c(0.9, 0.2), y = y_kink, aux_pars = c(lambda),
+                                  fixed_effects = fixed_effects)
+    }, numeric(1))
+    expect_lt(abs(nll_kink[[1]] - 174.6327729), tol)
+    expect_lt(abs(nll_kink[[2]] - 173.4317231), tol)
+    expect_equal(nll_kink[[2]], nll_kink[[3]])
+    expect_lte(nll_kink[[2]], nll_kink[[1]])
+
+    ## A conjugate gradient budget that is far too small for the semismooth Newton systems. An inaccurate Newton
+    ##   direction must not be reported as a successful solve: the refinement then gives up, keeps the mode of the
+    ##   quasi-Newton iteration, and does not advertise a certified score. 'cg_max_num_it' also throttles the mode
+    ##   finding itself, so the comparison has to be made against the same setting without the refinement
+    nll_cg <- vapply(c("", "_ssn_alm", "_ssn_alm_always"), function(sfx) {
+      gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "vecchia",
+                          num_neighbors = 20, matrix_inversion_method = "iterative",
+                          likelihood = paste0("asymmetric_laplace", sfx), likelihood_additional_param = quantile)
+      gp_model$set_optim_params(params = list(cg_max_num_it = 1, seed_rand_vec_trace = 1))
+      gp_model$neg_log_likelihood(cov_pars = c(0.9, 0.2), y = y, aux_pars = c(lambda),
+                                  fixed_effects = fixed_effects)
+    }, numeric(1))
+    expect_true(all(is.finite(nll_cg)))
+    expect_equal(nll_cg[[2]], nll_cg[[1]])
+    expect_equal(nll_cg[[3]], nll_cg[[1]])
+
+    ## The suffix is only supported for the asymmetric Laplace likelihood
+    expect_error(GPModel(group_data = group, likelihood = "poisson_ssn_alm"),
+                 "The '_ssn_alm' mode refinement is currently only supported", fixed = TRUE)
+
+  }) # end asymmetric_laplace with SSN-ALM mode refinement
+
   test_that("Standard errors for non-Gaussian likelihoods ", {
 
     ##################################################################################

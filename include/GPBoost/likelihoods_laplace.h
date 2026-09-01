@@ -123,6 +123,32 @@ namespace GPBoost {
 				break;
 			}
 		}
+		if (!has_NA_or_Inf && UseSSNALMRefinement()) {//exact non-smooth refinement of the mode for 'asymmetric_laplace'
+			T_mat Id_plus_Wsqrt_Sigma_Wsqrt_ssn(dim_mode_, dim_mode_);
+			T_chol chol_fact_ssn;
+			bool chol_fact_ssn_pattern_analyzed = false;
+			vec_t W_ssn_prev, Wsqrt_ssn;
+			// (Sigma^-1 + W)^-1 = Sigma - Sigma W^0.5 (I + W^0.5 Sigma W^0.5)^-1 W^0.5 Sigma, which is zero-safe in W
+			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
+				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
+				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
+				//	happens as soon as the active set has settled (usually after a few steps)
+				if (W_ssn_prev.size() != W_ssn.size() || (W_ssn_prev.array() != W_ssn.array()).any()) {
+					Wsqrt_ssn = W_ssn.cwiseSqrt();
+					Id_plus_Wsqrt_Sigma_Wsqrt_ssn.setIdentity();
+					Id_plus_Wsqrt_Sigma_Wsqrt_ssn += (Wsqrt_ssn.asDiagonal() * (*Sigma) * Wsqrt_ssn.asDiagonal());
+					CalcChol<T_mat>(chol_fact_ssn, Id_plus_Wsqrt_Sigma_Wsqrt_ssn, chol_fact_ssn_pattern_analyzed);
+					W_ssn_prev = W_ssn;
+				}
+				const vec_t Sigma_rhs = (*Sigma) * rhs;
+				const vec_t Wsqrt_aux = Wsqrt_ssn.cwiseProduct(chol_fact_ssn.solve(Wsqrt_ssn.cwiseProduct(Sigma_rhs)));
+				sol = Sigma_rhs - (*Sigma) * Wsqrt_aux;
+				return sol.allFinite();
+			};
+			// Sigma^-1 is not available cheaply here, so 'SigmaI_mode_' is only maintained incrementally (as it also is
+			//	in the Newton loop above)
+			RefineModeAsymLaplaceSSNALM(y_data, y_data_int, fixed_effects, solve_H, nullptr, SigmaI_mode_, location_par, &location_par_ptr, approx_marginal_ll);
+		}
 		if (!has_NA_or_Inf) {//calculate determinant
 			if (sample_from_posterior_after_mode_finding_) {
 				Sample_Posterior_LaplaceApprox_Stable(Sigma);
@@ -204,7 +230,7 @@ namespace GPBoost {
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());
 			rhs = (*Zt_) * first_deriv_ll_ - (*SigmaI_ptr) * mode_;//right hand side for updating mode
 			if (matrix_inversion_method_ == "iterative") {
-				if (it == 0 || information_changes_after_mode_finding_) {
+				if (it == 0 || information_changes_during_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
 					SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t((*SigmaI_ptr)) + sp_mat_rm_t((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
 					if (cg_preconditioner_type_ == "incomplete_cholesky") {
@@ -273,6 +299,53 @@ namespace GPBoost {
 				break;
 			}
 		}//end mode finding algorithm
+		if (!has_NA_or_Inf && UseSSNALMRefinement()) {//exact non-smooth refinement of the mode for 'asymmetric_laplace'
+			vec_t Qmode = (*SigmaI_ptr) * mode_;
+			chol_sp_mat_t chol_fact_ssn;
+			bool chol_fact_ssn_pattern_analyzed = false;
+			vec_t W_ssn_prev;
+			// The SSN system 'Sigma^-1 + Z^T (rho A) Z' has the same structure as the Newton system of the mode finding
+			//	loop, but it must use its own factorization / operator so that the Laplace approximation is not corrupted
+			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
+				if (matrix_inversion_method_ == "iterative") {
+					vec_t diag_H = (*SigmaI_ptr).diagonal();
+					for (int j = 0; j < (int)(*Zt_).outerSize(); ++j) {
+						for (sp_mat_t::InnerIterator it_z(*Zt_, j); it_z; ++it_z) {
+							diag_H[it_z.row()] += W_ssn[j] * it_z.value() * it_z.value();
+						}
+					}
+					auto apply_H = [&](const vec_t& x, vec_t& out) {
+						vec_t ZtWZ_x;
+						ApplyZtWZToModeVector(W_ssn, x, ZtWZ_x);
+						out = (*SigmaI_ptr) * x + ZtWZ_x;
+					};
+					return SolveSSNALMCG(apply_H, diag_H, rhs, sol);
+				}
+				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
+				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
+				//	happens as soon as the active set has settled (usually after a few steps)
+				if (W_ssn_prev.size() != W_ssn.size() || (W_ssn_prev.array() != W_ssn.array()).any()) {
+					sp_mat_t SigmaI_plus_ZtAZ = (*SigmaI_ptr) + (sp_mat_t)((*Zt_) * W_ssn.asDiagonal() * (*Zt_).transpose());
+					SigmaI_plus_ZtAZ.makeCompressed();
+					if (!chol_fact_ssn_pattern_analyzed) {
+						chol_fact_ssn.analyzePattern(SigmaI_plus_ZtAZ);
+						chol_fact_ssn_pattern_analyzed = true;
+					}
+					chol_fact_ssn.factorize(SigmaI_plus_ZtAZ);
+					if (chol_fact_ssn.info() != Eigen::Success) {
+						return false;
+					}
+					W_ssn_prev = W_ssn;
+				}
+				sol = chol_fact_ssn.solve(rhs);
+				return sol.allFinite();
+			};
+			auto apply_Q = [&](const vec_t& x, vec_t& out) { out = (*SigmaI_ptr) * x; };
+			RefineModeAsymLaplaceSSNALM(y_data, y_data_int, fixed_effects, solve_H, apply_Q, Qmode, location_par, &location_par_ptr_dummy, approx_marginal_ll);
+			if (save_SigmaI_mode_) {
+				SigmaI_mode_ = (*Zt_).transpose() * Qmode;
+			}
+		}
 		if (!has_NA_or_Inf) {//calculate determinant
 			if (sample_from_posterior_after_mode_finding_) {
 				Sample_Posterior_LaplaceApprox_GroupedRE(SigmaI, has_vecchia_gp, B, D_inv);
@@ -459,6 +532,17 @@ namespace GPBoost {
 				break;
 			}
 		}//end mode finding algorithm
+		if (!has_NA_or_Inf && UseSSNALMRefinement()) {//exact non-smooth refinement of the mode for 'asymmetric_laplace'
+			vec_t Qmode = mode_ / sigma2;
+			// Z^T A Z is diagonal for a single grouped random effect, so the SSN system is solved in O(n) without any
+			//	factorization: d_j = -g_j / (1 / sigma2 + rho * sum_{i: g(i) = j} A_i)
+			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
+				sol = (rhs.array() / (W_ssn.array() + 1. / sigma2)).matrix();
+				return sol.allFinite();
+			};
+			auto apply_Q = [&](const vec_t& x, vec_t& out) { out = x / sigma2; };
+			RefineModeAsymLaplaceSSNALM(y_data, y_data_int, fixed_effects, solve_H, apply_Q, Qmode, location_par, &location_par_ptr_dummy, approx_marginal_ll);
+		}
 		if (!has_NA_or_Inf) {//calculate determinant
 			if (sample_from_posterior_after_mode_finding_ && !iid_model_) {
 				Sample_Posterior_LaplaceApprox_OnlyOneGroupedRE();
@@ -662,10 +746,13 @@ namespace GPBoost {
 					}
 					chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
 					CheckCholeskyFactorization(chol_fact_SigmaI_plus_ZtWZ_vecchia_, "FindModePostRandEffCalcMLLFSVA mode update");
+					// 'sigma_woodbury_2' depends on the mode only through 'chol_fact_SigmaI_plus_ZtWZ_vecchia_', so it is
+					//	calculated under the same condition. Its solve has 'num_ip' right-hand sides and was previously
+					//	repeated in every iteration of the mode finding even when W does not change
+					sigma_woodbury_2 = (sigma_woodbury) - Bt_D_inv_B_cross_cov.transpose() * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
+					chol_fact_sigma_woodbury_2.compute(sigma_woodbury_2);
+					CheckCholeskyFactorization(chol_fact_sigma_woodbury_2, "FindModePostRandEffCalcMLLFSVA Woodbury mode update");
 				}
-				sigma_woodbury_2 = (sigma_woodbury) - Bt_D_inv_B_cross_cov.transpose() * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
-				chol_fact_sigma_woodbury_2.compute(sigma_woodbury_2);
-				CheckCholeskyFactorization(chol_fact_sigma_woodbury_2, "FindModePostRandEffCalcMLLFSVA Woodbury mode update");
 				vec_t Sigma_I_rhs = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
 				vec_t Bt_D_inv_B_cross_cov_T_Sigma_I_rhs = Bt_D_inv_B_cross_cov.transpose() * Sigma_I_rhs;
 				vec_t woodI_Bt_D_inv_B_cross_cov_T_Sigma_I_rhs = chol_fact_sigma_woodbury_2.solve(Bt_D_inv_B_cross_cov_T_Sigma_I_rhs);
@@ -712,6 +799,68 @@ namespace GPBoost {
 				break;
 			}
 		} // end loop for mode finding
+		if (!has_NA_or_Inf && UseSSNALMRefinement()) {//exact non-smooth refinement of the mode for 'asymmetric_laplace'
+			// Sigma^-1 = B^T D^-1 B - (B^T D^-1 B Sigma_nm) sigma_woodbury^-1 (B^T D^-1 B Sigma_nm)^T
+			auto apply_Q = [&](const vec_t& x, vec_t& out) {
+				out = B_t_D_inv_rm_ * (B_rm_ * x) -
+					Bt_D_inv_B_cross_cov * chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * x);
+			};
+			vec_t Qmode;
+			apply_Q(mode_, Qmode);
+			vec_t diag_Bt_D_inv_B;
+			if (matrix_inversion_method_ == "iterative") {
+				// The low-rank correction is dropped in the preconditioner; the iterative FITC preconditioner cannot be
+				//	used here at all since it relies on W^-1 and the SSN active-set diagonal contains exact zeros
+				diag_Bt_D_inv_B = vec_t::Zero(dim_mode_);
+				const vec_t D_inv_diag = D_inv_rm_.diagonal();
+				for (int k = 0; k < (int)B_rm_.rows(); ++k) {
+					for (sp_mat_rm_t::InnerIterator it_b(B_rm_, k); it_b; ++it_b) {
+						diag_Bt_D_inv_B[it_b.col()] += D_inv_diag[k] * it_b.value() * it_b.value();
+					}
+				}
+			}
+			chol_sp_mat_t chol_fact_ssn;
+			chol_den_mat_t chol_fact_sigma_woodbury_ssn;
+			bool chol_fact_ssn_pattern_analyzed = false;
+			vec_t W_ssn_prev;
+			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
+				if (matrix_inversion_method_ == "iterative") {
+					auto apply_H = [&](const vec_t& x, vec_t& out) {
+						apply_Q(x, out);
+						out += W_ssn.cwiseProduct(x);
+					};
+					return SolveSSNALMCG(apply_H, diag_Bt_D_inv_B + W_ssn, rhs, sol);
+				}
+				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
+				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
+				//	happens as soon as the active set has settled (usually after a few steps)
+				if (W_ssn_prev.size() != W_ssn.size() || (W_ssn_prev.array() != W_ssn.array()).any()) {
+					sp_mat_t SigmaI_plus_A = SigmaI;
+					SigmaI_plus_A.diagonal().array() += W_ssn.array();
+					SigmaI_plus_A.makeCompressed();
+					if (!chol_fact_ssn_pattern_analyzed) {
+						chol_fact_ssn.analyzePattern(SigmaI_plus_A);
+						chol_fact_ssn_pattern_analyzed = true;
+					}
+					chol_fact_ssn.factorize(SigmaI_plus_A);
+					if (chol_fact_ssn.info() != Eigen::Success) {
+						return false;
+					}
+					// (B^T D^-1 B + W - C W_wood^-1 C^T)^-1 with C = Bt_D_inv_B_cross_cov, by the Woodbury identity
+					den_mat_t sigma_woodbury_ssn = sigma_woodbury - Bt_D_inv_B_cross_cov.transpose() * chol_fact_ssn.solve(Bt_D_inv_B_cross_cov);
+					chol_fact_sigma_woodbury_ssn.compute(sigma_woodbury_ssn);
+					if (chol_fact_sigma_woodbury_ssn.info() != Eigen::Success) {
+						return false;
+					}
+					W_ssn_prev = W_ssn;
+				}
+				const vec_t aux = chol_fact_ssn.solve(rhs);
+				sol = aux + chol_fact_ssn.solve(Bt_D_inv_B_cross_cov *
+					chol_fact_sigma_woodbury_ssn.solve(Bt_D_inv_B_cross_cov.transpose() * aux));
+				return sol.allFinite();
+			};
+			RefineModeAsymLaplaceSSNALM(y_data, y_data_int, fixed_effects, solve_H, apply_Q, Qmode, location_par, &location_par_ptr, approx_marginal_ll);
+		}
 		if (!has_NA_or_Inf) {//calculate determinant
 			mode_has_been_calculated_ = true;
 			na_or_inf_during_last_call_to_find_mode_ = false;
@@ -1036,6 +1185,61 @@ namespace GPBoost {
 				break;
 			}
 		} // end loop for mode finding
+		if (!has_NA_or_Inf && UseSSNALMRefinement()) {//exact non-smooth refinement of the mode for 'asymmetric_laplace'
+			const bool ssn_has_SigmaI = ((int)SigmaI.rows() == dim_mode_);// 'SigmaI' is not formed for most iterative variants
+			auto apply_Q = [&](const vec_t& x, vec_t& out) {
+				if (ssn_has_SigmaI) {
+					out = SigmaI * x;
+				}
+				else {
+					out = B_t_D_inv_rm_ * (B_rm_ * x);// Sigma^-1 = B^T D^-1 B
+				}
+			};
+			vec_t Qmode;
+			apply_Q(mode_, Qmode);
+			vec_t diag_SigmaI;
+			if (matrix_inversion_method_ == "iterative") {
+				diag_SigmaI = vec_t::Zero(dim_mode_);
+				const vec_t D_inv_diag = D_inv_rm_.diagonal();
+				for (int k = 0; k < (int)B_rm_.rows(); ++k) {
+					for (sp_mat_rm_t::InnerIterator it_b(B_rm_, k); it_b; ++it_b) {
+						diag_SigmaI[it_b.col()] += D_inv_diag[k] * it_b.value() * it_b.value();
+					}
+				}
+			}
+			chol_sp_mat_t chol_fact_ssn;
+			bool chol_fact_ssn_pattern_analyzed = false;
+			vec_t W_ssn_prev;
+			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
+				if (matrix_inversion_method_ == "iterative") {
+					auto apply_H = [&](const vec_t& x, vec_t& out) {
+						apply_Q(x, out);
+						out += W_ssn.cwiseProduct(x);
+					};
+					return SolveSSNALMCG(apply_H, diag_SigmaI + W_ssn, rhs, sol);
+				}
+				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
+				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
+				//	happens as soon as the active set has settled (usually after a few steps)
+				if (W_ssn_prev.size() != W_ssn.size() || (W_ssn_prev.array() != W_ssn.array()).any()) {
+					sp_mat_t SigmaI_plus_A = SigmaI;
+					SigmaI_plus_A.diagonal().array() += W_ssn.array();//the sparsity pattern is unchanged, so the symbolic analysis can be reused
+					SigmaI_plus_A.makeCompressed();
+					if (!chol_fact_ssn_pattern_analyzed) {
+						chol_fact_ssn.analyzePattern(SigmaI_plus_A);
+						chol_fact_ssn_pattern_analyzed = true;
+					}
+					chol_fact_ssn.factorize(SigmaI_plus_A);
+					if (chol_fact_ssn.info() != Eigen::Success) {
+						return false;
+					}
+					W_ssn_prev = W_ssn;
+				}
+				sol = chol_fact_ssn.solve(rhs);
+				return sol.allFinite();
+			};
+			RefineModeAsymLaplaceSSNALM(y_data, y_data_int, fixed_effects, solve_H, apply_Q, Qmode, location_par, &location_par_ptr, approx_marginal_ll);
+		}
 		if (!has_NA_or_Inf) {//calculate determinant
 			mode_has_been_calculated_ = true;
 			na_or_inf_during_last_call_to_find_mode_ = false;
@@ -1252,6 +1456,36 @@ namespace GPBoost {
 				break;
 			}
 		}//end for loop Newton's method
+		if (!has_NA_or_Inf && UseSSNALMRefinement()) {//exact non-smooth refinement of the mode for 'asymmetric_laplace'
+			// The Woodbury form used below is zero-safe in W: an inactive observation simply has 1 + D_i W_i = 1
+			chol_den_mat_t chol_fact_ssn;
+			vec_t W_ssn_prev, W_times_DW_plus_I_inv_ssn;
+			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
+				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
+				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
+				//	happens as soon as the active set has settled (usually after a few steps)
+				if (W_ssn_prev.size() != W_ssn.size() || (W_ssn_prev.array() != W_ssn.array()).any()) {
+					const vec_t DW_plus_I_inv = (W_ssn.array() * fitc_resid_diag.array() + 1.).matrix().cwiseInverse();
+					W_times_DW_plus_I_inv_ssn = W_ssn.cwiseProduct(DW_plus_I_inv);
+					den_mat_t M_ssn = *sigma_ip;
+					M_ssn.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+					M_ssn += (*cross_cov).transpose() * (W_times_DW_plus_I_inv_ssn.asDiagonal() * (*cross_cov));
+					chol_fact_ssn.compute(M_ssn);
+					if (chol_fact_ssn.info() != Eigen::Success) {
+						return false;
+					}
+					W_ssn_prev = W_ssn;
+				}
+				const vec_t Sigma_rhs = ((*cross_cov) * chol_fact_sigma_ip.solve((*cross_cov).transpose() * rhs)) + (fitc_resid_diag.asDiagonal() * rhs);
+				const vec_t vaux = chol_fact_ssn.solve((*cross_cov).transpose() * (W_times_DW_plus_I_inv_ssn.asDiagonal() * Sigma_rhs));
+				const vec_t SigmaI_sol = rhs - W_times_DW_plus_I_inv_ssn.cwiseProduct(Sigma_rhs - (*cross_cov) * vaux);
+				sol = ((*cross_cov) * chol_fact_sigma_ip.solve((*cross_cov).transpose() * SigmaI_sol)) + (fitc_resid_diag.asDiagonal() * SigmaI_sol);
+				return sol.allFinite();
+			};
+			// Sigma^-1 is not available cheaply here either (the FITC residual diagonal can contain zeros), so
+			//	'SigmaI_mode_' is only maintained incrementally
+			RefineModeAsymLaplaceSSNALM(y_data, y_data_int, fixed_effects, solve_H, nullptr, SigmaI_mode_, location_par, &location_par_ptr, approx_marginal_ll);
+		}
 		if (!has_NA_or_Inf) {//calculate determinant
 			mode_has_been_calculated_ = true;
 			na_or_inf_during_last_call_to_find_mode_ = false;
@@ -1291,6 +1525,235 @@ namespace GPBoost {
 		}
 		FinalizeModeFinding(it);
 	}//end FindModePostRandEffCalcMLLFITC
+
+	template <typename T_mat, typename T_chol>
+	bool Likelihood<T_mat, T_chol>::SolveSSNALMCG(const std::function<void(const vec_t&, vec_t&)>& apply_H,
+		const vec_t& diag_H,
+		const vec_t& rhs,
+		vec_t& sol) const {
+		const double rhs_norm = rhs.norm();
+		sol = vec_t::Zero(rhs.size());
+		if (!(rhs_norm > 0.)) {
+			return true;
+		}
+		const vec_t P_inv = diag_H.cwiseInverse();
+		if (!P_inv.allFinite()) {
+			return false;
+		}
+		vec_t r = rhs, p = P_inv.cwiseProduct(r), H_p(rhs.size());
+		double r_dot_z = r.dot(p);
+		if (!(r_dot_z > 0.) || !std::isfinite(r_dot_z)) {
+			return false;
+		}
+		const double tol = cg_delta_conv_ * rhs_norm;
+		bool converged = false;
+		for (int k = 0; k < cg_max_num_it_; ++k) {
+			apply_H(p, H_p);
+			const double p_dot_H_p = p.dot(H_p);
+			if (!(p_dot_H_p > 0.) || !std::isfinite(p_dot_H_p)) {
+				return false;// the generalized Hessian is not positive definite (numerically)
+			}
+			const double step = r_dot_z / p_dot_H_p;
+			sol += step * p;
+			r -= step * H_p;
+			if (r.norm() <= tol) {
+				converged = true;
+				break;
+			}
+			const vec_t z = P_inv.cwiseProduct(r);
+			const double r_dot_z_new = r.dot(z);
+			if (!(r_dot_z_new > 0.) || !std::isfinite(r_dot_z_new)) {
+				return false;
+			}
+			p = z + (r_dot_z_new / r_dot_z) * p;// the divisor 'r_dot_z' has been checked before the previous iteration
+			r_dot_z = r_dot_z_new;
+		}
+		// An inaccurate Newton direction must not be reported as a successful solve, the caller would otherwise trust a
+		//	step that has not been computed to the requested accuracy
+		return converged && sol.allFinite();
+	}//end SolveSSNALMCG
+
+	template <typename T_mat, typename T_chol>
+	bool Likelihood<T_mat, T_chol>::RefineModeAsymLaplaceSSNALM(const double* y_data,
+		const int* y_data_int,
+		const double* fixed_effects,
+		const std::function<bool(const vec_t&, const vec_t&, vec_t&)>& solve_H,
+		const std::function<void(const vec_t&, vec_t&)>& apply_Q,
+		vec_t& Qmode,
+		vec_t& location_par,
+		double** location_par_ptr,
+		double& approx_marginal_ll) {
+		CHECK(likelihood_type_ == "asymmetric_laplace");
+		CHECK(num_sets_re_ == 1);
+		CHECK((int)Qmode.size() == dim_mode_);
+		// The Laplace curvature must not become stale when the mode is changed after the mode finding loop: this holds
+		//	either because the information does not depend on the mode (the Fisher information of the asymmetric Laplace
+		//	likelihood is the constant tau (1 - tau) / sigma^2) or because the calling routine rebuilds it afterwards
+		CHECK(approximation_type_ == "fisher_laplace" || information_changes_after_mode_finding_);
+		num_it_mode_finding_ssn_alm_outer_ = 0;
+		num_it_mode_finding_ssn_ = 0;
+		ssn_alm_was_needed_ = false;
+		vec_t resid;
+		CalcAsymLaplaceResidual(y_data, *location_par_ptr, resid);
+		// KKT gate: return the quasi-Newton mode if it already satisfies the exact non-smooth optimality conditions
+		vec_t alpha_gate;
+		const double kkt_initial = CalcAsymLaplaceKKTResidual(Qmode, resid, alpha_gate);
+		ssn_alm_initial_kkt_resid_ = kkt_initial;
+		ssn_alm_final_kkt_resid_ = kkt_initial;
+		if (mode_refinement_ == ModeRefinement::kSSNALMIfNeeded && kkt_initial <= DELTA_KKT_GATE_SSN_ALM_) {
+			// The mode is certified, but the score must still be replaced by the dual that certifies it: at an
+			//	observation whose residual is exactly zero the mode is only stationary for an interior subgradient, which
+			//	the endpoint convention of 'FirstDerivLogLikAsymLaplace' does not produce (for a general Z the two
+			//	coincide by construction, so this is a no-op there)
+			ssn_alm_exact_subgradient_ = alpha_gate;
+			ssn_alm_exact_subgradient_valid_ = true;
+			SetFirstDerivLogLikFromDataScale(ssn_alm_exact_subgradient_);
+			return false;
+		}
+		ssn_alm_was_needed_ = true;
+		// Quasi-Newton warm start of the multiplier. lambda_0 = -Pi_B(Q b + r) is the exact optimal multiplier at an exact
+		//	MAP for Z = I; the endpoint subgradient is dual feasible by construction for a general Z.
+		//	Note: the multiplier is deliberately not warm-started across calls, even though it could be. The MAP problem is
+		//	convex, so a converged SSN-ALM returns the same mode for any starting point, and re-initializing here makes the
+		//	returned approximate marginal likelihood a reproducible function of the parameters. Carrying a multiplier over
+		//	from a previous covariance parameter evaluation would make the result depend on the optimizer's path again,
+		//	which is exactly the pathology that this refinement is meant to remove
+		vec_t lower, upper;
+		CalcAsymLaplaceALMDualBounds(lower, upper);
+		if (HasIdentityZ()) {
+			ssn_alm_lambda_ = -((Qmode + resid).cwiseMax(lower).cwiseMin(upper));
+		}
+		else {
+			ssn_alm_lambda_.resize(num_data_);
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				ssn_alm_lambda_[i] = (resid[i] > 0.) ? -upper[i] : -lower[i];
+			}
+		}
+		// The mean Fisher information is the natural scale of the penalty: 'Q + rho A' is then comparable to the
+		//	well-conditioned Fisher system 'Q + W' of the quasi-Newton iteration, and rho adapts automatically to sigma
+		double rho = FisherInformationOneSampleAsymLaplace() * (has_weights_ ? SumOfWeights() / num_data_ : 1.);
+		if (!(rho > 0.) || !std::isfinite(rho)) {
+			rho = 1.;
+		}
+		const double rho_max = SSN_ALM_RHO_MAX_MULT_ * rho;
+		const double approx_marginal_ll_entry = approx_marginal_ll;
+		// The best iterate seen so far, measured with the exact non-smooth MAP objective. The augmented Lagrangian is not
+		//	monotone in that objective, so the best iterate is tracked explicitly; this also guarantees that the refinement
+		//	can never return a worse mode than the quasi-Newton iteration
+		vec_t mode_best = mode_, Qmode_best = Qmode, alpha_best;
+		double approx_marginal_ll_best = approx_marginal_ll;
+		double kkt_best = std::numeric_limits<double>::infinity();// KKT residual of 'mode_best', not of the last iterate
+		vec_t v(num_data_), z(num_data_), lambda_plus(num_data_), active(num_data_),
+			z_trial(num_data_), lambda_plus_trial(num_data_), active_trial(num_data_),
+			Zt_lambda_plus, g, d, Qd, W_ssn, ZtWZ_d, mode_new, Qmode_new, resid_new, v_trial;
+		bool solve_failed = false;
+		for (int it_outer = 0; it_outer < MAXIT_SSN_ALM_OUTER_ && !solve_failed; ++it_outer) {
+			num_it_mode_finding_ssn_alm_outer_ = it_outer + 1;
+			// The inner tolerance is tightened as the outer iteration proceeds so that early subproblems are not oversolved
+			const double eps_inner = std::max(DELTA_CONV_SSN_ALM_, 1e-2 * std::pow(0.25, (double)it_outer)) * (1. + Qmode.norm());
+			for (int it_inner = 0; it_inner < MAXIT_SSN_ALM_INNER_; ++it_inner) {
+				v = resid - ssn_alm_lambda_ / rho;
+				CalcAsymLaplaceALMProx(v, rho, z, lambda_plus, active);
+				ApplyZtToDataVector(lambda_plus, Zt_lambda_plus);
+				g = Qmode + Zt_lambda_plus;// gradient of the reduced augmented Lagrangian with respect to the mode
+				if (g.norm() <= eps_inner) {
+					break;
+				}
+				AggregateActiveSetToInformationScale(active, rho, W_ssn);
+				if (!solve_H(W_ssn, -g, d)) {
+					solve_failed = true;
+					break;
+				}
+				ApplyZtWZToModeVector(W_ssn, d, ZtWZ_d);
+				Qd = -g - ZtWZ_d;// avoids a second application of Q, which is expensive on the covariance-side branches
+				const double phi = CalcAsymLaplaceReducedALMObjective(mode_, Qmode, v, z, rho);
+				const double grad_dot_direction = g.dot(d);
+				double lr_mode = 1.;
+				bool accepted = false;
+				for (int ih = 0; ih < max_number_lr_shrinkage_steps_newton_; ++ih) {
+					mode_new = mode_ + lr_mode * d;
+					Qmode_new = Qmode + lr_mode * Qd;
+					UpdateLocationParNewMode(mode_new, fixed_effects, location_par, location_par_ptr);
+					CalcAsymLaplaceResidual(y_data, *location_par_ptr, resid_new);
+					v_trial = resid_new - ssn_alm_lambda_ / rho;
+					CalcAsymLaplaceALMProx(v_trial, rho, z_trial, lambda_plus_trial, active_trial);
+					const double phi_new = CalcAsymLaplaceReducedALMObjective(mode_new, Qmode_new, v_trial, z_trial, rho);
+					if (std::isfinite(phi_new) && phi_new <= phi + c_armijo_ * lr_mode * grad_dot_direction) {
+						accepted = true;
+						break;
+					}
+					lr_mode *= 0.5;
+				}// end backtracking line search on the reduced augmented Lagrangian
+				if (!accepted) {
+					UpdateLocationParNewMode(mode_, fixed_effects, location_par, location_par_ptr);// restore the location parameter of the current mode
+					break;
+				}
+				mode_ = mode_new;
+				Qmode = Qmode_new;
+				resid = resid_new;
+				++num_it_mode_finding_ssn_;
+			}// end inner semismooth Newton iterations
+			// Multiplier update and check of the exact KKT residuals of the original non-smooth problem
+			if (apply_Q) {
+				apply_Q(mode_, Qmode);// undo the drift of the incrementally maintained 'Q b'
+			}
+			v = resid - ssn_alm_lambda_ / rho;
+			CalcAsymLaplaceALMProx(v, rho, z, lambda_plus, active);
+			const double kkt_it = CalcAsymLaplaceKKTResidualDual(Qmode, resid, z, lambda_plus);
+			const double approx_marginal_ll_it = -0.5 * (mode_.dot(Qmode)) + LogLikelihood(y_data, y_data_int, *location_par_ptr);
+			// A converged iterate is also taken over when it only ties the best objective and the best iterate is not
+			//	certified yet. Without this, a refinement that merely reconfirms an already exact mode (which happens on
+			//	a repeated evaluation at unchanged parameters) would produce no dual at all, and the certification below
+			//	would fall back to the endpoint dual, which cannot certify an interior subgradient for a general Z
+			const bool improves_objective = approx_marginal_ll_it > approx_marginal_ll_best;
+			const bool ties_and_certifies = !(approx_marginal_ll_it < approx_marginal_ll_best) &&
+				kkt_it <= DELTA_CONV_SSN_ALM_ && !(kkt_best <= DELTA_CONV_SSN_ALM_);
+			if (std::isfinite(approx_marginal_ll_it) && (improves_objective || ties_and_certifies)) {
+				approx_marginal_ll_best = approx_marginal_ll_it;
+				mode_best = mode_;
+				Qmode_best = Qmode;
+				alpha_best = -lambda_plus;// candidate KKT subgradient of the check loss at this mode
+				kkt_best = kkt_it;
+			}
+			ssn_alm_lambda_ = lambda_plus;
+			if (kkt_it <= DELTA_CONV_SSN_ALM_) {
+				break;
+			}
+			rho = std::min(SSN_ALM_RHO_GROWTH_ * rho, rho_max);
+		}// end outer augmented Lagrangian iterations
+		mode_ = mode_best;
+		Qmode = Qmode_best;
+		UpdateLocationParNewMode(mode_, fixed_effects, location_par, location_par_ptr);
+		// The augmented Lagrangian can also stop because it ran out of iterations or because an inner solve or a line
+		//	search failed. The subgradient is therefore only published if the returned mode is certified, which is
+		//	checked for 'mode_best' and not for the last iterate. This also covers the case in which the refinement
+		//	confirmed the quasi-Newton mode without improving its objective
+		CalcAsymLaplaceResidual(y_data, *location_par_ptr, resid);
+		ssn_alm_final_kkt_resid_ = CertifyAsymLaplaceSubgradient(Qmode, resid, alpha_best);
+		Log::REDebug("RefineModeAsymLaplaceSSNALM: %d outer, %d semismooth Newton iterations, KKT residual %g -> %g "
+			"(certified = %d), log-posterior at the mode %.10g -> %.10g ", num_it_mode_finding_ssn_alm_outer_,
+			num_it_mode_finding_ssn_, ssn_alm_initial_kkt_resid_, ssn_alm_final_kkt_resid_,
+			(int)ssn_alm_exact_subgradient_valid_, approx_marginal_ll_entry, approx_marginal_ll_best);
+		approx_marginal_ll = approx_marginal_ll_best;// never below the value of the quasi-Newton mode, by construction
+		if (approx_marginal_ll_best <= approx_marginal_ll_entry && !ssn_alm_exact_subgradient_valid_) {
+			return false;// neither the mode nor the score was improved, the quasi-Newton result has been kept
+		}
+		// Refresh the likelihood state for the new mode. 'CertifyAsymLaplaceSubgradient' above has already set the score
+		//	to the certifying subgradient wherever the mode could be certified, so that 'Q b = Z^T first_deriv_ll_' holds;
+		//	the gradients of the approximate marginal likelihood are derived under that stationarity condition and would
+		//	otherwise be inconsistent with the refined mode. If the mode could not be certified, the ordinary endpoint
+		//	score of an improved but approximate mode is used. The calling routine rebuilds the approximation-specific
+		//	matrix 'Q + Z^T W_Laplace Z' whenever the information depends on the mode; the SSN active-set matrix is
+		//	unrelated to it and is never used there
+		if (!ssn_alm_exact_subgradient_valid_) {
+			CalcFirstDerivLogLik(y_data, y_data_int, *location_par_ptr);
+		}
+		CalcInformationLogLik(y_data, y_data_int, *location_par_ptr, false);
+		//Log::REInfo("RefineModeAsymLaplaceSSNALM: %d outer, %d SSN iterations, KKT residual %g -> %g ",
+		//	num_it_mode_finding_ssn_alm_outer_, num_it_mode_finding_ssn_, ssn_alm_initial_kkt_resid_, ssn_alm_final_kkt_resid_);//for debugging
+		return true;
+	}//end RefineModeAsymLaplaceSSNALM
 
 	template <typename T_mat, typename T_chol>
 	vec_t Likelihood<T_mat, T_chol>::CalcStochDataScaleDiagSigmaIPlusZtWZInv() const {

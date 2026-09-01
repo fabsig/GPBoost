@@ -4350,6 +4350,13 @@ class GPModel(object):
                         - The default approximation is Fisher-Laplace: Fisher information is used for both mode finding and determinant evaluation.
                         - Enable the triangular-kernel-curvature (TKC) approximation by appending "_triangular_kernel_curvature" or the shorthand "_tkc",
                           for example, "quantile_regression_tkc" or "asymmetric_laplace_triangular_kernel_curvature".
+                        - experimental: the log-likelihood is not differentiable at the kinks where 'y_i' equals the location parameter, and the
+                          quasi-Newton mode finding can therefore stall at a point that is not the exact posterior mode. Appending "_ssn_alm", for example
+                          "quantile_regression_ssn_alm", enables an exact check of the (non-smooth) optimality conditions after the mode finding and, if the
+                          check fails, a refinement of the mode with a semismooth Newton method applied to the subproblems of an augmented Lagrangian method.
+                          This makes the approximate marginal likelihood a well-defined function of the parameters, which usually lets the outer optimizer
+                          converge in fewer iterations and to a better optimum, at the price of additional linear solves during mode finding.
+                          "_ssn_alm_always" skips the optimality check and always runs the refinement.
                     
                     - "hurdle_<base>" and "zero_inflated_<base>":
 

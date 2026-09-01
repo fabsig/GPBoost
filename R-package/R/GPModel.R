@@ -48,6 +48,13 @@
 #' The default approximation is Fisher-Laplace: Fisher information is used for both mode finding and determinant evaluation.
 #' The triangular-kernel-curvature (TKC) approximation can be enabled by appending "_triangular_kernel_curvature" or the shorthand "_tkc",
 #' for example, "quantile_regression_tkc" or "asymmetric_laplace_triangular_kernel_curvature".
+#' \itemize{ \item{ experimental: the log-likelihood is not differentiable at the kinks where 'y_i' equals the location parameter, and the
+#' quasi-Newton mode finding can therefore stall at a point that is not the exact posterior mode. Appending "_ssn_alm", for example
+#' "quantile_regression_ssn_alm", enables an exact check of the (non-smooth) optimality conditions after the mode finding and, if the check
+#' fails, a refinement of the mode with a semismooth Newton method applied to the subproblems of an augmented Lagrangian method.
+#' This makes the approximate marginal likelihood a well-defined function of the parameters, which usually lets the outer optimizer
+#' converge in fewer iterations and to a better optimum, at the price of additional linear solves during mode finding.
+#' "_ssn_alm_always" skips the optimality check and always runs the refinement }}
 #' }
 #' \item{ "hurdle_<base>" and "zero_inflated_<base>": Two-part likelihoods for response variables with an excess probability 'p0' of exact zeros.
 #' They combine a point mass 'p0' at zero with a base distribution for the remaining mass '1 - p0'. Use "hurdle_<base>" when the base has support 'y > 0'
