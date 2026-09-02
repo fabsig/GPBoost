@@ -7275,7 +7275,13 @@ namespace GPBoost {
 		static constexpr int MAXIT_SSN_ALM_OUTER_ = 10;
 		/*! \brief Maximal number of inner semismooth Newton iterations per augmented Lagrangian subproblem */
 		static constexpr int MAXIT_SSN_ALM_INNER_ = 20;
-		/*! \brief Growth factor of the penalty parameter 'rho' after every outer iteration */
+		/*! \brief Growth factor of the penalty parameter 'rho' after every outer iteration. The cost of the refinement
+		is one factorization of the generalized Hessian per semismooth Newton step, and the total number of those steps
+		turns out to be almost independent of this factor: a larger factor reaches the tolerance in fewer outer
+		iterations, but each subproblem then jumps further and needs proportionally more Newton steps. Measured on a
+		Vecchia Gaussian process, growth 2 -> 4 changed the number of factorizations from 15 to 13 at n = 2000 and from
+		17 to 19 at n = 20000, that is the work is conserved. It is therefore left at the smaller, better conditioned
+		value */
 		static constexpr double SSN_ALM_RHO_GROWTH_ = 2.;
 		/*! \brief Maximal penalty parameter, as a multiple of its initial value */
 		static constexpr double SSN_ALM_RHO_MAX_MULT_ = 1e4;

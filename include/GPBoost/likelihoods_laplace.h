@@ -1660,8 +1660,25 @@ namespace GPBoost {
 			z_trial(num_data_), lambda_plus_trial(num_data_), active_trial(num_data_),
 			Zt_lambda_plus, g, d, Qd, W_ssn, ZtWZ_d, mode_new, Qmode_new, resid_new, v_trial;
 		bool solve_failed = false;
+		// Diagnostics of the augmented Lagrangian ladder. Every branch factorizes its generalized Hessian exactly when
+		//	'W_ssn' differs from the one of the previous solve, so the number of factorizations can be counted here
+		//	without instrumenting the six branches separately. The comparison is O(n) and negligible next to a
+		//	factorization, and it does not change what is computed
+		struct SSNALMTrajectoryPoint {
+			int it_outer; double rho; double eps_inner; double g_norm; double kkt;
+			int num_inner; int num_fact; int num_active; bool inner_converged;
+		};
+		std::vector<SSNALMTrajectoryPoint> ssn_alm_trajectory;
+		vec_t W_ssn_prev_diagnostics;
+		int num_fact_total_diagnostics = 0, num_fact_outer_diagnostics = 0, num_inner_outer_diagnostics = 0;
+		double eps_inner_diagnostics = 0., g_norm_diagnostics = 0.;
+		bool inner_converged = false;
 		for (int it_outer = 0; it_outer < MAXIT_SSN_ALM_OUTER_ && !solve_failed; ++it_outer) {
 			num_it_mode_finding_ssn_alm_outer_ = it_outer + 1;
+			num_fact_outer_diagnostics = 0;
+			num_inner_outer_diagnostics = 0;
+			inner_converged = false;
+			g_norm_diagnostics = 0.;
 			// The inner tolerance is tightened as the outer iteration proceeds so that early subproblems are not oversolved
 			const double eps_inner = std::max(DELTA_CONV_SSN_ALM_, 1e-2 * std::pow(0.25, (double)it_outer)) * (1. + Qmode.norm());
 			for (int it_inner = 0; it_inner < MAXIT_SSN_ALM_INNER_; ++it_inner) {
@@ -1669,10 +1686,20 @@ namespace GPBoost {
 				CalcAsymLaplaceALMProx(v, rho, z, lambda_plus, active);
 				ApplyZtToDataVector(lambda_plus, Zt_lambda_plus);
 				g = Qmode + Zt_lambda_plus;// gradient of the reduced augmented Lagrangian with respect to the mode
-				if (g.norm() <= eps_inner) {
+				const double g_norm = g.norm();
+				g_norm_diagnostics = g_norm;
+				eps_inner_diagnostics = eps_inner;
+				if (g_norm <= eps_inner) {
+					inner_converged = true;
 					break;
 				}
 				AggregateActiveSetToInformationScale(active, rho, W_ssn);
+				if (W_ssn_prev_diagnostics.size() != W_ssn.size() ||
+					(W_ssn_prev_diagnostics.array() != W_ssn.array()).any()) {
+					++num_fact_total_diagnostics;
+					++num_fact_outer_diagnostics;
+					W_ssn_prev_diagnostics = W_ssn;
+				}
 				if (!solve_H(W_ssn, -g, d)) {
 					solve_failed = true;
 					break;
@@ -1705,6 +1732,7 @@ namespace GPBoost {
 				Qmode = Qmode_new;
 				resid = resid_new;
 				++num_it_mode_finding_ssn_;
+				++num_inner_outer_diagnostics;
 			}// end inner semismooth Newton iterations
 			// Multiplier update and check of the exact KKT residuals of the original non-smooth problem
 			if (apply_Q) {
@@ -1713,6 +1741,9 @@ namespace GPBoost {
 			v = resid - ssn_alm_lambda_ / rho;
 			CalcAsymLaplaceALMProx(v, rho, z, lambda_plus, active);
 			const double kkt_it = CalcAsymLaplaceKKTResidualDual(Qmode, resid, z, lambda_plus);
+			ssn_alm_trajectory.push_back({ it_outer, rho, eps_inner_diagnostics, g_norm_diagnostics, kkt_it,
+				num_inner_outer_diagnostics, num_fact_outer_diagnostics,
+				(int)(active.array() != 0.).count(), inner_converged });
 			const double approx_marginal_ll_it = -0.5 * (mode_.dot(Qmode)) + LogLikelihood(y_data, y_data_int, *location_par_ptr);
 			// A converged iterate is also taken over when it only ties the best objective and the best iterate is not
 			//	certified yet. Without this, a refinement that merely reconfirms an already exact mode (which happens on
@@ -1732,8 +1763,23 @@ namespace GPBoost {
 			if (kkt_it <= DELTA_CONV_SSN_ALM_) {
 				break;
 			}
+			// The penalty is increased unconditionally. Increasing it only after a subproblem that reached its inner
+			//	tolerance is what the convergence theory of the augmented Lagrangian method asks for, but it was tried
+			//	and measured worse: on the iterative branches the Newton direction is inexact by construction, so
+			//	'inner_converged' also reports how accurate the conjugate gradient solve happened to be, and gating on
+			//	it holds the penalty back exactly where the subproblems are solved least accurately. The refined mode
+			//	became worse for the two iterative regression tests (negative log-likelihood +1.8e-4 and +6.1e-5) and
+			//	nothing became faster, since the inner iteration always reaches its tolerance on the direct branches
 			rho = std::min(SSN_ALM_RHO_GROWTH_ * rho, rho_max);
 		}// end outer augmented Lagrangian iterations
+		for (const auto& p : ssn_alm_trajectory) {
+			Log::REDebug("SSNALM_TRAJ outer=%d rho=%.6g eps_inner=%.6g g_norm=%.6g kkt=%.6g inner=%d fact=%d "
+				"active=%d of %d inner_converged=%d", p.it_outer, p.rho, p.eps_inner, p.g_norm, p.kkt,
+				p.num_inner, p.num_fact, p.num_active, (int)num_data_, (int)p.inner_converged);
+		}
+		Log::REDebug("SSNALM_TOTAL outer=%d inner=%d fact=%d warm_started=%d",
+			num_it_mode_finding_ssn_alm_outer_, num_it_mode_finding_ssn_, num_fact_total_diagnostics,
+			(int)ssn_alm_lambda_was_warm_started_);
 		mode_ = mode_best;
 		Qmode = Qmode_best;
 		UpdateLocationParNewMode(mode_, fixed_effects, location_par, location_par_ptr);
