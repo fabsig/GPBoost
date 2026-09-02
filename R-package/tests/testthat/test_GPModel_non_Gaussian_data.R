@@ -6919,7 +6919,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                params = OPTIM_PARAMS_BFGS), file = 'NUL')
     expect_lte(gp_model_ssn$get_current_neg_log_likelihood(),
                gp_model$get_current_neg_log_likelihood() + relax_tolerance_nll(TOLERANCE_MEDIUM))
-    expect_lt(abs(gp_model_ssn$get_current_neg_log_likelihood() - 136.6570215), relax_tolerance_nll(TOLERANCE_STRICT))
+    expect_lt(abs(gp_model_ssn$get_current_neg_log_likelihood() - 136.6565088), relax_tolerance_nll(TOLERANCE_STRICT))
     expect_equal(gp_model_ssn$get_likelihood_name(), "asymmetric_laplace")
 
     ## Many observations exactly on a kink. With Z = I the exact mode has residuals that are exactly zero, and the

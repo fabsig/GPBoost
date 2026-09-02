@@ -7283,6 +7283,8 @@ namespace GPBoost {
 		int num_it_mode_finding_ssn_alm_outer_ = 0;
 		/*! \brief Total number of accepted semismooth Newton steps of the last call (diagnostics) */
 		int num_it_mode_finding_ssn_ = 0;
+		/*! \brief True if the multiplier of the last call was warm started from the previous call (diagnostics) */
+		bool ssn_alm_lambda_was_warm_started_ = false;
 		/*! \brief True if the KKT gate failed and the refinement was run in the last call (diagnostics) */
 		bool ssn_alm_was_needed_ = false;
 		/*! \brief Normalized KKT residual of the quasi-Newton mode of the last call (diagnostics, -1 if not calculated) */
