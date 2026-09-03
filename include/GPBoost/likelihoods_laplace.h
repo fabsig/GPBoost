@@ -319,7 +319,9 @@ namespace GPBoost {
 						ApplyZtWZToModeVector(W_ssn, x, ZtWZ_x);
 						out = (*SigmaI_ptr) * x + ZtWZ_x;
 					};
-					return SolveSSNALMCG(apply_H, diag_H, rhs, sol);
+					const vec_t P_inv = diag_H.cwiseInverse();
+					auto apply_P_inv = [&](const vec_t& v_in, vec_t& v_out) { v_out = P_inv.cwiseProduct(v_in); };
+					return SolveSSNALMCG(apply_H, apply_P_inv, rhs, sol);
 				}
 				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
 				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
@@ -807,18 +809,6 @@ namespace GPBoost {
 			};
 			vec_t Qmode;
 			apply_Q(mode_, Qmode);
-			vec_t diag_Bt_D_inv_B;
-			if (matrix_inversion_method_ == "iterative") {
-				// The low-rank correction is dropped in the preconditioner; the iterative FITC preconditioner cannot be
-				//	used here at all since it relies on W^-1 and the SSN active-set diagonal contains exact zeros
-				diag_Bt_D_inv_B = vec_t::Zero(dim_mode_);
-				const vec_t D_inv_diag = D_inv_rm_.diagonal();
-				for (int k = 0; k < (int)B_rm_.rows(); ++k) {
-					for (sp_mat_rm_t::InnerIterator it_b(B_rm_, k); it_b; ++it_b) {
-						diag_Bt_D_inv_B[it_b.col()] += D_inv_diag[k] * it_b.value() * it_b.value();
-					}
-				}
-			}
 			chol_sp_mat_t chol_fact_ssn;
 			chol_den_mat_t chol_fact_sigma_woodbury_ssn;
 			bool chol_fact_ssn_pattern_analyzed = false;
@@ -829,7 +819,16 @@ namespace GPBoost {
 						apply_Q(x, out);
 						out += W_ssn.cwiseProduct(x);
 					};
-					return SolveSSNALMCG(apply_H, diag_Bt_D_inv_B + W_ssn, rhs, sol);
+					// VADU preconditioner, see the identical block of 'FindModePostRandEffCalcMLLVecchia'. The low-rank
+					//	correction of the full-scale approximation is dropped here, so that 'P = B^T (D^-1 + W) B'; the
+					//	FITC preconditioner of the Laplace approximation cannot be used at all, since it relies on W^-1
+					//	and the active-set curvature contains exact zeros
+					const sp_mat_rm_t D_inv_plus_W_B_rm = (D_inv_rm_.diagonal() + W_ssn).asDiagonal() * B_rm_;
+					auto apply_P_inv = [&](const vec_t& v_in, vec_t& v_out) {
+						const vec_t Bt_inv_v = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(v_in);
+						v_out = D_inv_plus_W_B_rm.template triangularView<Eigen::UpLoType::Lower>().solve(Bt_inv_v);
+					};
+					return SolveSSNALMCG(apply_H, apply_P_inv, rhs, sol);
 				}
 				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
 				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
@@ -1197,16 +1196,6 @@ namespace GPBoost {
 			};
 			vec_t Qmode;
 			apply_Q(mode_, Qmode);
-			vec_t diag_SigmaI;
-			if (matrix_inversion_method_ == "iterative") {
-				diag_SigmaI = vec_t::Zero(dim_mode_);
-				const vec_t D_inv_diag = D_inv_rm_.diagonal();
-				for (int k = 0; k < (int)B_rm_.rows(); ++k) {
-					for (sp_mat_rm_t::InnerIterator it_b(B_rm_, k); it_b; ++it_b) {
-						diag_SigmaI[it_b.col()] += D_inv_diag[k] * it_b.value() * it_b.value();
-					}
-				}
-			}
 			chol_sp_mat_t chol_fact_ssn;
 			bool chol_fact_ssn_pattern_analyzed = false;
 			vec_t W_ssn_prev;
@@ -1216,7 +1205,36 @@ namespace GPBoost {
 						apply_Q(x, out);
 						out += W_ssn.cwiseProduct(x);
 					};
-					return SolveSSNALMCG(apply_H, diag_SigmaI + W_ssn, rhs, sol);
+					// VADU preconditioner 'P = B^T (D^-1 + W) B', applied as 'P^-1 r = B^-1 (D^-1 + W)^-1 B^-T r'.
+					//	It only needs 'D^-1 + W > 0', which holds even where the active-set curvature is exactly zero,
+					//	and unlike the diagonal of the system it keeps the Vecchia structure of the prior precision.
+					//	'(D^-1 + W) B' is rebuilt for every solve because W changes at every semismooth Newton step;
+					//	that is one sparse scaling, of the same order as a single conjugate gradient iteration.
+					//	Two alternatives were implemented and measured against it and are not used. An SSOR factor of
+					//	'Sigma^-1 + rho I' needs 331 conjugate gradient iterations per solve at n = 2000 and does not
+					//	converge at all at n = 20000. A zero fill-in incomplete Cholesky of the same matrix is a much
+					//	better preconditioner in iteration count, 2 to 4 iterations per solve against 29 to 65 for VADU,
+					//	but its factor lives on the sparsity pattern of 'Sigma^-1 = B^T D^-1 B', which is about an order
+					//	of magnitude denser than that of B, so each application costs proportionally more and the 43 to
+					//	48 percent saving in iterations does not translate into time (1.63 against 1.60 seconds at
+					//	n = 2000, 39.5 against 45.2 at n = 20000, and there with a mode that failed to certify).
+					//	Both were only ever candidates for the ADMM phase, whose penalty is fixed so that a factor could
+					//	be built once; for the semismooth Newton phase the curvature changes at every step
+					//	An exact sparse Cholesky solve of the ADMM system was also measured at n = 5000. It followed the
+					//	same KKT trajectory as VADU-CG at relative tolerance 1e-6 and took 1.28 instead of 5.69 seconds,
+					//	including assembly and factorization. It is not used on this branch because explicitly forming
+					//	'Sigma^-1 = B^T D^-1 B' and its factor can have much larger fill and memory consumption, which
+					//	would violate the scalability expected from 'matrix_inversion_method = iterative'. The VADU solve
+					//	therefore uses a phase-specific relative tolerance: the previous 1e-2 stalled at KKT 2.1e-2,
+					//	whereas 'CG_REL_TOL_ADMM_ALONE_ = 1e-6' matched Cholesky at KKT 1.5e-5 after 200 iterations. When
+					//	the phase only warm starts the semismooth Newton iterations it does not need to converge on its
+					//	own and uses the looser 'CG_REL_TOL_ADMM_WARM_START_'
+					const sp_mat_rm_t D_inv_plus_W_B_rm = (D_inv_rm_.diagonal() + W_ssn).asDiagonal() * B_rm_;
+					auto apply_P_inv = [&](const vec_t& v_in, vec_t& v_out) {
+						const vec_t Bt_inv_v = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(v_in);
+						v_out = D_inv_plus_W_B_rm.template triangularView<Eigen::UpLoType::Lower>().solve(Bt_inv_v);
+					};
+					return SolveSSNALMCG(apply_H, apply_P_inv, rhs, sol);
 				}
 				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
 				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
@@ -1528,7 +1546,7 @@ namespace GPBoost {
 
 	template <typename T_mat, typename T_chol>
 	bool Likelihood<T_mat, T_chol>::SolveSSNALMCG(const std::function<void(const vec_t&, vec_t&)>& apply_H,
-		const vec_t& diag_H,
+		const std::function<void(const vec_t&, vec_t&)>& apply_P_inv,
 		const vec_t& rhs,
 		vec_t& sol) const {
 		const double rhs_norm = rhs.norm();
@@ -1536,18 +1554,23 @@ namespace GPBoost {
 		if (!(rhs_norm > 0.)) {
 			return true;
 		}
-		const vec_t P_inv = diag_H.cwiseInverse();
-		if (!P_inv.allFinite()) {
+		vec_t r = rhs, p(rhs.size()), H_p(rhs.size()), z(rhs.size());
+		apply_P_inv(r, p);
+		if (!p.allFinite()) {
 			return false;
 		}
-		vec_t r = rhs, p = P_inv.cwiseProduct(r), H_p(rhs.size());
 		double r_dot_z = r.dot(p);
 		if (!(r_dot_z > 0.) || !std::isfinite(r_dot_z)) {
 			return false;
 		}
-		const double tol = cg_delta_conv_ * rhs_norm;
+		double relative_tol = cg_delta_conv_;
+		if (ssn_alm_in_admm_phase_) {
+			relative_tol = ModeRefinementUsesSSNALM() ? CG_REL_TOL_ADMM_WARM_START_ : CG_REL_TOL_ADMM_ALONE_;
+		}
+		const double tol = relative_tol * rhs_norm;
 		bool converged = false;
 		for (int k = 0; k < cg_max_num_it_; ++k) {
+			++num_cg_it_mode_refinement_;
 			apply_H(p, H_p);
 			const double p_dot_H_p = p.dot(H_p);
 			if (!(p_dot_H_p > 0.) || !std::isfinite(p_dot_H_p)) {
@@ -1560,7 +1583,7 @@ namespace GPBoost {
 				converged = true;
 				break;
 			}
-			const vec_t z = P_inv.cwiseProduct(r);
+			apply_P_inv(r, z);
 			const double r_dot_z_new = r.dot(z);
 			if (!(r_dot_z_new > 0.) || !std::isfinite(r_dot_z_new)) {
 				return false;
@@ -1592,6 +1615,8 @@ namespace GPBoost {
 		CHECK(approximation_type_ == "fisher_laplace" || information_changes_after_mode_finding_);
 		num_it_mode_finding_ssn_alm_outer_ = 0;
 		num_it_mode_finding_ssn_ = 0;
+		num_it_mode_finding_admm_ = 0;
+		num_cg_it_mode_refinement_ = 0;
 		ssn_alm_was_needed_ = false;
 		vec_t resid;
 		CalcAsymLaplaceResidual(y_data, *location_par_ptr, resid);
@@ -1600,7 +1625,7 @@ namespace GPBoost {
 		const double kkt_initial = CalcAsymLaplaceKKTResidual(Qmode, resid, alpha_gate);
 		ssn_alm_initial_kkt_resid_ = kkt_initial;
 		ssn_alm_final_kkt_resid_ = kkt_initial;
-		if (mode_refinement_ == ModeRefinement::kSSNALMIfNeeded && kkt_initial <= DELTA_KKT_GATE_SSN_ALM_) {
+		if (ModeRefinementIsGated() && kkt_initial <= DELTA_KKT_GATE_SSN_ALM_) {
 			// The mode is certified, but the score must still be replaced by the dual that certifies it: at an
 			//	observation whose residual is exactly zero the mode is only stationary for an interior subgradient, which
 			//	the endpoint convention of 'FirstDerivLogLikAsymLaplace' does not produce (for a general Z the two
@@ -1673,7 +1698,122 @@ namespace GPBoost {
 		int num_fact_total_diagnostics = 0, num_fact_outer_diagnostics = 0, num_inner_outer_diagnostics = 0;
 		double eps_inner_diagnostics = 0., g_norm_diagnostics = 0.;
 		bool inner_converged = false;
-		for (int it_outer = 0; it_outer < MAXIT_SSN_ALM_OUTER_ && !solve_failed; ++it_outer) {
+		// The best-iterate bookkeeping is shared by the ADMM warm start and by the semismooth Newton iterations. Neither
+		//	method is monotone in the exact non-smooth MAP objective, which is why the best iterate is tracked explicitly;
+		//	this is also what guarantees that the refinement can never return a mode that is worse than the quasi-Newton one
+		auto update_best_iterate = [&](const vec_t& lambda_plus_it, double kkt_it) {
+			const double approx_marginal_ll_it = -0.5 * (mode_.dot(Qmode)) + LogLikelihood(y_data, y_data_int, *location_par_ptr);
+			// A converged iterate is also taken over when it only ties the best objective and the best iterate is not
+			//	certified yet. Without this, a refinement that merely reconfirms an already exact mode (which happens on
+			//	a repeated evaluation at unchanged parameters) would produce no dual at all, and the certification below
+			//	would fall back to the endpoint dual, which cannot certify an interior subgradient for a general Z
+			const bool improves_objective = approx_marginal_ll_it > approx_marginal_ll_best;
+			const bool ties_and_certifies = !(approx_marginal_ll_it < approx_marginal_ll_best) &&
+				kkt_it <= DELTA_CONV_SSN_ALM_ && !(kkt_best <= DELTA_CONV_SSN_ALM_);
+			if (std::isfinite(approx_marginal_ll_it) && (improves_objective || ties_and_certifies)) {
+				approx_marginal_ll_best = approx_marginal_ll_it;
+				mode_best = mode_;
+				Qmode_best = Qmode;
+				alpha_best = -lambda_plus_it;// candidate KKT subgradient of the check loss at this mode
+				kkt_best = kkt_it;
+			}
+		};
+		// -----------------------------------------------------------------------------------------------------------------
+		// Warm start with an alternating direction method of multipliers (ADMM) at a fixed penalty, written in the variables
+		// of the augmented Lagrangian: the residual variable 'z', the multiplier 'lambda', and 'v = r - lambda / rho' (the
+		// scaled dual of the usual ADMM notation is 'lambda / rho'). Both methods use the same splitting 'z = r = y - eta'
+		// and the same multiplier update 'lambda <- rho (z - v) = lambda + rho (z - r)', so the multiplier is handed over
+		// to the semismooth Newton phase unchanged.
+		// The reason for the warm start is the cost of a factorization: the penalty is held fixed here, so the system
+		// 'Q + rho Z^T Z' of the b-update is the same in every ADMM iteration and the 'W_ssn' guard inside every 'solve_H'
+		// factorizes it exactly once, whereas the semismooth Newton iterations below change both the penalty and the active
+		// set at every step and therefore pay one factorization per step. ADMM converges at a first-order rate: it removes
+		// most of the residual of the quasi-Newton mode in a few iterations but has a long tail, which is why it is stopped
+		// when it stalls or runs out of its budget. Certifying the mode, which is what makes the exact subgradient
+		// available, is left to the semismooth Newton phase
+		// -----------------------------------------------------------------------------------------------------------------
+		double kkt_admm = std::numeric_limits<double>::infinity();
+		if (ModeRefinementUsesADMM()) {
+			const bool admm_alone = !ModeRefinementUsesSSNALM();
+			const int maxit_admm = admm_alone ? MAXIT_ADMM_ALONE_ : MAXIT_ADMM_WARM_START_;
+			const double rho_admm = rho;// the penalty of the ADMM iterations, which is held fixed and may be raised afterwards
+			double kkt_admm_first = std::numeric_limits<double>::infinity(), kkt_admm_previous = kkt_admm;
+			int num_stall_admm = 0;
+			struct ADMMTrajectoryPoint {
+				int it; double kkt; double resid_primal; double resid_dual; int num_active;
+			};
+			std::vector<ADMMTrajectoryPoint> admm_trajectory;
+			vec_t W_admm, Zt_rhs, rhs_admm, ZtWZ_mode, rhs_data, z_previous;
+			bool admm_solve_failed = false;
+			// A fully active set gives the curvature 'rho * 1', so the b-update is solved through exactly the interface
+			//	that the semismooth Newton steps use, on all six branches and for every kind of Z
+			AggregateActiveSetToInformationScale(vec_t::Ones(num_data_), rho, W_admm);
+			v = resid - ssn_alm_lambda_ / rho;
+			CalcAsymLaplaceALMProx(v, rho, z, lambda_plus, active);
+			ssn_alm_in_admm_phase_ = true;
+			for (int it_admm = 0; it_admm < maxit_admm; ++it_admm) {
+				// b-update: '(Q + rho Z^T Z) b = Z^T (rho (y - F - z) - lambda)'. The right hand side is expressed through
+				//	the current residual, 'y - F - z = r + Z b - z', so that neither the fixed effects nor 'Z b' are needed
+				//	explicitly, and 'Q b' is recovered from the equation itself instead of applying Q a second time
+				rhs_data = rho * (resid - z) - ssn_alm_lambda_;
+				ApplyZtToDataVector(rhs_data, Zt_rhs);
+				ApplyZtWZToModeVector(W_admm, mode_, ZtWZ_mode);
+				rhs_admm = Zt_rhs + ZtWZ_mode;
+				if (!solve_H(W_admm, rhs_admm, mode_new)) {
+					admm_solve_failed = true;// the mode has not been changed yet, the semismooth Newton phase can still run
+					break;
+				}
+				mode_ = mode_new;
+				ApplyZtWZToModeVector(W_admm, mode_, ZtWZ_mode);
+				Qmode = rhs_admm - ZtWZ_mode;
+				if (apply_Q) {
+					apply_Q(mode_, Qmode);// exact on the branches on which Q is available cheaply
+				}
+				UpdateLocationParNewMode(mode_, fixed_effects, location_par, location_par_ptr);
+				CalcAsymLaplaceResidual(y_data, *location_par_ptr, resid);
+				z_previous = z;
+				v = resid - ssn_alm_lambda_ / rho;
+				CalcAsymLaplaceALMProx(v, rho, z, lambda_plus, active);
+				ssn_alm_lambda_ = lambda_plus;
+				++num_it_mode_finding_admm_;
+				// The KKT residual is checked in every iteration and not only every few of them: it costs a handful of
+				//	O(n) norms, which is nothing next to the linear solve, and it is what the budget is settled with
+				kkt_admm = CalcAsymLaplaceKKTResidualDual(Qmode, resid, z, lambda_plus);
+				admm_trajectory.push_back({ it_admm, kkt_admm, (z - resid).norm(), rho * (z - z_previous).norm(),
+					(int)(active.array() != 0.).count() });
+				update_best_iterate(lambda_plus, kkt_admm);
+				if (it_admm == 0) {
+					kkt_admm_first = kkt_admm;
+				}
+				if (kkt_admm <= DELTA_CONV_SSN_ALM_) {
+					break;
+				}
+				num_stall_admm = (kkt_admm > STALL_FACTOR_ADMM_ * kkt_admm_previous) ? (num_stall_admm + 1) : 0;
+				kkt_admm_previous = kkt_admm;
+				if (num_stall_admm >= NUM_STALL_ITER_ADMM_) {
+					break;
+				}
+			}// end ADMM iterations
+			ssn_alm_in_admm_phase_ = false;
+			// The semismooth Newton phase below starts its penalty ladder at the value that produced the accuracy the ADMM
+			//	iterations have already reached, instead of restarting it at the initial penalty. Along the ladder the KKT
+			//	residual falls roughly as one over the square of the penalty, so the accuracy gained here corresponds to
+			//	'sqrt(kkt_first / kkt_last)' penalty doublings, and repeating them would only reproduce a mode that is
+			//	already available
+			if (!admm_alone && kkt_admm > DELTA_CONV_SSN_ALM_ && std::isfinite(kkt_admm_first) && kkt_admm > 0.) {
+				rho = std::min(rho * std::max(1., std::sqrt(kkt_admm_first / kkt_admm)), rho_max);
+			}
+			for (const auto& p : admm_trajectory) {
+				Log::REDebug("ADMM_TRAJ it=%d rho=%.6g kkt=%.6g r_primal=%.6g r_dual=%.6g active=%d of %d",
+					p.it, rho_admm, p.kkt, p.resid_primal, p.resid_dual, p.num_active, (int)num_data_);
+			}
+			Log::REDebug("ADMM_TOTAL it=%d rho=%.6g kkt=%.6g -> %.6g rho_handover=%.6g cg_it=%d solve_failed=%d",
+				num_it_mode_finding_admm_, rho_admm, kkt_admm_first, kkt_admm, rho, num_cg_it_mode_refinement_,
+				(int)admm_solve_failed);
+		}// end ADMM warm start
+		// The semismooth Newton phase is skipped when the warm start has already certified the mode
+		const int maxit_outer = (ModeRefinementUsesSSNALM() && kkt_admm > DELTA_CONV_SSN_ALM_) ? MAXIT_SSN_ALM_OUTER_ : 0;
+		for (int it_outer = 0; it_outer < maxit_outer && !solve_failed; ++it_outer) {
 			num_it_mode_finding_ssn_alm_outer_ = it_outer + 1;
 			num_fact_outer_diagnostics = 0;
 			num_inner_outer_diagnostics = 0;
@@ -1744,21 +1884,7 @@ namespace GPBoost {
 			ssn_alm_trajectory.push_back({ it_outer, rho, eps_inner_diagnostics, g_norm_diagnostics, kkt_it,
 				num_inner_outer_diagnostics, num_fact_outer_diagnostics,
 				(int)(active.array() != 0.).count(), inner_converged });
-			const double approx_marginal_ll_it = -0.5 * (mode_.dot(Qmode)) + LogLikelihood(y_data, y_data_int, *location_par_ptr);
-			// A converged iterate is also taken over when it only ties the best objective and the best iterate is not
-			//	certified yet. Without this, a refinement that merely reconfirms an already exact mode (which happens on
-			//	a repeated evaluation at unchanged parameters) would produce no dual at all, and the certification below
-			//	would fall back to the endpoint dual, which cannot certify an interior subgradient for a general Z
-			const bool improves_objective = approx_marginal_ll_it > approx_marginal_ll_best;
-			const bool ties_and_certifies = !(approx_marginal_ll_it < approx_marginal_ll_best) &&
-				kkt_it <= DELTA_CONV_SSN_ALM_ && !(kkt_best <= DELTA_CONV_SSN_ALM_);
-			if (std::isfinite(approx_marginal_ll_it) && (improves_objective || ties_and_certifies)) {
-				approx_marginal_ll_best = approx_marginal_ll_it;
-				mode_best = mode_;
-				Qmode_best = Qmode;
-				alpha_best = -lambda_plus;// candidate KKT subgradient of the check loss at this mode
-				kkt_best = kkt_it;
-			}
+			update_best_iterate(lambda_plus, kkt_it);
 			ssn_alm_lambda_ = lambda_plus;
 			if (kkt_it <= DELTA_CONV_SSN_ALM_) {
 				break;
@@ -1777,9 +1903,9 @@ namespace GPBoost {
 				"active=%d of %d inner_converged=%d", p.it_outer, p.rho, p.eps_inner, p.g_norm, p.kkt,
 				p.num_inner, p.num_fact, p.num_active, (int)num_data_, (int)p.inner_converged);
 		}
-		Log::REDebug("SSNALM_TOTAL outer=%d inner=%d fact=%d warm_started=%d",
+		Log::REDebug("SSNALM_TOTAL outer=%d inner=%d fact=%d cg_it=%d warm_started=%d",
 			num_it_mode_finding_ssn_alm_outer_, num_it_mode_finding_ssn_, num_fact_total_diagnostics,
-			(int)ssn_alm_lambda_was_warm_started_);
+			num_cg_it_mode_refinement_, (int)ssn_alm_lambda_was_warm_started_);
 		mode_ = mode_best;
 		Qmode = Qmode_best;
 		UpdateLocationParNewMode(mode_, fixed_effects, location_par, location_par_ptr);
@@ -1789,9 +1915,9 @@ namespace GPBoost {
 		//	confirmed the quasi-Newton mode without improving its objective
 		CalcAsymLaplaceResidual(y_data, *location_par_ptr, resid);
 		ssn_alm_final_kkt_resid_ = CertifyAsymLaplaceSubgradient(Qmode, resid, alpha_best);
-		Log::REDebug("RefineModeAsymLaplaceSSNALM: %d outer, %d semismooth Newton iterations, warm started multiplier "
+		Log::REDebug("RefineModeAsymLaplaceSSNALM: %d ADMM, %d outer, %d semismooth Newton iterations, warm started multiplier "
 			"= %d, KKT residual %g -> %g (certified = %d), log-posterior at the mode %.10g -> %.10g ",
-			num_it_mode_finding_ssn_alm_outer_, num_it_mode_finding_ssn_, (int)ssn_alm_lambda_was_warm_started_,
+			num_it_mode_finding_admm_, num_it_mode_finding_ssn_alm_outer_, num_it_mode_finding_ssn_, (int)ssn_alm_lambda_was_warm_started_,
 			ssn_alm_initial_kkt_resid_, ssn_alm_final_kkt_resid_, (int)ssn_alm_exact_subgradient_valid_,
 			approx_marginal_ll_entry, approx_marginal_ll_best);
 		approx_marginal_ll = approx_marginal_ll_best;// never below the value of the quasi-Newton mode, by construction

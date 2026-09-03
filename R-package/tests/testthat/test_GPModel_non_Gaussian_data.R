@@ -6880,7 +6880,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                        gp_approx = "vecchia", num_neighbors = 20), 174.6832113, 174.2094239)
     expect_ssn(nll_ssn(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
                        gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = "iterative"),
-               174.7652059, 174.2784359)
+               174.7652059, 174.2813998)
     expect_ssn(nll_ssn(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
                        gp_approx = "fitc", num_ind_points = 30), 172.4871945, 172.1303044)
     expect_ssn(nll_ssn(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
@@ -6891,7 +6891,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                        matrix_inversion_method = "iterative",
                        optim_params = list(fitc_piv_chol_preconditioner_rank = 30, seed_rand_vec_trace = 1,
                                            num_rand_vec_trace = 200)),
-               174.7950602, 174.3385303)
+               174.7950602, 174.3383760)
     ## Grouped random effects combined with a GP
     expect_ssn(nll_ssn(c(0.9, 0.9, 0.2), group_data = group, gp_coords = coords,
                        cov_function = "exponential"), 147.5915422, 146.6669310)
@@ -6954,8 +6954,59 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(nll_cg[[2]], nll_cg[[1]])
     expect_equal(nll_cg[[3]], nll_cg[[1]])
 
-    ## The suffix is only supported for the asymmetric Laplace likelihood
+    ## ADMM warm start ('_admm_ssn_alm') and ADMM alone ('_admm'). The warm start first runs an alternating
+    ##   direction method of multipliers at a fixed penalty, which costs one factorization in total instead of
+    ##   one per semismooth Newton step, and then hands the multiplier and a penalty matched to the accuracy it
+    ##   reached over to the semismooth Newton iterations. It solves the same problem and must therefore reach
+    ##   the same optimum up to the KKT tolerance. ADMM alone is a baseline for measuring what the warm start
+    ##   contributes: it is cheap, but its iterates are dual feasible and primal infeasible, so it can fail to
+    ##   improve the exact MAP objective at all, in which case the quasi-Newton mode is returned unchanged
+    nll_admm <- function(cov_pars, y_use = y, optim_params = NULL, ...) {
+      vapply(c("_admm_ssn_alm", "_admm"), function(sfx) {
+        gp_model <- GPModel(likelihood = paste0("asymmetric_laplace", sfx),
+                            likelihood_additional_param = quantile, ...)
+        if (!is.null(optim_params)) gp_model$set_optim_params(params = optim_params)
+        gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y_use, aux_pars = c(lambda),
+                                    fixed_effects = fixed_effects)
+      }, numeric(1))
+    }
+    # Neither variant may return a mode that is worse than the one of the quasi-Newton iteration
+    expect_admm <- function(nll, expected_base, expected_admm_ssn, expected_admm) {
+      expect_lt(abs(nll[[1]] - expected_admm_ssn), tol)
+      expect_lt(abs(nll[[2]] - expected_admm), tol)
+      expect_lte(nll[[1]], expected_base + tol)
+      expect_lte(nll[[2]], expected_base + tol)
+    }
+    expect_admm(nll_admm(c(0.9), group_data = group), 138.9898225, 138.9648479, 138.9713257)
+    expect_admm(nll_admm(c(0.9, 0.6), group_data = cbind(group, group2)),
+                148.5871268, 148.3692208, 148.5871268)
+    expect_admm(nll_admm(c(0.9, 0.6), group_data = cbind(group, group2),
+                         matrix_inversion_method = "iterative"), 148.4716563, 148.2537400, 148.4716563)
+    expect_admm(nll_admm(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential"),
+                174.8555513, 174.3158050, 174.3158050)
+    expect_admm(nll_admm(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
+                         gp_approx = "vecchia", num_neighbors = 20),
+                174.6832113, 174.2094198, 174.2094198)
+    expect_admm(nll_admm(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
+                         gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = "iterative"),
+                174.7652059, 174.2784319, 174.2784312)
+    expect_admm(nll_admm(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
+                         gp_approx = "fitc", num_ind_points = 30), 172.4871945, 172.1302166, 172.1302166)
+    expect_admm(nll_admm(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
+                         gp_approx = "full_scale_vecchia", num_ind_points = 30, num_neighbors = 20),
+                174.7149656, 174.2474984, 174.2474984)
+    expect_admm(nll_admm(c(0.9, 0.9, 0.2), group_data = group, gp_coords = coords,
+                         cov_function = "exponential"), 147.5915422, 146.6669727, 146.6669727)
+    ## Many observations exactly on a kink, see the comment above
+    expect_admm(nll_admm(c(0.9, 0.2), y_use = y_kink, gp_coords = coords, cov_function = "exponential"),
+                174.6327729, 173.4317200, 173.4317200)
+
+    ## The suffixes are only supported for the asymmetric Laplace likelihood
     expect_error(GPModel(group_data = group, likelihood = "poisson_ssn_alm"),
+                 "The '_ssn_alm' mode refinement is currently only supported", fixed = TRUE)
+    expect_error(GPModel(group_data = group, likelihood = "poisson_admm_ssn_alm"),
+                 "The '_ssn_alm' mode refinement is currently only supported", fixed = TRUE)
+    expect_error(GPModel(group_data = group, likelihood = "poisson_admm"),
                  "The '_ssn_alm' mode refinement is currently only supported", fixed = TRUE)
 
   }) # end asymmetric_laplace with SSN-ALM mode refinement

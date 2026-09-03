@@ -268,7 +268,8 @@ namespace GPBoost {
 			}
 			if (mode_refinement_ != ModeRefinement::kNone && likelihood != "asymmetric_laplace") {
 				Log::REFatal("The '_ssn_alm' mode refinement is currently only supported for 'likelihood' = 'asymmetric_laplace' "
-					"(aliases 'quantile' and 'quantile_regression'), found '%s' ", likelihood.c_str());
+					"(aliases 'quantile' and 'quantile_regression'), found '%s'. The same holds for the '_admm_ssn_alm' and "
+					"'_admm' variants ", likelihood.c_str());
 			}
 			if (LIKELIHOODS_ONLY_LAPLACE_.find(likelihood) != LIKELIHOODS_ONLY_LAPLACE_.end() && approximation_type_ != "laplace") {
 				Log::REFatal("'approximation_type' = '%s' is not supported for 'likelihood' = '%s' ", approximation_type_.c_str(), likelihood.c_str());
@@ -1744,7 +1745,8 @@ namespace GPBoost {
 
 		/*!
 		* \brief Refine the posterior mode of an 'asymmetric_laplace' likelihood with a semismooth Newton method applied to
-		*			the subproblems of an augmented Lagrangian method (SSN-ALM). This is the common, approximation-independent
+		*			the subproblems of an augmented Lagrangian method (SSN-ALM), optionally warm started by an alternating
+		*			direction method of multipliers (ADMM) at a fixed penalty. This is the common, approximation-independent
 		*			driver: it performs the exact KKT check that gates the refinement, the observation-scale prox and
 		*			multiplier updates, the line search on the reduced augmented Lagrangian, and the outer penalty updates.
 		*			The only approximation-specific ingredient is the linear solve with the generalized Hessian, which is
@@ -1782,17 +1784,20 @@ namespace GPBoost {
 		/*!
 		* \brief Matrix-free preconditioned conjugate gradient for the semismooth Newton system '(Q + Z^T W Z) d = rhs' of
 		*			the SSN-ALM refinement, used by the branches with 'matrix_inversion_method_ == "iterative"'.
-		*			A Jacobi (diagonal) preconditioner is used since the active-set curvature 'rho * A' contains exact zeros,
-		*			which is incompatible with the preconditioners of the Laplace approximation that rely on W^(-1)
-		*			(in particular the FITC preconditioner of the Vecchia and full-scale Vecchia branches)
+		*			The preconditioner is provided by the calling branch. It must not rely on W^(-1), since the active-set
+		*			curvature 'rho * A' contains exact zeros; this excludes the FITC and pivoted Cholesky preconditioners of
+		*			the Laplace approximation, but not the diagonal of the system and not the VADU preconditioner
+		*			'B^T (D^-1 + W) B', which only requires 'D^-1 + W > 0'.
+		*			The convergence test uses a residual norm relative to the norm of the right-hand side. This differs from
+		*			the conjugate gradient routines of the Laplace approximation, whose 'delta_conv' is an absolute bound
 		* \param apply_H Applies the generalized Hessian to a vector
-		* \param diag_H Diagonal of the generalized Hessian (must be strictly positive)
+		* \param apply_P_inv Applies the inverse of the preconditioner to a vector
 		* \param rhs Right-hand side
 		* \param[out] sol Solution
 		* \return True if the solve succeeded
 		*/
 		bool SolveSSNALMCG(const std::function<void(const vec_t&, vec_t&)>& apply_H,
-			const vec_t& diag_H,
+			const std::function<void(const vec_t&, vec_t&)>& apply_P_inv,
 			const vec_t& rhs,
 			vec_t& sol) const;
 
@@ -2680,22 +2685,28 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Parse the suffix that enables the SSN-ALM (semismooth Newton with an augmented Lagrangian method) refinement
-		*			of the posterior mode. '_ssn_alm' runs the refinement only when the exact non-smooth KKT conditions are
-		*			violated after the (Fisher) quasi-Newton mode finding, '_ssn_alm_always' runs it unconditionally (this is
-		*			mainly meant for testing and for measuring the cost of the refinement)
+		* \brief Parse the suffix that enables the refinement of the posterior mode after the quasi-Newton mode finding.
+		*			'_ssn_alm' runs a semismooth Newton method applied to the subproblems of an augmented Lagrangian method
+		*			(SSN-ALM), '_admm_ssn_alm' additionally warm starts it with an alternating direction method of multipliers
+		*			(ADMM), and '_admm' runs that method alone, which is a baseline for measuring what the warm start
+		*			contributes. All three refine the mode only when the exact non-smooth KKT conditions are violated after the
+		*			(Fisher) quasi-Newton mode finding; the '_always' variants run it unconditionally, which is mainly meant
+		*			for testing and for measuring the cost of the refinement.
+		*			The suffixes are tested from the longest to the shortest one because they are suffixes of one another
 		*/
 		string_t ParseLikelihoodAliasModeRefinement(const string_t& likelihood) {
-			if (likelihood.size() > 15) {
-				if (likelihood.substr(likelihood.size() - 15) == string_t("_ssn_alm_always")) {
-					mode_refinement_ = ModeRefinement::kSSNALMAlways;
-					return likelihood.substr(0, likelihood.size() - 15);
-				}
-			}
-			if (likelihood.size() > 8) {
-				if (likelihood.substr(likelihood.size() - 8) == string_t("_ssn_alm")) {
-					mode_refinement_ = ModeRefinement::kSSNALMIfNeeded;
-					return likelihood.substr(0, likelihood.size() - 8);
+			const std::vector<std::pair<string_t, ModeRefinement>> refinement_suffixes = {
+				{ "_admm_ssn_alm_always", ModeRefinement::kADMMSSNALMAlways },
+				{ "_ssn_alm_always", ModeRefinement::kSSNALMAlways },
+				{ "_admm_ssn_alm", ModeRefinement::kADMMSSNALMIfNeeded },
+				{ "_admm_always", ModeRefinement::kADMMAlways },
+				{ "_ssn_alm", ModeRefinement::kSSNALMIfNeeded },
+				{ "_admm", ModeRefinement::kADMMIfNeeded } };
+			for (const auto& suffix : refinement_suffixes) {
+				const size_t length = suffix.first.size();
+				if (likelihood.size() > length && likelihood.substr(likelihood.size() - length) == suffix.first) {
+					mode_refinement_ = suffix.second;
+					return likelihood.substr(0, likelihood.size() - length);
 				}
 			}
 			return likelihood;
@@ -6640,10 +6651,33 @@ namespace GPBoost {
 		// 'FindModePostRandEffCalcMLL*' routine
 		// -------------------------------------------------------------------------------------------------------------
 
-		/*! \brief True if the SSN-ALM refinement of the mode should be applied after the quasi-Newton mode finding */
+		/*! \brief True if a refinement of the mode should be applied after the quasi-Newton mode finding */
 		bool UseSSNALMRefinement() const {
 			return mode_refinement_ != ModeRefinement::kNone && likelihood_type_ == "asymmetric_laplace" &&
 				!iid_model_ && maxit_mode_newton_ > 0 && num_sets_re_ == 1;
+		}
+
+		/*! \brief True if the refinement is only run when the quasi-Newton mode violates the exact non-smooth KKT conditions */
+		bool ModeRefinementIsGated() const {
+			return mode_refinement_ == ModeRefinement::kSSNALMIfNeeded ||
+				mode_refinement_ == ModeRefinement::kADMMSSNALMIfNeeded ||
+				mode_refinement_ == ModeRefinement::kADMMIfNeeded;
+		}
+
+		/*! \brief True if the refinement starts with ADMM iterations at a fixed penalty */
+		bool ModeRefinementUsesADMM() const {
+			return mode_refinement_ == ModeRefinement::kADMMSSNALMIfNeeded ||
+				mode_refinement_ == ModeRefinement::kADMMSSNALMAlways ||
+				mode_refinement_ == ModeRefinement::kADMMIfNeeded ||
+				mode_refinement_ == ModeRefinement::kADMMAlways;
+		}
+
+		/*! \brief True if the refinement contains semismooth Newton iterations along an augmented Lagrangian penalty ladder */
+		bool ModeRefinementUsesSSNALM() const {
+			return mode_refinement_ == ModeRefinement::kSSNALMIfNeeded ||
+				mode_refinement_ == ModeRefinement::kSSNALMAlways ||
+				mode_refinement_ == ModeRefinement::kADMMSSNALMIfNeeded ||
+				mode_refinement_ == ModeRefinement::kADMMSSNALMAlways;
 		}
 
 		/*! \brief True if the design matrix Z that relates the latent variables to the observations is the identity */
@@ -7257,12 +7291,18 @@ namespace GPBoost {
 		// score at the kinks of the check loss and can therefore stall at points that do not satisfy the exact
 		// (sub-differential) MAP optimality conditions. If enabled, the mode is certified with an exact KKT check after
 		// the quasi-Newton loop and, if the check fails, refined with a semismooth Newton method applied to the
-		// subproblems of an augmented Lagrangian method (see 'RefineModeAsymLaplaceSSNALM').
-		// Note: the active-set curvature 'rho * Z^T A Z' of the semismooth Newton system exists only to solve the
-		//		augmented Lagrangian subproblem. It is not used as the curvature of the Laplace approximation.
+		// subproblems of an augmented Lagrangian method, optionally warm started by an alternating direction method of
+		// multipliers at a fixed penalty (see 'RefineModeAsymLaplaceSSNALM').
+		// Note: the active-set curvature 'rho * Z^T A Z' of the semismooth Newton system, and the corresponding 'rho * Z^T Z'
+		//		of the ADMM system, exist only to solve the augmented Lagrangian subproblem. They are not used as the
+		//		curvature of the Laplace approximation.
 		// -------------------------------------------------------------------------------------------------------------
-		/*! \brief Options for refining the posterior mode after the quasi-Newton mode finding (currently 'asymmetric_laplace' only) */
-		enum class ModeRefinement { kNone, kSSNALMIfNeeded, kSSNALMAlways };
+		/*! \brief Options for refining the posterior mode after the quasi-Newton mode finding (currently 'asymmetric_laplace' only).
+		The 'kADMM*' variants prepend an alternating direction method of multipliers to the semismooth Newton iterations, and
+		'kADMMIfNeeded' / 'kADMMAlways' run that method alone (a baseline for measuring what the warm start contributes) */
+		enum class ModeRefinement {
+			kNone, kSSNALMIfNeeded, kSSNALMAlways, kADMMSSNALMIfNeeded, kADMMSSNALMAlways, kADMMIfNeeded, kADMMAlways
+		};
 		/*! \brief Selected mode refinement, set by 'ParseLikelihoodAliasModeRefinement' from the likelihood name */
 		ModeRefinement mode_refinement_ = ModeRefinement::kNone;
 		/*! \brief Multiplier of the augmented Lagrangian on the observation scale (length num_data_, not dim_mode_) */
@@ -7285,10 +7325,47 @@ namespace GPBoost {
 		static constexpr double SSN_ALM_RHO_GROWTH_ = 2.;
 		/*! \brief Maximal penalty parameter, as a multiple of its initial value */
 		static constexpr double SSN_ALM_RHO_MAX_MULT_ = 1e4;
+		/*! \brief Maximal number of ADMM iterations when the method is used to warm start the semismooth Newton iterations.
+		The penalty is held fixed there, so the generalized Hessian 'Q + rho Z^T Z' is the same in every one of these
+		iterations and every branch factorizes it exactly once, whereas a semismooth Newton step costs one factorization.
+		Measured on a Vecchia Gaussian process with n = 20000, a factorization takes as long as roughly 150 ADMM iterations,
+		which is why the budget can be this generous */
+		static constexpr int MAXIT_ADMM_WARM_START_ = 200;
+		/*! \brief Maximal number of ADMM iterations when the method is used alone, without a semismooth Newton phase */
+		static constexpr int MAXIT_ADMM_ALONE_ = 500;
+		/*! \brief Relative residual tolerance for iterative linear solves in the ADMM phase when ADMM has to converge on
+		its own, without a semismooth Newton phase after it. The convergence theory of inexact ADMM requires the errors of
+		the subproblems to be summable, and a fixed relative error of one percent per solve violates that: at 1e-2 the
+		iteration stagnates with a normalized KKT residual of 2e-2 after 200 iterations, whereas this value reproduces an
+		exact sparse Cholesky solve of the same system to five significant digits */
+		static constexpr double CG_REL_TOL_ADMM_ALONE_ = 1e-6;
+		/*! \brief Relative residual tolerance for iterative linear solves in the ADMM phase when it only warm starts a
+		semismooth Newton phase, which certifies the mode afterwards and therefore does not need an accurate ADMM iterate,
+		only a useful mode and a useful penalty to hand over. Measured on the four iterative configurations of this branch
+		(Vecchia n = 2000 and 20000, crossed random effects n = 50000 and 200000), this value reaches the same mode as
+		'CG_REL_TOL_ADMM_ALONE_' to four or five significant digits at a third to a half of its cost, while 1e-2 is cheaper
+		still but hands over an iterate poor enough that the combination ends up worse than the semismooth Newton phase
+		alone at n = 20000 */
+		static constexpr double CG_REL_TOL_ADMM_WARM_START_ = 1e-3;
+		/*! \brief The ADMM iterations are stopped early when the KKT residual has not been reduced by at least this factor
+		in each of the last 'NUM_STALL_ITER_ADMM_' iterations. There is deliberately no absolute handoff tolerance: the
+		quasi-Newton mode that ADMM starts from is already good, so its KKT residual at the first iteration is problem
+		dependent and much smaller than any fixed threshold that would be meaningful on another data set */
+		static constexpr double STALL_FACTOR_ADMM_ = 0.999;
+		/*! \brief Number of consecutive iterations without progress after which the ADMM iterations are stopped */
+		static constexpr int NUM_STALL_ITER_ADMM_ = 5;
 		/*! \brief Number of outer augmented Lagrangian iterations of the last call (diagnostics) */
 		int num_it_mode_finding_ssn_alm_outer_ = 0;
 		/*! \brief Total number of accepted semismooth Newton steps of the last call (diagnostics) */
 		int num_it_mode_finding_ssn_ = 0;
+		/*! \brief Number of ADMM iterations of the last call (diagnostics) */
+		int num_it_mode_finding_admm_ = 0;
+		/*! \brief Total number of conjugate gradient iterations of the last call, over all linear solves of the mode
+		refinement (diagnostics). This is the quantity that decides between preconditioners: wall clock time at a large
+		number of observations hides both convergence failures and a wrong convergence criterion */
+		mutable int num_cg_it_mode_refinement_ = 0;
+		/*! \brief True only while the ADMM phase is executing, used for its phase-specific iterative-solve tolerance */
+		mutable bool ssn_alm_in_admm_phase_ = false;
 		/*! \brief True if the multiplier of the last call was warm started from the previous call (diagnostics) */
 		bool ssn_alm_lambda_was_warm_started_ = false;
 		/*! \brief True if the KKT gate failed and the refinement was run in the last call (diagnostics) */
