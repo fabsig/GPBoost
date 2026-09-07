@@ -208,7 +208,10 @@ for Gaussian processes. Available options:
 \itemize{
 \item{"none": No approximation }
 \item{"vecchia": Vecchia approximation; see Sigrist (2022, JMLR) for more details.
-For "space_time_gneiting" and "ar1_mf_<base>", neighbors are selected by absolute correlation by default.
+For "matern_space_time" and the anisotropic ARD covariance functions ("matern_ard", "gaussian_ard",
+"matern_ard_estimate_shape"), neighbors are selected by absolute correlation, i.e., using distances in
+coordinates scaled by the range parameters, and they are redetermined during parameter estimation.
+For "space_time_gneiting" and "ar1_mf_<base>", neighbors are also selected by absolute correlation by default.
 Use gp_approx = "vecchia_euclidean" for Euclidean-distance selection. }
 \item{"full_scale_vecchia": Vecchia-inducing points full-scale (VIF) approximation; 
 see Gyger, Furrer, and Sigrist (2025) for more details }
