@@ -7,8 +7,29 @@ from sklearn.utils import check_random_state
 
 
 @lru_cache(maxsize=None)
-def load_boston(**kwargs):
-    return sklearn.datasets.load_boston(**kwargs)
+def load_boston(return_X_y=True, **kwargs):
+    """A stand-in for the Boston housing data, which scikit-learn removed in 1.2.
+
+    The tests that used it only need a deterministic regression problem, not that
+    particular data, so this returns a synthetic one of the same shape (506 rows,
+    13 features) and a comparable target scale. It is generated with a fixed seed,
+    so results are reproducible from run to run.
+    """
+    X, y = sklearn.datasets.make_regression(n_samples=506, n_features=13,
+                                            n_informative=8, noise=2.0,
+                                            shuffle=False, random_state=42)
+    # Map the target onto the range the original had (5 to 50, in $1000s). The map is
+    # affine and therefore monotone, so it changes neither the signal nor how learnable
+    # it is, but it keeps the target strictly positive, which the MAPE based tests need.
+    y = 5.0 + 45.0 * (y - y.min()) / (y.max() - y.min())
+    # Feature 2 had few distinct values in the original data and some tests declare it
+    # as a categorical feature, so give it a small number of levels here as well.
+    X[:, 2] = np.floor(10.0 * (X[:, 2] - X[:, 2].min())
+                       / (X[:, 2].max() - X[:, 2].min() + 1e-12))
+    # (LightGBM still splits it numerically, see test_get_split_value_histogram)
+    if not return_X_y:
+        raise ValueError("load_boston is only available with return_X_y=True")
+    return X, y
 
 
 @lru_cache(maxsize=None)
