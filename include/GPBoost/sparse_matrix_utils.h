@@ -86,6 +86,17 @@ namespace GPBoost {
 	void eigen_sp_Lower_sp_RHS_cs_solve(const sp_mat_rm_t& A, const sp_mat_rm_t& B, sp_mat_rm_t& A_inv_B, bool lower);
 
 	/*!
+	* \brief Whether a Cholesky factorization is one of a sparse matrix, i.e. one that reorders
+	*		its rows and columns and therefore carries a permutation matrix
+	*/
+	template <class T_chol>
+	struct is_sparse_chol : public std::integral_constant<bool,
+		std::is_same<chol_sp_mat_t, T_chol>::value ||
+		std::is_same<chol_sp_mat_rm_t, T_chol>::value ||
+		std::is_same<chol_cholmod_sp_mat_t, T_chol>::value ||
+		std::is_same<chol_cholmod_sp_mat_rm_t, T_chol>::value> {};
+
+	/*!
 	* \brief Check whether Cholesky factor has a permutation matrix
 	* \param chol Cholesky factor
 	* \return true if chol has a permutation matrix, false otherwise
@@ -94,7 +105,7 @@ namespace GPBoost {
 	bool CholeskyHasPermutation(const T_chol&) {
 		return false;
 	}
-	template <class T_chol, typename std::enable_if <std::is_same<chol_sp_mat_t, T_chol>::value || std::is_same<chol_sp_mat_rm_t, T_chol>::value>::type* = nullptr >
+	template <class T_chol, typename std::enable_if <is_sparse_chol<T_chol>::value>::type* = nullptr >
 	bool CholeskyHasPermutation(const T_chol& chol) {
 		if (chol.permutationP().size() > 0) {
 			return true;
@@ -113,7 +124,7 @@ namespace GPBoost {
 	void ApplyPermutationCholeskyFactor(const chol_den_mat_t&, const T_mat& M, T_mat& P_M, bool) {
 		P_M = M;
 	}
-	template <class T_mat, class T_chol, typename std::enable_if <std::is_same<chol_sp_mat_t, T_chol>::value || std::is_same<chol_sp_mat_rm_t, T_chol>::value>::type* = nullptr >
+	template <class T_mat, class T_chol, typename std::enable_if <is_sparse_chol<T_chol>::value>::type* = nullptr >
 	void ApplyPermutationCholeskyFactor(const T_chol& chol, const T_mat& M, T_mat& P_M, bool transpose) {
 		if (chol.permutationP().size() > 0) {
 			if (transpose) {

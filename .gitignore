@@ -206,3 +206,6 @@ miktex*.zip
 temp/
 compiler_warnings.log
 compiler_warnings_gpboost.log
+
+# CHOLMOD benchmark tooling and measurements are kept out of the repository
+tests/cholmod_benchmark/

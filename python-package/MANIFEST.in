@@ -20,6 +20,7 @@ include compile/external_libs/eigen/Eigen/SVD
 include compile/external_libs/eigen/Eigen/Sparse
 include compile/external_libs/eigen/Eigen/SparseCore
 include compile/external_libs/eigen/Eigen/SparseCholesky
+include compile/external_libs/eigen/Eigen/CholmodSupport
 include compile/external_libs/eigen/Eigen/OrderingMethods
 include compile/external_libs/eigen/Eigen/SparseLU
 include compile/external_libs/eigen/Eigen/SparseQR
@@ -37,6 +38,7 @@ recursive-include compile/external_libs/eigen/Eigen/src/QR *
 recursive-include compile/external_libs/eigen/Eigen/src/SVD *
 recursive-include compile/external_libs/eigen/Eigen/src/SparseCore *
 recursive-include compile/external_libs/eigen/Eigen/src/SparseCholesky *
+recursive-include compile/external_libs/eigen/Eigen/src/CholmodSupport *
 recursive-include compile/external_libs/eigen/Eigen/src/OrderingMethods *
 recursive-include compile/external_libs/eigen/Eigen/src/SparseLU *
 recursive-include compile/external_libs/eigen/Eigen/src/SparseQR *
@@ -44,6 +46,7 @@ recursive-include compile/external_libs/eigen/Eigen/src/IterativeLinearSolvers *
 recursive-include compile/external_libs/CSparse/Source *
 recursive-include compile/external_libs/CSparse/Include *
 include compile/external_libs/CSparse/Doc/LICENSE.txt
+recursive-include compile/external_libs/SuiteSparse *
 recursive-include compile/external_libs/OptimLib *
 recursive-include compile/external_libs/LBFGSpp/include *
 include compile/external_libs/LBFGSpp/LICENSE.md

@@ -7222,9 +7222,9 @@ namespace GPBoost {
 		/*! \brief Diagonal of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'GroupedRE' when there is only one random effect and ZtWZ is diagonal. Otherwise 'diag_SigmaI_plus_ZtWZ_' is used for grouped REs) */
 		vec_t diag_SigmaI_plus_ZtWZ_;
 		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version'GroupedRE' if there is more than one random effect). */
-		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_grouped_;
+		chol_cholmod_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_grouped_;
 		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'Vecchia') */
-		chol_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_vecchia_;
+		chol_cholmod_sp_mat_t chol_fact_SigmaI_plus_ZtWZ_vecchia_;
 		/*!
 		* \brief Cholesky factors of matrix B = I + Wsqrt *  Z * Sigma * Zt * Wsqrt in Laplace approximation (for version 'Stable')
 		*       or of matrix B = Id + ZtWZsqrt * Sigma * ZtWZsqrt (for version 'OnlyOneGPCalculationsOnREScale')

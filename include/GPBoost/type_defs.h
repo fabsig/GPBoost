@@ -19,6 +19,7 @@
 
 #include <Eigen/Sparse>
 #include <Eigen/Dense>
+#include <Eigen/CholmodSupport> // CHOLMOD is bundled in external_libs/SuiteSparse
 #include <random> //for RNG_t
 //#ifdef _MSC_VER
 #pragma warning( disable : 4127) // Suppress unnecessary warning (conditional expression is constant)
@@ -39,6 +40,19 @@ namespace GPBoost {
 	typedef Eigen::SimplicialLLT<sp_mat_rm_t, Eigen::Lower, Eigen::AMDOrdering<int>> chol_sp_mat_rm_t;
 	// AMDOrdering is faster than NaturalOrdering for sparse matrices for GPs (e.g. tapering) but slightly slower than no ordering for grouped random effects for Gaussian data
 	// COLAMDOrdering is slower than NaturalOrdering or AMDOrdering for both grouped random effects and the Vecchia approximation for non-Gaussian data
+
+	// CHOLMOD counterparts of the two Cholesky factorizations above. CHOLMOD is bundled in
+	// external_libs/SuiteSparse together with the AMD and COLAMD orderings it uses and with an
+	// Eigen backed BLAS, so neither an external CHOLMOD nor an external BLAS has to be linked.
+	// CholmodAutoLLT lets CHOLMOD choose between a supernodal and a simplicial factorization
+	// depending on how dense the factor is. It is a drop-in replacement for chol_sp_mat_t: it
+	// offers the same compute() / analyzePattern() / factorize() / solve() / info() and, through
+	// the GPBoost additions in Eigen/src/CholmodSupport, also CholFactMatrix() and permutationP().
+	// Note that unlike Eigen's SimplicialLLT, CHOLMOD keeps the factor in its own format, so
+	// CholFactMatrix() has to convert it once per factorization. Where only solve() and
+	// logDeterminant() are needed, that conversion never happens and CHOLMOD is fastest.
+	typedef Eigen::CholmodAutoLLT<sp_mat_t, Eigen::Lower> chol_cholmod_sp_mat_t;
+	typedef Eigen::CholmodAutoLLT<sp_mat_rm_t, Eigen::Lower> chol_cholmod_sp_mat_rm_t;
 
 	typedef std::string string_t;
 

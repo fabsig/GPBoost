@@ -43,6 +43,13 @@ cp \
 cp external_libs/CSparse/Include/*.h ${TEMP_R_DIR}/src/include/
 cp external_libs/CSparse/Source/*.c ${TEMP_R_DIR}/src/
 
+# CHOLMOD and the SuiteSparse parts it needs. The directory structure is kept
+# because the t_cholmod_*.c template files must sit next to the cholmod_*.c
+# files that include them, and because src/Makevars lists the objects with
+# these paths.
+mkdir -p ${TEMP_R_DIR}/src/SuiteSparse
+cp -R external_libs/SuiteSparse/* ${TEMP_R_DIR}/src/SuiteSparse/
+
 cp -R external_libs/OptimLib/* ${TEMP_R_DIR}/src/include/
 
 cp -R external_libs/LBFGSpp/include/* ${TEMP_R_DIR}/src/include/
@@ -55,7 +62,7 @@ cp external_libs/LBFGSpp/LICENSE.md* ${TEMP_R_DIR}/src/include/
 EIGEN_R_DIR=${TEMP_R_DIR}/src/include/Eigen
 mkdir -p ${EIGEN_R_DIR}
 
-modules="Cholesky Core Dense Eigenvalues Geometry Householder Jacobi LU QR SVD Sparse SparseCore SparseCholesky OrderingMethods SparseLU SparseQR IterativeLinearSolvers"
+modules="Cholesky Core Dense Eigenvalues Geometry Householder Jacobi LU QR SVD Sparse SparseCore SparseCholesky CholmodSupport OrderingMethods SparseLU SparseQR IterativeLinearSolvers"
 for eigen_module in ${modules}; do
     cp external_libs/eigen/Eigen/${eigen_module} ${EIGEN_R_DIR}/${eigen_module}
     if [ ${eigen_module} != "Dense" -a ${eigen_module} != "Sparse" ]; then

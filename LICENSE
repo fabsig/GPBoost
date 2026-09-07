@@ -16,6 +16,14 @@ The GPBoost library includes several upstream projects:
 
 - LBFGSpp is copyright 1990 Jorge Nocedal, 2007-2010 Naoaki Okazaki, 2016-2023 Yixuan Qiu, 2018-2023 Dirk Toewe
 
+- SuiteSparse (the CHOLMOD, AMD and COLAMD parts included in external_libs/SuiteSparse) is
+  copyright 1996-2024 Timothy A. Davis, and Patrick R. Amestoy and Iain S. Duff for AMD.
+  Its modules are licensed separately: SuiteSparse_config, AMD and COLAMD under the
+  BSD 3-clause license, the CHOLMOD Utility, Check and Cholesky modules under the
+  LGPL-2.1-or-later, and the CHOLMOD Supernodal module under the GPL-2.0-or-later.
+  See external_libs/SuiteSparse/Doc/ for the license texts and
+  external_libs/SuiteSparse/README_GPBoost.md for what exactly is included.
+
 
 TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 

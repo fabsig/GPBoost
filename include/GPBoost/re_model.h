@@ -560,8 +560,8 @@ namespace GPBoost {
 	private:
 
 		string_t matrix_format_ = "den_mat_t";//den_mat_t, sp_mat_t, sp_mat_rm_t
-		std::unique_ptr<REModelTemplate<sp_mat_t, chol_sp_mat_t>> re_model_sp_;
-		std::unique_ptr<REModelTemplate<sp_mat_rm_t, chol_sp_mat_rm_t>> re_model_sp_rm_;
+		std::unique_ptr<REModelTemplate<sp_mat_t, chol_cholmod_sp_mat_t>> re_model_sp_;
+		std::unique_ptr<REModelTemplate<sp_mat_rm_t, chol_cholmod_sp_mat_rm_t>> re_model_sp_rm_;
 		std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>> re_model_den_;
 		/*! \brief List of covariance functions wtih compact support */
 		const std::set<string_t> COMPACT_SUPPORT_COVS_{ "wendland", "exponential_tapered" };

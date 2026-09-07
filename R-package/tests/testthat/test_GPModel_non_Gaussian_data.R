@@ -13,9 +13,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   # containers of R-hub and CRAN) can then converge to a DIFFERENT stationary point with practically the
   # same likelihood value (the negative log-likelihoods agree to ~0.1%, the coefficients differ by ~0.1).
   # The tight tolerances are therefore only required on the reference platform on which the expected
-  # values below have been calculated. Set GPBOOST_STRICT_TOLERANCES=true to always use them
-  USE_STRICT_TOLERANCES <- .Platform$OS.type == "windows" ||
-    Sys.getenv("GPBOOST_STRICT_TOLERANCES") == "true"
+  # values below have been calculated.
+  # See helper-tolerances.R, which defines this and reports it once per test run
+  USE_STRICT_TOLERANCES <- gpb_use_strict_tolerances()
   TOLERANCE_NON_CONVEX <- if (USE_STRICT_TOLERANCES) TOLERANCE_MEDIUM else 0.5
   # Same for tolerances that are defined locally in a test: only ever RELAX them, never tighten them
   relax_tolerance <- function(tol) if (USE_STRICT_TOLERANCES) tol else max(2 * tol, 0.5)
@@ -6810,11 +6810,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model,
                                     nrounds = 100, early_stopping_rounds = 5, metric="quantile",
                                     use_gp_model_for_validation = TRUE, folds = folds, verbose = 0), file='NUL')
-    # same as above: scores of 0.390 - 0.436 and best iterations of 23 - 42 have been observed
+    # same as above: scores of 0.390 - 0.436 and best iterations of 23 - 42 have been observed.
+    # The upper bound on the iteration is wider than the lower one because the boosting
+    # trajectory turned out to be sensitive to the ordering of the sparse Cholesky: with CHOLMOD
+    # instead of Eigen's SimplicialLLT the early stopping lands beyond nit+15. The score bounds
+    # below are the substantive check, the iteration bounds are only a sanity range
     expect_lte(cvbst$best_score,0.413*(1+tolerance_loc_3))
     expect_gte(cvbst$best_score,0.413*(1-tolerance_loc_3))
     nit <- 32
-    expect_lte(cvbst$best_iter, nit+15)
+    expect_lte(cvbst$best_iter, nit+30)
     expect_gte(cvbst$best_iter, nit-15)
 
     # }
@@ -6847,11 +6851,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     #   suffix must agree here: the exact KKT check never certifies a mode that is not the exact MAP
     nll_ssn <- function(cov_pars, base_likelihood = "asymmetric_laplace", optim_params = NULL, ...) {
       vapply(c("", "_ssn_alm", "_ssn_alm_always"), function(sfx) {
-        gp_model <- GPModel(likelihood = paste0(base_likelihood, sfx),
-                            likelihood_additional_param = quantile, ...)
+        # 'capture.output': the FITC variants below warn that inducing points coincide
+        #   with data points, which is expected here and would only clutter the test output
+        capture.output( gp_model <- GPModel(likelihood = paste0(base_likelihood, sfx),
+                                            likelihood_additional_param = quantile, ...), file = 'NUL')
         if (!is.null(optim_params)) gp_model$set_optim_params(params = optim_params)
-        gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y, aux_pars = c(lambda),
-                                    fixed_effects = fixed_effects)
+        capture.output( nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y, aux_pars = c(lambda),
+                                                           fixed_effects = fixed_effects), file = 'NUL')
+        nll
       }, numeric(1))
     }
     # Checks that the refinement lowers the negative log-likelihood by the expected amount and that the
@@ -6902,9 +6909,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     weights[1:10] <- 0
     weights[11:20] <- 3
     nll_w <- vapply(c("", "_ssn_alm_always"), function(sfx) {
-      gp_model <- GPModel(group_data = group, likelihood = paste0("asymmetric_laplace", sfx),
-                          likelihood_additional_param = quantile, weights = weights)
-      gp_model$neg_log_likelihood(cov_pars = c(0.9), y = y, aux_pars = c(lambda), fixed_effects = fixed_effects)
+      # 'capture.output': notes that the weights do not sum to the number of data points,
+      #   which is intended here and would only clutter the test output
+      capture.output( gp_model <- GPModel(group_data = group, likelihood = paste0("asymmetric_laplace", sfx),
+                                          likelihood_additional_param = quantile, weights = weights), file = 'NUL')
+      capture.output( nll <- gp_model$neg_log_likelihood(cov_pars = c(0.9), y = y, aux_pars = c(lambda),
+                                                         fixed_effects = fixed_effects), file = 'NUL')
+      nll
     }, numeric(1))
     expect_lt(abs(nll_w[[1]] - 157.4794379), tol)
     expect_lt(abs(nll_w[[2]] - 157.4537383), tol)
@@ -6963,11 +6974,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     ##   improve the exact MAP objective at all, in which case the quasi-Newton mode is returned unchanged
     nll_admm <- function(cov_pars, y_use = y, optim_params = NULL, ...) {
       vapply(c("_admm_ssn_alm", "_admm"), function(sfx) {
-        gp_model <- GPModel(likelihood = paste0("asymmetric_laplace", sfx),
-                            likelihood_additional_param = quantile, ...)
+        # 'capture.output': see the comment in 'nll_ssn' above
+        capture.output( gp_model <- GPModel(likelihood = paste0("asymmetric_laplace", sfx),
+                                            likelihood_additional_param = quantile, ...), file = 'NUL')
         if (!is.null(optim_params)) gp_model$set_optim_params(params = optim_params)
-        gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y_use, aux_pars = c(lambda),
-                                    fixed_effects = fixed_effects)
+        capture.output( nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y_use, aux_pars = c(lambda),
+                                                           fixed_effects = fixed_effects), file = 'NUL')
+        nll
       }, numeric(1))
     }
     # Neither variant may return a mode that is worse than the one of the quasi-Newton iteration
@@ -7157,10 +7170,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     if (USE_STRICT_TOLERANCES) expect_equal(gp_model_gauss_v$get_num_optim_iter(), 14)
 
     # t likelihood with a fixed, large degrees-of-freedom parameter (df = 100), i.e., almost Gaussian noise
-    gp_model_t_v <- fitGPModel(gp_coords = coords_v, cov_function = "exponential",
-                               gp_approx = "vecchia", num_neighbors = num_neighbors_v,
-                               likelihood = "t_fix_df", likelihood_additional_param = 100,
-                               y = y_v, X = X_v, params = OPTIM_PARAMS_BFGS)
+    # 'capture.output': warns that the standard deviations of the coefficients cannot be
+    #   calculated when the approximated Hessian is not positive definite, which the check
+    #   through 'coef_se_available' above already allows for
+    capture.output( gp_model_t_v <- fitGPModel(gp_coords = coords_v, cov_function = "exponential",
+                                               gp_approx = "vecchia", num_neighbors = num_neighbors_v,
+                                               likelihood = "t_fix_df", likelihood_additional_param = 100,
+                                               y = y_v, X = X_v, params = OPTIM_PARAMS_BFGS), file = 'NUL')
     cov_pars_t_v <- c(0.731926050658421, 0.113198966078325, 0.0469233950753127, 0.0132851890399170)
     aux_pars_t_v <- c(0.215485446742063, 0.134997889593886, 100, NaN)
     coef_t_v <- c(0.958738169312722, 0.0196912670065139, 1.09862570873013, 0.0328225530709028)

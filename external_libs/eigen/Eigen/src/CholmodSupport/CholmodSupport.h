@@ -194,6 +194,24 @@ inline int  cm_factorize_p       (cholmod_sparse*  A, double beta[2], _StorageIn
 template<>
 inline int  cm_factorize_p<SuiteSparse_long> (cholmod_sparse*  A, double beta[2], SuiteSparse_long* fset,          std::size_t fsize, cholmod_factor* L, cholmod_common &Common) { return cholmod_l_factorize_p (A, beta, fset, fsize, L, &Common); }
 
+//ChangedForGPBoost
+// needed to hand the Cholesky factor and its fill-reducing permutation back to
+// the caller as Eigen objects, see CholmodBase::CholFactMatrix()
+template<typename _StorageIndex>
+inline cholmod_factor* cm_copy_factor       (cholmod_factor& L, cholmod_common &Common) { return cholmod_copy_factor   (&L, &Common); }
+template<>
+inline cholmod_factor* cm_copy_factor<SuiteSparse_long> (cholmod_factor& L, cholmod_common &Common) { return cholmod_l_copy_factor (&L, &Common); }
+
+template<typename _StorageIndex>
+inline int cm_change_factor       (int to_xtype, int to_ll, int to_super, int to_packed, int to_monotonic, cholmod_factor* L, cholmod_common &Common) { return cholmod_change_factor   (to_xtype, to_ll, to_super, to_packed, to_monotonic, L, &Common); }
+template<>
+inline int cm_change_factor<SuiteSparse_long> (int to_xtype, int to_ll, int to_super, int to_packed, int to_monotonic, cholmod_factor* L, cholmod_common &Common) { return cholmod_l_change_factor (to_xtype, to_ll, to_super, to_packed, to_monotonic, L, &Common); }
+
+template<typename _StorageIndex>
+inline cholmod_sparse* cm_factor_to_sparse       (cholmod_factor& L, cholmod_common &Common) { return cholmod_factor_to_sparse   (&L, &Common); }
+template<>
+inline cholmod_sparse* cm_factor_to_sparse<SuiteSparse_long> (cholmod_factor& L, cholmod_common &Common) { return cholmod_l_factor_to_sparse (&L, &Common); }
+
 #undef EIGEN_CHOLMOD_SPECIALIZE0
 #undef EIGEN_CHOLMOD_SPECIALIZE1
 
@@ -232,7 +250,7 @@ class CholmodBase : public SparseSolverBase<Derived>
   public:
 
     CholmodBase()
-      : m_cholmodFactor(0), m_info(Success), m_factorizationIsOk(false), m_analysisIsOk(false)
+      : m_cholmodFactor(0), m_info(Success), m_factorizationIsOk(false), m_analysisIsOk(false), m_CholFactMatrixIsOk(false), m_permutationIsOk(false)
     {
       EIGEN_STATIC_ASSERT((internal::is_same<double,RealScalar>::value), CHOLMOD_SUPPORTS_DOUBLE_PRECISION_ONLY);
       m_shiftOffset[0] = m_shiftOffset[1] = 0.0;
@@ -240,7 +258,7 @@ class CholmodBase : public SparseSolverBase<Derived>
     }
 
     explicit CholmodBase(const MatrixType& matrix)
-      : m_cholmodFactor(0), m_info(Success), m_factorizationIsOk(false), m_analysisIsOk(false)
+      : m_cholmodFactor(0), m_info(Success), m_factorizationIsOk(false), m_analysisIsOk(false), m_CholFactMatrixIsOk(false), m_permutationIsOk(false)
     {
       EIGEN_STATIC_ASSERT((internal::is_same<double,RealScalar>::value), CHOLMOD_SUPPORTS_DOUBLE_PRECISION_ONLY);
       m_shiftOffset[0] = m_shiftOffset[1] = 0.0;
@@ -297,6 +315,9 @@ class CholmodBase : public SparseSolverBase<Derived>
       this->m_info = Success;
       m_analysisIsOk = true;
       m_factorizationIsOk = false;
+      //ChangedForGPBoost
+      m_CholFactMatrixIsOk = false;
+      m_permutationIsOk = false;
     }
 
     /** Performs a numeric decomposition of \a matrix
@@ -314,6 +335,77 @@ class CholmodBase : public SparseSolverBase<Derived>
       // If the factorization failed, minor is the column at which it did. On success minor == n.
       this->m_info = (m_cholmodFactor->minor == m_cholmodFactor->n ? Success : NumericalIssue);
       m_factorizationIsOk = true;
+      //ChangedForGPBoost
+      m_CholFactMatrixIsOk = false;
+    }
+
+    //ChangedForGPBoost
+    /** \returns the lower Cholesky factor L as an Eigen sparse matrix, so that
+      * L * L^T equals permutationP() * A * permutationP()^T
+      *
+      * CHOLMOD stores the factor in its own, possibly supernodal, format, so
+      * unlike Eigen's SimplicialLLT this cannot hand out a reference to the
+      * factor itself. The conversion runs once per numeric factorization and
+      * the result is kept until the next one. Prefer solve() where the explicit
+      * factor is not needed: on a supernodal factorization the conversion also
+      * has to expand the supernodes into a sparse matrix.
+      *
+      * \warning The conversion fills a cache, so unlike SimplicialLLT's
+      * CholFactMatrix() this is not safe to call on the same object from
+      * several threads at once. Call it once outside the parallel region.
+      */
+    const CholMatrixType& CholFactMatrix() const
+    {
+      eigen_assert(m_factorizationIsOk && "The decomposition is not in a valid state, you must first call either compute() or analyzePattern()/factorize()");
+      if(!m_CholFactMatrixIsOk)
+      {
+        // cholmod_factor_to_sparse needs a simplicial, packed and monotonic
+        // factor and modifies the one it is handed, so convert a copy
+        cholmod_factor* L_copy = internal::cm_copy_factor<StorageIndex>(*m_cholmodFactor, m_cholmod);
+        internal::cm_change_factor<StorageIndex>(CHOLMOD_REAL, 1 /*to_ll*/, 0 /*to_super*/,
+                                                 1 /*to_packed*/, 1 /*to_monotonic*/, L_copy, m_cholmod);
+        cholmod_sparse* L_sparse = internal::cm_factor_to_sparse<StorageIndex>(*L_copy, m_cholmod);
+        m_CholFactMatrix = viewAsEigen<Scalar,ColMajor,StorageIndex>(*L_sparse);
+        internal::cm_free_sparse<StorageIndex>(L_sparse, m_cholmod);
+        internal::cm_free_factor<StorageIndex>(L_copy, m_cholmod);
+        m_CholFactMatrixIsOk = true;
+      }
+      return m_CholFactMatrix;
+    }
+
+    //ChangedForGPBoost
+    /** \returns an expression of the lower triangular factor L */
+    const Eigen::TriangularView<const CholMatrixType, Eigen::Lower> matrixL() const
+    {
+      return CholFactMatrix().template triangularView<Eigen::Lower>();
+    }
+
+    //ChangedForGPBoost
+    /** \returns the fill-reducing permutation P that CHOLMOD selected, in the
+      * same convention as SimplicialCholeskyBase::permutationP(), i.e. the
+      * factorization is of P * A * P^T */
+    const PermutationMatrix<Dynamic,Dynamic,StorageIndex>& permutationP() const
+    {
+      eigen_assert(m_analysisIsOk && "You must first call analyzePattern()");
+      if(!m_permutationIsOk)
+      {
+        const Index size = m_cholmodFactor->n;
+        m_permutation.resize(size);
+        if(m_cholmodFactor->Perm == 0)
+        {
+          m_permutation.setIdentity();
+        }
+        else
+        {
+          // CHOLMOD's Perm[k] is the original index of the k-th permuted row,
+          // whereas an Eigen PermutationMatrix stores the target position of
+          // each original row, i.e. the inverse of that
+          const StorageIndex* Perm = static_cast<const StorageIndex*>(m_cholmodFactor->Perm);
+          for(Index k = 0; k < size; ++k) m_permutation.indices()(Perm[k]) = StorageIndex(k);
+        }
+        m_permutationIsOk = true;
+      }
+      return m_permutation;
     }
 
     /** Returns a reference to the Cholmod's configuration structure to get a full control over the performed operations.
@@ -449,6 +541,11 @@ class CholmodBase : public SparseSolverBase<Derived>
     mutable ComputationInfo m_info;
     int m_factorizationIsOk;
     int m_analysisIsOk;
+    //ChangedForGPBoost
+    mutable CholMatrixType m_CholFactMatrix;                                  // the factor of CholFactMatrix()
+    mutable PermutationMatrix<Dynamic,Dynamic,StorageIndex> m_permutation;    // the permutation of permutationP()
+    mutable bool m_CholFactMatrixIsOk;
+    mutable bool m_permutationIsOk;
 };
 
 /** \ingroup CholmodSupport_Module
@@ -597,6 +694,53 @@ class CholmodSupernodalLLT : public CholmodBase<_MatrixType, _UpLo, CholmodSuper
     {
       m_cholmod.final_asis = 1;
       m_cholmod.supernodal = CHOLMOD_SUPERNODAL;
+    }
+};
+
+//ChangedForGPBoost
+/** \ingroup CholmodSupport_Module
+  * \class CholmodAutoLLT
+  * \brief A direct Cholesky (LLT) factorization and solver based on Cholmod that
+  *        lets Cholmod choose between a simplicial and a supernodal factorization
+  *
+  * This is CholmodDecomposition in its automatic mode, except that the result is
+  * always an LL^T and never an LDL^T factorization. That matters for two reasons:
+  * an LDL^T factorization does not report an indefinite matrix through info(),
+  * because negative pivots are perfectly valid for it, and the callers here want
+  * the L of an LL^T factorization from CholFactMatrix().
+  *
+  * \tparam _MatrixType the type of the sparse matrix A, it must be a SparseMatrix<>
+  * \tparam _UpLo the triangular part that will be used for the computations
+  *
+  * \implsparsesolverconcept
+  *
+  * \sa class CholmodSupernodalLLT, class CholmodSimplicialLLT
+  */
+template<typename _MatrixType, int _UpLo = Lower>
+class CholmodAutoLLT : public CholmodBase<_MatrixType, _UpLo, CholmodAutoLLT<_MatrixType, _UpLo> >
+{
+    typedef CholmodBase<_MatrixType, _UpLo, CholmodAutoLLT> Base;
+    using Base::m_cholmod;
+
+  public:
+
+    typedef _MatrixType MatrixType;
+
+    CholmodAutoLLT() : Base() { init(); }
+
+    CholmodAutoLLT(const MatrixType& matrix) : Base()
+    {
+      init();
+      this->compute(matrix);
+    }
+
+    ~CholmodAutoLLT() {}
+  protected:
+    void init()
+    {
+      m_cholmod.final_asis = 0;
+      m_cholmod.final_ll = 1;
+      m_cholmod.supernodal = CHOLMOD_AUTO;
     }
 };
 

@@ -7,8 +7,22 @@ LGB_CPPFLAGS = \
     -DUSE_SOCKET \
     -DLGB_R_BUILD
 
+# CHOLMOD from SuiteSparse is bundled in SuiteSparse/, so that no external
+# CHOLMOD or BLAS has to be found and linked. Its Partition (METIS) and CAMD
+# interfaces and its MatrixOps and Modify modules are not included, NPRINT
+# keeps it from writing to stdout, and GPB_SUITESPARSE_INTERNAL_BLAS routes
+# its BLAS/LAPACK calls to the Eigen kernels in SuiteSparse/EigenBLAS.
+CHOLMOD_CPPFLAGS = \
+    -I$(PKGROOT)/SuiteSparse/SuiteSparse_config \
+    -I$(PKGROOT)/SuiteSparse/AMD/Include \
+    -I$(PKGROOT)/SuiteSparse/COLAMD/Include \
+    -I$(PKGROOT)/SuiteSparse/CHOLMOD/Include \
+    -DNPARTITION -DNCAMD -DNMATRIXOPS -DNMODIFY -DNPRINT \
+    -DGPB_SUITESPARSE_INTERNAL_BLAS
+
 PKG_CPPFLAGS = \
     -I$(PKGROOT)/include \
+    $(CHOLMOD_CPPFLAGS) \
     $(LGB_CPPFLAGS)
 
 PKG_CXXFLAGS = \
@@ -62,4 +76,108 @@ OBJECTS = \
     CG_utils.o \
     cs_spsolve.o \
     cs_reach.o \
-    cs_dfs.o
+    cs_dfs.o \
+    SuiteSparse/SuiteSparse_config/SuiteSparse_config.o \
+    SuiteSparse/AMD/Source/amd_1.o \
+    SuiteSparse/AMD/Source/amd_2.o \
+    SuiteSparse/AMD/Source/amd_aat.o \
+    SuiteSparse/AMD/Source/amd_control.o \
+    SuiteSparse/AMD/Source/amd_defaults.o \
+    SuiteSparse/AMD/Source/amd_dump.o \
+    SuiteSparse/AMD/Source/amd_info.o \
+    SuiteSparse/AMD/Source/amd_order.o \
+    SuiteSparse/AMD/Source/amd_post_tree.o \
+    SuiteSparse/AMD/Source/amd_postorder.o \
+    SuiteSparse/AMD/Source/amd_preprocess.o \
+    SuiteSparse/AMD/Source/amd_valid.o \
+    SuiteSparse/AMD/Source/amd_version.o \
+    SuiteSparse/COLAMD/Source/colamd.o \
+    SuiteSparse/COLAMD/Source/colamd_version.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_aat.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_add.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_add_size_t.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_alloc_factor.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_alloc_work.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_allocate_dense.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_allocate_factor.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_allocate_sparse.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_allocate_triplet.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_allocate_work.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_band.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_band_nnz.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_calloc.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_change_factor.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_clear_flag.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_copy.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_copy_dense.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_copy_dense2.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_copy_factor.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_copy_sparse.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_copy_triplet.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_cumsum.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_dbound.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_defaults.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_dense_nnz.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_dense_to_sparse.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_divcomplex.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_ensure_dense.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_error.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_eye.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_factor_to_sparse.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_finish.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_free.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_free_dense.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_free_factor.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_free_sparse.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_free_triplet.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_free_work.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_hypot.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_malloc.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_maxrank.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_memdebug.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_mult_size_t.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_mult_uint64_t.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_nnz.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_ones.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_pack_factor.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_ptranspose.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_query.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_realloc.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_realloc_multiple.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_reallocate_column.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_reallocate_factor.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_reallocate_sparse.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_reallocate_triplet.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_sbound.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_score_comp.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_set_empty.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_sort.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_sparse_to_dense.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_sparse_to_triplet.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_speye.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_spzeros.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_start.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_transpose.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_transpose_sym.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_transpose_unsym.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_triplet_to_sparse.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_version.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_xtype.o \
+    SuiteSparse/CHOLMOD/Utility/cholmod_zeros.o \
+    SuiteSparse/CHOLMOD/Check/cholmod_check.o \
+    SuiteSparse/CHOLMOD/Cholesky/cholmod_amd.o \
+    SuiteSparse/CHOLMOD/Cholesky/cholmod_analyze.o \
+    SuiteSparse/CHOLMOD/Cholesky/cholmod_colamd.o \
+    SuiteSparse/CHOLMOD/Cholesky/cholmod_etree.o \
+    SuiteSparse/CHOLMOD/Cholesky/cholmod_factorize.o \
+    SuiteSparse/CHOLMOD/Cholesky/cholmod_postorder.o \
+    SuiteSparse/CHOLMOD/Cholesky/cholmod_rcond.o \
+    SuiteSparse/CHOLMOD/Cholesky/cholmod_resymbol.o \
+    SuiteSparse/CHOLMOD/Cholesky/cholmod_rowcolcounts.o \
+    SuiteSparse/CHOLMOD/Cholesky/cholmod_rowfac.o \
+    SuiteSparse/CHOLMOD/Cholesky/cholmod_solve.o \
+    SuiteSparse/CHOLMOD/Cholesky/cholmod_spsolve.o \
+    SuiteSparse/CHOLMOD/Supernodal/cholmod_super_numeric.o \
+    SuiteSparse/CHOLMOD/Supernodal/cholmod_super_solve.o \
+    SuiteSparse/CHOLMOD/Supernodal/cholmod_super_symbolic.o \
+    SuiteSparse/EigenBLAS/gpb_eigen_blas.o

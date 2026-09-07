@@ -241,6 +241,7 @@ eigen_modules <- c(
   , "Sparse"
   , "SparseCore"
   , "SparseCholesky"
+  , "CholmodSupport"
   , "OrderingMethods"
   , "SparseLU"
   , "SparseQR"

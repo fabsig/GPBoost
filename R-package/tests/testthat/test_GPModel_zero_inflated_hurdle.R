@@ -613,11 +613,15 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     pars <- list(init_cov_pars = c(0.4, 0.25), estimate_cov_par_index = c(0L, 0L),
                  init_coef = c(0, 0, -0.5, 0), init_coef_aux_pars_from_iid_model = FALSE,
                  maxit = 500, delta_rel_conv = 1e-9, trace = FALSE)
-    exact <- fitGPModel(gp_coords = coords_f, cov_function = "exponential",
-                        likelihood = "zero_inflated_regression_poisson_fisher_laplace", y = yf, X = Xf, params = pars)
-    fitc <- fitGPModel(gp_coords = coords_f, cov_function = "exponential", gp_approx = "fitc",
-                       num_ind_points = 120L, likelihood = "zero_inflated_regression_poisson_fisher_laplace",
-                       y = yf, X = Xf, params = pars)
+    capture.output( exact <- fitGPModel(gp_coords = coords_f, cov_function = "exponential",
+                                        likelihood = "zero_inflated_regression_poisson_fisher_laplace",
+                                        y = yf, X = Xf, params = pars), file = 'NUL')
+    # 'capture.output': warns that inducing points coincide with data points, which is
+    #   expected with 120 inducing points here and would only clutter the test output
+    capture.output( fitc <- fitGPModel(gp_coords = coords_f, cov_function = "exponential", gp_approx = "fitc",
+                                       num_ind_points = 120L,
+                                       likelihood = "zero_inflated_regression_poisson_fisher_laplace",
+                                       y = yf, X = Xf, params = pars), file = 'NUL')
     expect_equal(as.numeric(fitc$get_coef())[3:4], as.numeric(exact$get_coef())[3:4], tolerance = 0.01)
     expect_equal(fitc$get_current_neg_log_likelihood(), exact$get_current_neg_log_likelihood(), tolerance = 0.05)
   })

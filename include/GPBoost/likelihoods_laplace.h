@@ -301,7 +301,7 @@ namespace GPBoost {
 		}//end mode finding algorithm
 		if (!has_NA_or_Inf && UseSSNALMRefinement()) {//exact non-smooth refinement of the mode for 'asymmetric_laplace'
 			vec_t Qmode = (*SigmaI_ptr) * mode_;
-			chol_sp_mat_t chol_fact_ssn;
+			chol_cholmod_sp_mat_t chol_fact_ssn;
 			bool chol_fact_ssn_pattern_analyzed = false;
 			vec_t W_ssn_prev;
 			// The SSN system 'Sigma^-1 + Z^T (rho A) Z' has the same structure as the Newton system of the mode finding
@@ -809,7 +809,7 @@ namespace GPBoost {
 			};
 			vec_t Qmode;
 			apply_Q(mode_, Qmode);
-			chol_sp_mat_t chol_fact_ssn;
+			chol_cholmod_sp_mat_t chol_fact_ssn;
 			chol_den_mat_t chol_fact_sigma_woodbury_ssn;
 			bool chol_fact_ssn_pattern_analyzed = false;
 			vec_t W_ssn_prev;
@@ -979,7 +979,7 @@ namespace GPBoost {
 							"definite or contains non-finite values ");
 					}
 				}
-				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_,
+				TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_,
 					Bt_D_inv_B_cross_cov, chol_fact_SigmaI_plus_ZtWZ_vecchia_cross_cov, false);
 				sigma_woodbury_woodbury_ = sigma_woodbury - chol_fact_SigmaI_plus_ZtWZ_vecchia_cross_cov.transpose() * chol_fact_SigmaI_plus_ZtWZ_vecchia_cross_cov;
 				chol_fact_sigma_woodbury_woodbury_.compute(sigma_woodbury_woodbury_);
@@ -1196,7 +1196,7 @@ namespace GPBoost {
 			};
 			vec_t Qmode;
 			apply_Q(mode_, Qmode);
-			chol_sp_mat_t chol_fact_ssn;
+			chol_cholmod_sp_mat_t chol_fact_ssn;
 			bool chol_fact_ssn_pattern_analyzed = false;
 			vec_t W_ssn_prev;
 			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
@@ -3737,7 +3737,7 @@ namespace GPBoost {
 			// Calculate (Sigma^-1 + W)^-1
 			sp_mat_t L_inv(dim_mode_, dim_mode_);
 			L_inv.setIdentity();
-			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
+			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
 			vec_t SigmaI_plus_W_inv_d_mll_d_mode, SigmaI_plus_W_inv_diag;
 			sp_mat_t SigmaI_plus_W_inv, SigmaI;
 			// Calculate gradient wrt covariance parameters
@@ -4208,7 +4208,7 @@ namespace GPBoost {
 			// Calculate (Sigma^-1 + W)^-1
 			sp_mat_t L_inv(dim_mode_, dim_mode_);
 			L_inv.setIdentity();
-			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
+			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
 			sp_mat_t SigmaI_plus_W_inv;
 			// Calculate gradient wrt covariance parameters
 			bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
@@ -4988,7 +4988,7 @@ namespace GPBoost {
 						}
 					}
 					Mfull_group.setFromTriplets(triplets.begin(), triplets.end());
-					TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Mfull_group, Mfull_group, false);
+					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Mfull_group, Mfull_group, false);
 					SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde = Mfull_group.topRows((int)dim_re_group);
 					Mfull_group.resize(0, 0);
 					//Alternative approach where SigmaI_plus_ZtWZ_I_group_cols is first calculated
@@ -4999,7 +4999,7 @@ namespace GPBoost {
 //							triplets[i] = Triplet_t(i, i, 1.);
 //						}
 //						SigmaI_plus_ZtWZ_I_group_cols.setFromTriplets(triplets.begin(), triplets.end());//dimension dim_mode_ (=dim_re_group + dim_gp) x dim_re_group with identity on the upper part
-//						TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I_group_cols, SigmaI_plus_ZtWZ_I_group_cols, false);
+//						TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I_group_cols, SigmaI_plus_ZtWZ_I_group_cols, false);
 //						sp_mat_t SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde = SigmaI_plus_ZtWZ_I_group_cols.topRows((int)dim_re_group) * Ztilde.transpose();
 //						SigmaI_plus_ZtWZ_I_group_cols.resize(0, 0);
 					if (calc_pred_cov) {
@@ -5033,7 +5033,7 @@ namespace GPBoost {
 						}
 					}
 					Mfull_gp.setFromTriplets(trips.begin(), trips.end());
-					TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Mfull_gp, Mfull_gp, false);
+					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Mfull_gp, Mfull_gp, false);
 					SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT = Mfull_gp.bottomRows((int)dim_gp);
 					Mfull_gp.resize(0, 0);
 					if (calc_pred_cov) {
@@ -5066,8 +5066,8 @@ namespace GPBoost {
 					// This VERSION 1 seems slightly faster than VERSION 2 below for predictive variances (two randomly crossed REs, m = 1000, n = 10 * m) (24.02.2026)
 					sp_mat_t SigmaI_plus_ZtWZ_I(dim_re_group, dim_re_group);
 					SigmaI_plus_ZtWZ_I.setIdentity();
-					TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, false);
-					TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, true);
+					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, false);
+					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, true);
 					sp_mat_t Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I = (Sigma * ((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose())) * SigmaI_plus_ZtWZ_I;
 					if (calc_pred_cov) {
 						pred_cov -= (T_mat)(Ztilde * Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I * Ztilde.transpose());
@@ -5083,7 +5083,7 @@ namespace GPBoost {
 					//					//VERSION 2: pred_cov = Z_pp * Σ_p * Z_pp^T + Z_po * (SigmaI_plus_ZtWZ)^-1 * Z_po^T, Z_po = Ztilde
 					//					//sp_mat_t SigmaI_plus_ZtWZ_I_Ztilde(dim_mode_, dim_re_group);
 					//					sp_mat_t SigmaI_plus_ZtWZ_Isqrt_Ztilde = Ztilde.transpose();
-					//					TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_Isqrt_Ztilde, SigmaI_plus_ZtWZ_Isqrt_Ztilde, false);
+					//					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_Isqrt_Ztilde, SigmaI_plus_ZtWZ_Isqrt_Ztilde, false);
 					//					if (calc_pred_cov) {
 					//						pred_cov += (T_mat)(SigmaI_plus_ZtWZ_Isqrt_Ztilde.transpose() * SigmaI_plus_ZtWZ_Isqrt_Ztilde);
 					//					}
@@ -5097,7 +5097,7 @@ namespace GPBoost {
 						//              // calculate Maux = L\(Z^T * information_ll_.asDiagonal() * Cross_Cov^T)
 						//              sp_mat_t Cross_Cov = Ztilde * Sigma * (*Zt_);
 						//              sp_mat_t Maux = (*Zt_) * information_ll_.asDiagonal() * Cross_Cov.transpose();
-						//              TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Maux, Maux, false);
+						//              TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Maux, Maux, false);
 						//              if (calc_pred_cov) {
 						//                  pred_cov += (T_mat)(Maux.transpose() * Maux);
 						//                  pred_cov -= (T_mat)(Cross_Cov * information_ll_.asDiagonal() * Cross_Cov.transpose());
@@ -5665,7 +5665,7 @@ namespace GPBoost {
 					M_aux_3 = Maux.transpose() * sigma_resid_plus_W_inv_cross_cov;
 				}
 				den_mat_t M_aux_4 = chol_fact_sigma_woodbury_2.solve(M_aux_3.transpose());
-				TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux, Maux, false);
+				TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux, Maux, false);
 				if (calc_pred_cov) {
 					if (CondObsOnly) {
 						pred_cov = Maux.transpose() * Maux;
@@ -5930,7 +5930,7 @@ namespace GPBoost {
 					Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 				}
 				if (num_sets_re_ == 1) {
-					TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux, Maux, false);
+					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux, Maux, false);
 				}
 				else {
 					CHECK(num_sets_re_ == 2);
@@ -5948,7 +5948,7 @@ namespace GPBoost {
 					Maux_2.resize(0, 0);
 					CHECK(Maux_all.rows() == dim_mode_);
 					CHECK(Maux_all.cols() == 2 * num_pred);
-					TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux_all, Maux_all, false);
+					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux_all, Maux_all, false);
 					Maux = Maux_all.block(num_gp * dim_mode_per_set_re_, num_gp * num_pred, dim_mode_per_set_re_, num_pred);
 				}
 				if (calc_pred_cov) {
@@ -6046,7 +6046,7 @@ namespace GPBoost {
 		CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
 		CHECK(rand_vec_sim_post_.rows() == dim_mode_);
 		if (matrix_inversion_method_ == "cholesky") {
-			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, rand_vec_I_sim_post_, rand_vec_sim_post_, true);
+			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, rand_vec_I_sim_post_, rand_vec_sim_post_, true);
 		}
 		else if (matrix_inversion_method_ == "iterative") {
 			CHECK(rand_vec_I_2_sim_post_.cols() == num_rand_vec_sim_post_);
@@ -6180,7 +6180,7 @@ namespace GPBoost {
 		CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
 		CHECK(rand_vec_sim_post_.rows() == dim_mode_);
 		if (matrix_inversion_method_ == "cholesky") {
-			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_I_sim_post_, rand_vec_sim_post_, true);
+			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_I_sim_post_, rand_vec_sim_post_, true);
 		}
 		else if (matrix_inversion_method_ == "iterative") {
 			CHECK(rand_vec_I_2_sim_post_.cols() == num_rand_vec_sim_post_);
@@ -6251,7 +6251,7 @@ namespace GPBoost {
 		CHECK(rand_vec_I_2_sim_post_.cols() == num_rand_vec_sim_post_);
 		CHECK(rand_vec_I_2_sim_post_.rows() == num_ip);
 		if (matrix_inversion_method_ == "cholesky") {
-			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_I_sim_post_, rand_vec_sim_post_, true);
+			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, rand_vec_I_sim_post_, rand_vec_sim_post_, true);
 			den_mat_t rand_vec_aux(num_ip, num_rand_vec_sim_post_);
 			TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_2, rand_vec_I_2_sim_post_, rand_vec_aux, true);
 			den_mat_t rand_vec_aux_2 = Bt_D_inv_B_cross_cov * rand_vec_aux;
@@ -6608,7 +6608,7 @@ namespace GPBoost {
 		else { //begin Cholesky
 			sp_mat_t L_inv(dim_mode_, dim_mode_);
 			L_inv.setIdentity();
-			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, L_inv, L_inv, false);
+			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, L_inv, L_inv, false);
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < dim_mode_; ++i) {
 				pred_var[i] = L_inv.col(i).squaredNorm();
@@ -6698,7 +6698,7 @@ namespace GPBoost {
 		else {
 			sp_mat_t L_inv(dim_mode_, dim_mode_);
 			L_inv.setIdentity();
-			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
+			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < dim_mode_; ++i) {
 				pred_var[i] = L_inv.col(i).squaredNorm();

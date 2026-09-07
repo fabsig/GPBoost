@@ -8,6 +8,7 @@ OPTION(USE_CUDA "Enable CUDA-accelerated training (EXPERIMENTAL)" OFF)
 option(USE_CUDA_GP "Enable CUDA-accelerated training for Gaussian Process parts" OFF)
 OPTION(USE_DEBUG "Set to ON for Debug mode" OFF)
 OPTION(BUILD_STATIC_LIB "Build static library" OFF)
+OPTION(USE_EXTERNAL_BLAS_FOR_CHOLMOD "Link an external BLAS/LAPACK for the bundled CHOLMOD instead of the built-in Eigen kernels" OFF)
 OPTION(__BUILD_FOR_R "Set to ON if building lib_gpboost for use with the R package" OFF)
 OPTION(__INTEGRATE_OPENCL "Set to ON if building LightGBM with the OpenCL ICD Loader and its dependencies included" OFF)
 
@@ -94,6 +95,29 @@ endif(USE_SWIG)
 
 SET(CSparse_HEADER_DIR "${PROJECT_SOURCE_DIR}/external_libs/CSparse/Include")
 include_directories(${CSparse_HEADER_DIR})
+
+# CHOLMOD and the parts of SuiteSparse it needs are bundled, so that no
+# separately installed CHOLMOD has to be found or linked
+SET(SUITESPARSE_DIR "${PROJECT_SOURCE_DIR}/external_libs/SuiteSparse")
+include_directories(
+    "${SUITESPARSE_DIR}/SuiteSparse_config"
+    "${SUITESPARSE_DIR}/AMD/Include"
+    "${SUITESPARSE_DIR}/COLAMD/Include"
+    "${SUITESPARSE_DIR}/CHOLMOD/Include"
+)
+# CHOLMOD's Partition module needs METIS and its CAMD interface needs CAMD,
+# neither of which is bundled; MatrixOps and Modify are not used by GPBoost.
+# NPRINT keeps CHOLMOD from writing to stdout, which CRAN does not allow.
+ADD_DEFINITIONS(-DNPARTITION -DNCAMD -DNMATRIXOPS -DNMODIFY -DNPRINT)
+if(USE_EXTERNAL_BLAS_FOR_CHOLMOD)
+    find_package(BLAS REQUIRED)
+    find_package(LAPACK REQUIRED)
+    message(STATUS "CHOLMOD BLAS: ${BLAS_LIBRARIES}")
+else()
+    # route CHOLMOD's BLAS/LAPACK calls to the Eigen kernels in
+    # external_libs/SuiteSparse/EigenBLAS
+    ADD_DEFINITIONS(-DGPB_SUITESPARSE_INTERNAL_BLAS)
+endif()
 
 SET(EIGEN_DIR "${PROJECT_SOURCE_DIR}/external_libs/eigen")
 include_directories(${EIGEN_DIR})
@@ -457,6 +481,27 @@ if(USE_MPI)
   include_directories(${MPI_CXX_INCLUDE_PATH})
 endif(USE_MPI)
 
+# The bundled SuiteSparse is third-party code that is not warning-clean under the
+# compilers GPBoost is built with (size_t to int32_t conversions and unused locals,
+# MSVC C4267/C4189/C4101). Compile it without warnings so that they do not drown out
+# the ones from GPBoost's own sources, whose warning level is left untouched.
+# The Eigen backed BLAS in EigenBLAS/ is GPBoost's own code and is not included here.
+file(GLOB SUITESPARSE_SOURCES
+    external_libs/SuiteSparse/SuiteSparse_config/*.c
+    external_libs/SuiteSparse/AMD/Source/*.c
+    external_libs/SuiteSparse/COLAMD/Source/*.c
+    # the t_cholmod_*.c files are templates that the cholmod_*.c files include
+    external_libs/SuiteSparse/CHOLMOD/Utility/cholmod_*.c
+    external_libs/SuiteSparse/CHOLMOD/Check/cholmod_*.c
+    external_libs/SuiteSparse/CHOLMOD/Cholesky/cholmod_*.c
+    external_libs/SuiteSparse/CHOLMOD/Supernodal/cholmod_*.c
+)
+if(MSVC)
+    set_source_files_properties(${SUITESPARSE_SOURCES} PROPERTIES COMPILE_OPTIONS "/w")
+else()
+    set_source_files_properties(${SUITESPARSE_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
+endif()
+
 file(GLOB SOURCES
     src/LightGBM/boosting/*.cpp
     src/LightGBM/io/*.cpp
@@ -466,6 +511,7 @@ file(GLOB SOURCES
     src/LightGBM/treelearner/*.cpp
     src/GPBoost/*.cpp
     external_libs/CSparse/Source/*.c
+    external_libs/SuiteSparse/EigenBLAS/*.cpp
 if(USE_CUDA)
     src/LightGBM/treelearner/*.cu
 endif(USE_CUDA)
@@ -473,6 +519,8 @@ if(USE_CUDA_GP)
     src/GPBoost/*.cu
 endif(USE_CUDA_GP)
 )
+
+list(APPEND SOURCES ${SUITESPARSE_SOURCES})
 
 add_executable(gpboost src/LightGBM/main.cpp src/LightGBM/application/application.cpp ${SOURCES})
 
@@ -543,6 +591,11 @@ if(USE_OPENMP)
     TARGET_LINK_LIBRARIES(gpboost OpenMP::OpenMP_CXX)
     TARGET_LINK_LIBRARIES(_gpboost OpenMP::OpenMP_CXX)
 endif(USE_OPENMP)
+
+if(USE_EXTERNAL_BLAS_FOR_CHOLMOD)
+  TARGET_LINK_LIBRARIES(gpboost ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+  TARGET_LINK_LIBRARIES(_gpboost ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
+endif(USE_EXTERNAL_BLAS_FOR_CHOLMOD)
 
 if(USE_GPU)
   TARGET_LINK_LIBRARIES(gpboost ${OpenCL_LIBRARY} ${Boost_LIBRARIES})

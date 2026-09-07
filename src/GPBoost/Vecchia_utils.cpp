@@ -2422,14 +2422,14 @@ namespace GPBoost {
 			}
 		}//end loop over data i
 		sp_mat_t cond_prec = Bp.transpose() * Dp_inv.asDiagonal() * Bp + Bop.transpose() * Do_inv.asDiagonal() * Bop;
-		chol_sp_mat_t CholFact;
+		chol_cholmod_sp_mat_t CholFact;
 		CholFact.compute(cond_prec);
 		vec_t y_aux = Bop.transpose() * (Do_inv.asDiagonal() * (Bo * y_cluster_i));
 		pred_mean = -CholFact.solve(y_aux);
 		if (calc_pred_cov || calc_pred_var) {
 			sp_mat_t cond_prec_chol_inv(num_data_pred_cli, num_data_pred_cli);
 			cond_prec_chol_inv.setIdentity();
-			TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(CholFact.CholFactMatrix(), cond_prec_chol_inv, cond_prec_chol_inv, false);
+			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(CholFact, cond_prec_chol_inv, cond_prec_chol_inv, false);
 			if (calc_pred_cov) {
 				pred_cov = den_mat_t(cond_prec_chol_inv.transpose() * cond_prec_chol_inv);
 			}
@@ -2620,11 +2620,11 @@ namespace GPBoost {
 		//Calculate inverse of covariance matrix for observed data using the Woodbury identity
 		sp_mat_t Z_o_T_R_inv = Z_o.transpose() * R_inv_obs;
 		sp_mat_t M_aux_Woodbury = B.transpose() * D_inv.asDiagonal() * B + Z_o_T_R_inv * Z_o;
-		chol_sp_mat_t CholFac_M_aux_Woodbury;
+		chol_cholmod_sp_mat_t CholFac_M_aux_Woodbury;
 		CholFac_M_aux_Woodbury.compute(M_aux_Woodbury);
 		if (calc_pred_cov || calc_pred_var) {
 			sp_mat_t MInvSqrtX_Z_o_T;
-			TriangularSolveGivenCholesky<chol_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(CholFac_M_aux_Woodbury, Z_o_T_R_inv, MInvSqrtX_Z_o_T, false);
+			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(CholFac_M_aux_Woodbury, Z_o_T_R_inv, MInvSqrtX_Z_o_T, false);
 			sp_mat_t ZoSigmaZoT_plusR_Inv = -MInvSqrtX_Z_o_T.transpose() * MInvSqrtX_Z_o_T + R_inv_obs;
 			sp_mat_t Z_p_B_inv = Z_p * B_inv;
 			sp_mat_t Z_p_B_inv_D = Z_p_B_inv * D.asDiagonal();

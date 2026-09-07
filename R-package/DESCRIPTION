@@ -16,6 +16,8 @@ Authors@R: c(
 	person("Jitse", "Niesen", role = c("cph")),
 	person("Other authors of Eigen for the included version of Eigen", role = c("ctb","cph")),
 	person("Timothy A.", "Davis", role = c("cph")),
+    person("Patrick R.", "Amestoy", role = c("cph")),
+    person("Iain S.", "Duff", role = c("cph")),
     person("Guolin", "Ke", role = c("ctb")),
     person("Damien", "Soukhavong", role = c("ctb")),
     person("James", "Lamb", role = c("ctb")),

@@ -3,9 +3,9 @@ context("GPModel_combined_GP_grouped_random_effects")
 # Non-convex / stochastic optimization: a different compiler or standard library (e.g. clang + libc++ or
 # gcc + libstdc++ on Linux, used by the sanitizer containers of R-hub and CRAN) can converge to a different
 # stationary point with practically the same likelihood. Only require the tight tolerances on the reference
-# platform on which the expected values were calculated. Set GPBOOST_STRICT_TOLERANCES=true to always use them
-USE_STRICT_TOLERANCES <- .Platform$OS.type == "windows" ||
-  Sys.getenv("GPBOOST_STRICT_TOLERANCES") == "true"
+# platform on which the expected values were calculated.
+# See helper-tolerances.R, which defines this and reports it once per test run
+USE_STRICT_TOLERANCES <- gpb_use_strict_tolerances()
 relax_tolerance <- function(tol) if (USE_STRICT_TOLERANCES) tol else max(2 * tol, 0.5)
 # Separate helper for ABSOLUTE differences of negative log-likelihoods: these are on the scale of the
 # log-likelihood itself (typically 100-1000 here), so a larger absolute tolerance is still a small relative one

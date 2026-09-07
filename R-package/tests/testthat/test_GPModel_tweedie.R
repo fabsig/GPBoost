@@ -3,9 +3,9 @@ context("Tweedie likelihood")
 # Non-convex / stochastic optimization: a different compiler or standard library (e.g. clang + libc++
 # on Linux, used by the sanitizer containers of R-hub and CRAN) can converge to a different stationary
 # point with practically the same likelihood. Only require the tight tolerances on the reference
-# platform. Set GPBOOST_STRICT_TOLERANCES=true to always use them
-USE_STRICT_TOLERANCES <- .Platform$OS.type == "windows" ||
-  Sys.getenv("GPBOOST_STRICT_TOLERANCES") == "true"
+# platform.
+# See helper-tolerances.R, which defines this and reports it once per test run
+USE_STRICT_TOLERANCES <- gpb_use_strict_tolerances()
 relax_tolerance <- function(tol) if (USE_STRICT_TOLERANCES) tol else max(2 * tol, 0.5)
 # Separate helper for ABSOLUTE differences of negative log-likelihoods (scale 100-1000 here)
 relax_tolerance_nll <- function(tol) if (USE_STRICT_TOLERANCES) tol else max(3 * tol, 3)

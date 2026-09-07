@@ -90,7 +90,7 @@ namespace GPBoost {
 			matrix_format_ = "den_mat_t";
 		}
 		if (matrix_format_ == "sp_mat_t") {
-			re_model_sp_ = std::unique_ptr<REModelTemplate<sp_mat_t, chol_sp_mat_t>>(new REModelTemplate<sp_mat_t, chol_sp_mat_t>(
+			re_model_sp_ = std::unique_ptr<REModelTemplate<sp_mat_t, chol_cholmod_sp_mat_t>>(new REModelTemplate<sp_mat_t, chol_cholmod_sp_mat_t>(
 				num_data, cluster_ids_data, re_group_data, num_re_group, re_group_rand_coef_data, 
 				ind_effect_group_rand_coef, num_re_group_rand_coef, drop_intercept_group_rand_effect,
 				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, gp_approx,
@@ -101,7 +101,7 @@ namespace GPBoost {
 			num_sets_fixed_effects_ = re_model_sp_->num_sets_fixed_effects_;
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
-			re_model_sp_rm_ = std::unique_ptr<REModelTemplate<sp_mat_rm_t, chol_sp_mat_rm_t>>(new REModelTemplate<sp_mat_rm_t, chol_sp_mat_rm_t>(
+			re_model_sp_rm_ = std::unique_ptr<REModelTemplate<sp_mat_rm_t, chol_cholmod_sp_mat_rm_t>>(new REModelTemplate<sp_mat_rm_t, chol_cholmod_sp_mat_rm_t>(
 				num_data, cluster_ids_data, re_group_data, num_re_group, re_group_rand_coef_data,
 				ind_effect_group_rand_coef, num_re_group_rand_coef, drop_intercept_group_rand_effect,
 				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, gp_approx,
