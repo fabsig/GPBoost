@@ -716,7 +716,8 @@ gpb.GPModel <- R6::R6Class(
         }
         private$has_covariates = model_list[["has_covariates"]]
         if (model_list[["has_covariates"]]) {
-          private$coefs_loaded_from_file = model_list[["coefs"]]
+          # Note: the coefficients are restored via 'params$init_coef' in the pseudo call to 'fit'
+          #   below and are then kept in C++ (they are read from there by 'get_coef')
           private$num_coef = model_list[["num_coef"]]
           private$num_covariates = model_list[["num_covariates"]]
           private$num_covariates_original <- if (is.null(model_list[["num_covariates_original"]])) private$num_covariates else model_list[["num_covariates_original"]]
@@ -1413,7 +1414,7 @@ gpb.GPModel <- R6::R6Class(
         , optimizer_cov_c_str
         , private$params[["momentum_offset"]]
         , private$params[["convergence_criterion"]]
-        , private$num_coef
+        , private$num_covariates
         , private$params[["init_coef"]]
         , private$params[["lr_coef"]]
         , private$params[["acc_rate_coef"]]
@@ -2783,7 +2784,6 @@ gpb.GPModel <- R6::R6Class(
     used_in_gpboost_algorithm = FALSE,
     y_loaded_from_file = NULL,
     cov_pars_loaded_from_file = NULL,
-    coefs_loaded_from_file = NULL,
     X_loaded_from_file = NULL,
     model_fitted = FALSE,
     current_neg_log_likelihood_loaded_from_file = NULL,
@@ -2945,10 +2945,15 @@ gpb.GPModel <- R6::R6Class(
             storage.mode(params[["init_coef"]]) <- "double"
           }
           params[["init_coef"]] <- as.vector(params[["init_coef"]])
-          num_covariates <- as.integer(length(params[["init_coef"]]))
           if (is.null(private$num_covariates) | private$num_covariates==0) {
-            private$num_covariates <- num_covariates
-            private$num_coef <- private$num_covariates * private$num_sets_fe
+            # 'init_coef' contains one coefficient per covariate and per fixed effects predictor
+            num_coef <- as.integer(length(params[["init_coef"]]))
+            if (num_coef %% private$num_sets_fe != 0) {
+              stop("GPModel: Number of parameters in ", sQuote("init_coef"),
+                   " is not a multiple of the number of fixed effects predictors (", private$num_sets_fe, ")")
+            }
+            private$num_covariates <- as.integer(num_coef / private$num_sets_fe)
+            private$num_coef <- num_coef
           }
         } else {
           stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("init_coef"))

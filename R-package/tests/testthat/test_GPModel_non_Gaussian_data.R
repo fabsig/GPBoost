@@ -7668,4 +7668,95 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("saving and loading models with several fixed effects predictors ", {
+    # Likelihoods with more than one fixed effects predictor (e.g., the mean and the log-variance for
+    # 'gaussian_heteroscedastic'). A model is loaded by passing the saved coefficients as 'init_coef'
+    # to a pseudo call to 'fit' (with maxit = 0), which is why both are tested here together
+
+    n_sl <- 100
+    group_sl <- rep(1:10, each = 10)
+    X_sl <- cbind(rep(1, n_sl), sim_rand_unif(n = n_sl, init_c = 0.256))
+    b_gr_sl <- qnorm(sim_rand_unif(n = 10, init_c = 0.741))
+    u_sl <- sim_rand_unif(n = n_sl, init_c = 0.369)
+    mean_sl <- as.vector(X_sl %*% c(0.3, 0.7)) + b_gr_sl[group_sl]
+    # Second fixed effects predictor: log-variance / log-shape
+    log_scale_sl <- as.vector(X_sl %*% c(-0.5, 1.2))
+    y_het_sl <- mean_sl + qnorm(u_sl) * exp(0.5 * log_scale_sl)
+    y_gamma_sl <- qgamma(u_sl, shape = exp(log_scale_sl), rate = exp(log_scale_sl) / exp(mean_sl))
+    y_hurdle_sl <- ifelse(sim_rand_unif(n = n_sl, init_c = 0.271) < 0.3, 0, y_gamma_sl)
+    X_test_sl <- cbind(rep(1, 3), c(0.1, 0.4, 0.8))
+    group_test_sl <- c(1, 3, 11)
+
+    cases_sl <- list(
+      list(likelihood = "gamma", y = y_gamma_sl, num_sets_fe = 1L), # single predictor, as a control
+      list(likelihood = "gaussian_heteroscedastic", y = y_het_sl, num_sets_fe = 2L),
+      list(likelihood = "gamma_varying_shape", y = y_gamma_sl, num_sets_fe = 2L),
+      list(likelihood = "hurdle_regression_gamma_varying_shape", y = y_hurdle_sl, num_sets_fe = 3L)
+    )
+    for (case_sl in cases_sl) {
+      info_sl <- case_sl$likelihood
+      num_coef_sl <- ncol(X_sl) * case_sl$num_sets_fe
+      capture.output(gp_model_sl <- fitGPModel(group_data = group_sl, likelihood = info_sl,
+                                               y = case_sl$y, X = X_sl,
+                                               params = modifyList(OPTIM_PARAMS_BFGS, list(maxit = 20))),
+                     file = "NUL")
+      coef_sl <- gp_model_sl$get_coef(std_err = FALSE)
+      expect_equal(length(coef_sl), num_coef_sl, info = info_sl)
+      expect_true(all(is.finite(coef_sl)), info = info_sl)
+      cov_pars_sl <- as.vector(gp_model_sl$get_cov_pars(std_err = FALSE))
+      aux_pars_sl <- gp_model_sl$get_aux_pars()
+      nll_sl <- gp_model_sl$get_current_neg_log_likelihood()
+      pred_sl <- predict(gp_model_sl, group_data_pred = group_test_sl, X_pred = X_test_sl,
+                         predict_var = TRUE, predict_response = TRUE)
+
+      # Saving and loading must reproduce the model exactly, including the coefficients of all
+      # fixed effects predictor blocks and the predictions
+      filename_sl <- tempfile(fileext = ".json")
+      saveGPModel(gp_model_sl, filename = filename_sl)
+      gp_model_loaded_sl <- loadGPModel(filename = filename_sl)
+      coef_loaded_sl <- gp_model_loaded_sl$get_coef(std_err = FALSE)
+      expect_equal(as.vector(coef_loaded_sl), as.vector(coef_sl), tolerance = TOLERANCE_STRICT, info = info_sl)
+      expect_equal(names(coef_loaded_sl), names(coef_sl), info = info_sl)
+      expect_equal(as.vector(gp_model_loaded_sl$get_cov_pars(std_err = FALSE)), cov_pars_sl,
+                   tolerance = TOLERANCE_STRICT, info = info_sl)
+      expect_equal(as.vector(gp_model_loaded_sl$get_aux_pars()), as.vector(aux_pars_sl),
+                   tolerance = TOLERANCE_STRICT, info = info_sl)
+      expect_equal(gp_model_loaded_sl$get_current_neg_log_likelihood(), nll_sl,
+                   tolerance = TOLERANCE_STRICT, info = info_sl)
+      pred_loaded_sl <- predict(gp_model_loaded_sl, group_data_pred = group_test_sl, X_pred = X_test_sl,
+                                predict_var = TRUE, predict_response = TRUE)
+      expect_equal(pred_loaded_sl$mu, pred_sl$mu, tolerance = TOLERANCE_STRICT, info = info_sl)
+      expect_equal(pred_loaded_sl$var, pred_sl$var, tolerance = TOLERANCE_STRICT, info = info_sl)
+
+      # The same when the model is loaded from a list instead of a file (as done when a
+      # 'gpb.Booster' with a 'GPModel' is loaded)
+      gp_model_list_sl <- gpboost:::gpb.GPModel$new(model_list = gp_model_sl$model_to_list())
+      expect_equal(as.vector(gp_model_list_sl$get_coef(std_err = FALSE)), as.vector(coef_sl),
+                   tolerance = TOLERANCE_STRICT, info = info_sl)
+
+      # 'init_coef' must be used for all fixed effects predictor blocks: with maxit = 0, the
+      # coefficients of the fitted model are exactly the provided initial values
+      init_coef_sl <- rep(c(0.1, -0.2), length.out = num_coef_sl)
+      capture.output(gp_model_init_sl <- fitGPModel(group_data = group_sl, likelihood = info_sl,
+                                                    y = case_sl$y, X = X_sl,
+                                                    params = list(maxit = 0, init_coef = init_coef_sl,
+                                                                  init_coef_aux_pars_from_iid_model = FALSE)),
+                     file = "NUL")
+      expect_equal(as.vector(gp_model_init_sl$get_coef(std_err = FALSE)), init_coef_sl,
+                   tolerance = TOLERANCE_STRICT, info = info_sl)
+    }
+
+    # 'init_coef' can also be provided before the covariate data is known. Its length is then the
+    # total number of coefficients, from which the number of covariates is derived
+    gp_model_pre_sl <- GPModel(group_data = group_sl, likelihood = "gaussian_heteroscedastic")
+    gp_model_pre_sl$set_optim_params(params = list(init_coef = c(0.1, -0.2, 0.3, -0.4)))
+    capture.output(gp_model_pre_sl$fit(y = y_het_sl, X = X_sl, params = list(maxit = 0)), file = "NUL")
+    expect_equal(as.vector(gp_model_pre_sl$get_coef(std_err = FALSE)), c(0.1, -0.2, 0.3, -0.4),
+                 tolerance = TOLERANCE_STRICT)
+    # A length that is not a multiple of the number of fixed effects predictors is an error
+    expect_error(GPModel(group_data = group_sl, likelihood = "gaussian_heteroscedastic")$set_optim_params(
+      params = list(init_coef = c(0.1, -0.2, 0.3))), "init_coef")
+
+  })
+
 }

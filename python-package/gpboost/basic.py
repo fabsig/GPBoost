@@ -4817,7 +4817,6 @@ class GPModel(object):
         self.used_in_gpboost_algorithm = False
         self.y_loaded_from_file = None
         self.cov_pars_loaded_from_file = None
-        self.coefs_loaded_from_file = None
         self.X_loaded_from_file = None
         self.model_fitted = False
         self.current_neg_log_likelihood_loaded_from_file = None
@@ -4912,8 +4911,8 @@ class GPModel(object):
                 self.num_sets_fe = model_dict.get("num_sets_fe")
             self.has_covariates = model_dict.get("has_covariates")
             if model_dict.get("has_covariates"):
-                if model_dict.get("coefs") is not None:
-                    self.coefs_loaded_from_file = np.array(model_dict.get("coefs"))
+                # Note: the coefficients are restored via params['init_coef'] in the pseudo call to 'fit'
+                #   below and are then kept in C++ (they are read from there by 'get_coef')
                 self.num_covariates = model_dict.get("num_covariates")
                 self.num_covariates_original = model_dict.get("num_covariates_original", self.num_covariates)
                 self.num_coef = model_dict.get("num_coef")
@@ -5388,8 +5387,13 @@ class GPModel(object):
                                                               check_data_type=True, check_must_be_int=False,
                                                               convert_to_type=np.float64)
                         if self.num_covariates is None or self.num_covariates == 0:
-                            self.num_covariates = params["init_coef"].shape[0]
-                            self.num_coef = self.num_covariates * self.num_sets_fe
+                            # 'init_coef' contains one coefficient per covariate and per fixed effects predictor
+                            num_coef = params["init_coef"].shape[0]
+                            if num_coef % self.num_sets_fe != 0:
+                                raise ValueError("params['init_coef'] does not contain a multiple of the number "
+                                                 "of fixed effects predictors (" + str(self.num_sets_fe) + ")")
+                            self.num_covariates = num_coef // self.num_sets_fe
+                            self.num_coef = num_coef
                         if params["init_coef"].shape[0] != self.num_coef:
                             raise ValueError("params['init_coef'] does not contain the correct number of parameters")
                 if param == "init_aux_pars":
@@ -5991,7 +5995,7 @@ class GPModel(object):
             optimizer_cov_c,
             ctypes.c_int(self.params["momentum_offset"]),
             c_str(self.params["convergence_criterion"]),
-            ctypes.c_int(self.num_coef),
+            ctypes.c_int(self.num_covariates),
             init_coef_c,
             ctypes.c_double(self.params["lr_coef"]),
             ctypes.c_double(self.params["acc_rate_coef"]),

@@ -218,6 +218,89 @@ def test_model_to_dict_round_trip():
         loaded.predict(group_data_pred=group_test)["mu"], rtol=1e-10)
 
 
+def _sim_several_fe_predictors(n=200, n_groups=20, seed=11):
+    rng = np.random.default_rng(seed)
+    group = np.repeat(np.arange(n_groups), n // n_groups)
+    X = np.column_stack((np.ones(n), rng.uniform(size=n)))
+    b = rng.normal(scale=np.sqrt(0.5), size=n_groups)
+    mean = X @ np.array([0.3, 0.7]) + b[group]
+    # second fixed effects predictor: the log-variance / log-shape
+    log_scale = X @ np.array([-0.5, 1.2])
+    y = {"gaussian_heteroscedastic": mean + rng.normal(size=n) * np.exp(0.5 * log_scale),
+         "gamma_varying_shape": rng.gamma(shape=np.exp(log_scale), scale=np.exp(mean - log_scale))}
+    return group, X, y
+
+
+@pytest.mark.parametrize("likelihood,num_sets_fe", [("gamma_varying_shape", 2),
+                                                    ("gaussian_heteroscedastic", 2)])
+def test_save_and_load_several_fixed_effects_predictors(tmp_path, likelihood, num_sets_fe):
+    # A model is loaded by passing the saved coefficients as 'init_coef' to a pseudo call to
+    # 'fit' (with maxit = 0), which is why both are tested here together
+    group, X, ys = _sim_several_fe_predictors()
+    y = ys[likelihood]
+    num_coef = X.shape[1] * num_sets_fe
+    gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+    gp_model.fit(y=y, X=X, params={"maxit": 20, "optimizer_cov": "lbfgs", "optimizer_coef": "lbfgs",
+                                   "init_coef_aux_pars_from_iid_model": False, "trace": False})
+    coef = np.asarray(gp_model.get_coef(format_pandas=False), dtype=float).ravel()
+    assert coef.shape == (num_coef,)
+    assert np.all(np.isfinite(coef))
+    group_test = np.array([0, 1, 999])  # the last group is not in the training data
+    X_test = np.column_stack((np.ones(3), np.array([0.1, 0.4, 0.8])))
+    pred = gp_model.predict(group_data_pred=group_test, X_pred=X_test,
+                            predict_var=True, predict_response=True)
+
+    fname = str(tmp_path / "gp_model.json")
+    gp_model.save_model(fname)
+    loaded = gpb.GPModel(model_file=fname)
+    coef_loaded = np.asarray(loaded.get_coef(format_pandas=False), dtype=float).ravel()
+    np.testing.assert_allclose(coef_loaded, coef, rtol=1e-10)
+    np.testing.assert_allclose(np.asarray(loaded.get_cov_pars(format_pandas=False), dtype=float).ravel(),
+                               np.asarray(gp_model.get_cov_pars(format_pandas=False), dtype=float).ravel(),
+                               rtol=1e-10)
+    assert loaded.get_current_neg_log_likelihood() == pytest.approx(
+        gp_model.get_current_neg_log_likelihood(), rel=1e-10)
+    pred_loaded = loaded.predict(group_data_pred=group_test, X_pred=X_test,
+                                 predict_var=True, predict_response=True)
+    np.testing.assert_allclose(pred_loaded["mu"], pred["mu"], rtol=1e-10)
+    np.testing.assert_allclose(pred_loaded["var"], pred["var"], rtol=1e-10)
+
+    from_dict = gpb.GPModel(model_dict=gp_model.model_to_dict(include_response_data=True))
+    np.testing.assert_allclose(np.asarray(from_dict.get_coef(format_pandas=False), dtype=float).ravel(),
+                               coef, rtol=1e-10)
+
+
+@pytest.mark.parametrize("likelihood,num_sets_fe", [("gamma_varying_shape", 2),
+                                                    ("gaussian_heteroscedastic", 2)])
+def test_init_coef_covers_all_fixed_effects_predictors(likelihood, num_sets_fe):
+    # 'init_coef' holds the coefficients of all fixed effects predictors, so with maxit = 0 the
+    # fitted coefficients are exactly the provided initial values
+    group, X, ys = _sim_several_fe_predictors()
+    init_coef = np.tile([0.1, -0.2], num_sets_fe)
+    gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+    gp_model.fit(y=ys[likelihood], X=X,
+                 params={"maxit": 0, "init_coef": init_coef,
+                         "init_coef_aux_pars_from_iid_model": False, "trace": False})
+    np.testing.assert_allclose(np.asarray(gp_model.get_coef(format_pandas=False), dtype=float).ravel(),
+                               init_coef, rtol=1e-10)
+
+
+def test_init_coef_before_covariate_data_is_known():
+    # The number of covariates is derived from the length of 'init_coef' and the number of
+    # fixed effects predictors
+    group, X, ys = _sim_several_fe_predictors()
+    init_coef = np.array([0.1, -0.2, 0.3, -0.4])
+    gp_model = gpb.GPModel(group_data=group, likelihood="gaussian_heteroscedastic")
+    gp_model.set_optim_params(params={"init_coef": init_coef, "trace": False})
+    assert gp_model.num_covariates == 2
+    gp_model.fit(y=ys["gaussian_heteroscedastic"], X=X, params={"maxit": 0})
+    np.testing.assert_allclose(np.asarray(gp_model.get_coef(format_pandas=False), dtype=float).ravel(),
+                               init_coef, rtol=1e-10)
+    with pytest.raises(ValueError, match="init_coef"):
+        gpb.GPModel(group_data=group, likelihood="gaussian_heteroscedastic").set_optim_params(
+            params={"init_coef": np.array([0.1, -0.2, 0.3]), "trace": False})
+
+
 def test_set_optim_params_limits_iterations():
     group, y = _sim_grouped()
     gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
