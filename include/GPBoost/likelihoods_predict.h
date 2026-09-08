@@ -24,8 +24,9 @@ namespace GPBoost {
 		vec_t& pred_var,
 		const vec_t& pred_var_mean,
 		const vec_t& pred_var_var,
-		bool predict_var) {
-		if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit" || 
+		bool predict_var,
+		const vec_t& pred_third_block_mean) {
+		if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit" ||
 			likelihood_type_ == "quasi_bernoulli_probit") {
 			CHECK(need_pred_latent_var_for_response_mean_);
 #pragma omp parallel for schedule(static)
@@ -123,6 +124,28 @@ namespace GPBoost {
 				pred_mean[i] = pm;
 			}
 		}
+		else if (IsGammaVaryingShape()) {
+			// As for "gamma" / "hurdle_gamma", but with the per-observation shape k_i = exp(zeta_i) taken from the last
+			// location parameter block (deterministic given the fixed effects, so it carries no posterior uncertainty).
+			// Scale-family form E(Y|eta,y>0) = exp(eta), V_b = exp(2*eta) / k_i:
+			//   E(Y*) = q*exp(m + v/2),  Var(Y*) = q*(1/k_i + p0)*exp(2m + 2v) + q^2*exp(2m + v)*(exp(v) - 1)
+			CHECK(need_pred_latent_var_for_response_mean_);
+			const bool regression_zero = (likelihood_type_ == "hurdle_regression_gamma_varying_shape");
+			const vec_t& log_shape = regression_zero ? pred_third_block_mean : pred_var_mean;
+			CHECK(log_shape.size() == pred_mean.size());
+			const double q_const = (likelihood_type_ == "hurdle_gamma_varying_shape") ? (1. - aux_pars_original_[0]) : 1.;
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < (int)pred_mean.size(); ++i) {
+				const double m = pred_mean[i];
+				const double v = std::max(pred_var[i], 0.0);
+				const double q = regression_zero ? GPBoost::sigmoid_stable(-pred_var_mean[i]) : q_const;// 1 - pi_i
+				const double p0 = 1. - q;
+				pred_mean[i] = q * std::exp(m + 0.5 * v);
+				if (predict_var) {
+					pred_var[i] = q * (std::exp(-log_shape[i]) + p0) * std::exp(2. * m + 2. * v) + q * q * std::exp(2. * m + v) * std::expm1(v);
+				}
+			}
+		}//end gamma varying shape variants
 		else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
 			CHECK(need_pred_latent_var_for_response_mean_);
 			const double phi = aux_pars_[0];
@@ -677,13 +700,16 @@ namespace GPBoost {
 		else if (likelihood_type_ == "hurdle_gamma" || likelihood_type_ == "hurdle_lognormal") {
 			return (1. - aux_pars_original_[1]) * std::exp(value);
 		}
+		else if (likelihood_type_ == "hurdle_gamma_varying_shape") {
+			return (1. - aux_pars_original_[0]) * std::exp(value);// p0 is the only auxiliary parameter here
+		}
 		else if (likelihood_type_ == "zero_inflated_poisson") {
 			return (1. - aux_pars_original_[0]) * std::exp(value);
 		}
 		else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") {
 			return (1. - aux_pars_original_[1]) * std::exp(value);
 		}
-		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
+		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "gamma_varying_shape" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 			likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 			likelihood_type_ == "lognormal") {
 			return std::exp(value);
@@ -774,13 +800,16 @@ namespace GPBoost {
 		else if (likelihood_type_ == "hurdle_gamma" || likelihood_type_ == "hurdle_lognormal") {
 			return (1. - aux_pars_original_[1]) * std::exp(value);
 		}
+		else if (likelihood_type_ == "hurdle_gamma_varying_shape") {
+			return (1. - aux_pars_original_[0]) * std::exp(value);// p0 is the only auxiliary parameter here
+		}
 		else if (likelihood_type_ == "zero_inflated_poisson") {
 			return (1. - aux_pars_original_[0]) * std::exp(value);
 		}
 		else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") {
 			return (1. - aux_pars_original_[1]) * std::exp(value);
 		}
-		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
+		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "gamma_varying_shape" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
 			likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 			likelihood_type_ == "lognormal") {
 			return std::exp(value);
@@ -799,7 +828,7 @@ namespace GPBoost {
 		}
 		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
 			likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
-			likelihood_type_ == "lognormal" || IsHurdlePositive() || IsZeroInflatedCount()) {
+			likelihood_type_ == "lognormal" || IsHurdlePositive() || IsZeroInflatedCount() || IsGammaVaryingShape()) {
 			return 1.;
 		}
 		else if (likelihood_type_ == "t" || IsGaussianLikelihood()) {

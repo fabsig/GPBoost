@@ -81,12 +81,13 @@ namespace GPBoost {
 			}
 			aux_pars_trans[1] = aux_pars_orig[1] / (1. - aux_pars_orig[1]);
 		}//end hurdle_gamma / hurdle_lognormal / zero_inflated_negative_binomial(_1)
-		else if (likelihood_type_ == "zero_inflated_poisson") {
+		else if (likelihood_type_ == "zero_inflated_poisson" || likelihood_type_ == "hurdle_gamma_varying_shape") {
+			// p0 is the only auxiliary parameter of these likelihoods (the shape of 'hurdle_gamma_varying_shape' is a location parameter block)
 			if (!(aux_pars_orig[0] > 0. && aux_pars_orig[0] < 1.)) {
 				Log::REFatal("The '%s' parameter (= %g) needs to be larger than 0 and smaller than 1 ", names_aux_pars_[0].c_str(), aux_pars_orig[0]);
 			}
 			aux_pars_trans[0] = aux_pars_orig[0] / (1. - aux_pars_orig[0]);
-		}//end likelihood_type_ == "zero_inflated_poisson"
+		}//end "zero_inflated_poisson" / "hurdle_gamma_varying_shape"
 		else if (likelihood_type_ == "zoctn") {
 			aux_pars_trans[1] = std::exp(aux_pars_orig[1]);
 		}
@@ -148,12 +149,12 @@ namespace GPBoost {
 			}
 			aux_pars_orig[1] = aux_pars_trans[1] / (1. + aux_pars_trans[1]);
 		}//end hurdle_lognormal / zero_inflated_negative_binomial(_1)
-		else if (likelihood_type_ == "zero_inflated_poisson") {
+		else if (likelihood_type_ == "zero_inflated_poisson" || likelihood_type_ == "hurdle_gamma_varying_shape") {
 			if (!(aux_pars_trans[0] > 0.)) {
 				Log::REFatal("BackTransformAuxPars: the transformed '%s' parameter (= %g) needs to be larger than 0 ", names_aux_pars_[0].c_str(), aux_pars_trans[0]);
 			}
 			aux_pars_orig[0] = aux_pars_trans[0] / (1. + aux_pars_trans[0]);
-		}//end likelihood_type_ == "zero_inflated_poisson"
+		}//end "zero_inflated_poisson" / "hurdle_gamma_varying_shape"
 		else if (likelihood_type_ == "zoctn") {
 			if (!(aux_pars_trans[1] > 0.)) {
 				Log::REFatal("BackTransformAuxPars: the transformed '%s' parameter (= %g) needs to be larger than 0 ", names_aux_pars_[1].c_str(), aux_pars_trans[1]);
@@ -251,6 +252,50 @@ namespace GPBoost {
 			}
 			init_intercept = std::min(std::max(init_intercept, -3.0), 3.0); // avoid too small / large initial intercepts for better numerical stability
 		}
+		else if (IsGammaVaryingShape()) {
+			// Block 0 (eta = log(mu)): as for the constant-shape variants, the log of the mean of the positive
+			// observations, which are already divided by their block-0 fixed effects offset below.
+			// Last block (log(shape)): the approximate marginal gamma shape MLE of those offset-corrected observations
+			// (as in 'FindInitialAuxPars' for "gamma"). Block 1 of a hurdle regression (structural-zero logit): the logit
+			// of the observed zero fraction. The latter two are anchors on the scale of the TOTAL location parameter of
+			// their block, so the pooled fixed effects offset of that block is subtracted from them
+			const int ind_shape = num_sets_fixed_effects_ - 1;
+			CHECK(ind_set_re >= 0 && ind_set_re < num_sets_fixed_effects_);
+			const double eps_p = 1e-6;// clipping for probabilities
+			double sw = 0., w_pos = 0., avg = 0., avg_log = 0., off = 0.;
+#pragma omp parallel for schedule(static) reduction(+:sw, w_pos, avg, avg_log, off)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				const double w = has_weights_ ? weights_ptr[i] : 1.0;
+				sw += w;
+				if (fixed_effects != nullptr) off += w * fixed_effects[i + (data_size_t)ind_set_re * num_data];
+				if (y_data[i] > 0.) {
+					const double y_scaled = fixed_effects == nullptr ? y_data[i] : y_data[i] / std::exp(fixed_effects[i]);
+					w_pos += w;
+					avg += w * y_scaled;
+					avg_log += w * std::log(y_scaled);
+				}
+			}
+			off /= sw;
+			if (ind_set_re == 0) {
+				// The block-0 offset has already been divided out of every observation, so it must not be subtracted again
+				avg = std::max(w_pos > 0. ? avg / w_pos : 1., 1e-12);
+				init_intercept = std::log(avg) - 0.5 * rand_eff_var;
+			}
+			else if (ind_set_re == ind_shape) {
+				// ln(k) - digamma(k) approx = (1 + 1 / (6k + 1)) / (2k) with s = log(mean(y)) - mean(log(y)), see 'FindInitialAuxPars'
+				double shape = 1.;
+				if (w_pos > 0.) {
+					const double s = std::max(std::log(std::max(avg / w_pos, 1e-12)) - avg_log / w_pos, 1e-8);
+					shape = (3. - s + std::sqrt((s - 3.) * (s - 3.) + 24. * s)) / (12. * s);
+				}
+				if (!(shape > 0.) || !std::isfinite(shape)) shape = 1.;
+				init_intercept = std::log(shape) - off;
+			}
+			else {// structural-zero logit of "hurdle_regression_gamma_varying_shape"
+				const double p0 = std::min(std::max((sw - w_pos) / sw, eps_p), 1. - eps_p);
+				init_intercept = GPBoost::logit(p0) - off;
+			}
+		}//end gamma varying shape variants
 		else if (IsHurdlePositive()) {
 			double sw = 0.0, avg = 0.;
 			if (fixed_effects == nullptr) {
@@ -614,7 +659,7 @@ namespace GPBoost {
 		if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
 			likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || IsZeroInflatedCount() ||
 			IsGaussianHeteroscedastic() || likelihood_type_ == "lognormal" || IsHurdlePositive() ||
-			IsZeroCensPowNorm() ||
+			IsZeroCensPowNorm() || IsGammaVaryingShape() ||
 			likelihood_type_ == "zoctn" || likelihood_type_ == "zero_one_censored_transformed_beta" ||
 			likelihood_type_ == "zero_one_censored_shifted_gamma" ||
 			likelihood_type_ == "asymmetric_laplace") {
@@ -975,6 +1020,19 @@ namespace GPBoost {
 				aux_pars_[0] = std::max(mean_log_sq - mean_log * mean_log, 1e-6);
 			}
 		}//end hurdle regression
+		else if (likelihood_type_ == "hurdle_gamma_varying_shape") {
+			// The shape is a location parameter block here, so only the structural-zero p0 is initialized (weighted zero fraction).
+			sw = 0.;
+			double avg_zero = 0.;
+#pragma omp parallel for schedule(static) reduction(+:sw, avg_zero)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				const double w = has_weights_ ? weights_[i] : 1.0;
+				if (y_data[i] <= 0.) avg_zero += w;
+				sw += w;
+			}
+			avg_zero = std::min(std::max(avg_zero / sw, 1e-3), 1. - 1e-3);
+			aux_pars_[0] = avg_zero / (1. - avg_zero);
+		}//end "hurdle_gamma_varying_shape"
 		else if (IsHurdleEGPD()) {
 			// Keep the base EGPD auxiliary parameters at their (constructor) defaults; initialize only the structural-zero p0.
 			sw = 0.;
@@ -1422,7 +1480,7 @@ namespace GPBoost {
 		}//end "asymmetric_laplace"
 		else if (likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 			likelihood_type_ != "binomial_probit" && likelihood_type_ != "binomial_logit" &&
-			likelihood_type_ != "poisson" && !IsGaussianHeteroscedastic() && !IsEGPDLikelihood() &&
+			likelihood_type_ != "poisson" && !IsGaussianHeteroscedastic() && !IsEGPDLikelihood() && !IsGammaVaryingShape() &&
 			likelihood_type_ != "quasi_bernoulli_probit" && likelihood_type_ != "quasi_bernoulli_logit") {
 			NotSupportedForLikelihood(__func__);
 		}
@@ -1446,6 +1504,10 @@ namespace GPBoost {
 			likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit") {
 			C_mu = 1.;
 			C_sigma2 = 1.;
+		}
+		else if (IsGammaVaryingShape()) {
+			C_mu = 1e99;//not implemented (the caps assume a single location parameter block)
+			C_sigma2 = 1e99;
 		}
 		else if (IsHurdlePositive()) {
 			double sw = 0.0, mean = 0., sec_mom = 0.;
@@ -1753,6 +1815,19 @@ namespace GPBoost {
 			// Gradient on log odds, log(r) = log(p0 / (1-p0)).
 			grad[1] = p0 * Wpos - q * Wzero;
 		}//end "hurdle_gamma"
+		else if (likelihood_type_ == "hurdle_gamma_varying_shape") {
+			// p0 is the only auxiliary parameter and the structural zero decouples from both location parameter blocks:
+			// gradient of the negative log-likelihood wrt rho = logit(p0), as for "hurdle_gamma"
+			const double p0 = aux_pars_original_[0];
+			const double q = 1. - p0;
+			double Wpos = 0., Wzero = 0.;
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:Wpos, Wzero)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				const double w = has_weights_ ? weights_[i] : 1.0;
+				if (y_data[i] > 0.) Wpos += w; else Wzero += w;
+			}
+			grad[0] = p0 * Wpos - q * Wzero;
+		}//end "hurdle_gamma_varying_shape"
 		else if (likelihood_type_ == "hurdle_lognormal") {
 			const double p0 = aux_pars_original_[1];
 			const double q = 1. - p0;
@@ -2389,6 +2464,12 @@ namespace GPBoost {
 					}
 				}
 			}//end "hurdle_gamma"
+			else if (likelihood_type_ == "hurdle_gamma_varying_shape") {
+				// The only auxiliary parameter is rho = logit(p0), which decouples from the location parameter blocks
+				CHECK(ind_aux_par == 0);
+				std::fill(second_deriv_loc_aux_par, second_deriv_loc_aux_par + num_data_, 0.);
+				std::fill(deriv_information_aux_par, deriv_information_aux_par + num_data_, 0.);
+			}//end "hurdle_gamma_varying_shape"
 			else if (likelihood_type_ == "hurdle_lognormal") {
 				CHECK(ind_aux_par == 0 || ind_aux_par == 1);
 				const double s2 = aux_pars_[0];

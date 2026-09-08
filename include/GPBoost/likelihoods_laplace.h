@@ -1962,7 +1962,7 @@ namespace GPBoost {
 	}//end CalcStochDataScaleDiagSigmaIPlusZtWZInv
 
 	template <typename T_mat, typename T_chol>
-	void Likelihood<T_mat, T_chol>::CalcSecondFEBlockFixedEffectGrad(const double* y_data,
+	void Likelihood<T_mat, T_chol>::CalcExtraFEBlocksFixedEffectGrad(const double* y_data,
 		const int* y_data_int,
 		const double* location_par,
 		const vec_t& information_data_scale,
@@ -1971,7 +1971,7 @@ namespace GPBoost {
 		const data_size_t* index_map,
 		bool include_coupled_zi_terms,
 		vec_t& fixed_effect_grad) const {
-		CHECK(HasSecondFEBlock());
+		CHECK(HasExtraFEBlocks());
 		// 'fixed_effect_grad' was sized to num_data_ by the caller's 'fixed_effect_grad = -first_deriv_ll_' (first_deriv_ll_
 		// is not aware of the extra fixed-effects-only block); grow it back to dim_location_par_, preserving the eta block
 		if (fixed_effect_grad.size() < dim_location_par_) {
@@ -1979,7 +1979,7 @@ namespace GPBoost {
 		}
 		// For an iid model there is no random effect / mode at all, so both the log-determinant and the
 		// implicit-through-the-mode term vanish and neither 'diag' / 'impl' nor 'index_map' is read (see
-		// 'SecondFEBlockGradNeedsDiag'). 'iid_model_' is false for every approximation other than the
+		// 'ExtraFEBlocksGradNeedDiag'). 'iid_model_' is false for every approximation other than the
 		// only-one-grouped-RE one, so this is a no-op there
 		const bool has_mode = !iid_model_;
 		if (likelihood_type_ == "gaussian_heteroscedastic") {
@@ -2012,6 +2012,28 @@ namespace GPBoost {
 					w, diag_i, impl_i);
 			}
 		}
+		else if (IsGammaVaryingShape()) {
+			// log(shape) block: direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta). For
+			// 'hurdle_regression_gamma_varying_shape' the structural-zero block (block 1) is filled here as well; it
+			// decouples from eta exactly, so it only gets the direct score
+			const data_size_t off_s = ShapeBlockOffset();
+			const bool has_zero_block = (likelihood_type_ == "hurdle_regression_gamma_varying_shape");
+			CHECK(!has_mode || (diag.size() > 0 && impl.size() > 0));// the caller must supply both correction terms (see 'ExtraFEBlocksNeedEtaBlockDiag')
+#pragma omp parallel for schedule(static)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				const double w = has_weights_ ? weights_[i] : 1.0;
+				double diag_i = 0., impl_i = 0.;
+				if (has_mode) {
+					const data_size_t idx = index_map == nullptr ? i : index_map[i];
+					diag_i = diag[idx];
+					impl_i = impl[idx];
+				}
+				fixed_effect_grad[i + off_s] = GammaVarShapeZetaGrad(y_data[i], location_par[i], location_par[i + off_s], w, diag_i, impl_i);
+				if (has_zero_block) {
+					fixed_effect_grad[i + num_data_] = -w * HurdleRegression_dZeta(y_data[i], location_par[i + num_data_]);
+				}
+			}
+		}
 		else {//IsRegressionZeroModel()
 			// Structural-zero block (zeta). Hurdle decouples from eta (dJ_eta/dzeta = l_eta_zeta = 0) -> direct score only.
 			// Zero-inflated counts COUPLE at zero counts, so the log-determinant and implicit terms are added as well
@@ -2042,7 +2064,7 @@ namespace GPBoost {
 				}
 			}
 		}
-	}//end CalcSecondFEBlockFixedEffectGrad
+	}//end CalcExtraFEBlocksFixedEffectGrad
 
 	template <typename T_mat, typename T_chol>
 	void Likelihood<T_mat, T_chol>::AccumulateAuxParGradTerms(const vec_t& deriv_information_aux_par,
@@ -2149,7 +2171,7 @@ namespace GPBoost {
 		TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt, L_inv_Wsqrt, false);//L_inv_Wsqrt = L\Wsqrt
 		vec_t SigmaI_plus_W_inv_diag, d_mll_d_mode;
 		T_mat L_inv_Wsqrt_Sigma;
-		if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad || (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad)) {
+		if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad)) {
 			L_inv_Wsqrt_Sigma = L_inv_Wsqrt * (*Sigma);
 			//Log::REInfo("CalcGradNegMargLikelihoodLaplaceApproxStable: L_inv_ZtWZsqrt: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt));//Only for debugging
 			//Log::REInfo("CalcGradNegMargLikelihoodLaplaceApproxStable: L_inv_ZtWZsqrt_Sigma: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt_Sigma));//Only for debugging
@@ -2213,8 +2235,8 @@ namespace GPBoost {
 							information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 					}
 				}
-				if (HasSecondFEBlock()) {
-					CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
+				if (HasExtraFEBlocks()) {
+					CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
 						SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_, true, fixed_effect_grad);
 				}
 			}//end use_random_effects_indices_of_data_
@@ -2224,8 +2246,8 @@ namespace GPBoost {
 					vec_t d_mll_d_F_implicit = (SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 					fixed_effect_grad += d_mll_d_mode - d_mll_d_F_implicit;
 				}
-				if (HasSecondFEBlock()) {
-					CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
+				if (HasExtraFEBlocks()) {
+					CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
 						SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, nullptr, true, fixed_effect_grad);
 				}
 			}//end !use_random_effects_indices_of_data_
@@ -2493,16 +2515,16 @@ namespace GPBoost {
 				// vanishes at the observations that matter for these likelihoods). Note that 'gaussian_heteroscedastic'
 				// only reaches this point with grad_information_wrt_mode_non_zero_ == false (its information does not
 				// depend on the mode), which is why the eta-block branch above and this one are mutually exclusive for it
-				if (HasSecondFEBlock()) {
+				if (HasExtraFEBlocks()) {
 					// This branch is entered unconditionally, whereas the zeta block of 'gaussian_heteroscedastic' used to be
 					// calculated only when the eta-block branch above was NOT entered. The two are equivalent only as long as
 					// that likelihood's information does not depend on the mode, which is asserted here
 					CHECK(likelihood_type_ != "gaussian_heteroscedastic" || !grad_information_wrt_mode_non_zero_);
 					vec_t diag_data;
-					if (SecondFEBlockGradNeedsDiag(grad_information_wrt_mode_non_zero_)) {
+					if (ExtraFEBlocksGradNeedDiag(grad_information_wrt_mode_non_zero_)) {
 						diag_data = CalcStochDataScaleDiagSigmaIPlusZtWZInv();
 					}
-					CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par.data(), information_ll_, diag_data,
+					CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par.data(), information_ll_, diag_data,
 						Z_SigmaI_plus_ZtWZ_inv_d_mll_d_mode, nullptr, grad_information_wrt_mode_non_zero_, fixed_effect_grad);
 				}
 			}//end calc_F_grad
@@ -2704,9 +2726,9 @@ namespace GPBoost {
 					vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = (((d_mll_d_mode.transpose() * L_inv.transpose()) * L_inv) * (*Zt_)) * information_ll_.asDiagonal();
 					fixed_effect_grad += d_detmll_d_F - d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W;
 				}//end grad_information_wrt_mode_non_zero_
-				if (HasSecondFEBlock()) {
+				if (HasExtraFEBlocks()) {
 					vec_t diag_data, Z_Ainv_d_mll_d_mode;
-					if (SecondFEBlockGradNeedsDiag(true)) {
+					if (ExtraFEBlocksGradNeedDiag(true)) {
 						// data-scale diagonal of (Sigma^-1 + Zt*W*Z)^-1, i.e. ||L_inv * Zt.col(i)||^2 (see the mean's d_detmll_d_F above)
 						diag_data.resize(num_data_);
 #pragma omp parallel for schedule(static)
@@ -2714,10 +2736,10 @@ namespace GPBoost {
 							diag_data[i] = (L_inv * (*Zt_).col(i)).squaredNorm();
 						}
 					}
-					if (SecondFEBlockGradNeedsImpl(true)) {
+					if (ExtraFEBlocksGradNeedImpl(true)) {
 						Z_Ainv_d_mll_d_mode = (*Zt_).transpose() * (L_inv.transpose() * (L_inv * d_mll_d_mode));// = Z (Sigma^-1+ZtWZ)^-1 d_mll_d_mode (data scale)
 					}
-					CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par.data(), information_ll_, diag_data,
+					CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par.data(), information_ll_, diag_data,
 						Z_Ainv_d_mll_d_mode, nullptr, true, fixed_effect_grad);
 				}
 			}//end calc_F_grad
@@ -2810,17 +2832,17 @@ namespace GPBoost {
 						d_mll_d_mode[random_effects_indices_of_data_[i]] * information_ll_data_scale_[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];//=implicit derivative = d_mll_d_mode * d_mode_d_F
 				}
 			}
-			if (HasSecondFEBlock()) {
+			if (HasExtraFEBlocks()) {
 				// NOTE: unlike the other approximations, this one stores the DIAGONAL OF (Sigma^-1+ZtWZ) ITSELF rather than
 				// of its inverse, so the reciprocal has to be formed here to match the convention of the gradient function
 				vec_t zeta_diag, zeta_impl;
-				if (SecondFEBlockGradNeedsDiag(true)) {
+				if (ExtraFEBlocksGradNeedDiag(true)) {
 					zeta_diag = diag_SigmaI_plus_ZtWZ_.cwiseInverse();
-					if (SecondFEBlockGradNeedsImpl(true)) {
+					if (ExtraFEBlocksGradNeedImpl(true)) {
 						zeta_impl = d_mll_d_mode.cwiseProduct(zeta_diag);
 					}
 				}
-				CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par.data(), information_ll_data_scale_,
+				CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par.data(), information_ll_data_scale_,
 					zeta_diag, zeta_impl, random_effects_indices_of_data_, true, fixed_effect_grad);
 			}
 		}//end calc_F_grad
@@ -3106,7 +3128,7 @@ namespace GPBoost {
 				}//end calc_cov_grad
 				//Calculate gradient wrt fixed effects
 				vec_t SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block;
-				if (grad_information_wrt_mode_non_zero_ && ((use_random_effects_indices_of_data_ && calc_F_grad) || calc_aux_par_grad)) {
+				if (grad_information_wrt_mode_non_zero_ && (((use_random_effects_indices_of_data_ || ExtraFEBlocksNeedEtaBlockDiag(false)) && calc_F_grad) || calc_aux_par_grad)) {
 					//Stochastic Trace: Calculate diagonal of SigmaI_plus_W_inv for gradient of approx. marginal likelihood wrt. F
 					SigmaI_plus_W_inv_diag = d_log_det_Sigma_W_plus_I_d_mode;
 					SigmaI_plus_W_inv_diag.array() /= deriv_information_diag_loc_par.array();
@@ -3119,7 +3141,7 @@ namespace GPBoost {
 						}
 					}//end grad_information_wrt_mode_can_be_zero_for_some_points_
 				}
-				if (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad) {
+				if (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad) {
 					// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1), needed for the second, fixed-effects-only
 					// block's gradient below. The ratio trick used just above is not applicable here: for
 					// 'gaussian_heteroscedastic' deriv_information_diag_loc_par is identically zero, and for
@@ -3163,14 +3185,15 @@ namespace GPBoost {
 									information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 							}
 						}
-						if (HasSecondFEBlock()) {
+						if (HasExtraFEBlocks()) {
 							// 'include_coupled_zi_terms' is false: for a zero-inflated count regression the coupled log-determinant
 							// term would need the data-scale diagonal of (Sigma^-1+W)^-1, which is only a stochastic estimate here,
 							// so those terms are omitted -> the alpha gradient is approximate for ZI counts on this approximation.
-							// 'SigmaI_plus_W_inv_diag_2nd_block' is the stochastic diagonal estimated above; for
-							// 'gaussian_heteroscedastic' it is the same vector as 'SigmaI_plus_W_inv_diag'
-							CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
-								SigmaI_plus_W_inv_diag_2nd_block, SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_, false, fixed_effect_grad);
+							// 'ExtraFEBlocksDiag' picks the stochastic diagonal estimated above for the heteroscedastic likelihoods
+							// and the eta block's (ratio-trick) diagonal for the varying-shape gamma likelihoods
+							CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
+								ExtraFEBlocksDiag(SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block), SigmaI_plus_W_inv_d_mll_d_mode,
+									random_effects_indices_of_data_, false, fixed_effect_grad);
 						}
 					}
 					else {
@@ -3179,9 +3202,9 @@ namespace GPBoost {
 							vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 							fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
 						}
-						if (HasSecondFEBlock()) {
-							CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
-								SigmaI_plus_W_inv_diag_2nd_block, SigmaI_plus_W_inv_d_mll_d_mode, nullptr, false, fixed_effect_grad);
+						if (HasExtraFEBlocks()) {
+							CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
+								ExtraFEBlocksDiag(SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block), SigmaI_plus_W_inv_d_mll_d_mode, nullptr, false, fixed_effect_grad);
 						}
 					}
 				}
@@ -3538,7 +3561,7 @@ namespace GPBoost {
 				}//end calc_cov_grad
 				//Calculate gradient wrt fixed effects
 				vec_t SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block;
-				if (grad_information_wrt_mode_non_zero_ && ((use_random_effects_indices_of_data_ && calc_F_grad) || calc_aux_par_grad)) {
+				if (grad_information_wrt_mode_non_zero_ && (((use_random_effects_indices_of_data_ || ExtraFEBlocksNeedEtaBlockDiag(false)) && calc_F_grad) || calc_aux_par_grad)) {
 					//Stochastic Trace: Calculate diagonal of SigmaI_plus_W_inv for gradient of approx. marginal likelihood wrt. F
 					SigmaI_plus_W_inv_diag = d_log_det_Sigma_W_plus_I_d_mode;
 					SigmaI_plus_W_inv_diag.array() *= -1. / deriv_information_diag_loc_par.array();
@@ -3551,7 +3574,7 @@ namespace GPBoost {
 						}
 					} //end grad_information_wrt_mode_can_be_zero_for_some_points_
 				}
-				if (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad) {
+				if (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad) {
 					// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1) for the second, fixed-effects-only block, using the raw (Cov = I) random vectors
 					// rand_vec_trace_I2_ (for 'vifdu', rand_vec_trace_I_ is Cov = P, not I; for 'none' the two coincide,
 					// see FindModePostRandEffCalcMLLFSVA). CGFVIFLaplaceVec solves (Sigma^-1+W) directly here (no
@@ -3588,14 +3611,15 @@ namespace GPBoost {
 									information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 							}
 						}
-						if (HasSecondFEBlock()) {
+						if (HasExtraFEBlocks()) {
 							// 'include_coupled_zi_terms' is false: for a zero-inflated count regression the coupled log-determinant
 							// term would need the data-scale diagonal of (Sigma^-1+W)^-1, which is only a stochastic estimate here,
 							// so those terms are omitted -> the alpha gradient is approximate for ZI counts on this approximation.
-							// 'SigmaI_plus_W_inv_diag_2nd_block' is the stochastic diagonal estimated above; for
-							// 'gaussian_heteroscedastic' it is the same vector as 'SigmaI_plus_W_inv_diag'
-							CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
-								SigmaI_plus_W_inv_diag_2nd_block, SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_, false, fixed_effect_grad);
+							// 'ExtraFEBlocksDiag' picks the stochastic diagonal estimated above for the heteroscedastic likelihoods
+							// and the eta block's (ratio-trick) diagonal for the varying-shape gamma likelihoods
+							CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
+								ExtraFEBlocksDiag(SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block), SigmaI_plus_W_inv_d_mll_d_mode,
+									random_effects_indices_of_data_, false, fixed_effect_grad);
 						}
 					}
 					else {
@@ -3604,9 +3628,9 @@ namespace GPBoost {
 							vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 							fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
 						}
-						if (HasSecondFEBlock()) {
-							CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
-								SigmaI_plus_W_inv_diag_2nd_block, SigmaI_plus_W_inv_d_mll_d_mode, nullptr, false, fixed_effect_grad);
+						if (HasExtraFEBlocks()) {
+							CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
+								ExtraFEBlocksDiag(SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block), SigmaI_plus_W_inv_d_mll_d_mode, nullptr, false, fixed_effect_grad);
 						}
 					}
 				}
@@ -3855,7 +3879,7 @@ namespace GPBoost {
 			// Calcul
 			if (calc_F_grad || calc_aux_par_grad) {
 				if (!calc_cov_grad_internal) {
-					if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad)) {
+					if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad)) {
 						SigmaI_plus_W_inv = D_inv;
 						CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_W_inv, true);
 						den_mat_t SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
@@ -3887,7 +3911,7 @@ namespace GPBoost {
 						SigmaI_plus_W_inv_d_mll_d_mode = information_ll_.cwiseInverse().asDiagonal() * (SigmaI_plus_W_inv_d_mll_d_mode_part - sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov * chol_fact_sigma_woodbury_2.solve((*cross_cov).transpose() * SigmaI_plus_W_inv_d_mll_d_mode_part));
 					}
 				}
-				else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad)) {
+				else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad)) {
 					SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv.diagonal().array() + SigmaI_plus_W_inv_diag.array()).matrix();
 				}
 			}
@@ -3902,12 +3926,13 @@ namespace GPBoost {
 								information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 						}
 					}
-					if (HasSecondFEBlock()) {
+					if (HasExtraFEBlocks()) {
 						// 'include_coupled_zi_terms' is false: for a zero-inflated count regression the coupled log-determinant
 						// term would need the FSVA data-scale diagonal of (Sigma^-1+W)^-1, which is only a stochastic estimate
 						// here, so those terms are omitted -> the alpha gradient is approximate for ZI counts on FSVA
-						CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
-							SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_, false, fixed_effect_grad);
+						CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
+							SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode,
+									random_effects_indices_of_data_, false, fixed_effect_grad);
 					}
 				}
 				else {
@@ -3916,8 +3941,8 @@ namespace GPBoost {
 						vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 						fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
 					}
-					if (HasSecondFEBlock()) {
-						CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
+					if (HasExtraFEBlocks()) {
+						CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
 							SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, nullptr, false, fixed_effect_grad);
 					}
 				}
@@ -4101,7 +4126,7 @@ namespace GPBoost {
 			}
 			//Calculate gradient wrt fixed effects
 			if (grad_information_wrt_mode_non_zero_ && ((use_random_effects_indices_of_data_ && calc_F_grad) || calc_aux_par_grad ||
-				(IsZeroInflatedCountRegression() && calc_F_grad))) {// a zero-inflated count regression needs diag((Sigma^-1+W)^-1) for its zeta-block log-det term whether or not use_random_effects_indices_of_data_
+				(ExtraFEBlocksNeedEtaBlockDiag(true) && calc_F_grad))) {// the extra blocks of a zero-inflated count regression and of a varying-shape gamma need diag((Sigma^-1+W)^-1) for their log-det term whether or not use_random_effects_indices_of_data_
 				if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
 					vec_t ones = vec_t::Ones(dim_mode_);
 					vec_t diag_WI_dummy, D_inv_plus_W_inv_dia_dummy;
@@ -4124,7 +4149,7 @@ namespace GPBoost {
 					}//end grad_information_wrt_mode_can_be_zero_for_some_points_
 				}
 			}
-			if (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad) {
+			if (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad) {
 				// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1) (RE/mode-scale, dimension dim_mode_), needed for the
 				// second, fixed-effects-only block's gradient below. The ratio trick used just above
 				// (d_log_det_Sigma_W_plus_I_d_mode / deriv_information_diag_loc_par) is not applicable here: for
@@ -4280,7 +4305,7 @@ namespace GPBoost {
 			}//end calc_cov_grad_internal
 			if (calc_F_grad || calc_aux_par_grad) {
 				if (!calc_cov_grad_internal) {
-					if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad)) {
+					if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad)) {
 						sp_mat_t L_inv_sqr = L_inv.cwiseProduct(L_inv);
 						SigmaI_plus_W_inv_diag = L_inv_sqr.transpose() * vec_t::Ones(L_inv_sqr.rows());// diagonal of (Sigma^-1 + W) ^ -1
 					SigmaI_plus_W_inv_diag_2nd_block = SigmaI_plus_W_inv_diag;
@@ -4297,8 +4322,8 @@ namespace GPBoost {
 						SigmaI_plus_W_inv_d_mll_d_mode = L_inv.transpose() * (L_inv * d_mll_d_mode);
 					}
 				}
-				else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad) ||
-					(IsZeroInflatedCountRegression() && grad_information_wrt_mode_non_zero_ && calc_F_grad)) {// the zeta-block log-det term of a zero-inflated count regression needs the diagonal of (Sigma^-1+W)^-1
+				else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad) ||
+					(ExtraFEBlocksNeedEtaBlockDiag(true) && grad_information_wrt_mode_non_zero_ && calc_F_grad)) {// the extra blocks' log-det term reads the eta block's diagonal of (Sigma^-1+W)^-1 for a zero-inflated count regression and for the varying-shape gamma likelihoods
 					SigmaI_plus_W_inv_diag = SigmaI_plus_W_inv.diagonal();
 				SigmaI_plus_W_inv_diag_2nd_block = SigmaI_plus_W_inv_diag;
 				}
@@ -4334,9 +4359,9 @@ namespace GPBoost {
 						}
 					}
 				}
-				if (HasSecondFEBlock()) {
-					CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
-						SecondFEBlockZetaDiag(SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block),
+				if (HasExtraFEBlocks()) {
+					CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
+						ExtraFEBlocksDiag(SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block),
 						SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_, true, fixed_effect_grad);
 				}
 			}
@@ -4346,9 +4371,9 @@ namespace GPBoost {
 					vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 					fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
 				}
-				if (HasSecondFEBlock()) {
-					CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
-						SecondFEBlockZetaDiag(SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block),
+				if (HasExtraFEBlocks()) {
+					CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
+						ExtraFEBlocksDiag(SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block),
 						SigmaI_plus_W_inv_d_mll_d_mode, nullptr, true, fixed_effect_grad);
 				}
 			}
@@ -4410,7 +4435,7 @@ namespace GPBoost {
 		vec_t WI = information_ll_.cwiseInverse();
 		vec_t DW_plus_I_inv_diag, SigmaI_plus_W_inv_diag, d_mll_d_mode;
 		den_mat_t L_inv_cross_cov_T_DW_plus_I_inv;
-		if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad || (SecondFEBlockNeedsSigmaIPlusWInvDiag() && calc_F_grad)) {
+		if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad)) {
 			DW_plus_I_inv_diag = (information_ll_.array() * fitc_resid_diag.array() + 1.).matrix().cwiseInverse();
 			L_inv_cross_cov_T_DW_plus_I_inv = (*cross_cov).transpose() * (DW_plus_I_inv_diag.asDiagonal());
 			TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_dense_Newton_, L_inv_cross_cov_T_DW_plus_I_inv, L_inv_cross_cov_T_DW_plus_I_inv, false);
@@ -4514,8 +4539,8 @@ namespace GPBoost {
 							information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
 					}
 				}
-				if (HasSecondFEBlock()) {
-					CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
+				if (HasExtraFEBlocks()) {
+					CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_data_scale_,
 						SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, random_effects_indices_of_data_, true, fixed_effect_grad);
 				}
 			}
@@ -4525,8 +4550,8 @@ namespace GPBoost {
 					vec_t d_mll_d_F_implicit = (SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
 					fixed_effect_grad += d_mll_d_mode - d_mll_d_F_implicit;
 				}
-				if (HasSecondFEBlock()) {
-					CalcSecondFEBlockFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
+				if (HasExtraFEBlocks()) {
+					CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par_ptr, information_ll_,
 						SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_d_mll_d_mode, nullptr, true, fixed_effect_grad);
 				}
 			}

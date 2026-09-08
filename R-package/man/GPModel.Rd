@@ -92,6 +92,14 @@ X as the response model (the response predictor carries the random effects, the 
 returned by get_coef() alongside the response-model coefficients, with the suffix "_zero". }
 }
 }
+\item{ "gamma_varying_shape", "hurdle_gamma_varying_shape", "hurdle_regression_gamma_varying_shape": Similar as
+"gamma", "hurdle_gamma", and "hurdle_regression_gamma", but the gamma shape varies across observations and is modeled
+by an additional fixed-effects-only predictor: log(shape) = F_s(X) (F_s(X) = linear predictor or the GPBoost
+algorithm), while the log mean log(mu) = F(X) + Zb is related to both fixed and random effects. Note that the shape
+also governs the dispersion, var(y) = mu^2 / shape. The estimated coefficients of the log-shape model are returned
+alongside the mean-model coefficients (with the suffix "_shape"). For "hurdle_regression_gamma_varying_shape" there
+are three predictors: the response mean, the structural-zero logit (coefficients with the suffix "_zero"), and
+log(shape) }
 \item{ "zero_censored_power_transformed_normal": Likelihood of a censored and power-transformed normal variable 
 for modeling data with a point mass at 0 and a continuous distribution for y > 0. 
 The model used is Y = max(0,X)^lambda, X ~ N(mu, sigma^2), where mu = F(X) + Zb, 

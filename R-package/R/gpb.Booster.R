@@ -658,9 +658,10 @@ Booster <- R6::R6Class(
           # Note: 'predictor$predict()' only returns the sum of the trees. The offset supplied as
           #   'init_score' to gpb.Dataset() for the training data is not part of the tree ensemble and needs to be added back here
           init_score_train <- private$train_set$.__enclos_env__$private$info$init_score
-          if (private$gp_model$.__enclos_env__$private$num_sets_fe == 2) {
-            nt <- length(fixed_effect_train) / 2
-            fixed_effect_train <- fixed_effect_train[c((1:nt)*2 - 1, (1:nt)*2)]
+          nsf <- private$gp_model$.__enclos_env__$private$num_sets_fe
+          if (nsf > 1) {
+            nt <- length(fixed_effect_train) / nsf
+            fixed_effect_train <- fixed_effect_train[as.vector(sapply(1:nsf, function(k) (1:nt) * nsf - nsf + k))]
           }
           if (!is.null(init_score_train)) {
             fixed_effect_train <- fixed_effect_train + init_score_train
@@ -738,9 +739,10 @@ Booster <- R6::R6Class(
                                                , predcontrib = FALSE
                                                , header = header
                                                , reshape = FALSE )
-      if (private$gp_model$.__enclos_env__$private$num_sets_fe == 2) {
-        nt <- length(fixed_effect_train) / 2
-        fixed_effect_train <- fixed_effect_train[c((1:nt)*2 - 1, (1:nt)*2)]
+      nsf <- private$gp_model$.__enclos_env__$private$num_sets_fe
+      if (nsf > 1) {
+        nt <- length(fixed_effect_train) / nsf
+        fixed_effect_train <- fixed_effect_train[as.vector(sapply(1:nsf, function(k) (1:nt) * nsf - nsf + k))]
       }
       init_score_train <- private$train_set$.__enclos_env__$private$info$init_score
       if (!is.null(init_score_train)) {
@@ -962,9 +964,10 @@ Booster <- R6::R6Class(
             # Note: 'predictor$predict()' only returns the sum of the trees. The offset supplied as
             #   'init_score' to gpb.Dataset() for the training data is not part of the tree ensemble and needs to be added back here
             init_score_train <- private$train_set$.__enclos_env__$private$info$init_score
-            if (private$gp_model$.__enclos_env__$private$num_sets_fe == 2) {
-              nt <- length(fixed_effect_train) / 2
-              fixed_effect_train <- fixed_effect_train[c((1:nt)*2 - 1, (1:nt)*2)]
+            nsf <- private$gp_model$.__enclos_env__$private$num_sets_fe
+            if (nsf > 1) {
+              nt <- length(fixed_effect_train) / nsf
+              fixed_effect_train <- fixed_effect_train[as.vector(sapply(1:nsf, function(k) (1:nt) * nsf - nsf + k))]
             }
             if (!is.null(init_score_train)) {
               fixed_effect_train <- fixed_effect_train + init_score_train
@@ -986,14 +989,15 @@ Booster <- R6::R6Class(
           
           if (pred_latent) {
             
-            if (private$gp_model$.__enclos_env__$private$num_sets_fe == 2) {
-              np <- length(fixed_effect) / 2
+            nsf <- private$gp_model$.__enclos_env__$private$num_sets_fe
+            if (nsf > 1) {
+              np <- length(fixed_effect) / nsf
               if (!is.null(offset_pred)) {
                 if (length(fixed_effect) != length(offset_pred)){
                   stop("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
                 }
               }
-              fixed_effect <- fixed_effect[(1:np)*2 - 1] # take only predictions for mean
+              fixed_effect <- fixed_effect[(1:np)*nsf - nsf + 1] # take only predictions for the first block (the mean)
               if (!is.null(offset_pred)) {
                 fixed_effect <- fixed_effect + offset_pred[1:np]
               }
@@ -1038,9 +1042,10 @@ Booster <- R6::R6Class(
             
           }# end pred_latent
           else {# predict response variable for non-Gaussian data
-            if (private$gp_model$.__enclos_env__$private$num_sets_fe == 2) {
-              np <- length(fixed_effect) / 2
-              fixed_effect <- fixed_effect[c((1:np)*2 - 1, (1:np)*2)] # fixed effects predictions for mean and variance
+            nsf <- private$gp_model$.__enclos_env__$private$num_sets_fe
+            if (nsf > 1) {
+              np <- length(fixed_effect) / nsf
+              fixed_effect <- fixed_effect[as.vector(sapply(1:nsf, function(k) (1:np) * nsf - nsf + k))] # one block of predictions per location parameter
             }
             if (!is.null(offset_pred)) {
               if (length(fixed_effect) != length(offset_pred)){

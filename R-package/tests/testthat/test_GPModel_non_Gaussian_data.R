@@ -4472,6 +4472,452 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(gp_model_fsva_iter_vifdu$get_current_neg_log_likelihood() - 170.19579450), TOLERANCE_NON_CONVEX)
   })
 
+  test_that("gamma_varying_shape likelihood for linear, GP and GPBoost models ", {
+
+    n_vs <- 100
+    group_vs <- rep(1:10, each = 10)
+    X_vs <- cbind(rep(1, n_vs), sim_rand_unif(n = n_vs, init_c = 0.415))
+    beta_mean_vs <- c(0.4, 0.8)
+    beta_shape_vs <- c(0.9, -0.7)
+    gr_var_vs <- 0.5
+    b_gr_vs <- qnorm(sim_rand_unif(n = 10, init_c = 0.628))
+    eta_true_vs <- as.vector(X_vs %*% beta_mean_vs) + sqrt(gr_var_vs) * b_gr_vs[group_vs]
+    log_shape_true_vs <- as.vector(X_vs %*% beta_shape_vs)
+    # Gamma draws via the inverse cdf of the uniform LCG stream (no R RNG in the tests)
+    y_vs <- qgamma(sim_rand_unif(n = n_vs, init_c = 0.537), shape = exp(log_shape_true_vs),
+                   rate = exp(log_shape_true_vs) / exp(eta_true_vs))
+    X_test_vs <- cbind(rep(1, 3), c(0.1, 0.4, 0.8))
+    group_test_vs <- c(1, 3, 11)
+    X_zero_vs <- matrix(0, nrow = n_vs, ncol = ncol(X_vs))
+
+    # Likelihood evaluated at given (not estimated) parameters: a pure formula check, independent of any optimizer
+    fixed_effects_given_vs <- as.vector(cbind(X_vs %*% c(0.2, 0.5), X_vs %*% c(0.6, -0.4)))
+    nll_given_vs <- GPModel(group_data = group_vs, likelihood = "gamma_varying_shape")$neg_log_likelihood(
+      cov_pars = 0.3, y = y_vs, fixed_effects = fixed_effects_given_vs)
+    expect_lt(abs(nll_given_vs - 206.80227775), TOLERANCE_MEDIUM)
+
+    # A fixed-effects-only shape requires a fixed effects term (covariates and / or GPBoost boosting):
+    # without any covariates and without the GPBoost algorithm, fitting should raise an informative error
+    expect_error(capture.output(fitGPModel(group_data = group_vs, likelihood = "gamma_varying_shape", y = y_vs,
+                                           params = list(maxit = 2, init_coef_aux_pars_from_iid_model = FALSE)),
+                                file = "NUL"))
+
+    ###################
+    ## Linear regression model (mean has a grouped random effect, shape is fixed-effects only)
+    ###################
+    capture.output(gp_model_vs <- fitGPModel(group_data = group_vs, likelihood = "gamma_varying_shape",
+                                             y = y_vs, X = X_vs, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    coef_vs <- as.vector(gp_model_vs$get_coef(std_err = FALSE))
+    expect_equal(length(coef_vs), 4L)
+    coef_vs_std_err <- gp_model_vs$get_coef(std_err = TRUE)
+    expect_equal(dim(coef_vs_std_err), c(2L, 4L))
+    # The coefficients of the log-shape block are named with the suffix "_shape"
+    expect_equal(colnames(coef_vs_std_err), c("Covariate_1", "Covariate_2", "Covariate_1_shape", "Covariate_2_shape"))
+    # Note: std. errs. must be strictly positive; a plain is.finite() check would not catch a regression where the
+    # shape block's std. errs. are silently left at their R-side zero-initialized default (0 is finite)
+    expect_true(all(coef_vs_std_err["Std. err.", ] > 0))
+    expected_coef_vs <- c(0.77924412, 0.46142710, 1.23460587, -1.05625429)
+    expect_lt(sum(abs(coef_vs - expected_coef_vs)), TOLERANCE_MEDIUM)
+    expected_coef_vs_std_err <- c(0.26941702, 0.27624782, 0.31016743, 0.56209832)
+    expect_lt(sum(abs(as.vector(coef_vs_std_err["Std. err.", ]) - expected_coef_vs_std_err)), TOLERANCE_MEDIUM)
+    expect_lt(abs(as.vector(gp_model_vs$get_cov_pars(std_err = FALSE)) - 0.55387036), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_vs$get_current_neg_log_likelihood() - 198.77618711), TOLERANCE_MEDIUM)
+    expect_equal(gp_model_vs$get_num_aux_pars(), 0L)
+    # Prediction: response mean and variance
+    pred_vs <- predict(gp_model_vs, y = y_vs, group_data_pred = group_test_vs, X_pred = X_test_vs,
+                       predict_var = TRUE, predict_response = TRUE)
+    expected_mu_vs <- c(1.79642869, 2.48366142, 4.15919264)
+    expected_var_vs <- c(1.25330792, 3.09395219, 33.18798313)
+    expect_lt(sum(abs(pred_vs$mu - expected_mu_vs)), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_vs$var - expected_var_vs)), TOLERANCE_LOOSE)
+    re_pred_train_vs <- predict_training_data_random_effects(gp_model_vs)
+    expected_re_pred_train_vs <- c(-0.26356084, -0.02855334, -0.07365381, 0.16825595, -0.49747275,
+                                   0.95312724, 0.52931772, 0.56368985, 0.24315553, -1.79218732)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_vs[, 1])) - expected_re_pred_train_vs)), TOLERANCE_MEDIUM)
+    re_pred_train_vs_var <- predict_training_data_random_effects(gp_model_vs, predict_var = TRUE)
+    expected_re_pred_train_vs_var <- c(0.04794928, 0.04015937, 0.03914541, 0.04358211, 0.04611738,
+                                       0.04431024, 0.03587677, 0.04670429, 0.03685070, 0.04917412)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_vs_var[, 2])) - expected_re_pred_train_vs_var)), TOLERANCE_MEDIUM)
+    pred_train_re_vs <- predict(gp_model_vs, y = y_vs, group_data_pred = group_vs, X_pred = X_zero_vs,
+                                predict_response = FALSE, predict_var = FALSE)
+    expect_lt(sum(abs(as.vector(re_pred_train_vs[, 1]) - pred_train_re_vs$mu)), TOLERANCE_STRICT)
+    # Predicting requires covariate data for the model's linear predictors (mean and log-shape)
+    expect_error(predict(gp_model_vs, y = y_vs, group_data_pred = group_test_vs,
+                         predict_var = TRUE, predict_response = TRUE))
+
+    ###################
+    ## No random effects at all (iid model, pure linear regression for the mean and the log-shape)
+    ###################
+    capture.output(gp_model_vs_iid <- fitGPModel(likelihood = "gamma_varying_shape", y = y_vs, X = X_vs,
+                                                 params = OPTIM_PARAMS_BFGS), file = "NUL")
+    expected_coef_vs_iid <- c(0.96393460, 0.48554127, 0.42234138, -0.47047123)
+    expect_lt(sum(abs(as.vector(gp_model_vs_iid$get_coef(std_err = FALSE)) - expected_coef_vs_iid)), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_vs_iid$get_current_neg_log_likelihood() - 217.80011791), TOLERANCE_MEDIUM)
+
+    ###################
+    ## Equivalence with the constant-shape "gamma" likelihood for an intercept-only design matrix
+    ## With X = intercept the log-shape predictor is constant, so the model is exactly "gamma" with an estimated shape
+    ###################
+    X_int_vs <- X_vs[, 1, drop = FALSE]
+    capture.output(gp_model_const <- fitGPModel(group_data = group_vs, likelihood = "gamma", y = y_vs,
+                                                X = X_int_vs, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    capture.output(gp_model_vary <- fitGPModel(group_data = group_vs, likelihood = "gamma_varying_shape", y = y_vs,
+                                               X = X_int_vs, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    expect_lt(abs(gp_model_const$get_current_neg_log_likelihood() - 201.56477918), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_vary$get_current_neg_log_likelihood() -
+                    gp_model_const$get_current_neg_log_likelihood()), TOLERANCE_STRICT_LOWER)
+    coef_vary <- as.vector(gp_model_vary$get_coef(std_err = FALSE))
+    expect_lt(abs(coef_vary[1] - as.vector(gp_model_const$get_coef(std_err = FALSE))[1]), TOLERANCE_STRICT_LOWER)
+    expect_lt(abs(coef_vary[2] - log(as.vector(gp_model_const$get_aux_pars()))), TOLERANCE_STRICT_LOWER)
+    expect_lt(abs(as.vector(gp_model_vary$get_cov_pars(std_err = FALSE)) -
+                    as.vector(gp_model_const$get_cov_pars(std_err = FALSE))), TOLERANCE_STRICT_LOWER)
+
+    ###################
+    ## GPBoost algorithm (tree-boosting): mean via a grouped random effect + trees, log-shape via a second tree ensemble
+    ###################
+    gp_model_vs_boost <- GPModel(group_data = group_vs, likelihood = "gamma_varying_shape")
+    gp_model_vs_boost$set_optim_params(params = OPTIM_PARAMS_BFGS)
+    dtrain_vs <- gpb.Dataset(data = X_vs[, 2, drop = FALSE], label = y_vs)
+    bst_vs <- gpb.train(data = dtrain_vs, gp_model = gp_model_vs_boost, nrounds = 20, learning_rate = 0.05,
+                        max_depth = 2, min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)
+    pred_vs_boost <- predict(bst_vs, data = X_vs[1:3, 2, drop = FALSE], group_data_pred = group_test_vs,
+                             predict_var = TRUE, pred_latent = FALSE)
+    expect_lt(abs(as.vector(gp_model_vs_boost$get_cov_pars(std_err = FALSE)) - 0.50240259), TOLERANCE_MEDIUM)
+    expected_response_mean_vs_boost <- c(2.14032953, 2.89035370, 3.88305497)
+    expected_response_var_vs_boost <- c(2.51382547, 5.94426437, 21.68702320)
+    expect_lt(sum(abs(pred_vs_boost$response_mean - expected_response_mean_vs_boost)), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_vs_boost$response_var - expected_response_var_vs_boost)), TOLERANCE_LOOSE)
+    re_pred_train_vs_boost <- predict_training_data_random_effects(bst_vs)
+    expected_re_pred_train_vs_boost <- c(-0.33267371, -0.06968062, -0.09469346, 0.06752114, -0.42291020,
+                                         0.92782963, 0.41615823, 0.48271165, 0.24984357, -1.72663065)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_vs_boost[, 1])) - expected_re_pred_train_vs_boost)), TOLERANCE_MEDIUM)
+
+    ###################
+    ## GPs
+    ###################
+    n_vs2 <- 100
+    X_vs2 <- cbind(rep(1, n_vs2), sim_rand_unif(n = n_vs2, init_c = 0.193))
+    coords_vs2 <- matrix(sim_rand_unif(n = n_vs2 * 2, init_c = 0.749), ncol = 2)
+    D_vs2 <- as.matrix(dist(coords_vs2))
+    Sigma_vs2 <- 0.5 * exp(-D_vs2 / 0.15) + diag(1E-10, n_vs2)
+    b_gp_vs2 <- as.vector(t(chol(Sigma_vs2)) %*% qnorm(sim_rand_unif(n = n_vs2, init_c = 0.836)))
+    eta_true_vs2 <- as.vector(X_vs2 %*% beta_mean_vs) + b_gp_vs2
+    log_shape_true_vs2 <- as.vector(X_vs2 %*% beta_shape_vs)
+    y_vs2 <- qgamma(sim_rand_unif(n = n_vs2, init_c = 0.582), shape = exp(log_shape_true_vs2),
+                    rate = exp(log_shape_true_vs2) / exp(eta_true_vs2))
+    optim_params_vs2 <- list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", maxit = 300,
+                             init_coef_aux_pars_from_iid_model = FALSE)
+    optim_params_vs2_iter <- c(optim_params_vs2, list(seed_rand_vec_trace = 1))
+
+    # Dense GP ("Stable")
+    nll_given_gp_vs <- GPModel(gp_coords = coords_vs2, cov_function = "exponential",
+                               likelihood = "gamma_varying_shape")$neg_log_likelihood(
+      cov_pars = c(1, mean(dist(coords_vs2)) / 3), y = y_vs2, fixed_effects = rep(0, 2 * n_vs2))
+    expect_lt(abs(nll_given_gp_vs - 213.11732908), TOLERANCE_MEDIUM)
+    capture.output(gp_model_gp_vs <- fitGPModel(gp_coords = coords_vs2, cov_function = "exponential",
+                                                likelihood = "gamma_varying_shape", y = y_vs2, X = X_vs2,
+                                                params = optim_params_vs2), file = "NUL")
+    expected_coef_gp_vs <- c(0.55506594, 0.63362836, 1.53277451, -1.44199544)
+    expect_lt(sum(abs(as.vector(gp_model_gp_vs$get_coef(std_err = FALSE)) - expected_coef_gp_vs)), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model_gp_vs$get_cov_pars(std_err = FALSE)) - c(0.31334850, 0.11748570))), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_gp_vs$get_current_neg_log_likelihood() - 191.32567865), TOLERANCE_MEDIUM)
+    coord_test_gp_vs <- coords_vs2[1:3, , drop = FALSE] + 1e-3
+    pred_gp_vs <- predict(gp_model_gp_vs, y = y_vs2, gp_coords_pred = coord_test_gp_vs,
+                          X_pred = X_vs2[1:3, , drop = FALSE], predict_var = TRUE, predict_response = TRUE)
+    expect_lt(sum(abs(pred_gp_vs$mu - c(2.77793063, 2.08568765, 1.92724362))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_gp_vs$var - c(3.46163484, 1.59458276, 2.23585839))), TOLERANCE_LOOSE)
+
+    # GP with a Vecchia approximation: with num_neighbors = n - 1 this is exact and must match the dense GP fit
+    capture.output(gp_model_vecchia_vs <- fitGPModel(gp_coords = coords_vs2, cov_function = "exponential",
+                                                     likelihood = "gamma_varying_shape", gp_approx = "vecchia",
+                                                     num_neighbors = n_vs2 - 1, vecchia_ordering = "none",
+                                                     matrix_inversion_method = "cholesky",
+                                                     y = y_vs2, X = X_vs2, params = optim_params_vs2), file = "NUL")
+    expect_lt(sum(abs(as.vector(gp_model_vecchia_vs$get_coef(std_err = FALSE)) - expected_coef_gp_vs)), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_vecchia_vs$get_current_neg_log_likelihood() - 191.32567865), TOLERANCE_MEDIUM)
+    # matrix_inversion_method = "iterative"
+    capture.output(gp_model_vecchia_vs_iter <- fitGPModel(gp_coords = coords_vs2, cov_function = "exponential",
+                                                          likelihood = "gamma_varying_shape", gp_approx = "vecchia",
+                                                          num_neighbors = n_vs2 - 1, vecchia_ordering = "none",
+                                                          matrix_inversion_method = "iterative",
+                                                          y = y_vs2, X = X_vs2, params = optim_params_vs2_iter), file = "NUL")
+    expected_coef_vecchia_vs_iter <- c(0.54332885, 0.65141197, 1.60868319, -1.54241987)
+    expect_lt(sum(abs(as.vector(gp_model_vecchia_vs_iter$get_coef(std_err = FALSE)) - expected_coef_vecchia_vs_iter)), TOLERANCE_NON_CONVEX)
+    expect_lt(sum(abs(as.vector(gp_model_vecchia_vs_iter$get_cov_pars(std_err = FALSE)) - c(0.32828906, 0.11355682))), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(gp_model_vecchia_vs_iter$get_current_neg_log_likelihood() - 191.12958279), TOLERANCE_NON_CONVEX)
+
+    # GP with an FITC approximation
+    capture.output(gp_model_fitc_vs <- fitGPModel(gp_coords = coords_vs2, cov_function = "exponential",
+                                                  likelihood = "gamma_varying_shape", gp_approx = "fitc",
+                                                  num_ind_points = 50, y = y_vs2, X = X_vs2,
+                                                  params = optim_params_vs2), file = "NUL")
+    expected_coef_fitc_vs <- c(0.55047297, 0.63864813, 1.53279989, -1.45984724)
+    expect_lt(sum(abs(as.vector(gp_model_fitc_vs$get_coef(std_err = FALSE)) - expected_coef_fitc_vs)), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model_fitc_vs$get_cov_pars(std_err = FALSE)) - c(0.30514950, 0.11908394))), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_fitc_vs$get_current_neg_log_likelihood() - 191.59666396), TOLERANCE_MEDIUM)
+  })
+
+  test_that("hurdle_gamma_varying_shape likelihood for linear models ", {
+
+    n_vs <- 100
+    group_vs <- rep(1:10, each = 10)
+    X_vs <- cbind(rep(1, n_vs), sim_rand_unif(n = n_vs, init_c = 0.415))
+    beta_mean_vs <- c(0.4, 0.8)
+    beta_shape_vs <- c(0.9, -0.7)
+    b_gr_vs <- qnorm(sim_rand_unif(n = 10, init_c = 0.628))
+    eta_true_vs <- as.vector(X_vs %*% beta_mean_vs) + sqrt(0.5) * b_gr_vs[group_vs]
+    log_shape_true_vs <- as.vector(X_vs %*% beta_shape_vs)
+    y_vs <- qgamma(sim_rand_unif(n = n_vs, init_c = 0.537), shape = exp(log_shape_true_vs),
+                   rate = exp(log_shape_true_vs) / exp(eta_true_vs))
+    y_hurdle_vs <- y_vs
+    y_hurdle_vs[sim_rand_unif(n = n_vs, init_c = 0.264) < 0.25] <- 0
+    expect_equal(sum(y_hurdle_vs == 0), 22L)
+
+    # Likelihood evaluated at given (not estimated) parameters: a pure formula check, independent of any optimizer
+    fixed_effects_given_vs <- as.vector(cbind(X_vs %*% c(0.2, 0.5), X_vs %*% c(0.6, -0.4)))
+    nll_given_h <- GPModel(group_data = group_vs, likelihood = "hurdle_gamma_varying_shape")$neg_log_likelihood(
+      cov_pars = 0.3, y = y_hurdle_vs, fixed_effects = fixed_effects_given_vs, aux_pars = 0.3)
+    expect_lt(abs(nll_given_h - 217.78954815), TOLERANCE_MEDIUM)
+
+    capture.output(gp_model_h <- fitGPModel(group_data = group_vs, likelihood = "hurdle_gamma_varying_shape",
+                                            y = y_hurdle_vs, X = X_vs, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    coef_h <- as.vector(gp_model_h$get_coef(std_err = FALSE))
+    expected_coef_h <- c(0.72724776, 0.52321528, 1.20120448, -0.96100261)
+    expect_lt(sum(abs(coef_h - expected_coef_h)), TOLERANCE_MEDIUM)
+    coef_h_std_err <- gp_model_h$get_coef(std_err = TRUE)
+    expect_equal(colnames(coef_h_std_err), c("Covariate_1", "Covariate_2", "Covariate_1_shape", "Covariate_2_shape"))
+    expect_true(all(coef_h_std_err["Std. err.", ] > 0))
+    expected_coef_h_std_err <- c(0.28167051, 0.30412134, 0.35264012, 0.61410078)
+    expect_lt(sum(abs(as.vector(coef_h_std_err["Std. err.", ]) - expected_coef_h_std_err)), TOLERANCE_MEDIUM)
+    expect_lt(abs(as.vector(gp_model_h$get_cov_pars(std_err = FALSE)) - 0.56347247), TOLERANCE_MEDIUM)
+    # p0 is the only auxiliary parameter and the structural zero decouples from both location parameter
+    # blocks, so its maximum likelihood estimate is exactly the observed zero fraction
+    expect_equal(gp_model_h$get_num_aux_pars(), 1L)
+    expect_lt(abs(as.vector(gp_model_h$get_aux_pars()) - mean(y_hurdle_vs == 0)), TOLERANCE_STRICT_LOWER)
+    expect_lt(abs(gp_model_h$get_current_neg_log_likelihood() - 209.40746414), TOLERANCE_MEDIUM)
+    # Prediction: E(y) = (1 - p0) * mu, Var(y) = (1 - p0) * (1 / shape + p0) * E(mu^2) + (1 - p0)^2 * Var(mu)
+    X_test_vs <- cbind(rep(1, 3), c(0.1, 0.4, 0.8))
+    group_test_vs <- c(1, 3, 11)
+    pred_h <- predict(gp_model_h, y = y_hurdle_vs, group_data_pred = group_test_vs, X_pred = X_test_vs,
+                      predict_var = TRUE, predict_response = TRUE)
+    expect_lt(sum(abs(pred_h$mu - c(1.47334282, 1.89515945, 3.25142989))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_h$var - c(1.73274210, 3.43132816, 28.69036300))), TOLERANCE_LOOSE)
+    re_pred_train_h <- predict_training_data_random_effects(gp_model_h)
+    expected_re_pred_train_h <- c(-0.16971243, -0.22678700, -0.07686744, -0.01780991, -0.71284661,
+                                  0.97960075, 0.62734841, 0.59290798, 0.38627911, -1.63260735)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_h[, 1])) - expected_re_pred_train_h)), TOLERANCE_MEDIUM)
+
+    ###################
+    ## Equivalence with the constant-shape "hurdle_gamma" likelihood for an intercept-only design matrix
+    ###################
+    X_int_vs <- X_vs[, 1, drop = FALSE]
+    capture.output(gp_model_h_const <- fitGPModel(group_data = group_vs, likelihood = "hurdle_gamma", y = y_hurdle_vs,
+                                                  X = X_int_vs, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    capture.output(gp_model_h_vary <- fitGPModel(group_data = group_vs, likelihood = "hurdle_gamma_varying_shape",
+                                                 y = y_hurdle_vs, X = X_int_vs, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    expect_lt(abs(gp_model_h_const$get_current_neg_log_likelihood() - 211.77652907), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_h_vary$get_current_neg_log_likelihood() -
+                    gp_model_h_const$get_current_neg_log_likelihood()), TOLERANCE_STRICT_LOWER)
+    expect_lt(abs(as.vector(gp_model_h_vary$get_coef(std_err = FALSE))[2] -
+                    log(as.vector(gp_model_h_const$get_aux_pars())[1])), TOLERANCE_STRICT_LOWER)
+    expect_lt(abs(as.vector(gp_model_h_vary$get_aux_pars())[1] -
+                    as.vector(gp_model_h_const$get_aux_pars())[2]), TOLERANCE_STRICT_LOWER)
+  })
+
+  test_that("hurdle_regression_gamma_varying_shape likelihood (three predictors) for linear and GPBoost models ", {
+
+    n_vs <- 100
+    group_vs <- rep(1:10, each = 10)
+    X_vs <- cbind(rep(1, n_vs), sim_rand_unif(n = n_vs, init_c = 0.415))
+    beta_mean_vs <- c(0.4, 0.8)
+    beta_shape_vs <- c(0.9, -0.7)
+    b_gr_vs <- qnorm(sim_rand_unif(n = 10, init_c = 0.628))
+    eta_true_vs <- as.vector(X_vs %*% beta_mean_vs) + sqrt(0.5) * b_gr_vs[group_vs]
+    log_shape_true_vs <- as.vector(X_vs %*% beta_shape_vs)
+    y_vs <- qgamma(sim_rand_unif(n = n_vs, init_c = 0.537), shape = exp(log_shape_true_vs),
+                   rate = exp(log_shape_true_vs) / exp(eta_true_vs))
+    zeta_zero_true_vs <- as.vector(X_vs %*% c(-0.8, 1.0))
+    y_hr_vs <- y_vs
+    y_hr_vs[sim_rand_unif(n = n_vs, init_c = 0.264) < 1 / (1 + exp(-zeta_zero_true_vs))] <- 0
+    expect_equal(sum(y_hr_vs == 0), 40L)
+    X_test_vs <- cbind(rep(1, 3), c(0.1, 0.4, 0.8))
+    group_test_vs <- c(1, 3, 11)
+
+    # Likelihood evaluated at given (not estimated) parameters: a pure formula check, independent of any optimizer.
+    # The three blocks are the response mean, the structural-zero logit, and log(shape), in this order
+    fixed_effects_given_hr <- as.vector(cbind(X_vs %*% c(0.2, 0.5), X_vs %*% c(-0.5, 0.7), X_vs %*% c(0.6, -0.4)))
+    nll_given_hr <- GPModel(group_data = group_vs, likelihood = "hurdle_regression_gamma_varying_shape")$neg_log_likelihood(
+      cov_pars = 0.3, y = y_hr_vs, fixed_effects = fixed_effects_given_hr)
+    expect_lt(abs(nll_given_hr - 200.73666702), TOLERANCE_MEDIUM)
+
+    capture.output(gp_model_hr <- fitGPModel(group_data = group_vs, likelihood = "hurdle_regression_gamma_varying_shape",
+                                             y = y_hr_vs, X = X_vs, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    coef_hr <- as.vector(gp_model_hr$get_coef(std_err = FALSE))
+    expect_equal(length(coef_hr), 6L)
+    expected_coef_hr <- c(0.77235050, 0.46757541, -0.37334779, -0.06796162, 1.26023275, -1.30887498)
+    expect_lt(sum(abs(coef_hr - expected_coef_hr)), TOLERANCE_MEDIUM)
+    coef_hr_std_err <- gp_model_hr$get_coef(std_err = TRUE)
+    expect_equal(dim(coef_hr_std_err), c(2L, 6L))
+    expect_equal(colnames(coef_hr_std_err), c("Covariate_1", "Covariate_2", "Covariate_1_zero", "Covariate_2_zero",
+                                              "Covariate_1_shape", "Covariate_2_shape"))
+    expect_true(all(coef_hr_std_err["Std. err.", ] > 0))
+    expected_coef_hr_std_err <- c(0.28298350, 0.37030350, 0.40243850, 0.73474785, 0.41319946, 0.72677140)
+    expect_lt(sum(abs(as.vector(coef_hr_std_err["Std. err.", ]) - expected_coef_hr_std_err)), TOLERANCE_MEDIUM)
+    expect_lt(abs(as.vector(gp_model_hr$get_cov_pars(std_err = FALSE)) - 0.48861192), TOLERANCE_MEDIUM)
+    expect_equal(gp_model_hr$get_num_aux_pars(), 0L)
+    expect_lt(abs(gp_model_hr$get_current_neg_log_likelihood() - 193.91157916), TOLERANCE_MEDIUM)
+    pred_hr <- predict(gp_model_hr, y = y_hr_vs, group_data_pred = group_test_vs, X_pred = X_test_vs,
+                       predict_var = TRUE, predict_response = TRUE)
+    expect_lt(sum(abs(pred_hr$mu - c(1.34955443, 1.45064588, 2.43204538))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_hr$var - c(2.57046994, 3.40478305, 22.88326100))), TOLERANCE_LOOSE)
+    re_pred_train_hr <- predict_training_data_random_effects(gp_model_hr)
+    expected_re_pred_train_hr <- c(-0.03783471, -0.14727182, -0.10378481, -0.01071364, -0.79564801,
+                                   0.86784269, 0.61021241, 0.55427350, 0.17198142, -1.44187877)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_hr[, 1])) - expected_re_pred_train_hr)), TOLERANCE_MEDIUM)
+
+    ###################
+    ## GPBoost algorithm with three tree ensembles (mean, structural-zero logit, log-shape)
+    ###################
+    gp_model_hr_boost <- GPModel(group_data = group_vs, likelihood = "hurdle_regression_gamma_varying_shape")
+    gp_model_hr_boost$set_optim_params(params = OPTIM_PARAMS_BFGS)
+    dtrain_hr <- gpb.Dataset(data = X_vs[, 2, drop = FALSE], label = y_hr_vs)
+    bst_hr <- gpb.train(data = dtrain_hr, gp_model = gp_model_hr_boost, nrounds = 20, learning_rate = 0.05,
+                        max_depth = 2, min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)
+    pred_hr_boost <- predict(bst_hr, data = X_vs[1:3, 2, drop = FALSE], group_data_pred = group_test_vs,
+                             predict_var = TRUE, pred_latent = FALSE)
+    expect_lt(abs(as.vector(gp_model_hr_boost$get_cov_pars(std_err = FALSE)) - 0.28607370), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_hr_boost$response_mean - c(1.71093425, 1.55926607, 2.19092195))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_hr_boost$response_var - c(5.19566634, 3.93816976, 11.59660949))), TOLERANCE_LOOSE)
+  })
+
+  test_that("varying-shape gamma likelihoods: density and derivatives against independent formulas ", {
+
+    # Reference implementations of the log-densities, independent of the GPBoost C++ code
+    # (eta = log(mean), zeta = log(shape), so shape = exp(zeta) and rate = exp(zeta) / exp(eta))
+    ll_gamma_vs <- function(y, eta, zeta) dgamma(y, shape = exp(zeta), rate = exp(zeta) / exp(eta), log = TRUE)
+    ll_hurdle_vs <- function(y, eta, zeta, p0) ifelse(y > 0, log1p(-p0) + ll_gamma_vs(pmax(y, 1e-300), eta, zeta), log(p0))
+    ll_hurdle_regr_vs <- function(y, eta, zeta_zero, zeta_shape) {
+      pi_i <- 1 / (1 + exp(-zeta_zero))
+      ifelse(y > 0, log1p(-pi_i) + ll_gamma_vs(pmax(y, 1e-300), eta, zeta_shape), log(pi_i))
+    }
+
+    n_d <- 200
+    X_d <- cbind(rep(1, n_d), sim_rand_unif(n = n_d, init_c = 0.311))
+    beta_eta_d <- c(0.3, 0.9)
+    beta_shape_d <- c(0.6, -0.8)
+    beta_zero_d <- c(-0.7, 1.1)
+    eta_d <- as.vector(X_d %*% beta_eta_d)
+    zeta_shape_d <- as.vector(X_d %*% beta_shape_d)
+    zeta_zero_d <- as.vector(X_d %*% beta_zero_d)
+    y_d <- qgamma(sim_rand_unif(n = n_d, init_c = 0.428), shape = exp(zeta_shape_d), rate = exp(zeta_shape_d) / exp(eta_d))
+    u_zero_d <- sim_rand_unif(n = n_d, init_c = 0.173)
+    y_hurdle_d <- y_d
+    y_hurdle_d[u_zero_d < 0.3] <- 0
+    y_hr_d <- y_d
+    y_hr_d[u_zero_d < 1 / (1 + exp(-zeta_zero_d))] <- 0
+    p0_d <- 0.35
+    # An iid model (no random effects at all) has no Laplace approximation: its negative log-likelihood is
+    # exactly the (weighted) sum of the per-observation log-densities and its gradient wrt the fixed effects
+    # is exactly the negative score. This makes the C++ formulas directly comparable to the R references above
+    # (the 'cov_pars' argument is required by the interface but is not used for an iid model)
+    gp_iid_vs <- GPModel(num_data = n_d, likelihood = "gamma_varying_shape")
+    gp_iid_h <- GPModel(num_data = n_d, likelihood = "hurdle_gamma_varying_shape")
+    gp_iid_hr <- GPModel(num_data = n_d, likelihood = "hurdle_regression_gamma_varying_shape")
+
+    ###################
+    ## 1) The C++ log-likelihood against R's 'dgamma', at parameters that are not the maximizer
+    ###################
+    nll_cpp_vs <- gp_iid_vs$neg_log_likelihood(cov_pars = 1, y = y_d, fixed_effects = c(eta_d, zeta_shape_d))
+    expect_lt(abs(nll_cpp_vs + sum(ll_gamma_vs(y_d, eta_d, zeta_shape_d))), relax_tolerance_strict(TOLERANCE_STRICT))
+    nll_cpp_h <- gp_iid_h$neg_log_likelihood(cov_pars = 1, y = y_hurdle_d, fixed_effects = c(eta_d, zeta_shape_d), aux_pars = p0_d)
+    expect_lt(abs(nll_cpp_h + sum(ll_hurdle_vs(y_hurdle_d, eta_d, zeta_shape_d, p0_d))), relax_tolerance_strict(TOLERANCE_STRICT))
+    nll_cpp_hr <- gp_iid_hr$neg_log_likelihood(cov_pars = 1, y = y_hr_d, fixed_effects = c(eta_d, zeta_zero_d, zeta_shape_d))
+    expect_lt(abs(nll_cpp_hr + sum(ll_hurdle_regr_vs(y_hr_d, eta_d, zeta_zero_d, zeta_shape_d))), relax_tolerance_strict(TOLERANCE_STRICT))
+
+    ###################
+    ## 2) The analytical per-observation derivatives against central finite differences of the reference density.
+    ## These are the six quantities the C++ code implements: the eta score, the eta information W = -l_etaeta,
+    ## its derivative wrt eta, the zeta score, the cross derivative l_eta_zeta, and dW/dzeta
+    ###################
+    # Central stencils, each of order h^2, with step sizes balancing truncation against roundoff per derivative order
+    fd1 <- function(f, x, h = 1e-5) (f(x + h) - f(x - h)) / (2 * h)
+    fd2 <- function(f, x, h = 1e-3) (f(x + h) - 2 * f(x) + f(x - h)) / (h * h)
+    fd3 <- function(f, x, h = 3e-3) (-f(x - 2 * h) + 2 * f(x - h) - 2 * f(x + h) + f(x + 2 * h)) / (2 * h^3)
+    fd_dxdy <- function(f, x, y, h = 1e-3) (f(x + h, y + h) - f(x + h, y - h) - f(x - h, y + h) + f(x - h, y - h)) / (4 * h * h)
+    fd_dx2dy <- function(f, x, y, h = 3e-3) (f(x + h, y + h) - 2 * f(x, y + h) + f(x - h, y + h) -
+                                               f(x + h, y - h) + 2 * f(x, y - h) - f(x - h, y - h)) / (2 * h^3)
+    # The derivatives reach ~200 on this grid, so they are compared on a relative scale
+    rel_err <- function(analytical, numerical) abs(analytical - numerical) / max(abs(analytical), 1)
+    err <- c(l_eta = 0, J_eta = 0, dJ_deta = 0, l_zeta = 0, l_eta_zeta = 0, dJ_dzeta = 0)
+    # Small, ordinary and large shape; small and large mean; small and large y / mu
+    for (y in c(0.05, 0.3, 1, 2.5, 9)) for (eta in c(-1.2, -0.2, 0.5, 1.7)) for (zeta in c(-1, 0, 0.8, 2)) {
+      k <- exp(zeta)
+      y_exp_neg_eta <- y * exp(-eta)
+      f_eta <- function(e) ll_gamma_vs(y, e, zeta)
+      f_zeta <- function(z) ll_gamma_vs(y, eta, z)
+      f_both <- function(e, z) ll_gamma_vs(y, e, z)
+      err["l_eta"] <- max(err["l_eta"], rel_err(k * (y_exp_neg_eta - 1), fd1(f_eta, eta)))
+      err["J_eta"] <- max(err["J_eta"], rel_err(k * y_exp_neg_eta, -fd2(f_eta, eta)))
+      err["dJ_deta"] <- max(err["dJ_deta"], rel_err(-k * y_exp_neg_eta, -fd3(f_eta, eta)))
+      err["l_zeta"] <- max(err["l_zeta"], rel_err(k * (zeta + 1 - eta - digamma(k) + log(y) - y_exp_neg_eta), fd1(f_zeta, zeta)))
+      err["l_eta_zeta"] <- max(err["l_eta_zeta"], rel_err(k * (y_exp_neg_eta - 1), fd_dxdy(f_both, eta, zeta)))
+      err["dJ_dzeta"] <- max(err["dJ_dzeta"], rel_err(k * y_exp_neg_eta, -fd_dx2dy(f_both, eta, zeta)))
+    }
+    expect_lt(max(err[c("l_eta", "l_zeta")]), 1e-6)
+    expect_lt(max(err[c("J_eta", "l_eta_zeta")]), 1e-5)
+    expect_lt(max(err[c("dJ_deta", "dJ_dzeta")]), 1e-4)
+
+    ###################
+    ## 3) The C++ score against the analytical formulas, via finite differences of the iid negative
+    ## log-likelihood wrt the regression coefficients of every location parameter block
+    ###################
+    fd_coef_grad <- function(model, y, coefs, num_blocks, aux_pars = NULL) {
+      eval_nll <- function(cf) {
+        fixed_effects <- as.vector(sapply(1:num_blocks, function(k) X_d %*% cf[(k - 1) * 2 + 1:2]))
+        model$neg_log_likelihood(cov_pars = 1, y = y, fixed_effects = fixed_effects, aux_pars = aux_pars)
+      }
+      h <- 1e-5
+      sapply(seq_along(coefs), function(j) {
+        cp <- cm <- coefs; cp[j] <- cp[j] + h; cm[j] <- cm[j] - h
+        (eval_nll(cp) - eval_nll(cm)) / (2 * h)
+      })
+    }
+    # Analytical scores: l_eta = k*(y/mu - 1), l_zeta = k*(zeta + 1 - eta - digamma(k) + log(y) - y/mu), both 0 at y = 0,
+    # and the structural-zero score l_zeta_zero = 1{y=0} - pi. The gradient of the negative log-likelihood wrt the
+    # coefficients of a block is -X^T (weights * score of that block)
+    analytical_grad <- function(scores, weights_used = NULL) {
+      w <- if (is.null(weights_used)) rep(1, n_d) else weights_used
+      as.vector(sapply(scores, function(s) -as.vector(t(X_d) %*% (w * s))))
+    }
+    score_eta <- function(y, eta, zeta) ifelse(y > 0, exp(zeta) * (y * exp(-eta) - 1), 0)
+    score_zeta <- function(y, eta, zeta) {
+      k <- exp(zeta)
+      ifelse(y > 0, k * (zeta + 1 - eta - digamma(k) + log(pmax(y, 1e-300)) - y * exp(-eta)), 0)
+    }
+    coefs_vs <- c(beta_eta_d, beta_shape_d)
+    grad_fd <- fd_coef_grad(gp_iid_vs, y_d, coefs_vs, 2)
+    grad_an <- analytical_grad(list(score_eta(y_d, eta_d, zeta_shape_d), score_zeta(y_d, eta_d, zeta_shape_d)))
+    expect_lt(max(abs(grad_fd - grad_an)) / max(abs(grad_an)), TOLERANCE_STRICT_LOWER)
+    # The same with non-unit sample weights, which must multiply every block's score
+    w_d <- 0.5 + 2 * sim_rand_unif(n = n_d, init_c = 0.652)
+    w_d <- w_d * (n_d / sum(w_d))# scale to sum to the number of data points, which avoids an informational message
+    gp_iid_w <- GPModel(num_data = n_d, likelihood = "gamma_varying_shape", weights = w_d)
+    grad_fd_w <- fd_coef_grad(gp_iid_w, y_d, coefs_vs, 2)
+    grad_an_w <- analytical_grad(list(score_eta(y_d, eta_d, zeta_shape_d), score_zeta(y_d, eta_d, zeta_shape_d)), w_d)
+    expect_lt(max(abs(grad_fd_w - grad_an_w)) / max(abs(grad_an_w)), TOLERANCE_STRICT_LOWER)
+    # Constant-p0 hurdle: the zeros contribute nothing to either block
+    grad_fd_h <- fd_coef_grad(gp_iid_h, y_hurdle_d, coefs_vs, 2, aux_pars = p0_d)
+    grad_an_h <- analytical_grad(list(score_eta(y_hurdle_d, eta_d, zeta_shape_d), score_zeta(y_hurdle_d, eta_d, zeta_shape_d)))
+    expect_lt(max(abs(grad_fd_h - grad_an_h)) / max(abs(grad_an_h)), TOLERANCE_STRICT_LOWER)
+    # Regression hurdle: three blocks, the middle one being the structural-zero logit
+    coefs_hr <- c(beta_eta_d, beta_zero_d, beta_shape_d)
+    grad_fd_hr <- fd_coef_grad(gp_iid_hr, y_hr_d, coefs_hr, 3)
+    grad_an_hr <- analytical_grad(list(score_eta(y_hr_d, eta_d, zeta_shape_d),
+                                       as.numeric(y_hr_d <= 0) - 1 / (1 + exp(-zeta_zero_d)),
+                                       score_zeta(y_hr_d, eta_d, zeta_shape_d)))
+    expect_lt(max(abs(grad_fd_hr - grad_an_hr)) / max(abs(grad_an_hr)), TOLERANCE_STRICT_LOWER)
+  })
+
   test_that("zero_censored_power_transformed_normal_heteroscedastic likelihood for linear and GPBoost models ", {
 
     likelihood <- "zero_censored_power_transformed_normal_heteroscedastic"

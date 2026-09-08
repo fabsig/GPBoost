@@ -4598,7 +4598,7 @@ namespace GPBoost {
 								}
 							}
 						}
-						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id[0], var_pred_id[0], mean_pred_id[1], var_pred_id[1], predict_var);
+						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id[0], var_pred_id[0], mean_pred_id[1], var_pred_id[1], predict_var, mean_pred_id[2]);
 					}
 					// Write on output
 					int idx_start_post_sample = 0;

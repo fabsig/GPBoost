@@ -3376,8 +3376,9 @@ class Booster:
                                                        pred_contrib=False, data_has_header=False, is_reshape=False)
                 # Note: predictor.predict() only returns the sum of the trees. The offset supplied as
                 # 'init_score' to the training Dataset is not part of the tree ensemble and needs to be added back here
-                if self.gp_model.num_sets_fe == 2:
-                    fixed_effect_train = np.concatenate((fixed_effect_train[::2], fixed_effect_train[1::2]))
+                if self.gp_model.num_sets_fe > 1:
+                    num_sets_fe = self.gp_model.num_sets_fe
+                    fixed_effect_train = np.concatenate([fixed_effect_train[k::num_sets_fe] for k in range(num_sets_fe)])
                 if self.train_set.init_score is not None:
                     fixed_effect_train = fixed_effect_train + self.train_set.init_score
                 if self.gp_model._get_likelihood_name() == "gaussian" and self.gp_model.gp_approx != "vecchia_latent":  # Gaussian data
@@ -3486,8 +3487,9 @@ class Booster:
                                                num_iteration=num_iteration, raw_score=True,
                                                pred_leaf=False, pred_contrib=False,
                                                data_has_header=data_has_header, is_reshape=False)
-        if self.gp_model.num_sets_fe == 2:
-            fixed_effect_train = np.concatenate((fixed_effect_train[::2], fixed_effect_train[1::2]))
+        if self.gp_model.num_sets_fe > 1:
+            num_sets_fe = self.gp_model.num_sets_fe
+            fixed_effect_train = np.concatenate([fixed_effect_train[k::num_sets_fe] for k in range(num_sets_fe)])
         if self.train_set.init_score is not None:
             fixed_effect_train = fixed_effect_train + self.train_set.init_score
 
@@ -3752,8 +3754,9 @@ class Booster:
                                                            is_reshape=False)
                     # Note: predictor.predict() only returns the sum of the trees. The offset supplied as
                     # 'init_score' to the training Dataset is not part of the tree ensemble and needs to be added back here
-                    if self.gp_model.num_sets_fe == 2:
-                        fixed_effect_train = np.concatenate((fixed_effect_train[::2], fixed_effect_train[1::2]))
+                    if self.gp_model.num_sets_fe > 1:
+                        num_sets_fe = self.gp_model.num_sets_fe
+                        fixed_effect_train = np.concatenate([fixed_effect_train[k::num_sets_fe] for k in range(num_sets_fe)])
                     if self.train_set.init_score is not None:
                         fixed_effect_train = fixed_effect_train + self.train_set.init_score
                     if self.gp_model.model_has_been_loaded_from_saved_file:
@@ -3763,11 +3766,11 @@ class Booster:
                                                  pred_contrib=False, data_has_header=data_has_header,
                                                  is_reshape=False)
                 if pred_latent:
-                    if self.gp_model.num_sets_fe == 2:
+                    if self.gp_model.num_sets_fe > 1:
                         if offset_pred is not None and len(fixed_effect) != len(offset_pred):
                             raise GPBoostError("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
-                        npred = len(fixed_effect) // 2
-                        fixed_effect = fixed_effect[::2] # take only predictions for mean
+                        npred = len(fixed_effect) // self.gp_model.num_sets_fe
+                        fixed_effect = fixed_effect[::self.gp_model.num_sets_fe] # take only predictions for the first block (the mean)
                         if offset_pred is not None:
                             fixed_effect += offset_pred[:npred]
                     elif offset_pred is not None:
@@ -3800,8 +3803,9 @@ class Booster:
                     if sample_posterior:
                         posterior_samples = random_effect_pred['posterior_samples'] + fixed_effect[:, np.newaxis]
                 else:  # predict response variable (not pred_latent)
-                    if self.gp_model.num_sets_fe == 2:
-                        fixed_effect = np.concatenate((fixed_effect[::2], fixed_effect[1::2])) # fixed effects predictions for mean and variance
+                    if self.gp_model.num_sets_fe > 1:
+                        num_sets_fe = self.gp_model.num_sets_fe
+                        fixed_effect = np.concatenate([fixed_effect[k::num_sets_fe] for k in range(num_sets_fe)]) # one block of predictions per location parameter
                     if offset_pred is not None:
                         if len(fixed_effect) != len(offset_pred):
                             raise GPBoostError("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
@@ -4383,6 +4387,14 @@ class GPModel(object):
                           as the response model (the response predictor carries the random effects, the zero predictor does not). The estimated zero-model coefficients
                           alpha are returned alongside the response-model coefficients.
 
+                    - "gamma_varying_shape", "hurdle_gamma_varying_shape", "hurdle_regression_gamma_varying_shape":
+
+                        Similar as "gamma", "hurdle_gamma", and "hurdle_regression_gamma", but the gamma shape varies across observations and is
+                        modeled by an additional fixed-effects-only predictor: log(shape) = F_s(X) (F_s(X) = linear predictor or the GPBoost
+                        algorithm), while the log mean log(mu) = F(X) + Zb is related to both fixed and random effects. Note that the shape also
+                        governs the dispersion, var(y) = mu^2 / shape. The estimated coefficients of the log-shape model are returned alongside the
+                        mean-model coefficients (with the suffix "_shape"). For "hurdle_regression_gamma_varying_shape" there are three predictors:
+                        the response mean, the structural-zero logit (coefficients with the suffix "_zero"), and log(shape).
 
                     - "zero_censored_power_transformed_normal":
                     
@@ -4835,7 +4847,9 @@ class GPModel(object):
                        }
         self.num_sets_re = 1
         self.num_sets_fe = 1
-        self.second_fe_block_is_zero_model = False
+        # Suffixes of the coefficient names of the additional fixed-effects-only predictors (blocks 2, 3, ...),
+        # in the order of the location parameter blocks. Length = num_sets_fe - 1
+        self.extra_fe_block_suffixes = []
         self.iid_model = False
 
         if (model_file is not None) or (model_dict is not None):
@@ -4874,10 +4888,6 @@ class GPModel(object):
             if model_dict.get("cluster_ids") is not None:
                 cluster_ids = np.array(model_dict.get("cluster_ids"))
             likelihood = model_dict.get("likelihood")
-            self.second_fe_block_is_zero_model = (
-                isinstance(likelihood, str) and
-                (likelihood.startswith("hurdle_regression_") or likelihood.startswith("zero_inflated_regression_"))
-            )
             likelihood_additional_param = model_dict.get("likelihood_additional_param")
             matrix_inversion_method = model_dict.get("matrix_inversion_method")
             if model_dict.get("weights") is not None:
@@ -4917,9 +4927,7 @@ class GPModel(object):
                             self.coef_names.append("Covariate_" + str(ii + 1))
                         else:
                             self.coef_names.append(X_names[ii])
-                    if self.num_sets_fe == 2:
-                        suffix = "_zero" if self.second_fe_block_is_zero_model else "_scale"
-                        self.coef_names = self.coef_names + [name + suffix for name in self.coef_names]
+                    # The suffixes of the additional predictors are appended below, once the likelihood is known
             self.model_fitted = model_dict.get("model_fitted")
             if self.model_fitted:
                 self.current_neg_log_likelihood_loaded_from_file = model_dict.get("current_neg_log_likelihood")
@@ -4935,13 +4943,27 @@ class GPModel(object):
         if likelihood == "gaussian_heteroscedastic_fixed_and_random":
             self.num_sets_re = 2
             self.num_sets_fe = 2
+            self.extra_fe_block_suffixes = ["_scale"]
         elif likelihood in ("gaussian_heteroscedastic", "zero_censored_power_transformed_normal_heteroscedastic"):
             # A second fixed-effects-only predictor: the log-error variance for "gaussian_heteroscedastic" and
             # the log standard deviation of the latent normal variable for the zero-censored power-transformed normal
             self.num_sets_fe = 2
+            self.extra_fe_block_suffixes = ["_scale"]
+        elif likelihood == "hurdle_regression_gamma_varying_shape":
+            # Three predictors: the response mean (with random effects), the structural-zero logit, and log(shape)
+            self.num_sets_fe = 3
+            self.extra_fe_block_suffixes = ["_zero", "_shape"]
         elif likelihood.startswith("hurdle_regression_") or likelihood.startswith("zero_inflated_regression_"):
             self.num_sets_fe = 2
-            self.second_fe_block_is_zero_model = True
+            self.extra_fe_block_suffixes = ["_zero"]
+        elif likelihood in ("gamma_varying_shape", "hurdle_gamma_varying_shape"):
+            # A second fixed-effects-only predictor for log(shape)
+            self.num_sets_fe = 2
+            self.extra_fe_block_suffixes = ["_shape"]
+        if (self.model_has_been_loaded_from_saved_file and self.has_covariates
+                and len(self.extra_fe_block_suffixes) > 0 and self.coef_names is not None):
+            # The coefficient names of a loaded model were set to the base names above, before the likelihood was known
+            self.coef_names = self._append_extra_fe_block_suffixes(self.coef_names)
         self.cov_par_names = []
 
         self.matrix_inversion_method = matrix_inversion_method
@@ -5647,9 +5669,7 @@ class GPModel(object):
             self.coef_names = []
             for ii in range(self.num_covariates):
                 self.coef_names.append("Covariate_" + str(ii + 1) if X_names is None else X_names[ii])
-            if self.num_sets_fe == 2:
-                suffix = "_zero" if self.second_fe_block_is_zero_model else "_scale"
-                self.coef_names = self.coef_names + [name + suffix for name in self.coef_names]
+            self.coef_names = self._append_extra_fe_block_suffixes(self.coef_names)
         else:
             self.has_covariates = False
         # Set parameters for optimizer
@@ -5674,6 +5694,13 @@ class GPModel(object):
             self.model_fitted = True
 
         return self
+
+    def _append_extra_fe_block_suffixes(self, base_names):
+        """Append the coefficient names of the additional fixed-effects-only predictors to the base names."""
+        coef_names = list(base_names)
+        for block_suffix in self.extra_fe_block_suffixes:
+            coef_names = coef_names + [name + block_suffix for name in base_names[:self.num_covariates]]
+        return coef_names
 
     def neg_log_likelihood(self, cov_pars, y, fixed_effects=None, aux_pars=None):
         """Evaluate the negative log-likelihood. If there is a linear fixed effects predictor term, this needs to be

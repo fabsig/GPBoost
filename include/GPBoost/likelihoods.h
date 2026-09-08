@@ -22,6 +22,17 @@
 *       - mu = mean(y) = exp(location_par), lambda = gamma / mu, gamma \in (0,\infty) (= aux_pars_[0])
 *		- Note: var(y) = mu^2 / gamma, lambda = rate, gamma = shape
 *
+* The "*_varying_shape" gamma likelihoods use the same gamma density, but the shape is modeled by an additional
+*	fixed-effects-only location parameter block instead of by the auxiliary parameter "shape":
+*   f(y) = lambda_i^k_i / Gamma(k_i) * y^(k_i - 1) * exp(-lambda_i * y),  lambda_i = k_i / mu_i
+*       - mu_i = exp(eta_i) (block 0 = random + fixed effects), k_i = exp(loc_shape_i) (last block, i.e. log(k_i) = loc_shape_i)
+*       - log(mu) = random + fixed effects; log(shape) = fixed effects only (linear predictor or GPBoost algorithm)
+*       - Note: the block parametrizes the shape (not the dispersion 1 / shape), matching the auxiliary parameter "shape"
+*         of the constant-shape variants; var(y) = mu_i^2 / k_i, so the shape also governs the (relative) dispersion
+*       - "gamma_varying_shape" (no auxiliary parameter, 2 blocks: eta, log(shape)),
+*         "hurdle_gamma_varying_shape" (aux: p0; 2 blocks: eta, log(shape)),
+*         "hurdle_regression_gamma_varying_shape" (no auxiliary parameter, 3 blocks: eta, structural-zero logit, log(shape))
+*
 * For "tweedie" and "tweedie_fixed_p", Y follows a compound Poisson--Gamma Tweedie law:
 *       - mu = exp(location_par), Var(Y | location_par) = phi * mu^p, 1.01 < p < 1.99
 *       - aux_pars_[0] = phi; aux_pars_[1] is a positive transformed power for "tweedie"
@@ -318,6 +329,27 @@ namespace GPBoost {
 				num_aux_pars_ = 1;
 				num_aux_pars_estim_ = 1;
 			}//end "gamma"
+			else if (IsGammaVaryingShape()) {
+				// Gamma likelihoods for which log(shape) is an additional location parameter block related to fixed effects only
+				//	(no random effects / GPs for the shape). The last block always carries log(shape); a hurdle regression
+				//	additionally has the structural-zero logit in block 1
+				if (likelihood_type_ == "hurdle_gamma_varying_shape") {
+					aux_pars_ = { 1. };//transformed p0/(1-p0) (-> p0 = 0.5)
+					names_aux_pars_ = { "p0" };
+				}
+				else {
+					aux_pars_ = {};//"gamma_varying_shape" and "hurdle_regression_gamma_varying_shape" have no auxiliary parameter
+					names_aux_pars_ = {};
+				}
+				num_aux_pars_ = (int)aux_pars_.size();
+				num_aux_pars_estim_ = num_aux_pars_;
+				num_sets_re_ = 1;
+				num_sets_fixed_effects_ = (likelihood_type_ == "hurdle_regression_gamma_varying_shape") ? 3 : 2;
+				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
+				if (IsHurdleGammaVaryingShape()) {
+					information_ll_can_be_exact_zero_ = true;
+				}
+			}//end gamma varying shape variants
 			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
 				double p = 1.5;
 				if (likelihood_type_ == "tweedie_fixed_p") {
@@ -840,7 +872,7 @@ namespace GPBoost {
 		void DetermineWhetherToCapChangeModeNewton() {
 			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
-				likelihood_type_ == "lognormal" || IsHurdlePositive() || IsZeroInflatedCount()) {
+				likelihood_type_ == "lognormal" || IsHurdlePositive() || IsZeroInflatedCount() || IsGammaVaryingShape()) {
 				cap_change_mode_newton_ = true;
 			}
 			else {
@@ -989,7 +1021,29 @@ namespace GPBoost {
 
 		/*! \brief True for any regression (fixed-effects) structural-zero model (hurdle positive or zero-inflated count). */
 		bool IsRegressionZeroModel() const {
-			return IsHurdleRegression() || IsZeroInflatedCountRegression();
+			return IsHurdleRegression() || IsZeroInflatedCountRegression() || likelihood_type_ == "hurdle_regression_gamma_varying_shape";
+		}
+
+		/*!
+		* \brief True for the gamma likelihoods whose shape is modeled by an additional fixed-effects-only location parameter
+		*		block (log(shape) = the LAST block, see 'ShapeBlockOffset') instead of by the auxiliary parameter "shape"
+		*/
+		bool IsGammaVaryingShape() const {
+			return likelihood_type_ == "gamma_varying_shape" || likelihood_type_ == "hurdle_gamma_varying_shape" ||
+				likelihood_type_ == "hurdle_regression_gamma_varying_shape";
+		}
+
+		/*! \brief True for the varying-shape gamma likelihoods that have a point mass at zero (constant p0 or regression zero model) */
+		bool IsHurdleGammaVaryingShape() const {
+			return likelihood_type_ == "hurdle_gamma_varying_shape" || likelihood_type_ == "hurdle_regression_gamma_varying_shape";
+		}
+
+		/*!
+		* \brief Offset into 'location_par' of the last location parameter block, i.e. of the block that carries log(shape)
+		*		for the varying-shape gamma likelihoods (num_data_ for 2-block variants, 2 * num_data_ for a hurdle regression)
+		*/
+		data_size_t ShapeBlockOffset() const {
+			return (data_size_t)(num_sets_fixed_effects_ - 1) * num_data_;
 		}
 
 		/*! \brief Recover the underlying constant-zero base likelihood name from a regression zero-model name by removing the
@@ -1026,7 +1080,8 @@ namespace GPBoost {
 
 		/*! \brief True for hurdle likelihoods with a positive continuous base (point mass at zero + positive density; the zero part fully decouples from the response predictor eta). Includes both the constant-zero and the regression (fixed-effects) zero models. */
 		bool IsHurdlePositive() const {
-			return likelihood_type_ == "hurdle_gamma" || likelihood_type_ == "hurdle_lognormal" || IsHurdleEGPD() || IsHurdleRegression();
+			return likelihood_type_ == "hurdle_gamma" || likelihood_type_ == "hurdle_lognormal" || IsHurdleEGPD() || IsHurdleRegression() ||
+				IsHurdleGammaVaryingShape();
 		}
 
 		/*! \brief The underlying EGPD base type of a (possibly hurdle / hurdle-regression) EGPD likelihood, i.e. with any "hurdle_" prefix and "regression_" token stripped. */
@@ -1153,62 +1208,78 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief True for likelihoods whose second, fixed-effects-only location parameter block needs the diagonal of
-		*		(Sigma^-1 + W)^-1 for its gradient ('gaussian_heteroscedastic' and
+		* \brief True for likelihoods whose extra, fixed-effects-only location parameter blocks need a SEPARATELY calculated
+		*		diagonal of (Sigma^-1 + W)^-1 for their gradient ('gaussian_heteroscedastic' and
 		*		'zero_censored_power_transformed_normal_heteroscedastic'). Used to force the calculation of that diagonal
 		*		in the gradient functions also when it is not needed for the mean / eta block
 		*/
-		bool SecondFEBlockNeedsSigmaIPlusWInvDiag() const {
+		bool ExtraFEBlocksNeedSigmaIPlusWInvDiag() const {
 			return(likelihood_type_ == "gaussian_heteroscedastic" || IsZeroCensPowNormHetero());
 		}
 
 		/*!
-		* \brief True for likelihoods with a second, fixed-effects-only block of the location parameter (the "zeta" block,
-		*		location_par[i + num_data_]): the log-error variance of 'gaussian_heteroscedastic', the log(sigma) of
-		*		'zero_censored_power_transformed_normal_heteroscedastic', and the structural-zero predictor of a hurdle /
-		*		zero-inflated count regression. The gradient of all of these is calculated by 'CalcSecondFEBlockFixedEffectGrad'.
+		* \brief True for likelihoods with one or more extra, fixed-effects-only blocks of the location parameter (the blocks
+		*		at location_par[i + igp * num_data_] for igp >= num_sets_re_): the log-error variance of 'gaussian_heteroscedastic',
+		*		the log(sigma) of 'zero_censored_power_transformed_normal_heteroscedastic', the structural-zero predictor of a
+		*		hurdle / zero-inflated count regression, and the log(shape) of the varying-shape gamma likelihoods (which is a
+		*		THIRD block for 'hurdle_regression_gamma_varying_shape'). The gradient of all of these is calculated by
+		*		'CalcExtraFEBlocksFixedEffectGrad'.
 		*		NOTE: this excludes 'gaussian_heteroscedastic_fixed_and_random', whose second block is a genuine second set of
 		*		random effects (num_sets_re_ == 2) and is handled by the loops over 'num_sets_re_'
 		*/
-		bool HasSecondFEBlock() const {
-			return(likelihood_type_ == "gaussian_heteroscedastic" || IsZeroCensPowNormHetero() || IsRegressionZeroModel());
+		bool HasExtraFEBlocks() const {
+			return(likelihood_type_ == "gaussian_heteroscedastic" || IsZeroCensPowNormHetero() || IsRegressionZeroModel() ||
+				IsGammaVaryingShape());
 		}
 
 		/*!
-		* \brief True if 'CalcSecondFEBlockFixedEffectGrad' reads its 'diag' argument, i.e. if the zeta block has a
+		* \brief True if 'CalcExtraFEBlocksFixedEffectGrad' reads its 'diag' argument, i.e. if at least one extra block has a
 		*		log-determinant term. False only for a zero model that contributes nothing but the direct score (a hurdle
 		*		regression, which decouples exactly, or a zero-inflated count regression whose coupled terms are dropped).
 		*		Lets a caller skip an expensive calculation of that diagonal
-		* \param include_coupled_zi_terms As in 'CalcSecondFEBlockFixedEffectGrad'
+		* \param include_coupled_zi_terms As in 'CalcExtraFEBlocksFixedEffectGrad'
 		*/
-		bool SecondFEBlockGradNeedsDiag(bool include_coupled_zi_terms) const {
+		bool ExtraFEBlocksGradNeedDiag(bool include_coupled_zi_terms) const {
 			if (iid_model_) {
 				return false;// no random effect / mode at all, so both correction terms vanish
+			}
+			if (IsGammaVaryingShape()) {
+				return true;// the log(shape) block couples with eta (dJ_eta/dzeta != 0), also for a hurdle regression
 			}
 			return(!IsRegressionZeroModel() || (!IsHurdleRegression() && include_coupled_zi_terms));
 		}
 
 		/*!
-		* \brief True if 'CalcSecondFEBlockFixedEffectGrad' reads its 'impl' argument, i.e. if the zeta block has an
-		*		implicit-through-the-mode term. Additionally false for 'gaussian_heteroscedastic', whose zeta block has no
+		* \brief True if 'CalcExtraFEBlocksFixedEffectGrad' reads its 'impl' argument, i.e. if at least one extra block has an
+		*		implicit-through-the-mode term. Additionally false for 'gaussian_heteroscedastic', whose extra block has no
 		*		mode at all (l_eta_zeta = 0)
-		* \param include_coupled_zi_terms As in 'CalcSecondFEBlockFixedEffectGrad'
+		* \param include_coupled_zi_terms As in 'CalcExtraFEBlocksFixedEffectGrad'
 		*/
-		bool SecondFEBlockGradNeedsImpl(bool include_coupled_zi_terms) const {
-			return(SecondFEBlockGradNeedsDiag(include_coupled_zi_terms) && likelihood_type_ != "gaussian_heteroscedastic");
+		bool ExtraFEBlocksGradNeedImpl(bool include_coupled_zi_terms) const {
+			return(ExtraFEBlocksGradNeedDiag(include_coupled_zi_terms) && likelihood_type_ != "gaussian_heteroscedastic");
 		}
 
 		/*!
-		* \brief Pick the diagonal of (Sigma^-1+W)^-1 that the zeta block's log-determinant term has to use, for the
-		*		approximations that calculate a separate estimate of it for that block. The heteroscedastic likelihoods use
+		* \brief Pick the diagonal of (Sigma^-1+W)^-1 that the extra blocks' log-determinant term has to use, for the
+		*		approximations that calculate a separate estimate of it for those blocks. The heteroscedastic likelihoods use
 		*		the separate estimate, since for them the eta block's version is not usable (dJ_eta/deta vanishes where it
-		*		matters, see 'SecondFEBlockNeedsSigmaIPlusWInvDiag'), whereas a zero-model regression uses the eta block's
-		*		version (for which no separate estimate is calculated in the first place)
+		*		matters, see 'ExtraFEBlocksNeedSigmaIPlusWInvDiag'), whereas a zero-model regression and the varying-shape
+		*		gamma likelihoods use the eta block's version (for which no separate estimate is calculated in the first place)
 		* \param eta_block_diag The diagonal calculated for the eta block
-		* \param second_block_diag The diagonal calculated separately for the zeta block
+		* \param extra_block_diag The diagonal calculated separately for the extra blocks
 		*/
-		const vec_t& SecondFEBlockZetaDiag(const vec_t& eta_block_diag, const vec_t& second_block_diag) const {
-			return SecondFEBlockNeedsSigmaIPlusWInvDiag() ? second_block_diag : eta_block_diag;
+		const vec_t& ExtraFEBlocksDiag(const vec_t& eta_block_diag, const vec_t& extra_block_diag) const {
+			return ExtraFEBlocksNeedSigmaIPlusWInvDiag() ? extra_block_diag : eta_block_diag;
+		}
+
+		/*!
+		* \brief True if the extra blocks' log-determinant term reads the ETA block's diagonal of (Sigma^-1+W)^-1 (see
+		*		'ExtraFEBlocksDiag'). The approximations that calculate that diagonal only when the eta block itself needs it
+		*		must additionally calculate it when this is true and the gradient wrt the fixed effects is requested
+		* \param include_coupled_zi_terms As in 'CalcExtraFEBlocksFixedEffectGrad'
+		*/
+		bool ExtraFEBlocksNeedEtaBlockDiag(bool include_coupled_zi_terms) const {
+			return(HasExtraFEBlocks() && ExtraFEBlocksGradNeedDiag(include_coupled_zi_terms) && !ExtraFEBlocksNeedSigmaIPlusWInvDiag());
 		}
 
 		/*!
@@ -1373,7 +1444,7 @@ namespace GPBoost {
 					}
 				}
 			}
-			else if (likelihood_type_ == "gamma" || likelihood_type_ == "lognormal" || IsEGPDLikelihood()) {
+			else if (likelihood_type_ == "gamma" || likelihood_type_ == "gamma_varying_shape" || likelihood_type_ == "lognormal" || IsEGPDLikelihood()) {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (!std::isfinite(y_data[i]) || y_data[i] <= 0.) {
 						Log::REFatal(" Must have y > 0 for the response variable ('y') for likelihood = '%s', found %g ", likelihood_type_.c_str(), y_data[i]);
@@ -1815,7 +1886,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculate the gradient of the negative Laplace-approximated marginal log-likelihood wrt the fixed effects of
-		*       the second, fixed-effects-only block of the location parameter (the "zeta" block, see 'HasSecondFEBlock').
+		*       the second, fixed-effects-only block of the location parameter (the "zeta" block, see 'HasExtraFEBlocks').
 		*       All likelihoods with such a block share the same three-term structure
 		*           d(-mll)/dzeta_i = -w_i * (dl/dzeta)_i  +  0.5 * w_i * (dJ_eta/dzeta)_i * diag_i  +  w_i * (l_eta_zeta)_i * impl_i,
 		*       i.e., direct score + log-determinant term + implicit-through-the-mode term, and they differ only in the three
@@ -1828,9 +1899,9 @@ namespace GPBoost {
 		* \param information_data_scale Diagonal of W on the DATA scale. Only read for 'gaussian_heteroscedastic', for which
 		*       w * dJ_eta/dzeta = -W and l_eta_zeta = 0
 		* \param diag Diagonal of (Sigma^-1+W)^-1 (or its Z-projected / stochastic analogue) used by the log-determinant term.
-		*       May be left empty if 'SecondFEBlockGradNeedsDiag' is false, in which case it is not read
+		*       May be left empty if 'ExtraFEBlocksGradNeedDiag' is false, in which case it is not read
 		* \param impl (Sigma^-1+W)^-1 * dmll/dmode (or its Z-projected analogue) used by the implicit-derivative term.
-		*       May be left empty if 'SecondFEBlockGradNeedsImpl' is false, in which case it is not read
+		*       May be left empty if 'ExtraFEBlocksGradNeedImpl' is false, in which case it is not read
 		* \param index_map Maps a data index into 'diag' and 'impl'. Pass nullptr if those two are already on the data scale
 		* \param include_coupled_zi_terms If false, only the direct score is used for a zero-inflated count regression. This is
 		*       needed for the approximations on which the coupled terms would require a data-scale diagonal of (Sigma^-1+W)^-1
@@ -1839,7 +1910,7 @@ namespace GPBoost {
 		* \param[out] fixed_effect_grad Gradient wrt fixed effects. Grown to 'dim_location_par_' if needed (the eta block, which
 		*       the caller has already written, is preserved)
 		*/
-		void CalcSecondFEBlockFixedEffectGrad(const double* y_data,
+		void CalcExtraFEBlocksFixedEffectGrad(const double* y_data,
 			const int* y_data_int,
 			const double* location_par,
 			const vec_t& information_data_scale,
@@ -2503,15 +2574,19 @@ namespace GPBoost {
 		* \brief Make predictions for the response variable (label) based on predictions for the mean and variance of the latent random effects (the latent predictive distribution is marginalized out)
 		* \param pred_mean[in & out] Predictive mean of latent random effects for mean. The Predictive mean for the response variables is written on this
 		* \param pred_var[in & out] Predictive variances of latent random effects for mean. The predicted variance for the response variables is written on this
-		* \param pred_var_mean Predictive mean of latent random effects for variance parameter in heteroscedastic models
+		* \param pred_var_mean Predictive mean of the SECOND location parameter block (the variance parameter in heteroscedastic models,
+		*		the structural-zero predictor of a regression zero model, or log(shape) of a 2-block varying-shape gamma)
 		* \param pred_var_var Predictive variances of latent random effects for variance parameter in heteroscedastic models
 		* \param predict_var If true, predictive response variances are also calculated
+		* \param pred_third_block_mean Predictive mean of the THIRD location parameter block. Only read for the likelihoods with
+		*		three blocks ('hurdle_regression_gamma_varying_shape', where it is log(shape))
 		*/
 		void PredictResponse(vec_t& pred_mean,
 			vec_t& pred_var,
 			const vec_t& pred_var_mean,
 			const vec_t& pred_var_var,
-			bool predict_var);
+			bool predict_var,
+			const vec_t& pred_third_block_mean = vec_t());
 
 		/*!
 		* \brief Adaptive GH quadrature to calculate predictive mean of response variable
@@ -2872,7 +2947,8 @@ namespace GPBoost {
 		/*! \brief True for the likelihoods for which the single-sample functions (used only by 'TestNegLogLikelihoodAdaptiveGHQuadrature()') are not implemented */
 		bool NotImplementedForOneSample() const {
 			return likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
-				likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit";
+				likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit" ||
+				IsGammaVaryingShape();// the density depends on a second location parameter block, which the single-sample interface does not provide
 		}
 
 		/*! \brief Report that the calling single-sample function is not implemented for the current likelihood */
@@ -3004,6 +3080,9 @@ namespace GPBoost {
 					}
 					aux_log_normalizing_constant_ = c;// 0 for EGPD bases (EvaluateEGPD returns the complete density)
 				}
+				else if (IsGammaVaryingShape()) {
+					aux_log_normalizing_constant_ = 0.;// every term of the density depends on the location parameters (through the shape)
+				}
 				else if (!IsGaussianLikelihood() && !IsGaussianHeteroscedastic() && !IsEGPDLikelihood() && !IsHurdleEGPD() &&
 					likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 					likelihood_type_ != "poisson" && likelihood_type_ != "tweedie" && likelihood_type_ != "tweedie_fixed_p" && likelihood_type_ != "t" && likelihood_type_ != "beta" &&
@@ -3051,6 +3130,23 @@ namespace GPBoost {
 						else log_normalizing_constant_ = w_pos * (-M_LOGSQRT2PI - 0.5 * std::log(aux_pars_[0])) + aux_log_normalizing_constant_;
 					}
 					else log_normalizing_constant_ = 0.;// EGPD bases
+				}
+				else if (IsGammaVaryingShape()) {
+					// The gamma density is fully evaluated per-sample (it depends on the location parameters through the shape).
+					// Only the constant structural-zero mixture terms of 'hurdle_gamma_varying_shape' remain; for
+					// 'hurdle_regression_gamma_varying_shape' they depend on zeta and are handled per-sample as well.
+					if (likelihood_type_ == "hurdle_gamma_varying_shape") {
+						const double p0 = aux_pars_original_[0];
+						const double log_q = std::log1p(-p0), log_p0 = std::log(p0);
+						double w_pos = 0., w_zero = 0.;
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:w_pos, w_zero)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double w = has_weights_ ? weights_[i] : 1.0;
+							if (y_data[i] > 0.) w_pos += w; else w_zero += w;
+						}
+						log_normalizing_constant_ = w_zero * log_p0 + w_pos * log_q;
+					}
+					else log_normalizing_constant_ = 0.;
 				}
 				else if (IsHurdleEGPD()) {
 					// The positive EGPD density is fully evaluated per-sample; only the mixture constants remain: w_zero*log(p0) + w_pos*log(q).
@@ -3484,6 +3580,18 @@ namespace GPBoost {
 			}
 			else if (IsZeroCensPowNormHetero()) {
 				ll += SumOverSamplesWeighted([&](data_size_t i) { return LogLikZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_], false); });
+			}
+			else if (IsGammaVaryingShape()) {
+				const data_size_t off_s = ShapeBlockOffset();
+				if (likelihood_type_ == "hurdle_regression_gamma_varying_shape") {
+					// The structural-zero mixture terms log(pi_i) / log(q_i) depend on the zero-model block (block 1)
+					ll += SumOverSamplesWeighted([&](data_size_t i) {
+						return y_data[i] > 0. ? LogLikGammaVarShape(y_data[i], location_par[i], location_par[i + off_s]) - SoftplusStable(location_par[i + num_data_]) :
+							-SoftplusStable(-location_par[i + num_data_]); });
+				}
+				else {
+					ll += SumOverSamplesWeighted([&](data_size_t i) { return LogLikGammaVarShape(y_data[i], location_par[i], location_par[i + off_s]); });
+				}
 			}
 			else if (!VisitLogLikKernel(y_data, y_data_int, location_par, false,
 				[&](auto kernel) { ll += SumOverSamplesWeighted(kernel); })) {
@@ -4002,7 +4110,7 @@ namespace GPBoost {
 			return o.dZeta;
 		}
 		// NOTE: the former 'RegressionZeroModel_dZetaDense' was removed here: all of its callers now go through
-		// 'CalcSecondFEBlockFixedEffectGrad', which dispatches on the likelihood once instead of calling
+		// 'CalcExtraFEBlocksFixedEffectGrad', which dispatches on the likelihood once instead of calling
 		// 'IsHurdleRegression()' (a chain of string comparisons) once per observation
 
 		inline double LogLikGamma(double y, double location_par, bool incl_norm_const) const {
@@ -4126,6 +4234,76 @@ namespace GPBoost {
 				}
 			}
 			return ll;
+		}
+
+		// ---------------------------------------------------------------------------------------------------------
+		// Varying-shape gamma: mu_i = exp(eta_i) (block 0, fixed + random effects) and k_i = exp(zeta_i) (last block,
+		//   fixed effects only), i.e. zeta = log(shape). For y > 0 the log-density is
+		//     l = k*zeta - k*eta - lgamma(k) + (k - 1) * log(y) - k * y * exp(-eta),
+		//   and for y = 0 (hurdle variants) it is 0 here, the point mass being handled by the caller. Derivatives:
+		//     l_eta = k * (y * exp(-eta) - 1),                J_eta = -l_etaeta = k * y * exp(-eta),
+		//     dJ_eta/deta = -k * y * exp(-eta),               l_zeta = k * (zeta + 1 - eta - digamma(k) + log(y) - y * exp(-eta)),
+		//     l_eta_zeta = k * (y * exp(-eta) - 1) = l_eta,   dJ_eta/dzeta = k * y * exp(-eta) = J_eta
+		//   (all zeta derivatives are the log-scale "shape" auxiliary parameter derivatives of the constant-shape variant)
+		// ---------------------------------------------------------------------------------------------------------
+		/*! \brief Log-likelihood of one POSITIVE observation of a varying-shape gamma likelihood (the complete log-density;
+		*		there is no location-independent part, so nothing of it goes into 'log_normalizing_constant_') */
+		inline double LogLikGammaVarShape(double y, double loc_eta, double loc_zeta) const {
+			if (y <= 0.) return 0.;// point mass at zero, handled by the caller
+			const double k = std::exp(loc_zeta);
+			return k * (loc_zeta - loc_eta - y * std::exp(-loc_eta)) - std::lgamma(k) + (k - 1.) * std::log(y);
+		}
+
+		/*! \brief First derivative wrt eta of the varying-shape gamma log-likelihood */
+		inline double FirstDerivLogLikGammaVarShape(double y, double loc_eta, double loc_zeta) const {
+			if (y <= 0.) return 0.;
+			return std::exp(loc_zeta) * (y * std::exp(-loc_eta) - 1.);
+		}
+
+		/*! \brief Observed information (= negative second derivative) wrt eta of the varying-shape gamma log-likelihood */
+		inline double SecondDerivNegLogLikGammaVarShape(double y, double loc_eta, double loc_zeta) const {
+			if (y <= 0.) return 0.;
+			return std::exp(loc_zeta) * y * std::exp(-loc_eta);
+		}
+
+		/*! \brief Derivative wrt eta of the eta-block information of the varying-shape gamma log-likelihood */
+		inline double DerivInformationGammaVarShape(double y, double loc_eta, double loc_zeta) const {
+			if (y <= 0.) return 0.;
+			return -std::exp(loc_zeta) * y * std::exp(-loc_eta);
+		}
+
+		/*!
+		* \brief Quantities of the log(shape) location parameter block (zeta) of a varying-shape gamma likelihood at one observation
+		* \param[out] dZeta Score l_zeta = d log f / d zeta
+		* \param[out] lEtaZeta Cross derivative d^2 log f / (d eta d zeta)
+		* \param[out] dJetadZeta Derivative of the eta-block information wrt zeta
+		*/
+		inline void GammaVarShapeZetaQuantities(double y, double loc_eta, double loc_zeta,
+			double& dZeta, double& lEtaZeta, double& dJetadZeta) const {
+			if (y <= 0.) {
+				dZeta = 0.; lEtaZeta = 0.; dJetadZeta = 0.;
+				return;
+			}
+			const double k = std::exp(loc_zeta);
+			const double y_exp_neg_eta = y * std::exp(-loc_eta);
+			dZeta = k * (loc_zeta + 1. - loc_eta - GPBoost::digamma(k) + std::log(y) - y_exp_neg_eta);
+			lEtaZeta = k * (y_exp_neg_eta - 1.);
+			dJetadZeta = k * y_exp_neg_eta;
+		}
+
+		/*!
+		* \brief zeta-block (= log(shape)) gradient of the negative approximate marginal log-likelihood at one observation of a
+		*		varying-shape gamma likelihood: the direct score, the log-determinant term (through dJ_eta/dzeta) and the
+		*		implicit term through the mode (through l_{eta,zeta})
+		* \param w Sample weight
+		* \param diag Data-scale diagonal entry of (Sigma^-1 + W)^-1 at this observation
+		* \param inv_d_mll_d_mode Data-scale entry of (Sigma^-1 + W)^-1 * d_mll_d_mode at this observation
+		*/
+		inline double GammaVarShapeZetaGrad(double y, double loc_eta, double loc_zeta, double w,
+			double diag, double inv_d_mll_d_mode) const {
+			double dZeta, lEtaZeta, dJetadZeta;
+			GammaVarShapeZetaQuantities(y, loc_eta, loc_zeta, dZeta, lEtaZeta, dJetadZeta);
+			return -w * dZeta + 0.5 * (w * dJetadZeta) * diag + (w * lEtaZeta) * inv_d_mll_d_mode;
 		}
 
 		inline double LogLikZeroCensPowNorm(double y, double location_par, bool incl_norm_const) const {
@@ -4471,6 +4649,11 @@ namespace GPBoost {
 			else if (IsZeroCensPowNormHetero()) {
 				// Only the mean / eta is a mode / random effect here; log(sigma) (location_par[i + num_data_]) is a fixed effect
 				ForEachSampleWeighted(first_deriv_ll, [&](data_size_t i) { return FirstDerivLogLikZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_]); });
+			}
+			else if (IsGammaVaryingShape()) {
+				// Only eta is a mode / random effect here; log(shape) (and the structural-zero logit) are fixed effects
+				const data_size_t off_s = ShapeBlockOffset();
+				ForEachSampleWeighted(first_deriv_ll, [&](data_size_t i) { return FirstDerivLogLikGammaVarShape(y_data[i], location_par[i], location_par[i + off_s]); });
 			}
 			else if (IsHurdleRegression()) {
 				// Random effects live on the response predictor eta (block 0); this is the block-0 score used for mode finding.
@@ -5041,6 +5224,10 @@ namespace GPBoost {
 				}
 				else if (IsZeroCensPowNormHetero()) {
 					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return SecondDerivNegLogLikZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_]); });
+				}
+				else if (IsGammaVaryingShape()) {
+					const data_size_t off_s = ShapeBlockOffset();
+					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return SecondDerivNegLogLikGammaVarShape(y_data[i], location_par[i], location_par[i + off_s]); });
 				}
 				else if (!VisitObservedInformationKernel(y_data, y_data_int, location_par,
 					[&](auto kernel) { ForEachSampleWeighted(information_ll, kernel); })) {
@@ -5848,6 +6035,10 @@ namespace GPBoost {
 				else if (IsZeroCensPowNormHetero()) {
 					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return DerivInformationZeroCensPowNormHetero(y_data[i], location_par[i], location_par[i + num_data_]); });
 				}//end "zero_censored_power_transformed_normal_heteroscedastic"
+				else if (IsGammaVaryingShape()) {
+					const data_size_t off_s = ShapeBlockOffset();
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return DerivInformationGammaVarShape(y_data[i], location_par[i], location_par[i + off_s]); });
+				}//end gamma varying shape variants
 				else if (likelihood_type_ == "zoctn") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -7407,7 +7598,8 @@ namespace GPBoost {
 			"hurdle_gpd", "hurdle_egpd_power", "hurdle_egpd_power_mixture", "hurdle_egpd_beta", "hurdle_egpd_power_beta",
 			"hurdle_regression_gamma", "hurdle_regression_lognormal", "hurdle_regression_gpd", "hurdle_regression_egpd_power",
 			"hurdle_regression_egpd_power_mixture", "hurdle_regression_egpd_beta", "hurdle_regression_egpd_power_beta",
-			"zero_inflated_regression_poisson", "zero_inflated_regression_negative_binomial", "zero_inflated_regression_negative_binomial_1" };
+			"zero_inflated_regression_poisson", "zero_inflated_regression_negative_binomial", "zero_inflated_regression_negative_binomial_1",
+			"gamma_varying_shape", "hurdle_gamma_varying_shape", "hurdle_regression_gamma_varying_shape" };
 		/*! \brief List of likelihoods that work only for a standard Laplace approximation */
 		const std::set<string_t> LIKELIHOODS_ONLY_LAPLACE_{ "binomial_probit", "binomial_logit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit", "gamma", "negative_binomial",
 			"beta", "beta_binomial", "tweedie", "tweedie_fixed_p", "hurdle_gamma", "hurdle_lognormal", "zero_censored_power_transformed_normal",
@@ -7415,7 +7607,8 @@ namespace GPBoost {
 			"gpd", "egpd_power", "egpd_power_mixture", "egpd_beta", "egpd_power_beta",
 			"hurdle_gpd", "hurdle_egpd_power", "hurdle_egpd_power_mixture", "hurdle_egpd_beta", "hurdle_egpd_power_beta",
 			"hurdle_regression_gamma", "hurdle_regression_lognormal", "hurdle_regression_gpd", "hurdle_regression_egpd_power",
-			"hurdle_regression_egpd_power_mixture", "hurdle_regression_egpd_beta", "hurdle_regression_egpd_power_beta" };
+			"hurdle_regression_egpd_power_mixture", "hurdle_regression_egpd_beta", "hurdle_regression_egpd_power_beta",
+			"gamma_varying_shape", "hurdle_gamma_varying_shape", "hurdle_regression_gamma_varying_shape" };
 		/*! \brief Likelihoods for which the (quasi-)Fisher information may be used for mode finding (use_fisher_for_mode_finding_ = true) */
 		const std::set<string_t> LIKELIHOODS_SUPPORTS_FISHER_MODE_FINDING_{ "t", "asymmetric_laplace", "negative_binomial_1",
 			"zero_inflated_poisson", "zero_inflated_negative_binomial", "zero_inflated_negative_binomial_1",

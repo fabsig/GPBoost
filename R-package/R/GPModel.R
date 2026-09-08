@@ -78,6 +78,14 @@
 #' returned by get_coef() alongside the response-model coefficients, with the suffix "_zero". }
 #' }
 #' }
+#' \item{ "gamma_varying_shape", "hurdle_gamma_varying_shape", "hurdle_regression_gamma_varying_shape": Similar as
+#' "gamma", "hurdle_gamma", and "hurdle_regression_gamma", but the gamma shape varies across observations and is modeled
+#' by an additional fixed-effects-only predictor: log(shape) = F_s(X) (F_s(X) = linear predictor or the GPBoost
+#' algorithm), while the log mean log(mu) = F(X) + Zb is related to both fixed and random effects. Note that the shape
+#' also governs the dispersion, var(y) = mu^2 / shape. The estimated coefficients of the log-shape model are returned
+#' alongside the mean-model coefficients (with the suffix "_shape"). For "hurdle_regression_gamma_varying_shape" there
+#' are three predictors: the response mean, the structural-zero logit (coefficients with the suffix "_zero"), and
+#' log(shape) }
 #' \item{ "zero_censored_power_transformed_normal": Likelihood of a censored and power-transformed normal variable 
 #' for modeling data with a point mass at 0 and a continuous distribution for y > 0. 
 #' The model used is Y = max(0,X)^lambda, X ~ N(mu, sigma^2), where mu = F(X) + Zb, 
@@ -716,9 +724,7 @@ gpb.GPModel <- R6::R6Class(
           } else {
             private$coef_names <- colnames(private$X_loaded_from_file)
           }
-          if (private$num_sets_fe == 2) {
-            private$coef_names <- c(private$coef_names, paste0(private$coef_names,"_scale"))
-          }
+          # The suffixes of the additional predictors are appended below, once the likelihood is known
         }
         private$model_fitted = model_list[["model_fitted"]]
         if (private$model_fitted) {
@@ -740,16 +746,31 @@ gpb.GPModel <- R6::R6Class(
       if (likelihood == "gaussian_heteroscedastic_fixed_and_random") {
         private$num_sets_re = 2
         private$num_sets_fe = 2
+        private$extra_fe_block_suffixes = "_scale"
       } else if (likelihood == "gaussian_heteroscedastic" ||
                  likelihood == "zero_censored_power_transformed_normal_heteroscedastic") {
         # A second fixed-effects-only predictor: the log-error variance for "gaussian_heteroscedastic" and
         # the log standard deviation of the latent normal variable for the zero-censored power-transformed normal
         private$num_sets_fe = 2
+        private$extra_fe_block_suffixes = "_scale"
+      } else if (likelihood == "hurdle_regression_gamma_varying_shape") {
+        # Three predictors: the response mean (with random effects), the structural-zero logit, and log(shape)
+        private$num_sets_fe = 3
+        private$extra_fe_block_suffixes = c("_zero", "_shape")
       } else if (grepl("^(hurdle|zero_inflated)_regression_", likelihood)) {
         # Hurdle / zero-inflated regression zero model (e.g. "hurdle_regression_gamma", "zero_inflated_regression_poisson"):
         # a second fixed-effects-only predictor (zeta = X * alpha) for the structural-zero logit
         private$num_sets_fe = 2
-        private$second_fe_block_is_zero_model = TRUE
+        private$extra_fe_block_suffixes = "_zero"
+      } else if (likelihood == "gamma_varying_shape" || likelihood == "hurdle_gamma_varying_shape") {
+        # A second fixed-effects-only predictor for log(shape)
+        private$num_sets_fe = 2
+        private$extra_fe_block_suffixes = "_shape"
+      }
+      if (private$model_has_been_loaded_from_saved_file && private$has_covariates &&
+          length(private$extra_fe_block_suffixes) > 0) {
+        # The coefficient names of a loaded model were set to the base names above, before the likelihood was known
+        private$coef_names <- private$append_extra_fe_block_suffixes(private$coef_names)
       }
       private$cov_par_names <- c()
       private$is_ar1_multifidelity <- startsWith(as.character(cov_function), "ar1_mf_")
@@ -1240,10 +1261,7 @@ gpb.GPModel <- R6::R6Class(
         } else {
           private$coef_names <- colnames(X)
         }
-        if (private$num_sets_fe == 2) {
-          second_block_suffix <- if (isTRUE(private$second_fe_block_is_zero_model)) "_zero" else "_scale"
-          private$coef_names <- c(private$coef_names, paste0(private$coef_names, second_block_suffix))
-        }
+        private$coef_names <- private$append_extra_fe_block_suffixes(private$coef_names)
         X <- as.vector(matrix(X))#matrix() is needed in order that all values are contiguous in memory (when colnames is not NULL)
       } else {
         private$has_covariates <- FALSE
@@ -2811,9 +2829,19 @@ gpb.GPModel <- R6::R6Class(
     ),
     num_sets_re = 1,
     num_sets_fe = 1,
-    second_fe_block_is_zero_model = FALSE,
+    # Suffixes of the coefficient names of the additional fixed-effects-only predictors (blocks 2, 3, ...),
+    # in the order of the location parameter blocks. Length = num_sets_fe - 1
+    extra_fe_block_suffixes = character(0),
     iid_model = FALSE,
-    
+
+    # Append the coefficient names of the additional fixed-effects-only predictors to the base names
+    append_extra_fe_block_suffixes = function(base_names) {
+      for (block_suffix in private$extra_fe_block_suffixes) {
+        base_names <- c(base_names, paste0(base_names[1:private$num_covariates], block_suffix))
+      }
+      return(base_names)
+    },
+
     # Finalize will free up the handles
     finalize = function() {
       .Call(

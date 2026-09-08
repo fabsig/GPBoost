@@ -496,7 +496,16 @@ file(GLOB SUITESPARSE_SOURCES
     external_libs/SuiteSparse/CHOLMOD/Cholesky/cholmod_*.c
     external_libs/SuiteSparse/CHOLMOD/Supernodal/cholmod_*.c
 )
-if(MSVC)
+if(MSVC AND CMAKE_GENERATOR MATCHES "Visual Studio")
+    # The Visual Studio generator hoists the /W4 above into the TARGET-WIDE MSBuild 'WarningLevel'
+    # property, which MSBuild applies to the C sources here as well. Appending /w for them would then
+    # leave two warning level flags on the command line, which cl reports once per file as
+    # "command line warning D9025: overriding '/W4' with '/w'". Setting the per-source MSBuild property
+    # instead REPLACES the target-wide level for these files, so only one such flag is ever passed.
+    set_source_files_properties(${SUITESPARSE_SOURCES} PROPERTIES VS_SETTINGS "WarningLevel=TurnOffAllWarnings")
+elseif(MSVC)
+    # Other MSVC generators put CMAKE_C_FLAGS on the command line verbatim, and those carry no warning
+    # level flag (policy CMP0092 is NEW here, so CMake does not add its default /W3), hence no override
     set_source_files_properties(${SUITESPARSE_SOURCES} PROPERTIES COMPILE_OPTIONS "/w")
 else()
     set_source_files_properties(${SUITESPARSE_SOURCES} PROPERTIES COMPILE_OPTIONS "-w")
