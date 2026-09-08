@@ -4358,9 +4358,12 @@ class GPModel(object):
                           quasi-Newton mode finding can therefore stall at a point that is not the exact posterior mode. Appending "_ssn_alm", for example
                           "quantile_regression_ssn_alm", enables an exact check of the (non-smooth) optimality conditions after the mode finding and, if the
                           check fails, a refinement of the mode with a semismooth Newton method applied to the subproblems of an augmented Lagrangian method.
-                          This makes the approximate marginal likelihood a well-defined function of the parameters, which usually lets the outer optimizer
-                          converge in fewer iterations and to a better optimum, at the price of additional linear solves during mode finding.
-                          "_ssn_alm_always" skips the optimality check and always runs the refinement.
+                          This makes the approximate marginal likelihood a well-defined function of the parameters, i.e., independent of the path taken by
+                          the optimizer and of the number of threads, at the price of additional linear solves during mode finding. This matters for standard
+                          errors and for likelihood-based model comparison, but it does not necessarily improve predictive accuracy; increasing
+                          'max_num_restarts_lbfgs' can be a cheaper way of avoiding poor optima. Appending "_admm_ssn_alm" instead warm starts the refinement
+                          with an ADMM phase, which typically halves its cost when 'matrix_inversion_method = "cholesky"' and is not recommended for
+                          iterative methods.
                     
                     - "hurdle_<base>" and "zero_inflated_<base>":
 
