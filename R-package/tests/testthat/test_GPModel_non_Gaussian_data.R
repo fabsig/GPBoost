@@ -4657,6 +4657,104 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(gp_model_fitc_vs$get_current_neg_log_likelihood() - 191.59666396), TOLERANCE_MEDIUM)
   })
 
+  test_that("prediction for new clusters for likelihoods with several location parameter blocks ", {
+
+    # For a cluster without any observed data, the predictive distribution of the latent random effects / GPs
+    # is the prior. The expected values below are thus obtained analytically from the prior and the offsets
+    n_nc <- 40
+    cluster_ids_nc <- rep(c(1, 2), each = n_nc / 2)
+    group_nc <- rep(1:8, each = 5)
+    y_nc <- qgamma(sim_rand_unif(n = n_nc, init_c = 0.213), shape = 2, rate = 2)
+    group_pred_nc <- c(1, 6, 20)
+    cluster_ids_pred_nc <- c(1, 2, 3)# cluster 3 has not been observed
+    var_nc <- 0.5# marginal variance of the grouped random effect
+    eta_nc <- c(0.3, -0.2, 0.7)# offset for the first location parameter block (the mean)
+    zeta_nc <- c(0.4, 0.1, -0.3)# offset for the second block
+
+    ###################
+    ## Two fixed effects blocks and one set of random effects ('gamma_varying_shape': the log-shape is a second,
+    ## fixed-effects-only location parameter block)
+    ###################
+    gp_model_nc <- GPModel(group_data = group_nc, cluster_ids = cluster_ids_nc, likelihood = "gamma_varying_shape")
+    pred_nc <- predict(gp_model_nc, y = y_nc, cov_pars = var_nc, offset = rep(0, 2 * n_nc),
+                       group_data_pred = group_pred_nc, cluster_ids_pred = cluster_ids_pred_nc,
+                       offset_pred = c(eta_nc, zeta_nc), predict_var = TRUE, predict_response = FALSE)
+    expect_lt(abs(pred_nc$mu[3] - eta_nc[3]), TOLERANCE_STRICT)
+    expect_lt(abs(pred_nc$var[3] - var_nc), TOLERANCE_STRICT)
+    # Predictions for the observed clusters must not be affected by the presence of a new cluster
+    pred_nc_obs <- predict(gp_model_nc, y = y_nc, cov_pars = var_nc, offset = rep(0, 2 * n_nc),
+                           group_data_pred = group_pred_nc[1:2], cluster_ids_pred = cluster_ids_pred_nc[1:2],
+                           offset_pred = c(eta_nc[1:2], zeta_nc[1:2]), predict_var = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred_nc$mu[1:2] - pred_nc_obs$mu)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_nc$var[1:2] - pred_nc_obs$var)), TOLERANCE_STRICT)
+    # Response prediction: E(Y) = exp(m + v / 2) and Var(Y) = exp(-zeta) * exp(2m + 2v) + exp(2m + v) * (exp(v) - 1)
+    pred_nc_resp <- predict(gp_model_nc, y = y_nc, cov_pars = var_nc, offset = rep(0, 2 * n_nc),
+                            group_data_pred = group_pred_nc, cluster_ids_pred = cluster_ids_pred_nc,
+                            offset_pred = c(eta_nc, zeta_nc), predict_var = TRUE, predict_response = TRUE)
+    m_nc <- eta_nc[3]
+    expect_lt(abs(pred_nc_resp$mu[3] - exp(m_nc + var_nc / 2)), TOLERANCE_STRICT)
+    expect_lt(abs(pred_nc_resp$var[3] - (exp(-zeta_nc[3]) * exp(2 * m_nc + 2 * var_nc) +
+                                           exp(2 * m_nc + var_nc) * expm1(var_nc))), TOLERANCE_STRICT)
+    # Equivalence with the constant-shape "gamma" likelihood: with a constant log-shape offset, the two models
+    # have the same response prediction for the new cluster ("gamma" has only one location parameter block)
+    shape_nc <- 1.7
+    gp_model_nc_const <- GPModel(group_data = group_nc, cluster_ids = cluster_ids_nc, likelihood = "gamma")
+    gp_model_nc_const$set_optim_params(params = list(init_aux_pars = shape_nc))
+    pred_const_nc <- predict(gp_model_nc_const, y = y_nc, cov_pars = var_nc, offset = rep(0, n_nc),
+                             group_data_pred = group_pred_nc, cluster_ids_pred = cluster_ids_pred_nc,
+                             offset_pred = eta_nc, predict_var = TRUE, predict_response = TRUE)
+    pred_vary_nc <- predict(gp_model_nc, y = y_nc, cov_pars = var_nc, offset = rep(0, 2 * n_nc),
+                            group_data_pred = group_pred_nc, cluster_ids_pred = cluster_ids_pred_nc,
+                            offset_pred = c(eta_nc, rep(log(shape_nc), 3)), predict_var = TRUE, predict_response = TRUE)
+    expect_lt(abs(pred_vary_nc$mu[3] - pred_const_nc$mu[3]), TOLERANCE_STRICT)
+    expect_lt(abs(pred_vary_nc$var[3] - pred_const_nc$var[3]), TOLERANCE_STRICT)
+
+    ###################
+    ## Three fixed effects blocks ('hurdle_regression_gamma_varying_shape': mean, structural-zero predictor, log-shape)
+    ###################
+    y_nc_hurdle <- y_nc
+    y_nc_hurdle[c(2, 7, 13, 24, 33)] <- 0
+    xi_nc <- c(-0.5, 0.2, 0.6)# offset for the third block (the log-shape)
+    gp_model_nc3 <- GPModel(group_data = group_nc, cluster_ids = cluster_ids_nc,
+                            likelihood = "hurdle_regression_gamma_varying_shape")
+    pred_nc3 <- predict(gp_model_nc3, y = y_nc_hurdle, cov_pars = var_nc, offset = rep(0, 3 * n_nc),
+                        group_data_pred = group_pred_nc, cluster_ids_pred = cluster_ids_pred_nc,
+                        offset_pred = c(eta_nc, zeta_nc, xi_nc), predict_var = TRUE, predict_response = FALSE)
+    expect_lt(abs(pred_nc3$mu[3] - eta_nc[3]), TOLERANCE_STRICT)
+    expect_lt(abs(pred_nc3$var[3] - var_nc), TOLERANCE_STRICT)
+    pred_nc3_resp <- predict(gp_model_nc3, y = y_nc_hurdle, cov_pars = var_nc, offset = rep(0, 3 * n_nc),
+                             group_data_pred = group_pred_nc, cluster_ids_pred = cluster_ids_pred_nc,
+                             offset_pred = c(eta_nc, zeta_nc, xi_nc), predict_var = TRUE, predict_response = TRUE)
+    q_nc <- 1 / (1 + exp(zeta_nc[3]))# probability of a non-zero response
+    expect_lt(abs(pred_nc3_resp$mu[3] - q_nc * exp(m_nc + var_nc / 2)), TOLERANCE_STRICT)
+    expect_lt(abs(pred_nc3_resp$var[3] - (q_nc * (exp(-xi_nc[3]) + 1 - q_nc) * exp(2 * m_nc + 2 * var_nc) +
+                                            q_nc^2 * exp(2 * m_nc + var_nc) * expm1(var_nc))), TOLERANCE_STRICT)
+
+    ###################
+    ## Two sets of random effects ('gaussian_heteroscedastic_fixed_and_random', which requires a Vecchia approximation).
+    ## Both the mean and the log-error variance have their own GP, and the prior of the second one must be used
+    ###################
+    y_nc_norm <- qnorm(sim_rand_unif(n = n_nc, init_c = 0.417))
+    coords_nc <- cbind(sim_rand_unif(n = n_nc, init_c = 0.51), sim_rand_unif(n = n_nc, init_c = 0.62))
+    coords_pred_nc <- cbind(c(0.1, 0.4, 0.7), c(0.2, 0.5, 0.8))
+    cov_pars_nc <- c(1.3, 0.2, 0.4, 0.3)# (marginal variance, range) for the mean and for the log-error variance
+    gp_model_nc_het <- GPModel(gp_coords = coords_nc, cov_function = "exponential", gp_approx = "vecchia",
+                               num_neighbors = 10, cluster_ids = cluster_ids_nc,
+                               likelihood = "gaussian_heteroscedastic_fixed_and_random")
+    pred_nc_het <- predict(gp_model_nc_het, y = y_nc_norm, cov_pars = cov_pars_nc, offset = rep(0, 2 * n_nc),
+                           gp_coords_pred = coords_pred_nc, cluster_ids_pred = cluster_ids_pred_nc,
+                           offset_pred = c(eta_nc, zeta_nc), predict_var = TRUE, predict_response = FALSE)
+    expect_lt(abs(pred_nc_het$mu[3] - eta_nc[3]), TOLERANCE_STRICT)
+    expect_lt(abs(pred_nc_het$var[3] - cov_pars_nc[1]), TOLERANCE_STRICT)
+    # Response variance = prior variance of the mean + E(error variance) = v1 + exp(zeta + v2 / 2).
+    # It thus depends on the prior of the second set of GPs, which is calculated with its own covariance parameters
+    pred_nc_het_resp <- predict(gp_model_nc_het, y = y_nc_norm, cov_pars = cov_pars_nc, offset = rep(0, 2 * n_nc),
+                                gp_coords_pred = coords_pred_nc, cluster_ids_pred = cluster_ids_pred_nc,
+                                offset_pred = c(eta_nc, zeta_nc), predict_var = TRUE, predict_response = TRUE)
+    expect_lt(abs(pred_nc_het_resp$mu[3] - eta_nc[3]), TOLERANCE_STRICT)
+    expect_lt(abs(pred_nc_het_resp$var[3] - (cov_pars_nc[1] + exp(zeta_nc[3] + cov_pars_nc[3] / 2))), TOLERANCE_STRICT)
+  })
+
   test_that("hurdle_gamma_varying_shape likelihood for linear models ", {
 
     n_vs <- 100
