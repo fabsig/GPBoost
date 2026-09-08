@@ -2438,12 +2438,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
     expect_lt(sum(abs(pred$mu - pred_clus_no_approx$mu)),TOLERANCE_STRICT_LOWER)
     expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_clus_no_approx$var))),TOLERANCE_STRICT_LOWER)
-    ## Prediction of new clusters crashes
-    # pred <- predict(gp_model, y=y, gp_coords_pred = coord_test_v1,
-    #                 X_pred = X_test_clus, cluster_ids_pred = cluster_ids_pred_new,
-    #                 predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
-    # expect_lt(sum(abs(pred$mu - pred_clus_no_approx_new$mu)),TOLERANCE_STRICT)
-    # expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_clus_no_approx_new$var))),TOLERANCE_STRICT)
+    # Prediction for a new cluster: there is no observed data, hence the prior is used, and the inducing
+    # points are determined from the prediction locations of this cluster. The predictive variances differ
+    # from the exact ones by the jitter that is added to the diagonal of the inducing point matrix
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test_v1,
+                    X_pred = X_test_clus, cluster_ids_pred = cluster_ids_pred_new,
+                    predict_var = TRUE, predict_response = FALSE, cov_pars = cov_pars_pred)
+    expect_lt(sum(abs(pred$mu - pred_clus_no_approx_new$mu)),TOLERANCE_STRICT_LOWER)
+    expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_clus_no_approx_new$var))),TOLERANCE_STRICT_LOWER)
 
     # Fitc and smaller num_ind_points
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
