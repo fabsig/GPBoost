@@ -1035,15 +1035,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                  c("Error_var", "GP_var", "GP_range_1", "GP_range_2",
                    "GP_rand_coef_nb_1_var", "GP_rand_coef_nb_1_range_1", "GP_rand_coef_nb_1_range_2",
                    "GP_rand_coef_nb_2_var", "GP_rand_coef_nb_2_range_1", "GP_rand_coef_nb_2_range_2"))
-    # Covariance functions with an estimated smoothness parameter
-    expect_equal(model_names("matern_estimate_shape", Z_SVC)$cov_par_names,
-                 c("Error_var", "GP_var", "GP_range", "GP_smoothness",
-                   "GP_rand_coef_var1_var", "GP_rand_coef_var1_range", "GP_rand_coef_var1_smoothness",
-                   "GP_rand_coef_var2_var", "GP_rand_coef_var2_range", "GP_rand_coef_var2_smoothness"))
-    expect_equal(model_names("matern_ard_estimate_shape", Z_SVC)$cov_par_names,
-                 c("Error_var", "GP_var", "GP_range_1", "GP_range_2", "GP_smoothness",
-                   "GP_rand_coef_var1_var", "GP_rand_coef_var1_range_1", "GP_rand_coef_var1_range_2", "GP_rand_coef_var1_smoothness",
-                   "GP_rand_coef_var2_var", "GP_rand_coef_var2_range_1", "GP_rand_coef_var2_range_2", "GP_rand_coef_var2_smoothness"))
+    # Covariance functions with an estimated smoothness parameter. Note: these require 'std::cyl_bessel_k'
+    #   already when the model is created, i.e. also without any estimation
+    if (!SKIP_BESSEL_COV_TESTS) {
+      expect_equal(model_names("matern_estimate_shape", Z_SVC)$cov_par_names,
+                   c("Error_var", "GP_var", "GP_range", "GP_smoothness",
+                     "GP_rand_coef_var1_var", "GP_rand_coef_var1_range", "GP_rand_coef_var1_smoothness",
+                     "GP_rand_coef_var2_var", "GP_rand_coef_var2_range", "GP_rand_coef_var2_smoothness"))
+      expect_equal(model_names("matern_ard_estimate_shape", Z_SVC)$cov_par_names,
+                   c("Error_var", "GP_var", "GP_range_1", "GP_range_2", "GP_smoothness",
+                     "GP_rand_coef_var1_var", "GP_rand_coef_var1_range_1", "GP_rand_coef_var1_range_2", "GP_rand_coef_var1_smoothness",
+                     "GP_rand_coef_var2_var", "GP_rand_coef_var2_range_1", "GP_rand_coef_var2_range_2", "GP_rand_coef_var2_smoothness"))
+    }
     # Hurst covariance functions
     expect_equal(model_names("hurst", Z_SVC)$cov_par_names,
                  c("Error_var", "GP_var", "H",
@@ -2593,6 +2596,63 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }# end loop over i (matrix_inversion_method)
   })# end FSA
   
+  test_that("prediction for a new cluster with the FITC and the full-scale approximations ", {
+
+    # There is no observed data for the new cluster, hence the predictive distribution of the latent GP is
+    # its prior: the mean is zero and the variance is the marginal variance of the GP. The Vecchia-based
+    # approximations return the variance of the observable process, i.e. they additionally contain the
+    # nugget effect. For the full-scale approximations, the inducing points of the new cluster are
+    # determined from its prediction locations
+    n_nc <- 100
+    coords_nc <- cbind(sim_rand_unif(n = n_nc, init_c = 0.11), sim_rand_unif(n = n_nc, init_c = 0.22))
+    cluster_ids_nc <- c(rep(1, n_nc / 2), rep(2, n_nc / 2))
+    y_nc <- qnorm(sim_rand_unif(n = n_nc, init_c = 0.33))
+    n_pred_nc <- 30
+    coords_pred_nc <- cbind(sim_rand_unif(n = n_pred_nc, init_c = 0.44),
+                            sim_rand_unif(n = n_pred_nc, init_c = 0.55))
+    cluster_ids_pred_nc <- rep(c(1, 2, 3), length.out = n_pred_nc)# cluster 3 has not been observed
+    is_new_nc <- cluster_ids_pred_nc == 3
+    cov_pars_nc <- c(0.1, 1.3, 0.2)# error variance, marginal variance, range
+    # Note: the predictive variances of 'full_scale_tapering' are not deterministic (repeating the same
+    # prediction for the same model gives slightly different variances), which is why the comparison of
+    # the observed clusters below is not made for it
+    cases_nc <- list(list(gp_approx = "none", var = cov_pars_nc[2], deterministic = TRUE, args = list()),
+                     list(gp_approx = "fitc", var = cov_pars_nc[2], deterministic = TRUE,
+                          args = list(num_ind_points = 8, ind_points_selection = "random")),
+                     list(gp_approx = "full_scale_tapering", var = cov_pars_nc[2], deterministic = FALSE,
+                          args = list(num_ind_points = 8, ind_points_selection = "random",
+                                      cov_fct_taper_range = 1e6, cov_fct_taper_shape = 2)),
+                     list(gp_approx = "vecchia", var = cov_pars_nc[2] + cov_pars_nc[1], deterministic = TRUE,
+                          args = list(num_neighbors = 20, vecchia_ordering = "none")),
+                     list(gp_approx = "full_scale_vecchia", var = cov_pars_nc[2] + cov_pars_nc[1], deterministic = TRUE,
+                          args = list(num_ind_points = 8, ind_points_selection = "random",
+                                      num_neighbors = 20, vecchia_ordering = "none")))
+    for (case_nc in cases_nc) {
+      args_nc <- c(list(gp_coords = coords_nc, cov_function = "exponential", gp_approx = case_nc$gp_approx,
+                        cluster_ids = cluster_ids_nc), case_nc$args)
+      capture.output(gp_model_nc <- do.call(GPModel, args_nc), file = "NUL")
+      capture.output(pred_nc <- predict(gp_model_nc, y = y_nc, cov_pars = cov_pars_nc,
+                                        gp_coords_pred = coords_pred_nc,
+                                        cluster_ids_pred = cluster_ids_pred_nc,
+                                        predict_var = TRUE, predict_response = FALSE), file = "NUL")
+      expect_lt(sum(abs(pred_nc$mu[is_new_nc])), TOLERANCE_STRICT,
+                label = paste0("predictive mean for the new cluster (", case_nc$gp_approx, ")"))
+      expect_lt(sum(abs(pred_nc$var[is_new_nc] - case_nc$var)), TOLERANCE_MEDIUM,
+                label = paste0("predictive variance for the new cluster (", case_nc$gp_approx, ")"))
+      # The predictions for the observed clusters must not be affected by the new cluster, i.e. making
+      # predictions for a new cluster must not change the fitted model
+      capture.output(pred_obs_nc <- predict(gp_model_nc, y = y_nc, cov_pars = cov_pars_nc,
+                                            gp_coords_pred = coords_pred_nc[!is_new_nc, , drop = FALSE],
+                                            cluster_ids_pred = cluster_ids_pred_nc[!is_new_nc],
+                                            predict_var = TRUE, predict_response = FALSE), file = "NUL")
+      expect_lt(sum(abs(pred_nc$mu[!is_new_nc] - pred_obs_nc$mu)), TOLERANCE_STRICT,
+                label = paste0("predictive mean for the observed clusters (", case_nc$gp_approx, ")"))
+      if (case_nc$deterministic) {
+        expect_lt(sum(abs(pred_nc$var[!is_new_nc] - pred_obs_nc$var)), TOLERANCE_STRICT,
+                  label = paste0("predictive variance for the observed clusters (", case_nc$gp_approx, ")"))
+      }
+    }
+  })
   test_that("VIF or Full scale Vecchia", {
     
     y <- eps + X%*%beta + xi

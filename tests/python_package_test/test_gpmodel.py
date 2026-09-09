@@ -136,6 +136,51 @@ def test_gp_approximations(gp_approx, kwargs):
     assert np.all(pred["var"] > 0)
 
 
+
+
+@pytest.mark.parametrize("gp_approx,kwargs,contains_nugget,deterministic", [
+    ("none", {}, False, True),
+    ("fitc", {"num_ind_points": 8, "ind_points_selection": "random"}, False, True),
+    ("full_scale_tapering", {"num_ind_points": 8, "ind_points_selection": "random",
+                             "cov_fct_taper_range": 1e6, "cov_fct_taper_shape": 2}, False, False),
+    ("vecchia", {"num_neighbors": 20, "vecchia_ordering": "none"}, True, True),
+    ("full_scale_vecchia", {"num_ind_points": 8, "ind_points_selection": "random",
+                            "num_neighbors": 20, "vecchia_ordering": "none"}, True, True),
+])
+def test_predict_for_a_cluster_without_observed_data(gp_approx, kwargs, contains_nugget, deterministic):
+    """A cluster in 'cluster_ids_pred' that does not occur in 'cluster_ids' has no observed data.
+
+    The predictive distribution of the latent GP is then its prior, i.e. the mean is zero and the
+    variance is the marginal variance. The Vecchia-based approximations return the variance of the
+    observable process, which additionally contains the nugget effect. Predicting for such a cluster
+    must not change the model, i.e. the predictions for the observed clusters stay the same. The
+    predictive variances of 'full_scale_tapering' are not deterministic (repeating the same prediction
+    for the same model gives slightly different variances), hence the flag 'deterministic'.
+    """
+    coords, y = _sim_coords(n=100)
+    cluster_ids = np.repeat([0, 1], 50)
+    rng = np.random.default_rng(7)
+    coords_pred = rng.uniform(size=(30, 2))
+    cluster_ids_pred = np.tile([0, 1, 2], 10)      # cluster 2 has not been observed
+    is_new = cluster_ids_pred == 2
+    cov_pars = np.array([0.1, 1.3, 0.2])           # error variance, marginal variance, range
+
+    gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential", likelihood="gaussian",
+                           gp_approx=gp_approx, cluster_ids=cluster_ids, **kwargs)
+    pred = gp_model.predict(y=y, cov_pars=cov_pars, gp_coords_pred=coords_pred,
+                            cluster_ids_pred=cluster_ids_pred, predict_var=True,
+                            predict_response=False)
+    expected_var = cov_pars[1] + cov_pars[0] if contains_nugget else cov_pars[1]
+    np.testing.assert_allclose(pred["mu"][is_new], 0.0, atol=1e-10)
+    np.testing.assert_allclose(pred["var"][is_new], expected_var, atol=1e-3)
+
+    pred_obs = gp_model.predict(y=y, cov_pars=cov_pars, gp_coords_pred=coords_pred[~is_new],
+                                cluster_ids_pred=cluster_ids_pred[~is_new], predict_var=True,
+                                predict_response=False)
+    np.testing.assert_allclose(pred["mu"][~is_new], pred_obs["mu"], atol=1e-10)
+    if deterministic:
+        np.testing.assert_allclose(pred["var"][~is_new], pred_obs["var"], atol=1e-10)
+
 @pytest.mark.parametrize("likelihood", ["bernoulli_probit", "poisson", "gamma"])
 def test_non_gaussian_likelihoods(likelihood):
     # these run the Laplace approximation, i.e. the mode finding

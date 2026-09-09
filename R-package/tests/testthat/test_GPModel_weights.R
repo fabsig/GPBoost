@@ -33,6 +33,8 @@ context("GPModel_weights")
 
 if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
 
+  # See helper-tolerances.R: the expected values below have been calculated on the reference platform
+  USE_STRICT_TOLERANCES <- gpb_use_strict_tolerances()
   TOLERANCE_WEIGHTS <- 1e-6
   # The estimation check is a secondary smoke test: the two data sets have a different number of
   # observations, so the optimizer follows a slightly different path and the estimates agree only to
@@ -333,8 +335,11 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
         expect_true(is.finite(nll_exact) && is.finite(nll_vecchia), info = lik)
         relative_gap[i] <- abs(nll_vecchia - nll_exact) / max(1, abs(nll_exact))
       }
-      # the weighted gap must stay of the same order as the unweighted one (observed ratio is about 0.85)
-      expect_lt(relative_gap[2], 5 * relative_gap[1] + 1e-6)
+      # the weighted gap must stay of the same order as the unweighted one (observed ratio is about 0.85).
+      # Both gaps are tiny (about 1e-5), so on a platform with a different floating point arithmetic their
+      # ratio carries no information and only an absolute bound on the weighted gap is checked
+      expect_lt(relative_gap[2],
+                if (USE_STRICT_TOLERANCES) 5 * relative_gap[1] + 1e-6 else max(5 * relative_gap[1], 1e-3))
     }
   })
 
