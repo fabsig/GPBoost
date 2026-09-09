@@ -296,6 +296,43 @@ namespace GPBoost {
 				init_intercept = GPBoost::logit(p0) - off;
 			}
 		}//end gamma varying shape variants
+		else if (IsZeroCensShiftedGamma()) {
+			// Block 0 (eta = log(mu)): the log of the mean of z = y + xi over the positive observations, which are already
+			// divided by their block-0 fixed effects offset below; if there is no positive observation at all, mu ~ xi + 0.5.
+			// Last block (log(shape)) of the varying-shape variant: the approximate marginal gamma shape MLE of those
+			// offset-corrected z (as in 'FindInitialAuxPars' for "gamma"). The latter is an anchor on the scale of the total
+			// location parameter of its block, so the pooled fixed effects offset of that block is subtracted from it
+			const double xi = IsZeroCensShiftedGammaVaryingShape() ? aux_pars_[0] : aux_pars_[1];
+			CHECK(ind_set_re >= 0 && ind_set_re < num_sets_fixed_effects_);
+			double sw = 0., w_pos = 0., avg = 0., avg_log = 0., off = 0.;
+#pragma omp parallel for schedule(static) reduction(+:sw, w_pos, avg, avg_log, off)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				const double w = has_weights_ ? weights_ptr[i] : 1.0;
+				sw += w;
+				if (fixed_effects != nullptr) off += w * fixed_effects[i + (data_size_t)ind_set_re * num_data];
+				if (y_data[i] > 0.) {
+					const double z = fixed_effects == nullptr ? (y_data[i] + xi) : (y_data[i] + xi) / std::exp(fixed_effects[i]);
+					w_pos += w;
+					avg += w * z;
+					avg_log += w * std::log(z);
+				}
+			}
+			off /= sw;
+			if (ind_set_re == 0) {
+				// The block-0 offset has already been divided out of every observation, so it must not be subtracted again
+				init_intercept = std::log(std::max(w_pos > 0. ? avg / w_pos : (xi + 0.5), 1e-12)) - 0.5 * rand_eff_var;
+			}
+			else {// log(shape) of "zero_censored_shifted_gamma_varying_shape"
+				// ln(k) - digamma(k) approx = (1 + 1 / (6k + 1)) / (2k) with s = log(mean(z)) - mean(log(z)), see 'FindInitialAuxPars'
+				double shape = 1.;
+				if (w_pos > 0.) {
+					const double s = std::max(std::log(std::max(avg / w_pos, 1e-12)) - avg_log / w_pos, 1e-8);
+					shape = (3. - s + std::sqrt((s - 3.) * (s - 3.) + 24. * s)) / (12. * s);
+				}
+				if (!(shape > 0.) || !std::isfinite(shape)) shape = 1.;
+				init_intercept = std::log(shape) - off;
+			}
+		}//end zero-censored shifted gamma variants
 		else if (IsHurdlePositive()) {
 			double sw = 0.0, avg = 0.;
 			if (fixed_effects == nullptr) {
@@ -659,7 +696,7 @@ namespace GPBoost {
 		if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
 			likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || IsZeroInflatedCount() ||
 			IsGaussianHeteroscedastic() || likelihood_type_ == "lognormal" || IsHurdlePositive() ||
-			IsZeroCensPowNorm() || IsGammaVaryingShape() ||
+			IsZeroCensPowNorm() || IsGammaVaryingShape() || IsZeroCensShiftedGamma() ||
 			likelihood_type_ == "zoctn" || likelihood_type_ == "zero_one_censored_transformed_beta" ||
 			likelihood_type_ == "zero_one_censored_shifted_gamma" ||
 			likelihood_type_ == "asymmetric_laplace") {
@@ -1454,6 +1491,48 @@ namespace GPBoost {
 			aux_pars_[0] = k_init;
 			aux_pars_[1] = xi_init;
 		}//end "zero_one_censored_shifted_gamma"
+		else if (IsZeroCensShiftedGamma()) {
+			// (1) the observed zero fraction estimates p0 = P(Z <= xi). (2) For a provisional shape k = 1 (an exponential Z),
+			// E(Y) = E(max(Z - xi, 0)) = mu * exp(-xi / mu) = mu * (1 - p0) by memorylessness, which gives the mean mu of Z
+			// from the sample mean of y, and then xi = -mu * log(1 - p0). (3) The shape is refined with the log-moment
+			// estimator of the gamma shape applied to z = y + xi over the positive observations (constant-shape variant only)
+			double W = 0.0, W0 = 0.0, sum_y = 0.0;
+#pragma omp parallel for schedule(static) reduction(+:W,W0,sum_y)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				const double w = has_weights_ ? weights_[i] : 1.0;
+				const double yi = y_data[i];
+				W += w;
+				if (yi <= 0.0) { W0 += w; }
+				else { sum_y += w * (fixed_effects == nullptr ? yi : yi / std::exp(fixed_effects[i])); }
+			}
+			const double p0 = (W > 0.0) ? std::min(std::max(W0 / W, 1e-12), 1.0 - 1e-6) : 0.1;
+			const double y_bar = (W > 0.0) ? std::max(sum_y / W, 1e-8) : 1.0;
+			const double mu_init = y_bar / (1.0 - p0);
+			const double xi_init = std::min(std::max(-mu_init * std::log1p(-p0), 1e-6), 1e6);
+			if (IsZeroCensShiftedGammaVaryingShape()) {
+				aux_pars_[0] = xi_init;// the shape is a location parameter block here
+			}
+			else {
+				double sum_z = 0.0, sum_logz = 0.0, cnt_z = 0.0;
+#pragma omp parallel for schedule(static) reduction(+:sum_z,sum_logz,cnt_z)
+				for (data_size_t i = 0; i < num_data; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					if (y_data[i] > 0.0) {
+						const double z = (y_data[i] + xi_init) / (fixed_effects == nullptr ? 1.0 : std::exp(fixed_effects[i]));
+						sum_z += w * z;
+						sum_logz += w * std::log(z);
+						cnt_z += w;
+					}
+				}
+				double k_init = 1.0;
+				if (cnt_z > 0.0) {
+					const double sd = std::max(std::log(std::max(sum_z / cnt_z, 1e-12)) - sum_logz / cnt_z, 1e-12);
+					k_init = std::min(std::max((3.0 - sd + std::sqrt((sd - 3.0) * (sd - 3.0) + 24.0 * sd)) / (12.0 * sd), 0.2), 50.0);
+				}
+				aux_pars_[0] = k_init;
+				aux_pars_[1] = xi_init;
+			}
+		}//end zero-censored shifted gamma variants
 		else if (likelihood_type_ == "asymmetric_laplace") {
 			// Use MLE for initial scale assuming location_par is zero
 			double aux_sum = 0.;
@@ -1505,11 +1584,11 @@ namespace GPBoost {
 			C_mu = 1.;
 			C_sigma2 = 1.;
 		}
-		else if (IsGammaVaryingShape()) {
+		else if (IsGammaVaryingShape() || IsZeroCensShiftedGammaVaryingShape()) {
 			C_mu = 1e99;//not implemented (the caps assume a single location parameter block)
 			C_sigma2 = 1e99;
 		}
-		else if (IsHurdlePositive()) {
+		else if (IsHurdlePositive() || likelihood_type_ == "zero_censored_shifted_gamma") {
 			double sw = 0.0, mean = 0., sec_mom = 0.;
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
 			for (data_size_t i = 0; i < num_data; ++i) {
@@ -1647,7 +1726,7 @@ namespace GPBoost {
 			likelihood_type_ == "beta_binomial" || IsHurdlePositive() || IsZeroInflatedCount() ||
 			IsZeroCensPowNorm() || likelihood_type_ == "zoctn" ||
 			likelihood_type_ == "zero_one_censored_transformed_beta" || likelihood_type_ == "zero_one_censored_shifted_gamma" ||
-			likelihood_type_ == "asymmetric_laplace") {
+			IsZeroCensShiftedGamma() || likelihood_type_ == "asymmetric_laplace") {
 			for (int i = 0; i < num_aux_pars_estim_; ++i) {
 				if (!(aux_pars[i] > 0.)) {
 					Log::REFatal("The '%s' parameter (= %g) is not > 0. This might be due to a problem when estimating the '%s' parameter (e.g., a numerical overflow). "
@@ -2146,6 +2225,32 @@ namespace GPBoost {
 			grad[0] = -dlogL_dlogk;     // gradient of *negative* log-likelihood
 			grad[1] = -dlogL_dlogxi;
 		} // end "zero_one_censored_shifted_gamma"
+		else if (IsZeroCensShiftedGamma()) {
+			const bool varying_shape = IsZeroCensShiftedGammaVaryingShape();
+			const double xi0 = varying_shape ? aux_pars_[0] : aux_pars_[1];
+			const double k_const = varying_shape ? 0. : aux_pars_[0];
+			double dlogL_dlogk = 0.0, dlogL_dlogxi = 0.0;
+#pragma omp parallel for schedule(static) reduction(+:dlogL_dlogk,dlogL_dlogxi)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				const double w = has_weights_ ? weights_[i] : 1.0;
+				const double k = varying_shape ? ZeroCensGammaVarShapeShape(location_par[i + num_data_]) : k_const;
+				double dLogXi, lEtaLogXi, dJetadLogXi;
+				ZeroCensGammaLogXiQuantities(y_data[i], location_par[i], k, xi0, dLogXi, lEtaLogXi, dJetadLogXi);
+				dlogL_dlogxi += w * dLogXi;
+				if (!varying_shape) {
+					double dLogK, lEtaLogK, dJetadLogK;
+					ZeroCensGammaLogShapeQuantities(y_data[i], location_par[i], k, xi0, dLogK, lEtaLogK, dJetadLogK);
+					dlogL_dlogk += w * dLogK;
+				}
+			}
+			if (varying_shape) {
+				grad[0] = -dlogL_dlogxi;// gradient of the negative log-likelihood; the shape is a location parameter block here
+			}
+			else {
+				grad[0] = -dlogL_dlogk;
+				grad[1] = -dlogL_dlogxi;
+			}
+		} // end zero-censored shifted gamma variants
 		else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
 			// SetAuxPars() invalidates the normalizer cache. Some optimization paths evaluate the auxiliary
 			// gradient before reevaluating the objective, so refresh the cache here when necessary.
@@ -2891,10 +2996,29 @@ namespace GPBoost {
 							dinfo = k0 * z * inv_mu;// dI/d log k where I = k0*z/mu: = k0 * z / mu
 						}
 					}
-					second_deriv_loc_aux_par[i] = w * sdl;
+					// 'sdl' above is the cross derivative of the negative log-likelihood, whereas this output is the
+					// cross derivative of the log-likelihood itself (as for "gamma" / "tweedie" / the EGPD families)
+					second_deriv_loc_aux_par[i] = -w * sdl;
 					deriv_information_aux_par[i] = w * dinfo;
 				}
 			} // end "zero_one_censored_shifted_gamma"
+			else if (IsZeroCensShiftedGamma()) {
+				const bool varying_shape = IsZeroCensShiftedGammaVaryingShape();
+				CHECK(ind_aux_par >= 0 && ind_aux_par < num_aux_pars_estim_);
+				const double xi0 = varying_shape ? aux_pars_[0] : aux_pars_[1];
+				const double k_const = varying_shape ? 0. : aux_pars_[0];
+				const bool wrt_log_xi = varying_shape || ind_aux_par == 1;// log(xi) is the only auxiliary parameter of the varying-shape variant
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					const double w = has_weights_ ? weights_[i] : 1.0;
+					const double k = varying_shape ? ZeroCensGammaVarShapeShape(location_par[i + num_data_]) : k_const;
+					double dAux, lEtaAux, dJetadAux;
+					if (wrt_log_xi) ZeroCensGammaLogXiQuantities(y_data[i], location_par[i], k, xi0, dAux, lEtaAux, dJetadAux);
+					else ZeroCensGammaLogShapeQuantities(y_data[i], location_par[i], k, xi0, dAux, lEtaAux, dJetadAux);
+					second_deriv_loc_aux_par[i] = w * lEtaAux;// d^2 log L / (d eta d aux)
+					deriv_information_aux_par[i] = w * dJetadAux;
+				}
+			} // end zero-censored shifted gamma variants
 			else if (num_aux_pars_estim_ > 0) {
 				NotSupportedForLikelihoodAndApproximation(__func__, approximation_type_);
 			}

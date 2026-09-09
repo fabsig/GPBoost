@@ -547,6 +547,35 @@ namespace GPBoost {
 				}
 			}
 		}//end "zero_one_censored_shifted_gamma"
+		else if (IsZeroCensShiftedGamma()) {
+			// The conditional moments of Y = max(Z - xi, 0) given eta are available in closed form; the predictive moments
+			// are obtained by integrating them over the (approximately Gaussian) predictive distribution of eta. The shape
+			// of the varying-shape variant is deterministic given the fixed effects, so it carries no posterior uncertainty
+			CHECK(need_pred_latent_var_for_response_mean_);
+			const bool varying_shape = IsZeroCensShiftedGammaVaryingShape();
+			const double xi = varying_shape ? aux_pars_[0] : aux_pars_[1];
+			const double k_const = varying_shape ? 0. : aux_pars_[0];
+			if (varying_shape) CHECK(pred_var_mean.size() == pred_mean.size());
+			const size_t K = GH_nodes_.size();
+			const double inv_sqrt_pi = 1.0 / std::sqrt(3.14159265358979323846);
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < (int)pred_mean.size(); ++i) {
+				const double m = pred_mean[i];
+				const double v = std::max(pred_var[i], 0.0);
+				const double sc = std::sqrt(2.0 * v);
+				const double k = varying_shape ? ZeroCensGammaVarShapeShape(pred_var_mean[i]) : k_const;
+				double Ey = 0.0, Ey2 = 0.0;
+				for (size_t j = 0; j < K; ++j) {
+					const double wj = GH_weights_[j] * inv_sqrt_pi;
+					double m1 = 0.0, m2 = 0.0;
+					ZCG_MomentsGivenEta_(m + sc * GH_nodes_[j], k, xi, m1, m2, predict_var);
+					Ey += wj * m1;
+					if (predict_var) Ey2 += wj * m2;
+				}
+				pred_mean[i] = std::max(0.0, Ey);
+				if (predict_var) pred_var[i] = std::max(0.0, Ey2 - Ey * Ey);
+			}
+		}//end zero-censored shifted gamma variants
 		else if (likelihood_type_ == "asymmetric_laplace") {
 			if (predict_var) {
 				Log::REFatal("PredictResponse: Predictive variances for likelihood of type '%s' is not supported ", likelihood_type_.c_str());
@@ -769,6 +798,12 @@ namespace GPBoost {
 				return mu - aux_pars_[1];
 			}
 		}//end "zero_one_censored_shifted_gamma"
+		else if (IsZeroCensShiftedGamma()) {
+			// As for the other censored likelihoods above, this is the censoring transformation Y = max(Z - xi, 0)
+			// applied to the location parameter itself, not the conditional mean E(Y | eta) (which is calculated by
+			// 'PredictResponse' and which the single-argument interface cannot provide for the varying-shape variant)
+			return std::max(std::exp(value) - (IsZeroCensShiftedGammaVaryingShape() ? aux_pars_[0] : aux_pars_[1]), 0.);
+		}//end zero-censored shifted gamma variants
 		else {
 			NotSupportedForLikelihood(__func__);
 			return 0.;
@@ -1057,6 +1092,32 @@ namespace GPBoost {
 			if (!(Ey2 >= 0.0)) Ey2 = (Ey * Ey);
 			if (Ey2 < 0.0) Ey2 = 0.0;
 			if (Ey2 > 1.0) Ey2 = 1.0;
+		}
+	}
+
+	template <typename T_mat, typename T_chol>
+	inline void Likelihood<T_mat, T_chol>::ZCG_MomentsGivenEta_(const double eta,
+		const double k,
+		const double xi,
+		double& Ey,
+		double& Ey2,
+		const bool need_second) const {
+		// Y = max(Z - xi, 0), Z ~ Gamma(k, theta), theta = mu / k, mu = exp(eta). With S_j = 1 - G(k + j, t0), t0 = xi / theta:
+		//   E(Y)   = k * theta * S_1 - xi * S_0
+		//   E(Y^2) = k * (k + 1) * theta^2 * S_2 - 2 * xi * k * theta * S_1 + xi^2 * S_0
+		const double mu = std::exp(eta);
+		const double th = mu / k;
+		const double t0 = xi / th;
+		const double S0 = 1.0 - GPBoost::RegLowerGamma(k, t0);
+		const double S1 = 1.0 - GPBoost::RegLowerGamma(k + 1.0, t0);
+		const double M1 = (k * th) * S1;
+		Ey = M1 - xi * S0;
+		if (!(Ey >= 0.0)) Ey = 0.0;
+		if (need_second) {
+			const double S2 = 1.0 - GPBoost::RegLowerGamma(k + 2.0, t0);
+			const double M2 = (k * (k + 1.0) * th * th) * S2;
+			Ey2 = M2 - 2.0 * xi * M1 + xi * xi * S0;
+			if (!(Ey2 >= Ey * Ey)) Ey2 = Ey * Ey;
 		}
 	}
 }  // namespace GPBoost

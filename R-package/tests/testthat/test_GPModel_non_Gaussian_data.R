@@ -5022,6 +5022,302 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(max(abs(grad_fd_hr - grad_an_hr)) / max(abs(grad_an_hr)), TOLERANCE_STRICT_LOWER)
   })
 
+  test_that("zero-censored shifted gamma likelihoods: density and derivatives against independent formulas ", {
+
+    # Reference implementation of the log-density, independent of the GPBoost C++ code:
+    # Y = max(Z - xi, 0) with Z ~ Gamma(shape = k, scale = mu / k) and mu = exp(eta)
+    ll_zc <- function(y, eta, k, xi) ifelse(y > 0, dgamma(y + xi, shape = k, scale = exp(eta) / k, log = TRUE),
+                                            pgamma(xi, shape = k, scale = exp(eta) / k, log.p = TRUE))
+
+    n_zc <- 200
+    X_zc <- cbind(rep(1, n_zc), sim_rand_unif(n = n_zc, init_c = 0.317))
+    beta_eta_zc <- c(0.3, 0.9)
+    beta_shape_zc <- c(0.4, -0.8)
+    eta_zc <- as.vector(X_zc %*% beta_eta_zc)
+    log_shape_zc <- as.vector(X_zc %*% beta_shape_zc)
+    k_zc <- 1.7
+    xi_zc <- 0.6
+    y_zc <- pmax(qgamma(sim_rand_unif(n = n_zc, init_c = 0.431), shape = k_zc, scale = exp(eta_zc) / k_zc) - xi_zc, 0)
+    y_vs_zc <- pmax(qgamma(sim_rand_unif(n = n_zc, init_c = 0.752), shape = exp(log_shape_zc), scale = exp(eta_zc) / exp(log_shape_zc)) - xi_zc, 0)
+    expect_equal(sum(y_zc == 0), 25L)
+    expect_equal(sum(y_vs_zc == 0), 49L)
+    # An iid model (no random effects at all) has no Laplace approximation: its negative log-likelihood is exactly the
+    # (weighted) sum of the per-observation log-densities and its gradient wrt the fixed effects is exactly the negative
+    # score. This makes the C++ formulas directly comparable to the R reference above ('cov_pars' is unused for an iid model)
+    gp_iid_zc <- GPModel(num_data = n_zc, likelihood = "zero_censored_shifted_gamma")
+    gp_iid_vs_zc <- GPModel(num_data = n_zc, likelihood = "zero_censored_shifted_gamma_varying_shape")
+
+    ###################
+    ## 1) The C++ log-likelihood against R's 'dgamma' / 'pgamma', at parameters that are not the maximizer
+    ###################
+    nll_cpp_zc <- gp_iid_zc$neg_log_likelihood(cov_pars = 1, y = y_zc, fixed_effects = eta_zc, aux_pars = c(k_zc, xi_zc))
+    expect_lt(abs(nll_cpp_zc + sum(ll_zc(y_zc, eta_zc, k_zc, xi_zc))), relax_tolerance_strict(TOLERANCE_STRICT))
+    nll_cpp_vs_zc <- gp_iid_vs_zc$neg_log_likelihood(cov_pars = 1, y = y_vs_zc, fixed_effects = c(eta_zc, log_shape_zc), aux_pars = xi_zc)
+    expect_lt(abs(nll_cpp_vs_zc + sum(ll_zc(y_vs_zc, eta_zc, exp(log_shape_zc), xi_zc))), relax_tolerance_strict(TOLERANCE_STRICT))
+    # With an intercept-only log-shape block, the varying-shape density equals the constant-shape one
+    nll_cpp_const_shape <- gp_iid_vs_zc$neg_log_likelihood(cov_pars = 1, y = y_zc, fixed_effects = c(eta_zc, rep(log(k_zc), n_zc)), aux_pars = xi_zc)
+    expect_lt(abs(nll_cpp_const_shape - nll_cpp_zc), relax_tolerance_strict(TOLERANCE_STRICT))
+
+    ###################
+    ## 2) The analytical per-observation derivatives against central finite differences of the reference density.
+    ## These are the quantities the C++ code implements: the eta score, the eta information W = -l_etaeta and its
+    ## derivative wrt eta, and, for log(shape) and log(xi), the score, the cross derivative and dW/d(par)
+    ###################
+    fd1 <- function(f, x, h = 1e-5) (f(x + h) - f(x - h)) / (2 * h)
+    fd2 <- function(f, x, h = 1e-3) (f(x + h) - 2 * f(x) + f(x - h)) / (h * h)
+    fd3 <- function(f, x, h = 3e-3) (-f(x - 2 * h) + 2 * f(x - h) - 2 * f(x + h) + f(x + 2 * h)) / (2 * h^3)
+    fd_dxdy <- function(f, x, y, h = 1e-3) (f(x + h, y + h) - f(x + h, y - h) - f(x - h, y + h) + f(x - h, y - h)) / (4 * h * h)
+    fd_dx2dy <- function(f, x, y, h = 3e-3) (f(x + h, y + h) - 2 * f(x, y + h) + f(x - h, y + h) -
+                                               f(x + h, y - h) + 2 * f(x, y - h) - f(x - h, y - h)) / (2 * h^3)
+    rel_err <- function(analytical, numerical) abs(analytical - numerical) / max(abs(analytical), 1)
+    err_zc <- c(l_eta = 0, J_eta = 0, dJ_deta = 0, l_logk = 0, l_eta_logk = 0, dJ_dlogk = 0, l_logxi = 0, l_eta_logxi = 0, dJ_dlogxi = 0)
+    # y = 0 exercises the point mass, the positive values the continuous part; small / ordinary / large shape and mean
+    for (y in c(0, 0.05, 0.4, 1.5, 6)) for (eta in c(-0.8, 0.2, 1.3)) for (k in c(0.6, 1.5, 4)) for (xi in c(0.1, 0.7)) {
+      f_eta <- function(e) ll_zc(y, e, k, xi)
+      f_logxi <- function(lx) ll_zc(y, eta, k, exp(lx))
+      f_eta_logk <- function(e, lk) ll_zc(y, e, exp(lk), xi)
+      f_eta_logxi <- function(e, lx) ll_zc(y, e, k, exp(lx))
+      if (y > 0) {
+        z <- y + xi
+        mu <- exp(eta)
+        err_zc["l_eta"] <- max(err_zc["l_eta"], rel_err(k * z / mu - k, fd1(f_eta, eta)))
+        err_zc["J_eta"] <- max(err_zc["J_eta"], rel_err(k * z / mu, -fd2(f_eta, eta)))
+        err_zc["dJ_deta"] <- max(err_zc["dJ_deta"], rel_err(-k * z / mu, -fd3(f_eta, eta)))
+        err_zc["l_logk"] <- max(err_zc["l_logk"], rel_err(k * (log(k) + 1 - eta - z / mu + log(z) - digamma(k)), fd1(function(lk) ll_zc(y, eta, exp(lk), xi), log(k))))
+        err_zc["l_eta_logk"] <- max(err_zc["l_eta_logk"], rel_err(k * (z / mu - 1), fd_dxdy(f_eta_logk, eta, log(k))))
+        err_zc["dJ_dlogk"] <- max(err_zc["dJ_dlogk"], rel_err(k * z / mu, -fd_dx2dy(f_eta_logk, eta, log(k))))
+        err_zc["l_logxi"] <- max(err_zc["l_logxi"], rel_err(xi * ((k - 1) / z - k / mu), fd1(f_logxi, log(xi))))
+        err_zc["l_eta_logxi"] <- max(err_zc["l_eta_logxi"], rel_err(xi * k / mu, fd_dxdy(f_eta_logxi, eta, log(xi))))
+        err_zc["dJ_dlogxi"] <- max(err_zc["dJ_dlogxi"], rel_err(xi * k / mu, -fd_dx2dy(f_eta_logxi, eta, log(xi))))
+      } else {# point mass: the analytical formulas use t = k * xi / mu and Q = g(t; k, 1) / G(k, t)
+        t <- k * xi / exp(eta)
+        Q <- exp(dgamma(t, shape = k, log = TRUE) - pgamma(t, shape = k, log.p = TRUE))
+        Qp <- Q * ((k - 1) / t - 1) - Q^2
+        dJdt <- (2 * t - k) * Q + 2 * t * Q^2 + Qp * (t * (t - k) + 2 * t^2 * Q)
+        err_zc["l_eta"] <- max(err_zc["l_eta"], rel_err(-t * Q, fd1(f_eta, eta)))
+        err_zc["J_eta"] <- max(err_zc["J_eta"], rel_err(t * (t - k) * Q + t^2 * Q^2, -fd2(f_eta, eta)))
+        err_zc["dJ_deta"] <- max(err_zc["dJ_deta"], rel_err(-t * dJdt, -fd3(f_eta, eta)))
+        err_zc["l_logxi"] <- max(err_zc["l_logxi"], rel_err(t * Q, fd1(f_logxi, log(xi))))
+        err_zc["l_eta_logxi"] <- max(err_zc["l_eta_logxi"], rel_err(-t * (Q + t * Qp), fd_dxdy(f_eta_logxi, eta, log(xi))))
+        err_zc["dJ_dlogxi"] <- max(err_zc["dJ_dlogxi"], rel_err(t * dJdt, -fd_dx2dy(f_eta_logxi, eta, log(xi))))
+      }
+    }
+    expect_lt(max(err_zc[c("l_eta", "l_logk", "l_logxi")]), 1e-5)
+    expect_lt(max(err_zc[c("J_eta", "l_eta_logk", "l_eta_logxi")]), 1e-4)
+    expect_lt(max(err_zc[c("dJ_deta", "dJ_dlogk", "dJ_dlogxi")]), 1e-3)
+
+    ###################
+    ## 3) The C++ score against the analytical formulas, via finite differences of the iid negative log-likelihood
+    ## wrt the regression coefficients of every location parameter block and wrt the log auxiliary parameters
+    ###################
+    fd_grad <- function(f, par, h = 1e-5) sapply(seq_along(par), function(j) {
+      pp <- pm <- par; pp[j] <- pp[j] + h; pm[j] <- pm[j] - h; (f(pp) - f(pm)) / (2 * h) })
+    tail_ratio <- function(eta, k, xi) exp(dgamma(k * xi / exp(eta), shape = k, log = TRUE) - pgamma(k * xi / exp(eta), shape = k, log.p = TRUE))
+    score_eta_zc <- function(y, eta, k, xi) ifelse(y > 0, k * (y + xi) / exp(eta) - k, -(k * xi / exp(eta)) * tail_ratio(eta, k, xi))
+    # At the point mass, d/d log(k) of the incomplete gamma function has no elementary closed form, so the reference
+    # itself is a central difference of the R density there (which is what the C++ code does as well)
+    score_logk_zc <- function(y, eta, k, xi) ifelse(y > 0, k * (log(k) + 1 - eta - (y + xi) / exp(eta) + log(y + xi) - digamma(k)),
+                                                    (ll_zc(y, eta, k * exp(1e-4), xi) - ll_zc(y, eta, k * exp(-1e-4), xi)) / 2e-4)
+    score_logxi_zc <- function(y, eta, k, xi) ifelse(y > 0, xi * ((k - 1) / (y + xi) - k / exp(eta)), (k * xi / exp(eta)) * tail_ratio(eta, k, xi))
+    # Constant shape: the two coefficients of the single block plus log(shape) and log(xi)
+    nll_zc_par <- function(par) gp_iid_zc$neg_log_likelihood(cov_pars = 1, y = y_zc, fixed_effects = as.vector(X_zc %*% par[1:2]), aux_pars = exp(par[3:4]))
+    grad_fd_zc <- fd_grad(nll_zc_par, c(beta_eta_zc, log(k_zc), log(xi_zc)))
+    grad_an_zc <- c(-as.vector(t(X_zc) %*% score_eta_zc(y_zc, eta_zc, k_zc, xi_zc)),
+                    -sum(score_logk_zc(y_zc, eta_zc, k_zc, xi_zc)), -sum(score_logxi_zc(y_zc, eta_zc, k_zc, xi_zc)))
+    expect_lt(max(abs(grad_fd_zc - grad_an_zc)) / max(abs(grad_an_zc)), TOLERANCE_STRICT_LOWER)
+    # Varying shape: the coefficients of both blocks plus log(xi). The log(shape) block score is the log(shape) auxiliary
+    # parameter score of the constant-shape variant, evaluated at the per-observation shape exp(zeta_i)
+    nll_vs_zc_par <- function(par) gp_iid_vs_zc$neg_log_likelihood(cov_pars = 1, y = y_vs_zc, fixed_effects = c(X_zc %*% par[1:2], X_zc %*% par[3:4]), aux_pars = exp(par[5]))
+    grad_fd_vs_zc <- fd_grad(nll_vs_zc_par, c(beta_eta_zc, beta_shape_zc, log(xi_zc)))
+    shape_i_zc <- exp(log_shape_zc)
+    grad_an_vs_zc <- c(-as.vector(t(X_zc) %*% score_eta_zc(y_vs_zc, eta_zc, shape_i_zc, xi_zc)),
+                       -as.vector(t(X_zc) %*% score_logk_zc(y_vs_zc, eta_zc, shape_i_zc, xi_zc)),
+                       -sum(score_logxi_zc(y_vs_zc, eta_zc, shape_i_zc, xi_zc)))
+    expect_lt(max(abs(grad_fd_vs_zc - grad_an_vs_zc)) / max(abs(grad_an_vs_zc)), TOLERANCE_STRICT_LOWER)
+    # The same with non-unit sample weights, which must multiply every block's score
+    w_zc <- 0.5 + 2 * sim_rand_unif(n = n_zc, init_c = 0.658)
+    w_zc <- w_zc * (n_zc / sum(w_zc))# scale to sum to the number of data points, which avoids an informational message
+    gp_iid_w_zc <- GPModel(num_data = n_zc, likelihood = "zero_censored_shifted_gamma", weights = w_zc)
+    nll_w_zc_par <- function(par) gp_iid_w_zc$neg_log_likelihood(cov_pars = 1, y = y_zc, fixed_effects = as.vector(X_zc %*% par[1:2]), aux_pars = exp(par[3:4]))
+    grad_fd_w_zc <- fd_grad(nll_w_zc_par, c(beta_eta_zc, log(k_zc), log(xi_zc)))
+    grad_an_w_zc <- c(-as.vector(t(X_zc) %*% (w_zc * score_eta_zc(y_zc, eta_zc, k_zc, xi_zc))),
+                      -sum(w_zc * score_logk_zc(y_zc, eta_zc, k_zc, xi_zc)), -sum(w_zc * score_logxi_zc(y_zc, eta_zc, k_zc, xi_zc)))
+    expect_lt(max(abs(grad_fd_w_zc - grad_an_w_zc)) / max(abs(grad_an_w_zc)), TOLERANCE_STRICT_LOWER)
+
+    ###################
+    ## 4) The predictive response mean and variance: predict() integrates the closed-form conditional moments of
+    ## Y given eta over the (Gaussian) predictive distribution of eta. This is compared to a Gauss-Hermite
+    ## integration of the same reference moments in R
+    ###################
+    # E(Y | eta) = k * theta * S_1 - xi * S_0 and E(Y^2 | eta) = k(k+1) theta^2 S_2 - 2 xi k theta S_1 + xi^2 S_0,
+    # with theta = exp(eta) / k and S_j = P(Gamma(k + j, 1) > xi / theta)
+    moments_zc <- function(eta, k, xi, second) {
+      th <- exp(eta) / k
+      t0 <- xi / th
+      S0 <- pgamma(t0, shape = k, lower.tail = FALSE)
+      S1 <- pgamma(t0, shape = k + 1, lower.tail = FALSE)
+      m1 <- k * th * S1 - xi * S0
+      if (!second) return(m1)
+      k * (k + 1) * th^2 * pgamma(t0, shape = k + 2, lower.tail = FALSE) - 2 * xi * k * th * S1 + xi^2 * S0
+    }
+    capture.output(gp_pred_zc <- fitGPModel(group_data = rep(1:20, each = 10), likelihood = "zero_censored_shifted_gamma",
+                                            y = y_zc, X = X_zc, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    X_test_zc <- cbind(rep(1, 3), c(0.1, 0.4, 0.8))
+    pred_lat_zc <- predict(gp_pred_zc, group_data_pred = c(1, 3, 21), X_pred = X_test_zc, predict_var = TRUE, predict_response = FALSE)
+    pred_resp_zc <- predict(gp_pred_zc, group_data_pred = c(1, 3, 21), X_pred = X_test_zc, predict_var = TRUE, predict_response = TRUE)
+    aux_zc <- gp_pred_zc$get_aux_pars()
+    # Independent reference: adaptive numerical integration of the conditional moments over the predictive density of eta
+    ref_zc <- sapply(seq_along(pred_lat_zc$mu), function(i) {
+      m <- pred_lat_zc$mu[i]
+      s <- sqrt(pred_lat_zc$var[i])
+      int <- function(second) integrate(function(e) moments_zc(e, aux_zc[["shape"]], aux_zc[["xi"]], second) * dnorm(e, m, s),
+                                        m - 10 * s, m + 10 * s, rel.tol = 1e-10)$value
+      m1 <- int(FALSE)
+      c(m1, int(TRUE) - m1^2)
+    })
+    expect_lt(max(abs(pred_resp_zc$mu - ref_zc[1, ])), TOLERANCE_MEDIUM)
+    expect_lt(max(abs(pred_resp_zc$var - ref_zc[2, ])), TOLERANCE_LOOSE)
+  })
+
+  test_that("zero_censored_shifted_gamma likelihood for linear and GPBoost models ", {
+
+    n_zg <- 100
+    group_zg <- rep(1:10, each = 10)
+    X_zg <- cbind(rep(1, n_zg), sim_rand_unif(n = n_zg, init_c = 0.4137))
+    beta_zg <- c(0.4, 1.1)
+    shape_zg <- 1.5
+    xi_zg <- 0.5
+    b_gr_zg <- qnorm(sim_rand_unif(n = 10, init_c = 0.6218))
+    eta_true_zg <- as.vector(X_zg %*% beta_zg) + sqrt(0.5) * b_gr_zg[group_zg]
+    y_zg <- pmax(qgamma(sim_rand_unif(n = n_zg, init_c = 0.2731), shape = shape_zg, scale = exp(eta_true_zg) / shape_zg) - xi_zg, 0)
+    expect_equal(sum(y_zg == 0), 11L)
+    X_test_zg <- cbind(rep(1, 3), c(0.1, 0.4, 0.8))
+    group_test_zg <- c(1, 3, 11)
+
+    # Likelihood evaluated at given (not estimated) parameters: a pure formula check, independent of any optimizer
+    nll_given_zg <- GPModel(group_data = group_zg, likelihood = "zero_censored_shifted_gamma")$neg_log_likelihood(
+      cov_pars = 0.4, y = y_zg, fixed_effects = as.vector(X_zg %*% c(0.2, 0.9)), aux_pars = c(1.2, 0.4))
+    expect_lt(abs(nll_given_zg - 216.88404284), TOLERANCE_MEDIUM)
+
+    ###################
+    ## Linear regression model with a grouped random effect
+    ###################
+    capture.output(gp_model_zg <- fitGPModel(group_data = group_zg, likelihood = "zero_censored_shifted_gamma",
+                                             y = y_zg, X = X_zg, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    coef_zg <- as.vector(gp_model_zg$get_coef(std_err = FALSE))
+    expect_equal(length(coef_zg), 2L)
+    expected_coef_zg <- c(0.56843079, 0.70272302)
+    expect_lt(sum(abs(coef_zg - expected_coef_zg)), TOLERANCE_MEDIUM)
+    coef_zg_std_err <- gp_model_zg$get_coef(std_err = TRUE)
+    expect_equal(dim(coef_zg_std_err), c(2L, 2L))
+    expect_true(all(coef_zg_std_err["Std. err.", ] > 0))
+    expect_lt(sum(abs(as.vector(coef_zg_std_err["Std. err.", ]) - c(0.25754821, 0.33937624))), TOLERANCE_MEDIUM)
+    expect_lt(abs(as.vector(gp_model_zg$get_cov_pars(std_err = FALSE)) - 0.23721131), TOLERANCE_MEDIUM)
+    expect_equal(gp_model_zg$get_num_aux_pars(), 2L)
+    expect_equal(names(gp_model_zg$get_aux_pars()), c("shape", "xi"))
+    expect_lt(sum(abs(as.vector(gp_model_zg$get_aux_pars()) - c(1.00996354, 0.27004889))), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_zg$get_current_neg_log_likelihood() - 214.80987505), TOLERANCE_MEDIUM)
+    # Prediction: latent and response scale
+    pred_zg <- predict(gp_model_zg, y = y_zg, group_data_pred = group_test_zg, X_pred = X_test_zg,
+                       predict_var = TRUE, predict_response = TRUE)
+    expect_lt(sum(abs(pred_zg$mu - c(1.86422932, 3.12883994, 3.23000417))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_zg$var - c(5.00107174, 12.79369889, 18.44122697))), TOLERANCE_LOOSE)
+    re_pred_train_zg <- predict_training_data_random_effects(gp_model_zg)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_zg[, 1])) - c(0.07716494, 0.37692704, 0.33896718, -0.12219735, -0.29619186,
+                                   -0.77824411, 0.50995056, 0.11566715, 0.17874348, -0.63858758))), TOLERANCE_MEDIUM)
+
+    ###################
+    ## GPBoost algorithm
+    ###################
+    gp_model_zg_boost <- GPModel(group_data = group_zg, likelihood = "zero_censored_shifted_gamma")
+    gp_model_zg_boost$set_optim_params(params = OPTIM_PARAMS_BFGS)
+    dtrain_zg <- gpb.Dataset(data = X_zg[, 2, drop = FALSE], label = y_zg)
+    bst_zg <- gpb.train(data = dtrain_zg, gp_model = gp_model_zg_boost, nrounds = 20, learning_rate = 0.05,
+                        max_depth = 2, min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)
+    pred_zg_boost <- predict(bst_zg, data = X_zg[1:3, 2, drop = FALSE], group_data_pred = group_test_zg,
+                             predict_var = TRUE, pred_latent = FALSE)
+    expect_lt(abs(as.vector(gp_model_zg_boost$get_cov_pars(std_err = FALSE)) - 0.22095375), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_zg_boost$response_mean - c(2.19683451, 4.33235647, 1.97728379))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_zg_boost$response_var - c(5.75228874, 19.58583983, 6.60125004))), TOLERANCE_LOOSE)
+  })
+
+  test_that("zero_censored_shifted_gamma_varying_shape likelihood for linear and GPBoost models ", {
+
+    n_zv <- 100
+    group_zv <- rep(1:10, each = 10)
+    X_zv <- cbind(rep(1, n_zv), sim_rand_unif(n = n_zv, init_c = 0.5231))
+    beta_mean_zv <- c(0.4, 1.1)
+    beta_shape_zv <- c(0.5, -0.7)
+    xi_zv <- 0.5
+    b_gr_zv <- qnorm(sim_rand_unif(n = 10, init_c = 0.7314))
+    eta_true_zv <- as.vector(X_zv %*% beta_mean_zv) + sqrt(0.5) * b_gr_zv[group_zv]
+    shape_true_zv <- exp(as.vector(X_zv %*% beta_shape_zv))
+    y_zv <- pmax(qgamma(sim_rand_unif(n = n_zv, init_c = 0.1837), shape = shape_true_zv, scale = exp(eta_true_zv) / shape_true_zv) - xi_zv, 0)
+    expect_equal(sum(y_zv == 0), 15L)
+    X_test_zv <- cbind(rep(1, 3), c(0.1, 0.4, 0.8))
+    group_test_zv <- c(1, 3, 11)
+
+    # Likelihood evaluated at given (not estimated) parameters. The two blocks are the response mean and log(shape)
+    fe_given_zv <- c(as.vector(X_zv %*% c(0.2, 0.9)), as.vector(X_zv %*% c(0.4, -0.5)))
+    nll_given_zv <- GPModel(group_data = group_zv, likelihood = "zero_censored_shifted_gamma_varying_shape")$neg_log_likelihood(
+      cov_pars = 0.4, y = y_zv, fixed_effects = fe_given_zv, aux_pars = 0.4)
+    expect_lt(abs(nll_given_zv - 206.93868664), TOLERANCE_MEDIUM)
+
+    # A fixed-effects-only log(shape) requires a fixed effects term (covariates and / or GPBoost boosting)
+    expect_error(capture.output(fitGPModel(group_data = group_zv, likelihood = "zero_censored_shifted_gamma_varying_shape",
+                                           y = y_zv, params = list(maxit = 2, init_coef_aux_pars_from_iid_model = FALSE)), file = "NUL"))
+
+    ###################
+    ## Linear regression model (the mean has a grouped random effect, log(shape) is fixed-effects only)
+    ###################
+    capture.output(gp_model_zv <- fitGPModel(group_data = group_zv, likelihood = "zero_censored_shifted_gamma_varying_shape",
+                                             y = y_zv, X = X_zv, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    coef_zv <- as.vector(gp_model_zv$get_coef(std_err = FALSE))
+    expect_equal(length(coef_zv), 4L)
+    coef_zv_std_err <- gp_model_zv$get_coef(std_err = TRUE)
+    expect_equal(colnames(coef_zv_std_err), c("Covariate_1", "Covariate_2", "Covariate_1_shape", "Covariate_2_shape"))
+    expect_true(all(coef_zv_std_err["Std. err.", ] > 0))
+    expect_lt(sum(abs(coef_zv - c(0.20194321, 1.14080025, 0.26618832, -0.30528010))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(coef_zv_std_err["Std. err.", ]) - c(0.35042355, 0.35883319, 0.28338584, 0.50824456))), TOLERANCE_MEDIUM)
+    expect_lt(abs(as.vector(gp_model_zv$get_cov_pars(std_err = FALSE)) - 0.88127088), TOLERANCE_MEDIUM)
+    expect_equal(gp_model_zv$get_num_aux_pars(), 1L)
+    expect_equal(names(gp_model_zv$get_aux_pars()), "xi")
+    expect_lt(abs(as.vector(gp_model_zv$get_aux_pars()) - 0.26324236), TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_zv$get_current_neg_log_likelihood() - 204.73954422), TOLERANCE_MEDIUM)
+    pred_zv <- predict(gp_model_zv, y = y_zv, group_data_pred = group_test_zv, X_pred = X_test_zv,
+                       predict_var = TRUE, predict_response = TRUE)
+    expect_lt(sum(abs(pred_zv$mu - c(0.99281426, 0.36869895, 4.48832117))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_zv$var - c(1.39505484, 0.31770929, 84.54632964))), TOLERANCE_LOOSE)
+    re_pred_train_zv <- predict_training_data_random_effects(gp_model_zv)
+    expect_lt(sum(abs(unique(as.vector(re_pred_train_zv[, 1])) - c(-0.14330267, 0.86328997, -1.24540468, -1.58338835, 1.09760260,
+                                   0.14407352, -0.70360020, 0.29502892, 1.16287144, -0.25488799))), TOLERANCE_MEDIUM)
+
+    ###################
+    ## With an intercept-only design (the same X is reused for every block) the varying-shape fit
+    ## must reproduce the constant-shape fit
+    ###################
+    X_int_zv <- matrix(1, nrow = n_zv, ncol = 1)
+    capture.output(gp_const_zv <- fitGPModel(group_data = group_zv, likelihood = "zero_censored_shifted_gamma",
+                                             y = y_zv, X = X_int_zv, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    capture.output(gp_var_zv <- fitGPModel(group_data = group_zv, likelihood = "zero_censored_shifted_gamma_varying_shape",
+                                           y = y_zv, X = X_int_zv, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    expect_lt(abs(gp_const_zv$get_current_neg_log_likelihood() - gp_var_zv$get_current_neg_log_likelihood()), TOLERANCE_MEDIUM)
+
+    ###################
+    ## GPBoost algorithm with two tree ensembles (mean and log-shape)
+    ###################
+    gp_model_zv_boost <- GPModel(group_data = group_zv, likelihood = "zero_censored_shifted_gamma_varying_shape")
+    gp_model_zv_boost$set_optim_params(params = OPTIM_PARAMS_BFGS)
+    dtrain_zv <- gpb.Dataset(data = X_zv[, 2, drop = FALSE], label = y_zv)
+    bst_zv <- gpb.train(data = dtrain_zv, gp_model = gp_model_zv_boost, nrounds = 20, learning_rate = 0.05,
+                        max_depth = 2, min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)
+    pred_zv_boost <- predict(bst_zv, data = X_zv[1:3, 2, drop = FALSE], group_data_pred = group_test_zv,
+                             predict_var = TRUE, pred_latent = FALSE)
+    expect_lt(abs(as.vector(gp_model_zv_boost$get_cov_pars(std_err = FALSE)) - 0.93526425), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_zv_boost$response_mean - c(2.17895836, 0.33196983, 3.64783242))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_zv_boost$response_var - c(6.24164921, 0.27871762, 59.22645884))), TOLERANCE_LOOSE)
+  })
+
   test_that("zero_censored_power_transformed_normal_heteroscedastic likelihood for linear and GPBoost models ", {
 
     likelihood <- "zero_censored_power_transformed_normal_heteroscedastic"
@@ -6966,18 +7262,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
                                            y = y, X=X, params = params, matrix_inversion_method = "cholesky")
                     , file='NUL')
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.4209158489)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(gp_model$get_aux_pars()-c(3.50495674874, 0.06611314103 ))),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.1713543234, 0.7616663663))),TOLERANCE_STRICT)
-    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-36.79381797))),TOLERANCE_MEDIUM)
-    expect_equal(gp_model$get_num_optim_iter(), 17)
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.3549807283)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-c(4.1078363130, 0.1028633593))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.1336940622, 0.6941017071))),TOLERANCE_STRICT)
+    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-36.60875527))),TOLERANCE_MEDIUM)
+    expect_equal(gp_model$get_num_optim_iter(), 21)
     # Prediction
     group_test <- c(1,3,3,9999)
     X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
     pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test,
                     predict_var=TRUE, predict_response = TRUE)
-    expected_mu <- c(0.4938941250, 0.6200604917, 0.6895052787, 0.8658269508)
-    expected_var <- c(0.07536757200, 0.08391117696, 0.08156129615, 0.05815172162)
+    expected_mu <- c(0.4995770821, 0.6219404142, 0.6904084431, 0.8666146253)
+    expected_var <- c(0.07514258820, 0.08229697620, 0.07972402790, 0.05700373880)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
     expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
 
@@ -6988,12 +7284,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     bst <- gpboost(data = dtrain, gp_model = gp_model,
                    nrounds = 30, learning_rate = 0.1, max_depth = 6,
                    min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.2014705208 )),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.1980027810 )),TOLERANCE_LOOSE)
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_test,
                     predict_var = TRUE, pred_latent = FALSE)
-    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.6771125713, 0.6521416995, 0.6432654205, 0.7448076230))),TOLERANCE_LOOSE)
-    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.06411222024, 0.06472276124, 0.06483977737, 0.08373115432))), TOLERANCE_LOOSE)
+    expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.6729528034, 0.6549747141, 0.6407357560, 0.7476455234))),TOLERANCE_LOOSE)
+    expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.06386184510, 0.06425764320, 0.06445518680, 0.08349093790))), TOLERANCE_LOOSE)
 
     # cv function
     dtrain <- gpb.Dataset(data = X, label = y)
@@ -7002,9 +7298,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                               nrounds = 100, early_stopping_rounds = 5,
                                               use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
                                               deterministic = TRUE) )
-    expect_lte(cvbst$best_score,0.821794098802474*(1+TOLERANCE_LOOSE))
-    expect_gte(cvbst$best_score,0.821794098802474*(1-TOLERANCE_LOOSE))
-    nit <- 3
+    expect_lte(cvbst$best_score,0.7915884743*(1+TOLERANCE_LOOSE))
+    expect_gte(cvbst$best_score,0.7915884743*(1-TOLERANCE_LOOSE))
+    nit <- 5
     expect_lte(cvbst$best_iter, nit+4)
     expect_gte(cvbst$best_iter, nit-1)
 

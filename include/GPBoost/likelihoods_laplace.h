@@ -2034,6 +2034,21 @@ namespace GPBoost {
 				}
 			}
 		}
+		else if (IsZeroCensShiftedGammaVaryingShape()) {
+			// log(shape) block: direct score + log-det (dJ_eta/dzeta) + implicit-through-mode (l_eta_zeta)
+			CHECK(!has_mode || (diag.size() > 0 && impl.size() > 0));// the caller must supply both correction terms (see 'ExtraFEBlocksNeedEtaBlockDiag')
+#pragma omp parallel for schedule(static)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				const double w = has_weights_ ? weights_[i] : 1.0;
+				double diag_i = 0., impl_i = 0.;
+				if (has_mode) {
+					const data_size_t idx = index_map == nullptr ? i : index_map[i];
+					diag_i = diag[idx];
+					impl_i = impl[idx];
+				}
+				fixed_effect_grad[i + num_data_] = ZeroCensGammaVarShapeZetaGrad(y_data[i], location_par[i], location_par[i + num_data_], w, diag_i, impl_i);
+			}
+		}
 		else {//IsRegressionZeroModel()
 			// Structural-zero block (zeta). Hurdle decouples from eta (dJ_eta/dzeta = l_eta_zeta = 0) -> direct score only.
 			// Zero-inflated counts COUPLE at zero counts, so the log-determinant and implicit terms are added as well

@@ -156,6 +156,19 @@
 *     p1 = P(Y=1) = P(Z >= 1+xi) = 1 - G(k, (1+xi)/theta)
 *   Parameters:  aux_pars_[0] = k > 0 (shape), aux_pars_[1] = xi > 0 (shift), mu = exp(location_par), theta = mu/k
 *
+* For a "zero_censored_shifted_gamma" likelihood, the same shifted gamma model is used but with censoring at 0 only,
+*	i.e. Y = max(Z - xi, 0) with Z ~ Gamma(k, theta). This gives a point mass at zero and a continuous positive component:
+*     p0 = P(Y=0) = P(Z <= xi) = G(k, xi/theta)
+*     f(y) = g(y+xi; k, theta) for y > 0, with g(z;k,theta) = z^(k-1)*exp(-z/theta)/(Gamma(k)*theta^k), z>0
+*   Parameters:  aux_pars_[0] = k > 0 (shape), aux_pars_[1] = xi > 0 (shift), mu = exp(location_par), theta = mu/k
+*
+* For a "zero_censored_shifted_gamma_varying_shape" likelihood, the same density is used, but the shape varies across
+*	observations and is modeled by a second location parameter block instead of by the auxiliary parameter "shape":
+*       - mu = exp(location_par) (first block), k = exp(location_par2) (second block, i.e., log(shape) = location_par2),
+*         theta = mu / k, xi > 0 (= aux_pars_[0], the only auxiliary parameter)
+*       - log(mu) = random + fixed effects; log(k) = fixed effects only (covariates and / or the GPBoost tree-boosting
+*         algorithm; no random effects / GPs for the shape)
+*
 * For a "gaussian_heteroscedastic" likelihood, the following density is used:
 *   f(y) = 1 / sqrt(2*pi*sigma2) * exp( -(y - mu)^2 / (2*sigma2) )
 *       - mu = location_par (first block), sigma2 = exp(location_par2) (second block, i.e., log(sigma2) = location_par2)
@@ -681,6 +694,24 @@ namespace GPBoost {
 				information_ll_can_be_exact_zero_ = true;
 				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
 			}
+			else if (IsZeroCensShiftedGamma()) {
+				// Shifted gamma censored at zero only. For the varying-shape variant, log(shape) is an additional
+				//	location parameter block related to fixed effects only, so the shift is the only auxiliary parameter
+				if (IsZeroCensShiftedGammaVaryingShape()) {
+					aux_pars_ = { 0.1 };//shift
+					names_aux_pars_ = { "xi" };
+					num_sets_re_ = 1;
+					num_sets_fixed_effects_ = 2;
+				}
+				else {
+					aux_pars_ = { 1., 0.1 };//shape and shift
+					names_aux_pars_ = { "shape", "xi" };
+				}
+				num_aux_pars_ = (int)aux_pars_.size();
+				num_aux_pars_estim_ = num_aux_pars_;
+				information_ll_can_be_exact_zero_ = true;
+				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
+			}//end zero-censored shifted gamma variants
 			aux_pars_original_ = aux_pars_;
 			BackTransformAuxPars(aux_pars_.data(), aux_pars_original_.data());
 			has_SigmaI_mode_ = has_SigmaI_mode;
@@ -1038,6 +1069,24 @@ namespace GPBoost {
 			return likelihood_type_ == "hurdle_gamma_varying_shape" || likelihood_type_ == "hurdle_regression_gamma_varying_shape";
 		}
 
+		/*! \brief True for the zero-censored shifted gamma likelihoods Y = max(Z - xi, 0), Z ~ Gamma(shape, mean/shape) (constant and varying shape) */
+		bool IsZeroCensShiftedGamma() const {
+			return likelihood_type_ == "zero_censored_shifted_gamma" || likelihood_type_ == "zero_censored_shifted_gamma_varying_shape";
+		}
+
+		/*! \brief True for the zero-censored shifted gamma likelihood whose shape is modeled by a second, fixed-effects-only log(shape) block */
+		bool IsZeroCensShiftedGammaVaryingShape() const {
+			return likelihood_type_ == "zero_censored_shifted_gamma_varying_shape";
+		}
+
+		/*!
+		* \brief True for every likelihood whose shape is modeled by an additional fixed-effects-only location parameter block
+		*		carrying log(shape) (the last block, see 'ShapeBlockOffset') instead of by an auxiliary parameter "shape"
+		*/
+		bool HasVaryingShapeBlock() const {
+			return IsGammaVaryingShape() || IsZeroCensShiftedGammaVaryingShape();
+		}
+
 		/*!
 		* \brief Offset into 'location_par' of the last location parameter block, i.e. of the block that carries log(shape)
 		*		for the varying-shape gamma likelihoods (num_data_ for 2-block variants, 2 * num_data_ for a hurdle regression)
@@ -1229,7 +1278,7 @@ namespace GPBoost {
 		*/
 		bool HasExtraFEBlocks() const {
 			return(likelihood_type_ == "gaussian_heteroscedastic" || IsZeroCensPowNormHetero() || IsRegressionZeroModel() ||
-				IsGammaVaryingShape());
+				HasVaryingShapeBlock());
 		}
 
 		/*!
@@ -1243,7 +1292,7 @@ namespace GPBoost {
 			if (iid_model_) {
 				return false;// no random effect / mode at all, so both correction terms vanish
 			}
-			if (IsGammaVaryingShape()) {
+			if (HasVaryingShapeBlock()) {
 				return true;// the log(shape) block couples with eta (dJ_eta/dzeta != 0), also for a hurdle regression
 			}
 			return(!IsRegressionZeroModel() || (!IsHurdleRegression() && include_coupled_zi_terms));
@@ -1459,7 +1508,7 @@ namespace GPBoost {
 				}
 				if (!any_positive) Log::REFatal("The response variable ('y') contains only zeros for likelihood = '%s'; at least one positive value is required.", likelihood_type_.c_str());
 			}
-			else if (IsHurdlePositive() || IsZeroCensPowNorm()) {
+			else if (IsHurdlePositive() || IsZeroCensPowNorm() || IsZeroCensShiftedGamma()) {
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (!std::isfinite(y_data[i]) || y_data[i] < 0.) {
 						Log::REFatal(" Must have finite y >= 0 for the response variable ('y') for likelihood = '%s', found %g ", likelihood_type_.c_str(), y_data[i]);
@@ -2948,7 +2997,7 @@ namespace GPBoost {
 		bool NotImplementedForOneSample() const {
 			return likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 				likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit" ||
-				IsGammaVaryingShape();// the density depends on a second location parameter block, which the single-sample interface does not provide
+				HasVaryingShapeBlock();// the density depends on a second location parameter block, which the single-sample interface does not provide
 		}
 
 		/*! \brief Report that the calling single-sample function is not implemented for the current likelihood */
@@ -3086,7 +3135,7 @@ namespace GPBoost {
 				else if (!IsGaussianLikelihood() && !IsGaussianHeteroscedastic() && !IsEGPDLikelihood() && !IsHurdleEGPD() &&
 					likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
 					likelihood_type_ != "poisson" && likelihood_type_ != "tweedie" && likelihood_type_ != "tweedie_fixed_p" && likelihood_type_ != "t" && likelihood_type_ != "beta" &&
-					likelihood_type_ != "zero_one_censored_transformed_beta" && likelihood_type_ != "zero_one_censored_shifted_gamma" &&
+					likelihood_type_ != "zero_one_censored_transformed_beta" && likelihood_type_ != "zero_one_censored_shifted_gamma" && !IsZeroCensShiftedGamma() &&
 					likelihood_type_ != "asymmetric_laplace" && likelihood_type_ != "quasi_bernoulli_probit" && likelihood_type_ != "quasi_bernoulli_logit") {
 					NotSupportedForLikelihood(__func__);
 				}
@@ -3394,6 +3443,27 @@ namespace GPBoost {
 					}
 					log_normalizing_constant_ = (k - 1.0) * s_log_yxi_int - w_int * std::lgamma(k);
 				}
+				else if (IsZeroCensShiftedGamma()) {
+					if (IsZeroCensShiftedGammaVaryingShape()) {
+						log_normalizing_constant_ = 0.;// every term of the density depends on the location parameters (through the shape)
+					}
+					else {
+						const double k = aux_pars_[0];
+						const double xi = aux_pars_[1];
+						double s_log_yxi_pos = 0.0;
+						double w_pos = 0.0;
+#pragma omp parallel for schedule(static) reduction(+:s_log_yxi_pos,w_pos)
+						for (data_size_t i = 0; i < num_data_; ++i) {
+							const double yi = y_data[i];
+							if (yi > 0.0) {
+								const double w = has_weights_ ? weights_[i] : 1.0;
+								s_log_yxi_pos += w * std::log(yi + xi);
+								w_pos += w;
+							}
+						}
+						log_normalizing_constant_ = (k - 1.0) * s_log_yxi_pos - w_pos * std::lgamma(k);
+					}
+				}//end zero-censored shifted gamma variants
 				else if (likelihood_type_ == "asymmetric_laplace") {
 					log_normalizing_constant_ = SumOfWeights() * (std::log(quantile_) + std::log(1. - quantile_) - std::log(aux_pars_[0]));
 				}
@@ -3529,6 +3599,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "zoctn") visit([&](data_size_t i) { return LogLikZeroOneCensTransfNorm(y_data[i], location_par[i], incl_norm_const); });
 			else if (likelihood_type_ == "zero_one_censored_transformed_beta") visit([&](data_size_t i) { return LogLikZeroOneCensTransfBeta(y_data[i], location_par[i], incl_norm_const); });
 			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") visit([&](data_size_t i) { return LogLikZeroOneCensGamma(y_data[i], location_par[i], incl_norm_const); });
+			else if (likelihood_type_ == "zero_censored_shifted_gamma") visit([&](data_size_t i) { return LogLikZeroCensGamma(y_data[i], location_par[i], incl_norm_const); });
 			else if (likelihood_type_ == "asymmetric_laplace") visit([&](data_size_t i) { return LogLikAsymLaplace(y_data[i], location_par[i], incl_norm_const); });
 			else return false;
 			return true;
@@ -3592,6 +3663,9 @@ namespace GPBoost {
 				else {
 					ll += SumOverSamplesWeighted([&](data_size_t i) { return LogLikGammaVarShape(y_data[i], location_par[i], location_par[i + off_s]); });
 				}
+			}
+			else if (IsZeroCensShiftedGammaVaryingShape()) {
+				ll += SumOverSamplesWeighted([&](data_size_t i) { return LogLikZeroCensGamma_at(y_data[i], location_par[i], ZeroCensGammaVarShapeShape(location_par[i + num_data_]), aux_pars_[0], true); });
 			}
 			else if (!VisitLogLikKernel(y_data, y_data_int, location_par, false,
 				[&](auto kernel) { ll += SumOverSamplesWeighted(kernel); })) {
@@ -4513,6 +4587,216 @@ namespace GPBoost {
 			}
 		}
 
+		// ---------------------------------------------------------------------------------------------------------
+		// Zero-censored shifted gamma: Y = max(Z - xi, 0) with Z ~ Gamma(k, theta), theta = mu / k, mu = exp(eta).
+		//     P(Y = 0) = G(k, t0), t0 = k * xi / mu, G(k, .) = regularized lower incomplete gamma function
+		//     f(y)     = g(y + xi; k, theta) for y > 0
+		//   For the varying-shape variant, k = exp(zeta) is the last location parameter block, so its zeta derivatives
+		//   are exactly the log(k) derivatives of the constant-shape variant. All functions below therefore take
+		//   (k, xi) explicitly, and both variants share them. The log(k) derivatives at the point mass involve the
+		//   derivative of the incomplete gamma function with respect to its shape, which has no elementary closed
+		//   form, and are obtained by central differences in log(k)
+		// ---------------------------------------------------------------------------------------------------------
+		/*! \brief Step size of the central differences in log(shape) used at the point mass of a zero-censored shifted gamma */
+		static constexpr double H_LOG_SHAPE_ZERO_CENS_GAMMA_ = 1e-4;
+
+		/*!
+		* \brief Quantities of the point mass P(Y = 0) = G(k, t), t = k * xi / mu, of a zero-censored shifted gamma likelihood.
+		*		They are calculated so that they stay exact when the point mass underflows (t much smaller than k), where the
+		*		log point mass diverges to -infinity while u and k - u stay bounded
+		* \param t Argument k * xi / mu of the regularized lower incomplete gamma function
+		* \param k Shape
+		* \param[out] log_mass log G(k, t)
+		* \param[out] u t * g(t; k, 1) / G(k, t) = -d log P(Y=0) / d eta. It increases from 0 to k as t decreases from infinity to 0
+		* \param[out] k_minus_u k - u, calculated without the cancellation that k - u would suffer for small t
+		*/
+		inline void ZeroCensGammaZeroMassQuantities(const double t, const double k,
+			double& log_mass, double& u, double& k_minus_u) const {
+			if (!(t > 0.)) {// mu = infinity: no mass at zero at all
+				log_mass = -std::numeric_limits<double>::infinity();
+				u = k;
+				k_minus_u = 0.;
+			}
+			else if (!std::isfinite(t)) {// mu = 0: all mass at zero
+				log_mass = 0.;
+				u = 0.;
+				k_minus_u = k;
+			}
+			else if (t < k + 1.) {
+				// G(k,t) = t^k * exp(-t) / Gamma(k+1) * S with S = sum_{n>=0} t^n / ((k+1)*...*(k+n)), so that
+				// u = k / S and k - u = k * (S - 1) / S. Only S is summed, so nothing underflows however small t is
+				double term = 1., S = 1., S_minus_1 = 0.;
+				for (int n = 1; n <= 1000; ++n) {
+					term *= t / (k + n);
+					S += term;
+					S_minus_1 += term;
+					if (term < S * 1e-16) break;
+				}
+				log_mass = k * std::log(t) - t - std::lgamma(k + 1.) + std::log(S);
+				u = k / S;
+				k_minus_u = k * S_minus_1 / S;
+			}
+			else {
+				// t >= k + 1: the point mass is bounded away from 0, so the direct route is accurate
+				log_mass = std::log(GPBoost::RegLowerGamma(k, t));
+				u = std::exp(k * std::log(t) - t - std::lgamma(k) - log_mass);
+				k_minus_u = k - u;
+			}
+		}
+
+		/*! \brief Argument t = k * xi / mu of the point mass of a zero-censored shifted gamma likelihood */
+		inline double ZeroCensGammaZeroMassArg(const double location_par, const double k, const double xi) const {
+			return (k * xi) * std::exp(-location_par);
+		}
+
+		/*! \brief Log-likelihood of one observation of a zero-censored shifted gamma likelihood */
+		inline double LogLikZeroCensGamma_at(const double y, const double location_par, const double k, const double xi, const bool incl_norm_const) const {
+			if (y <= 0.0) {
+				if (xi <= 0.0) { return 0.0; }
+				double log_mass, u, k_minus_u;
+				ZeroCensGammaZeroMassQuantities(ZeroCensGammaZeroMassArg(location_par, k, xi), k, log_mass, u, k_minus_u);
+				return log_mass;
+			}
+			const double z = y + xi;
+			double ll = k * (std::log(k) - location_par) - (k * z) * std::exp(-location_par);
+			if (incl_norm_const) {
+				ll += (k - 1.0) * std::log(z) - std::lgamma(k);
+			}
+			return ll;
+		}
+
+		/*! \brief First derivative with respect to eta of the log-likelihood of a zero-censored shifted gamma likelihood */
+		inline double FirstDerivLogLikZeroCensGamma_at(const double y, const double location_par, const double k, const double xi) const {
+			if (y <= 0.0) {
+				if (xi <= 0.0) return 0.0;
+				double log_mass, u, k_minus_u;
+				ZeroCensGammaZeroMassQuantities(ZeroCensGammaZeroMassArg(location_par, k, xi), k, log_mass, u, k_minus_u);
+				return -u;
+			}
+			return (k * (y + xi)) * std::exp(-location_par) - k;
+		}
+
+		/*! \brief Observed information (= negative second derivative) with respect to eta of a zero-censored shifted gamma log-likelihood */
+		inline double SecondDerivNegLogLikZeroCensGamma_at(const double y, const double location_par, const double k, const double xi) const {
+			if (y <= 0.0) {
+				if (xi <= 0.0) return 0.0;
+				const double t = ZeroCensGammaZeroMassArg(location_par, k, xi);
+				double log_mass, u, k_minus_u;
+				ZeroCensGammaZeroMassQuantities(t, k, log_mass, u, k_minus_u);
+				return u * (t - k_minus_u);// = t * (t - k) * Q + t^2 * Q^2 with Q = g(t; k, 1) / G(k, t)
+			}
+			return (k * (y + xi)) * std::exp(-location_par);
+		}
+
+		/*! \brief Derivative with respect to eta of the eta-block information of a zero-censored shifted gamma log-likelihood */
+		inline double DerivInformationZeroCensGamma_at(const double y, const double location_par, const double k, const double xi) const {
+			if (y <= 0.0) {
+				if (xi <= 0.0) return 0.0;
+				return -ZeroCensGammaZeroMassDerivInformation(location_par, k, xi);// dt / d eta = -t
+			}
+			return -(k * (y + xi)) * std::exp(-location_par);
+		}
+
+		/*!
+		* \brief t * dJ_eta/dt at the point mass of a zero-censored shifted gamma likelihood. This is both the derivative of the
+		*		eta-block information with respect to log(xi) and, up to the sign, its derivative with respect to eta
+		*/
+		inline double ZeroCensGammaZeroMassDerivInformation(const double location_par, const double k, const double xi) const {
+			const double t = ZeroCensGammaZeroMassArg(location_par, k, xi);
+			double log_mass, u, k_minus_u;
+			ZeroCensGammaZeroMassQuantities(t, k, log_mass, u, k_minus_u);
+			const double w = u * (k_minus_u - t);// = t * (Q + t * dQ/dt)
+			return t * u + w * (t - k_minus_u + u);
+		}
+
+		/*!
+		* \brief Quantities of the shift parameter xi (on the log scale) at one observation of a zero-censored shifted gamma likelihood
+		* \param[out] dLogXi Score d log f / d log(xi)
+		* \param[out] lEtaLogXi Cross derivative d^2 log f / (d eta d log(xi))
+		* \param[out] dJetadLogXi Derivative of the eta-block information with respect to log(xi)
+		*/
+		inline void ZeroCensGammaLogXiQuantities(const double y, const double location_par, const double k, const double xi,
+			double& dLogXi, double& lEtaLogXi, double& dJetadLogXi) const {
+			if (y <= 0.0) {
+				dLogXi = 0.; lEtaLogXi = 0.; dJetadLogXi = 0.;
+				if (xi <= 0.0) return;
+				const double t = ZeroCensGammaZeroMassArg(location_par, k, xi);
+				double log_mass, u, k_minus_u;
+				ZeroCensGammaZeroMassQuantities(t, k, log_mass, u, k_minus_u);
+				dLogXi = u;// d t / d log(xi) = t
+				lEtaLogXi = -u * (k_minus_u - t);
+				dJetadLogXi = ZeroCensGammaZeroMassDerivInformation(location_par, k, xi);
+				return;
+			}
+			const double z = y + xi;
+			const double k_over_mu = k * std::exp(-location_par);
+			dLogXi = xi * ((k - 1.0) / z - k_over_mu);
+			lEtaLogXi = xi * k_over_mu;
+			dJetadLogXi = xi * k_over_mu;
+		}
+
+		/*!
+		* \brief Quantities of the shape parameter k (on the log scale) at one observation of a zero-censored shifted gamma
+		*		likelihood. These are also the derivatives with respect to the log(shape) location parameter block zeta of the
+		*		varying-shape variant, since k = exp(zeta) there
+		* \param[out] dLogK Score d log f / d log(k)
+		* \param[out] lEtaLogK Cross derivative d^2 log f / (d eta d log(k))
+		* \param[out] dJetadLogK Derivative of the eta-block information with respect to log(k)
+		*/
+		inline void ZeroCensGammaLogShapeQuantities(const double y, const double location_par, const double k, const double xi,
+			double& dLogK, double& lEtaLogK, double& dJetadLogK) const {
+			if (y <= 0.0) {
+				dLogK = 0.; lEtaLogK = 0.; dJetadLogK = 0.;
+				if (xi <= 0.0) return;
+				const double h = H_LOG_SHAPE_ZERO_CENS_GAMMA_;
+				const double k_minus = k * std::exp(-h), k_plus = k * std::exp(h);
+				const double ll_plus = LogLikZeroCensGamma_at(y, location_par, k_plus, xi, true);
+				const double ll_minus = LogLikZeroCensGamma_at(y, location_par, k_minus, xi, true);
+				// The log point mass is -infinity for mu = infinity. The objective is then -infinity as well and the trial
+				// point is rejected, so leaving the derivatives at 0 avoids poisoning the gradient with a NaN
+				if (!std::isfinite(ll_plus) || !std::isfinite(ll_minus)) return;
+				dLogK = (ll_plus - ll_minus) / (2.0 * h);
+				lEtaLogK = (FirstDerivLogLikZeroCensGamma_at(y, location_par, k_plus, xi) - FirstDerivLogLikZeroCensGamma_at(y, location_par, k_minus, xi)) / (2.0 * h);
+				dJetadLogK = (SecondDerivNegLogLikZeroCensGamma_at(y, location_par, k_plus, xi) - SecondDerivNegLogLikZeroCensGamma_at(y, location_par, k_minus, xi)) / (2.0 * h);
+				return;
+			}
+			const double z = y + xi;
+			const double z_over_mu = z * std::exp(-location_par);
+			dLogK = k * (std::log(k) + 1.0 - location_par - z_over_mu + std::log(z) - GPBoost::digamma(k));
+			lEtaLogK = k * (z_over_mu - 1.0);
+			dJetadLogK = k * z_over_mu;
+		}
+
+		inline double LogLikZeroCensGamma(const double y, const double location_par, const bool incl_norm_const) const {
+			return LogLikZeroCensGamma_at(y, location_par, aux_pars_[0], aux_pars_[1], incl_norm_const);
+		}
+		inline double FirstDerivLogLikZeroCensGamma(const double y, const double location_par) const {
+			return FirstDerivLogLikZeroCensGamma_at(y, location_par, aux_pars_[0], aux_pars_[1]);
+		}
+		inline double SecondDerivNegLogLikZeroCensGamma(const double y, const double location_par) const {
+			return SecondDerivNegLogLikZeroCensGamma_at(y, location_par, aux_pars_[0], aux_pars_[1]);
+		}
+
+		/*! \brief Shape k = exp(zeta) of the varying-shape zero-censored shifted gamma likelihood */
+		inline double ZeroCensGammaVarShapeShape(const double loc_zeta) const {
+			return std::exp(loc_zeta);
+		}
+
+		/*!
+		* \brief zeta-block (= log(shape)) gradient of the negative approximate marginal log-likelihood at one observation of
+		*		the varying-shape zero-censored shifted gamma likelihood: the direct score, the log-determinant term (through
+		*		dJ_eta/dzeta) and the implicit term through the mode (through l_{eta,zeta})
+		* \param w Sample weight
+		* \param diag Data-scale diagonal entry of (Sigma^-1 + W)^-1 at this observation
+		* \param inv_d_mll_d_mode Data-scale entry of (Sigma^-1 + W)^-1 * d_mll_d_mode at this observation
+		*/
+		inline double ZeroCensGammaVarShapeZetaGrad(const double y, const double loc_eta, const double loc_zeta, const double w,
+			const double diag, const double inv_d_mll_d_mode) const {
+			double dZeta, lEtaZeta, dJetadZeta;
+			ZeroCensGammaLogShapeQuantities(y, loc_eta, ZeroCensGammaVarShapeShape(loc_zeta), aux_pars_[0], dZeta, lEtaZeta, dJetadZeta);
+			return -w * dZeta + 0.5 * (w * dJetadZeta) * diag + (w * lEtaZeta) * inv_d_mll_d_mode;
+		}
+
 		inline double LogLikAsymLaplace(double y, double location_par, bool incl_norm_const) const {
 			double indicator = (y <= location_par) ? 1.0 : 0.0;
 			double ll = (y - location_par) * (indicator - quantile_) / aux_pars_[0];
@@ -4603,6 +4887,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "zoctn") visit([&](data_size_t i) { return FirstDerivLogLikZeroOneCensTransfNorm(y_data[i], location_par[i]); });
 			else if (likelihood_type_ == "zero_one_censored_transformed_beta") visit([&](data_size_t i) { return FirstDerivLogLikZeroOneCensTransfBeta(y_data[i], location_par[i]); });
 			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") visit([&](data_size_t i) { return FirstDerivLogLikZeroOneCensGamma(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "zero_censored_shifted_gamma") visit([&](data_size_t i) { return FirstDerivLogLikZeroCensGamma(y_data[i], location_par[i]); });
 			else if (likelihood_type_ == "asymmetric_laplace") visit([&](data_size_t i) { return FirstDerivLogLikAsymLaplace(y_data[i], location_par[i]); });
 			else return false;
 			return true;
@@ -4654,6 +4939,10 @@ namespace GPBoost {
 				// Only eta is a mode / random effect here; log(shape) (and the structural-zero logit) are fixed effects
 				const data_size_t off_s = ShapeBlockOffset();
 				ForEachSampleWeighted(first_deriv_ll, [&](data_size_t i) { return FirstDerivLogLikGammaVarShape(y_data[i], location_par[i], location_par[i + off_s]); });
+			}
+			else if (IsZeroCensShiftedGammaVaryingShape()) {
+				// Only eta is a mode / random effect here; log(shape) (location_par[i + num_data_]) is a fixed effect
+				ForEachSampleWeighted(first_deriv_ll, [&](data_size_t i) { return FirstDerivLogLikZeroCensGamma_at(y_data[i], location_par[i], ZeroCensGammaVarShapeShape(location_par[i + num_data_]), aux_pars_[0]); });
 			}
 			else if (IsHurdleRegression()) {
 				// Random effects live on the response predictor eta (block 0); this is the block-0 score used for mode finding.
@@ -5122,6 +5411,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "zoctn") visit([&](data_size_t i) { return SecondDerivNegLogLikZeroOneCensTransfNorm(y_data[i], location_par[i]); });
 			else if (likelihood_type_ == "zero_one_censored_transformed_beta") visit([&](data_size_t i) { return SecondDerivNegLogLikZeroOneCensTransfBeta(y_data[i], location_par[i]); });
 			else if (likelihood_type_ == "zero_one_censored_shifted_gamma") visit([&](data_size_t i) { return SecondDerivNegLogLikZeroOneCensGamma(y_data[i], location_par[i]); });
+			else if (likelihood_type_ == "zero_censored_shifted_gamma") visit([&](data_size_t i) { return SecondDerivNegLogLikZeroCensGamma(y_data[i], location_par[i]); });
 			else return false;
 			return true;
 		}//end VisitObservedInformationKernel
@@ -5228,6 +5518,9 @@ namespace GPBoost {
 				else if (IsGammaVaryingShape()) {
 					const data_size_t off_s = ShapeBlockOffset();
 					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return SecondDerivNegLogLikGammaVarShape(y_data[i], location_par[i], location_par[i + off_s]); });
+				}
+				else if (IsZeroCensShiftedGammaVaryingShape()) {
+					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return SecondDerivNegLogLikZeroCensGamma_at(y_data[i], location_par[i], ZeroCensGammaVarShapeShape(location_par[i + num_data_]), aux_pars_[0]); });
 				}
 				else if (!VisitObservedInformationKernel(y_data, y_data_int, location_par,
 					[&](auto kernel) { ForEachSampleWeighted(information_ll, kernel); })) {
@@ -6039,6 +6332,14 @@ namespace GPBoost {
 					const data_size_t off_s = ShapeBlockOffset();
 					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return DerivInformationGammaVarShape(y_data[i], location_par[i], location_par[i + off_s]); });
 				}//end gamma varying shape variants
+				else if (IsZeroCensShiftedGamma()) {
+					const bool varying_shape = IsZeroCensShiftedGammaVaryingShape();
+					const double k_const = varying_shape ? 0. : aux_pars_[0];
+					const double xi = varying_shape ? aux_pars_[0] : aux_pars_[1];
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) {
+						const double k = varying_shape ? ZeroCensGammaVarShapeShape(location_par[i + num_data_]) : k_const;
+						return DerivInformationZeroCensGamma_at(y_data[i], location_par[i], k, xi); });
+				}//end zero-censored shifted gamma variants
 				else if (likelihood_type_ == "zoctn") {
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
@@ -6282,6 +6583,23 @@ namespace GPBoost {
 		inline double XB_SecondMoment_(double mu, double phi, double u) const;
 
 		inline void ZOCG_MomentsGivenEta_(const double eta,
+			const double k,
+			const double xi,
+			double& Ey,
+			double& Ey2,
+			const bool need_second) const;
+
+		/*!
+		* \brief Conditional mean and second moment of one observation of a zero-censored shifted gamma likelihood given the
+		*		location parameter eta, i.e. of Y = max(Z - xi, 0) with Z ~ Gamma(k, exp(eta) / k)
+		* \param eta Location parameter
+		* \param k Shape
+		* \param xi Shift
+		* \param[out] Ey Conditional mean
+		* \param[out] Ey2 Conditional second moment (only calculated if need_second)
+		* \param need_second If true, the second moment is calculated as well
+		*/
+		inline void ZCG_MomentsGivenEta_(const double eta,
 			const double k,
 			const double xi,
 			double& Ey,
@@ -7593,6 +7911,7 @@ namespace GPBoost {
 			"poisson", "gamma", "tweedie", "tweedie_fixed_p", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "gaussian_heteroscedastic_fixed_and_random", "lognormal", "beta_binomial",
 			"hurdle_gamma", "hurdle_lognormal", "zero_censored_power_transformed_normal", "zero_censored_power_transformed_normal_heteroscedastic",
 			"zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
+			"zero_censored_shifted_gamma", "zero_censored_shifted_gamma_varying_shape",
 			"asymmetric_laplace", "gpd", "egpd_power", "egpd_power_mixture", "egpd_beta", "egpd_power_beta",
 			"zero_inflated_poisson", "zero_inflated_negative_binomial", "zero_inflated_negative_binomial_1",
 			"hurdle_gpd", "hurdle_egpd_power", "hurdle_egpd_power_mixture", "hurdle_egpd_beta", "hurdle_egpd_power_beta",
@@ -7604,6 +7923,7 @@ namespace GPBoost {
 		const std::set<string_t> LIKELIHOODS_ONLY_LAPLACE_{ "binomial_probit", "binomial_logit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit", "gamma", "negative_binomial",
 			"beta", "beta_binomial", "tweedie", "tweedie_fixed_p", "hurdle_gamma", "hurdle_lognormal", "zero_censored_power_transformed_normal",
 			"zero_censored_power_transformed_normal_heteroscedastic", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
+			"zero_censored_shifted_gamma", "zero_censored_shifted_gamma_varying_shape",
 			"gpd", "egpd_power", "egpd_power_mixture", "egpd_beta", "egpd_power_beta",
 			"hurdle_gpd", "hurdle_egpd_power", "hurdle_egpd_power_mixture", "hurdle_egpd_beta", "hurdle_egpd_power_beta",
 			"hurdle_regression_gamma", "hurdle_regression_lognormal", "hurdle_regression_gpd", "hurdle_regression_egpd_power",

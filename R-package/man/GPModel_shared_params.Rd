@@ -133,6 +133,15 @@ that are estimated. For more details on this model, see Kosmidis and Zeileis (20
 with point masses at 0 and 1 and a continuous distribution on (0,1). The model used is Y = min(max(Z - xi, 0), 1), 
 where Z follows a gamma distribution with mean mu = exp(F(X) + Zb) and shape k. The shape k and shift xi are 
 (auxiliary) parameters that are estimated. For more details on this model, see Sigrist and Stahel (2011) }
+\item{ "zero_censored_shifted_gamma": Zero-censored shifted gamma likelihood for modeling data with a point mass at 0
+and a continuous distribution for y > 0. The model used is Y = max(Z - xi, 0), where Z follows a gamma distribution
+with mean mu = exp(F(X) + Zb) and shape k. The shape k and shift xi are (auxiliary) parameters that are estimated.
+This is the version of "zero_one_censored_shifted_gamma" (Sigrist and Stahel, 2011) without the upper censoring at 1 }
+\item{ "zero_censored_shifted_gamma_varying_shape": As "zero_censored_shifted_gamma", but the shape k varies across
+observations: log(k) = F_s(X) is related to fixed effects only (covariates and / or the GPBoost tree-boosting
+algorithm; no random effects / GPs for the shape), while log(mu) = F(X) + Zb is related to both fixed and random
+effects. The shift xi is then the only (auxiliary) parameter that is estimated. The estimated coefficients of the
+log-shape model are returned alongside the mean-model coefficients (with the suffix "_shape") }
 \item{ "gaussian_heteroscedastic_fixed_and_random": Gaussian likelihood where both the mean and the variance
 are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation.
 Fisher-Laplace is the default and currently the only implemented approximation. }
