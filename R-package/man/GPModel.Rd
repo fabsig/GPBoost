@@ -20,46 +20,32 @@ GPModel(likelihood = "gaussian", group_data = NULL,
   num_neighbors_pred = NULL)
 }
 \arguments{
-\item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable. 
-Available options:
+\item{likelihood}{A \code{string} specifying the likelihood function (distribution) of the response variable.
+The currently supported likelihoods, grouped by response type, are:
+
+\tabular{lll}{
+\strong{Response type} \tab \strong{Support} \tab \strong{Likelihoods} \cr
+Continuous \tab y in (-inf, inf) \tab "gaussian", "t", "t_fix_df", "quantile_regression" / "asymmetric_laplace", "gaussian_heteroscedastic", "gaussian_heteroscedastic_fixed_and_random" \cr
+Positive continuous \tab y in (0, inf) \tab "gamma", "gamma_varying_shape", "lognormal", "gpd", "egpd_power", "egpd_power_mixture", "egpd_beta", "egpd_power_beta" \cr
+Non-negative continuous / semicontinuous \tab y in [0, inf) with point mass at 0 \tab "tweedie", "tweedie_fixed_p", "hurdle_gamma", "hurdle_lognormal", hurdle GPD / EGPD likelihoods, "zero_censored_power_transformed_normal", "zero_censored_shifted_gamma" \cr
+Count \tab y in \{0, 1, 2, ...\} \tab "poisson", "negative_binomial", "negative_binomial_1", zero-inflated count likelihoods \cr
+Binary \tab y in \{0, 1\} \tab "bernoulli_logit", "bernoulli_probit" \cr
+Proportion / fractional / bounded \tab y in [0, 1] \tab "quasi_bernoulli_logit", "quasi_bernoulli_probit", "binomial_logit", "binomial_probit", "beta_binomial", "beta", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma" \cr
+}
+
+The table lists the main likelihood names. Aliases, heteroscedastic and varying-shape variants,
+and the "_regression" variants of the two-part likelihoods are documented in the detailed descriptions below.
+
+\strong{Continuous response: y in (-inf, inf)}
 \itemize{
-\item{ "gaussian" }
-\item{ "bernoulli_logit": Bernoulli likelihood with a logit link function for binary classification. Aliases: "binary", "binary_logit" }
-\item{ "bernoulli_probit": Bernoulli likelihood with a probit link function for binary classification. Aliases: "binary_probit" }
-\item{ "quasi_bernoulli_logit": quasi-Bernoulli likelihood with a logit link function for y in [0,1]. Aliases: "quasi_binary", "quasi_binary_logit" }
-\item{ "quasi_bernoulli_probit": quasi-Bernoulli likelihood with a probit link function for y in [0,1]. Aliases: "quasi_binary_probit" }
-\item{ "binomial_logit": Binomial likelihood with a logit link function. 
-The response variable \code{y} needs to contain proportions of successes / trials, 
-and the \code{weights} parameter needs to contain the numbers of trials. Aliases: "binomial"}
-\item{ "binomial_probit": Binomial likelihood with a probit link function. 
-The response variable \code{y} needs to contain proportions of successes / trials, 
-and the \code{weights} parameter needs to contain the numbers of trials }
-\item{ "beta_binomial": Beta-binomial likelihood with a logit link function. 
-The response variable \code{y} needs to contain proportions of successes / trials, 
-and the \code{weights} parameter needs to contain the numbers of trials. Aliases: "betabinomial", "beta-binomial"}
-\item{ "poisson": Poisson likelihood with a log link function }
-\item{ "negative_binomial": negative binomial likelihood with a log link function (aka "nbinom2", "negative_binomial_2"). 
-The variance is mu * (mu + r) / r, mu = mean, r = shape, with this parametrization }
-\item{ "negative_binomial_1": Negative binomial 1 (aka "nbinom1") likelihood with a log link function. 
-The variance is mu * (1 + phi), mu = mean, phi = dispersion, with this parametrization }
-\item{ "gamma": Gamma likelihood with a log link function }
-\item{ "tweedie": Compound Poisson--Gamma Tweedie likelihood with a log link, variance phi * mu^p, and 1.01 < p < 1.99. The dispersion phi and power p are estimated }
-\item{ "tweedie_fixed_p": The same Tweedie likelihood with p fixed through \code{likelihood_additional_param}; only phi is estimated. The fixed power must satisfy 1.01 < p < 1.99 }
-\item{ "gpd": Generalized Pareto likelihood for finite positive responses. The log scale parameter equals the latent predictor eta (sum of fixed and random effects), sigma = exp(eta), and the estimated auxiliary parameter is shape > -0.5 }
-\item{ "egpd_power": Naveau power-carrier extended generalized Pareto likelihood with auxiliary parameters shape and kappa }
-\item{ "egpd_power_mixture": Naveau ordered power-mixture carrier with auxiliary parameters shape, kappa1, delta_kappa, and p }
-\item{ "egpd_beta": Naveau beta-carrier extended generalized Pareto likelihood with auxiliary parameters shape and delta }
-\item{ "egpd_power_beta": Naveau power-beta carrier with auxiliary parameters shape, delta, and kappa }
-The GPD/EGPD likelihoods require finite y > 0. Response means exist for shape < 1 and response variances for shape < 0.5.
-\item{ "lognormal": Log-normal likelihood with a log link function }
-\item{ "beta" : Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004)}
-\item{ "t": t-distribution (e.g., for robust regression). The default approximation is Fisher-Laplace: Fisher information is used for both mode finding and determinant evaluation. }
+\item{ "gaussian": Gaussian likelihood }
+\item{ "t": t-distribution (e.g., for robust regression). The default approximation is Fisher-Laplace, i.e., the Fisher information is used instead of the observed Hessian in the Laplace approximation of the marginal likelihood. }
 \item{ "t_fix_df": t-distribution with the degrees-of-freedom (df) held fixed and not estimated
 \itemize{ \item{ The degrees-of-freedom (df) can be set via the \code{likelihood_additional_param} parameter. The default is df = 2 }}
 }
-\item{ "quantile_regression" / "asymmetric_laplace" : an asymmetric Laplace likelihood for quantile regression, aliases: "asymmetric_laplace", "quantile_regression" 
+\item{ "quantile_regression" / "asymmetric_laplace" : an asymmetric Laplace likelihood for quantile regression. Both names are accepted, as is the alias "quantile"
 \itemize{ \item{ The quantile must be supplied through the \code{likelihood_additional_param} parameter and must be strictly between 0 and 1 }}
-The default approximation is Fisher-Laplace: Fisher information is used for both mode finding and determinant evaluation.
+The default approximation is Fisher-Laplace, i.e., the Fisher information is used instead of the observed Hessian in the Laplace approximation of the marginal likelihood.
 The triangular-kernel-curvature (TKC) approximation can be enabled by appending "_triangular_kernel_curvature" or the shorthand "_tkc",
 for example, "quantile_regression_tkc" or "asymmetric_laplace_triangular_kernel_curvature".
 \itemize{ \item{ experimental: the log-likelihood is not differentiable at the kinks where 'y_i' equals the location parameter, and the
@@ -73,59 +59,63 @@ and for likelihood-based model comparison, but it does not necessarily improve p
 Appending "_admm_ssn_alm" instead warm starts the refinement with an ADMM phase, which typically halves its cost when
 \code{matrix_inversion_method = "cholesky"} and is not recommended for iterative methods }}
 }
-\item{ "hurdle_<base>" and "zero_inflated_<base>": Two-part likelihoods for response variables with an excess probability 'p0' of exact zeros.
-They combine a point mass 'p0' at zero with a base distribution for the remaining mass '1 - p0'. Use "hurdle_<base>" when the base has support 'y > 0'
-(positive continuous responses) and "zero_inflated_<base>" for counts (where the base can itself generate additional zeros). In both cases 'exp(F(X) + Zb)'
-is the mean or scale parameter of the (non-structural) base component - not the unconditional response mean - so E(y) = (1 - p0) * base_mean. The structural-zero
-probability 'p0' is estimated jointly with the base auxiliary parameters. Currently supported variants:
+\item{ "gaussian_heteroscedastic": Gaussian likelihood where the mean is related to fixed and random effects and
+the log-error variance is related to fixed effects only (linear predictor or GPBoost algorithm). The estimated coefficients of the
+log-variance model are returned alongside the mean-model coefficients (with the suffix "_scale").
+Fisher-Laplace is the default and currently the only implemented approximation. }
+\item{ "gaussian_heteroscedastic_fixed_and_random": Gaussian likelihood where both the mean and the variance
+are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation.
+Fisher-Laplace is the default and currently the only implemented approximation. }
+}
+
+\strong{Positive continuous response: y in (0, inf)}
 \itemize{
-\item{ Hurdle (positive continuous base): "hurdle_gamma" (aux: shape), "hurdle_lognormal" (aux: log_variance), and the extreme-value bases
-"hurdle_gpd", "hurdle_egpd_power", "hurdle_egpd_power_mixture", "hurdle_egpd_beta", "hurdle_egpd_power_beta" (same aux parameters as the corresponding non-hurdle
-GPD/EGPD likelihoods, plus 'p0'). The alias "zero_inflated_gamma" maps to "hurdle_gamma". }
-\item{ Zero-inflated counts (integer y >= 0): "zero_inflated_poisson", "zero_inflated_negative_binomial" (aux: shape; aka "zero_inflated_nbinom2"),
-"zero_inflated_negative_binomial_1" (aux: dispersion; aka "zero_inflated_nbinom1"). The unsuffixed names default to combined Fisher-Laplace:
-the exact log-likelihood score and Fisher information (quasi-Fisher information for NB1) are used for mode finding, while the observed Hessian and its
-derivatives are used for the Laplace determinant. Append "_laplace" for observed-Hessian Newton mode finding, or "_fisher_laplace" to use Fisher
-(quasi-Fisher for NB1) information for both mode finding and determinant evaluation. }
-\item{ For both the hurdle (positive continuous) and the zero-inflated count families, the structural-zero probability can alternatively be modeled as a logistic
-regression on the covariates by inserting "regression" after the family prefix in the likelihood name (e.g. "hurdle_regression_gamma",
-"hurdle_regression_lognormal", "hurdle_regression_gpd", "zero_inflated_regression_poisson", "zero_inflated_regression_negative_binomial").
-The zero probability is then pi_i = 1 / (1 + exp(-x_i'alpha)), modeled through a second fixed-effects-only predictor that reuses the same design matrix
-X as the response model (the response predictor carries the random effects, the zero predictor does not). The estimated zero-model coefficients alpha are
-returned by get_coef() alongside the response-model coefficients, with the suffix "_zero". }
-}
-}
-\item{ "gamma_varying_shape", "hurdle_gamma_varying_shape", "hurdle_regression_gamma_varying_shape": Similar as
-"gamma", "hurdle_gamma", and "hurdle_regression_gamma", but the gamma shape varies across observations and is modeled
+\item{ "gamma": Gamma likelihood with a log link function }
+\item{ "gamma_varying_shape": As "gamma", but the gamma shape varies across observations and is modeled
 by an additional fixed-effects-only predictor: log(shape) = F_s(X) (F_s(X) = linear predictor or the GPBoost
 algorithm), while the log mean log(mu) = F(X) + Zb is related to both fixed and random effects. Note that the shape
 also governs the dispersion, var(y) = mu^2 / shape. The estimated coefficients of the log-shape model are returned
-alongside the mean-model coefficients (with the suffix "_shape"). For "hurdle_regression_gamma_varying_shape" there
-are three predictors: the response mean, the structural-zero logit (coefficients with the suffix "_zero"), and
-log(shape) }
-\item{ "zero_censored_power_transformed_normal": Likelihood of a censored and power-transformed normal variable 
-for modeling data with a point mass at 0 and a continuous distribution for y > 0. 
-The model used is Y = max(0,X)^lambda, X ~ N(mu, sigma^2), where mu = F(X) + Zb, 
-and sigma and lambda are (auxiliary) parameters that are estimated. 
+alongside the mean-model coefficients (with the suffix "_shape"). See also the corresponding two-part likelihoods
+"hurdle_gamma_varying_shape" and "hurdle_regression_gamma_varying_shape" below }
+\item{ "lognormal": Log-normal likelihood with a log link function }
+\item{ "gpd": Generalized Pareto likelihood for finite positive responses. The log scale parameter equals the latent predictor eta (sum of fixed and random effects), sigma = exp(eta), and the estimated auxiliary parameter is shape > -0.5 }
+\item{ "egpd_power": Naveau power-carrier extended generalized Pareto likelihood with auxiliary parameters shape and kappa }
+\item{ "egpd_power_mixture": Naveau ordered power-mixture carrier with auxiliary parameters shape, kappa1, delta_kappa, and p }
+\item{ "egpd_beta": Naveau beta-carrier extended generalized Pareto likelihood with auxiliary parameters shape and delta }
+\item{ "egpd_power_beta": Naveau power-beta carrier with auxiliary parameters shape, delta, and kappa }
+}
+
+\strong{Non-negative continuous / semicontinuous response: y in [0, inf) with point mass at 0}
+\itemize{
+\item{ "tweedie": Compound Poisson--Gamma Tweedie likelihood with a log link, variance phi * mu^p, and 1.01 < p < 1.99. The dispersion phi and power p are estimated }
+\item{ "tweedie_fixed_p": The same Tweedie likelihood with p fixed through \code{likelihood_additional_param}; only phi is estimated. The fixed power must satisfy 1.01 < p < 1.99 }
+\item{ "hurdle_<base>": Two-part likelihoods for non-negative response variables with an excess probability 'p0' of exact zeros.
+They combine a point mass 'p0' at zero with a base distribution with support 'y > 0' for the remaining mass '1 - p0'. The fixed effects 'F(X)'
+and random effects 'Zb' enter only through the base component: 'exp(F(X) + Zb)' is its mean or scale parameter, not the unconditional response
+mean, which is E(y) = (1 - p0) * base_mean. The structural-zero probability 'p0' is estimated jointly with the base auxiliary parameters.
+Currently supported bases: "hurdle_gamma", "hurdle_lognormal", and the extreme-value bases "hurdle_gpd", "hurdle_egpd_power",
+"hurdle_egpd_power_mixture", "hurdle_egpd_beta", "hurdle_egpd_power_beta".
+For all these bases, the "zero_inflated" prefix is accepted as an alias, e.g. "zero_inflated_gamma" maps to "hurdle_gamma".
+See "zero_inflated_<base>" under count
+responses for the corresponding count-data family }
+\item{ "hurdle_regression_<base>": As "hurdle_<base>", but the structural-zero probability is modeled as a logistic regression on the
+covariates instead of as a constant (e.g. "hurdle_regression_gamma", "hurdle_regression_lognormal", "hurdle_regression_gpd",
+"hurdle_regression_egpd_power", "hurdle_regression_egpd_power_mixture", "hurdle_regression_egpd_beta", "hurdle_regression_egpd_power_beta").
+The zero probability is then pi_i = 1 / (1 + exp(-x_i'alpha)), modeled through a second fixed-effects-only predictor that reuses the same
+design matrix X as the response model (the response predictor carries the random effects, the zero predictor does not). The estimated
+zero-model coefficients alpha are returned by get_coef() alongside the response-model coefficients, with the suffix "_zero" }
+\item{ "hurdle_gamma_varying_shape", "hurdle_regression_gamma_varying_shape": As "hurdle_gamma" and "hurdle_regression_gamma", but with
+the observation-specific gamma shape of "gamma_varying_shape". For "hurdle_regression_gamma_varying_shape" there are three predictors:
+the response mean, the structural-zero logit (coefficients with the suffix "_zero"), and log(shape) }
+\item{ "zero_censored_power_transformed_normal": Likelihood of a censored and power-transformed normal variable
+for modeling data with a point mass at 0 and a continuous distribution for y > 0.
+The model used is Y = max(0,X)^lambda, X ~ N(mu, sigma^2), where mu = F(X) + Zb,
+and sigma and lambda are (auxiliary) parameters that are estimated.
 For more details on this model, see Sigrist et al. (2012, AOAS) "A dynamic nonstationary spatio-temporal model for short term prediction of precipitation" }
 \item{ "zero_censored_power_transformed_normal_heteroscedastic": As "zero_censored_power_transformed_normal", but the
 standard deviation sigma of the latent normal variable varies across observations: log(sigma) = F_2(X) is related to
-fixed effects only (covariates and / or the GPBoost tree-boosting algorithm; no random effects / GPs for sigma), while
+fixed effects only (linear predictor or GPBoost algorithm), while
 mu = F(X) + Zb is related to both fixed and random effects. lambda is then the only (auxiliary) parameter that is estimated }
-\item{ "zoctn": Zero-one censored transformed normal likelihood for modeling data in [0,1] with point masses at 0 and 1
-and a continuous distribution on (0,1). The model used is T ~ N(mu, sigma^2), W = max(min(T,1),0), and Y = g(W),
-where g(x) = expit(a + b * logit(x)) for x in (0,1), mu = F(X) + Z_RE u, u denotes the random effects, Z_RE is their design matrix,
-and sigma, a, and b are (auxiliary) parameters
-that are estimated. For more details on this model, see Qiang and Sigrist (2026) }
-\item{ "zero_one_censored_transformed_beta": Zero-one censored transformed beta likelihood for modeling data in [0,1] 
-with point masses at 0 and 1 and a continuous distribution on (0,1). If T follows a beta distribution with mean 
-mu = expit(F(X) + Zb) and precision phi, the observed response is obtained by applying the linear transformation 
-Y = (1 + 2u) * T - u and censoring the result to [0,1]. The precision phi and shift u are (auxiliary) parameters 
-that are estimated. For more details on this model, see Kosmidis and Zeileis (2025) }
-\item{ "zero_one_censored_shifted_gamma": Zero-one censored shifted gamma likelihood for modeling data in [0,1] 
-with point masses at 0 and 1 and a continuous distribution on (0,1). The model used is Y = min(max(Z - xi, 0), 1), 
-where Z follows a gamma distribution with mean mu = exp(F(X) + Zb) and shape k. The shape k and shift xi are 
-(auxiliary) parameters that are estimated. For more details on this model, see Sigrist and Stahel (2011) }
 \item{ "zero_censored_shifted_gamma": Zero-censored shifted gamma likelihood for modeling data with a point mass at 0
 and a continuous distribution for y > 0. The model used is Y = max(Z - xi, 0), where Z follows a gamma distribution
 with mean mu = exp(F(X) + Zb) and shape k. The shape k and shift xi are (auxiliary) parameters that are estimated.
@@ -135,14 +125,65 @@ observations: log(k) = F_s(X) is related to fixed effects only (covariates and /
 algorithm; no random effects / GPs for the shape), while log(mu) = F(X) + Zb is related to both fixed and random
 effects. The shift xi is then the only (auxiliary) parameter that is estimated. The estimated coefficients of the
 log-shape model are returned alongside the mean-model coefficients (with the suffix "_shape") }
-\item{ "gaussian_heteroscedastic_fixed_and_random": Gaussian likelihood where both the mean and the variance
-are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation.
-Fisher-Laplace is the default and currently the only implemented approximation. }
-\item{ "gaussian_heteroscedastic": Gaussian likelihood where the mean is related to fixed and random effects and
-the log-error variance is related to fixed effects only (covariates and / or the GPBoost tree-boosting algorithm;
-no random effects / GPs for the variance). Fisher-Laplace is the default and currently the only implemented approximation. }
-\item{ Note: the first lines in the \href{https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h}{likelihoods source file} contain additional comments on the specific parametrizations used }
-\item{ Note: other likelihoods can be implemented upon request }
+}
+
+\strong{Count response: y in \{0, 1, 2, ...\}}
+\itemize{
+\item{ "poisson": Poisson likelihood with a log link function }
+\item{ "negative_binomial": negative binomial likelihood with a log link function (aka "nbinom2", "negative_binomial_2").
+The variance is mu * (mu + r) / r, mu = mean, r = shape, with this parametrization }
+\item{ "negative_binomial_1": Negative binomial 1 (aka "nbinom1") likelihood with a log link function.
+The variance is mu * (1 + phi), mu = mean, phi = dispersion, with this parametrization }
+\item{ "zero_inflated_<base>": Two-part count likelihoods that combine a point mass 'p0' at zero with a count base distribution for the
+remaining mass '1 - p0' (the base can itself generate additional zeros). As for the hurdle likelihoods, 'exp(F(X) + Zb)' is the mean of the
+(non-structural) base component - not the unconditional response mean - so E(y) = (1 - p0) * base_mean, and 'p0' is estimated jointly with
+the base auxiliary parameters. Currently supported bases: "zero_inflated_poisson", "zero_inflated_negative_binomial" (aux: shape; aka
+"zero_inflated_nbinom2"), "zero_inflated_negative_binomial_1" (aux: dispersion; aka "zero_inflated_nbinom1") }
+\item{ "zero_inflated_regression_<base>": As "zero_inflated_<base>", but with the logistic structural-zero model described under
+"hurdle_regression_<base>" above: "zero_inflated_regression_poisson", "zero_inflated_regression_negative_binomial", and
+"zero_inflated_regression_negative_binomial_1" }
+}
+
+\strong{Binary response: y in \{0, 1\}}
+\itemize{
+\item{ "bernoulli_logit": Bernoulli likelihood with a logit link function for binary classification. Aliases: "binary", "binary_logit" }
+\item{ "bernoulli_probit": Bernoulli likelihood with a probit link function for binary classification. Aliases: "binary_probit" }
+}
+
+\strong{Proportion / fractional / bounded response: y in [0, 1]}
+\itemize{
+\item{ "quasi_bernoulli_logit": quasi-Bernoulli likelihood with a logit link function for y in [0,1]. Aliases: "quasi_binary", "quasi_binary_logit" }
+\item{ "quasi_bernoulli_probit": quasi-Bernoulli likelihood with a probit link function for y in [0,1]. Aliases: "quasi_binary_probit" }
+\item{ "binomial_logit": Binomial likelihood with a logit link function.
+The response variable \code{y} needs to contain proportions of successes / trials,
+and the \code{weights} parameter needs to contain the numbers of trials. Aliases: "binomial"}
+\item{ "binomial_probit": Binomial likelihood with a probit link function.
+The response variable \code{y} needs to contain proportions of successes / trials,
+and the \code{weights} parameter needs to contain the numbers of trials }
+\item{ "beta_binomial": Beta-binomial likelihood with a logit link function.
+The response variable \code{y} needs to contain proportions of successes / trials,
+and the \code{weights} parameter needs to contain the numbers of trials. Aliases: "betabinomial", "beta-binomial"}
+\item{ "beta" : Beta likelihood with a logit link function (parametrization of Ferrari and Cribari-Neto, 2004). The response must lie strictly in (0,1) }
+\item{ "zoctn": Zero-one censored transformed normal likelihood for modeling data in [0,1] with point masses at 0 and 1
+and a continuous distribution on (0,1). The model used is T ~ N(mu, sigma^2), W = max(min(T,1),0), and Y = g(W),
+where g(x) = expit(a + b * logit(x)) for x in (0,1), mu = F(X) + Z_RE u, u denotes the random effects, Z_RE is their design matrix,
+and sigma, a, and b are (auxiliary) parameters
+that are estimated. For more details on this model, see Qiang and Sigrist (2026) }
+\item{ "zero_one_censored_transformed_beta": Zero-one censored transformed beta likelihood for modeling data in [0,1]
+with point masses at 0 and 1 and a continuous distribution on (0,1). If T follows a beta distribution with mean
+mu = expit(F(X) + Zb) and precision phi, the observed response is obtained by applying the linear transformation
+Y = (1 + 2u) * T - u and censoring the result to [0,1]. The precision phi and shift u are (auxiliary) parameters
+that are estimated. For more details on this model, see Kosmidis and Zeileis (2025) }
+\item{ "zero_one_censored_shifted_gamma": Zero-one censored shifted gamma likelihood for modeling data in [0,1]
+with point masses at 0 and 1 and a continuous distribution on (0,1). The model used is Y = min(max(Z - xi, 0), 1),
+where Z follows a gamma distribution with mean mu = exp(F(X) + Zb) and shape k. The shape k and shift xi are
+(auxiliary) parameters that are estimated. For more details on this model, see Sigrist and Stahel (2011) }
+}
+
+\strong{Notes}
+\itemize{
+\item{ The first lines in the \href{https://github.com/fabsig/GPBoost/blob/master/include/GPBoost/likelihoods.h}{likelihoods source file} contain additional comments on the specific parametrizations used }
+\item{ Other likelihoods can be implemented upon request }
 }}
 
 \item{group_data}{A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
