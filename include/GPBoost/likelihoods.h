@@ -873,12 +873,16 @@ namespace GPBoost {
 			int fitc_piv_chol_preconditioner_rank,
 			int rank_pred_approx_matrix_lanczos,
 			int nsim_var_pred,
-			double delta_conv_mode_finding) {
+			double delta_conv_mode_finding,
+			const CGConvergenceParams& cg_convergence_params,
+			const CGConvergenceParams& cg_convergence_params_pred) {
 			matrix_inversion_method_ = matrix_inversion_method;
 			cg_max_num_it_ = cg_max_num_it;
 			cg_max_num_it_tridiag_ = cg_max_num_it_tridiag;
 			cg_delta_conv_ = cg_delta_conv;
 			cg_delta_conv_pred_ = cg_delta_conv_pred;
+			cg_convergence_params_ = cg_convergence_params;
+			cg_convergence_params_pred_ = cg_convergence_params_pred;
 			num_rand_vec_trace_ = num_rand_vec_trace;
 			reuse_rand_vec_trace_ = reuse_rand_vec_trace;
 			seed_rand_vec_trace_ = seed_rand_vec_trace;
@@ -8051,6 +8055,10 @@ namespace GPBoost {
 		double cg_delta_conv_;
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
 		double cg_delta_conv_pred_;
+		/*! \brief Stopping rule and tolerances of the conjugate gradient algorithm when being used for parameter estimation */
+		CGConvergenceParams cg_convergence_params_;
+		/*! \brief Stopping rule and tolerances of the conjugate gradient algorithm when being used for prediction */
+		CGConvergenceParams cg_convergence_params_pred_;
 		/*! \brief Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix */
 		int num_rand_vec_trace_;
 		/*! \brief If true, random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix are sampled only once at the beginning of Newton's method for finding the mode in the Laplace approximation and are then reused in later trace approximations, otherwise they are sampled every time a trace is calculated */

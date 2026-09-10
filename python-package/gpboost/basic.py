@@ -4877,6 +4877,9 @@ class GPModel(object):
         self.vecchia_pred_type = None
         self.num_neighbors_pred = -1
         self.cg_delta_conv_pred = -1
+        self.cg_convergence_criterion_pred = None  # default: inherit the rule used for the parameter estimation
+        self.cg_rel_tol_pred = -1.
+        self.cg_abs_tol_pred = -1.
         self.nsim_var_pred = -1
         self.rank_pred_approx_matrix_lanczos = -1
         self.ind_points_selection = "kmeans++"
@@ -4917,6 +4920,10 @@ class GPModel(object):
                        "cg_max_num_it": -999, # default value is set in C++
                        "cg_max_num_it_tridiag": -999, # default value is set in C++
                        "cg_delta_conv": -999., # default value is set in C++
+                       "cg_convergence_criterion": "absolute",
+                       "cg_rel_tol": -999.,
+                       "cg_abs_tol": -999.,
+                       "cg_multi_rhs_convergence": "average",
                        "num_rand_vec_trace": -999, # default value is set in C++
                        "reuse_rand_vec_trace": True,
                        "seed_rand_vec_trace": 1,
@@ -5500,6 +5507,11 @@ class GPModel(object):
                 elif param not in ["optimizer_cov", "optimizer_coef", "cg_preconditioner_type",
                                    "init_cov_pars", "init_aux_pars"]:
                     raise ValueError("Unknown parameter: %s" % param)
+        for param, allowed_values in (("cg_convergence_criterion", ("absolute", "relative")),
+                                      ("cg_multi_rhs_convergence", ("average", "max", "per_rhs"))):
+            if self.params[param] is not None and self.params[param] not in allowed_values:
+                raise ValueError("params['%s'] must be one of %s, found '%s'"
+                                 % (param, ", ".join(allowed_values), self.params[param]))
 
     def __update_cov_par_names(self, likelihood):
         self.__determine_num_cov_pars(likelihood)
@@ -5600,8 +5612,33 @@ class GPModel(object):
                     If cg_max_num_it_tridiag = -999, internal default values are used.
                 - cg_delta_conv: double, optional (default = 1e-2)
                     Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
-                    when being used for parameter estimation.
+                    when being used for parameter estimation. Only used if cg_convergence_criterion = "absolute".
                     If cg_delta_conv = -999, internal default values are used.
+                - cg_convergence_criterion: string, optional (default = "absolute")
+                    Stopping rule of conjugate gradient algorithms.
+
+                        - "absolute" (= default): stop when ||r||_2 < cg_delta_conv
+
+                        - "relative": stop when ||r||_2 <= max(cg_abs_tol, cg_rel_tol * ||b||_2), where b is the
+                          right-hand side of the linear system. The cg_abs_tol floor makes this robust for
+                          right-hand sides that are zero or very small
+                - cg_rel_tol: double, optional (default = 1e-2)
+                    Relative tolerance of the "relative" stopping rule.
+                    If cg_rel_tol = -999, internal default values are used.
+                - cg_abs_tol: double, optional (default = value of cg_delta_conv)
+                    Absolute tolerance floor of the "relative" stopping rule.
+                    If cg_abs_tol = -999, it follows cg_delta_conv.
+                - cg_multi_rhs_convergence: string, optional (default = "average")
+                    How the stopping rule is aggregated over the columns of a linear system with several
+                    right-hand sides, such as the stochastic Lanczos quadrature. Every right-hand side is
+                    normalized by its own norm, i.e. q_j = ||r_j||_2 / max(cg_abs_tol, cg_rel_tol * ||b_j||_2).
+
+                        - "average" (= default): stop when mean(q_j) <= 1. Together with
+                          cg_convergence_criterion = "absolute" this is the historic behavior
+
+                        - "max": stop when max(q_j) <= 1
+
+                        - "per_rhs": stop iterating on column j individually as soon as q_j <= 1
                 - num_rand_vec_trace: integer, optional (default = 50)
                     Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix.
                     If num_rand_vec_trace = -999, internal default values are used.
@@ -5926,8 +5963,33 @@ class GPModel(object):
                     If cg_max_num_it_tridiag = -999, internal default values are used.
                 - cg_delta_conv: double, optional (default = 1e-2)
                     Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
-                    when being used for parameter estimation.
+                    when being used for parameter estimation. Only used if cg_convergence_criterion = "absolute".
                     If cg_delta_conv = -999, internal default values are used.
+                - cg_convergence_criterion: string, optional (default = "absolute")
+                    Stopping rule of conjugate gradient algorithms.
+
+                        - "absolute" (= default): stop when ||r||_2 < cg_delta_conv
+
+                        - "relative": stop when ||r||_2 <= max(cg_abs_tol, cg_rel_tol * ||b||_2), where b is the
+                          right-hand side of the linear system. The cg_abs_tol floor makes this robust for
+                          right-hand sides that are zero or very small
+                - cg_rel_tol: double, optional (default = 1e-2)
+                    Relative tolerance of the "relative" stopping rule.
+                    If cg_rel_tol = -999, internal default values are used.
+                - cg_abs_tol: double, optional (default = value of cg_delta_conv)
+                    Absolute tolerance floor of the "relative" stopping rule.
+                    If cg_abs_tol = -999, it follows cg_delta_conv.
+                - cg_multi_rhs_convergence: string, optional (default = "average")
+                    How the stopping rule is aggregated over the columns of a linear system with several
+                    right-hand sides, such as the stochastic Lanczos quadrature. Every right-hand side is
+                    normalized by its own norm, i.e. q_j = ||r_j||_2 / max(cg_abs_tol, cg_rel_tol * ||b_j||_2).
+
+                        - "average" (= default): stop when mean(q_j) <= 1. Together with
+                          cg_convergence_criterion = "absolute" this is the historic behavior
+
+                        - "max": stop when max(q_j) <= 1
+
+                        - "per_rhs": stop iterating on column j individually as soon as q_j <= 1
                 - num_rand_vec_trace: integer, optional (default = 50)
                     Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix.
                     If num_rand_vec_trace = -999, internal default values are used.
@@ -6045,6 +6107,12 @@ class GPModel(object):
         init_aux_pars_c = ctypes.c_void_p()
         optimizer_coef_c = ctypes.c_void_p()
         cg_preconditioner_type_c = ctypes.c_void_p()
+        cg_convergence_criterion_c = ctypes.c_void_p()
+        cg_multi_rhs_convergence_c = ctypes.c_void_p()
+        if self.params["cg_convergence_criterion"] is not None:
+            cg_convergence_criterion_c = c_str(self.params["cg_convergence_criterion"])
+        if self.params["cg_multi_rhs_convergence"] is not None:
+            cg_multi_rhs_convergence_c = c_str(self.params["cg_multi_rhs_convergence"])
         if params is not None:
             if "optimizer_cov" in params:
                 if params["optimizer_cov"] is not None:
@@ -6097,7 +6165,11 @@ class GPModel(object):
             ctypes.c_int(self.params["m_lbfgs"]),
             ctypes.c_double(self.params["delta_conv_mode_finding"]),
             ctypes.c_int(self.params["max_num_restarts_lbfgs"]),
-            ctypes.c_bool(self.params["cold_restart_lbfgs"])))
+            ctypes.c_bool(self.params["cold_restart_lbfgs"]),
+            cg_convergence_criterion_c,
+            ctypes.c_double(self.params["cg_rel_tol"]),
+            ctypes.c_double(self.params["cg_abs_tol"]),
+            cg_multi_rhs_convergence_c))
         return self
 
     def _get_optim_params(self):
@@ -6747,6 +6819,9 @@ class GPModel(object):
                             vecchia_pred_type=None,
                             num_neighbors_pred=None,
                             cg_delta_conv_pred=None,
+                            cg_convergence_criterion_pred=None,
+                            cg_rel_tol_pred=None,
+                            cg_abs_tol_pred=None,
                             nsim_var_pred=None,
                             rank_pred_approx_matrix_lanczos=None,
                             group_data_pred=None,
@@ -6800,6 +6875,21 @@ class GPModel(object):
                 when being used for prediction
 
                 Default value if None: 1e-3
+            cg_convergence_criterion_pred : string or None, optional (default=None)
+                Stopping rule of conjugate gradient algorithms when being used for prediction:
+                "absolute" (stop when ||r||_2 < cg_delta_conv_pred) or "relative"
+                (stop when ||r||_2 <= max(cg_abs_tol_pred, cg_rel_tol_pred * ||b||_2)).
+
+                Default value if None: the value of cg_convergence_criterion used for the parameter estimation
+            cg_rel_tol_pred : double or None, optional (default=None)
+                The relative tolerance of the "relative" stopping rule when being used for prediction
+
+                Default value if None: the value of cg_rel_tol used for the parameter estimation
+            cg_abs_tol_pred : double or None, optional (default=None)
+                The absolute tolerance floor of the "relative" stopping rule when being used for prediction.
+                This makes the rule robust for right-hand sides that are zero or very small
+
+                Default value if None: the value of cg_delta_conv_pred
             nsim_var_pred : integer or None, optional (default=None)
                 The number of samples when simulation is used for calculating predictive variances
 
@@ -6951,11 +7041,23 @@ class GPModel(object):
             self.num_neighbors_pred = num_neighbors_pred
         if cg_delta_conv_pred is not None:
             self.cg_delta_conv_pred = cg_delta_conv_pred
+        if cg_convergence_criterion_pred is not None:
+            if cg_convergence_criterion_pred not in ("absolute", "relative"):
+                raise ValueError("set_prediction_data: 'cg_convergence_criterion_pred' must be "
+                                 "'absolute' or 'relative'")
+            self.cg_convergence_criterion_pred = cg_convergence_criterion_pred
+        if cg_rel_tol_pred is not None:
+            self.cg_rel_tol_pred = cg_rel_tol_pred
+        if cg_abs_tol_pred is not None:
+            self.cg_abs_tol_pred = cg_abs_tol_pred
         if nsim_var_pred is not None:
             self.nsim_var_pred = nsim_var_pred
         if rank_pred_approx_matrix_lanczos is not None:
             self.rank_pred_approx_matrix_lanczos = rank_pred_approx_matrix_lanczos
         self.prediction_data_is_set = True
+        cg_convergence_criterion_pred_c = ctypes.c_void_p()
+        if self.cg_convergence_criterion_pred is not None:
+            cg_convergence_criterion_pred_c = c_str(self.cg_convergence_criterion_pred)
 
         _safe_call(_LIB.GPB_SetPredictionData(
             self.handle,
@@ -6970,7 +7072,10 @@ class GPModel(object):
             ctypes.c_int(self.num_neighbors_pred),
             ctypes.c_double(self.cg_delta_conv_pred),
             ctypes.c_int(self.nsim_var_pred),
-            ctypes.c_int(self.rank_pred_approx_matrix_lanczos)))
+            ctypes.c_int(self.rank_pred_approx_matrix_lanczos),
+            cg_convergence_criterion_pred_c,
+            ctypes.c_double(self.cg_rel_tol_pred),
+            ctypes.c_double(self.cg_abs_tol_pred)))
         return self
 
     def predict_training_data_random_effects(self, predict_var=False, offset=None):

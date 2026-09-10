@@ -19,6 +19,166 @@
 using LightGBM::Log;
 
 namespace GPBoost {
+	/*! \brief Stopping parameters shared by all CG implementations. The defaults reproduce the historic absolute-residual rule */
+	struct CGConvergenceParams {
+		CGConvergenceParams(double delta = 1e-2)
+			: criterion("absolute"), delta_conv(delta), rel_tol(1e-2), abs_tol(delta), multi_rhs_convergence("average") {}
+		/*! \brief "absolute" (||r||_2 < delta_conv) or "relative" (||r||_2 <= max(abs_tol, rel_tol * ||b||_2)) */
+		string_t criterion;
+		/*! \brief Tolerance of the "absolute" criterion */
+		double delta_conv;
+		/*! \brief Relative tolerance of the "relative" criterion */
+		double rel_tol;
+		/*! \brief Absolute floor of the "relative" criterion. Makes the rule robust for zero and very small right-hand sides */
+		double abs_tol;
+		/*! \brief Aggregation over the columns of a multi-rhs system: "average", "max" or "per_rhs" */
+		string_t multi_rhs_convergence;
+		bool IsRelative() const {
+			return criterion == "relative";
+		}
+		bool IsPerRHS() const {
+			return multi_rhs_convergence == "per_rhs";
+		}
+		/*! \brief Tolerance for a right-hand side with L2 norm 'rhs_norm' */
+		double Tolerance(const double rhs_norm) const {
+			return IsRelative() ? std::max(abs_tol, rel_tol * rhs_norm) : delta_conv;
+		}
+		/*! \brief Convergence check for a single residual. The "absolute" rule keeps the historic strict inequality */
+		bool HasConverged(const double r_norm, const double rhs_norm) const {
+			return IsRelative() ? (r_norm <= Tolerance(rhs_norm)) : (r_norm < delta_conv);
+		}
+		/*! \brief True if the zero vector already satisfies the tolerance, in which case the system must not be solved (a = 0/0 would give NaN) */
+		bool RhsIsNegligible(const double rhs_norm) const {
+			return IsRelative() && rhs_norm <= Tolerance(rhs_norm);
+		}
+	};
+
+	/*!
+	* \brief Bookkeeping for the stopping rules of the multi-rhs CG / Lanczos implementations.
+	*		 Tracks per-column residual norms, which columns are still being iterated on, and how many
+	*		 iterations each column received, and shrinks the Lanczos tridiagonalizations accordingly.
+	*		 The combination "absolute" + "average" evaluates the historic rule verbatim.
+	*/
+	class CGMultiRHSConvergence {
+	public:
+		CGMultiRHSConvergence(const CGConvergenceParams& params,
+			const den_mat_t& rhs)
+			: params_(params), t_((int)rhs.cols()), active_((size_t)rhs.cols(), true),
+			converged_now_((size_t)rhs.cols(), false), num_it_((size_t)rhs.cols(), 0) {
+			rhs_norms_ = rhs.colwise().norm();
+			r_norms_ = rhs_norms_;
+			for (int i = 0; i < t_; ++i) {
+				if (params_.RhsIsNegligible(rhs_norms_[i])) {
+					active_[i] = false;
+					needs_masking_ = true;
+				}
+			}
+		}
+		/*! \brief True if some columns are not iterated on anymore and the vectorized updates need to be masked */
+		bool NeedsMasking() const {
+			return needs_masking_;
+		}
+		/*! \brief True if column 'i' is still being iterated on */
+		bool IsActive(const int i) const {
+			return active_[i];
+		}
+		/*! \brief True if column 'i' still needs a preconditioner solve and a search-direction update */
+		bool NeedsUpdate(const int i) const {
+			return active_[i] && !converged_now_[i];
+		}
+		/*! \brief Mean residual norm of the last call to CheckConvergence() */
+		double MeanResidualNorm() const {
+			return mean_r_norm_;
+		}
+		/*!
+		* \brief Update the residual norms and evaluate the stopping rule
+		* \param R Current residual matrix
+		* \return True if the algorithm can stop
+		*/
+		bool CheckConvergence(const den_mat_t& R) {
+			r_norms_ = R.colwise().norm();
+			mean_r_norm_ = r_norms_.mean();
+			std::fill(converged_now_.begin(), converged_now_.end(), false);
+			if (std::isnan(mean_r_norm_) || std::isinf(mean_r_norm_)) {
+				return false;
+			}
+			if (params_.IsPerRHS()) {
+				bool all_converged = true;
+				for (int i = 0; i < t_; ++i) {
+					if (!active_[i]) {
+						continue;
+					}
+					converged_now_[i] = params_.HasConverged(r_norms_[i], rhs_norms_[i]);
+					all_converged = all_converged && converged_now_[i];
+					if (converged_now_[i]) {
+						//from here on the updates must be masked: the search direction of a column that
+						//	converged in this iteration is not updated anymore, and its preconditioned
+						//	residual is not recomputed, so the vectorized updates would read stale values
+						needs_masking_ = true;
+					}
+				}
+				return all_converged;
+			}
+			if (params_.multi_rhs_convergence == "max") {
+				for (int i = 0; i < t_; ++i) {
+					if (active_[i] && !params_.HasConverged(r_norms_[i], rhs_norms_[i])) {
+						return false;
+					}
+				}
+				return true;
+			}
+			//"average"
+			if (!params_.IsRelative()) {
+				return mean_r_norm_ < params_.delta_conv;//historic rule, evaluated verbatim for backward compatibility
+			}
+			double sum_scaled_r_norm = 0.;
+			for (int i = 0; i < t_; ++i) {
+				sum_scaled_r_norm += r_norms_[i] / params_.Tolerance(rhs_norms_[i]);
+			}
+			return sum_scaled_r_norm <= (double)t_;
+		}
+		/*! \brief Stop iterating on the columns that converged in the current iteration ("per_rhs" rule) */
+		void DeactivateConvergedColumns(const int j) {
+			for (int i = 0; i < t_; ++i) {
+				if (converged_now_[i]) {
+					active_[i] = false;
+					num_it_[i] = j + 1;
+					needs_masking_ = true;
+				}
+			}
+		}
+		/*!
+		* \brief Shrink the Lanczos tridiagonalizations to the number of iterations that were actually carried out for every rhs
+		* \param[out] Tdiags Diagonals of the tridiagonalizations
+		* \param[out] Tsubdiags Subdiagonals of the tridiagonalizations
+		* \param num_it Number of iterations carried out for the columns that are still active
+		*/
+		void ShrinkTridiagonals(std::vector<vec_t>& Tdiags,
+			std::vector<vec_t>& Tsubdiags,
+			const int num_it) {
+			for (int i = 0; i < t_; ++i) {
+				if (active_[i]) {
+					num_it_[i] = num_it;
+				}
+				const int it = num_it_[i];
+				Tdiags[i].conservativeResize(it, 1);
+				Tsubdiags[i].conservativeResize(it > 0 ? (it - 1) : 0, 1);
+			}
+		}
+		/*! \brief Report iterations and residuals per rhs. Only emitted at the debug log level, i.e., never printed unconditionally */
+		void LogDiagnostics(const char* caller) const;
+	private:
+		const CGConvergenceParams& params_;
+		int t_;
+		std::vector<bool> active_;
+		std::vector<bool> converged_now_;
+		std::vector<int> num_it_;
+		vec_t rhs_norms_;
+		vec_t r_norms_;
+		double mean_r_norm_ = 0.;
+		bool needs_masking_ = false;
+	};
+
 	/*!
 	* \brief Preconditioned conjugate gradient descent to solve A u = rhs when rhs is a vector
 	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn, a Vecchia approximation for Sigma^-1,
@@ -38,6 +198,7 @@ namespace GPBoost {
 	* \param D_inv_plus_W_B_rm Row-major matrix that contains the product (D^(-1) + W) B used for the preconditioner "Sigma_inv_plus_BtWB".
 	* \param L_SigmaI_plus_W_rm Row-major matrix that contains sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W used for the preconditioner "zero_infill_incomplete_cholesky".
 	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
+	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	*/
 	void CGVecchiaLaplaceVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -52,7 +213,8 @@ namespace GPBoost {
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& D_inv_plus_W_B_rm,
 		const sp_mat_rm_t& L_SigmaI_plus_W_rm,
-		bool run_in_parallel_do_not_report_non_convergence);
+		bool run_in_parallel_do_not_report_non_convergence,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams());
 
 	/*!
 	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.
@@ -77,6 +239,7 @@ namespace GPBoost {
 	* \param cg_preconditioner_type Type of preconditioner used.
 	* \param D_inv_plus_W_B_rm Row-major matrix that contains the product (D^(-1) + W) B used for the preconditioner "Sigma_inv_plus_BtWB".
 	* \param L_SigmaI_plus_W_rm Row-major matrix that contains sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W used for the preconditioner "zero_infill_incomplete_cholesky".
+	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	*/
 	void CGTridiagVecchiaLaplace(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -92,7 +255,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& D_inv_plus_W_B_rm,
-		const sp_mat_rm_t& L_SigmaI_plus_W_rm);
+		const sp_mat_rm_t& L_SigmaI_plus_W_rm,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams());
 
 	/*!
 	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1 + W) u = rhs by u = W^(-1) (W^(-1) + Sigma)^(-1) Sigma rhs where the preconditioned conjugate
@@ -118,6 +282,7 @@ namespace GPBoost {
 	* \param B_vecchia_pc B for the Vecchia preconditioner
 	* \param D_inv_vecchia_pc D^(-1) for the Vecchia preconditioner
 	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
+	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	*/
 	void CGVecchiaLaplace_Version_SigmaPlusWinvVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -137,7 +302,8 @@ namespace GPBoost {
 		const vec_t& diagonal_approx_inv_preconditioner,
 		const sp_mat_rm_t& B_vecchia_pc,
 		const sp_mat_t& D_inv_vecchia_pc,
-		bool run_in_parallel_do_not_report_non_convergence);
+		bool run_in_parallel_do_not_report_non_convergence,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams());
 
 	/*!
 	* \brief Version of CGTridiagVecchiaLaplace() where A = (W^(-1) + Sigma).
@@ -163,6 +329,7 @@ namespace GPBoost {
 	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_
 	* \param B_vecchia_pc B for the Vecchia preconditioner
 	* \param D_inv_vecchia_pc D^(-1) for the Vecchia preconditioner
+	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	*/
 	void CGTridiagVecchiaLaplace_Version_SigmaPlusWinv(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -183,7 +350,8 @@ namespace GPBoost {
 		const den_mat_t* cross_cov,
 		const vec_t& diagonal_approx_inv_preconditioner,
 		const sp_mat_rm_t& B_vecchia_pc,
-		const sp_mat_t& D_inv_vecchia_pc);
+		const sp_mat_t& D_inv_vecchia_pc,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams());
 
 	/*!
 	* \brief Preconditioned conjugate gradient descent to solve A u = rhs when rhs is a vector
@@ -204,6 +372,7 @@ namespace GPBoost {
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param cg_preconditioner_type Type of preconditioner used.
 	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
+	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	*/
 	void CGFVIFLaplaceVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -220,7 +389,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
-		bool run_in_parallel_do_not_report_non_convergence);
+		bool run_in_parallel_do_not_report_non_convergence,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams());
 
 	/*!
 	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.
@@ -240,6 +410,7 @@ namespace GPBoost {
 	* \param delta_conv Tolerance for checking convergence of the algorithm
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param cg_preconditioner_type Type of preconditioner used.
+	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	*/
 	void CGTridiagVIFLaplace(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -257,7 +428,8 @@ namespace GPBoost {
 		const int t,
 		int p,
 		const double delta_conv,
-		const string_t cg_preconditioner_type);
+		const string_t cg_preconditioner_type,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams());
 
 	/*!
 	* \brief Preconditioned conjugate gradient descent to solve A u = rhs when rhs is a vector
@@ -278,6 +450,7 @@ namespace GPBoost {
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param cg_preconditioner_type Type of preconditioner used.
 	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
+	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	*/
 	void CGVIFLaplace_Version_SigmaPlusWinvVec(const vec_t& diag_W_inv,
 		const sp_mat_rm_t& D_inv_B_rm_,
@@ -294,7 +467,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
-		bool run_in_parallel_do_not_report_non_convergence);
+		bool run_in_parallel_do_not_report_non_convergence,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams());
 
 	/*!
 	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.
@@ -314,6 +488,7 @@ namespace GPBoost {
 	* \param delta_conv Tolerance for checking convergence of the algorithm
 	* \param THRESHOLD_ZERO_RHS_CG If the L1-norm of the rhs is below this threshold the CG is not executed and a vector u of 0's is returned.
 	* \param cg_preconditioner_type Type of preconditioner used.
+	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	*/
 	void CGTridiagVIFLaplace_Version_SigmaPlusWinv(const vec_t& diag_W_inv,
 		const sp_mat_rm_t& D_inv_B_rm_,
@@ -331,7 +506,8 @@ namespace GPBoost {
 		const int t,
 		int p,
 		const double delta_conv,
-		const string_t cg_preconditioner_type);
+		const string_t cg_preconditioner_type,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams());
 
 	// Old non-parallel version
 	///*!
@@ -500,6 +676,7 @@ namespace GPBoost {
 	* \param cg_preconditioner_type Type of preconditoner used for the conjugate gradient algorithm
 	* \param chol_fact_woodbury_preconditioner Cholesky factor of Matrix C_m + C_mn*D^(-1)*C_nm
 	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	*/
 	template <class T_mat>
 	void CGFSA(const T_mat& sigma_resid,
@@ -513,7 +690,8 @@ namespace GPBoost {
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
 		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
-		const vec_t& diagonal_approx_inv_preconditioner) {
+		const vec_t& diagonal_approx_inv_preconditioner,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams()) {
 
 		p = std::min(p, (int)rhs.size());
 		vec_t r, r_old;
@@ -525,8 +703,12 @@ namespace GPBoost {
 		double a = 0;
 		double b = 1;
 		double r_norm;
-		//Avoid numerical instabilites when rhs is de facto 0
-		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		const double rhs_norm = rhs.norm();
+		//Avoid numerical instabilites when rhs is de facto 0 or when the zero vector already satisfies the tolerance
+		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG || conv_params.RhsIsNegligible(rhs_norm)) {
 			u.setZero();
 			return;
 		}
@@ -566,11 +748,11 @@ namespace GPBoost {
 				NaN_found = true;
 				return;
 			}
-			if (r_norm < delta_conv) {
+			if (conv_params.HasConverged(r_norm, rhs_norm)) {
 				early_stop_alg = true;
 			}
 			z_old = z;
-			//z = P^(-1) r 
+			//z = P^(-1) r
 			if (cg_preconditioner_type == "fitc") {
 				diag_sigma_resid_inv_r = diagonal_approx_inv_preconditioner.asDiagonal() * r; // ??? cwiseProd (TODO)
 				sigma_cross_cov_diag_sigma_resid_inv_r = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_r;
@@ -615,6 +797,7 @@ namespace GPBoost {
 	* \param cg_preconditioner_type Type of preconditoner used for the conjugate gradient algorithm
 	* \param chol_fact_woodbury_preconditioner Cholesky factor of Matrix C_m + C_mn*D^(-1)*C_nm
 	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	*/
 	template <class T_mat>
 	void CGTridiagFSA(const T_mat& sigma_resid,
@@ -631,7 +814,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const string_t cg_preconditioner_type,
 		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
-		const vec_t& diagonal_approx_inv_preconditioner) {
+		const vec_t& diagonal_approx_inv_preconditioner,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams()) {
 
 		p = std::min(p, (int)num_data);
 		den_mat_t R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t), diag_sigma_resid_inv_R, sigma_cross_cov_diag_sigma_resid_inv_R,
@@ -640,6 +824,10 @@ namespace GPBoost {
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
 		bool early_stop_alg = false;
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		CGMultiRHSConvergence conv(conv_params, rhs);
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -675,22 +863,36 @@ namespace GPBoost {
 		H = Z;
 		for (int j = 0; j < p; ++j) {
 			V = (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * H));
-#pragma omp parallel for schedule(static)   
+#pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
-				V.col(i) += sigma_resid * H.col(i);
+				if (conv.IsActive(i)) {
+					V.col(i) += sigma_resid * H.col(i);
+				}
 			}
 			a_old = a;
-			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
-			U += H * a.asDiagonal();
 			R_old = R;
-			R -= V * a.asDiagonal();
-			mean_R_norm = R.colwise().norm().mean();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						a(i) = 0.;
+						continue;
+					}
+					a(i) = R.col(i).dot(Z.col(i)) / H.col(i).dot(V.col(i));
+					U.col(i) += a(i) * H.col(i);
+					R.col(i) -= a(i) * V.col(i);
+				}
+			}
+			else {
+				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
+				U += H * a.asDiagonal();
+				R -= V * a.asDiagonal();
+			}
+			early_stop_alg = conv.CheckConvergence(R);
+			mean_R_norm = conv.MeanResidualNorm();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NaN_found = true;
 				return;
-			}
-			if (mean_R_norm < delta_conv) {
-				early_stop_alg = true;
 			}
 			Z_old = Z;
 			if (cg_preconditioner_type == "fitc") {
@@ -708,24 +910,41 @@ namespace GPBoost {
 				Log::REFatal("CGTridiagFSA: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
 			b_old = b;
-			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-			H = Z + H * b.asDiagonal();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						b(i) = 0.;
+						continue;
+					}
+					b(i) = R.col(i).dot(Z.col(i)) / R_old.col(i).dot(Z_old.col(i));
+					H.col(i) = Z.col(i) + b(i) * H.col(i);
+				}
+			}
+			else {
+				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+				H = Z + H * b.asDiagonal();
+			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
+				if (!conv.IsActive(i)) {
+					continue;
+				}
 				Tdiags[i][j] = 1 / a(i) + b_old(i) / a_old(i);
 				if (j > 0) {
 					Tsubdiags[i][j - 1] = sqrt(b_old(i)) / a_old(i);
 				}
 			}
+			conv.DeactivateConvergedColumns(j);
 			if (early_stop_alg) {
-				for (int i = 0; i < t; ++i) {
-					Tdiags[i].conservativeResize(j + 1, 1);
-					Tsubdiags[i].conservativeResize(j, 1);
-				}
+				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
+				conv.LogDiagnostics("CGTridiagFSA");
 				//Log::REInfo("CGTridiagFSA stop after %i CG-Iterations.", j + 1);
 				return;
 			}
 		}
+		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
+		conv.LogDiagnostics("CGTridiagFSA");
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGTridiagFSA
@@ -747,6 +966,7 @@ namespace GPBoost {
 	* \param cg_preconditioner_type Type of preconditoner used for the conjugate gradient algorithm
 	* \param chol_fact_woodbury_preconditioner Cholesky factor of Matrix C_m + C_mn*D^(-1)*C_nm
 	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	*/
 	template <class T_mat>
 	void CGFSA_MULTI_RHS(const T_mat& sigma_resid,
@@ -761,7 +981,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const string_t cg_preconditioner_type,
 		const chol_den_mat_t& chol_fact_woodbury_preconditioner,
-		const vec_t& diagonal_approx_inv_preconditioner) {
+		const vec_t& diagonal_approx_inv_preconditioner,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams()) {
 
 		p = std::min(p, (int)num_data);
 		den_mat_t R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t), diag_sigma_resid_inv_R, sigma_cross_cov_diag_sigma_resid_inv_R,
@@ -770,6 +991,10 @@ namespace GPBoost {
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
 		bool early_stop_alg = false;
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		CGMultiRHSConvergence conv(conv_params, rhs);
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -805,22 +1030,36 @@ namespace GPBoost {
 		H = Z;
 		for (int j = 0; j < p; ++j) {
 			V = (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * H));
-#pragma omp parallel for schedule(static)   
+#pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
-				V.col(i) += sigma_resid * H.col(i);
+				if (conv.IsActive(i)) {
+					V.col(i) += sigma_resid * H.col(i);
+				}
 			}
 			a_old = a;
-			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
-			U += H * a.asDiagonal();
 			R_old = R;
-			R -= V * a.asDiagonal();
-			mean_R_norm = R.colwise().norm().mean();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						a(i) = 0.;
+						continue;
+					}
+					a(i) = R.col(i).dot(Z.col(i)) / H.col(i).dot(V.col(i));
+					U.col(i) += a(i) * H.col(i);
+					R.col(i) -= a(i) * V.col(i);
+				}
+			}
+			else {
+				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
+				U += H * a.asDiagonal();
+				R -= V * a.asDiagonal();
+			}
+			early_stop_alg = conv.CheckConvergence(R);
+			mean_R_norm = conv.MeanResidualNorm();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NaN_found = true;
 				return;
-			}
-			if (mean_R_norm < delta_conv) {
-				early_stop_alg = true;
 			}
 			Z_old = Z;
 			if (cg_preconditioner_type == "fitc") {
@@ -838,12 +1077,28 @@ namespace GPBoost {
 				Log::REFatal("CGFSA_MULTI_RHS: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
 			b_old = b;
-			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-			H = Z + H * b.asDiagonal();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						b(i) = 0.;
+						continue;
+					}
+					b(i) = R.col(i).dot(Z.col(i)) / R_old.col(i).dot(Z_old.col(i));
+					H.col(i) = Z.col(i) + b(i) * H.col(i);
+				}
+			}
+			else {
+				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+				H = Z + H * b.asDiagonal();
+			}
+			conv.DeactivateConvergedColumns(j);
 			if (early_stop_alg) {
+				conv.LogDiagnostics("CGFSA_MULTI_RHS");
 				return;
 			}
 		}
+		conv.LogDiagnostics("CGFSA_MULTI_RHS");
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGFSA_MULTI_RHS
@@ -862,6 +1117,7 @@ namespace GPBoost {
 	* \param delta_conv tolerance for checking convergence
 	* \param cg_preconditioner_type Type of preconditoner used for the conjugate gradient algorithm
 	* \param diagonal_approx_inv_preconditioner Diagonal D of residual Matrix C_s
+	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	*/
 	template <class T_mat>
 	void CGFSA_RESID(const T_mat& sigma_resid,
@@ -873,7 +1129,8 @@ namespace GPBoost {
 		int p,
 		const double delta_conv,
 		const string_t cg_preconditioner_type,
-		const vec_t& diagonal_approx_inv_preconditioner) {
+		const vec_t& diagonal_approx_inv_preconditioner,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams()) {
 
 		p = std::min(p, (int)num_data);
 		den_mat_t R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t), diag_sigma_resid_inv_R, sigma_cross_cov_diag_sigma_resid_inv_R,
@@ -882,6 +1139,10 @@ namespace GPBoost {
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
 		bool early_stop_alg = false;
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		CGMultiRHSConvergence conv(conv_params, rhs);
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -913,22 +1174,36 @@ namespace GPBoost {
 		H = Z;
 		for (int j = 0; j < p; ++j) {
 			V.setZero();
-#pragma omp parallel for schedule(static)   
+#pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
-				V.col(i) += sigma_resid * H.col(i);
+				if (conv.IsActive(i)) {
+					V.col(i) += sigma_resid * H.col(i);
+				}
 			}
 			a_old = a;
-			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
-			U += H * a.asDiagonal();
 			R_old = R;
-			R -= V * a.asDiagonal();
-			mean_R_norm = R.colwise().norm().mean();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						a(i) = 0.;
+						continue;
+					}
+					a(i) = R.col(i).dot(Z.col(i)) / H.col(i).dot(V.col(i));
+					U.col(i) += a(i) * H.col(i);
+					R.col(i) -= a(i) * V.col(i);
+				}
+			}
+			else {
+				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
+				U += H * a.asDiagonal();
+				R -= V * a.asDiagonal();
+			}
+			early_stop_alg = conv.CheckConvergence(R);
+			mean_R_norm = conv.MeanResidualNorm();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NaN_found = true;
 				return;
-			}
-			if (mean_R_norm < delta_conv) {
-				early_stop_alg = true;
 			}
 			Z_old = Z;
 			if (cg_preconditioner_type == "fitc") {
@@ -941,12 +1216,28 @@ namespace GPBoost {
 				Log::REFatal("CGFSA_RESID: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
 			b_old = b;
-			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-			H = Z + H * b.asDiagonal();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						b(i) = 0.;
+						continue;
+					}
+					b(i) = R.col(i).dot(Z.col(i)) / R_old.col(i).dot(Z_old.col(i));
+					H.col(i) = Z.col(i) + b(i) * H.col(i);
+				}
+			}
+			else {
+				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+				H = Z + H * b.asDiagonal();
+			}
+			conv.DeactivateConvergedColumns(j);
 			if (early_stop_alg) {
+				conv.LogDiagnostics("CGFSA_RESID");
 				return;
 			}
 		}
+		conv.LogDiagnostics("CGFSA_RESID");
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGFSA_RESID
@@ -987,7 +1278,8 @@ namespace GPBoost {
 		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
 		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm,
 		const vec_t& SigmaI_plus_ZtWZ_inv_diag,
-		int& num_cg_steps
+		int& num_cg_steps,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams()
 		//const std::vector<data_size_t>& cum_num_rand_eff,
 		//const data_size_t& num_re_group_total,
 		//const vec_t& P_SSOR_D1_inv,
@@ -1036,7 +1328,8 @@ namespace GPBoost {
 		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
 		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm,
 		const vec_t& SigmaI_plus_ZtWZ_inv_diag,
-		int& num_cg_steps
+		int& num_cg_steps,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams()
 		//const std::vector<data_size_t>& cum_num_rand_eff,
 		//const data_size_t& num_re_group_total,
 		//const vec_t& P_SSOR_D1_inv,
@@ -1069,7 +1362,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
-		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm);
+		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm,
+		const CGConvergenceParams& convergence_params = CGConvergenceParams());
 
 	/*!
 	* \brief Zero fill-in incomplete Cholesky factorization L L^T = A under the constrain that L has the same sparcity pattern as A.

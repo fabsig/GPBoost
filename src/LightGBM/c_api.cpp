@@ -2792,7 +2792,11 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	int m_lbfgs,
 	double delta_conv_mode_finding,
 	int max_num_restarts_lbfgs,
-	bool cold_restart_lbfgs) {
+	bool cold_restart_lbfgs,
+	const char* cg_convergence_criterion,
+	double cg_rel_tol,
+	double cg_abs_tol,
+	const char* cg_multi_rhs_convergence) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetOptimConfig(init_cov_pars,
@@ -2826,7 +2830,11 @@ int GPB_SetOptimConfig(REModelHandle handle,
 		m_lbfgs, 
 		delta_conv_mode_finding,
 		max_num_restarts_lbfgs,
-		cold_restart_lbfgs);
+		cold_restart_lbfgs,
+		cg_convergence_criterion,
+		cg_rel_tol,
+		cg_abs_tol,
+		cg_multi_rhs_convergence);
 	API_END();
 }
 
@@ -2959,7 +2967,10 @@ int GPB_SetPredictionData(REModelHandle handle,
 	int num_neighbors_pred,
 	double cg_delta_conv_pred,
 	int nsim_var_pred,
-	int rank_pred_approx_matrix_lanczos) {
+	int rank_pred_approx_matrix_lanczos,
+	const char* cg_convergence_criterion_pred,
+	double cg_rel_tol_pred,
+	double cg_abs_tol_pred) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetPredictionData(num_data_pred,
@@ -2973,7 +2984,10 @@ int GPB_SetPredictionData(REModelHandle handle,
 		num_neighbors_pred,
 		cg_delta_conv_pred,
 		nsim_var_pred,
-		rank_pred_approx_matrix_lanczos);
+		rank_pred_approx_matrix_lanczos,
+		cg_convergence_criterion_pred,
+		cg_rel_tol_pred,
+		cg_abs_tol_pred);
 	API_END();
 }
 

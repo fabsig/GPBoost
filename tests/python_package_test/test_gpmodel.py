@@ -368,3 +368,87 @@ def test_invalid_input_raises():
     gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
     with pytest.raises(Exception):
         gp_model.fit(y=y[:-1])                                  # y of the wrong length
+
+
+def _sim_crossed(n=2000, m=100, seed=11):
+    rng = np.random.default_rng(seed)
+    g1 = rng.integers(0, m, n)
+    g2 = rng.integers(0, m, n)
+    y = (rng.normal(scale=0.7, size=m)[g1] + rng.normal(scale=0.7, size=m)[g2]
+         + rng.normal(scale=0.5, size=n))
+    return np.column_stack([g1, g2]), y
+
+
+def _fit_iterative(group, y, **cg_params):
+    params = {"cg_preconditioner_type": "ssor", "num_rand_vec_trace": 100,
+              "seed_rand_vec_trace": 1, "trace": False}
+    params.update(cg_params)
+    gp_model = gpb.GPModel(group_data=group, likelihood="gaussian",
+                           matrix_inversion_method="iterative")
+    gp_model.fit(y=y, params=params)
+    return gp_model
+
+
+def test_cg_default_stopping_rule_is_unchanged():
+    # if none of the new options are given, the behaviour must be the historic one, so passing
+    # the documented defaults explicitly must give identical results
+    group, y = _sim_crossed()
+    default = _fit_iterative(group, y)
+    explicit = _fit_iterative(group, y, cg_convergence_criterion="absolute",
+                              cg_multi_rhs_convergence="average")
+    np.testing.assert_allclose(np.asarray(default.get_cov_pars(), dtype=float).ravel(),
+                               np.asarray(explicit.get_cov_pars(), dtype=float).ravel(), rtol=1e-12)
+    assert default.get_current_neg_log_likelihood() == pytest.approx(
+        explicit.get_current_neg_log_likelihood(), rel=1e-12)
+
+
+@pytest.mark.parametrize("multi_rhs", ["average", "max", "per_rhs"])
+def test_cg_relative_stopping_rule(multi_rhs):
+    # ||r||_2 <= max(cg_abs_tol, cg_rel_tol * ||b||_2) with a tight tolerance must reproduce
+    # the fit of a tight absolute rule, whichever way it is aggregated over the right-hand sides
+    group, y = _sim_crossed()
+    reference = _fit_iterative(group, y, cg_delta_conv=1e-6)
+    relative = _fit_iterative(group, y, cg_convergence_criterion="relative", cg_rel_tol=1e-8,
+                              cg_abs_tol=1e-8, cg_multi_rhs_convergence=multi_rhs)
+    np.testing.assert_allclose(np.asarray(relative.get_cov_pars(), dtype=float).ravel(),
+                               np.asarray(reference.get_cov_pars(), dtype=float).ravel(),
+                               rtol=0.1, atol=0.05)
+    assert np.isfinite(relative.get_current_neg_log_likelihood())
+
+
+def test_cg_relative_rule_handles_a_tiny_absolute_floor():
+    # a right-hand side that is zero or very small must not produce NaN
+    group, y = _sim_crossed()
+    gp_model = _fit_iterative(group, y, cg_convergence_criterion="relative", cg_rel_tol=1e-6,
+                              cg_abs_tol=1e-30)
+    assert np.all(np.isfinite(np.asarray(gp_model.get_cov_pars(), dtype=float)))
+    assert np.isfinite(gp_model.get_current_neg_log_likelihood())
+
+
+def test_cg_prediction_stopping_rule():
+    group, y = _sim_crossed()
+    gp_model = _fit_iterative(group, y, cg_convergence_criterion="relative", cg_rel_tol=1e-8,
+                              cg_abs_tol=1e-8)
+    group_pred = np.column_stack([[0, 1, 999], [1, 0, 999]])
+    gp_model.set_prediction_data(cg_convergence_criterion_pred="relative",
+                                 cg_rel_tol_pred=1e-10, cg_abs_tol_pred=1e-10)
+    relative = gp_model.predict(group_data_pred=group_pred, predict_var=True)
+    gp_model.set_prediction_data(cg_convergence_criterion_pred="absolute", cg_delta_conv_pred=1e-8)
+    absolute = gp_model.predict(group_data_pred=group_pred, predict_var=True)
+    np.testing.assert_allclose(relative["mu"], absolute["mu"], rtol=0, atol=1e-3)
+    np.testing.assert_allclose(relative["var"], absolute["var"], rtol=0, atol=1e-2)
+
+
+def test_invalid_cg_stopping_rule_options_raise():
+    group, y = _sim_crossed(n=200, m=20)
+    gp_model = gpb.GPModel(group_data=group, likelihood="gaussian",
+                           matrix_inversion_method="iterative")
+    for bad in ({"cg_convergence_criterion": "reltive"},
+                {"cg_multi_rhs_convergence": "maximum"},
+                {"cg_rel_tol": -1.},
+                {"cg_abs_tol": 0.}):
+        with pytest.raises(Exception):
+            gpb.GPModel(group_data=group, likelihood="gaussian",
+                        matrix_inversion_method="iterative").fit(y=y, params=dict(bad, trace=False))
+    with pytest.raises(ValueError):
+        gp_model.set_prediction_data(cg_convergence_criterion_pred="reltive")

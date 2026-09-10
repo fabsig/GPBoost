@@ -358,8 +358,20 @@
 #' @param num_neighbors_pred an \code{integer} specifying the number of neighbors for the Vecchia approximation 
 #' for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors
 #' @param cg_delta_conv_pred a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-#' checking convergence in conjugate gradient algorithms when being used for prediction
+#' checking convergence in conjugate gradient algorithms when being used for prediction.
+#' Only used if cg_convergence_criterion_pred = "absolute".
 #' Default value if NULL: 1e-3
+#' @param cg_convergence_criterion_pred a \code{string} specifying the stopping rule of conjugate
+#' gradient algorithms when being used for prediction: "absolute" (stop when ||r||_2 < cg_delta_conv_pred)
+#' or "relative" (stop when ||r||_2 <= max(cg_abs_tol_pred, cg_rel_tol_pred * ||b||_2)).
+#' Default value if NULL: the value of cg_convergence_criterion used for the parameter estimation
+#' @param cg_rel_tol_pred a \code{numeric} specifying the relative tolerance of the "relative"
+#' stopping rule when being used for prediction.
+#' Default value if NULL: the value of cg_rel_tol used for the parameter estimation
+#' @param cg_abs_tol_pred a \code{numeric} specifying the absolute tolerance floor of the "relative"
+#' stopping rule when being used for prediction. This makes the rule robust for right-hand sides
+#' that are zero or very small.
+#' Default value if NULL: the value of cg_delta_conv_pred
 #' @param nsim_var_pred an \code{integer} specifying the number of samples when simulation 
 #' is used for calculating predictive variances
 #' Internal default values if NULL: 
@@ -450,7 +462,33 @@
 #'                \item{cg_delta_conv: \code{numeric} (default = 1E-2).
 #'                Tolerance level for L2 norm of residuals for checking convergence 
 #'                in conjugate gradient algorithm when being used for parameter estimation.
+#'                Only used if cg_convergence_criterion = "absolute".
 #'                If cg_delta_conv = -999, internal default values are used }
+#'                \item{cg_convergence_criterion: \code{string} (default = "absolute").
+#'                Stopping rule of conjugate gradient algorithms.
+#'                \itemize{
+#'                  \item{"absolute": stop when ||r||_2 < cg_delta_conv }
+#'                  \item{"relative": stop when ||r||_2 <= max(cg_abs_tol, cg_rel_tol * ||b||_2),
+#'                  where b is the right-hand side of the linear system. The cg_abs_tol floor makes
+#'                  this robust for right-hand sides that are zero or very small }
+#'                } }
+#'                \item{cg_rel_tol: \code{numeric} (default = 1E-2).
+#'                Relative tolerance of the "relative" stopping rule.
+#'                If cg_rel_tol = -999, internal default values are used }
+#'                \item{cg_abs_tol: \code{numeric} (default = value of cg_delta_conv).
+#'                Absolute tolerance floor of the "relative" stopping rule.
+#'                If cg_abs_tol = -999, it follows cg_delta_conv }
+#'                \item{cg_multi_rhs_convergence: \code{string} (default = "average").
+#'                How the stopping rule is aggregated over the columns of a linear system with
+#'                several right-hand sides, such as the stochastic Lanczos quadrature. With
+#'                q_j = ||r_j||_2 / max(cg_abs_tol, cg_rel_tol * ||b_j||_2), i.e. every right-hand
+#'                side is normalized by its own norm:
+#'                \itemize{
+#'                  \item{"average": stop when mean(q_j) <= 1. Together with
+#'                  cg_convergence_criterion = "absolute" this is the historic behavior }
+#'                  \item{"max": stop when max(q_j) <= 1 }
+#'                  \item{"per_rhs": stop iterating on column j individually as soon as q_j <= 1 }
+#'                } }
 #'                \item{num_rand_vec_trace: \code{integer} (default = 50). 
 #'                Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix.
 #'                If num_rand_vec_trace = -999, internal default values are used }
@@ -1486,6 +1524,10 @@ gpb.GPModel <- R6::R6Class(
         , private$params[["delta_conv_mode_finding"]]
         , private$params[["max_num_restarts_lbfgs"]]
         , private$params[["cold_restart_lbfgs"]]
+        , private$params[["cg_convergence_criterion"]]
+        , private$params[["cg_rel_tol"]]
+        , private$params[["cg_abs_tol"]]
+        , private$params[["cg_multi_rhs_convergence"]]
       )
       return(invisible(self))
     },
@@ -1632,6 +1674,9 @@ gpb.GPModel <- R6::R6Class(
     set_prediction_data = function(vecchia_pred_type = NULL,
                                    num_neighbors_pred = NULL,
                                    cg_delta_conv_pred = NULL,
+                                   cg_convergence_criterion_pred = NULL,
+                                   cg_rel_tol_pred = NULL,
+                                   cg_abs_tol_pred = NULL,
                                    nsim_var_pred = NULL,
                                    rank_pred_approx_matrix_lanczos = NULL,
                                    group_data_pred = NULL,
@@ -1804,6 +1849,21 @@ gpb.GPModel <- R6::R6Class(
       if (!is.null(cg_delta_conv_pred)) {
         private$cg_delta_conv_pred <- as.numeric(cg_delta_conv_pred)
       }
+      if (!is.null(cg_convergence_criterion_pred)) {
+        if (!is.character(cg_convergence_criterion_pred)) {
+          stop("set_prediction_data: Can only use ", sQuote("character"), " as ", sQuote("cg_convergence_criterion_pred"))
+        }
+        if (!(cg_convergence_criterion_pred %in% c("absolute", "relative"))) {
+          stop("set_prediction_data: ", sQuote("cg_convergence_criterion_pred"), " must be ", sQuote("absolute"), " or ", sQuote("relative"))
+        }
+        private$cg_convergence_criterion_pred <- cg_convergence_criterion_pred
+      }
+      if (!is.null(cg_rel_tol_pred)) {
+        private$cg_rel_tol_pred <- as.numeric(cg_rel_tol_pred)
+      }
+      if (!is.null(cg_abs_tol_pred)) {
+        private$cg_abs_tol_pred <- as.numeric(cg_abs_tol_pred)
+      }
       if (!is.null(nsim_var_pred)) {
         private$nsim_var_pred <- as.integer(nsim_var_pred)
       }
@@ -1825,6 +1885,9 @@ gpb.GPModel <- R6::R6Class(
         , private$cg_delta_conv_pred
         , private$nsim_var_pred
         , private$rank_pred_approx_matrix_lanczos
+        , private$cg_convergence_criterion_pred
+        , private$cg_rel_tol_pred
+        , private$cg_abs_tol_pred
       )
       return(invisible(self))
     },
@@ -2818,6 +2881,9 @@ gpb.GPModel <- R6::R6Class(
     vecchia_pred_type = NULL,
     num_neighbors_pred = -1,
     cg_delta_conv_pred = -1,
+    cg_convergence_criterion_pred = NULL, # default: inherit the rule used for the parameter estimation
+    cg_rel_tol_pred = -1,
+    cg_abs_tol_pred = -1,
     nsim_var_pred = -1,
     rank_pred_approx_matrix_lanczos = -1,
     num_ind_points = -1L, # default is set in C++
@@ -2869,6 +2935,10 @@ gpb.GPModel <- R6::R6Class(
           cg_max_num_it = -999L, # default value is set in C++
           cg_max_num_it_tridiag = -999L, # default value is set in C++
           cg_delta_conv = -999., # default value is set in C++
+          cg_convergence_criterion = "absolute",
+          cg_rel_tol = -999.,
+          cg_abs_tol = -999.,
+          cg_multi_rhs_convergence = "average",
           num_rand_vec_trace = -999L, # default value is set in C++
           reuse_rand_vec_trace = TRUE,
           seed_rand_vec_trace = 1L,
@@ -2965,14 +3035,18 @@ gpb.GPModel <- R6::R6Class(
       }
       ## Check format of parameters
       numeric_params <- c("lr_cov", "acc_rate_cov", "delta_rel_conv",
-                          "lr_coef", "acc_rate_coef", "cg_delta_conv", "delta_conv_mode_finding")
+                          "lr_coef", "acc_rate_coef", "cg_delta_conv", "cg_rel_tol", "cg_abs_tol",
+                          "delta_conv_mode_finding")
       integer_params <- c("maxit", "nesterov_schedule_version",
                           "momentum_offset", "cg_max_num_it", "cg_max_num_it_tridiag",
                           "num_rand_vec_trace", "seed_rand_vec_trace",
                           "fitc_piv_chol_preconditioner_rank", "estimate_cov_par_index", 
                           "m_lbfgs", "max_num_restarts_lbfgs")
       character_params <- c("optimizer_cov", "convergence_criterion",
-                            "optimizer_coef", "cg_preconditioner_type")
+                            "optimizer_coef", "cg_preconditioner_type",
+                            "cg_convergence_criterion", "cg_multi_rhs_convergence")
+      allowed_values_params <- list(cg_convergence_criterion = c("absolute", "relative"),
+                                    cg_multi_rhs_convergence = c("average", "max", "per_rhs"))
       logical_params <- c("use_nesterov_acc", "trace",  
                           "reuse_rand_vec_trace", "estimate_aux_pars", "init_coef_aux_pars_from_iid_model",
                           "cold_restart_lbfgs")
@@ -3045,6 +3119,12 @@ gpb.GPModel <- R6::R6Class(
         if (param %in% character_params & !is.null(params[[param]])) {
           if (!is.character(params[[param]])) {
             stop("GPModel: Can only use ", sQuote("character"), " as ", param)
+          }
+          if (param %in% names(allowed_values_params) &&
+              !(params[[param]] %in% allowed_values_params[[param]])) {
+            stop("GPModel: ", sQuote(param), " must be one of ",
+                 paste0(sQuote(allowed_values_params[[param]]), collapse = ", "),
+                 ", found ", sQuote(params[[param]]))
           }
         }
         if (param %in% logical_params & !is.null(params[[param]])) {
@@ -3744,6 +3824,9 @@ set_prediction_data <- function(gp_model,
                                 vecchia_pred_type = NULL,
                                 num_neighbors_pred = NULL,
                                 cg_delta_conv_pred = NULL,
+                                cg_convergence_criterion_pred = NULL,
+                                cg_rel_tol_pred = NULL,
+                                cg_abs_tol_pred = NULL,
                                 nsim_var_pred = NULL,
                                 rank_pred_approx_matrix_lanczos = NULL,
                                 group_data_pred = NULL,
@@ -3779,6 +3862,9 @@ set_prediction_data.GPModel <- function(gp_model
                                         , vecchia_pred_type = NULL
                                         , num_neighbors_pred = NULL
                                         , cg_delta_conv_pred = NULL
+                                        , cg_convergence_criterion_pred = NULL
+                                        , cg_rel_tol_pred = NULL
+                                        , cg_abs_tol_pred = NULL
                                         , nsim_var_pred = NULL
                                         , rank_pred_approx_matrix_lanczos = NULL
                                         , group_data_pred = NULL
@@ -3795,6 +3881,9 @@ set_prediction_data.GPModel <- function(gp_model
   invisible(gp_model$set_prediction_data(vecchia_pred_type = vecchia_pred_type
                                          , num_neighbors_pred = num_neighbors_pred
                                          , cg_delta_conv_pred = cg_delta_conv_pred
+                                         , cg_convergence_criterion_pred = cg_convergence_criterion_pred
+                                         , cg_rel_tol_pred = cg_rel_tol_pred
+                                         , cg_abs_tol_pred = cg_abs_tol_pred
                                          , nsim_var_pred = nsim_var_pred
                                          , rank_pred_approx_matrix_lanczos = rank_pred_approx_matrix_lanczos
                                          , group_data_pred = group_data_pred

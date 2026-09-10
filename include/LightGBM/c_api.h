@@ -1468,7 +1468,11 @@ GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
     int m_lbfgs,
     double delta_conv_mode_finding,
     int max_num_restarts_lbfgs,
-    bool cold_restart_lbfgs);
+    bool cold_restart_lbfgs,
+    const char* cg_convergence_criterion,
+    double cg_rel_tol,
+    double cg_abs_tol,
+    const char* cg_multi_rhs_convergence);
 
 /*!
 * \brief Find parameters that minimize the negative log-ligelihood (=MLE)
@@ -1639,7 +1643,10 @@ GPBOOST_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
     int num_neighbors_pred,
     double cg_delta_conv_pred,
     int nsim_var_pred,
-    int rank_pred_approx_matrix_lanczos);
+    int rank_pred_approx_matrix_lanczos,
+    const char* cg_convergence_criterion_pred,
+    double cg_rel_tol_pred,
+    double cg_abs_tol_pred);
 
 /*!
 * \brief Make predictions: calculate conditional mean and variances or covariance matrix

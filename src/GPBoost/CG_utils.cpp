@@ -31,15 +31,20 @@ namespace GPBoost {
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& D_inv_plus_W_B_rm,
 		const sp_mat_rm_t& L_SigmaI_plus_W_rm,
-		bool run_in_parallel_do_not_report_non_convergence) {
+		bool run_in_parallel_do_not_report_non_convergence,
+		const CGConvergenceParams& convergence_params) {
 
 		p = std::min(p, (int)B_rm.cols());
 		vec_t r, r_old;
 		vec_t z, z_old;
 		vec_t h, v, B_invt_r, L_invt_r;
 		double a, b, r_norm;
-		//Avoid numerical instabilites when rhs is de facto 0
-		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		const double rhs_norm = rhs.norm();
+		//Avoid numerical instabilites when rhs is de facto 0 or when the zero vector already satisfies the tolerance
+		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG || conv_params.RhsIsNegligible(rhs_norm)) {
 			u.setZero();
 			return;
 		}
@@ -82,13 +87,13 @@ namespace GPBoost {
 				NA_or_Inf_found = true;
 				return;
 			}
-			if (r_norm < delta_conv) {
+			if (conv_params.HasConverged(r_norm, rhs_norm)) {
 				//Log::REInfo("Number CG iterations: %i", j + 1);//for debugging
 				return;
 			}
 			z_old = z;
 			if (cg_preconditioner_type == "vadu") {
-				//z = P^(-1) r 
+				//z = P^(-1) r
 				B_invt_r = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(r);
 				z = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_r);
 			}
@@ -121,7 +126,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& D_inv_plus_W_B_rm,
-		const sp_mat_rm_t& L_SigmaI_plus_W_rm) {
+		const sp_mat_rm_t& L_SigmaI_plus_W_rm,
+		const CGConvergenceParams& convergence_params) {
 
 		p = std::min(p, (int)num_data);
 		den_mat_t R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t), L_kt_W_inv_R, B_k_W_inv_R, W_inv_R;
@@ -129,6 +135,10 @@ namespace GPBoost {
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
 		bool early_stop_alg = false;
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		CGMultiRHSConvergence conv(conv_params, rhs);
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -162,68 +172,102 @@ namespace GPBoost {
 			//V = (Sigma^(-1) + W) H
 #pragma omp parallel for schedule(static)   
 			for (int i = 0; i < t; ++i) {
-				V.col(i) = (B_t_D_inv_rm * (B_rm * H.col(i))) + diag_W.cwiseProduct(H.col(i));
+				//columns that are not iterated on anymore are zeroed instead of skipped so that no uninitialized memory is read
+				if (conv.IsActive(i)) {
+					V.col(i) = (B_t_D_inv_rm * (B_rm * H.col(i))) + diag_W.cwiseProduct(H.col(i));
+				}
+				else {
+					V.col(i).setZero();
+				}
 			}
 			a_old = a;
-			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
-			U += H * a.asDiagonal();
 			R_old = R;
-			R -= V * a.asDiagonal();
-			mean_R_norm = R.colwise().norm().mean();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						a(i) = 0.;
+						continue;
+					}
+					a(i) = R.col(i).dot(Z.col(i)) / H.col(i).dot(V.col(i));
+					U.col(i) += a(i) * H.col(i);
+					R.col(i) -= a(i) * V.col(i);
+				}
+			}
+			else {
+				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
+				U += H * a.asDiagonal();
+				R -= V * a.asDiagonal();
+			}
+			early_stop_alg = conv.CheckConvergence(R);
+			mean_R_norm = conv.MeanResidualNorm();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
 				//shrink to the iterations actually carried out (as in the early-convergence case
 				//	below), otherwise a caller reads uninitialized entries
-				for (int i = 0; i < t; ++i) {
-					Tdiags[i].conservativeResize(j, 1);
-					Tsubdiags[i].conservativeResize(j > 0 ? (j - 1) : 0, 1);
-				}
+				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j);
 				return;
 			}
-			if (mean_R_norm < delta_conv) {
-				early_stop_alg = true;
-				//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
-			}
+			//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
 			Z_old = Z;
 			//Z = P^(-1) R
 			if (cg_preconditioner_type == "vadu") {
-#pragma omp parallel for schedule(static)   
+#pragma omp parallel for schedule(static)
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					vec_t P_sqrt_invt_R = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(R.col(i));
 					Z.col(i) = D_inv_plus_W_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(P_sqrt_invt_R);
 				}
 			}
 			else if (cg_preconditioner_type == "incomplete_cholesky") {
-#pragma omp parallel for schedule(static)   
+#pragma omp parallel for schedule(static)
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					vec_t P_sqrt_invt_R = L_SigmaI_plus_W_rm.transpose().triangularView<Eigen::UpLoType::Upper>().solve(R.col(i));
 					Z.col(i) = L_SigmaI_plus_W_rm.triangularView<Eigen::UpLoType::Lower>().solve(P_sqrt_invt_R);
 				}
 			}
 			b_old = b;
-			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-			H = Z + H * b.asDiagonal();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						b(i) = 0.;
+						continue;
+					}
+					b(i) = R.col(i).dot(Z.col(i)) / R_old.col(i).dot(Z_old.col(i));
+					H.col(i) = Z.col(i) + b(i) * H.col(i);
+				}
+			}
+			else {
+				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+				H = Z + H * b.asDiagonal();
+			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
+				if (!conv.IsActive(i)) {
+					continue;
+				}
 				Tdiags[i][j] = 1 / a(i) + b_old(i) / a_old(i);
 				if (j > 0) {
 					Tsubdiags[i][j - 1] = sqrt(b_old(i)) / a_old(i);
 				}
 			}
+			conv.DeactivateConvergedColumns(j);
 			if (early_stop_alg) {
-				for (int i = 0; i < t; ++i) {
-					Tdiags[i].conservativeResize(j + 1, 1);
-					Tsubdiags[i].conservativeResize(j, 1);
-				}
+				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
+				conv.LogDiagnostics("CGTridiagVecchiaLaplace");
 				return;
 			}
 		}
 		//the loop has run to the end: 'p' can have been reduced at the beginning of this function,
 		//	so shrink to the iterations that were actually carried out
-		for (int i = 0; i < t; ++i) {
-			Tdiags[i].conservativeResize(p, 1);
-			Tsubdiags[i].conservativeResize(p > 0 ? (p - 1) : 0, 1);
-		}
+		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
+		conv.LogDiagnostics("CGTridiagVecchiaLaplace");
 		Log::REDebug("CGTridiagVecchiaLaplace: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGTridiagVecchiaLaplace
@@ -246,7 +290,8 @@ namespace GPBoost {
 		const vec_t& diagonal_approx_inv_preconditioner,
 		const sp_mat_rm_t& B_vecchia_pc,
 		const sp_mat_t& D_inv_vecchia_pc,
-		bool run_in_parallel_do_not_report_non_convergence) {
+		bool run_in_parallel_do_not_report_non_convergence,
+		const CGConvergenceParams& convergence_params) {
 		p = std::min(p, (int)B_rm.cols());
 		if (cg_preconditioner_type == "pivoted_cholesky") {
 			CHECK(Sigma_L_k.rows() == B_rm.cols());
@@ -260,6 +305,9 @@ namespace GPBoost {
 		vec_t z, z_old;
 		vec_t h, v, diag_W_inv, B_invt_h, B_invt_rhs, Sigma_Lkt_W_r, Sigma_rhs, W_r;
 		double a, b, r_norm;
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
 		//Avoid numerical instabilites when rhs is de facto 0
 		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
 			u.setZero();
@@ -269,6 +317,12 @@ namespace GPBoost {
 		//Sigma * rhs, where Sigma = B^(-1) D B^(-T)
 		B_invt_rhs = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(rhs);
 		Sigma_rhs = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_rhs);
+		//the rhs of the linear system that is actually solved here is 'Sigma_rhs', not 'rhs'
+		const double rhs_norm = Sigma_rhs.norm();
+		if (conv_params.RhsIsNegligible(rhs_norm)) {
+			u.setZero();
+			return;
+		}
 		if (initialize_to_zero) {
 			u.setZero();
 			r = Sigma_rhs; //r = rhs - A * u
@@ -319,7 +373,7 @@ namespace GPBoost {
 				NA_or_Inf_found = true;
 				return;
 			}
-			if (r_norm < delta_conv || (j + 1) == p) {
+			if (conv_params.HasConverged(r_norm, rhs_norm) || (j + 1) == p) {
 				//u = W^(-1) u
 				u = diag_W_inv.cwiseProduct(u);
 				if ((j + 1) == p) {
@@ -374,7 +428,8 @@ namespace GPBoost {
 		const den_mat_t* cross_cov,
 		const vec_t& diagonal_approx_inv_preconditioner,
 		const sp_mat_rm_t& B_vecchia_pc,
-		const sp_mat_t& D_inv_vecchia_pc) {
+		const sp_mat_t& D_inv_vecchia_pc,
+		const CGConvergenceParams& convergence_params) {
 
 		p = std::min(p, (int)num_data);
 		den_mat_t Sigma_Lkt_W_R, W_R, R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t);
@@ -382,6 +437,10 @@ namespace GPBoost {
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
 		bool early_stop_alg = false;
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		CGMultiRHSConvergence conv(conv_params, rhs);
 		double mean_R_norm;
 		diag_W_inv = diag_W.cwiseInverse();
 		U.setZero();
@@ -422,30 +481,44 @@ namespace GPBoost {
 			//V = (W^(-1) + Sigma) * H - expensive part of the loop
 #pragma omp parallel for schedule(static)   
 			for (int i = 0; i < t; ++i) {
+				//columns that are not iterated on anymore are zeroed instead of skipped so that no uninitialized memory is read
+				if (!conv.IsActive(i)) {
+					V.col(i).setZero();
+					continue;
+				}
 				vec_t B_invt_H = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(H.col(i));
 				V.col(i) = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_H);
 			}
 			V += diag_W_inv.replicate(1, t).cwiseProduct(H);
 			a_old = a;
-			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
-			U += H * a.asDiagonal();
 			R_old = R;
-			R -= V * a.asDiagonal();
-			mean_R_norm = R.colwise().norm().mean();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						a(i) = 0.;
+						continue;
+					}
+					a(i) = R.col(i).dot(Z.col(i)) / H.col(i).dot(V.col(i));
+					U.col(i) += a(i) * H.col(i);
+					R.col(i) -= a(i) * V.col(i);
+				}
+			}
+			else {
+				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
+				U += H * a.asDiagonal();
+				R -= V * a.asDiagonal();
+			}
+			early_stop_alg = conv.CheckConvergence(R);
+			mean_R_norm = conv.MeanResidualNorm();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
 				//shrink to the iterations actually carried out (as in the early-convergence case
 				//	below), otherwise a caller reads uninitialized entries
-				for (int i = 0; i < t; ++i) {
-					Tdiags[i].conservativeResize(j, 1);
-					Tsubdiags[i].conservativeResize(j > 0 ? (j - 1) : 0, 1);
-				}
+				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j);
 				return;
 			}
-			if (mean_R_norm < delta_conv) {
-				early_stop_alg = true;
-				//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
-			}
+			//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
 			Z_old = Z;
 			//Z = P^(-1) R
 			if (cg_preconditioner_type == "pivoted_cholesky") {
@@ -471,29 +544,42 @@ namespace GPBoost {
 				}
 			}
 			b_old = b;
-			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-			H = Z + H * b.asDiagonal();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						b(i) = 0.;
+						continue;
+					}
+					b(i) = R.col(i).dot(Z.col(i)) / R_old.col(i).dot(Z_old.col(i));
+					H.col(i) = Z.col(i) + b(i) * H.col(i);
+				}
+			}
+			else {
+				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+				H = Z + H * b.asDiagonal();
+			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
+				if (!conv.IsActive(i)) {
+					continue;
+				}
 				Tdiags[i][j] = 1 / a(i) + b_old(i) / a_old(i);
 				if (j > 0) {
 					Tsubdiags[i][j - 1] = sqrt(b_old(i)) / a_old(i);
 				}
 			}
+			conv.DeactivateConvergedColumns(j);
 			if (early_stop_alg) {
-				for (int i = 0; i < t; ++i) {
-					Tdiags[i].conservativeResize(j + 1, 1);
-					Tsubdiags[i].conservativeResize(j, 1);
-				}
+				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
+				conv.LogDiagnostics("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv");
 				return;
 			}
 		}
 		//the loop has run to the end: 'p' can have been reduced at the beginning of this function,
 		//	so shrink to the iterations that were actually carried out
-		for (int i = 0; i < t; ++i) {
-			Tdiags[i].conservativeResize(p, 1);
-			Tsubdiags[i].conservativeResize(p > 0 ? (p - 1) : 0, 1);
-		}
+		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
+		conv.LogDiagnostics("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv");
 		Log::REDebug("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGTridiagVecchiaLaplace_Version_SigmaPlusWinv
@@ -513,7 +599,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
-		bool run_in_parallel_do_not_report_non_convergence) {
+		bool run_in_parallel_do_not_report_non_convergence,
+		const CGConvergenceParams& convergence_params) {
 
 		p = std::min(p, (int)B_rm.cols());
 		vec_t r, r_old;
@@ -522,8 +609,12 @@ namespace GPBoost {
 		vec_t B_t_D_inv_B_vec;
 		double a, b, r_norm;
 		den_mat_t vecchia_cross_cov_sigma_woodbury_woodbury_inv_cross_cov_vecchia;
-		//Avoid numerical instabilites when rhs is de facto 0
-		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		const double rhs_norm = rhs.norm();
+		//Avoid numerical instabilites when rhs is de facto 0 or when the zero vector already satisfies the tolerance
+		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG || conv_params.RhsIsNegligible(rhs_norm)) {
 			u.setZero();
 			return;
 		}
@@ -566,7 +657,7 @@ namespace GPBoost {
 				NA_or_Inf_found = true;
 				return;
 			}
-			if (r_norm < delta_conv) {
+			if (conv_params.HasConverged(r_norm, rhs_norm)) {
 				//Log::REDebug("Number CG iterations: %i", j + 1);
 				return;
 			}
@@ -609,7 +700,8 @@ namespace GPBoost {
 		const int t,
 		int p,
 		const double delta_conv,
-		const string_t cg_preconditioner_type) {
+		const string_t cg_preconditioner_type,
+		const CGConvergenceParams& convergence_params) {
 
 		p = std::min(p, (int)num_data);
 		den_mat_t R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t);
@@ -617,6 +709,10 @@ namespace GPBoost {
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
 		bool early_stop_alg = false;
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		CGMultiRHSConvergence conv(conv_params, rhs);
 		double mean_R_norm;
 		den_mat_t W_D_inv_inv_B_invt_R(num_data, t), B_invt_R(num_data, t), B_t_D_inv_W_D_inv_inv_B_invt_R(num_data, t), B_t_D_inv_B_mat(num_data, t),
 			W_D_inv_inv_plus_vecchia_woodbury_woodbury_B_invt_R, cross_cov_sigma_woodbury_woodbury_cross_cov_B_t_D_inv_W_D_inv_inv_B_invt_R,
@@ -659,32 +755,48 @@ namespace GPBoost {
 			//V = (Sigma^(-1) + W) H
 #pragma omp parallel for schedule(static)   
 			for (int i = 0; i < t; ++i) {
-				B_t_D_inv_B_mat.col(i) = B_t_D_inv_rm * (B_rm * H.col(i));
+				if (conv.IsActive(i)) {
+					B_t_D_inv_B_mat.col(i) = B_t_D_inv_rm * (B_rm * H.col(i));
+				}
 			}
-#pragma omp parallel for schedule(static)   
+#pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
+				//columns that are not iterated on anymore are zeroed instead of skipped so that no uninitialized memory is read
+				if (!conv.IsActive(i)) {
+					V.col(i).setZero();
+					continue;
+				}
 				V.col(i) = B_t_D_inv_B_mat.col(i) + diag_W.cwiseProduct(H.col(i)) - B_t_D_inv_rm * (B_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * B_t_D_inv_B_mat.col(i))));
 			}
 			a_old = a;
-			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
-			U += H * a.asDiagonal();
 			R_old = R;
-			R -= V * a.asDiagonal();
-			mean_R_norm = R.colwise().norm().mean();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						a(i) = 0.;
+						continue;
+					}
+					a(i) = R.col(i).dot(Z.col(i)) / H.col(i).dot(V.col(i));
+					U.col(i) += a(i) * H.col(i);
+					R.col(i) -= a(i) * V.col(i);
+				}
+			}
+			else {
+				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
+				U += H * a.asDiagonal();
+				R -= V * a.asDiagonal();
+			}
+			early_stop_alg = conv.CheckConvergence(R);
+			mean_R_norm = conv.MeanResidualNorm();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
 				//shrink to the iterations actually carried out (as in the early-convergence case
 				//	below), otherwise a caller reads uninitialized entries
-				for (int i = 0; i < t; ++i) {
-					Tdiags[i].conservativeResize(j, 1);
-					Tsubdiags[i].conservativeResize(j > 0 ? (j - 1) : 0, 1);
-				}
+				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j);
 				return;
 			}
-			if (mean_R_norm < delta_conv) {
-				early_stop_alg = true;
-				//Log::REDebug("Number CG-Tridiag iterations: %i", j + 1);
-			}
+			//Log::REDebug("Number CG-Tridiag iterations: %i", j + 1);
 			Z_old = Z;
 			//Z = P^(-1) R
 			if (cg_preconditioner_type == "vifdu") {
@@ -714,29 +826,42 @@ namespace GPBoost {
 				Log::REFatal("CGTridiagVIFLaplace: Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 			}
 			b_old = b;
-			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-			H = Z + H * b.asDiagonal();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						b(i) = 0.;
+						continue;
+					}
+					b(i) = R.col(i).dot(Z.col(i)) / R_old.col(i).dot(Z_old.col(i));
+					H.col(i) = Z.col(i) + b(i) * H.col(i);
+				}
+			}
+			else {
+				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+				H = Z + H * b.asDiagonal();
+			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
+				if (!conv.IsActive(i)) {
+					continue;
+				}
 				Tdiags[i][j] = 1 / a(i) + b_old(i) / a_old(i);
 				if (j > 0) {
 					Tsubdiags[i][j - 1] = sqrt(b_old(i)) / a_old(i);
 				}
 			}
+			conv.DeactivateConvergedColumns(j);
 			if (early_stop_alg) {
-				for (int i = 0; i < t; ++i) {
-					Tdiags[i].conservativeResize(j + 1, 1);
-					Tsubdiags[i].conservativeResize(j, 1);
-				}
+				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
+				conv.LogDiagnostics("CGTridiagVIFLaplace");
 				return;
 			}
 		}
 		//the loop has run to the end: 'p' can have been reduced at the beginning of this function,
 		//	so shrink to the iterations that were actually carried out
-		for (int i = 0; i < t; ++i) {
-			Tdiags[i].conservativeResize(p, 1);
-			Tsubdiags[i].conservativeResize(p > 0 ? (p - 1) : 0, 1);
-		}
+		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
+		conv.LogDiagnostics("CGTridiagVIFLaplace");
 		Log::REDebug("CGTridiagVIFLaplace: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
 	} // end CGTridiagVIFLaplace
@@ -756,7 +881,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const double THRESHOLD_ZERO_RHS_CG,
 		const string_t cg_preconditioner_type,
-		bool run_in_parallel_do_not_report_non_convergence) {
+		bool run_in_parallel_do_not_report_non_convergence,
+		const CGConvergenceParams& convergence_params) {
 
 		p = std::min(p, (int)B_rm.cols());
 		vec_t r, r_old;
@@ -765,8 +891,12 @@ namespace GPBoost {
 		vec_t B_t_D_inv_B_vec;
 		double a, b, r_norm;
 		den_mat_t vecchia_cross_cov_sigma_woodbury_woodbury_inv_cross_cov_vecchia;
-		//Avoid numerical instabilites when rhs is de facto 0
-		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		const double rhs_norm = rhs.norm();
+		//Avoid numerical instabilites when rhs is de facto 0 or when the zero vector already satisfies the tolerance
+		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG || conv_params.RhsIsNegligible(rhs_norm)) {
 			u.setZero();
 			return;
 		}
@@ -808,7 +938,7 @@ namespace GPBoost {
 				NA_or_Inf_found = true;
 				return;
 			}
-			if (r_norm < delta_conv) {
+			if (conv_params.HasConverged(r_norm, rhs_norm)) {
 				//Log::REDebug("Number CG iterations: %i", j + 1);
 				return;
 			}
@@ -850,7 +980,8 @@ namespace GPBoost {
 		const int t,
 		int p,
 		const double delta_conv,
-		const string_t cg_preconditioner_type) {
+		const string_t cg_preconditioner_type,
+		const CGConvergenceParams& convergence_params) {
 
 		p = std::min(p, (int)num_data);
 		den_mat_t R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t);
@@ -858,6 +989,10 @@ namespace GPBoost {
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
 		bool early_stop_alg = false;
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		CGMultiRHSConvergence conv(conv_params, rhs);
 		double mean_R_norm;
 		den_mat_t B_inv_D_B_invt_U(num_data, t), FITC_W_inv_R(num_data, t);
 		U.setZero();
@@ -888,32 +1023,48 @@ namespace GPBoost {
 			//V = (Sigma^(-1) + W) H
 #pragma omp parallel for schedule(static)   
 			for (int i = 0; i < t; ++i) {
-				B_inv_D_B_invt_U.col(i) = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(H.col(i))));
+				if (conv.IsActive(i)) {
+					B_inv_D_B_invt_U.col(i) = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(H.col(i))));
+				}
 			}
-#pragma omp parallel for schedule(static)   
+#pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
+				//columns that are not iterated on anymore are zeroed instead of skipped so that no uninitialized memory is read
+				if (!conv.IsActive(i)) {
+					V.col(i).setZero();
+					continue;
+				}
 				V.col(i) = chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * H.col(i)) + B_inv_D_B_invt_U.col(i) + diag_W_inv.asDiagonal() * H.col(i);
 			}
 			a_old = a;
-			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
-			U += H * a.asDiagonal();
 			R_old = R;
-			R -= V * a.asDiagonal();
-			mean_R_norm = R.colwise().norm().mean();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						a(i) = 0.;
+						continue;
+					}
+					a(i) = R.col(i).dot(Z.col(i)) / H.col(i).dot(V.col(i));
+					U.col(i) += a(i) * H.col(i);
+					R.col(i) -= a(i) * V.col(i);
+				}
+			}
+			else {
+				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
+				U += H * a.asDiagonal();
+				R -= V * a.asDiagonal();
+			}
+			early_stop_alg = conv.CheckConvergence(R);
+			mean_R_norm = conv.MeanResidualNorm();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
 				//shrink to the iterations actually carried out (as in the early-convergence case
 				//	below), otherwise a caller reads uninitialized entries
-				for (int i = 0; i < t; ++i) {
-					Tdiags[i].conservativeResize(j, 1);
-					Tsubdiags[i].conservativeResize(j > 0 ? (j - 1) : 0, 1);
-				}
+				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j);
 				return;
 			}
-			if (mean_R_norm < delta_conv) {
-				early_stop_alg = true;
-				//Log::REDebug("Number CG-Tridiag iterations: %i", j + 1);
-			}
+			//Log::REDebug("Number CG-Tridiag iterations: %i", j + 1);
 			Z_old = Z;
 			//Z = P^(-1) R
 			if (cg_preconditioner_type == "fitc") {
@@ -934,29 +1085,42 @@ namespace GPBoost {
 			}
 
 			b_old = b;
-			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-			H = Z + H * b.asDiagonal();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						b(i) = 0.;
+						continue;
+					}
+					b(i) = R.col(i).dot(Z.col(i)) / R_old.col(i).dot(Z_old.col(i));
+					H.col(i) = Z.col(i) + b(i) * H.col(i);
+				}
+			}
+			else {
+				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+				H = Z + H * b.asDiagonal();
+			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
+				if (!conv.IsActive(i)) {
+					continue;
+				}
 				Tdiags[i][j] = 1 / a(i) + b_old(i) / a_old(i);
 				if (j > 0) {
 					Tsubdiags[i][j - 1] = sqrt(b_old(i)) / a_old(i);
 				}
 			}
+			conv.DeactivateConvergedColumns(j);
 			if (early_stop_alg) {
-				for (int i = 0; i < t; ++i) {
-					Tdiags[i].conservativeResize(j + 1, 1);
-					Tsubdiags[i].conservativeResize(j, 1);
-				}
+				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
+				conv.LogDiagnostics("CGTridiagVIFLaplace_Version_SigmaPlusWinv");
 				return;
 			}
 		}
 		//the loop has run to the end: 'p' can have been reduced at the beginning of this function,
 		//	so shrink to the iterations that were actually carried out
-		for (int i = 0; i < t; ++i) {
-			Tdiags[i].conservativeResize(p, 1);
-			Tsubdiags[i].conservativeResize(p > 0 ? (p - 1) : 0, 1);
-		}
+		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
+		conv.LogDiagnostics("CGTridiagVIFLaplace_Version_SigmaPlusWinv");
 		Log::REDebug("CGTridiagVIFLaplace_Version_SigmaPlusWinv: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
 	} // end CGTridiagVIFLaplace_Version_SigmaPlusWinv
@@ -1040,15 +1204,48 @@ namespace GPBoost {
 
 		Eigen::SelfAdjointEigenSolver<den_mat_t> es;
 		ldet = 0;
+		int num_t_used = 0;
 		vec_t e1_logLambda_e1;
 		for (int i = 0; i < t; ++i) {
+			//a rhs that was too small to be solved for received no Lanczos iterations and must be excluded
+			//	from the average instead of contributing a zero
+			if (Tdiags[i].size() == 0) {
+				continue;
+			}
 			e1_logLambda_e1.setZero();
 			es.computeFromTridiagonal(Tdiags[i], Tsubdiags[i]);
 			e1_logLambda_e1 = es.eigenvectors().row(0).transpose().array() * es.eigenvalues().array().log() * es.eigenvectors().row(0).transpose().array();
 			ldet += e1_logLambda_e1.sum();
+			num_t_used += 1;
 		}
-		ldet = ldet * num_data / t;
+		if (num_t_used == 0) {
+			Log::REFatal("LogDetStochTridiag: All %i random vectors have a norm below the convergence tolerance. "
+				"Reduce 'cg_abs_tol' or use 'cg_convergence_criterion = \"absolute\"' ", t);
+		}
+		ldet = ldet * num_data / num_t_used;
 	} // end LogDetStochTridiag
+
+	void CGMultiRHSConvergence::LogDiagnostics(const char* caller) const {
+		//'REDebug' discards the message unless the debug log level is enabled, i.e. this is never printed unconditionally
+		if (t_ == 0) {
+			return;
+		}
+		int min_it = num_it_[0], max_it = num_it_[0];
+		double sum_it = 0.;
+		for (int i = 0; i < t_; ++i) {
+			min_it = std::min(min_it, num_it_[i]);
+			max_it = std::max(max_it, num_it_[i]);
+			sum_it += num_it_[i];
+		}
+		double max_r_norm = 0., max_scaled_r_norm = 0.;
+		for (int i = 0; i < t_; ++i) {
+			max_r_norm = std::max(max_r_norm, r_norms_[i]);
+			max_scaled_r_norm = std::max(max_scaled_r_norm, r_norms_[i] / params_.Tolerance(rhs_norms_[i]));
+		}
+		Log::REDebug("%s: iterations per rhs (mean / min / max) = %g / %i / %i, "
+			"final residuals (mean / max ||r_j||_2) = %g / %g, max scaled residual ||r_j||_2 / tol_j = %g ",
+			caller, sum_it / t_, min_it, max_it, mean_r_norm_, max_r_norm, max_scaled_r_norm);
+	} // end CGMultiRHSConvergence::LogDiagnostics
 
 	void CalcOptimalC(const vec_t& zt_AI_A_deriv_PI_z,
 		const vec_t& zt_BI_B_deriv_PI_z,
@@ -1157,7 +1354,8 @@ namespace GPBoost {
 		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
 		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm,
 		const vec_t& SigmaI_plus_ZtWZ_inv_diag,
-		int& num_cg_steps
+		int& num_cg_steps,
+		const CGConvergenceParams& convergence_params
 		//const std::vector<data_size_t>& cum_num_rand_eff,
 		//const data_size_t& num_re_group_total,
 		//const vec_t& P_SSOR_D1_inv,
@@ -1172,8 +1370,12 @@ namespace GPBoost {
 		vec_t L_inv_r, Sigma_r, L_kt_Sigma_r;
 		vec_t r_1, r_2, z_1, z_2;
 		double a, b, r_norm;
-		//Avoid numerical instabilites when rhs is de facto 0
-		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		const double rhs_norm = rhs.norm();
+		//Avoid numerical instabilites when rhs is de facto 0 or when the zero vector already satisfies the tolerance
+		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG || conv_params.RhsIsNegligible(rhs_norm)) {
 			u.setZero();
 			return;
 		}
@@ -1233,7 +1435,7 @@ namespace GPBoost {
 				NA_or_Inf_found = true;
 				return;
 			}
-			if (r_norm < delta_conv) {
+			if (conv_params.HasConverged(r_norm, rhs_norm)) {
 				num_cg_steps = j + 1;
 				//Log::REInfo("Number CG iterations: %i", j + 1);
 				return;
@@ -1294,7 +1496,8 @@ namespace GPBoost {
 		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
 		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm,
 		const vec_t& SigmaI_plus_ZtWZ_inv_diag,
-		int& num_cg_steps
+		int& num_cg_steps,
+		const CGConvergenceParams& convergence_params
 		//const std::vector<data_size_t>& cum_num_rand_eff,
 		//const data_size_t& num_re_group_total,
 		//const vec_t& P_SSOR_D1_inv,
@@ -1309,6 +1512,10 @@ namespace GPBoost {
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
 		bool early_stop_alg = false;
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		CGMultiRHSConvergence conv(conv_params, rhs);
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -1316,7 +1523,7 @@ namespace GPBoost {
 		b.setZero();
 		//R = rhs - A * U
 		R = rhs; //Since U is 0
-		//Z = P^(-1) R 	
+		//Z = P^(-1) R
 		if (cg_preconditioner_type == "incomplete_cholesky") {
 			//P^(-1) = L^(-T) L^(-1)
 #pragma omp parallel for schedule(static)   
@@ -1370,27 +1577,44 @@ namespace GPBoost {
 			//V = (Sigma^(-1) + Z^T Z) H
 #pragma omp parallel for schedule(static)   
 			for (int i = 0; i < t; ++i) {
-				V.col(i) = SigmaI_plus_ZtWZ_rm * H.col(i);
+				//columns that are not iterated on anymore are zeroed instead of skipped so that no uninitialized memory is read
+				if (conv.IsActive(i)) {
+					V.col(i) = SigmaI_plus_ZtWZ_rm * H.col(i);
+				}
+				else {
+					V.col(i).setZero();
+				}
 			}
 			a_old = a;
-			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
-			U += H * a.asDiagonal();
 			R_old = R;
-			R -= V * a.asDiagonal();
-			mean_R_norm = R.colwise().norm().mean();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						a(i) = 0.;
+						continue;
+					}
+					a(i) = R.col(i).dot(Z.col(i)) / H.col(i).dot(V.col(i));
+					U.col(i) += a(i) * H.col(i);
+					R.col(i) -= a(i) * V.col(i);
+				}
+			}
+			else {
+				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
+				U += H * a.asDiagonal();
+				R -= V * a.asDiagonal();
+			}
+			early_stop_alg = conv.CheckConvergence(R);
+			mean_R_norm = conv.MeanResidualNorm();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
 				//shrink to the iterations actually carried out (as in the early-convergence case
 				//	below), otherwise a caller reads uninitialized entries
-				for (int i = 0; i < t; ++i) {
-					Tdiags[i].conservativeResize(j, 1);
-					Tsubdiags[i].conservativeResize(j > 0 ? (j - 1) : 0, 1);
-				}
+				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j);
 				return;
 			}
-			if (mean_R_norm < delta_conv) {
+			if (early_stop_alg) {
 				num_cg_steps = j + 1;
-				early_stop_alg = true;
 				//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
 			}
 			Z_old = Z;
@@ -1399,10 +1623,16 @@ namespace GPBoost {
 				//P^(-1) = L^(-T) L^(-1)
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					L_inv_R.col(i) = L_SigmaI_plus_ZtWZ_rm.triangularView<Eigen::Lower>().solve(R.col(i));
 				}
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					Z.col(i) = L_SigmaI_plus_ZtWZ_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
 				}
 			}
@@ -1422,10 +1652,16 @@ namespace GPBoost {
 									//P^(-1) = L^(-T) D L^(-1) = (L D^(-0.5))^(-T) (L D^(-0.5))^(-1)
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					L_inv_R.col(i) = P_SSOR_L_D_sqrt_inv_rm.triangularView<Eigen::Lower>().solve(R.col(i));
 				}
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					Z.col(i) = P_SSOR_L_D_sqrt_inv_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
 				}
 				//}
@@ -1434,39 +1670,59 @@ namespace GPBoost {
 				//P^(-1) = diag(Sigma^-1 + Z^T W Z)^(-1)
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					Z.col(i) = SigmaI_plus_ZtWZ_inv_diag.asDiagonal() * R.col(i);
 				}
 			}
 			else if (cg_preconditioner_type == "none") {
-				Z = R;
+				for (int i = 0; i < t; ++i) {
+					if (conv.NeedsUpdate(i)) {
+						Z.col(i) = R.col(i);
+					}
+				}
 			}
 			else {
 				Log::REFatal("CGTridiagRandomEffects: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
 			b_old = b;
-			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-			H = Z + H * b.asDiagonal();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						b(i) = 0.;
+						continue;
+					}
+					b(i) = R.col(i).dot(Z.col(i)) / R_old.col(i).dot(Z_old.col(i));
+					H.col(i) = Z.col(i) + b(i) * H.col(i);
+				}
+			}
+			else {
+				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+				H = Z + H * b.asDiagonal();
+			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
+				if (!conv.IsActive(i)) {
+					continue;
+				}
 				Tdiags[i][j] = 1 / a(i) + b_old(i) / a_old(i);
 				if (j > 0) {
 					Tsubdiags[i][j - 1] = sqrt(b_old(i)) / a_old(i);
 				}
 			}
+			conv.DeactivateConvergedColumns(j);
 			if (early_stop_alg) {
-				for (int i = 0; i < t; ++i) {
-					Tdiags[i].conservativeResize(j + 1, 1);
-					Tsubdiags[i].conservativeResize(j, 1);
-				}
+				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
+				conv.LogDiagnostics("CGTridiagRandomEffects");
 				return;
 			}
 		}
 		//the loop has run to the end: 'p' can have been reduced at the beginning of this function,
 		//	so shrink to the iterations that were actually carried out
-		for (int i = 0; i < t; ++i) {
-			Tdiags[i].conservativeResize(p, 1);
-			Tsubdiags[i].conservativeResize(p > 0 ? (p - 1) : 0, 1);
-		}
+		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
+		conv.LogDiagnostics("CGTridiagRandomEffects");
 		num_cg_steps = p;
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
@@ -1482,7 +1738,8 @@ namespace GPBoost {
 		const double delta_conv,
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& L_SigmaI_plus_ZtWZ_rm,
-		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm) {
+		const sp_mat_rm_t& P_SSOR_L_D_sqrt_inv_rm,
+		const CGConvergenceParams& convergence_params) {
 
 		p = std::min(p, (int)num_REs);
 		den_mat_t R(num_REs, t), R_old, Z(num_REs, t), Z_old, H, V(num_REs, t);
@@ -1490,6 +1747,10 @@ namespace GPBoost {
 		vec_t v1(num_REs);
 		vec_t a(t), a_old(t);
 		vec_t b(t), b_old(t);
+		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
+		CGConvergenceParams conv_params(convergence_params);
+		conv_params.delta_conv = delta_conv;
+		CGMultiRHSConvergence conv(conv_params, rhs);
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -1528,43 +1789,77 @@ namespace GPBoost {
 			//V = (Sigma^(-1) + Z^T Z) H
 #pragma omp parallel for schedule(static)   
 			for (int i = 0; i < t; ++i) {
-				V.col(i) = SigmaI_plus_ZtWZ_rm * H.col(i);
+				//columns that are not iterated on anymore are zeroed instead of skipped so that no uninitialized memory is read
+				if (conv.IsActive(i)) {
+					V.col(i) = SigmaI_plus_ZtWZ_rm * H.col(i);
+				}
+				else {
+					V.col(i).setZero();
+				}
 			}
 			a_old = a;
-			a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
-			U += H * a.asDiagonal();
 			R_old = R;
-			R -= V * a.asDiagonal();
-			mean_R_norm = R.colwise().norm().mean();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						a(i) = 0.;
+						continue;
+					}
+					a(i) = R.col(i).dot(Z.col(i)) / H.col(i).dot(V.col(i));
+					U.col(i) += a(i) * H.col(i);
+					R.col(i) -= a(i) * V.col(i);
+				}
+			}
+			else {
+				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
+				U += H * a.asDiagonal();
+				R -= V * a.asDiagonal();
+			}
+			const bool early_stop_alg = conv.CheckConvergence(R);
+			mean_R_norm = conv.MeanResidualNorm();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
 				return;
 			}
-			if (mean_R_norm < delta_conv) {
+			if (early_stop_alg) {
 				//Log::REInfo("Number CGRandomEffectsMat iterations: %i", j + 1);
 				return;
 			}
+			conv.DeactivateConvergedColumns(j);
 			Z_old = Z;
 			//Z = P^(-1) R
 			if (cg_preconditioner_type == "incomplete_cholesky") {
 				//P^(-1) = L^(-T) L^(-1)
-#pragma omp parallel for schedule(static)   
+#pragma omp parallel for schedule(static)
 				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						continue;
+					}
 					L_inv_R.col(i) = L_SigmaI_plus_ZtWZ_rm.triangularView<Eigen::Lower>().solve(R.col(i));
 				}
-#pragma omp parallel for schedule(static)   
+#pragma omp parallel for schedule(static)
 				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						continue;
+					}
 					Z.col(i) = L_SigmaI_plus_ZtWZ_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
 				}
 			}
 			else if (cg_preconditioner_type == "ssor") {
 				//P^(-1) = L^(-T) D L^(-1) = (L D^(-0.5))^(-T) (L D^(-0.5))^(-1)
-#pragma omp parallel for schedule(static)   
+#pragma omp parallel for schedule(static)
 				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						continue;
+					}
 					L_inv_R.col(i) = P_SSOR_L_D_sqrt_inv_rm.triangularView<Eigen::Lower>().solve(R.col(i));
 				}
-#pragma omp parallel for schedule(static)   
+#pragma omp parallel for schedule(static)
 				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						continue;
+					}
 					Z.col(i) = P_SSOR_L_D_sqrt_inv_rm.transpose().triangularView<Eigen::Upper>().solve(L_inv_R.col(i));
 				}
 			}
@@ -1572,9 +1867,23 @@ namespace GPBoost {
 				Log::REFatal("Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
 			}
 			b_old = b;
-			b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-			H = Z + H * b.asDiagonal();
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					if (!conv.IsActive(i)) {
+						b(i) = 0.;
+						continue;
+					}
+					b(i) = R.col(i).dot(Z.col(i)) / R_old.col(i).dot(Z_old.col(i));
+					H.col(i) = Z.col(i) + b(i) * H.col(i);
+				}
+			}
+			else {
+				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
+				H = Z + H * b.asDiagonal();
+			}
 		}
+		conv.LogDiagnostics("CGRandomEffectsMat");
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it' ", p);
 	} // end CGRandomEffectsMat

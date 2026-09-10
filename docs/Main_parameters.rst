@@ -436,6 +436,42 @@ The following list shows some options for the parameter optimization ``GPModel``
 
    -  If ``delta_rel_conv = -999``, internal default values are used (= 1e-6 except for ``nelder_mead`` for which the default is 1e-8)
 
+-  ``cg_convergence_criterion`` : string, optional (default = ``"absolute"``)
+
+   -  Stopping rule of the conjugate gradient (CG) algorithms. Only relevant for ``matrix_inversion_method = "iterative"``
+
+   -  ``"absolute"``: stop when ``||r||_2 < cg_delta_conv``
+
+   -  ``"relative"``: stop when ``||r||_2 <= max(cg_abs_tol, cg_rel_tol * ||b||_2)``, where ``b`` is the right-hand side of the linear system. The ``cg_abs_tol`` floor makes the rule robust for right-hand sides that are zero or very small
+
+-  ``cg_rel_tol`` : double, optional (default = 1e-2)
+
+   -  Relative tolerance of the ``"relative"`` stopping rule
+
+   -  If ``cg_rel_tol = -999``, internal default values are used
+
+-  ``cg_abs_tol`` : double, optional (default = value of ``cg_delta_conv``)
+
+   -  Absolute tolerance floor of the ``"relative"`` stopping rule
+
+   -  If ``cg_abs_tol = -999``, it follows ``cg_delta_conv``
+
+-  ``cg_multi_rhs_convergence`` : string, optional (default = ``"average"``)
+
+   -  How the stopping rule is aggregated over the columns of a linear system with several right-hand sides, such as the stochastic Lanczos quadrature used for log-determinants and stochastic trace estimates
+
+   -  Every right-hand side is normalized by its own norm, i.e. ``q_j = ||r_j||_2 / max(cg_abs_tol, cg_rel_tol * ||b_j||_2)``
+
+   -  ``"average"``: stop when ``mean(q_j) <= 1``. Together with ``cg_convergence_criterion = "absolute"`` this reproduces the behavior of earlier versions
+
+   -  ``"max"``: stop when ``max(q_j) <= 1``
+
+   -  ``"per_rhs"``: stop iterating on column ``j`` individually as soon as ``q_j <= 1``. Columns that have converged receive no further CG / Lanczos updates
+
+-  ``cg_convergence_criterion_pred``, ``cg_rel_tol_pred``, ``cg_abs_tol_pred``
+
+   -  The same options for the CG algorithms when they are used for prediction. They are set via ``set_prediction_data()`` (together with ``cg_delta_conv_pred``) and default to the values used for the parameter estimation
+
 
 Options for the GPBoost algorithm
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -768,7 +768,11 @@ GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
 	SEXP m_lbfgs,
 	SEXP delta_conv_mode_finding,
 	SEXP max_num_restarts_lbfgs,
-	SEXP cold_restart_lbfgs
+	SEXP cold_restart_lbfgs,
+	SEXP cg_convergence_criterion,
+	SEXP cg_rel_tol,
+	SEXP cg_abs_tol,
+	SEXP cg_multi_rhs_convergence
 );
 
 /*!
@@ -965,7 +969,10 @@ GPBOOST_C_EXPORT SEXP GPB_SetPredictionData_R(
 	SEXP num_neighbors_pred,
 	SEXP cg_delta_conv_pred,
 	SEXP nsim_var_pred,
-	SEXP rank_pred_approx_matrix_lanczos
+	SEXP rank_pred_approx_matrix_lanczos,
+	SEXP cg_convergence_criterion_pred,
+	SEXP cg_rel_tol_pred,
+	SEXP cg_abs_tol_pred
 );
 
 /*!

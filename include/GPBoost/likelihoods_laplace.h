@@ -249,7 +249,8 @@ namespace GPBoost {
 				int num_cg_steps;
 				CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rhs, mode_update, has_NA_or_Inf,
 					cg_max_num_it, cg_delta_conv_, it == 0, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
-					L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps);
+					L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps,
+					cg_convergence_params_);
 				if (it == 0) {
 					num_cg_steps_last_ = num_cg_steps;
 				}
@@ -423,7 +424,8 @@ namespace GPBoost {
 					std::vector<vec_t> Tsubdiags_PI_SigmaI_plus_ZtWZ(num_rand_vec_trace_, vec_t(cg_max_num_it_tridiag - 1));
 					CGTridiagRandomEffects(SigmaI_plus_ZtWZ_rm_, rand_vec_trace_P_, Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ,
 						SigmaI_plus_ZtWZ_inv_RV_, has_NA_or_Inf, dim_mode_, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
-						L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_tridiag_last_);
+						L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_tridiag_last_,
+						cg_convergence_params_);
 					if (!has_NA_or_Inf) {
 						LogDetStochTridiag(Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ, log_det_SigmaI_plus_ZtWZ, dim_mode_, num_rand_vec_trace_);
 						approx_marginal_ll += 0.5 * (SigmaI.diagonal().array().log().sum() - log_det_SigmaI_plus_ZtWZ);
@@ -691,7 +693,8 @@ namespace GPBoost {
 					}
 					else {
 						CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
-							chol_fact_sigma_woodbury_woodbury, rhs, mode_update, has_NA_or_Inf, cg_max_num_it, it == 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
+							chol_fact_sigma_woodbury_woodbury, rhs, mode_update, has_NA_or_Inf, cg_max_num_it, it == 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false,
+							cg_convergence_params_);
 					}
 				}
 				else if (cg_preconditioner_type_ == "fitc") {
@@ -725,7 +728,8 @@ namespace GPBoost {
 					rhs = rhs_part + rhs_part2;
 					CGVIFLaplace_Version_SigmaPlusWinvVec(information_ll_inv, D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
 						chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rhs, mode_update_part, has_NA_or_Inf,
-						cg_max_num_it, it == 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
+						cg_max_num_it, it == 0, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false,
+						cg_convergence_params_);
 					mode_update = information_ll_inv.asDiagonal() * mode_update_part;
 				}
 				if (has_NA_or_Inf) {
@@ -1948,7 +1952,8 @@ namespace GPBoost {
 		bool has_NA_or_Inf_stoch_diag = false;
 		CGRandomEffectsMat(SigmaI_plus_ZtWZ_rm_, rand_vec_trace_I_, SigmaI_plus_ZtWZ_inv_RV_I, has_NA_or_Inf_stoch_diag,
 			dim_mode_, num_rand_vec_trace_, cg_max_num_it_, cg_delta_conv_, cg_preconditioner_type_,
-			L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_);
+			L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_,
+			cg_convergence_params_);
 		if (has_NA_or_Inf_stoch_diag) {
 			Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
 		}
@@ -2397,7 +2402,8 @@ namespace GPBoost {
 				int num_cg_steps_dummy;
 				CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, d_mll_d_mode, SigmaI_plus_ZtWZ_inv_d_mll_d_mode, has_NA_or_Inf,
 					cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
-					L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
+					L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
+					cg_convergence_params_pred_);
 				if (has_NA_or_Inf) {
 					Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
 				}
@@ -3021,7 +3027,8 @@ namespace GPBoost {
 					vec_t W_SigmaI_plus_W_inv_d_mll_d_mode(dim_mode_);
 					CGVIFLaplace_Version_SigmaPlusWinvVec(information_ll_.cwiseInverse(), D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
 						chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, Sigma_d_mll_d_mode, W_SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
-						cg_max_num_it_, true, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
+						cg_max_num_it_, true, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false,
+						cg_convergence_params_);
 					SigmaI_plus_W_inv_d_mll_d_mode = information_ll_.cwiseInverse().asDiagonal() * W_SigmaI_plus_W_inv_d_mll_d_mode;
 					if (has_NA_or_Inf) {
 						Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
@@ -3176,7 +3183,8 @@ namespace GPBoost {
 						bool has_NA_or_Inf_k = false;
 						CGVIFLaplace_Version_SigmaPlusWinvVec(information_ll_.cwiseInverse(), D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
 							chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, Sigma_rv, W_result, has_NA_or_Inf_k,
-							cg_max_num_it_, true, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
+							cg_max_num_it_, true, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false,
+							cg_convergence_params_);
 						SigmaI_plus_W_inv_RV_I.col(k) = information_ll_.cwiseInverse().cwiseProduct(W_result);
 						if (has_NA_or_Inf_k) {
 							has_NA_or_Inf_stoch_diag = true;
@@ -3408,7 +3416,8 @@ namespace GPBoost {
 					//For implicit derivatives: calculate (Sigma^(-1) + W)^(-1) d_mll_d_mode
 					CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov,
 						W_D_inv_inv, chol_fact_sigma_woodbury_woodbury_, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
-						cg_max_num_it_, true, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
+						cg_max_num_it_, true, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false,
+						cg_convergence_params_);
 					if (has_NA_or_Inf) {
 						Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
 					}
@@ -3602,7 +3611,8 @@ namespace GPBoost {
 						bool has_NA_or_Inf_k = false;
 						CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov,
 							W_D_inv_inv, chol_fact_sigma_woodbury_woodbury_, rand_vec_trace_I2_.col(k), SigmaI_plus_W_inv_RV_I_col, has_NA_or_Inf_k,
-							cg_max_num_it_, true, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false);
+							cg_max_num_it_, true, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, false,
+							cg_convergence_params_);
 						SigmaI_plus_W_inv_RV_I.col(k) = SigmaI_plus_W_inv_RV_I_col;
 						if (has_NA_or_Inf_k) {
 							has_NA_or_Inf_stoch_diag = true;
@@ -4803,7 +4813,8 @@ namespace GPBoost {
 							int num_cg_steps_dummy;
 							CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, Z_tilde_t_RV, MInv_Ztilde_t_RV, has_NA_or_Inf,
 								cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
-								L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
+								L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
+								cg_convergence_params_pred_);
 							if (has_vecchia_gp) {
 								MInv_Ztilde_t_RV.conservativeResize(dim_re_group);
 							}
@@ -4911,7 +4922,8 @@ namespace GPBoost {
 								int num_cg_steps_dummy;
 								CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
 									cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
-									L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
+									L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
+									cg_convergence_params_pred_);
 								rand_vec_pred_SigmaI_plus_W_inv = rand_vec_pred_SigmaI_plus_W_inv.tail(dim_gp).eval();
 								if (has_NA_or_Inf) {
 									na_inf_flag_2 = true;
@@ -4989,7 +5001,8 @@ namespace GPBoost {
 							bool has_NA_or_Inf = false;
 							int num_cg_steps_dummy;
 							CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
-								true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
+								true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
+								cg_convergence_params_pred_);
 							if (has_NA_or_Inf) {
 								na_inf_flag_3 = true;
 							}
@@ -5502,7 +5515,8 @@ namespace GPBoost {
 							// matrix' Cholesky error twice).
 							CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
 								chol_fact_sigma_woodbury_woodbury_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf, cg_max_num_it_,
-								true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true);
+								true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true,
+								cg_convergence_params_pred_);
 						}
 						else if (cg_preconditioner_type_ == "fitc") {
 							vec_t rand_vec_pred_SigmaI_plus_W_inv_interim(dim_mode_);
@@ -5513,7 +5527,8 @@ namespace GPBoost {
 							rand_vec_pred_SigmaI_plus_W = rhs_part + rhs_part2;
 							CGVIFLaplace_Version_SigmaPlusWinvVec(information_ll_inv, D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
 								chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv_interim, has_NA_or_Inf,
-								cg_max_num_it_, true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true);
+								cg_max_num_it_, true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true,
+								cg_convergence_params_pred_);
 							rand_vec_pred_SigmaI_plus_W_inv = information_ll_inv.asDiagonal() * rand_vec_pred_SigmaI_plus_W_inv_interim;
 						}
 						if (has_NA_or_Inf) {
@@ -6130,7 +6145,8 @@ namespace GPBoost {
 					bool has_NA_or_Inf = false;
 					int num_cg_steps_dummy;
 					CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
-						true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
+						true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
+						cg_convergence_params_pred_);
 					if (has_NA_or_Inf) {
 						na_inf_flag_6 = true;
 					}
@@ -6344,7 +6360,8 @@ namespace GPBoost {
 				if (cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") {
 					CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
 						chol_fact_sigma_woodbury_woodbury_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf, cg_max_num_it_,
-						true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true);
+						true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true,
+						cg_convergence_params_pred_);
 				}
 				else if (cg_preconditioner_type_ == "fitc") {
 					vec_t rand_vec_pred_SigmaI_plus_W_inv_interim(dim_mode_);
@@ -6354,7 +6371,8 @@ namespace GPBoost {
 					rand_vec_pred_SigmaI_plus_W = rhs_part + rhs_part2;
 					CGVIFLaplace_Version_SigmaPlusWinvVec(information_ll_inv, D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
 						chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv_interim, has_NA_or_Inf,
-						cg_max_num_it_, true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true);
+						cg_max_num_it_, true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true,
+						cg_convergence_params_pred_);
 					rand_vec_pred_SigmaI_plus_W_inv = information_ll_inv.asDiagonal() * rand_vec_pred_SigmaI_plus_W_inv_interim;
 				}
 				if (has_NA_or_Inf) {
@@ -6596,7 +6614,8 @@ namespace GPBoost {
 					int num_cg_steps_dummy;
 					CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_init, MInv_RV, has_NA_or_Inf,
 						cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
-						L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy);
+						L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
+						cg_convergence_params_pred_);
 					if (has_NA_or_Inf) {
 						na_inf_flag_9 = true;
 					}
@@ -6776,12 +6795,14 @@ namespace GPBoost {
 			}
 			CGTridiagVIFLaplace_Version_SigmaPlusWinv(information_ll_.cwiseInverse(), D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
 				chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rand_vec_trace_I_, Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, SigmaI_plus_W_inv_Z_,
-				has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_);
+				has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
+				cg_convergence_params_);
 		}
 		else {
 			CGTridiagVIFLaplace(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv, chol_fact_sigma_woodbury_woodbury,
 				rand_vec_trace_I_, Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_,
-				cg_preconditioner_type_);
+				cg_preconditioner_type_,
+				cg_convergence_params_);
 		}
 		//'Tdiags_W_SigmaI' / 'Tsubdiags_W_SigmaI' are only fully valid if the CG did not find an
 		//	NA or Inf. The caller sets the log-likelihood to NA in that case anyway
@@ -6870,7 +6891,8 @@ namespace GPBoost {
 				}//end calculate_preconditioners
 				CGVecchiaLaplace_Version_SigmaPlusWinvVec(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, SigmaI_plus_ZtWZ_inv_rhs, has_NA_or_Inf,
 					cg_max_num_it, initialize_to_zero, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_,
-					chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_, false);
+					chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_, false,
+					cg_convergence_params_);
 			}
 		}//end cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc"
 		else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
@@ -6885,7 +6907,8 @@ namespace GPBoost {
 				}
 			}//end calculate_preconditioners
 			CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rhs, SigmaI_plus_ZtWZ_inv_rhs, has_NA_or_Inf,
-				cg_max_num_it, initialize_to_zero, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, false);
+				cg_max_num_it, initialize_to_zero, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, false,
+				cg_convergence_params_);
 		}
 		else {
 			Log::REFatal("Inv_SigmaI_plus_ZtWZ_Vecchia_iterative: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
@@ -6986,7 +7009,8 @@ namespace GPBoost {
 			}
 			CGTridiagVecchiaLaplace_Version_SigmaPlusWinv(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_trace_P_, Tdiags_PI_WI_plus_Sigma, Tsubdiags_PI_WI_plus_Sigma,
 				WI_plus_Sigma_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
-				chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_, chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_);
+				chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_, chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_,
+				cg_convergence_params_);
 			if (!has_NA_or_Inf) {
 				double ldet_PI_WI_plus_Sigma;
 				LogDetStochTridiag(Tdiags_PI_WI_plus_Sigma, Tsubdiags_PI_WI_plus_Sigma, ldet_PI_WI_plus_Sigma, num_data, num_rand_vec_trace_);
@@ -7037,7 +7061,8 @@ namespace GPBoost {
 				}
 			}
 			CGTridiagVecchiaLaplace(information_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_trace_P_, Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W,
-				SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_);
+				SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_,
+				cg_convergence_params_);
 			if (!has_NA_or_Inf) {
 				double ldet_PI_SigmaI_plus_W;
 				LogDetStochTridiag(Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W, ldet_PI_SigmaI_plus_W, num_data, num_rand_vec_trace_);

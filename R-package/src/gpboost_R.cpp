@@ -948,15 +948,23 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 	SEXP m_lbfgs,
 	SEXP delta_conv_mode_finding,
 	SEXP max_num_restarts_lbfgs,
-	SEXP cold_restart_lbfgs) {
+	SEXP cold_restart_lbfgs,
+	SEXP cg_convergence_criterion,
+	SEXP cg_rel_tol,
+	SEXP cg_abs_tol,
+	SEXP cg_multi_rhs_convergence) {
 	SEXP optimizer_aux = PROTECT(Rf_asChar(optimizer));
 	SEXP convergence_criterion_aux = PROTECT(Rf_asChar(convergence_criterion));
 	SEXP optimizer_coef_aux = PROTECT(Rf_asChar(optimizer_coef));
 	SEXP cg_preconditioner_type_aux = PROTECT(Rf_asChar(cg_preconditioner_type));
+	SEXP cg_convergence_criterion_aux = PROTECT(Rf_asChar(cg_convergence_criterion));
+	SEXP cg_multi_rhs_convergence_aux = PROTECT(Rf_asChar(cg_multi_rhs_convergence));
 	const char* optimizer_ptr = (Rf_isNull(optimizer)) ? nullptr : CHAR(optimizer_aux);
 	const char* convergence_criterion_ptr = (Rf_isNull(convergence_criterion)) ? nullptr : CHAR(convergence_criterion_aux);
 	const char* optimizer_coef_ptr = (Rf_isNull(optimizer_coef)) ? nullptr : CHAR(optimizer_coef_aux);
 	const char* cg_preconditioner_type_ptr = (Rf_isNull(cg_preconditioner_type)) ? nullptr : CHAR(cg_preconditioner_type_aux);
+	const char* cg_convergence_criterion_ptr = (Rf_isNull(cg_convergence_criterion)) ? nullptr : CHAR(cg_convergence_criterion_aux);
+	const char* cg_multi_rhs_convergence_ptr = (Rf_isNull(cg_multi_rhs_convergence)) ? nullptr : CHAR(cg_multi_rhs_convergence_aux);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetOptimConfig(R_ExternalPtrAddr(handle),
 		R_REAL_PTR(init_cov_pars),
@@ -990,9 +998,13 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 		Rf_asInteger(m_lbfgs),
 		Rf_asReal(delta_conv_mode_finding),
 		Rf_asInteger(max_num_restarts_lbfgs),
-		Rf_asLogical(cold_restart_lbfgs)));
+		Rf_asLogical(cold_restart_lbfgs),
+		cg_convergence_criterion_ptr,
+		Rf_asReal(cg_rel_tol),
+		Rf_asReal(cg_abs_tol),
+		cg_multi_rhs_convergence_ptr));
 	R_API_END();
-	UNPROTECT(4);
+	UNPROTECT(6);
 	return R_NilValue;
 }
 
@@ -1148,10 +1160,15 @@ SEXP GPB_SetPredictionData_R(SEXP handle,
 	SEXP num_neighbors_pred,
 	SEXP cg_delta_conv_pred,
 	SEXP nsim_var_pred,
-	SEXP rank_pred_approx_matrix_lanczos) {
+	SEXP rank_pred_approx_matrix_lanczos,
+	SEXP cg_convergence_criterion_pred,
+	SEXP cg_rel_tol_pred,
+	SEXP cg_abs_tol_pred) {
 	int32_t numdata_pred = static_cast<int32_t>(Rf_asInteger(num_data_pred));
 	SEXP vecchia_pred_type_aux = PROTECT(Rf_asChar(vecchia_pred_type));
+	SEXP cg_convergence_criterion_pred_aux = PROTECT(Rf_asChar(cg_convergence_criterion_pred));
 	const char* vecchia_pred_type_ptr = (Rf_isNull(vecchia_pred_type)) ? nullptr : CHAR(vecchia_pred_type_aux);
+	const char* cg_convergence_criterion_pred_ptr = (Rf_isNull(cg_convergence_criterion_pred)) ? nullptr : CHAR(cg_convergence_criterion_pred_aux);
 	R_API_BEGIN();
 	CHECK_CALL(GPB_SetPredictionData(R_ExternalPtrAddr(handle),
 		numdata_pred,
@@ -1165,9 +1182,12 @@ SEXP GPB_SetPredictionData_R(SEXP handle,
 		Rf_asInteger(num_neighbors_pred),
 		Rf_asReal(cg_delta_conv_pred),
 		Rf_asInteger(nsim_var_pred),
-		Rf_asInteger(rank_pred_approx_matrix_lanczos)));
+		Rf_asInteger(rank_pred_approx_matrix_lanczos),
+		cg_convergence_criterion_pred_ptr,
+		Rf_asReal(cg_rel_tol_pred),
+		Rf_asReal(cg_abs_tol_pred)));
 	R_API_END();
-	UNPROTECT(1);
+	UNPROTECT(2);
 	return R_NilValue;
 }
 
@@ -1452,7 +1472,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 3},
   {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 32},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 33},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 37},
   {"GPB_CanCalculateStandardErrorsCovPars_R", (DL_FUNC)&GPB_CanCalculateStandardErrorsCovPars_R, 2},
   {"GPB_CanCalculateStandardErrorsAuxPars_R", (DL_FUNC)&GPB_CanCalculateStandardErrorsAuxPars_R, 2},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},
@@ -1467,7 +1487,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_HasStdCylBesselK_R"           , (DL_FUNC)&GPB_HasStdCylBesselK_R           , 1},
   {"GPB_GetNumParallelThreads_R"      , (DL_FUNC)&GPB_GetNumParallelThreads_R      , 1},
   {"GPB_SetNumParallelThreads_R"      , (DL_FUNC)&GPB_SetNumParallelThreads_R      , 1},
-  {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 13},
+  {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 16},
   {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 21},
   {"GPB_PredictREModelTrainingDataRandomEffects_R", (DL_FUNC)&GPB_PredictREModelTrainingDataRandomEffects_R, 6},
   {"GPB_GetLikelihoodName_R"          , (DL_FUNC)&GPB_GetLikelihoodName_R          , 1},
