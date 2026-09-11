@@ -290,10 +290,11 @@ for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecch
 \item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP.
 If num_parallel_threads = NULL, the number of physical performance cores is used. On CPUs whose
 cores have different speeds (e.g., the performance and efficiency cores of recent Intel CPUs or
-Apple silicon), only the fastest cores are counted, and hyperthreads are counted only once, since
-slow threads can slow down an entire model. The number of threads that OpenMP is configured to use
-is kept if the environment variable OMP_NUM_THREADS is set or if the cores of the CPU cannot be
-determined.
+Apple silicon), the fastest cores are counted, and hyperthreads are counted only once, since slow
+threads can slow down an entire model. The next fastest cores are added if the fastest ones alone
+would leave only a single thread. On Linux, a CPU bandwidth limit of a control group (e.g., of a
+container) is respected as well. The number of threads that OpenMP is configured to use is kept if
+the environment variable OMP_NUM_THREADS is set or if the cores of the CPU cannot be determined.
 For ordinary use, leave num_parallel_threads unspecified to use this default. Setting
 num_parallel_threads = 1 disables the OpenMP parallelization of the model and can substantially
 increase the runtime. A single thread should be chosen deliberately, e.g., to distribute the

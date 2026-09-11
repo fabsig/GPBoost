@@ -25,11 +25,13 @@ namespace GPBoost {
 
 	/*!
 	* \brief Number of physical performance cores of the CPU. On hybrid CPUs with cores of different speeds
-	*		(e.g., the performance and efficiency cores of recent Intel CPUs or Apple silicon), only the fastest
-	*		ones are counted, and simultaneous multithreading siblings ('hyperthreads') are counted only once.
+	*		(e.g., the performance and efficiency cores of recent Intel CPUs or Apple silicon), the fastest ones
+	*		are counted, and simultaneous multithreading siblings ('hyperthreads') are counted only once.
 	*		Since almost all parallel loops of GPBoost distribute their iterations evenly over all threads and
-	*		then wait for the slowest one, threads running on slow cores can make an entire model slower.
-	*		Implemented in 'cpu_topology.cpp'
+	*		then wait for the slowest one, threads running on slow cores can make an entire model slower. The
+	*		next fastest cores are added if the fastest ones alone would leave only a single thread, and on
+	*		Linux a CPU bandwidth limit of a control group is respected as well. Implemented in
+	*		'cpu_topology.cpp'
 	* \return Number of physical performance cores, or 0 if the topology of the CPU cannot be determined
 	*/
 	int NumPerformanceCores();
@@ -52,6 +54,19 @@ namespace GPBoost {
 	inline int DefaultNumParallelThreads() {
 		static const int default_num_parallel_threads = ComputeDefaultNumParallelThreads();
 		return(default_num_parallel_threads);
+	}
+
+	/*!
+	* \brief Sets the number of threads that OMP uses, after making sure that the default number of threads has
+	*		been determined. Every place in the library that changes the number of threads of the process has to
+	*		use this function: the default is determined only once, and it must not be derived from a number of
+	*		threads that the library itself has set before, since a single thread set by, e.g., a boosting call
+	*		would otherwise become the default of the entire process
+	* \param num_threads Number of threads to use
+	*/
+	inline void SetNumParallelThreads(int num_threads) {
+		DefaultNumParallelThreads();
+		omp_set_num_threads(num_threads);
 	}
 
 	/*!

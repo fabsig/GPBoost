@@ -90,51 +90,92 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
-  test_that("setting one thread does not make one thread the default of the session", {
-
-    num_threads_before <- gpb.get.num.threads()
-    on.exit(gpb.set.num.threads(num_threads_before), add = TRUE)
-    # The default is determined once and must not be derived from a number of threads that has been set
-    # before, otherwise a single thread stays the default for the rest of the session
-    gpb.set.num.threads(-1L)
-    num_threads_default <- gpb.get.num.threads()
-    gpb.set.num.threads(1L)
-    expect_equal(gpb.get.num.threads(), 1L)
-    gpb.set.num.threads(-1L)
-    expect_equal(gpb.get.num.threads(), num_threads_default)
-
-  })
-
-  test_that("OpenMP thread binding does not reduce the default number of threads", {
-
-    # OpenMP binds the calling thread, whose processor affinity is then no longer the set of CPUs that the
-    # threads of the process may use. This has to be checked in a new process, since the default number of
-    # threads is determined only once per process. Only Linux binds threads through these variables
-    if (Sys.info()[["sysname"]] != "Linux") {
-      skip("OpenMP thread binding is only tested on Linux")
-    }
-    rscript <- file.path(R.home("bin"), "Rscript")
-    if (!file.exists(rscript)) {
-      skip("Rscript was not found")
-    }
-    script <- paste0(".libPaths(", paste0(deparse(.libPaths()), collapse = ""), "); "
-                     , "suppressMessages(library(gpboost)); gpb.set.num.threads(-1L); "
-                     , "cat(gpb.get.num.threads())")
-    num_threads_of_subprocess <- function(env) {
-      output <- suppressWarnings(
-        tryCatch(system2(rscript, c("-e", shQuote(script)), stdout = TRUE, stderr = FALSE, env = env)
-                 , error = function(e) NA_character_)
-      )
-      suppressWarnings(as.integer(utils::tail(output, 1L)))
-    }
-    num_threads_baseline <- num_threads_of_subprocess(character(0))
-    if (is.na(num_threads_baseline) || num_threads_baseline < 1L) {
-      skip("the subprocess did not report a number of threads")
-    }
-    expect_equal(num_threads_of_subprocess("OMP_PROC_BIND=true"), num_threads_baseline)
-    expect_equal(num_threads_of_subprocess(c("OMP_PLACES=cores", "OMP_PROC_BIND=spread")),
-                 num_threads_baseline)
-
-  })
-
 }
+
+# The default number of threads is determined only once per process, so everything that can influence it has
+# to be checked in a new process. These tests are small but cover two ways in which the default silently
+# became a single thread, so they are not restricted to 'GPBOOST_ALL_TESTS'
+#
+# Note: the environment variables that OpenMP reads are removed for the subprocesses ('env' only adds
+# variables). Otherwise a variable of the calling process, e.g. the OMP_NUM_THREADS = 10 that
+# 'helpers/run_tests_coverage_R_package.R' sets, would be inherited, and since an explicitly requested
+# number of threads is used as is, the code under test would never run
+.gpb_num_threads_in_new_process <- function(commands, env = character(0)) {
+  rscript <- file.path(R.home("bin"), "Rscript")
+  if (!file.exists(rscript)) {
+    return(NA_integer_)
+  }
+  script <- paste0(".libPaths(", paste0(deparse(.libPaths()), collapse = ""), "); "
+                   , "suppressMessages(library(gpboost)); ", commands, "cat(gpb.get.num.threads())")
+  omp_variables <- c("OMP_NUM_THREADS", "OMP_PROC_BIND", "OMP_PLACES", "OMP_THREAD_LIMIT")
+  values_before <- Sys.getenv(omp_variables, names = TRUE, unset = NA_character_)
+  Sys.unsetenv(omp_variables)
+  on.exit({
+    values_set_before <- values_before[!is.na(values_before)]
+    if (length(values_set_before) > 0L) {
+      do.call(Sys.setenv, as.list(values_set_before))
+    }
+  }, add = TRUE)
+  output <- suppressWarnings(
+    tryCatch(system2(rscript, c("-e", shQuote(script)), stdout = TRUE, stderr = FALSE, env = env)
+             , error = function(e) NA_character_)
+  )
+  suppressWarnings(as.integer(utils::tail(output, 1L)))
+}
+
+test_that("setting one thread does not make one thread the default of a new session", {
+
+  num_threads_default <- .gpb_num_threads_in_new_process("gpb.set.num.threads(-1L); ")
+  if (is.na(num_threads_default) || num_threads_default < 2L) {
+    skip("a machine with at least two default threads is needed to tell the two cases apart")
+  }
+  # The default is determined once and must not be derived from a number of threads that the library has
+  # set before, otherwise a single thread stays the default for the rest of the session
+  expect_equal(
+    .gpb_num_threads_in_new_process("gpb.set.num.threads(1L); gpb.set.num.threads(-1L); ")
+    , num_threads_default
+  )
+
+})
+
+test_that("a boosting call with one thread does not make one thread the default of a new session", {
+
+  num_threads_default <- .gpb_num_threads_in_new_process("gpb.set.num.threads(-1L); ")
+  if (is.na(num_threads_default) || num_threads_default < 2L) {
+    skip("a machine with at least two default threads is needed to tell the two cases apart")
+  }
+  # The boosting part of the library sets the number of threads of the process as well, so a boosting call
+  # with 'num_threads = 1' must not turn a single thread into the default of the session either
+  expect_equal(
+    .gpb_num_threads_in_new_process(paste0(
+      "X <- matrix(runif(100), ncol = 2); "
+      , "dataset <- gpb.Dataset(X, params = list(num_threads = 1L, verbose = -1L)); "
+      , "invisible(capture.output(dataset$construct())); gpb.set.num.threads(-1L); "
+    ))
+    , num_threads_default
+  )
+
+})
+
+test_that("OpenMP thread binding does not reduce the default number of threads", {
+
+  # OpenMP binds the calling thread, whose processor affinity is then no longer the set of CPUs that the
+  # threads of the process may use. Only Linux binds threads through these variables
+  if (Sys.info()[["sysname"]] != "Linux") {
+    skip("OpenMP thread binding is only tested on Linux")
+  }
+  num_threads_default <- .gpb_num_threads_in_new_process("gpb.set.num.threads(-1L); ")
+  if (is.na(num_threads_default) || num_threads_default < 2L) {
+    skip("a machine with at least two default threads is needed to tell the two cases apart")
+  }
+  expect_equal(
+    .gpb_num_threads_in_new_process("gpb.set.num.threads(-1L); ", env = "OMP_PROC_BIND=true")
+    , num_threads_default
+  )
+  expect_equal(
+    .gpb_num_threads_in_new_process("gpb.set.num.threads(-1L); "
+                                    , env = c("OMP_PLACES=cores", "OMP_PROC_BIND=spread"))
+    , num_threads_default
+  )
+
+})

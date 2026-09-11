@@ -34,6 +34,7 @@
 #include <sys/types.h>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 #elif defined(__linux__)
 
@@ -80,13 +81,18 @@ namespace GPBoost {
 	* \return Efficiency class of the core
 	*/
 	template <typename T>
+	int EfficiencyClassOfCore(const T& core, std::true_type) {
+		return static_cast<int>(core.EfficiencyClass);
+	}
+	template <typename T>
+	int EfficiencyClassOfCore(const T& core, std::false_type) {
+		return static_cast<int>(core.Reserved[0]);
+	}
+	// Note: this dispatches on the two overloads above instead of using 'if constexpr', since the R package
+	// falls back to C++11 when the compiler does not support C++17, see 'R-package/configure.win'
+	template <typename T>
 	int EfficiencyClassOfCore(const T& core) {
-		if constexpr (HasEfficiencyClass<T>::value) {
-			return static_cast<int>(core.EfficiencyClass);
-		}
-		else {
-			return static_cast<int>(core.Reserved[0]);
-		}
+		return EfficiencyClassOfCore(core, HasEfficiencyClass<T>());
 	}
 
 	/*!
@@ -178,9 +184,22 @@ namespace GPBoost {
 	}
 
 	int NumPerformanceCores() {
-		// On Apple silicon, performance level 0 is the highest-performing one
-		if (SysctlInt("hw.nperflevels") > 1) {
-			int num_cores = SysctlInt("hw.perflevel0.physicalcpu");
+		// On Apple silicon, performance level 0 is the highest-performing one. The next levels are added
+		// until enough cores are counted, see 'MIN_NUM_CORES_OF_FASTEST_CLASSES'
+		const int num_performance_levels = SysctlInt("hw.nperflevels");
+		if (num_performance_levels > 1) {
+			int num_cores = 0;
+			for (int level = 0; level < num_performance_levels; ++level) {
+				const std::string name = "hw.perflevel" + std::to_string(level) + ".physicalcpu";
+				const int num_cores_of_level = SysctlInt(name.c_str());
+				if (num_cores_of_level <= 0) {
+					break;
+				}
+				num_cores += num_cores_of_level;
+				if (num_cores >= MIN_NUM_CORES_OF_FASTEST_CLASSES) {
+					break;
+				}
+			}
 			if (num_cores > 0) {
 				return num_cores;
 			}
@@ -407,38 +426,77 @@ namespace GPBoost {
 	* \return Number of CPUs, or 0 if there is no quota or it cannot be determined
 	*/
 	int CpuQuotaLimit() {
-		double quota = -1., period = -1.;
-		std::string quota_string;
-		// Control groups v2: 'cpu.max' contains the quota and the period, and "max" means no limit
-		if (ReadSysFileLine("/sys/fs/cgroup/cpu.max", &quota_string)) {
-			if (quota_string.compare(0, 3, "max") == 0) {
-				return 0;
+		// The path of the control group of this process relative to the mount point of the hierarchy. Every
+		// line of '/proc/self/cgroup' is "hierarchy:controllers:path", where v2 uses the hierarchy 0 with an
+		// empty list of controllers
+		std::string cgroup_path_v1, cgroup_path_v2, line;
+		std::ifstream cgroup_file("/proc/self/cgroup");
+		while (std::getline(cgroup_file, line)) {
+			const size_t first_colon = line.find(':');
+			if (first_colon == std::string::npos) {
+				continue;
 			}
-			char* next = nullptr;
-			quota = std::strtod(quota_string.c_str(), &next);
-			if (next == quota_string.c_str()) {
-				return 0;
+			const size_t second_colon = line.find(':', first_colon + 1);
+			if (second_colon == std::string::npos) {
+				continue;
 			}
-			period = std::strtod(next, nullptr);
+			const std::string controllers = line.substr(first_colon + 1, second_colon - first_colon - 1);
+			const std::string path = line.substr(second_colon + 1);
+			if (controllers.empty()) {
+				cgroup_path_v2 = path;
+			}
+			else if (controllers.find("cpu") != std::string::npos &&
+				controllers.find("cpuset") == std::string::npos) {
+				cgroup_path_v1 = path;
+			}
 		}
-		else {
-			// Control groups v1: two separate files, a negative quota means no limit
-			std::string period_string;
-			if (!ReadSysFileLine("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", &quota_string) ||
-				!ReadSysFileLine("/sys/fs/cgroup/cpu/cpu.cfs_period_us", &period_string)) {
-				return 0;
+		// A quota of an ancestor also applies, so the smallest one of the control group and of all of its
+		// ancestors is used. Only the usual mount points are looked at, '/proc/self/mountinfo' is not parsed
+		double smallest_num_cpus = -1.;
+		const char* v1_mount_points[] = { "/sys/fs/cgroup/cpu", "/sys/fs/cgroup/cpu,cpuacct" };
+		for (int hierarchy = 0; hierarchy < 3; ++hierarchy) {
+			const bool is_v2 = hierarchy == 0;
+			const std::string mount_point = is_v2 ? "/sys/fs/cgroup" : v1_mount_points[hierarchy - 1];
+			std::string path = is_v2 ? cgroup_path_v2 : cgroup_path_v1;
+			// Walk from the control group up to the root of the hierarchy
+			while (true) {
+				double quota = -1., period = -1.;
+				const std::string directory = mount_point + path;
+				std::string quota_string, period_string;
+				if (is_v2) {
+					// 'cpu.max' contains the quota and the period, and "max" means that there is no limit
+					if (ReadSysFileLine(directory + "/cpu.max", &quota_string) &&
+						quota_string.compare(0, 3, "max") != 0) {
+						char* next = nullptr;
+						quota = std::strtod(quota_string.c_str(), &next);
+						if (next != quota_string.c_str()) {
+							period = std::strtod(next, nullptr);
+						}
+					}
+				}
+				else if (ReadSysFileLine(directory + "/cpu.cfs_quota_us", &quota_string) &&
+					ReadSysFileLine(directory + "/cpu.cfs_period_us", &period_string)) {
+					// A negative quota means that there is no limit
+					quota = std::strtod(quota_string.c_str(), nullptr);
+					period = std::strtod(period_string.c_str(), nullptr);
+				}
+				if (quota > 0. && period > 0.) {
+					const double num_cpus = std::ceil(quota / period);
+					if (num_cpus >= 1. && (smallest_num_cpus < 0. || num_cpus < smallest_num_cpus)) {
+						smallest_num_cpus = num_cpus;
+					}
+				}
+				if (path.empty() || path == "/") {
+					break;
+				}
+				const size_t last_slash = path.find_last_of('/');
+				path = last_slash == std::string::npos ? std::string() : path.substr(0, last_slash);
 			}
-			quota = std::strtod(quota_string.c_str(), nullptr);
-			period = std::strtod(period_string.c_str(), nullptr);
 		}
-		if (!(quota > 0.) || !(period > 0.)) {
+		if (!(smallest_num_cpus >= 1.) || smallest_num_cpus > (double)(1 << 20)) {
 			return 0;
 		}
-		const double num_cpus = std::ceil(quota / period);
-		if (!(num_cpus >= 1.)) {
-			return 0;
-		}
-		return num_cpus > (double)(1 << 20) ? 0 : static_cast<int>(num_cpus);
+		return static_cast<int>(smallest_num_cpus);
 	}
 
 #else
