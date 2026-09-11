@@ -40,7 +40,11 @@ A few key parameters:
                \item{num_threads: Number of threads. For the best speed, set this to
                             the number of real CPU cores(\code{parallel::detectCores(logical = FALSE)}),
                             not the number of threads (most CPU using hyper-threading to generate 2 threads
-                            per CPU core).}
+                            per CPU core). For ordinary use, leave this unspecified to use the default
+                            number of threads. Setting num_threads = 1 disables the parallelization and can
+                            substantially increase the runtime. A single thread should be chosen
+                            deliberately, e.g., to distribute the resources among concurrent model fits or
+                            for a specific test; it is not required for correctness or reproducibility.}
            }}
 
 \item{data}{a \code{gpb.Dataset} object, used for training. Some functions, such as \code{\link{gpb.cv}},

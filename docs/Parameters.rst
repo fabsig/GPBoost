@@ -81,6 +81,10 @@ Core Parameters
 
    -  ``0`` means default number of threads in OpenMP
 
+   -  for ordinary use, leave this unspecified so that the default number of threads is used, or keep a value that has explicitly been chosen by the user
+
+   -  setting this to ``1`` disables the parallelization and can substantially increase the runtime. A single thread should be chosen deliberately, e.g., to distribute the resources among concurrent model fits or for a specific test; it is not required for correctness or reproducibility
+
    -  for the best speed, set this to the number of **real CPU cores**, not the number of threads (most CPUs use `hyper-threading <https://en.wikipedia.org/wiki/Hyper-threading>`__ to generate 2 threads per CPU core)
 
    -  do not set it too large if your dataset is small (for instance, do not use 64 threads for a dataset with 10,000 rows)

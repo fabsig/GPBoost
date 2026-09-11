@@ -141,6 +141,8 @@ namespace LightGBM {
 		// alias = num_thread, nthread, nthreads, n_jobs
 		// desc = number of threads for GPBoost
 		// desc = ``0`` means default number of threads in OpenMP
+		// desc = for ordinary use, leave this unspecified so that the default number of threads is used, or keep a value that has explicitly been chosen by the user
+		// desc = setting this to ``1`` disables the parallelization and can substantially increase the runtime. A single thread should be chosen deliberately, e.g., to distribute the resources among concurrent model fits or for a specific test; it is not required for correctness or reproducibility
 		// desc = for the best speed, set this to the number of **real CPU cores**, not the number of threads (most CPUs use `hyper-threading <https://en.wikipedia.org/wiki/Hyper-threading>`__ to generate 2 threads per CPU core)
 		// desc = do not set it too large if your dataset is small (for instance, do not use 64 threads for a dataset with 10,000 rows)
 		// desc = be aware a task manager or any similar CPU monitoring tool might report that cores not being fully utilized. **This is normal**
