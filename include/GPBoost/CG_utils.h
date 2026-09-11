@@ -178,11 +178,14 @@ namespace GPBoost {
 					needs_masking_ = true;
 				}
 				else if (CGConvergenceParams::RhsIsDegenerate(rhs_norms_[i])) {
-					//too small to start the recursion, yet the zero vector does not satisfy the
-					//	requested tolerance, so the accuracy that was asked for cannot be delivered
+					//too small to start the recursion. That is only a failure when the zero vector does
+					//	not satisfy the requested tolerance either, which is not the case for a rhs that
+					//	is far below an absolute tolerance
 					active_[i] = false;
 					needs_masking_ = true;
-					has_unmet_tolerance_ = true;
+					if (!params_.ZeroSolutionIsAccurateEnough(rhs_norms_[i])) {
+						has_unmet_tolerance_ = true;
+					}
 				}
 			}
 			RefreshColumnsNeedingUpdate();
@@ -276,7 +279,9 @@ namespace GPBoost {
 				}
 			}
 			else if (!params_.IsRelative()) {
-				stop = mean_r_norm_ < params_.delta_conv;//historic rule, evaluated verbatim for backward compatibility
+				//the historic rule. The mean is taken over the materialized column norms, which can differ
+				//	in the last bit from the expression form that earlier versions used
+				stop = mean_r_norm_ < params_.delta_conv;
 			}
 			else {
 				double sum_scaled_r_norm = 0.;

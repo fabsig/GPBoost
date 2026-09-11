@@ -243,6 +243,41 @@ int main() {
 			"absolute + average solves a small column instead of zeroing it");
 	}
 
+	// ------------- a rhs column that is exactly zero under the default rule
+	{
+		//'CalcXTPsiInvX' passes ZtX here, so a covariate that is identically zero within a cluster
+		//	gives a zero column. The zero solution satisfies an absolute tolerance, so this is a
+		//	result, not a failure
+		const int tb = 4;
+		std::vector<Eigen::Triplet<double>> tr;
+		for (int i = 0; i < n; ++i) {
+			tr.emplace_back(i, i, 4.);
+			if (i + 1 < n) {
+				tr.emplace_back(i, i + 1, -1.);
+				tr.emplace_back(i + 1, i, -1.);
+			}
+		}
+		sp_mat_rm_t A2(n, n);
+		A2.setFromTriplets(tr.begin(), tr.end());
+		sp_mat_rm_t A_copy = A2, L_ic;
+		ZeroFillInIncompleteCholeskyFactorization(A_copy, L_ic);
+		den_mat_t rhs2(n, tb);
+		for (int j = 0; j < tb; ++j) {
+			for (int i = 0; i < n; ++i) {
+				rhs2(i, j) = ((i + j) % 3) ? 1. : -1.;
+			}
+		}
+		rhs2.col(2).setZero();
+		CGConvergenceParams cp;
+		cp.delta_conv = 1e-2;
+		den_mat_t U2(n, tb);
+		bool nan = false;
+		CGRandomEffectsMat(A2, rhs2, U2, nan, n, tb, 100, cp.delta_conv, "incomplete_cholesky",
+			L_ic, unused, cp);
+		Check(!nan && U2.allFinite() && U2.col(2).isZero(0),
+			"a zero rhs column gives a zero solution and is not reported as a failure");
+	}
+
 	// ------------------------------------------------------------------ warm starts
 	{
 		CGConvergenceParams cp;
