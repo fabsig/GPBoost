@@ -20,15 +20,12 @@ test_that("the default number of threads is the number of physical performance c
     expect_equal(num_threads_default, num_threads_omp)
   } else {
     # Hyperthreads are not counted separately
+    # Note: a default of one thread is correct on a machine with several physical cores if only one of them
+    # is available, e.g., with OMP_PLACES={0} or a CPU quota of one CPU, so it cannot be excluded here.
+    # The test below covers that OpenMP thread binding does not reduce the default
     num_physical_cores <- tryCatch(parallel::detectCores(logical = FALSE), error = function(e) NA_integer_)
     if (!is.na(num_physical_cores) && num_physical_cores >= 1L) {
       expect_lte(num_threads_default, num_physical_cores)
-      # A machine with more than one physical core must not collapse to a single thread. This catches a
-      # detection that mistakes a restriction of the calling thread for the resources of the process,
-      # which is what OpenMP thread binding ('OMP_PROC_BIND') can look like
-      if (num_physical_cores > 1L && num_threads_omp > 1L) {
-        expect_gt(num_threads_default, 1L)
-      }
     }
     # On macOS, performance level 0 is the one of the fastest cores. The corresponding number of cores is
     # only available on CPUs that have cores of different speeds (i.e., on Apple silicon)
@@ -90,6 +87,53 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gpb.set.num.threads(-1L)
     expect_equal(gpb.get.num.threads(), num_threads_default)
     expect_error(gpb.set.num.threads("two"), "num_threads needs to be an integer of length one", fixed = TRUE)
+
+  })
+
+  test_that("setting one thread does not make one thread the default of the session", {
+
+    num_threads_before <- gpb.get.num.threads()
+    on.exit(gpb.set.num.threads(num_threads_before), add = TRUE)
+    # The default is determined once and must not be derived from a number of threads that has been set
+    # before, otherwise a single thread stays the default for the rest of the session
+    gpb.set.num.threads(-1L)
+    num_threads_default <- gpb.get.num.threads()
+    gpb.set.num.threads(1L)
+    expect_equal(gpb.get.num.threads(), 1L)
+    gpb.set.num.threads(-1L)
+    expect_equal(gpb.get.num.threads(), num_threads_default)
+
+  })
+
+  test_that("OpenMP thread binding does not reduce the default number of threads", {
+
+    # OpenMP binds the calling thread, whose processor affinity is then no longer the set of CPUs that the
+    # threads of the process may use. This has to be checked in a new process, since the default number of
+    # threads is determined only once per process. Only Linux binds threads through these variables
+    if (Sys.info()[["sysname"]] != "Linux") {
+      skip("OpenMP thread binding is only tested on Linux")
+    }
+    rscript <- file.path(R.home("bin"), "Rscript")
+    if (!file.exists(rscript)) {
+      skip("Rscript was not found")
+    }
+    script <- paste0(".libPaths(", paste0(deparse(.libPaths()), collapse = ""), "); "
+                     , "suppressMessages(library(gpboost)); gpb.set.num.threads(-1L); "
+                     , "cat(gpb.get.num.threads())")
+    num_threads_of_subprocess <- function(env) {
+      output <- suppressWarnings(
+        tryCatch(system2(rscript, c("-e", shQuote(script)), stdout = TRUE, stderr = FALSE, env = env)
+                 , error = function(e) NA_character_)
+      )
+      suppressWarnings(as.integer(utils::tail(output, 1L)))
+    }
+    num_threads_baseline <- num_threads_of_subprocess(character(0))
+    if (is.na(num_threads_baseline) || num_threads_baseline < 1L) {
+      skip("the subprocess did not report a number of threads")
+    }
+    expect_equal(num_threads_of_subprocess("OMP_PROC_BIND=true"), num_threads_baseline)
+    expect_equal(num_threads_of_subprocess(c("OMP_PLACES=cores", "OMP_PROC_BIND=spread")),
+                 num_threads_baseline)
 
   })
 

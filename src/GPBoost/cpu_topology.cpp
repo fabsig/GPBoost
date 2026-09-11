@@ -23,6 +23,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#include <map>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -41,7 +42,9 @@
 #include <cerrno>
 #include <cstdlib>
 #include <fstream>
+#include <cmath>
 #include <iterator>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -49,6 +52,14 @@
 #endif
 
 namespace GPBoost {
+
+	/*!
+	* \brief Smallest number of cores that the fastest classes of a heterogeneous CPU have to provide. CPUs with
+	*		three or more classes exist whose fastest class contains a single core, e.g., Arm CPUs with one
+	*		'prime' core, a few performance cores and several efficiency cores. Using that one core would make a
+	*		multi-core machine single-threaded, so the next classes are added until this many cores are counted
+	*/
+	const int MIN_NUM_CORES_OF_FASTEST_CLASSES = 2;
 
 #if defined(_WIN32)
 
@@ -118,33 +129,36 @@ namespace GPBoost {
 			process_mask = 0;
 		}
 		// Every 'RelationProcessorCore' record describes one physical core, i.e., simultaneous multithreading
-		// siblings are counted only once. The first pass determines the efficiency class of the performance
-		// cores, the second one counts them
-		int highest_efficiency_class = -1;
+		// siblings are counted only once
+		std::map<int, int> num_cores_per_efficiency_class;
+		DWORD offset = 0;
+		while (offset < buffer_size) {
+			auto core_info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data() + offset);
+			if (core_info->Size == 0) {
+				return 0;
+			}
+			if (core_info->Relationship == RelationProcessorCore &&
+				CoreIsAvailable(core_info->Processor, process_mask)) {
+				num_cores_per_efficiency_class[EfficiencyClassOfCore(core_info->Processor)] += 1;
+			}
+			offset += core_info->Size;
+		}
+		// The cores of the highest efficiency class are used, and the next classes are added until enough cores
+		// are counted, see 'MIN_NUM_CORES_OF_FASTEST_CLASSES'
 		int num_cores = 0;
-		for (int pass = 0; pass < 2; ++pass) {
-			DWORD offset = 0;
-			while (offset < buffer_size) {
-				auto core_info = reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data() + offset);
-				if (core_info->Size == 0) {
-					return 0;
-				}
-				if (core_info->Relationship == RelationProcessorCore &&
-					CoreIsAvailable(core_info->Processor, process_mask)) {
-					int efficiency_class = EfficiencyClassOfCore(core_info->Processor);
-					if (pass == 0) {
-						if (efficiency_class > highest_efficiency_class) {
-							highest_efficiency_class = efficiency_class;
-						}
-					}
-					else if (efficiency_class == highest_efficiency_class) {
-						num_cores += 1;
-					}
-				}
-				offset += core_info->Size;
+		for (auto efficiency_class = num_cores_per_efficiency_class.rbegin();
+			efficiency_class != num_cores_per_efficiency_class.rend(); ++efficiency_class) {
+			num_cores += efficiency_class->second;
+			if (num_cores >= MIN_NUM_CORES_OF_FASTEST_CLASSES) {
+				break;
 			}
 		}
 		return num_cores;
+	}
+
+	/*! \brief Windows has no equivalent of the CPU bandwidth quota of the Linux control groups */
+	int CpuQuotaLimit() {
+		return 0;
 	}
 
 #elif defined(__APPLE__)
@@ -174,6 +188,11 @@ namespace GPBoost {
 		// Homogeneous CPU: physical cores, i.e., without the hyperthreading siblings of Intel Macs
 		int num_physical_cores = SysctlInt("hw.physicalcpu");
 		return num_physical_cores > 0 ? num_physical_cores : 0;
+	}
+
+	/*! \brief macOS has no equivalent of the CPU bandwidth quota of the Linux control groups */
+	int CpuQuotaLimit() {
+		return 0;
 	}
 
 #elif defined(__linux__)
@@ -271,7 +290,7 @@ namespace GPBoost {
 	*		that is too large leads to more threads than there are cores, one that is too small to fewer
 	*/
 	bool AvailableCpus(std::set<int>* cpus) {
-#if defined(_OPENMP) && _OPENMP >= 201107
+#if defined(_OPENMP) && _OPENMP >= 201307
 		// If OpenMP binds its threads ('OMP_PROC_BIND'), the calling thread is already bound, possibly to a
 		// single core, and its affinity mask is then not the set of CPUs that the whole team may use. The
 		// OpenMP places describe that set and are used instead
@@ -339,39 +358,87 @@ namespace GPBoost {
 			std::set_intersection(cpus.begin(), cpus.end(), performance_cpus.begin(), performance_cpus.end(),
 				std::inserter(selected_cpus, selected_cpus.begin()));
 			if (!selected_cpus.empty()) {
-				return CountPhysicalCores(selected_cpus);
+				const int num_cores = CountPhysicalCores(selected_cpus);
+				if (num_cores >= MIN_NUM_CORES_OF_FASTEST_CLASSES) {
+					return num_cores;
+				}
 			}
 		}
 		// Other heterogeneous CPUs (e.g., Arm big.LITTLE): 'cpu_capacity' gives the relative capacities of the
 		// CPUs. It is used only if it is available for all of them
-		long highest_capacity = -1;
-		std::set<int> highest_capacity_cpus;
+		std::map<long, std::set<int>> cpus_per_capacity;
 		for (int cpu : cpus) {
 			std::string capacity_string;
 			if (!ReadSysFileLine("/sys/devices/system/cpu/cpu" + std::to_string(cpu) + "/cpu_capacity",
 				&capacity_string)) {
-				highest_capacity_cpus.clear();
+				cpus_per_capacity.clear();
 				break;
 			}
 			char* next = nullptr;
 			long capacity = std::strtol(capacity_string.c_str(), &next, 10);
 			if (next == capacity_string.c_str() || capacity <= 0) {
-				highest_capacity_cpus.clear();
+				cpus_per_capacity.clear();
 				break;
 			}
-			if (capacity > highest_capacity) {
-				highest_capacity = capacity;
-				highest_capacity_cpus.clear();
-			}
-			if (capacity == highest_capacity) {
-				highest_capacity_cpus.insert(cpu);
-			}
+			cpus_per_capacity[capacity].insert(cpu);
 		}
-		if (!highest_capacity_cpus.empty()) {
-			return CountPhysicalCores(highest_capacity_cpus);
+		if (!cpus_per_capacity.empty()) {
+			// The fastest CPUs are used, but the next classes are added until enough cores are counted, see
+			// 'MIN_NUM_CORES_OF_FASTEST_CLASSES'
+			std::set<int> selected;
+			int num_cores = 0;
+			for (auto capacity = cpus_per_capacity.rbegin(); capacity != cpus_per_capacity.rend(); ++capacity) {
+				selected.insert(capacity->second.begin(), capacity->second.end());
+				num_cores = CountPhysicalCores(selected);
+				if (num_cores >= MIN_NUM_CORES_OF_FASTEST_CLASSES) {
+					break;
+				}
+			}
+			return num_cores;
 		}
 		// Homogeneous CPU, or no information on the core types: physical cores
 		return CountPhysicalCores(cpus);
+	}
+
+	/*!
+	* \brief Number of CPUs that the bandwidth quota of the control group of this process corresponds to. A
+	*		quota (e.g., 'docker run --cpus=8') limits the CPU time per period and, unlike a cpuset, does not
+	*		show up in the processor affinity. More threads than this only make the group be throttled
+	* \return Number of CPUs, or 0 if there is no quota or it cannot be determined
+	*/
+	int CpuQuotaLimit() {
+		double quota = -1., period = -1.;
+		std::string quota_string;
+		// Control groups v2: 'cpu.max' contains the quota and the period, and "max" means no limit
+		if (ReadSysFileLine("/sys/fs/cgroup/cpu.max", &quota_string)) {
+			if (quota_string.compare(0, 3, "max") == 0) {
+				return 0;
+			}
+			char* next = nullptr;
+			quota = std::strtod(quota_string.c_str(), &next);
+			if (next == quota_string.c_str()) {
+				return 0;
+			}
+			period = std::strtod(next, nullptr);
+		}
+		else {
+			// Control groups v1: two separate files, a negative quota means no limit
+			std::string period_string;
+			if (!ReadSysFileLine("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", &quota_string) ||
+				!ReadSysFileLine("/sys/fs/cgroup/cpu/cpu.cfs_period_us", &period_string)) {
+				return 0;
+			}
+			quota = std::strtod(quota_string.c_str(), nullptr);
+			period = std::strtod(period_string.c_str(), nullptr);
+		}
+		if (!(quota > 0.) || !(period > 0.)) {
+			return 0;
+		}
+		const double num_cpus = std::ceil(quota / period);
+		if (!(num_cpus >= 1.)) {
+			return 0;
+		}
+		return num_cpus > (double)(1 << 20) ? 0 : static_cast<int>(num_cpus);
 	}
 
 #else
@@ -380,22 +447,30 @@ namespace GPBoost {
 		return 0;
 	}
 
+	int CpuQuotaLimit() {
+		return 0;
+	}
+
 #endif
 
 	int ComputeDefaultNumParallelThreads() {
-		int num_threads_omp = omp_get_max_threads();
+		int num_threads = omp_get_max_threads();
 		// An explicitly requested number of threads is always used as is
 		const char* omp_num_threads_env = std::getenv("OMP_NUM_THREADS");
 		if (omp_num_threads_env != nullptr && omp_num_threads_env[0] != '\0') {
-			return num_threads_omp;
+			return num_threads;
 		}
-		// The number of performance cores can only lower the number of threads, so that a number of threads
-		// that is restricted by, e.g., a processor affinity mask is never exceeded
-		int num_performance_cores = NumPerformanceCores();
-		if (num_performance_cores > 0 && num_performance_cores < num_threads_omp) {
-			return num_performance_cores;
+		// The number of performance cores and the quota can only lower the number of threads, so that a
+		// number of threads that is restricted by, e.g., a processor affinity mask is never exceeded
+		const int num_performance_cores = NumPerformanceCores();
+		if (num_performance_cores > 0 && num_performance_cores < num_threads) {
+			num_threads = num_performance_cores;
 		}
-		return num_threads_omp;
+		const int num_cpus_quota = CpuQuotaLimit();
+		if (num_cpus_quota > 0 && num_cpus_quota < num_threads) {
+			num_threads = num_cpus_quota;
+		}
+		return num_threads;
 	}
 
 }  // namespace GPBoost

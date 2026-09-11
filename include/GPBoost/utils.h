@@ -73,7 +73,11 @@ namespace GPBoost {
 		* \param num_threads Number of threads to use. If num_threads <= 0, 'DefaultNumParallelThreads()' is used
 		*/
 		explicit ParallelThreadsScope(int num_threads) {
-			int num_threads_used = num_threads > 0 ? num_threads : DefaultNumParallelThreads();
+			// The default is determined before the number of threads is changed below, and also when it is
+			// not needed here: it is determined only once and must not be derived from a number of threads
+			// that this or another scope has already set
+			const int num_threads_default = DefaultNumParallelThreads();
+			int num_threads_used = num_threads > 0 ? num_threads : num_threads_default;
 			num_threads_previous_omp_ = omp_get_max_threads();
 			num_threads_previous_eigen_ = Eigen::nbThreads();
 			if (num_threads_used != num_threads_previous_omp_ || num_threads_used != num_threads_previous_eigen_) {

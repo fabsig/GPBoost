@@ -2949,7 +2949,11 @@ int GPB_GetNumParallelThreads(int* num_threads) {
 
 int GPB_SetNumParallelThreads(int num_threads) {
 	API_BEGIN();
-	int num_threads_used = num_threads > 0 ? num_threads : GPBoost::DefaultNumParallelThreads();
+	//the default is determined before the number of threads is changed below, and also when it is not
+	//	needed here: it is determined only once and must not be derived from a number of threads that a
+	//	previous call of this function has already set
+	const int num_threads_default = GPBoost::DefaultNumParallelThreads();
+	int num_threads_used = num_threads > 0 ? num_threads : num_threads_default;
 	omp_set_num_threads(num_threads_used);
 	Eigen::setNbThreads(num_threads_used);
 	API_END();
