@@ -44,9 +44,25 @@ namespace GPBoost {
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
-		const double rhs_norm = rhs.norm();
+		const double rhs_norm = SafeNorm(rhs);
 		//Avoid numerical instabilites when rhs is de facto 0 or when the zero vector already satisfies the tolerance
-		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG || conv_params.RhsIsNegligible(rhs_norm)) {
+		//a rhs that is not finite has to be reported, it must not be mistaken for a negligible one
+		if (!std::isfinite(rhs_norm)) {
+			NA_or_Inf_found = true;
+			u.setZero();
+			return;
+		}
+		//the historic L1 cutoff stays the rule for the "absolute" criterion so that its behaviour is
+		//	unchanged. For "relative" only the tolerance that was asked for decides
+		if (conv_params.IsRelative() ? conv_params.ZeroSolutionIsAccurateEnough(rhs_norm)
+			: (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG)) {
+			u.setZero();
+			return;
+		}
+		//the rhs is too small to start the recursion, yet the zero vector does not satisfy the
+		//	requested tolerance, so the accuracy that was asked for cannot be delivered
+		if (CGConvergenceParams::RhsIsDegenerate(rhs_norm)) {
+			NA_or_Inf_found = true;
 			u.setZero();
 			return;
 		}
@@ -148,6 +164,9 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
+		if (conv.HasUnusableRhs()) {
+			NA_or_Inf_found = true;
+		}
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -327,8 +346,20 @@ namespace GPBoost {
 		B_invt_rhs = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(rhs);
 		Sigma_rhs = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_rhs);
 		//the rhs of the linear system that is actually solved here is 'Sigma_rhs', not 'rhs'
-		const double rhs_norm = Sigma_rhs.norm();
-		if (conv_params.RhsIsNegligible(rhs_norm)) {
+		const double rhs_norm = SafeNorm(Sigma_rhs);
+		//a rhs that is not finite has to be reported, it must not be mistaken for a negligible one
+		if (!std::isfinite(rhs_norm)) {
+			NA_or_Inf_found = true;
+			u.setZero();
+			return;
+		}
+		if (conv_params.IsRelative() && conv_params.ZeroSolutionIsAccurateEnough(rhs_norm)) {
+			u.setZero();
+			return;
+		}
+		//too small to start the recursion, yet the zero vector does not satisfy the requested tolerance
+		if (CGConvergenceParams::RhsIsDegenerate(rhs_norm)) {
+			NA_or_Inf_found = true;
 			u.setZero();
 			return;
 		}
@@ -459,6 +490,9 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
+		if (conv.HasUnusableRhs()) {
+			NA_or_Inf_found = true;
+		}
 		double mean_R_norm;
 		diag_W_inv = diag_W.cwiseInverse();
 		U.setZero();
@@ -625,9 +659,25 @@ namespace GPBoost {
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
-		const double rhs_norm = rhs.norm();
+		const double rhs_norm = SafeNorm(rhs);
 		//Avoid numerical instabilites when rhs is de facto 0 or when the zero vector already satisfies the tolerance
-		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG || conv_params.RhsIsNegligible(rhs_norm)) {
+		//a rhs that is not finite has to be reported, it must not be mistaken for a negligible one
+		if (!std::isfinite(rhs_norm)) {
+			NA_or_Inf_found = true;
+			u.setZero();
+			return;
+		}
+		//the historic L1 cutoff stays the rule for the "absolute" criterion so that its behaviour is
+		//	unchanged. For "relative" only the tolerance that was asked for decides
+		if (conv_params.IsRelative() ? conv_params.ZeroSolutionIsAccurateEnough(rhs_norm)
+			: (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG)) {
+			u.setZero();
+			return;
+		}
+		//the rhs is too small to start the recursion, yet the zero vector does not satisfy the
+		//	requested tolerance, so the accuracy that was asked for cannot be delivered
+		if (CGConvergenceParams::RhsIsDegenerate(rhs_norm)) {
+			NA_or_Inf_found = true;
 			u.setZero();
 			return;
 		}
@@ -733,6 +783,9 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
+		if (conv.HasUnusableRhs()) {
+			NA_or_Inf_found = true;
+		}
 		double mean_R_norm;
 		den_mat_t W_D_inv_inv_B_invt_R(num_data, t), B_invt_R(num_data, t), B_t_D_inv_W_D_inv_inv_B_invt_R(num_data, t), B_t_D_inv_B_mat(num_data, t),
 			W_D_inv_inv_plus_vecchia_woodbury_woodbury_B_invt_R, cross_cov_sigma_woodbury_woodbury_cross_cov_B_t_D_inv_W_D_inv_inv_B_invt_R,
@@ -930,9 +983,25 @@ namespace GPBoost {
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
-		const double rhs_norm = rhs.norm();
+		const double rhs_norm = SafeNorm(rhs);
 		//Avoid numerical instabilites when rhs is de facto 0 or when the zero vector already satisfies the tolerance
-		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG || conv_params.RhsIsNegligible(rhs_norm)) {
+		//a rhs that is not finite has to be reported, it must not be mistaken for a negligible one
+		if (!std::isfinite(rhs_norm)) {
+			NA_or_Inf_found = true;
+			u.setZero();
+			return;
+		}
+		//the historic L1 cutoff stays the rule for the "absolute" criterion so that its behaviour is
+		//	unchanged. For "relative" only the tolerance that was asked for decides
+		if (conv_params.IsRelative() ? conv_params.ZeroSolutionIsAccurateEnough(rhs_norm)
+			: (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG)) {
+			u.setZero();
+			return;
+		}
+		//the rhs is too small to start the recursion, yet the zero vector does not satisfy the
+		//	requested tolerance, so the accuracy that was asked for cannot be delivered
+		if (CGConvergenceParams::RhsIsDegenerate(rhs_norm)) {
+			NA_or_Inf_found = true;
 			u.setZero();
 			return;
 		}
@@ -1036,6 +1105,9 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
+		if (conv.HasUnusableRhs()) {
+			NA_or_Inf_found = true;
+		}
 		double mean_R_norm;
 		den_mat_t B_inv_D_B_invt_U(num_data, t), FITC_W_inv_R(num_data, t);
 		U.setZero();
@@ -1452,9 +1524,26 @@ namespace GPBoost {
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
-		const double rhs_norm = rhs.norm();
-		//Avoid numerical instabilites when rhs is de facto 0 or when the zero vector already satisfies the tolerance
-		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG || conv_params.RhsIsNegligible(rhs_norm)) {
+		const double rhs_norm = SafeNorm(rhs);
+		//a rhs that is not finite has to be reported, it must not be mistaken for a negligible one
+		if (!std::isfinite(rhs_norm)) {
+			NA_or_Inf_found = true;
+			u.setZero();
+			num_cg_steps = 0;
+			return;
+		}
+		//the historic L1 cutoff stays the rule for the "absolute" criterion so that its behaviour is
+		//	unchanged. For "relative" only the tolerance that was asked for decides
+		if (conv_params.IsRelative() ? conv_params.ZeroSolutionIsAccurateEnough(rhs_norm)
+			: (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG)) {
+			u.setZero();
+			num_cg_steps = 0;
+			return;
+		}
+		//the rhs is too small to start the recursion, yet the zero vector does not satisfy the
+		//	requested tolerance, so the accuracy that was asked for cannot be delivered
+		if (CGConvergenceParams::RhsIsDegenerate(rhs_norm)) {
+			NA_or_Inf_found = true;
 			u.setZero();
 			num_cg_steps = 0;
 			return;
@@ -1604,6 +1693,9 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
+		if (conv.HasUnusableRhs()) {
+			NA_or_Inf_found = true;
+		}
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -1840,6 +1932,9 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs);
+		if (conv.HasUnusableRhs()) {
+			NA_or_Inf_found = true;
+		}
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();

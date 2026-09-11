@@ -8059,6 +8059,10 @@ namespace GPBoost {
 		double cg_delta_conv_;
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction */
 		double cg_delta_conv_pred_;
+		/*! \brief Tolerance for the linear solves that provide the implicit derivatives in the gradient of the Laplace
+		approximation. These need a tighter tolerance than the mode finding, since their error enters the gradient
+		directly. Deliberately not user-facing and independent of the prediction settings */
+		const double cg_delta_conv_implicit_deriv_ = 1e-3;
 		/*! \brief Stopping rule and tolerances of the conjugate gradient algorithm when being used for parameter estimation */
 		CGConvergenceParams cg_convergence_params_;
 		/*! \brief Stopping rule and tolerances of the conjugate gradient algorithm when being used for prediction */

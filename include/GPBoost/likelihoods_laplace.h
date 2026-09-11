@@ -2401,7 +2401,7 @@ namespace GPBoost {
 				SigmaI_plus_ZtWZ_inv_d_mll_d_mode = vec_t(dim_mode_);
 				int num_cg_steps_dummy;
 				CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, d_mll_d_mode, SigmaI_plus_ZtWZ_inv_d_mll_d_mode, has_NA_or_Inf,
-					cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
+					cg_max_num_it_, cg_delta_conv_implicit_deriv_, true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
 					L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
 					cg_convergence_params_);
 				if (has_NA_or_Inf) {
@@ -6842,6 +6842,7 @@ namespace GPBoost {
 		bool calculate_preconditioners,
 		bool for_prediction) {
 		const CGConvergenceParams& conv_params = for_prediction ? cg_convergence_params_pred_ : cg_convergence_params_;
+		const double delta_conv = for_prediction ? cg_delta_conv_pred_ : cg_delta_conv_;
 		if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
 			if (calculate_preconditioners && HasNegativeValueInformationLogLik()) {
 				Log::REFatal("Inv_SigmaI_plus_ZtWZ_Vecchia_iterative: Negative values found in W (the diagonal Hessian or Fisher information of the negative log-likelihood). "
@@ -6892,7 +6893,7 @@ namespace GPBoost {
 					}
 				}//end calculate_preconditioners
 				CGVecchiaLaplace_Version_SigmaPlusWinvVec(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, SigmaI_plus_ZtWZ_inv_rhs, has_NA_or_Inf,
-					cg_max_num_it, initialize_to_zero, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_,
+					cg_max_num_it, initialize_to_zero, delta_conv, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_,
 					chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_, false,
 					conv_params);
 			}
@@ -6909,7 +6910,7 @@ namespace GPBoost {
 				}
 			}//end calculate_preconditioners
 			CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rhs, SigmaI_plus_ZtWZ_inv_rhs, has_NA_or_Inf,
-				cg_max_num_it, initialize_to_zero, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, false,
+				cg_max_num_it, initialize_to_zero, delta_conv, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, false,
 				conv_params);
 		}
 		else {

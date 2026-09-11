@@ -3670,6 +3670,9 @@ namespace GPBoost {
 					cg_delta_conv_pred_ = cg_delta_conv_pred;
 					cg_convergence_params_pred_.delta_conv = cg_delta_conv_pred;
 				}
+				else if (!TwoNumbersAreEqual<double>(cg_delta_conv_pred, -1.)) {
+					Log::REFatal("cg_delta_conv_pred is not a finite number > 0, found = %g ", cg_delta_conv_pred);
+				}
 				if (cg_convergence_criterion_pred != nullptr && std::string(cg_convergence_criterion_pred) != "") {
 					cg_convergence_params_pred_.criterion = std::string(cg_convergence_criterion_pred);
 					if (cg_convergence_params_pred_.criterion != "absolute" && cg_convergence_params_pred_.criterion != "relative") {

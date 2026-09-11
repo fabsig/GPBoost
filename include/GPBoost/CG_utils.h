@@ -49,19 +49,18 @@ namespace GPBoost {
 			return IsRelative() ? (r_norm <= Tolerance(rhs_norm)) : (r_norm < delta_conv);
 		}
 		/*!
-		* \brief True if the zero vector already satisfies the tolerance for this rhs, so that the system does not
-		*		 need to be solved. For the "absolute" criterion only a degenerate rhs is skipped, so that the
-		*		 historic behaviour is preserved: a rhs that is small but not degenerate is iterated on normally
-		*		 and then converges at the first check, which costs one iteration but cannot produce a NaN
+		* \brief True if returning the zero vector already satisfies the stopping rule for this rhs, so that
+		*		 the system does not need to be solved at all. Note that the residual of the zero solution is
+		*		 the rhs itself, which is why this is 'HasConverged' evaluated at ||b||_2
 		*/
-		bool RhsIsNegligible(const double rhs_norm) const {
-			return RhsIsDegenerate(rhs_norm) || (IsRelative() && rhs_norm <= Tolerance(rhs_norm));
+		bool ZeroSolutionIsAccurateEnough(const double rhs_norm) const {
+			return std::isfinite(rhs_norm) && HasConverged(rhs_norm, rhs_norm);
 		}
 		/*!
 		* \brief True if the rhs is so small that the conjugate gradient recursion cannot be started at all:
 		*		 the step size a = (r^T z) / (h^T A h) would be 0/0 and produce a NaN.
-		*		 A rhs containing NaN or Inf is deliberately not degenerate: it has to reach the iteration so
-		*		 that the usual check reports it through 'NA_or_Inf_found' instead of silently returning zero
+		*		 A rhs containing NaN or Inf is deliberately not degenerate: it has to be reported rather than
+		*		 silently answered with a zero solution
 		*/
 		static bool RhsIsDegenerate(const double rhs_norm) {
 			return std::isfinite(rhs_norm) && rhs_norm <= THRESHOLD_DEGENERATE_RHS;
@@ -69,6 +68,37 @@ namespace GPBoost {
 		/*! \brief Below this L2 norm a rhs is treated as exactly zero, see 'RhsIsDegenerate' */
 		static const double THRESHOLD_DEGENERATE_RHS;
 	};
+
+	/*!
+	* \brief L2 norm that also works when the plain norm is not usable. Eigen computes it from the sum of
+	*		 squares, which overflows to Inf for very large entries and underflows to 0 for very small ones.
+	*		 Only in those two cases the slower but robust 'stableNorm' is used
+	* \param v Vector or matrix column
+	* \return The L2 norm of 'v'
+	*/
+	template <class T_vec>
+	inline double SafeNorm(const T_vec& v) {
+		const double norm = v.norm();
+		if (std::isfinite(norm) && (norm > 0. || v.isZero(0))) {
+			return norm;
+		}
+		return v.stableNorm();
+	}
+
+	/*!
+	* \brief L2 norms of the columns of 'M', see 'SafeNorm'
+	* \param M Matrix
+	* \return Vector with the norm of every column of 'M'
+	*/
+	inline vec_t SafeColwiseNorm(const den_mat_t& M) {
+		vec_t norms = M.colwise().norm();
+		for (int i = 0; i < (int)M.cols(); ++i) {
+			if (!(std::isfinite(norms[i]) && (norms[i] > 0. || M.col(i).isZero(0)))) {
+				norms[i] = M.col(i).stableNorm();
+			}
+		}
+		return norms;
+	}
 
 	/*!
 	* \brief Copy the given columns of 'M' into a compact matrix. Lets a preconditioner that is most efficient
@@ -125,17 +155,39 @@ namespace GPBoost {
 			const bool for_lanczos = false)
 			: params_(params), t_((int)rhs.cols()), active_((size_t)rhs.cols(), true),
 			converged_now_((size_t)rhs.cols(), false), num_it_((size_t)rhs.cols(), 0) {
-			rhs_norms_ = rhs.colwise().norm();
+			rhs_norms_ = SafeColwiseNorm(rhs);
 			r_norms_ = rhs_norms_;
 			for (int i = 0; i < t_; ++i) {
+				if (!std::isfinite(rhs_norms_[i])) {
+					//has to be reported by the caller, it must not be mistaken for a negligible column
+					has_unusable_rhs_ = true;
+					continue;
+				}
+				//a Lanczos probe is only dropped when the recursion cannot be started at all, see the
+				//	constructor documentation. A plain solve is skipped as soon as the zero vector is
+				//	accurate enough, which is the whole point of the relative rule
 				const bool skip = for_lanczos ? CGConvergenceParams::RhsIsDegenerate(rhs_norms_[i])
-					: params_.RhsIsNegligible(rhs_norms_[i]);
+					: params_.ZeroSolutionIsAccurateEnough(rhs_norms_[i]);
 				if (skip) {
 					active_[i] = false;
 					needs_masking_ = true;
 				}
+				else if (CGConvergenceParams::RhsIsDegenerate(rhs_norms_[i])) {
+					//too small to start the recursion, yet the zero vector does not satisfy the
+					//	requested tolerance, so the accuracy that was asked for cannot be delivered
+					active_[i] = false;
+					needs_masking_ = true;
+					has_unusable_rhs_ = true;
+				}
 			}
 			RefreshColumnsNeedingUpdate();
+		}
+		/*!
+		* \brief True if a rhs is not finite, or is too small for the recursion while the zero vector does
+		*		 not satisfy the requested tolerance. The caller has to report this as a failure
+		*/
+		bool HasUnusableRhs() const {
+			return has_unusable_rhs_;
 		}
 		/*! \brief True if some columns are not iterated on anymore and the vectorized updates need to be masked */
 		bool NeedsMasking() const {
@@ -168,7 +220,7 @@ namespace GPBoost {
 		* \return True if the algorithm can stop
 		*/
 		bool CheckConvergence(const den_mat_t& R) {
-			r_norms_ = R.colwise().norm();
+			r_norms_ = SafeColwiseNorm(R);
 			mean_r_norm_ = r_norms_.mean();
 			std::fill(converged_now_.begin(), converged_now_.end(), false);
 			if (std::isnan(mean_r_norm_) || std::isinf(mean_r_norm_)) {
@@ -306,6 +358,7 @@ namespace GPBoost {
 		vec_t r_norms_;
 		double mean_r_norm_ = 0.;
 		bool needs_masking_ = false;
+		bool has_unusable_rhs_ = false;
 	};
 
 	/*!
@@ -835,9 +888,25 @@ namespace GPBoost {
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
-		const double rhs_norm = rhs.norm();
+		const double rhs_norm = SafeNorm(rhs);
 		//Avoid numerical instabilites when rhs is de facto 0 or when the zero vector already satisfies the tolerance
-		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG || conv_params.RhsIsNegligible(rhs_norm)) {
+		//a rhs that is not finite has to be reported, it must not be mistaken for a negligible one
+		if (!std::isfinite(rhs_norm)) {
+			NaN_found = true;
+			u.setZero();
+			return;
+		}
+		//the historic L1 cutoff stays the rule for the "absolute" criterion so that its behaviour is
+		//	unchanged. For "relative" only the tolerance that was asked for decides
+		if (conv_params.IsRelative() ? conv_params.ZeroSolutionIsAccurateEnough(rhs_norm)
+			: (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG)) {
+			u.setZero();
+			return;
+		}
+		//the rhs is too small to start the recursion, yet the zero vector does not satisfy the
+		//	requested tolerance, so the accuracy that was asked for cannot be delivered
+		if (CGConvergenceParams::RhsIsDegenerate(rhs_norm)) {
+			NaN_found = true;
 			u.setZero();
 			return;
 		}
@@ -964,6 +1033,9 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
+		if (conv.HasUnusableRhs()) {
+			NaN_found = true;
+		}
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -1045,21 +1117,24 @@ namespace GPBoost {
 			}
 			Z_old = Z;
 			if (cg_preconditioner_type == "fitc") {
-				const std::vector<int>& cols = conv.ColumnsNeedingUpdate();
-				const bool masked = conv.NeedsMasking();
-				if (!masked || !cols.empty()) {
-					const den_mat_t R_in = masked ? GatherColumns(R, cols) : R;
-					diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R_in;
+				if (conv.NeedsMasking()) {
+					//only the columns that are still being iterated on, gathered so that the dense
+					//	operations stay matrix-matrix operations
+					const std::vector<int>& cols = conv.ColumnsNeedingUpdate();
+					if (!cols.empty()) {
+						diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * GatherColumns(R, cols);
+						//Cmn*D^-1*R
+						sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
+						//P^-1*R using Woodbury Identity
+						ScatterColumns(diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R))), cols, Z);
+					}
+				}
+				else {
+					diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 					//Cmn*D^-1*R
 					sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
 					//P^-1*R using Woodbury Identity
-					const den_mat_t Z_in = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
-					if (masked) {
-						ScatterColumns(Z_in, cols, Z);
-					}
-					else {
-						Z = Z_in;
-					}
+					Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
 				}
 			}
 			else if (cg_preconditioner_type == "none") {
@@ -1163,6 +1238,9 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs);
+		if (conv.HasUnusableRhs()) {
+			NaN_found = true;
+		}
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -1244,21 +1322,24 @@ namespace GPBoost {
 			}
 			Z_old = Z;
 			if (cg_preconditioner_type == "fitc") {
-				const std::vector<int>& cols = conv.ColumnsNeedingUpdate();
-				const bool masked = conv.NeedsMasking();
-				if (!masked || !cols.empty()) {
-					const den_mat_t R_in = masked ? GatherColumns(R, cols) : R;
-					diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R_in;
+				if (conv.NeedsMasking()) {
+					//only the columns that are still being iterated on, gathered so that the dense
+					//	operations stay matrix-matrix operations
+					const std::vector<int>& cols = conv.ColumnsNeedingUpdate();
+					if (!cols.empty()) {
+						diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * GatherColumns(R, cols);
+						//Cmn*D^-1*R
+						sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
+						//P^-1*R using Woodbury Identity
+						ScatterColumns(diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R))), cols, Z);
+					}
+				}
+				else {
+					diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
 					//Cmn*D^-1*R
 					sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
 					//P^-1*R using Woodbury Identity
-					const den_mat_t Z_in = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
-					if (masked) {
-						ScatterColumns(Z_in, cols, Z);
-					}
-					else {
-						Z = Z_in;
-					}
+					Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
 				}
 			}
 			else if (cg_preconditioner_type == "none") {
@@ -1345,6 +1426,9 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs);
+		if (conv.HasUnusableRhs()) {
+			NaN_found = true;
+		}
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -1408,17 +1492,28 @@ namespace GPBoost {
 				return;
 			}
 			Z_old = Z;
-			if (cg_preconditioner_type == "fitc" || cg_preconditioner_type == "none") {
-				const bool scale = (cg_preconditioner_type == "fitc");
+			if (cg_preconditioner_type == "fitc") {
 				if (conv.NeedsMasking()) {
 					for (int i = 0; i < t; ++i) {
 						if (conv.NeedsUpdate(i)) {
-							Z.col(i) = scale ? (diagonal_approx_inv_preconditioner.asDiagonal() * R.col(i)).eval() : R.col(i);
+							Z.col(i) = diagonal_approx_inv_preconditioner.asDiagonal() * R.col(i);
 						}
 					}
 				}
 				else {
-					Z = scale ? (diagonal_approx_inv_preconditioner.asDiagonal() * R).eval() : R;
+					Z = diagonal_approx_inv_preconditioner.asDiagonal() * R;
+				}
+			}
+			else if (cg_preconditioner_type == "none") {
+				if (conv.NeedsMasking()) {
+					for (int i = 0; i < t; ++i) {
+						if (conv.NeedsUpdate(i)) {
+							Z.col(i) = R.col(i);
+						}
+					}
+				}
+				else {
+					Z = R;
 				}
 			}
 			else {

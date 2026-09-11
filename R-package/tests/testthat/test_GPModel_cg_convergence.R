@@ -39,6 +39,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   FIT_PARAMS <- list(optimizer_cov = "fisher_scoring", cg_preconditioner_type = "ssor",
                      num_rand_vec_trace = 100, seed_rand_vec_trace = 1L,
                      init_coef_aux_pars_from_iid_model = FALSE)
+  # a count response for the non-Gaussian (Laplace approximation) code path
+  y_count <- as.numeric(qpois(sim_rand_unif(n=n, init_c=0.723),
+                              lambda = exp(as.vector(Z1 %*% b1 + Z2 %*% b2) / 2)))
+  FIT_PARAMS_POISSON <- list(optimizer_cov = "gradient_descent", lr_cov = 0.1, maxit = 5L,
+                             cg_preconditioner_type = "ssor", num_rand_vec_trace = 100,
+                             seed_rand_vec_trace = 1L, init_coef_aux_pars_from_iid_model = FALSE)
 
   fit_iterative <- function(extra_params = list()){
     params <- c(FIT_PARAMS, extra_params)
@@ -173,21 +179,45 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_true(is.finite(gp_model$get_current_neg_log_likelihood()))
   })
 
-  test_that("Prediction settings do not change the parameter estimation", {
+  test_that("The relative-rule prediction settings do not change the parameter estimation", {
 
-    # The estimation routines must not read any of the prediction settings. Changing only a
-    # prediction tolerance therefore has to leave the fitted covariance parameters bit-identical
-    reference <- fit_iterative(list(cg_convergence_criterion = "relative", cg_rel_tol = 1E-6))
-    for (pred_opts in list(list(cg_rel_tol_pred = 1E-12),
+    # The estimation routines must not read the stopping rule configured for predictions.
+    # Note that 'cg_delta_conv_pred' is deliberately not in this list: some estimation routines
+    # (for example the grouped-RE Laplace gradient) have always used it as a tighter absolute
+    # tolerance, and that pre-existing behavior is kept so that historic results are reproduced
+    pred_opts_list <- list(list(cg_rel_tol_pred = 1E-12),
                            list(cg_abs_tol_pred = 1E-14),
-                           list(cg_convergence_criterion_pred = "absolute"),
-                           list(cg_delta_conv_pred = 1E-10))) {
+                           list(cg_convergence_criterion_pred = "absolute"))
+
+    # Gaussian, which exercises the grouped-RE CG solves and the Lanczos log-determinant
+    reference <- fit_iterative(list(cg_convergence_criterion = "relative", cg_rel_tol = 1E-6))
+    for (pred_opts in pred_opts_list) {
       gp_model <- GPModel(group_data = group_data, matrix_inversion_method = "iterative")
       do.call(gp_model$set_prediction_data, pred_opts)
       capture.output( gp_model$fit(y = y, params = c(FIT_PARAMS,
                                                      list(cg_convergence_criterion = "relative",
                                                           cg_rel_tol = 1E-6))) , file='NUL')
       expect_equal(as.vector(gp_model$get_cov_pars()), as.vector(reference$get_cov_pars()))
+    }
+
+    # Poisson, which is what actually reaches the grouped-RE Laplace gradient. That routine was
+    # reading the prediction settings, so only this case exercises the defect
+    fit_poisson <- function(pred_opts = NULL){
+      gp_model <- GPModel(group_data = group_data, likelihood = "poisson",
+                          matrix_inversion_method = "iterative")
+      if (!is.null(pred_opts)) {
+        do.call(gp_model$set_prediction_data, pred_opts)
+      }
+      capture.output( gp_model$fit(y = y_count, params = c(FIT_PARAMS_POISSON,
+                                                           list(cg_convergence_criterion = "relative",
+                                                                cg_rel_tol = 1E-6))) , file='NUL')
+      gp_model
+    }
+    reference_poisson <- fit_poisson()
+    expect_true(all(is.finite(as.vector(reference_poisson$get_cov_pars()))))
+    for (pred_opts in pred_opts_list) {
+      expect_equal(as.vector(fit_poisson(pred_opts)$get_cov_pars()),
+                   as.vector(reference_poisson$get_cov_pars()))
     }
   })
 

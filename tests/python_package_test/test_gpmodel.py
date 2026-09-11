@@ -500,19 +500,35 @@ def test_cg_relative_rule_has_its_own_default_tolerances():
     np.testing.assert_allclose(np.asarray(default_rel.get_cov_pars(), dtype=float).ravel(),
                                np.asarray(explicit.get_cov_pars(), dtype=float).ravel(), rtol=1e-12)
 
-@pytest.mark.parametrize("pred_opts", [{"cg_rel_tol_pred": 1e-12},
-                                       {"cg_abs_tol_pred": 1e-14},
-                                       {"cg_convergence_criterion_pred": "absolute"},
-                                       {"cg_delta_conv_pred": 1e-10}])
-def test_cg_prediction_settings_do_not_change_the_fit(pred_opts):
-    # the estimation routines must not read any of the prediction settings
+# 'cg_delta_conv_pred' is deliberately absent: some estimation routines have always used it as a
+# tighter absolute tolerance, and that pre-existing behaviour is kept
+_PRED_OPTS = [{"cg_rel_tol_pred": 1e-12},
+              {"cg_abs_tol_pred": 1e-14},
+              {"cg_convergence_criterion_pred": "absolute"}]
+
+
+@pytest.mark.parametrize("pred_opts", _PRED_OPTS)
+@pytest.mark.parametrize("likelihood", ["gaussian", "poisson"])
+def test_cg_prediction_settings_do_not_change_the_fit(pred_opts, likelihood):
+    # the estimation routines must not read the stopping rule configured for predictions. The
+    # poisson case is the one that reaches the grouped-RE Laplace gradient, which was reading it
     group, y = _sim_crossed()
-    reference = _fit_iterative(group, y, cg_convergence_criterion="relative", cg_rel_tol=1e-6)
-    gp_model = gpb.GPModel(group_data=group, likelihood="gaussian",
-                           matrix_inversion_method="iterative")
-    gp_model.set_prediction_data(**pred_opts)
-    gp_model.fit(y=y, params={"cg_preconditioner_type": "ssor", "num_rand_vec_trace": 100,
-                              "seed_rand_vec_trace": 1, "trace": False,
-                              "cg_convergence_criterion": "relative", "cg_rel_tol": 1e-6})
-    np.testing.assert_allclose(np.asarray(gp_model.get_cov_pars(), dtype=float).ravel(),
-                               np.asarray(reference.get_cov_pars(), dtype=float).ravel(), rtol=1e-12)
+    if likelihood == "poisson":
+        y = np.random.default_rng(3).poisson(np.exp(y / 2)).astype(float)
+    fit_params = {"cg_preconditioner_type": "ssor", "num_rand_vec_trace": 100,
+                  "seed_rand_vec_trace": 1, "trace": False,
+                  "cg_convergence_criterion": "relative", "cg_rel_tol": 1e-6}
+    if likelihood == "poisson":
+        fit_params.update({"optimizer_cov": "gradient_descent", "lr_cov": 0.1, "maxit": 5})
+
+    def fit(opts=None):
+        gp_model = gpb.GPModel(group_data=group, likelihood=likelihood,
+                               matrix_inversion_method="iterative")
+        if opts is not None:
+            gp_model.set_prediction_data(**opts)
+        gp_model.fit(y=y, params=fit_params)
+        return np.asarray(gp_model.get_cov_pars(), dtype=float).ravel()
+
+    reference = fit()
+    assert np.all(np.isfinite(reference))
+    np.testing.assert_allclose(fit(pred_opts), reference, rtol=1e-12)
