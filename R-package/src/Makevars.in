@@ -74,6 +74,7 @@ OBJECTS = \
     DF_utils.o \
     Vecchia_utils.o \
     CG_utils.o \
+    cpu_topology.o \
     cs_spsolve.o \
     cs_reach.o \
     cs_dfs.o \

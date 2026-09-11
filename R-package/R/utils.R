@@ -303,8 +303,9 @@ gpb.get.num.threads <- function() {
 #'              this: such models set (and reset) the number of threads themselves whenever they do
 #'              calculations.
 #' @param num_threads An \code{integer} specifying the number of threads. If \code{num_threads} is
-#'                    not positive, the default number of threads is used (the number of threads
-#'                    used when the package was loaded)
+#'                    not positive, the default number of threads is used (the number of physical
+#'                    performance cores, see the \code{num_parallel_threads} argument of
+#'                    \code{\link{GPModel}})
 #' @return This function does not return anything
 #' @author Fabio Sigrist
 #' @examples

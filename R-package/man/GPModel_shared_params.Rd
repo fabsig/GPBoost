@@ -311,8 +311,12 @@ see Gyger, Furrer, and Sigrist (2024) for more details }
 for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecchia_latent" are equivalent }
 }}
 
-\item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP. 
-If num_parallel_threads = NULL, all available threads are used}
+\item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP.
+If num_parallel_threads = NULL, the number of physical performance cores is used. On CPUs whose
+cores have different speeds (e.g., the performance and efficiency cores of recent Intel CPUs or
+Apple silicon), only the fastest cores are counted, and hyperthreads are counted only once, since
+slow threads can slow down an entire model. All available threads are used if the environment
+variable OMP_NUM_THREADS is set or if the cores of the CPU cannot be determined}
 
 \item{GPU_use}{A \code{boolean}. If TRUE, GPU acceleration will be used if supported}
 

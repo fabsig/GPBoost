@@ -1,5 +1,42 @@
 context("num_parallel_threads")
 
+# This test is fast and platform-dependent and is thus not restricted to 'GPBOOST_ALL_TESTS'
+test_that("the default number of threads is the number of physical performance cores", {
+
+  num_threads_omp <- gpb.get.num.threads()
+  # A non-positive number of threads resets to the default number of threads
+  gpb.set.num.threads(-1L)
+  num_threads_default <- gpb.get.num.threads()
+  gpb.set.num.threads(num_threads_omp)
+  expect_gte(num_threads_default, 1L)
+  # The default never exceeds a number of threads that is restricted by, e.g., 'OMP_NUM_THREADS'
+  expect_lte(num_threads_default, num_threads_omp)
+
+  if (Sys.getenv("OMP_NUM_THREADS") != "") {
+    # An explicitly requested number of threads is used as is
+    expect_equal(num_threads_default, num_threads_omp)
+  } else {
+    # Hyperthreads are not counted separately
+    num_physical_cores <- tryCatch(parallel::detectCores(logical = FALSE), error = function(e) NA_integer_)
+    if (!is.na(num_physical_cores) && num_physical_cores >= 1L) {
+      expect_lte(num_threads_default, num_physical_cores)
+    }
+    # On macOS, performance level 0 is the one of the fastest cores. The corresponding number of cores is
+    # only available on CPUs that have cores of different speeds (i.e., on Apple silicon)
+    if (Sys.info()[["sysname"]] == "Darwin") {
+      num_performance_cores <- tryCatch(
+        as.integer(system2("sysctl", c("-n", "hw.perflevel0.physicalcpu"), stdout = TRUE, stderr = FALSE))
+        , error = function(e) NA_integer_
+        , warning = function(w) NA_integer_
+      )
+      if (!is.na(num_performance_cores) && num_performance_cores >= 1L) {
+        expect_equal(num_threads_default, min(num_performance_cores, num_threads_omp))
+      }
+    }
+  }
+
+})
+
 # Avoid that long tests get executed on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
@@ -31,9 +68,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model3 <- fitGPModel(group_data = group, y = y, params = list(maxit = 5),
                                             num_parallel_threads = 1L) , file = 'NUL')
     expect_equal(gpb.get.num.threads(), 2L)
-    # Non-positive values reset to the default number of threads
+    # Non-positive values reset to the default number of threads. This is the number of physical performance
+    # cores, which can be smaller than the number of threads that OMP uses when the package is loaded
     gpb.set.num.threads(-1L)
-    expect_equal(gpb.get.num.threads(), num_threads_before)
+    num_threads_default <- gpb.get.num.threads()
+    expect_gte(num_threads_default, 1L)
+    expect_lte(num_threads_default, num_threads_before)
+    gpb.set.num.threads(2L)
+    gpb.set.num.threads(-1L)
+    expect_equal(gpb.get.num.threads(), num_threads_default)
     expect_error(gpb.set.num.threads("two"), "num_threads needs to be an integer of length one", fixed = TRUE)
 
   })

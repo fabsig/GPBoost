@@ -24,13 +24,33 @@ using LightGBM::Log;
 namespace GPBoost {
 
 	/*!
+	* \brief Number of physical performance cores of the CPU. On hybrid CPUs with cores of different speeds
+	*		(e.g., the performance and efficiency cores of recent Intel CPUs or Apple silicon), only the fastest
+	*		ones are counted, and simultaneous multithreading siblings ('hyperthreads') are counted only once.
+	*		Since almost all parallel loops of GPBoost distribute their iterations evenly over all threads and
+	*		then wait for the slowest one, threads running on slow cores can make an entire model slower.
+	*		Implemented in 'cpu_topology.cpp'
+	* \return Number of physical performance cores, or 0 if the topology of the CPU cannot be determined
+	*/
+	int NumPerformanceCores();
+
+	/*!
+	* \brief Determines the default number of parallel threads, see 'DefaultNumParallelThreads()'.
+	*		Implemented in 'cpu_topology.cpp'
+	* \return Default number of parallel threads
+	*/
+	int ComputeDefaultNumParallelThreads();
+
+	/*!
 	* \brief Number of threads that are used when no number of threads is explicitly requested. This is the number of
-	*		threads that OMP uses when this function is called for the first time (i.e., before any model has changed
-	*		it), which is usually determined by the environment variable 'OMP_NUM_THREADS' or the number of cores
+	*		physical performance cores, see 'NumPerformanceCores()', limited by the number of threads that OMP uses
+	*		when this function is called for the first time (i.e., before any model has changed it), which is usually
+	*		determined by the environment variable 'OMP_NUM_THREADS' or the number of cores. If 'OMP_NUM_THREADS' is
+	*		set, it is used as is, and the same holds if the topology of the CPU cannot be determined
 	* \return Default number of parallel threads
 	*/
 	inline int DefaultNumParallelThreads() {
-		static const int default_num_parallel_threads = omp_get_max_threads();
+		static const int default_num_parallel_threads = ComputeDefaultNumParallelThreads();
 		return(default_num_parallel_threads);
 	}
 
