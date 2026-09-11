@@ -6,10 +6,11 @@
 \usage{
 set_prediction_data(gp_model, vecchia_pred_type = NULL,
   num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
-  nsim_var_pred = NULL, rank_pred_approx_matrix_lanczos = NULL,
-  group_data_pred = NULL, group_rand_coef_data_pred = NULL,
-  gp_coords_pred = NULL, gp_rand_coef_data_pred = NULL,
-  cluster_ids_pred = NULL, X_pred = NULL)
+  cg_convergence_criterion_pred = NULL, cg_rel_tol_pred = NULL,
+  cg_abs_tol_pred = NULL, nsim_var_pred = NULL,
+  rank_pred_approx_matrix_lanczos = NULL, group_data_pred = NULL,
+  group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
+  gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL, X_pred = NULL)
 }
 \arguments{
 \item{gp_model}{A \code{GPModel}}
@@ -34,8 +35,26 @@ Available options:
 for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-checking convergence in conjugate gradient algorithms when being used for prediction
+checking convergence in conjugate gradient algorithms when being used for prediction.
+This is the tolerance of the "absolute" criterion only, the "relative" criterion is controlled
+by cg_rel_tol_pred and cg_abs_tol_pred.
 Default value if NULL: 1e-3}
+
+\item{cg_convergence_criterion_pred}{a \code{string} specifying the stopping rule of conjugate
+gradient algorithms when being used for prediction: "absolute" (stop when ||r||_2 < cg_delta_conv_pred)
+or "relative" (stop when ||r||_2 <= max(cg_abs_tol_pred, cg_rel_tol_pred * ||b||_2)).
+Default value if NULL: the value of cg_convergence_criterion used for the parameter estimation}
+
+\item{cg_rel_tol_pred}{a \code{numeric} specifying the relative tolerance of the "relative"
+stopping rule when being used for prediction.
+Default value if NULL: the value of cg_rel_tol used for the parameter estimation. This is
+inherited independently of cg_convergence_criterion_pred}
+
+\item{cg_abs_tol_pred}{a \code{numeric} specifying the absolute tolerance floor of the "relative"
+stopping rule when being used for prediction. This makes the rule robust for right-hand sides
+that are zero or very small.
+Default value if NULL: the value of cg_abs_tol used for the parameter estimation. This is
+inherited independently of the other two prediction options}
 
 \item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
 is used for calculating predictive variances

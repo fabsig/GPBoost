@@ -22,14 +22,15 @@ namespace GPBoost {
 	/*! \brief Stopping parameters shared by all CG implementations. The defaults reproduce the historic absolute-residual rule */
 	struct CGConvergenceParams {
 		CGConvergenceParams(double delta = 1e-2)
-			: criterion("absolute"), delta_conv(delta), rel_tol(1e-2), abs_tol(delta), multi_rhs_convergence("average") {}
+			: criterion("absolute"), delta_conv(delta), rel_tol(1e-6), abs_tol(1e-8), multi_rhs_convergence("average") {}
 		/*! \brief "absolute" (||r||_2 < delta_conv) or "relative" (||r||_2 <= max(abs_tol, rel_tol * ||b||_2)) */
 		string_t criterion;
 		/*! \brief Tolerance of the "absolute" criterion */
 		double delta_conv;
 		/*! \brief Relative tolerance of the "relative" criterion */
 		double rel_tol;
-		/*! \brief Absolute floor of the "relative" criterion. Makes the rule robust for zero and very small right-hand sides */
+		/*! \brief Absolute floor of the "relative" criterion. Makes the rule robust for zero and very small right-hand sides.
+		*		  Independent of 'delta_conv', so that the two criteria can be varied separately */
 		double abs_tol;
 		/*! \brief Aggregation over the columns of a multi-rhs system: "average", "max" or "per_rhs" */
 		string_t multi_rhs_convergence;
@@ -47,11 +48,57 @@ namespace GPBoost {
 		bool HasConverged(const double r_norm, const double rhs_norm) const {
 			return IsRelative() ? (r_norm <= Tolerance(rhs_norm)) : (r_norm < delta_conv);
 		}
-		/*! \brief True if the zero vector already satisfies the tolerance, in which case the system must not be solved (a = 0/0 would give NaN) */
+		/*!
+		* \brief True if the zero vector already satisfies the tolerance for this rhs, so that the system does not
+		*		 need to be solved. For the "absolute" criterion only a degenerate rhs is skipped, so that the
+		*		 historic behaviour is preserved: a rhs that is small but not degenerate is iterated on normally
+		*		 and then converges at the first check, which costs one iteration but cannot produce a NaN
+		*/
 		bool RhsIsNegligible(const double rhs_norm) const {
-			return IsRelative() && rhs_norm <= Tolerance(rhs_norm);
+			return RhsIsDegenerate(rhs_norm) || (IsRelative() && rhs_norm <= Tolerance(rhs_norm));
 		}
+		/*!
+		* \brief True if the rhs is so small that the conjugate gradient recursion cannot be started at all:
+		*		 the step size a = (r^T z) / (h^T A h) would be 0/0 and produce a NaN
+		*/
+		static bool RhsIsDegenerate(const double rhs_norm) {
+			return !(rhs_norm > THRESHOLD_DEGENERATE_RHS);
+		}
+		/*! \brief Below this L2 norm a rhs is treated as exactly zero, see 'RhsIsDegenerate' */
+		static const double THRESHOLD_DEGENERATE_RHS;
 	};
+
+	/*!
+	* \brief Copy the given columns of 'M' into a compact matrix. Lets a preconditioner that is most efficient
+	*		 as a matrix-matrix operation be applied to the columns that are still being iterated on only
+	* \param M Matrix to read from
+	* \param cols Indices of the columns to copy
+	* \return Matrix with 'cols.size()' columns
+	*/
+	inline den_mat_t GatherColumns(const den_mat_t& M,
+		const std::vector<int>& cols) {
+		den_mat_t compact(M.rows(), (Eigen::Index)cols.size());
+#pragma omp parallel for schedule(static)
+		for (int k = 0; k < (int)cols.size(); ++k) {
+			compact.col(k) = M.col(cols[k]);
+		}
+		return compact;
+	}
+
+	/*!
+	* \brief Inverse of GatherColumns(): write a compact matrix back to the given columns of 'M'
+	* \param compact Matrix with 'cols.size()' columns
+	* \param cols Indices of the columns to write to
+	* \param[out] M Matrix to write to
+	*/
+	inline void ScatterColumns(const den_mat_t& compact,
+		const std::vector<int>& cols,
+		den_mat_t& M) {
+#pragma omp parallel for schedule(static)
+		for (int k = 0; k < (int)cols.size(); ++k) {
+			M.col(cols[k]) = compact.col(k);
+		}
+	}
 
 	/*!
 	* \brief Bookkeeping for the stopping rules of the multi-rhs CG / Lanczos implementations.
@@ -61,18 +108,32 @@ namespace GPBoost {
 	*/
 	class CGMultiRHSConvergence {
 	public:
+		/*!
+		* \brief Constructor
+		* \param params Stopping rule and tolerances
+		* \param rhs The right-hand sides of the linear system
+		* \param for_lanczos True when the caller also builds Lanczos tridiagonalizations for a stochastic
+		*		 quadrature. Such a rhs is a probe vector of an estimator that averages over all columns, so a
+		*		 column must not be dropped just because the zero vector happens to satisfy the solver tolerance:
+		*		 it still carries information about the matrix function and receives at least one Lanczos step.
+		*		 Only a degenerate rhs, for which the recursion cannot be started at all, is skipped
+		*/
 		CGMultiRHSConvergence(const CGConvergenceParams& params,
-			const den_mat_t& rhs)
+			const den_mat_t& rhs,
+			const bool for_lanczos = false)
 			: params_(params), t_((int)rhs.cols()), active_((size_t)rhs.cols(), true),
 			converged_now_((size_t)rhs.cols(), false), num_it_((size_t)rhs.cols(), 0) {
 			rhs_norms_ = rhs.colwise().norm();
 			r_norms_ = rhs_norms_;
 			for (int i = 0; i < t_; ++i) {
-				if (params_.RhsIsNegligible(rhs_norms_[i])) {
+				const bool skip = for_lanczos ? CGConvergenceParams::RhsIsDegenerate(rhs_norms_[i])
+					: params_.RhsIsNegligible(rhs_norms_[i]);
+				if (skip) {
 					active_[i] = false;
 					needs_masking_ = true;
 				}
 			}
+			RefreshColumnsNeedingUpdate();
 		}
 		/*! \brief True if some columns are not iterated on anymore and the vectorized updates need to be masked */
 		bool NeedsMasking() const {
@@ -91,6 +152,15 @@ namespace GPBoost {
 			return mean_r_norm_;
 		}
 		/*!
+		* \brief Indices of the columns for which NeedsUpdate() is true, i.e. those that still need a
+		*		 preconditioner solve and a search-direction update. Lets a preconditioner that is most
+		*		 efficient as a matrix-matrix operation gather them into a compact matrix instead of
+		*		 working on all columns
+		*/
+		const std::vector<int>& ColumnsNeedingUpdate() const {
+			return columns_needing_update_;
+		}
+		/*!
 		* \brief Update the residual norms and evaluate the stopping rule
 		* \param R Current residual matrix
 		* \return True if the algorithm can stop
@@ -103,7 +173,7 @@ namespace GPBoost {
 				return false;
 			}
 			if (params_.IsPerRHS()) {
-				bool all_converged = true;
+				bool all_converged = true, any_converged = false;
 				for (int i = 0; i < t_; ++i) {
 					if (!active_[i]) {
 						continue;
@@ -115,7 +185,11 @@ namespace GPBoost {
 						//	converged in this iteration is not updated anymore, and its preconditioned
 						//	residual is not recomputed, so the vectorized updates would read stale values
 						needs_masking_ = true;
+						any_converged = true;
 					}
+				}
+				if (any_converged) {
+					RefreshColumnsNeedingUpdate();
 				}
 				return all_converged;
 			}
@@ -148,6 +222,18 @@ namespace GPBoost {
 			}
 		}
 		/*!
+		* \brief Record the number of iterations that the columns which are still active received.
+		*		 Must be called on every exit path, otherwise the diagnostics are incomplete
+		* \param num_it Number of iterations that were carried out
+		*/
+		void FinalizeIterations(const int num_it) {
+			for (int i = 0; i < t_; ++i) {
+				if (active_[i]) {
+					num_it_[i] = num_it;
+				}
+			}
+		}
+		/*!
 		* \brief Shrink the Lanczos tridiagonalizations to the number of iterations that were actually carried out for every rhs
 		* \param[out] Tdiags Diagonals of the tridiagonalizations
 		* \param[out] Tsubdiags Subdiagonals of the tridiagonalizations
@@ -156,23 +242,48 @@ namespace GPBoost {
 		void ShrinkTridiagonals(std::vector<vec_t>& Tdiags,
 			std::vector<vec_t>& Tsubdiags,
 			const int num_it) {
+			FinalizeIterations(num_it);
 			for (int i = 0; i < t_; ++i) {
-				if (active_[i]) {
-					num_it_[i] = num_it;
-				}
 				const int it = num_it_[i];
 				Tdiags[i].conservativeResize(it, 1);
 				Tsubdiags[i].conservativeResize(it > 0 ? (it - 1) : 0, 1);
 			}
 		}
+		/*! \brief Number of iterations that every rhs received */
+		const std::vector<int>& IterationsPerRHS() const {
+			return num_it_;
+		}
+		/*! \brief Final L2 norm of the residual of every rhs */
+		const vec_t& ResidualNormsPerRHS() const {
+			return r_norms_;
+		}
+		/*! \brief Final residual of every rhs scaled by its own tolerance, i.e. q_j = ||r_j||_2 / tol_j */
+		vec_t ScaledResidualNormsPerRHS() const {
+			vec_t scaled(t_);
+			for (int i = 0; i < t_; ++i) {
+				scaled[i] = r_norms_[i] / params_.Tolerance(rhs_norms_[i]);
+			}
+			return scaled;
+		}
 		/*! \brief Report iterations and residuals per rhs. Only emitted at the debug log level, i.e., never printed unconditionally */
 		void LogDiagnostics(const char* caller) const;
 	private:
+		/*! \brief Rebuild the compact list of the columns for which NeedsUpdate() is true */
+		void RefreshColumnsNeedingUpdate() {
+			columns_needing_update_.clear();
+			columns_needing_update_.reserve((size_t)t_);
+			for (int i = 0; i < t_; ++i) {
+				if (NeedsUpdate(i)) {
+					columns_needing_update_.push_back(i);
+				}
+			}
+		}
 		const CGConvergenceParams& params_;
 		int t_;
 		std::vector<bool> active_;
 		std::vector<bool> converged_now_;
 		std::vector<int> num_it_;
+		std::vector<int> columns_needing_update_;
 		vec_t rhs_norms_;
 		vec_t r_norms_;
 		double mean_r_norm_ = 0.;
@@ -827,7 +938,7 @@ namespace GPBoost {
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
-		CGMultiRHSConvergence conv(conv_params, rhs);
+		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -1094,10 +1205,12 @@ namespace GPBoost {
 			}
 			conv.DeactivateConvergedColumns(j);
 			if (early_stop_alg) {
+				conv.FinalizeIterations(j + 1);
 				conv.LogDiagnostics("CGFSA_MULTI_RHS");
 				return;
 			}
 		}
+		conv.FinalizeIterations(p);
 		conv.LogDiagnostics("CGFSA_MULTI_RHS");
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
@@ -1233,10 +1346,12 @@ namespace GPBoost {
 			}
 			conv.DeactivateConvergedColumns(j);
 			if (early_stop_alg) {
+				conv.FinalizeIterations(j + 1);
 				conv.LogDiagnostics("CGFSA_RESID");
 				return;
 			}
 		}
+		conv.FinalizeIterations(p);
 		conv.LogDiagnostics("CGFSA_RESID");
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);

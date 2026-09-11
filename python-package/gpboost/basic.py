@@ -5612,7 +5612,8 @@ class GPModel(object):
                     If cg_max_num_it_tridiag = -999, internal default values are used.
                 - cg_delta_conv: double, optional (default = 1e-2)
                     Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
-                    when being used for parameter estimation. Only used if cg_convergence_criterion = "absolute".
+                    when being used for parameter estimation. This is the tolerance of the "absolute"
+                    criterion only, the "relative" criterion is controlled by cg_rel_tol and cg_abs_tol.
                     If cg_delta_conv = -999, internal default values are used.
                 - cg_convergence_criterion: string, optional (default = "absolute")
                     Stopping rule of conjugate gradient algorithms.
@@ -5622,23 +5623,34 @@ class GPModel(object):
                         - "relative": stop when ||r||_2 <= max(cg_abs_tol, cg_rel_tol * ||b||_2), where b is the
                           right-hand side of the linear system. The cg_abs_tol floor makes this robust for
                           right-hand sides that are zero or very small
-                - cg_rel_tol: double, optional (default = 1e-2)
+                - cg_rel_tol: double, optional (default = 1e-6)
                     Relative tolerance of the "relative" stopping rule.
                     If cg_rel_tol = -999, internal default values are used.
-                - cg_abs_tol: double, optional (default = value of cg_delta_conv)
-                    Absolute tolerance floor of the "relative" stopping rule.
-                    If cg_abs_tol = -999, it follows cg_delta_conv.
+                - cg_abs_tol: double, optional (default = 1e-8)
+                    Absolute tolerance floor of the "relative" stopping rule, which makes it robust for
+                    right-hand sides that are zero or very small. This is independent of cg_delta_conv,
+                    so that the two criteria can be varied separately.
+                    If cg_abs_tol = -999, internal default values are used.
                 - cg_multi_rhs_convergence: string, optional (default = "average")
                     How the stopping rule is aggregated over the columns of a linear system with several
-                    right-hand sides, such as the stochastic Lanczos quadrature. Every right-hand side is
-                    normalized by its own norm, i.e. q_j = ||r_j||_2 / max(cg_abs_tol, cg_rel_tol * ||b_j||_2).
+                    right-hand sides, such as the stochastic Lanczos quadrature.
+                    For cg_convergence_criterion = "relative", every right-hand side is normalized by its
+                    own norm, i.e. q_j = ||r_j||_2 / max(cg_abs_tol, cg_rel_tol * ||b_j||_2):
 
-                        - "average" (= default): stop when mean(q_j) <= 1. Together with
-                          cg_convergence_criterion = "absolute" this is the historic behavior
+                        - "average" (= default): stop when mean(q_j) <= 1
 
                         - "max": stop when max(q_j) <= 1
 
                         - "per_rhs": stop iterating on column j individually as soon as q_j <= 1
+
+                    For cg_convergence_criterion = "absolute" there is no per-column normalization:
+
+                        - "average" (= default): stop when mean(||r_j||_2) < cg_delta_conv. This is the
+                          historic behavior
+
+                        - "max": stop when ||r_j||_2 < cg_delta_conv for all j
+
+                        - "per_rhs": stop iterating on column j as soon as ||r_j||_2 < cg_delta_conv
                 - num_rand_vec_trace: integer, optional (default = 50)
                     Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix.
                     If num_rand_vec_trace = -999, internal default values are used.
@@ -5963,7 +5975,8 @@ class GPModel(object):
                     If cg_max_num_it_tridiag = -999, internal default values are used.
                 - cg_delta_conv: double, optional (default = 1e-2)
                     Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
-                    when being used for parameter estimation. Only used if cg_convergence_criterion = "absolute".
+                    when being used for parameter estimation. This is the tolerance of the "absolute"
+                    criterion only, the "relative" criterion is controlled by cg_rel_tol and cg_abs_tol.
                     If cg_delta_conv = -999, internal default values are used.
                 - cg_convergence_criterion: string, optional (default = "absolute")
                     Stopping rule of conjugate gradient algorithms.
@@ -5973,23 +5986,34 @@ class GPModel(object):
                         - "relative": stop when ||r||_2 <= max(cg_abs_tol, cg_rel_tol * ||b||_2), where b is the
                           right-hand side of the linear system. The cg_abs_tol floor makes this robust for
                           right-hand sides that are zero or very small
-                - cg_rel_tol: double, optional (default = 1e-2)
+                - cg_rel_tol: double, optional (default = 1e-6)
                     Relative tolerance of the "relative" stopping rule.
                     If cg_rel_tol = -999, internal default values are used.
-                - cg_abs_tol: double, optional (default = value of cg_delta_conv)
-                    Absolute tolerance floor of the "relative" stopping rule.
-                    If cg_abs_tol = -999, it follows cg_delta_conv.
+                - cg_abs_tol: double, optional (default = 1e-8)
+                    Absolute tolerance floor of the "relative" stopping rule, which makes it robust for
+                    right-hand sides that are zero or very small. This is independent of cg_delta_conv,
+                    so that the two criteria can be varied separately.
+                    If cg_abs_tol = -999, internal default values are used.
                 - cg_multi_rhs_convergence: string, optional (default = "average")
                     How the stopping rule is aggregated over the columns of a linear system with several
-                    right-hand sides, such as the stochastic Lanczos quadrature. Every right-hand side is
-                    normalized by its own norm, i.e. q_j = ||r_j||_2 / max(cg_abs_tol, cg_rel_tol * ||b_j||_2).
+                    right-hand sides, such as the stochastic Lanczos quadrature.
+                    For cg_convergence_criterion = "relative", every right-hand side is normalized by its
+                    own norm, i.e. q_j = ||r_j||_2 / max(cg_abs_tol, cg_rel_tol * ||b_j||_2):
 
-                        - "average" (= default): stop when mean(q_j) <= 1. Together with
-                          cg_convergence_criterion = "absolute" this is the historic behavior
+                        - "average" (= default): stop when mean(q_j) <= 1
 
                         - "max": stop when max(q_j) <= 1
 
                         - "per_rhs": stop iterating on column j individually as soon as q_j <= 1
+
+                    For cg_convergence_criterion = "absolute" there is no per-column normalization:
+
+                        - "average" (= default): stop when mean(||r_j||_2) < cg_delta_conv. This is the
+                          historic behavior
+
+                        - "max": stop when ||r_j||_2 < cg_delta_conv for all j
+
+                        - "per_rhs": stop iterating on column j as soon as ||r_j||_2 < cg_delta_conv
                 - num_rand_vec_trace: integer, optional (default = 50)
                     Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix.
                     If num_rand_vec_trace = -999, internal default values are used.
@@ -6872,7 +6896,8 @@ class GPModel(object):
                 Default value if None: num_neighbors_pred = 2 * num_neighbors
             cg_delta_conv_pred : double or None, optional (default=None)
                 Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm
-                when being used for prediction
+                when being used for prediction. This is the tolerance of the "absolute" criterion only,
+                the "relative" criterion is controlled by cg_rel_tol_pred and cg_abs_tol_pred
 
                 Default value if None: 1e-3
             cg_convergence_criterion_pred : string or None, optional (default=None)
@@ -6884,12 +6909,14 @@ class GPModel(object):
             cg_rel_tol_pred : double or None, optional (default=None)
                 The relative tolerance of the "relative" stopping rule when being used for prediction
 
-                Default value if None: the value of cg_rel_tol used for the parameter estimation
+                Default value if None: the value of cg_rel_tol used for the parameter estimation.
+                This is inherited independently of cg_convergence_criterion_pred
             cg_abs_tol_pred : double or None, optional (default=None)
                 The absolute tolerance floor of the "relative" stopping rule when being used for prediction.
                 This makes the rule robust for right-hand sides that are zero or very small
 
-                Default value if None: the value of cg_delta_conv_pred
+                Default value if None: the value of cg_abs_tol used for the parameter estimation.
+                This is inherited independently of the other two prediction options
             nsim_var_pred : integer or None, optional (default=None)
                 The number of samples when simulation is used for calculating predictive variances
 

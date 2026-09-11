@@ -1434,6 +1434,10 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \param max_num_restarts_lbfgs Maximal number of restarts of the lbfgs optimizers after they have terminated. If max_num_restarts_lbfgs = -999, internal default values are used
 * \param cold_restart_lbfgs If true, restarts of the lbfgs optimizers are "cold" restarts, otherwise "warm" restarts (only relevant if max_num_restarts_lbfgs > 0)
 * \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
+* \param cg_convergence_criterion Stopping rule of conjugate gradient algorithms: "absolute" (stop when ||r||_2 < cg_delta_conv) or "relative" (stop when ||r||_2 <= max(cg_abs_tol, cg_rel_tol * ||b||_2), where b is the right-hand side of the linear system)
+* \param cg_rel_tol Relative tolerance of the "relative" stopping rule. If cg_rel_tol = -999, internal default values are used (= 1e-6)
+* \param cg_abs_tol Absolute tolerance floor of the "relative" stopping rule, which makes it robust for right-hand sides that are zero or very small. Independent of cg_delta_conv. If cg_abs_tol = -999, internal default values are used (= 1e-8)
+* \param cg_multi_rhs_convergence How the stopping rule is aggregated over the columns of a linear system with several right-hand sides, such as the stochastic Lanczos quadrature: "average", "max", or "per_rhs"
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,
@@ -1630,6 +1634,9 @@ GPBOOST_C_EXPORT int GPB_SetNumParallelThreads(int num_threads);
 * \param cg_delta_conv_pred Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for prediction
 * \param nsim_var_pred Number of samples when simulation is used for calculating predictive variances
 * \param rank_pred_approx_matrix_lanczos Rank of the matrix for approximating predictive covariances obtained using the Lanczos algorithm
+* \param cg_convergence_criterion_pred Stopping rule of conjugate gradient algorithms when being used for prediction, see cg_convergence_criterion. If nullptr, the rule used for the parameter estimation is inherited
+* \param cg_rel_tol_pred Relative tolerance of the "relative" stopping rule when being used for prediction. If cg_rel_tol_pred = -1, the value used for the parameter estimation is inherited
+* \param cg_abs_tol_pred Absolute tolerance floor of the "relative" stopping rule when being used for prediction. If cg_abs_tol_pred = -1, the value used for the parameter estimation is inherited
 */
 GPBOOST_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
     int32_t num_data_pred,

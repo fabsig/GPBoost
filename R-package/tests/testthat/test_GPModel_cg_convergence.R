@@ -88,6 +88,26 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_true(is.finite(small_floor$get_current_neg_log_likelihood()))
   })
 
+  test_that("The relative rule uses its own default tolerances, not cg_delta_conv", {
+
+    # 'cg_rel_tol' and 'cg_abs_tol' default to 1E-6 and 1E-8 and are independent of 'cg_delta_conv'.
+    # Changing 'cg_delta_conv' must therefore leave a "relative" fit untouched, while it does change
+    # an "absolute" fit (checked in the first test above)
+    default_rel <- fit_iterative(list(cg_convergence_criterion = "relative"))
+    other_delta <- fit_iterative(list(cg_convergence_criterion = "relative", cg_delta_conv = 1E-1))
+    expect_equal(as.vector(default_rel$get_cov_pars()), as.vector(other_delta$get_cov_pars()))
+
+    # the defaults are tight enough to reproduce an explicitly tight absolute fit
+    reference <- fit_iterative(list(cg_delta_conv = 1E-6))
+    expect_lt(sum(abs(as.vector(default_rel$get_cov_pars()) - as.vector(reference$get_cov_pars()))),
+              relax_tolerance(TOLERANCE_LOOSE))
+
+    # and passing the documented defaults explicitly changes nothing
+    explicit <- fit_iterative(list(cg_convergence_criterion = "relative", cg_rel_tol = 1E-6,
+                                   cg_abs_tol = 1E-8))
+    expect_equal(as.vector(default_rel$get_cov_pars()), as.vector(explicit$get_cov_pars()))
+  })
+
   test_that("All multi-rhs aggregation rules give the same fit", {
 
     # "average", "max" and "per_rhs" only change when the iteration stops, not what it converges to
@@ -114,6 +134,45 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
               relax_tolerance(TOLERANCE_LOOSE))
   })
 
+  test_that("Prediction options are inherited independently of one another", {
+
+    # A prediction option that has been set explicitly must not stop the other ones from following
+    # their parameter estimation counterpart, in either call order
+    gp_model <- GPModel(group_data = group_data, matrix_inversion_method = "iterative")
+    gp_model$set_prediction_data(cg_rel_tol_pred = 1E-6)
+    capture.output( gp_model$fit(y = y, params = c(FIT_PARAMS,
+                                                   list(cg_convergence_criterion = "relative",
+                                                        cg_rel_tol = 1E-3))) , file='NUL')
+    group_data_pred <- cbind(c(1, 2, 999), c(2, 1, 999))
+    # 'cg_convergence_criterion_pred' was never set, so it has to inherit "relative", and
+    # 'cg_rel_tol_pred' has to keep the 1E-6 that was set explicitly. Neither can be read back, so
+    # this only checks that the call order does not make the predictions fail or turn non-finite
+    capture.output( preds <- predict(gp_model, group_data_pred = group_data_pred,
+                                     predict_var = TRUE) , file='NUL')
+    expect_true(all(is.finite(preds$mu)))
+    expect_true(all(is.finite(preds$var)) && all(preds$var > 0))
+
+    # the other call order
+    gp_model2 <- fit_iterative(list(cg_convergence_criterion = "relative", cg_rel_tol = 1E-8,
+                                    cg_abs_tol = 1E-8))
+    set_prediction_data(gp_model2, cg_rel_tol_pred = 1E-6)
+    capture.output( preds2 <- predict(gp_model2, group_data_pred = group_data_pred,
+                                      predict_var = TRUE) , file='NUL')
+    expect_true(all(is.finite(preds2$mu)))
+    expect_lt(sum(abs(preds$mu - preds2$mu)), relax_tolerance(TOL_VERY_LOOSE))
+  })
+
+  test_that("A tolerance above the norm of every probe vector still gives a finite fit", {
+
+    # The stochastic Lanczos quadrature averages over all probe vectors. A probe must not be dropped
+    # from that average just because the zero vector happens to satisfy the solver tolerance, it
+    # still carries information about the log-determinant and gets at least one Lanczos step
+    gp_model <- fit_iterative(list(cg_convergence_criterion = "relative", cg_rel_tol = 1E-8,
+                                   cg_abs_tol = 1E6))
+    expect_true(all(is.finite(as.vector(gp_model$get_cov_pars()))))
+    expect_true(is.finite(gp_model$get_current_neg_log_likelihood()))
+  })
+
   test_that("Invalid CG stopping-rule options are rejected", {
 
     expect_error(fitGPModel(group_data = group_data, y = y, matrix_inversion_method = "iterative",
@@ -126,6 +185,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                             params = list(cg_rel_tol = -1)))
     expect_error(fitGPModel(group_data = group_data, y = y, matrix_inversion_method = "iterative",
                             params = list(cg_abs_tol = 0)))
+    expect_error(fitGPModel(group_data = group_data, y = y, matrix_inversion_method = "iterative",
+                            params = list(cg_rel_tol = Inf)))
+    expect_error(fitGPModel(group_data = group_data, y = y, matrix_inversion_method = "iterative",
+                            params = list(cg_abs_tol = Inf)))
 
     gp_model <- GPModel(group_data = group_data, matrix_inversion_method = "iterative")
     expect_error(gp_model$set_prediction_data(cg_convergence_criterion_pred = "reltive"))

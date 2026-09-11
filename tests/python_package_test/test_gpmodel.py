@@ -452,3 +452,50 @@ def test_invalid_cg_stopping_rule_options_raise():
                         matrix_inversion_method="iterative").fit(y=y, params=dict(bad, trace=False))
     with pytest.raises(ValueError):
         gp_model.set_prediction_data(cg_convergence_criterion_pred="reltive")
+
+def test_cg_tolerance_above_every_probe_norm_still_fits():
+    # the stochastic Lanczos quadrature averages over all probe vectors, so a probe must not be
+    # dropped from that average just because the zero vector satisfies the solver tolerance
+    group, y = _sim_crossed()
+    gp_model = _fit_iterative(group, y, cg_convergence_criterion="relative", cg_rel_tol=1e-8,
+                              cg_abs_tol=1e6)
+    assert np.all(np.isfinite(np.asarray(gp_model.get_cov_pars(), dtype=float)))
+    assert np.isfinite(gp_model.get_current_neg_log_likelihood())
+
+
+def test_cg_prediction_options_are_inherited_independently():
+    # setting one prediction option explicitly must not stop the others from following their
+    # parameter estimation counterpart
+    group, y = _sim_crossed()
+    gp_model = gpb.GPModel(group_data=group, likelihood="gaussian",
+                           matrix_inversion_method="iterative")
+    gp_model.set_prediction_data(cg_rel_tol_pred=1e-6)
+    gp_model.fit(y=y, params={"cg_preconditioner_type": "ssor", "num_rand_vec_trace": 100,
+                              "seed_rand_vec_trace": 1, "trace": False,
+                              "cg_convergence_criterion": "relative", "cg_rel_tol": 1e-3})
+    group_pred = np.column_stack([[0, 1, 999], [1, 0, 999]])
+    pred = gp_model.predict(group_data_pred=group_pred, predict_var=True)
+    assert np.all(np.isfinite(pred["mu"])) and np.all(pred["var"] > 0)
+
+
+def test_non_finite_cg_tolerances_raise():
+    group, y = _sim_crossed(n=200, m=20)
+    for bad in ({"cg_rel_tol": float("inf")}, {"cg_abs_tol": float("inf")},
+                {"cg_delta_conv": float("inf")}):
+        with pytest.raises(Exception):
+            gpb.GPModel(group_data=group, likelihood="gaussian",
+                        matrix_inversion_method="iterative").fit(y=y, params=dict(bad, trace=False))
+
+def test_cg_relative_rule_has_its_own_default_tolerances():
+    # cg_rel_tol and cg_abs_tol default to 1e-6 and 1e-8 and are independent of cg_delta_conv, so
+    # changing cg_delta_conv must leave a "relative" fit untouched
+    group, y = _sim_crossed()
+    default_rel = _fit_iterative(group, y, cg_convergence_criterion="relative")
+    other_delta = _fit_iterative(group, y, cg_convergence_criterion="relative", cg_delta_conv=1e-1)
+    np.testing.assert_allclose(np.asarray(default_rel.get_cov_pars(), dtype=float).ravel(),
+                               np.asarray(other_delta.get_cov_pars(), dtype=float).ravel(), rtol=1e-12)
+    # passing the documented defaults explicitly changes nothing
+    explicit = _fit_iterative(group, y, cg_convergence_criterion="relative", cg_rel_tol=1e-6,
+                              cg_abs_tol=1e-8)
+    np.testing.assert_allclose(np.asarray(default_rel.get_cov_pars(), dtype=float).ravel(),
+                               np.asarray(explicit.get_cov_pars(), dtype=float).ravel(), rtol=1e-12)

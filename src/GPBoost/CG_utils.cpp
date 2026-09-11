@@ -12,6 +12,8 @@
 #include <LightGBM/utils/log.h>
 
 #include <chrono>
+#include <iomanip>
+#include <sstream>
 #include <thread> //temp
 
 using LightGBM::Log;
@@ -58,6 +60,13 @@ namespace GPBoost {
 		else {
 			//r = rhs - A * u
 			r = rhs - ((B_t_D_inv_rm * (B_rm * u)) + diag_W.cwiseProduct(u));
+		}
+		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
+		//	make the first step size a = (r^T z) / (h^T A h) a 0/0
+		const double r_norm_initial = r.norm();
+		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial) ||
+			(conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm))) {
+			return;
 		}
 		if (cg_preconditioner_type == "vadu") {
 			//z = P^(-1) r, where P^(-1) = B^(-1) (D^(-1) + W)^(-1) B^(-T)
@@ -138,7 +147,7 @@ namespace GPBoost {
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
-		CGMultiRHSConvergence conv(conv_params, rhs);
+		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -338,6 +347,15 @@ namespace GPBoost {
 			vec_t B_invt_W_u = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(u);
 			r = r - D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_W_u);
 		}
+		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
+		//	make the first step size a = (r^T z) / (h^T A h) a 0/0
+		const double r_norm_initial = r.norm();
+		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial) ||
+			(conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm))) {
+			//u is held as W * u inside this routine, see above
+			u = diag_W_inv.cwiseProduct(u);
+			return;
+		}
 		//z = P^(-1) r 
 		if (cg_preconditioner_type == "pivoted_cholesky") {
 			//P^(-1) = (W^(-1) + Sigma_L_k Sigma_L_k^T)^(-1) = W - W Sigma_L_k (I_k + Sigma_L_k^T W Sigma_L_k)^(-1) Sigma_L_k^T W
@@ -440,7 +458,7 @@ namespace GPBoost {
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
-		CGMultiRHSConvergence conv(conv_params, rhs);
+		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
 		double mean_R_norm;
 		diag_W_inv = diag_W.cwiseInverse();
 		U.setZero();
@@ -449,33 +467,39 @@ namespace GPBoost {
 		b.setZero();
 		//R = rhs - (W^(-1) + Sigma) * U
 		R = rhs; //Since U is 0
-		//Z = P^(-1) R 
-		if (cg_preconditioner_type == "pivoted_cholesky") {
-			//P^(-1) = (W^(-1) + Sigma_L_k Sigma_L_k^T)^(-1) = W - W Sigma_L_k (I_k + Sigma_L_k^T W Sigma_L_k)^(-1) Sigma_L_k^T W
-			W_R = diag_W.asDiagonal() * R;
-			Sigma_Lkt_W_R = Sigma_L_k.transpose() * W_R;
-			if (Sigma_L_k.cols() < t) {
-				Z = W_R - (diag_W.asDiagonal() * Sigma_L_k) * chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia.solve(Sigma_Lkt_W_R);
+		//Z = P^(-1) R. Defined once so that it can be applied either to all columns or, once some columns
+		//	have converged under the "per_rhs" rule, to a compact matrix holding only the remaining ones
+		auto apply_preconditioner = [&](const den_mat_t& R_in, den_mat_t& Z_out) {
+			const int t_in = (int)R_in.cols();
+			if (cg_preconditioner_type == "pivoted_cholesky") {
+				//P^(-1) = (W^(-1) + Sigma_L_k Sigma_L_k^T)^(-1) = W - W Sigma_L_k (I_k + Sigma_L_k^T W Sigma_L_k)^(-1) Sigma_L_k^T W
+				W_R = diag_W.asDiagonal() * R_in;
+				Sigma_Lkt_W_R = Sigma_L_k.transpose() * W_R;
+				if (Sigma_L_k.cols() < t_in) {
+					Z_out = W_R - (diag_W.asDiagonal() * Sigma_L_k) * chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia.solve(Sigma_Lkt_W_R);
+				}
+				else {
+					Z_out = W_R - diag_W.asDiagonal() * (Sigma_L_k * chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia.solve(Sigma_Lkt_W_R));
+				}
+			}
+			else if (cg_preconditioner_type == "fitc") {
+				W_R = diagonal_approx_inv_preconditioner.asDiagonal() * R_in;
+				//No case distinction for the brackets since Sigma_L_k is dense
+				Z_out = W_R - diagonal_approx_inv_preconditioner.asDiagonal() * ((*cross_cov) * chol_fact_woodbury_preconditioner.solve((*cross_cov).transpose() * W_R));
+			}
+			else if (cg_preconditioner_type == "vecchia_response") {
+				//Z = P^(-1) R = B^T D^(-1) B R
+				Z_out.resize(R_in.rows(), t_in);
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t_in; ++i) {
+					Z_out.col(i) = B_vecchia_pc.transpose() * (D_inv_vecchia_pc * (B_vecchia_pc * (R_in.col(i))));
+				}
 			}
 			else {
-				Z = W_R - diag_W.asDiagonal() * (Sigma_L_k * chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia.solve(Sigma_Lkt_W_R));
+				Log::REFatal("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
 			}
-		}
-		else if (cg_preconditioner_type == "fitc") {
-			W_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
-			//No case distinction for the brackets since Sigma_L_k is dense
-			Z = W_R - diagonal_approx_inv_preconditioner.asDiagonal() * ((*cross_cov) * chol_fact_woodbury_preconditioner.solve((*cross_cov).transpose() * W_R));
-		}
-		else if (cg_preconditioner_type == "vecchia_response") {
-			//Z = P^(-1) R = B^T D^(-1) B R
-#pragma omp parallel for schedule(static)   
-			for (int i = 0; i < t; ++i) {
-				Z.col(i) = B_vecchia_pc.transpose() * (D_inv_vecchia_pc * (B_vecchia_pc * (R.col(i))));
-			}
-		}
-		else {
-			Log::REFatal("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
-		}
+		};
+		apply_preconditioner(R, Z);
 		H = Z;
 		for (int j = 0; j < p; ++j) {
 			//V = (W^(-1) + Sigma) * H - expensive part of the loop
@@ -520,28 +544,17 @@ namespace GPBoost {
 			}
 			//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
 			Z_old = Z;
-			//Z = P^(-1) R
-			if (cg_preconditioner_type == "pivoted_cholesky") {
-				W_R = diag_W.asDiagonal() * R;
-				Sigma_Lkt_W_R = Sigma_L_k.transpose() * W_R;
-				if (Sigma_L_k.cols() < t) {
-					Z = W_R - (diag_W.asDiagonal() * Sigma_L_k) * chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia.solve(Sigma_Lkt_W_R);
-				}
-				else {
-					Z = W_R - diag_W.asDiagonal() * (Sigma_L_k * chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia.solve(Sigma_Lkt_W_R));
+			//Z = P^(-1) R, only for the columns that are still being iterated on
+			if (conv.NeedsMasking()) {
+				const std::vector<int>& cols = conv.ColumnsNeedingUpdate();
+				if (!cols.empty()) {
+					den_mat_t Z_active;
+					apply_preconditioner(GatherColumns(R, cols), Z_active);
+					ScatterColumns(Z_active, cols, Z);
 				}
 			}
-			else if (cg_preconditioner_type == "fitc") {
-				W_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
-				//No case distinction for the brackets since Sigma_L_k is dense
-				Z = W_R - diagonal_approx_inv_preconditioner.asDiagonal() * ((*cross_cov) * chol_fact_woodbury_preconditioner.solve((*cross_cov).transpose() * W_R));
-			}
-			else if (cg_preconditioner_type == "vecchia_response") {
-				//Z = P^(-1) R = B^T D^(-1) B R
-#pragma omp parallel for schedule(static)   
-				for (int i = 0; i < t; ++i) {
-					Z.col(i) = B_vecchia_pc.transpose() * (D_inv_vecchia_pc * (B_vecchia_pc * (R.col(i))));
-				}
+			else {
+				apply_preconditioner(R, Z);
 			}
 			b_old = b;
 			if (conv.NeedsMasking()) {
@@ -630,6 +643,13 @@ namespace GPBoost {
 			B_t_D_inv_B_vec = B_t_D_inv_rm * (B_rm * u);
 			r = rhs - (B_t_D_inv_B_vec + diag_W.cwiseProduct(u) - B_t_D_inv_rm * (B_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * B_t_D_inv_B_vec))));
 		}
+		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
+		//	make the first step size a = (r^T z) / (h^T A h) a 0/0
+		const double r_norm_initial = r.norm();
+		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial) ||
+			(conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm))) {
+			return;
+		}
 		if (cg_preconditioner_type == "vifdu") {
 			B_invt_r = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(r);
 			vecchia_cross_cov_sigma_woodbury_woodbury_inv_cross_cov_vecchia = W_D_inv_inv.asDiagonal() * (B_t_D_inv_rm.transpose() * ((*cross_cov) * (chol_fact_sigma_woodbury_woodbury.solve((*cross_cov).transpose() * (B_t_D_inv_rm * (W_D_inv_inv.asDiagonal() * B_invt_r))))));
@@ -712,7 +732,7 @@ namespace GPBoost {
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
-		CGMultiRHSConvergence conv(conv_params, rhs);
+		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
 		double mean_R_norm;
 		den_mat_t W_D_inv_inv_B_invt_R(num_data, t), B_invt_R(num_data, t), B_t_D_inv_W_D_inv_inv_B_invt_R(num_data, t), B_t_D_inv_B_mat(num_data, t),
 			W_D_inv_inv_plus_vecchia_woodbury_woodbury_B_invt_R, cross_cov_sigma_woodbury_woodbury_cross_cov_B_t_D_inv_W_D_inv_inv_B_invt_R,
@@ -802,25 +822,41 @@ namespace GPBoost {
 			if (cg_preconditioner_type == "vifdu") {
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					W_D_inv_inv_B_invt_R.col(i) = W_D_inv_inv.cwiseProduct(B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(R.col(i)));
 				}
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					B_t_D_inv_W_D_inv_inv_B_invt_R.col(i) = B_t_D_inv_rm * W_D_inv_inv_B_invt_R.col(i);
 				}
 				cross_cov_sigma_woodbury_woodbury_cross_cov_B_t_D_inv_W_D_inv_inv_B_invt_R = (*cross_cov) * (chol_fact_sigma_woodbury_woodbury.solve((*cross_cov).transpose() * B_t_D_inv_W_D_inv_inv_B_invt_R));
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					vecchia_cross_cov_sigma_woodbury_woodbury_inv_cross_cov_vecchia.col(i) = W_D_inv_inv.cwiseProduct(B_t_D_inv_rm.transpose() * cross_cov_sigma_woodbury_woodbury_cross_cov_B_t_D_inv_W_D_inv_inv_B_invt_R.col(i));
 				}
 				W_D_inv_inv_plus_vecchia_woodbury_woodbury_B_invt_R = W_D_inv_inv_B_invt_R + vecchia_cross_cov_sigma_woodbury_woodbury_inv_cross_cov_vecchia;
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					Z.col(i) = B_rm.triangularView<Eigen::UpLoType::UnitLower>().solve(W_D_inv_inv_plus_vecchia_woodbury_woodbury_B_invt_R.col(i));
 				}
 			}
 			else if (cg_preconditioner_type == "none") {
-				Z = R;
+				for (int i = 0; i < t; ++i) {
+					if (conv.NeedsUpdate(i)) {
+						Z.col(i) = R.col(i);
+					}
+				}
 			}
 			else {
 				Log::REFatal("CGTridiagVIFLaplace: Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
@@ -912,6 +948,13 @@ namespace GPBoost {
 			B_inv_D_B_invt_u = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(u)));
 			r = rhs - chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * u) - B_inv_D_B_invt_u - diag_W_inv.asDiagonal() * u;
 		}
+		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
+		//	make the first step size a = (r^T z) / (h^T A h) a 0/0
+		const double r_norm_initial = r.norm();
+		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial) ||
+			(conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm))) {
+			return;
+		}
 		if (cg_preconditioner_type == "fitc") {
 			FITC_W_inv_r = FITC_W_inv.asDiagonal() * r;
 			z = FITC_W_inv_r - FITC_W_inv.asDiagonal() * ((*cross_cov_preconditioner) * (chol_fact_sigma_woodbury_preconditioner.solve((*cross_cov_preconditioner).transpose() * FITC_W_inv_r)));
@@ -992,7 +1035,7 @@ namespace GPBoost {
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
-		CGMultiRHSConvergence conv(conv_params, rhs);
+		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
 		double mean_R_norm;
 		den_mat_t B_inv_D_B_invt_U(num_data, t), FITC_W_inv_R(num_data, t);
 		U.setZero();
@@ -1070,15 +1113,25 @@ namespace GPBoost {
 			if (cg_preconditioner_type == "fitc") {
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					FITC_W_inv_R.col(i) = FITC_W_inv.asDiagonal() * R.col(i);
 				}
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < t; ++i) {
+					if (!conv.NeedsUpdate(i)) {
+						continue;
+					}
 					Z.col(i) = FITC_W_inv_R.col(i) - FITC_W_inv.asDiagonal() * ((*cross_cov_preconditioner) * (chol_fact_sigma_woodbury_preconditioner.solve((*cross_cov_preconditioner).transpose() * FITC_W_inv_R.col(i))));
 				}
 			}
 			else if (cg_preconditioner_type == "none") {
-				Z = R;
+				for (int i = 0; i < t; ++i) {
+					if (conv.NeedsUpdate(i)) {
+						Z.col(i) = R.col(i);
+					}
+				}
 			}
 			else {
 				Log::REFatal("CGTridiagVIFLaplace_Version_SigmaPlusWinv: Preconditioner type '%s' is not supported.", cg_preconditioner_type.c_str());
@@ -1225,6 +1278,11 @@ namespace GPBoost {
 		ldet = ldet * num_data / num_t_used;
 	} // end LogDetStochTridiag
 
+	//Below this L2 norm the conjugate gradient recursion cannot be started: the first step size
+	//	a = (r^T z) / (h^T A h) would be 0/0. The square of the threshold is still far above the
+	//	smallest normal double, so a rhs above it can be iterated on safely
+	const double CGConvergenceParams::THRESHOLD_DEGENERATE_RHS = 1e-100;
+
 	void CGMultiRHSConvergence::LogDiagnostics(const char* caller) const {
 		//'REDebug' discards the message unless the debug log level is enabled, i.e. this is never printed unconditionally
 		if (t_ == 0) {
@@ -1238,13 +1296,28 @@ namespace GPBoost {
 			sum_it += num_it_[i];
 		}
 		double max_r_norm = 0., max_scaled_r_norm = 0.;
+		const vec_t scaled_r_norms = ScaledResidualNormsPerRHS();
 		for (int i = 0; i < t_; ++i) {
 			max_r_norm = std::max(max_r_norm, r_norms_[i]);
-			max_scaled_r_norm = std::max(max_scaled_r_norm, r_norms_[i] / params_.Tolerance(rhs_norms_[i]));
+			max_scaled_r_norm = std::max(max_scaled_r_norm, scaled_r_norms[i]);
 		}
 		Log::REDebug("%s: iterations per rhs (mean / min / max) = %g / %i / %i, "
 			"final residuals (mean / max ||r_j||_2) = %g / %g, max scaled residual ||r_j||_2 / tol_j = %g ",
 			caller, sum_it / t_, min_it, max_it, mean_r_norm_, max_r_norm, max_scaled_r_norm);
+		//the per-rhs vectors themselves, for benchmarking. Built in one string so that the columns stay
+		//	on one line each and the log does not interleave when several clusters run in parallel
+		std::stringstream it_str, r_str, q_str;
+		it_str << std::setprecision(6);
+		r_str << std::scientific << std::setprecision(3);
+		q_str << std::scientific << std::setprecision(3);
+		for (int i = 0; i < t_; ++i) {
+			it_str << (i > 0 ? " " : "") << num_it_[i];
+			r_str << (i > 0 ? " " : "") << r_norms_[i];
+			q_str << (i > 0 ? " " : "") << scaled_r_norms[i];
+		}
+		Log::REDebug("%s: iterations per rhs = [%s] ", caller, it_str.str().c_str());
+		Log::REDebug("%s: ||r_j||_2 per rhs = [%s] ", caller, r_str.str().c_str());
+		Log::REDebug("%s: ||r_j||_2 / tol_j per rhs = [%s] ", caller, q_str.str().c_str());
 	} // end CGMultiRHSConvergence::LogDiagnostics
 
 	void CalcOptimalC(const vec_t& zt_AI_A_deriv_PI_z,
@@ -1377,6 +1450,7 @@ namespace GPBoost {
 		//Avoid numerical instabilites when rhs is de facto 0 or when the zero vector already satisfies the tolerance
 		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG || conv_params.RhsIsNegligible(rhs_norm)) {
 			u.setZero();
+			num_cg_steps = 0;
 			return;
 		}
 		if (initialize_to_zero) {
@@ -1389,6 +1463,14 @@ namespace GPBoost {
 		else {
 			//r = rhs - A * u
 			r = rhs - SigmaI_plus_ZtWZ_rm * u;
+		}
+		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
+		//	make the first step size a = (r^T z) / (h^T A h) a 0/0
+		const double r_norm_initial = r.norm();
+		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial) ||
+			(conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm))) {
+			num_cg_steps = 0;
+			return;
 		}
 		//z = P^(-1) r
 		if (cg_preconditioner_type == "incomplete_cholesky") {
@@ -1515,7 +1597,7 @@ namespace GPBoost {
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
-		CGMultiRHSConvergence conv(conv_params, rhs);
+		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
 		double mean_R_norm;
 		U.setZero();
 		v1.setOnes();
@@ -1611,6 +1693,7 @@ namespace GPBoost {
 				//shrink to the iterations actually carried out (as in the early-convergence case
 				//	below), otherwise a caller reads uninitialized entries
 				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j);
+				num_cg_steps = j;
 				return;
 			}
 			if (early_stop_alg) {
@@ -1820,9 +1903,12 @@ namespace GPBoost {
 			mean_R_norm = conv.MeanResidualNorm();
 			if (std::isnan(mean_R_norm) || std::isinf(mean_R_norm)) {
 				NA_or_Inf_found = true;
+				conv.FinalizeIterations(j);
 				return;
 			}
 			if (early_stop_alg) {
+				conv.FinalizeIterations(j + 1);
+				conv.LogDiagnostics("CGRandomEffectsMat");
 				//Log::REInfo("Number CGRandomEffectsMat iterations: %i", j + 1);
 				return;
 			}
@@ -1883,6 +1969,7 @@ namespace GPBoost {
 				H = Z + H * b.asDiagonal();
 			}
 		}
+		conv.FinalizeIterations(p);
 		conv.LogDiagnostics("CGRandomEffectsMat");
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it' ", p);

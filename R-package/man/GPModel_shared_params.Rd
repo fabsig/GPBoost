@@ -404,7 +404,9 @@ Available options:
 for making predictions. Default value if NULL: num_neighbors_pred = 2 * num_neighbors}
 
 \item{cg_delta_conv_pred}{a \code{numeric} specifying the tolerance level for L2 norm of residuals for 
-checking convergence in conjugate gradient algorithms when being used for prediction
+checking convergence in conjugate gradient algorithms when being used for prediction.
+This is the tolerance of the "absolute" criterion only, the "relative" criterion is controlled
+by cg_rel_tol_pred and cg_abs_tol_pred.
 Default value if NULL: 1e-3}
 
 \item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
@@ -505,7 +507,42 @@ fixed effects linear regression term (if there is one)}
     \item{cg_delta_conv: \code{numeric} (default = 1E-2).
     Tolerance level for L2 norm of residuals for checking convergence 
     in conjugate gradient algorithm when being used for parameter estimation.
+    This is the tolerance of the "absolute" criterion only, the "relative" criterion
+    is controlled by cg_rel_tol and cg_abs_tol.
     If cg_delta_conv = -999, internal default values are used }
+    \item{cg_convergence_criterion: \code{string} (default = "absolute").
+    Stopping rule of conjugate gradient algorithms.
+    \itemize{
+      \item{"absolute": stop when ||r||_2 < cg_delta_conv }
+      \item{"relative": stop when ||r||_2 <= max(cg_abs_tol, cg_rel_tol * ||b||_2),
+      where b is the right-hand side of the linear system. The cg_abs_tol floor makes
+      this robust for right-hand sides that are zero or very small }
+    } }
+    \item{cg_rel_tol: \code{numeric} (default = 1E-6).
+    Relative tolerance of the "relative" stopping rule.
+    If cg_rel_tol = -999, internal default values are used }
+    \item{cg_abs_tol: \code{numeric} (default = 1E-8).
+    Absolute tolerance floor of the "relative" stopping rule, which makes it robust
+    for right-hand sides that are zero or very small. This is independent of
+    cg_delta_conv, so that the two criteria can be varied separately.
+    If cg_abs_tol = -999, internal default values are used }
+    \item{cg_multi_rhs_convergence: \code{string} (default = "average").
+    How the stopping rule is aggregated over the columns of a linear system with
+    several right-hand sides, such as the stochastic Lanczos quadrature.
+    For cg_convergence_criterion = "relative", every right-hand side is normalized by
+    its own norm, i.e. q_j = ||r_j||_2 / max(cg_abs_tol, cg_rel_tol * ||b_j||_2):
+    \itemize{
+      \item{"average": stop when mean(q_j) <= 1 }
+      \item{"max": stop when max(q_j) <= 1 }
+      \item{"per_rhs": stop iterating on column j individually as soon as q_j <= 1 }
+    }
+    For cg_convergence_criterion = "absolute" there is no per-column normalization:
+    \itemize{
+      \item{"average": stop when mean(||r_j||_2) < cg_delta_conv. This is the
+      historic behavior and the default }
+      \item{"max": stop when ||r_j||_2 < cg_delta_conv for all j }
+      \item{"per_rhs": stop iterating on column j as soon as ||r_j||_2 < cg_delta_conv }
+    } }
     \item{num_rand_vec_trace: \code{integer} (default = 50). 
     Number of random vectors (e.g., Rademacher) for stochastic approximation of the trace of a matrix.
     If num_rand_vec_trace = -999, internal default values are used }
@@ -647,6 +684,22 @@ square root of diagonal of a numerically approximated inverse Hessian for non-Ga
 \item{vecchia_approx}{Discontinued. Use the argument \code{gp_approx} instead}
 
 \item{num_data}{A \code{numeric} with the number of samples. This is only used for iid models}
+
+\item{cg_convergence_criterion_pred}{a \code{string} specifying the stopping rule of conjugate
+gradient algorithms when being used for prediction: "absolute" (stop when ||r||_2 < cg_delta_conv_pred)
+or "relative" (stop when ||r||_2 <= max(cg_abs_tol_pred, cg_rel_tol_pred * ||b||_2)).
+Default value if NULL: the value of cg_convergence_criterion used for the parameter estimation}
+
+\item{cg_rel_tol_pred}{a \code{numeric} specifying the relative tolerance of the "relative"
+stopping rule when being used for prediction.
+Default value if NULL: the value of cg_rel_tol used for the parameter estimation. This is
+inherited independently of cg_convergence_criterion_pred}
+
+\item{cg_abs_tol_pred}{a \code{numeric} specifying the absolute tolerance floor of the "relative"
+stopping rule when being used for prediction. This makes the rule robust for right-hand sides
+that are zero or very small.
+Default value if NULL: the value of cg_abs_tol used for the parameter estimation. This is
+inherited independently of the other two prediction options}
 }
 \description{
 Documentation for parameters shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}

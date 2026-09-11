@@ -980,13 +980,9 @@ namespace GPBoost {
 				else if (cg_max_num_it_tridiag != -999) {
 					Log::REFatal("cg_max_num_it_tridiag is not > 0, found = %d ", cg_max_num_it_tridiag);
 				}
-				if (cg_delta_conv > 0.) {
+				if (std::isfinite(cg_delta_conv) && cg_delta_conv > 0.) {
 					cg_delta_conv_ = cg_delta_conv;
 					cg_convergence_params_.delta_conv = cg_delta_conv;
-					if (!cg_abs_tol_has_been_set_) {
-						//'cg_abs_tol' has never been set explicitly, so it follows 'cg_delta_conv' as documented
-						cg_convergence_params_.abs_tol = cg_delta_conv;
-					}
 				}
 				else if (!TwoNumbersAreEqual<double>(cg_delta_conv, -999.)) {
 					Log::REFatal("cg_delta_conv is not > 0, found = %g ", cg_delta_conv);
@@ -997,18 +993,17 @@ namespace GPBoost {
 						Log::REFatal("cg_convergence_criterion must be 'absolute' or 'relative', found = '%s' ", cg_convergence_criterion);
 					}
 				}
-				if (cg_rel_tol > 0.) {
+				if (std::isfinite(cg_rel_tol) && cg_rel_tol > 0.) {
 					cg_convergence_params_.rel_tol = cg_rel_tol;
 				}
 				else if (!TwoNumbersAreEqual<double>(cg_rel_tol, -999.)) {
-					Log::REFatal("cg_rel_tol is not > 0, found = %g ", cg_rel_tol);
+					Log::REFatal("cg_rel_tol is not a finite number > 0, found = %g ", cg_rel_tol);
 				}
-				if (cg_abs_tol > 0.) {
+				if (std::isfinite(cg_abs_tol) && cg_abs_tol > 0.) {
 					cg_convergence_params_.abs_tol = cg_abs_tol;
-					cg_abs_tol_has_been_set_ = true;
 				}
 				else if (!TwoNumbersAreEqual<double>(cg_abs_tol, -999.)) {
-					Log::REFatal("cg_abs_tol is not > 0, found = %g ", cg_abs_tol);
+					Log::REFatal("cg_abs_tol is not a finite number > 0, found = %g ", cg_abs_tol);
 				}
 				if (cg_multi_rhs_convergence != nullptr && std::string(cg_multi_rhs_convergence) != "") {
 					cg_convergence_params_.multi_rhs_convergence = std::string(cg_multi_rhs_convergence);
@@ -1017,13 +1012,18 @@ namespace GPBoost {
 						Log::REFatal("cg_multi_rhs_convergence must be 'average', 'max', or 'per_rhs', found = '%s' ", cg_multi_rhs_convergence);
 					}
 				}
+				//every prediction option that has not been set explicitly via 'SetPredictionData' follows its
+				//	estimation counterpart, independently of the others
 				if (!cg_convergence_criterion_pred_has_been_set_) {
-					//unless they were set explicitly via 'SetPredictionData', predictions use the same rule as the estimation.
-					//	Only the absolute floor differs since it follows 'cg_delta_conv_pred'
 					cg_convergence_params_pred_.criterion = cg_convergence_params_.criterion;
-					cg_convergence_params_pred_.rel_tol = cg_convergence_params_.rel_tol;
-					cg_convergence_params_pred_.multi_rhs_convergence = cg_convergence_params_.multi_rhs_convergence;
 				}
+				if (!cg_rel_tol_pred_has_been_set_) {
+					cg_convergence_params_pred_.rel_tol = cg_convergence_params_.rel_tol;
+				}
+				if (!cg_abs_tol_pred_has_been_set_) {
+					cg_convergence_params_pred_.abs_tol = cg_convergence_params_.abs_tol;
+				}
+				cg_convergence_params_pred_.multi_rhs_convergence = cg_convergence_params_.multi_rhs_convergence;
 				if (cg_preconditioner_type != nullptr) {
 					if (cg_preconditioner_type_ != std::string(cg_preconditioner_type) &&
 						model_has_been_estimated_) {
@@ -3666,13 +3666,9 @@ namespace GPBoost {
 				nsim_var_pred_has_been_set_ = true;
 			}
 			if (matrix_inversion_method_ == "iterative") {
-				if (cg_delta_conv_pred > 0) {
+				if (std::isfinite(cg_delta_conv_pred) && cg_delta_conv_pred > 0.) {
 					cg_delta_conv_pred_ = cg_delta_conv_pred;
 					cg_convergence_params_pred_.delta_conv = cg_delta_conv_pred;
-					if (!cg_abs_tol_pred_has_been_set_) {
-						//'cg_abs_tol_pred' has never been set explicitly, so it follows 'cg_delta_conv_pred' as documented
-						cg_convergence_params_pred_.abs_tol = cg_delta_conv_pred;
-					}
 				}
 				if (cg_convergence_criterion_pred != nullptr && std::string(cg_convergence_criterion_pred) != "") {
 					cg_convergence_params_pred_.criterion = std::string(cg_convergence_criterion_pred);
@@ -3681,19 +3677,19 @@ namespace GPBoost {
 					}
 					cg_convergence_criterion_pred_has_been_set_ = true;
 				}
-				if (cg_rel_tol_pred > 0.) {
+				if (std::isfinite(cg_rel_tol_pred) && cg_rel_tol_pred > 0.) {
 					cg_convergence_params_pred_.rel_tol = cg_rel_tol_pred;
-					cg_convergence_criterion_pred_has_been_set_ = true;
+					cg_rel_tol_pred_has_been_set_ = true;
 				}
 				else if (!TwoNumbersAreEqual<double>(cg_rel_tol_pred, -1.)) {
-					Log::REFatal("cg_rel_tol_pred is not > 0, found = %g ", cg_rel_tol_pred);
+					Log::REFatal("cg_rel_tol_pred is not a finite number > 0, found = %g ", cg_rel_tol_pred);
 				}
-				if (cg_abs_tol_pred > 0.) {
+				if (std::isfinite(cg_abs_tol_pred) && cg_abs_tol_pred > 0.) {
 					cg_convergence_params_pred_.abs_tol = cg_abs_tol_pred;
 					cg_abs_tol_pred_has_been_set_ = true;
 				}
 				else if (!TwoNumbersAreEqual<double>(cg_abs_tol_pred, -1.)) {
-					Log::REFatal("cg_abs_tol_pred is not > 0, found = %g ", cg_abs_tol_pred);
+					Log::REFatal("cg_abs_tol_pred is not a finite number > 0, found = %g ", cg_abs_tol_pred);
 				}
 				if (rank_pred_approx_matrix_lanczos > 0) {
 					rank_pred_approx_matrix_lanczos_ = rank_pred_approx_matrix_lanczos;
@@ -6317,12 +6313,12 @@ namespace GPBoost {
 		double cg_delta_conv_pred_ = 1e-3;
 		/*! \brief Stopping rule and tolerances of the conjugate gradient algorithm when being used for prediction */
 		CGConvergenceParams cg_convergence_params_pred_ = CGConvergenceParams(1e-3);
-		/*! \brief True if 'cg_abs_tol' has been set explicitly, in which case it does not follow 'cg_delta_conv' anymore */
-		bool cg_abs_tol_has_been_set_ = false;
-		/*! \brief True if 'cg_abs_tol_pred' has been set explicitly, in which case it does not follow 'cg_delta_conv_pred' anymore */
+		/*! \brief True if 'cg_abs_tol_pred' has been set explicitly, in which case it is not inherited from the estimation settings anymore */
 		bool cg_abs_tol_pred_has_been_set_ = false;
-		/*! \brief True if the stopping rule for predictions has been set explicitly, in which case it is not inherited from the estimation settings anymore */
+		/*! \brief True if 'cg_convergence_criterion_pred' has been set explicitly, in which case it is not inherited from the estimation settings anymore */
 		bool cg_convergence_criterion_pred_has_been_set_ = false;
+		/*! \brief True if 'cg_rel_tol_pred' has been set explicitly, in which case it is not inherited from the estimation settings anymore */
+		bool cg_rel_tol_pred_has_been_set_ = false;
 		/*! \brief Threshold to avoid numerical instability in the CG: If the L1-norm of the rhs is below the defined threshold the CG is not executed and a vector of 0's is returned */
 		const double THRESHOLD_ZERO_RHS_CG_ = 1.0e-100;
 		/*! \brief Number of samples when simulation is used for calculating predictive variances */
