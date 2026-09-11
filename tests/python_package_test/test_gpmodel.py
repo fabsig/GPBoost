@@ -499,3 +499,20 @@ def test_cg_relative_rule_has_its_own_default_tolerances():
                               cg_abs_tol=1e-8)
     np.testing.assert_allclose(np.asarray(default_rel.get_cov_pars(), dtype=float).ravel(),
                                np.asarray(explicit.get_cov_pars(), dtype=float).ravel(), rtol=1e-12)
+
+@pytest.mark.parametrize("pred_opts", [{"cg_rel_tol_pred": 1e-12},
+                                       {"cg_abs_tol_pred": 1e-14},
+                                       {"cg_convergence_criterion_pred": "absolute"},
+                                       {"cg_delta_conv_pred": 1e-10}])
+def test_cg_prediction_settings_do_not_change_the_fit(pred_opts):
+    # the estimation routines must not read any of the prediction settings
+    group, y = _sim_crossed()
+    reference = _fit_iterative(group, y, cg_convergence_criterion="relative", cg_rel_tol=1e-6)
+    gp_model = gpb.GPModel(group_data=group, likelihood="gaussian",
+                           matrix_inversion_method="iterative")
+    gp_model.set_prediction_data(**pred_opts)
+    gp_model.fit(y=y, params={"cg_preconditioner_type": "ssor", "num_rand_vec_trace": 100,
+                              "seed_rand_vec_trace": 1, "trace": False,
+                              "cg_convergence_criterion": "relative", "cg_rel_tol": 1e-6})
+    np.testing.assert_allclose(np.asarray(gp_model.get_cov_pars(), dtype=float).ravel(),
+                               np.asarray(reference.get_cov_pars(), dtype=float).ravel(), rtol=1e-12)

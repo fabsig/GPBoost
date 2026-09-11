@@ -173,6 +173,24 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_true(is.finite(gp_model$get_current_neg_log_likelihood()))
   })
 
+  test_that("Prediction settings do not change the parameter estimation", {
+
+    # The estimation routines must not read any of the prediction settings. Changing only a
+    # prediction tolerance therefore has to leave the fitted covariance parameters bit-identical
+    reference <- fit_iterative(list(cg_convergence_criterion = "relative", cg_rel_tol = 1E-6))
+    for (pred_opts in list(list(cg_rel_tol_pred = 1E-12),
+                           list(cg_abs_tol_pred = 1E-14),
+                           list(cg_convergence_criterion_pred = "absolute"),
+                           list(cg_delta_conv_pred = 1E-10))) {
+      gp_model <- GPModel(group_data = group_data, matrix_inversion_method = "iterative")
+      do.call(gp_model$set_prediction_data, pred_opts)
+      capture.output( gp_model$fit(y = y, params = c(FIT_PARAMS,
+                                                     list(cg_convergence_criterion = "relative",
+                                                          cg_rel_tol = 1E-6))) , file='NUL')
+      expect_equal(as.vector(gp_model$get_cov_pars()), as.vector(reference$get_cov_pars()))
+    }
+  })
+
   test_that("Invalid CG stopping-rule options are rejected", {
 
     expect_error(fitGPModel(group_data = group_data, y = y, matrix_inversion_method = "iterative",

@@ -19,8 +19,9 @@ requires a restriction, scope it to that purpose and explain it in a nearby comm
 that are only needed for an agent's own temporary validation must not silently become defaults in
 delivered code. Before finishing, check the result for unintended thread restrictions.
 
-By default, GPBoost uses the number of physical performance cores, see `NumPerformanceCores()` in
-`src/GPBoost/cpu_topology.cpp`.
+By default, a `GPModel` uses the number of physical performance cores, see `NumPerformanceCores()` in
+`src/GPBoost/cpu_topology.cpp`. The boosting parameter `num_threads` is independent of this: `0`, its
+default, means the default number of threads of OpenMP.
 
 ## Generated files that must not be edited by hand
 

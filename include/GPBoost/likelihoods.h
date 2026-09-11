@@ -7044,6 +7044,8 @@ namespace GPBoost {
 
 		/*!
 		* \brief Calculate (Sigma^-1 + ZtWZ)^-1 rhs
+		* \param for_prediction True if this is called from a prediction routine, in which case the conjugate
+		*		 gradient stopping rule configured for predictions is used instead of the one for the estimation
 		*/
 		void Inv_SigmaI_plus_ZtWZ_Vecchia_iterative(int cg_max_num_it,
 			den_mat_t& I_k_plus_Sigma_L_kt_W_Sigma_L_k,
@@ -7057,14 +7059,16 @@ namespace GPBoost {
 			const vec_t& rhs,
 			vec_t& SigmaI_plus_ZtWZ_inv_rhs,
 			bool initialize_to_zero,
-			bool calculate_preconditioners);
+			bool calculate_preconditioners,
+			bool for_prediction = false);
 		// Overload when preconditioners are not calculated
 		void Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(int cg_max_num_it,
 			const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
 			const vec_t& rhs,
 			vec_t& SigmaI_plus_ZtWZ_inv_rhs,
 			bool initialize_to_zero,
-			bool& has_NA_or_Inf);
+			bool& has_NA_or_Inf,
+			bool for_prediction = false);
 
 		/*!
 		* \brief Calculate log|Sigma W + I| using stochastic trace estimation and variance reduction.

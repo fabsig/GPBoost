@@ -2403,7 +2403,7 @@ namespace GPBoost {
 				CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, d_mll_d_mode, SigmaI_plus_ZtWZ_inv_d_mll_d_mode, has_NA_or_Inf,
 					cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
 					L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
-					cg_convergence_params_pred_);
+					cg_convergence_params_);
 				if (has_NA_or_Inf) {
 					Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
 				}
@@ -5913,7 +5913,7 @@ namespace GPBoost {
 						vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
 						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
 						bool has_NA_or_Inf = false;
-						Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, true, has_NA_or_Inf);
+						Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, true, has_NA_or_Inf, /*for_prediction=*/true);
 						if (has_NA_or_Inf) {
 							na_inf_flag_5 = true;
 						}
@@ -6262,7 +6262,7 @@ namespace GPBoost {
 				}
 				//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
 				bool has_NA_or_Inf = false;
-				Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, false, has_NA_or_Inf);
+				Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, false, has_NA_or_Inf, /*for_prediction=*/true);
 				if (has_NA_or_Inf) {
 					na_inf_flag_7 = true;
 				}
@@ -6740,7 +6740,7 @@ namespace GPBoost {
 					vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
 					//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
 					bool has_NA_or_Inf = false;
-					Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, true, has_NA_or_Inf);
+					Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, true, has_NA_or_Inf, /*for_prediction=*/true);
 					if (has_NA_or_Inf) {
 						na_inf_flag_10 = true;
 					}
@@ -6839,7 +6839,9 @@ namespace GPBoost {
 		const vec_t& rhs,
 		vec_t& SigmaI_plus_ZtWZ_inv_rhs,
 		bool initialize_to_zero,
-		bool calculate_preconditioners) {
+		bool calculate_preconditioners,
+		bool for_prediction) {
+		const CGConvergenceParams& conv_params = for_prediction ? cg_convergence_params_pred_ : cg_convergence_params_;
 		if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
 			if (calculate_preconditioners && HasNegativeValueInformationLogLik()) {
 				Log::REFatal("Inv_SigmaI_plus_ZtWZ_Vecchia_iterative: Negative values found in W (the diagonal Hessian or Fisher information of the negative log-likelihood). "
@@ -6892,7 +6894,7 @@ namespace GPBoost {
 				CGVecchiaLaplace_Version_SigmaPlusWinvVec(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, SigmaI_plus_ZtWZ_inv_rhs, has_NA_or_Inf,
 					cg_max_num_it, initialize_to_zero, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_,
 					chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_, false,
-					cg_convergence_params_);
+					conv_params);
 			}
 		}//end cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc"
 		else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
@@ -6908,7 +6910,7 @@ namespace GPBoost {
 			}//end calculate_preconditioners
 			CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rhs, SigmaI_plus_ZtWZ_inv_rhs, has_NA_or_Inf,
 				cg_max_num_it, initialize_to_zero, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, false,
-				cg_convergence_params_);
+				conv_params);
 		}
 		else {
 			Log::REFatal("Inv_SigmaI_plus_ZtWZ_Vecchia_iterative: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
@@ -6921,12 +6923,14 @@ namespace GPBoost {
 		const vec_t& rhs,
 		vec_t& SigmaI_plus_ZtWZ_inv_rhs,
 		bool initialize_to_zero,
-		bool& has_NA_or_Inf) {
+		bool& has_NA_or_Inf,
+		bool for_prediction) {
 		den_mat_t d1{};
 		sp_mat_t  d2{}, d3{}, d4{};
 		REModelTemplate<T_mat, T_chol>* model = nullptr;
 		Inv_SigmaI_plus_ZtWZ_Vecchia_iterative(cg_max_num_it, d1, d2, d3, d4, has_NA_or_Inf,
-			re_comps_cross_cov_cluster_i, 0, model, rhs, SigmaI_plus_ZtWZ_inv_rhs, initialize_to_zero, false);
+			re_comps_cross_cov_cluster_i, 0, model, rhs, SigmaI_plus_ZtWZ_inv_rhs, initialize_to_zero, false,
+			for_prediction);
 	}//end Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC
 
 	template <typename T_mat, typename T_chol>

@@ -12838,13 +12838,13 @@ namespace GPBoost {
 									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov_preconditioner, GetForCluster(chol_ip_cross_cov_, cluster_i, 0), sigma_obs_pred_dense, sigma_inv_sigma_obs_pred, NaN_found,
 										num_REs_obs, num_REs_pred, cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i],
-										cg_convergence_params_);
+										cg_convergence_params_pred_);
 								}
 								else {
 									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, GetForCluster(chol_ip_cross_cov_, cluster_i, 0), sigma_obs_pred_dense, sigma_inv_sigma_obs_pred, NaN_found,
 										num_REs_obs, num_REs_pred, cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i],
-										cg_convergence_params_);
+										cg_convergence_params_pred_);
 								}
 
 								T_mat cross_cov_part;
@@ -12927,7 +12927,7 @@ namespace GPBoost {
 										CGFSA_RESID<T_mat>(*sigma_resid, rand_vec_probe_pred.matrix(), sigma_resid_inv_pv, NaN_found, num_REs_obs, 1,
 											cg_max_num_it_tridiag_, cg_delta_conv_pred,
 											cg_preconditioner_type_, diagonal_approx_inv_preconditioner_[cluster_i],
-											cg_convergence_params_);
+											cg_convergence_params_pred_);
 										// sigma_resid_pred * sigma_resid_inv_pv
 										den_mat_t rand_vec_probe_final = sigma_resid_pred_obs * sigma_resid_inv_pv;
 
@@ -12979,7 +12979,7 @@ namespace GPBoost {
 								CGFSA_RESID<T_mat>(*sigma_resid, *cross_cov, sigma_resid_inv_cross_cov, NaN_found, num_REs_obs, (int)(*cross_cov).cols(),
 									cg_max_num_it_tridiag_, cg_delta_conv_pred,
 									cg_preconditioner_type_, diagonal_approx_inv_preconditioner_[cluster_i],
-									cg_convergence_params_);
+									cg_convergence_params_pred_);
 								// CG: sigma^-1 * cross_cov
 								den_mat_t sigma_inv_cross_cov(num_REs_obs, (*cross_cov).cols());
 								if (cg_preconditioner_type_ == "fitc") {
@@ -12987,13 +12987,13 @@ namespace GPBoost {
 									CGFSA_MULTI_RHS<T_mat>(*sigma_resid,*cross_cov_preconditioner, GetForCluster(chol_ip_cross_cov_, cluster_i, 0), *cross_cov, sigma_inv_cross_cov, NaN_found,
 										num_REs_obs, (int)(*cross_cov).cols(), cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i],
-										cg_convergence_params_);
+										cg_convergence_params_pred_);
 								}
 								else {
 									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov, GetForCluster(chol_ip_cross_cov_, cluster_i, 0), *cross_cov, sigma_inv_cross_cov, NaN_found,
 										num_REs_obs, (int)(*cross_cov).cols(), cg_max_num_it_tridiag_, cg_delta_conv_pred, cg_preconditioner_type_,
 										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i],
-										cg_convergence_params_);
+										cg_convergence_params_pred_);
 								}
 
 								// sigma_ip^-1 * cross_cov_pred

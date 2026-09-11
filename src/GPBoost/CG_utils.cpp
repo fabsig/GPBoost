@@ -1279,13 +1279,16 @@ namespace GPBoost {
 	} // end LogDetStochTridiag
 
 	//Below this L2 norm the conjugate gradient recursion cannot be started: the first step size
-	//	a = (r^T z) / (h^T A h) would be 0/0. The square of the threshold is still far above the
-	//	smallest normal double, so a rhs above it can be iterated on safely
-	const double CGConvergenceParams::THRESHOLD_DEGENERATE_RHS = 1e-100;
+	//	a = (r^T z) / (h^T A h) would be 0/0. Chosen as small as the arithmetic allows, so that it
+	//	practically never overrides the tolerance that the user asked for: even with a preconditioner
+	//	that amplifies by 1e10, the inner product r^T z of a rhs at this norm is still ~1e-290 and
+	//	therefore far above the smallest normal double
+	const double CGConvergenceParams::THRESHOLD_DEGENERATE_RHS = 1e-150;
 
 	void CGMultiRHSConvergence::LogDiagnostics(const char* caller) const {
-		//'REDebug' discards the message unless the debug log level is enabled, i.e. this is never printed unconditionally
-		if (t_ == 0) {
+		//return before doing any work unless the debug log level is enabled: this is called on every
+		//	solve, and building the per-rhs strings would otherwise cost O(t) on every one of them
+		if (t_ == 0 || Log::GetLevelRE() < LightGBM::LogLevelRE::Debug) {
 			return;
 		}
 		int min_it = num_it_[0], max_it = num_it_[0];
@@ -1304,20 +1307,23 @@ namespace GPBoost {
 		Log::REDebug("%s: iterations per rhs (mean / min / max) = %g / %i / %i, "
 			"final residuals (mean / max ||r_j||_2) = %g / %g, max scaled residual ||r_j||_2 / tol_j = %g ",
 			caller, sum_it / t_, min_it, max_it, mean_r_norm_, max_r_norm, max_scaled_r_norm);
-		//the per-rhs vectors themselves, for benchmarking. Built in one string so that the columns stay
-		//	on one line each and the log does not interleave when several clusters run in parallel
-		std::stringstream it_str, r_str, q_str;
-		it_str << std::setprecision(6);
-		r_str << std::scientific << std::setprecision(3);
-		q_str << std::scientific << std::setprecision(3);
-		for (int i = 0; i < t_; ++i) {
-			it_str << (i > 0 ? " " : "") << num_it_[i];
-			r_str << (i > 0 ? " " : "") << r_norms_[i];
-			q_str << (i > 0 ? " " : "") << scaled_r_norms[i];
+		//the per-rhs vectors themselves, for benchmarking. Emitted in chunks because the log buffer
+		//	holds 512 characters and a single line over all rhs would be truncated
+		const int chunk = 16;
+		for (int first = 0; first < t_; first += chunk) {
+			const int last = std::min(first + chunk, t_);
+			std::stringstream it_str, r_str, q_str;
+			r_str << std::scientific << std::setprecision(3);
+			q_str << std::scientific << std::setprecision(3);
+			for (int i = first; i < last; ++i) {
+				it_str << (i > first ? " " : "") << num_it_[i];
+				r_str << (i > first ? " " : "") << r_norms_[i];
+				q_str << (i > first ? " " : "") << scaled_r_norms[i];
+			}
+			Log::REDebug("%s: rhs %i-%i: iterations = [%s] ", caller, first, last - 1, it_str.str().c_str());
+			Log::REDebug("%s: rhs %i-%i: ||r_j||_2 = [%s] ", caller, first, last - 1, r_str.str().c_str());
+			Log::REDebug("%s: rhs %i-%i: ||r_j||_2 / tol_j = [%s] ", caller, first, last - 1, q_str.str().c_str());
 		}
-		Log::REDebug("%s: iterations per rhs = [%s] ", caller, it_str.str().c_str());
-		Log::REDebug("%s: ||r_j||_2 per rhs = [%s] ", caller, r_str.str().c_str());
-		Log::REDebug("%s: ||r_j||_2 / tol_j per rhs = [%s] ", caller, q_str.str().c_str());
 	} // end CGMultiRHSConvergence::LogDiagnostics
 
 	void CalcOptimalC(const vec_t& zt_AI_A_deriv_PI_z,

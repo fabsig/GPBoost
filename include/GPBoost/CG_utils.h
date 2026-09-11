@@ -59,10 +59,12 @@ namespace GPBoost {
 		}
 		/*!
 		* \brief True if the rhs is so small that the conjugate gradient recursion cannot be started at all:
-		*		 the step size a = (r^T z) / (h^T A h) would be 0/0 and produce a NaN
+		*		 the step size a = (r^T z) / (h^T A h) would be 0/0 and produce a NaN.
+		*		 A rhs containing NaN or Inf is deliberately not degenerate: it has to reach the iteration so
+		*		 that the usual check reports it through 'NA_or_Inf_found' instead of silently returning zero
 		*/
 		static bool RhsIsDegenerate(const double rhs_norm) {
-			return !(rhs_norm > THRESHOLD_DEGENERATE_RHS);
+			return std::isfinite(rhs_norm) && rhs_norm <= THRESHOLD_DEGENERATE_RHS;
 		}
 		/*! \brief Below this L2 norm a rhs is treated as exactly zero, see 'RhsIsDegenerate' */
 		static const double THRESHOLD_DEGENERATE_RHS;
@@ -172,14 +174,28 @@ namespace GPBoost {
 			if (std::isnan(mean_r_norm_) || std::isinf(mean_r_norm_)) {
 				return false;
 			}
+			//A column whose residual has become (numerically) zero is solved exactly and must stop being
+			//	updated under every aggregation rule, not just under "per_rhs". Otherwise its next step size
+			//	a = (r^T z) / (h^T A h) is a 0/0, which turns that column, and through the aggregated norms
+			//	the whole iteration, into NaNs
+			bool any_converged = false;
+			for (int i = 0; i < t_; ++i) {
+				if (active_[i] && CGConvergenceParams::RhsIsDegenerate(r_norms_[i])) {
+					converged_now_[i] = true;
+					needs_masking_ = true;
+					any_converged = true;
+				}
+			}
+			bool stop;
 			if (params_.IsPerRHS()) {
-				bool all_converged = true, any_converged = false;
+				stop = true;
 				for (int i = 0; i < t_; ++i) {
-					if (!active_[i]) {
+					if (!active_[i] || converged_now_[i]) {
+						stop = stop && (!active_[i] || converged_now_[i]);
 						continue;
 					}
 					converged_now_[i] = params_.HasConverged(r_norms_[i], rhs_norms_[i]);
-					all_converged = all_converged && converged_now_[i];
+					stop = stop && converged_now_[i];
 					if (converged_now_[i]) {
 						//from here on the updates must be masked: the search direction of a column that
 						//	converged in this iteration is not updated anymore, and its preconditioned
@@ -188,28 +204,30 @@ namespace GPBoost {
 						any_converged = true;
 					}
 				}
-				if (any_converged) {
-					RefreshColumnsNeedingUpdate();
-				}
-				return all_converged;
 			}
-			if (params_.multi_rhs_convergence == "max") {
+			else if (params_.multi_rhs_convergence == "max") {
+				stop = true;
 				for (int i = 0; i < t_; ++i) {
 					if (active_[i] && !params_.HasConverged(r_norms_[i], rhs_norms_[i])) {
-						return false;
+						stop = false;
+						break;
 					}
 				}
-				return true;
 			}
-			//"average"
-			if (!params_.IsRelative()) {
-				return mean_r_norm_ < params_.delta_conv;//historic rule, evaluated verbatim for backward compatibility
+			else if (!params_.IsRelative()) {
+				stop = mean_r_norm_ < params_.delta_conv;//historic rule, evaluated verbatim for backward compatibility
 			}
-			double sum_scaled_r_norm = 0.;
-			for (int i = 0; i < t_; ++i) {
-				sum_scaled_r_norm += r_norms_[i] / params_.Tolerance(rhs_norms_[i]);
+			else {
+				double sum_scaled_r_norm = 0.;
+				for (int i = 0; i < t_; ++i) {
+					sum_scaled_r_norm += r_norms_[i] / params_.Tolerance(rhs_norms_[i]);
+				}
+				stop = sum_scaled_r_norm <= (double)t_;
 			}
-			return sum_scaled_r_norm <= (double)t_;
+			if (any_converged) {
+				RefreshColumnsNeedingUpdate();
+			}
+			return stop;
 		}
 		/*! \brief Stop iterating on the columns that converged in the current iteration ("per_rhs" rule) */
 		void DeactivateConvergedColumns(const int j) {
@@ -830,6 +848,13 @@ namespace GPBoost {
 		else {
 			r = rhs - sigma_resid * u - (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * u));//r = rhs - A * u
 		}
+		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
+		//	make the first step size a = (r^T z) / (h^T A h) a 0/0
+		const double r_norm_initial = r.norm();
+		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial) ||
+			(conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm))) {
+			return;
+		}
 		//z = P^(-1) r
 		if (cg_preconditioner_type == "fitc") {
 			//D^-1*r
@@ -973,10 +998,23 @@ namespace GPBoost {
 		}
 		H = Z;
 		for (int j = 0; j < p; ++j) {
-			V = (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * H));
+			if (conv.NeedsMasking()) {
+				//only the columns that are still being iterated on, gathered so that the dense product
+				//	stays a matrix-matrix operation
+				const std::vector<int>& cols = conv.ColumnsNeedingUpdate();
+				if (!cols.empty()) {
+					const den_mat_t H_active = GatherColumns(H, cols);
+					ScatterColumns(chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * H_active), cols, V);
+				}
 #pragma omp parallel for schedule(static)
-			for (int i = 0; i < t; ++i) {
-				if (conv.IsActive(i)) {
+				for (int k = 0; k < (int)cols.size(); ++k) {
+					V.col(cols[k]) += sigma_resid * H.col(cols[k]);
+				}
+			}
+			else {
+				V = (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * H));
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
 					V.col(i) += sigma_resid * H.col(i);
 				}
 			}
@@ -1007,15 +1045,34 @@ namespace GPBoost {
 			}
 			Z_old = Z;
 			if (cg_preconditioner_type == "fitc") {
-				diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
-				//Cmn*D^-1*R
-				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
-				//P^-1*R using Woodbury Identity
-				Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
-
+				const std::vector<int>& cols = conv.ColumnsNeedingUpdate();
+				const bool masked = conv.NeedsMasking();
+				if (!masked || !cols.empty()) {
+					const den_mat_t R_in = masked ? GatherColumns(R, cols) : R;
+					diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R_in;
+					//Cmn*D^-1*R
+					sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
+					//P^-1*R using Woodbury Identity
+					const den_mat_t Z_in = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+					if (masked) {
+						ScatterColumns(Z_in, cols, Z);
+					}
+					else {
+						Z = Z_in;
+					}
+				}
 			}
 			else if (cg_preconditioner_type == "none") {
-				Z = R;
+				if (conv.NeedsMasking()) {
+					for (int i = 0; i < t; ++i) {
+						if (conv.NeedsUpdate(i)) {
+							Z.col(i) = R.col(i);
+						}
+					}
+				}
+				else {
+					Z = R;
+				}
 			}
 			else {
 				Log::REFatal("CGTridiagFSA: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
@@ -1140,10 +1197,23 @@ namespace GPBoost {
 		}
 		H = Z;
 		for (int j = 0; j < p; ++j) {
-			V = (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * H));
+			if (conv.NeedsMasking()) {
+				//only the columns that are still being iterated on, gathered so that the dense product
+				//	stays a matrix-matrix operation
+				const std::vector<int>& cols = conv.ColumnsNeedingUpdate();
+				if (!cols.empty()) {
+					const den_mat_t H_active = GatherColumns(H, cols);
+					ScatterColumns(chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * H_active), cols, V);
+				}
 #pragma omp parallel for schedule(static)
-			for (int i = 0; i < t; ++i) {
-				if (conv.IsActive(i)) {
+				for (int k = 0; k < (int)cols.size(); ++k) {
+					V.col(cols[k]) += sigma_resid * H.col(cols[k]);
+				}
+			}
+			else {
+				V = (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * H));
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
 					V.col(i) += sigma_resid * H.col(i);
 				}
 			}
@@ -1174,15 +1244,34 @@ namespace GPBoost {
 			}
 			Z_old = Z;
 			if (cg_preconditioner_type == "fitc") {
-				diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R;
-				//Cmn*D^-1*R
-				sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
-				//P^-1*R using Woodbury Identity
-				Z = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
-
+				const std::vector<int>& cols = conv.ColumnsNeedingUpdate();
+				const bool masked = conv.NeedsMasking();
+				if (!masked || !cols.empty()) {
+					const den_mat_t R_in = masked ? GatherColumns(R, cols) : R;
+					diag_sigma_resid_inv_R = diagonal_approx_inv_preconditioner.asDiagonal() * R_in;
+					//Cmn*D^-1*R
+					sigma_cross_cov_diag_sigma_resid_inv_R = sigma_cross_cov_preconditioner.transpose() * diag_sigma_resid_inv_R;
+					//P^-1*R using Woodbury Identity
+					const den_mat_t Z_in = diag_sigma_resid_inv_R - (diagonal_approx_inv_preconditioner.asDiagonal() * (sigma_cross_cov_preconditioner * chol_fact_woodbury_preconditioner.solve(sigma_cross_cov_diag_sigma_resid_inv_R)));
+					if (masked) {
+						ScatterColumns(Z_in, cols, Z);
+					}
+					else {
+						Z = Z_in;
+					}
+				}
 			}
 			else if (cg_preconditioner_type == "none") {
-				Z = R;
+				if (conv.NeedsMasking()) {
+					for (int i = 0; i < t; ++i) {
+						if (conv.NeedsUpdate(i)) {
+							Z.col(i) = R.col(i);
+						}
+					}
+				}
+				else {
+					Z = R;
+				}
 			}
 			else {
 				Log::REFatal("CGFSA_MULTI_RHS: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
@@ -1319,11 +1408,18 @@ namespace GPBoost {
 				return;
 			}
 			Z_old = Z;
-			if (cg_preconditioner_type == "fitc") {
-				Z = diagonal_approx_inv_preconditioner.asDiagonal() * R;
-			}
-			else if (cg_preconditioner_type == "none") {
-				Z = R;
+			if (cg_preconditioner_type == "fitc" || cg_preconditioner_type == "none") {
+				const bool scale = (cg_preconditioner_type == "fitc");
+				if (conv.NeedsMasking()) {
+					for (int i = 0; i < t; ++i) {
+						if (conv.NeedsUpdate(i)) {
+							Z.col(i) = scale ? (diagonal_approx_inv_preconditioner.asDiagonal() * R.col(i)).eval() : R.col(i);
+						}
+					}
+				}
+				else {
+					Z = scale ? (diagonal_approx_inv_preconditioner.asDiagonal() * R).eval() : R;
+				}
 			}
 			else {
 				Log::REFatal("CGFSA_RESID: Preconditioner type '%s' is not supported ", cg_preconditioner_type.c_str());
