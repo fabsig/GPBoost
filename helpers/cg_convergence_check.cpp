@@ -194,6 +194,55 @@ int main() {
 			"a rhs below the tolerance returns the zero solution without iterating");
 	}
 
+	// ------------- a residual below the cutoff is only a success when the tolerance is met
+	{
+		//the zero solution leaves a residual of ||b||, which here is far above the requested
+		//	tolerance, so giving up on the recursion has to be reported rather than called converged
+		CGConvergenceParams cp;
+		cp.criterion = "relative";
+		cp.rel_tol = 1e-8;
+		cp.abs_tol = 1e-300;
+		const vec_t b = vec_t::Constant(n, 1e-155);
+		vec_t u = vec_t::Zero(n);
+		bool nan = false;
+		int steps = 0;
+		solve_vec(b, cp, u, false, &nan, &steps);
+		Check(nan, "a residual below the cutoff with an unmet tolerance is reported, not called converged");
+		//the same residual with a tolerance that it does satisfy is a legitimate convergence
+		cp.abs_tol = 1e-8;
+		u = vec_t::Zero(n);
+		solve_vec(b, cp, u, false, &nan, &steps);
+		Check(!nan, "and it is accepted when the tolerance is met");
+	}
+
+	// ------------- "absolute" + "average" must not skip a column by its own norm
+	{
+		//A = 2I, so every column is solved in one step. One column has a norm below 'cg_delta_conv'
+		//	while the block average stays above it: the historic rule solves that column, it does not
+		//	replace it by zero
+		const int tb = 2;
+		std::vector<Eigen::Triplet<double>> tr;
+		for (int i = 0; i < n; ++i) {
+			tr.emplace_back(i, i, 2.);
+		}
+		sp_mat_rm_t A2(n, n);
+		A2.setFromTriplets(tr.begin(), tr.end());
+		const vec_t diag_inv2 = vec_t::Constant(n, 0.5);
+		den_mat_t rhs2(n, tb);
+		rhs2.setZero();
+		rhs2(0, 0) = 5e-4;//below cg_delta_conv
+		rhs2(1, 1) = 1.;//keeps the block average above it
+		CGConvergenceParams cp;
+		cp.delta_conv = 1e-3;
+		den_mat_t U2(n, tb);
+		bool nan = false;
+		CGRandomEffectsMat(A2, rhs2, U2, nan, n, tb, n, cp.delta_conv, "incomplete_cholesky",
+			[&]() { sp_mat_rm_t A_copy = A2, L; ZeroFillInIncompleteCholeskyFactorization(A_copy, L); return L; }(),
+			unused, cp);
+		Check(!nan && std::fabs(U2(0, 0) - 2.5e-4) < 1e-12,
+			"absolute + average solves a small column instead of zeroing it");
+	}
+
 	// ------------------------------------------------------------------ warm starts
 	{
 		CGConvergenceParams cp;

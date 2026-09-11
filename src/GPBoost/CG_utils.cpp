@@ -78,10 +78,16 @@ namespace GPBoost {
 			r = rhs - ((B_t_D_inv_rm * (B_rm * u)) + diag_W.cwiseProduct(u));
 		}
 		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
-		//	make the first step size a = (r^T z) / (h^T A h) a 0/0
-		const double r_norm_initial = r.norm();
-		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial) ||
-			(conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm))) {
+		//	make the first step size a = (r^T z) / (h^T A h) a 0/0. Being unable to continue is not the
+		//	same as having converged, so the tolerance is checked before the recursion is given up on
+		const double r_norm_initial = SafeNorm(r);
+		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial)) {
+			if (!conv_params.HasConverged(r_norm_initial, rhs_norm)) {
+				NA_or_Inf_found = true;
+			}
+			return;
+		}
+		if (conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm)) {
 			return;
 		}
 		if (cg_preconditioner_type == "vadu") {
@@ -164,7 +170,7 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
-		if (conv.HasUnusableRhs()) {
+		if (conv.HasUnmetTolerance()) {
 			NA_or_Inf_found = true;
 		}
 		double mean_R_norm;
@@ -289,6 +295,9 @@ namespace GPBoost {
 			if (early_stop_alg) {
 				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
 				conv.LogDiagnostics("CGTridiagVecchiaLaplace");
+				if (conv.HasUnmetTolerance()) {
+					NA_or_Inf_found = true;
+				}
 				return;
 			}
 		}
@@ -296,6 +305,9 @@ namespace GPBoost {
 		//	so shrink to the iterations that were actually carried out
 		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
 		conv.LogDiagnostics("CGTridiagVecchiaLaplace");
+		if (conv.HasUnmetTolerance()) {
+			NA_or_Inf_found = true;
+		}
 		Log::REDebug("CGTridiagVecchiaLaplace: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGTridiagVecchiaLaplace
@@ -336,8 +348,10 @@ namespace GPBoost {
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
-		//Avoid numerical instabilites when rhs is de facto 0
-		if (rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
+		//Avoid numerical instabilites when rhs is de facto 0. This tests the rhs that was passed in, not
+		//	the rhs 'Sigma_rhs' of the system that is actually solved below, so it stays restricted to the
+		//	historic "absolute" rule. "relative" is decided by the tolerance on 'Sigma_rhs'
+		if (!conv_params.IsRelative() && rhs.cwiseAbs().sum() < THRESHOLD_ZERO_RHS_CG) {
 			u.setZero();
 			return;
 		}
@@ -379,11 +393,18 @@ namespace GPBoost {
 			r = r - D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_W_u);
 		}
 		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
-		//	make the first step size a = (r^T z) / (h^T A h) a 0/0
-		const double r_norm_initial = r.norm();
-		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial) ||
-			(conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm))) {
+		//	make the first step size a = (r^T z) / (h^T A h) a 0/0. Being unable to continue is not the
+		//	same as having converged, so the tolerance is checked before the recursion is given up on
+		const double r_norm_initial = SafeNorm(r);
+		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial)) {
+			if (!conv_params.HasConverged(r_norm_initial, rhs_norm)) {
+				NA_or_Inf_found = true;
+			}
 			//u is held as W * u inside this routine, see above
+			u = diag_W_inv.cwiseProduct(u);
+			return;
+		}
+		if (conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm)) {
 			u = diag_W_inv.cwiseProduct(u);
 			return;
 		}
@@ -490,7 +511,7 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
-		if (conv.HasUnusableRhs()) {
+		if (conv.HasUnmetTolerance()) {
 			NA_or_Inf_found = true;
 		}
 		double mean_R_norm;
@@ -620,6 +641,9 @@ namespace GPBoost {
 			if (early_stop_alg) {
 				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
 				conv.LogDiagnostics("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv");
+				if (conv.HasUnmetTolerance()) {
+					NA_or_Inf_found = true;
+				}
 				return;
 			}
 		}
@@ -627,6 +651,9 @@ namespace GPBoost {
 		//	so shrink to the iterations that were actually carried out
 		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
 		conv.LogDiagnostics("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv");
+		if (conv.HasUnmetTolerance()) {
+			NA_or_Inf_found = true;
+		}
 		Log::REDebug("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGTridiagVecchiaLaplace_Version_SigmaPlusWinv
@@ -694,10 +721,16 @@ namespace GPBoost {
 			r = rhs - (B_t_D_inv_B_vec + diag_W.cwiseProduct(u) - B_t_D_inv_rm * (B_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * B_t_D_inv_B_vec))));
 		}
 		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
-		//	make the first step size a = (r^T z) / (h^T A h) a 0/0
-		const double r_norm_initial = r.norm();
-		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial) ||
-			(conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm))) {
+		//	make the first step size a = (r^T z) / (h^T A h) a 0/0. Being unable to continue is not the
+		//	same as having converged, so the tolerance is checked before the recursion is given up on
+		const double r_norm_initial = SafeNorm(r);
+		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial)) {
+			if (!conv_params.HasConverged(r_norm_initial, rhs_norm)) {
+				NA_or_Inf_found = true;
+			}
+			return;
+		}
+		if (conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm)) {
 			return;
 		}
 		if (cg_preconditioner_type == "vifdu") {
@@ -783,7 +816,7 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
-		if (conv.HasUnusableRhs()) {
+		if (conv.HasUnmetTolerance()) {
 			NA_or_Inf_found = true;
 		}
 		double mean_R_norm;
@@ -944,6 +977,9 @@ namespace GPBoost {
 			if (early_stop_alg) {
 				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
 				conv.LogDiagnostics("CGTridiagVIFLaplace");
+				if (conv.HasUnmetTolerance()) {
+					NA_or_Inf_found = true;
+				}
 				return;
 			}
 		}
@@ -951,6 +987,9 @@ namespace GPBoost {
 		//	so shrink to the iterations that were actually carried out
 		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
 		conv.LogDiagnostics("CGTridiagVIFLaplace");
+		if (conv.HasUnmetTolerance()) {
+			NA_or_Inf_found = true;
+		}
 		Log::REDebug("CGTridiagVIFLaplace: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
 	} // end CGTridiagVIFLaplace
@@ -1018,10 +1057,16 @@ namespace GPBoost {
 			r = rhs - chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * u) - B_inv_D_B_invt_u - diag_W_inv.asDiagonal() * u;
 		}
 		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
-		//	make the first step size a = (r^T z) / (h^T A h) a 0/0
-		const double r_norm_initial = r.norm();
-		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial) ||
-			(conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm))) {
+		//	make the first step size a = (r^T z) / (h^T A h) a 0/0. Being unable to continue is not the
+		//	same as having converged, so the tolerance is checked before the recursion is given up on
+		const double r_norm_initial = SafeNorm(r);
+		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial)) {
+			if (!conv_params.HasConverged(r_norm_initial, rhs_norm)) {
+				NA_or_Inf_found = true;
+			}
+			return;
+		}
+		if (conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm)) {
 			return;
 		}
 		if (cg_preconditioner_type == "fitc") {
@@ -1105,7 +1150,7 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
-		if (conv.HasUnusableRhs()) {
+		if (conv.HasUnmetTolerance()) {
 			NA_or_Inf_found = true;
 		}
 		double mean_R_norm;
@@ -1239,6 +1284,9 @@ namespace GPBoost {
 			if (early_stop_alg) {
 				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
 				conv.LogDiagnostics("CGTridiagVIFLaplace_Version_SigmaPlusWinv");
+				if (conv.HasUnmetTolerance()) {
+					NA_or_Inf_found = true;
+				}
 				return;
 			}
 		}
@@ -1246,6 +1294,9 @@ namespace GPBoost {
 		//	so shrink to the iterations that were actually carried out
 		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
 		conv.LogDiagnostics("CGTridiagVIFLaplace_Version_SigmaPlusWinv");
+		if (conv.HasUnmetTolerance()) {
+			NA_or_Inf_found = true;
+		}
 		Log::REDebug("CGTridiagVIFLaplace_Version_SigmaPlusWinv: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise increase 'cg_max_num_it_tridiag'.", p);
 	} // end CGTridiagVIFLaplace_Version_SigmaPlusWinv
@@ -1560,10 +1611,17 @@ namespace GPBoost {
 			r = rhs - SigmaI_plus_ZtWZ_rm * u;
 		}
 		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
-		//	make the first step size a = (r^T z) / (h^T A h) a 0/0
-		const double r_norm_initial = r.norm();
-		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial) ||
-			(conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm))) {
+		//	make the first step size a = (r^T z) / (h^T A h) a 0/0. Being unable to continue is not the
+		//	same as having converged, so the tolerance is checked before the recursion is given up on
+		const double r_norm_initial = SafeNorm(r);
+		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial)) {
+			if (!conv_params.HasConverged(r_norm_initial, rhs_norm)) {
+				NA_or_Inf_found = true;
+			}
+			num_cg_steps = 0;
+			return;
+		}
+		if (conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm)) {
 			num_cg_steps = 0;
 			return;
 		}
@@ -1693,7 +1751,7 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
-		if (conv.HasUnusableRhs()) {
+		if (conv.HasUnmetTolerance()) {
 			NA_or_Inf_found = true;
 		}
 		double mean_R_norm;
@@ -1897,6 +1955,9 @@ namespace GPBoost {
 			if (early_stop_alg) {
 				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
 				conv.LogDiagnostics("CGTridiagRandomEffects");
+				if (conv.HasUnmetTolerance()) {
+					NA_or_Inf_found = true;
+				}
 				return;
 			}
 		}
@@ -1904,6 +1965,9 @@ namespace GPBoost {
 		//	so shrink to the iterations that were actually carried out
 		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
 		conv.LogDiagnostics("CGTridiagRandomEffects");
+		if (conv.HasUnmetTolerance()) {
+			NA_or_Inf_found = true;
+		}
 		num_cg_steps = p;
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
@@ -1932,7 +1996,7 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs);
-		if (conv.HasUnusableRhs()) {
+		if (conv.HasUnmetTolerance()) {
 			NA_or_Inf_found = true;
 		}
 		double mean_R_norm;
@@ -2010,6 +2074,9 @@ namespace GPBoost {
 			if (early_stop_alg) {
 				conv.FinalizeIterations(j + 1);
 				conv.LogDiagnostics("CGRandomEffectsMat");
+				if (conv.HasUnmetTolerance()) {
+					NA_or_Inf_found = true;
+				}
 				//Log::REInfo("Number CGRandomEffectsMat iterations: %i", j + 1);
 				return;
 			}
@@ -2072,6 +2139,9 @@ namespace GPBoost {
 		}
 		conv.FinalizeIterations(p);
 		conv.LogDiagnostics("CGRandomEffectsMat");
+		if (conv.HasUnmetTolerance()) {
+			NA_or_Inf_found = true;
+		}
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it' ", p);
 	} // end CGRandomEffectsMat

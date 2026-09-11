@@ -179,15 +179,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_true(is.finite(gp_model$get_current_neg_log_likelihood()))
   })
 
-  test_that("The relative-rule prediction settings do not change the parameter estimation", {
+  test_that("Prediction settings do not change the parameter estimation", {
 
-    # The estimation routines must not read the stopping rule configured for predictions.
-    # Note that 'cg_delta_conv_pred' is deliberately not in this list: some estimation routines
-    # (for example the grouped-RE Laplace gradient) have always used it as a tighter absolute
-    # tolerance, and that pre-existing behavior is kept so that historic results are reproduced
+    # No estimation routine may read any of the settings that configure predictions, neither the
+    # stopping rule nor the absolute tolerance
     pred_opts_list <- list(list(cg_rel_tol_pred = 1E-12),
                            list(cg_abs_tol_pred = 1E-14),
-                           list(cg_convergence_criterion_pred = "absolute"))
+                           list(cg_convergence_criterion_pred = "absolute"),
+                           list(cg_delta_conv_pred = 1E-10))
 
     # Gaussian, which exercises the grouped-RE CG solves and the Lanczos log-determinant
     reference <- fit_iterative(list(cg_convergence_criterion = "relative", cg_rel_tol = 1E-6))

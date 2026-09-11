@@ -40,8 +40,11 @@ echo "Compiler: ${CXX}"
 OUT_DIR=$(mktemp -d 2>/dev/null || echo "./temp")
 mkdir -p "${OUT_DIR}"
 EXE="${OUT_DIR}/cg_convergence_check.exe"
+# also remove the build products when a check fails, since 'set -e' skips the cleanup below
+trap 'rm -f "${EXE}"' EXIT
 
-"${CXX}" -std=c++17 -O2 -fopenmp -Wall -Wextra -Wno-unknown-pragmas -Wno-ignored-attributes \
+# 'CG_utils' is required to stay C++11-compatible, so compile with that standard
+"${CXX}" -std=c++11 -O2 -fopenmp -Wall -Wextra -Wno-unknown-pragmas -Wno-ignored-attributes \
   -DEIGEN_MPL2_ONLY \
   -I include \
   -I external_libs/eigen \
@@ -53,6 +56,3 @@ EXE="${OUT_DIR}/cg_convergence_check.exe"
   helpers/cg_convergence_check.cpp src/GPBoost/CG_utils.cpp -o "${EXE}"
 
 "${EXE}"
-STATUS=$?
-rm -f "${EXE}"
-exit ${STATUS}

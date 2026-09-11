@@ -40,6 +40,9 @@ namespace GPBoost {
 		bool IsPerRHS() const {
 			return multi_rhs_convergence == "per_rhs";
 		}
+		bool IsAverage() const {
+			return multi_rhs_convergence == "average";
+		}
 		/*! \brief Tolerance for a right-hand side with L2 norm 'rhs_norm' */
 		double Tolerance(const double rhs_norm) const {
 			return IsRelative() ? std::max(abs_tol, rel_tol * rhs_norm) : delta_conv;
@@ -160,15 +163,17 @@ namespace GPBoost {
 			for (int i = 0; i < t_; ++i) {
 				if (!std::isfinite(rhs_norms_[i])) {
 					//has to be reported by the caller, it must not be mistaken for a negligible column
-					has_unusable_rhs_ = true;
+					has_unmet_tolerance_ = true;
 					continue;
 				}
 				//a Lanczos probe is only dropped when the recursion cannot be started at all, see the
 				//	constructor documentation. A plain solve is skipped as soon as the zero vector is
-				//	accurate enough, which is the whole point of the relative rule
-				const bool skip = for_lanczos ? CGConvergenceParams::RhsIsDegenerate(rhs_norms_[i])
-					: params_.ZeroSolutionIsAccurateEnough(rhs_norms_[i]);
-				if (skip) {
+				//	accurate enough, which is the whole point of the relative rule.
+				//	"absolute" together with "average" is excluded: there the block average alone decides
+				//	when to stop, and skipping a column by its own norm would change that historic rule
+				const bool skip_by_tolerance = !for_lanczos && !(!params_.IsRelative() && params_.IsAverage()) &&
+					params_.ZeroSolutionIsAccurateEnough(rhs_norms_[i]);
+				if (skip_by_tolerance) {
 					active_[i] = false;
 					needs_masking_ = true;
 				}
@@ -177,17 +182,17 @@ namespace GPBoost {
 					//	requested tolerance, so the accuracy that was asked for cannot be delivered
 					active_[i] = false;
 					needs_masking_ = true;
-					has_unusable_rhs_ = true;
+					has_unmet_tolerance_ = true;
 				}
 			}
 			RefreshColumnsNeedingUpdate();
 		}
 		/*!
-		* \brief True if a rhs is not finite, or is too small for the recursion while the zero vector does
-		*		 not satisfy the requested tolerance. The caller has to report this as a failure
+		* \brief True if a rhs is not finite, or if a rhs or a residual is too small to continue the
+		*		 recursion while the requested tolerance is not met. The caller has to report this as a failure
 		*/
-		bool HasUnusableRhs() const {
-			return has_unusable_rhs_;
+		bool HasUnmetTolerance() const {
+			return has_unmet_tolerance_;
 		}
 		/*! \brief True if some columns are not iterated on anymore and the vectorized updates need to be masked */
 		bool NeedsMasking() const {
@@ -226,16 +231,20 @@ namespace GPBoost {
 			if (std::isnan(mean_r_norm_) || std::isinf(mean_r_norm_)) {
 				return false;
 			}
-			//A column whose residual has become (numerically) zero is solved exactly and must stop being
+			//A column whose residual has become too small to continue the recursion has to stop being
 			//	updated under every aggregation rule, not just under "per_rhs". Otherwise its next step size
 			//	a = (r^T z) / (h^T A h) is a 0/0, which turns that column, and through the aggregated norms
-			//	the whole iteration, into NaNs
+			//	the whole iteration, into NaNs. Being unable to continue is not the same as having
+			//	converged, so a column that is frozen without meeting the tolerance is reported
 			bool any_converged = false;
 			for (int i = 0; i < t_; ++i) {
 				if (active_[i] && CGConvergenceParams::RhsIsDegenerate(r_norms_[i])) {
 					converged_now_[i] = true;
 					needs_masking_ = true;
 					any_converged = true;
+					if (!params_.HasConverged(r_norms_[i], rhs_norms_[i])) {
+						has_unmet_tolerance_ = true;
+					}
 				}
 			}
 			bool stop;
@@ -358,7 +367,7 @@ namespace GPBoost {
 		vec_t r_norms_;
 		double mean_r_norm_ = 0.;
 		bool needs_masking_ = false;
-		bool has_unusable_rhs_ = false;
+		bool has_unmet_tolerance_ = false;
 	};
 
 	/*!
@@ -918,10 +927,16 @@ namespace GPBoost {
 			r = rhs - sigma_resid * u - (chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * u));//r = rhs - A * u
 		}
 		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
-		//	make the first step size a = (r^T z) / (h^T A h) a 0/0
-		const double r_norm_initial = r.norm();
-		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial) ||
-			(conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm))) {
+		//	make the first step size a = (r^T z) / (h^T A h) a 0/0. Being unable to continue is not the
+		//	same as having converged, so the tolerance is checked before the recursion is given up on
+		const double r_norm_initial = SafeNorm(r);
+		if (CGConvergenceParams::RhsIsDegenerate(r_norm_initial)) {
+			if (!conv_params.HasConverged(r_norm_initial, rhs_norm)) {
+				NaN_found = true;
+			}
+			return;
+		}
+		if (conv_params.IsRelative() && conv_params.HasConverged(r_norm_initial, rhs_norm)) {
 			return;
 		}
 		//z = P^(-1) r
@@ -1033,7 +1048,7 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs, /*for_lanczos=*/true);
-		if (conv.HasUnusableRhs()) {
+		if (conv.HasUnmetTolerance()) {
 			NaN_found = true;
 		}
 		double mean_R_norm;
@@ -1182,12 +1197,18 @@ namespace GPBoost {
 			if (early_stop_alg) {
 				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
 				conv.LogDiagnostics("CGTridiagFSA");
+				if (conv.HasUnmetTolerance()) {
+					NaN_found = true;
+				}
 				//Log::REInfo("CGTridiagFSA stop after %i CG-Iterations.", j + 1);
 				return;
 			}
 		}
 		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
 		conv.LogDiagnostics("CGTridiagFSA");
+		if (conv.HasUnmetTolerance()) {
+			NaN_found = true;
+		}
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGTridiagFSA
@@ -1238,7 +1259,7 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs);
-		if (conv.HasUnusableRhs()) {
+		if (conv.HasUnmetTolerance()) {
 			NaN_found = true;
 		}
 		double mean_R_norm;
@@ -1377,11 +1398,17 @@ namespace GPBoost {
 			if (early_stop_alg) {
 				conv.FinalizeIterations(j + 1);
 				conv.LogDiagnostics("CGFSA_MULTI_RHS");
+				if (conv.HasUnmetTolerance()) {
+					NaN_found = true;
+				}
 				return;
 			}
 		}
 		conv.FinalizeIterations(p);
 		conv.LogDiagnostics("CGFSA_MULTI_RHS");
+		if (conv.HasUnmetTolerance()) {
+			NaN_found = true;
+		}
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGFSA_MULTI_RHS
@@ -1426,7 +1453,7 @@ namespace GPBoost {
 		CGConvergenceParams conv_params(convergence_params);
 		conv_params.delta_conv = delta_conv;
 		CGMultiRHSConvergence conv(conv_params, rhs);
-		if (conv.HasUnusableRhs()) {
+		if (conv.HasUnmetTolerance()) {
 			NaN_found = true;
 		}
 		double mean_R_norm;
@@ -1539,11 +1566,17 @@ namespace GPBoost {
 			if (early_stop_alg) {
 				conv.FinalizeIterations(j + 1);
 				conv.LogDiagnostics("CGFSA_RESID");
+				if (conv.HasUnmetTolerance()) {
+					NaN_found = true;
+				}
 				return;
 			}
 		}
 		conv.FinalizeIterations(p);
 		conv.LogDiagnostics("CGFSA_RESID");
+		if (conv.HasUnmetTolerance()) {
+			NaN_found = true;
+		}
 		Log::REDebug("Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 			"This could happen if the initial learning rate is too large. Otherwise you might increase 'cg_max_num_it_tridiag' ", p);
 	} // end CGFSA_RESID

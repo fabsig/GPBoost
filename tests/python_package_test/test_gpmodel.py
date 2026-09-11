@@ -500,11 +500,11 @@ def test_cg_relative_rule_has_its_own_default_tolerances():
     np.testing.assert_allclose(np.asarray(default_rel.get_cov_pars(), dtype=float).ravel(),
                                np.asarray(explicit.get_cov_pars(), dtype=float).ravel(), rtol=1e-12)
 
-# 'cg_delta_conv_pred' is deliberately absent: some estimation routines have always used it as a
-# tighter absolute tolerance, and that pre-existing behaviour is kept
+# no estimation routine may read any of the settings that configure predictions
 _PRED_OPTS = [{"cg_rel_tol_pred": 1e-12},
               {"cg_abs_tol_pred": 1e-14},
-              {"cg_convergence_criterion_pred": "absolute"}]
+              {"cg_convergence_criterion_pred": "absolute"},
+              {"cg_delta_conv_pred": 1e-10}]
 
 
 @pytest.mark.parametrize("pred_opts", _PRED_OPTS)

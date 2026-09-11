@@ -2401,7 +2401,7 @@ namespace GPBoost {
 				SigmaI_plus_ZtWZ_inv_d_mll_d_mode = vec_t(dim_mode_);
 				int num_cg_steps_dummy;
 				CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, d_mll_d_mode, SigmaI_plus_ZtWZ_inv_d_mll_d_mode, has_NA_or_Inf,
-					cg_max_num_it_, cg_delta_conv_implicit_deriv_, true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
+					cg_max_num_it_, CgDeltaConvImplicitDeriv(), true, ZERO_RHS_CG_THRESHOLD, false, cg_preconditioner_type_,
 					L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
 					cg_convergence_params_);
 				if (has_NA_or_Inf) {
