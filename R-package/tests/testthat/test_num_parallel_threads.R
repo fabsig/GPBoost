@@ -4,6 +4,9 @@ context("num_parallel_threads")
 test_that("the default number of threads is the number of physical performance cores", {
 
   num_threads_omp <- gpb.get.num.threads()
+  # The number of threads is a property of the entire process and has to be restored even if an
+  # expectation below fails
+  on.exit(gpb.set.num.threads(num_threads_omp), add = TRUE)
   # A non-positive number of threads resets to the default number of threads
   gpb.set.num.threads(-1L)
   num_threads_default <- gpb.get.num.threads()
@@ -20,6 +23,12 @@ test_that("the default number of threads is the number of physical performance c
     num_physical_cores <- tryCatch(parallel::detectCores(logical = FALSE), error = function(e) NA_integer_)
     if (!is.na(num_physical_cores) && num_physical_cores >= 1L) {
       expect_lte(num_threads_default, num_physical_cores)
+      # A machine with more than one physical core must not collapse to a single thread. This catches a
+      # detection that mistakes a restriction of the calling thread for the resources of the process,
+      # which is what OpenMP thread binding ('OMP_PROC_BIND') can look like
+      if (num_physical_cores > 1L && num_threads_omp > 1L) {
+        expect_gt(num_threads_default, 1L)
+      }
     }
     # On macOS, performance level 0 is the one of the fastest cores. The corresponding number of cores is
     # only available on CPUs that have cores of different speeds (i.e., on Apple silicon)
@@ -44,6 +53,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
     num_threads_before <- gpb.get.num.threads()
     expect_gte(num_threads_before, 1L)
+    # This test changes the number of threads of the entire process, which has to be restored for the test
+    # files that run afterwards, also if an expectation below fails
+    on.exit(gpb.set.num.threads(num_threads_before), add = TRUE)
 
     n <- 100
     group <- rep(1:10, each = n / 10)

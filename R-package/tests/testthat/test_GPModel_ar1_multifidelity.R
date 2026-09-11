@@ -169,9 +169,8 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
         # 'seed_rand_vec_trace' only makes the fit reproducible: 'cov_pars' and the nll below are bit-identical for any
         # number of OpenMP threads, whereas the stochastic prediction is not. Measured against the values below (which
         # were recorded with 16 threads), the largest deviation over 1, 2, 3, 4, 6, 8, 10, 12 and 16 threads is 3.5e-3,
-        # so the tolerance has to accommodate that. Note: this must NOT be solved by setting 'num_parallel_threads' on
-        # the model, since that calls omp_set_num_threads() and thereby changes the thread count of every model built
-        # later in the same R process, i.e. of all test files that run after this one
+        # so the tolerance has to accommodate that. Note: this must not be solved by pinning the number of threads of
+        # the model, since that would only hide the dependence on the number of threads instead of covering it
         tol_pred <- 1e-2
       }
       if (inversion_method == "cholesky") {

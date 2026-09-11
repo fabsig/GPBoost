@@ -6556,9 +6556,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     #   on the number of OpenMP threads: measured against the values below (which were recorded with all threads of
     #   this machine), the deviations over 1, 2, 4 and 8 threads are up to 2e-4 for the covariance parameters, 7e-3
     #   for the coefficients, 2e-3 for the negative log-likelihood and 6e-2 for the predicted means, and the number
-    #   of iterations varies between 59 and 69. The tolerances below have to accommodate this. Note: this must NOT be
-    #   solved by setting 'num_parallel_threads' on the model, since that calls omp_set_num_threads() and thereby
-    #   changes the thread count of every model built later in the same R process
+    #   of iterations varies between 59 and 69. The tolerances below have to accommodate this. Note: this must not be
+    #   solved by pinning the number of threads of the model, since that would only hide the dependence on the number
+    #   of threads instead of covering it
     capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood,  cov_function = cov_function,
                                            matrix_inversion_method = matrix_inversion_method, X=X, y = y, params = params) , file='NUL')
     cov_pars_exp <- c(0.01850628942, 0.008229165631)

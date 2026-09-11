@@ -44,12 +44,16 @@ of the R package fails, and it fails long after the change has been made.
 
 ## Tests
 
-* Never pin the number of threads in a test to make it pass. `num_parallel_threads` calls
-  `omp_set_num_threads()`, which changes the number of threads of the entire process and thus of
-  every model that is built later in the same R session, i.e., of all test files that run afterwards.
-  Results that depend on the order of summation vary slightly with the number of threads; the
-  tolerances have to accommodate that instead. See the comments in `test_GPModel_ar1_multifidelity.R`
-  and `test_GPModel_non_Gaussian_data.R`, which document the measured deviations.
+* Never pin the number of threads in a test to make it pass. Results that depend on the order of
+  summation vary slightly with the number of threads, and the tolerances have to accommodate that
+  instead. See the comments in `test_GPModel_ar1_multifidelity.R` and
+  `test_GPModel_non_Gaussian_data.R`, which document the measured deviations.
+* The `num_parallel_threads` argument of a model is scoped: an operation of that model sets the
+  number of threads and restores the previous one when it is finished, see `ParallelThreadsScope` in
+  `include/GPBoost/utils.h`, so it does not affect other models. `gpb.set.num.threads()` in R and
+  `set_num_threads()` in Python, in contrast, change the number of threads of the entire process. A
+  test that calls them has to restore the previous number with `on.exit()`, so that the test files
+  which run afterwards are not affected, also when an expectation fails.
 * Some tests are known to fail on an unmodified tree, depending on the compiler and the build
   options. Establish a baseline on `master` before attributing a failure to your change.
 * The expected values in the tests of the Vecchia and the iterative (conjugate gradient) methods are

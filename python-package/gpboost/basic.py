@@ -4700,9 +4700,9 @@ class GPModel(object):
                 The number of parallel threads for OMP. If num_parallel_threads=None, the number of physical
                 performance cores is used. On CPUs whose cores have different speeds (e.g., the performance and
                 efficiency cores of recent Intel CPUs or Apple silicon), only the fastest cores are counted, and
-                hyperthreads are counted only once, since slow threads can slow down an entire model. All available
-                threads are used if the environment variable OMP_NUM_THREADS is set or if the cores of the CPU
-                cannot be determined. For ordinary use, leave num_parallel_threads unspecified to use this
+                hyperthreads are counted only once, since slow threads can slow down an entire model. The number of
+                threads that OpenMP is configured to use is kept if the environment variable OMP_NUM_THREADS is set
+                or if the cores of the CPU cannot be determined. For ordinary use, leave num_parallel_threads unspecified to use this
                 default. Setting num_parallel_threads=1 disables the OpenMP parallelization of the model and
                 can substantially increase the runtime. A single thread should be chosen deliberately, e.g.,
                 to distribute the resources among concurrent model fits or for a specific test; it is not

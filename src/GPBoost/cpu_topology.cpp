@@ -38,11 +38,13 @@
 
 #include <sched.h>
 #include <algorithm>
+#include <cerrno>
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
 #include <set>
 #include <string>
+#include <vector>
 
 #endif
 
@@ -76,6 +78,25 @@ namespace GPBoost {
 		}
 	}
 
+	/*!
+	* \brief True if this process may run on at least one of the logical CPUs of a physical core
+	* \param core Description of a physical core as returned by 'GetLogicalProcessorInformationEx()'
+	* \param process_mask Affinity mask of this process, or 0 if it is not known
+	* \return True if the core is available, and also if the affinity mask is not known
+	*/
+	template <typename T>
+	bool CoreIsAvailable(const T& core, const DWORD_PTR process_mask) {
+		if (process_mask == 0) {
+			return true;
+		}
+		for (WORD group = 0; group < core.GroupCount; ++group) {
+			if ((core.GroupMask[group].Mask & process_mask) != 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	int NumPerformanceCores() {
 		DWORD buffer_size = 0;
 		if (GetLogicalProcessorInformationEx(RelationProcessorCore, nullptr, &buffer_size) ||
@@ -86,6 +107,15 @@ namespace GPBoost {
 		if (!GetLogicalProcessorInformationEx(RelationProcessorCore,
 			reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(buffer.data()), &buffer_size)) {
 			return 0;
+		}
+		// The records describe the whole system, so the cores that this process may not run on have to be
+		// excluded. The affinity mask of the process is used and not the one of the calling thread, which an
+		// OpenMP runtime may have bound to a single core. 'GetProcessAffinityMask()' does not say which
+		// processor group its mask belongs to, so it is used only if the system has a single group
+		DWORD_PTR process_mask = 0, system_mask = 0;
+		if (GetActiveProcessorGroupCount() != 1 ||
+			!GetProcessAffinityMask(GetCurrentProcess(), &process_mask, &system_mask)) {
+			process_mask = 0;
 		}
 		// Every 'RelationProcessorCore' record describes one physical core, i.e., simultaneous multithreading
 		// siblings are counted only once. The first pass determines the efficiency class of the performance
@@ -99,7 +129,8 @@ namespace GPBoost {
 				if (core_info->Size == 0) {
 					return 0;
 				}
-				if (core_info->Relationship == RelationProcessorCore) {
+				if (core_info->Relationship == RelationProcessorCore &&
+					CoreIsAvailable(core_info->Processor, process_mask)) {
 					int efficiency_class = EfficiencyClassOfCore(core_info->Processor);
 					if (pass == 0) {
 						if (efficiency_class > highest_efficiency_class) {
@@ -187,16 +218,23 @@ namespace GPBoost {
 				}
 				position = next;
 			}
-			if (first < 0 || last < first) {
+			// The upper bound keeps a malformed or overflowing range from being expanded into a huge set
+			if (first < 0 || last < first || last > (1 << 20)) {
 				return false;
 			}
 			for (long cpu = first; cpu <= last; ++cpu) {
 				cpus->insert(static_cast<int>(cpu));
 			}
-			if (*position != ',') {
+			if (*position == '\0') {
 				break;
 			}
+			if (*position != ',') {
+				return false;// trailing characters that are not a separator make the whole list invalid
+			}
 			position += 1;
+			if (*position == '\0') {
+				return false;// a separator has to be followed by another range
+			}
 		}
 		return !cpus->empty();
 	}
@@ -226,24 +264,71 @@ namespace GPBoost {
 		return static_cast<int>(cores.size());
 	}
 
+	/*!
+	* \brief Numbers of the logical CPUs that the OpenMP threads of this process may run on
+	* \param[out] cpus Numbers of the CPUs
+	* \return True if the set of CPUs could be determined. If it could not, it must not be guessed: a set
+	*		that is too large leads to more threads than there are cores, one that is too small to fewer
+	*/
+	bool AvailableCpus(std::set<int>* cpus) {
+#if defined(_OPENMP) && _OPENMP >= 201107
+		// If OpenMP binds its threads ('OMP_PROC_BIND'), the calling thread is already bound, possibly to a
+		// single core, and its affinity mask is then not the set of CPUs that the whole team may use. The
+		// OpenMP places describe that set and are used instead
+		if (omp_get_proc_bind() != omp_proc_bind_false) {
+#if _OPENMP >= 201511
+			const int num_places = omp_get_num_places();
+			for (int place = 0; place < num_places; ++place) {
+				const int num_procs = omp_get_place_num_procs(place);
+				if (num_procs <= 0) {
+					continue;
+				}
+				std::vector<int> proc_ids(static_cast<size_t>(num_procs));
+				omp_get_place_proc_ids(place, proc_ids.data());
+				for (int proc_id : proc_ids) {
+					if (proc_id >= 0) {
+						cpus->insert(proc_id);
+					}
+				}
+			}
+#endif
+			return !cpus->empty();
+		}
+#endif
+		// 'cpu_set_t' has room for 'CPU_SETSIZE' (1024) CPUs only. A larger mask makes 'sched_getaffinity()'
+		// fail with EINVAL and has to be allocated dynamically
+		for (int num_cpus = CPU_SETSIZE; num_cpus <= (1 << 20); num_cpus *= 2) {
+			cpu_set_t* mask = CPU_ALLOC(num_cpus);
+			if (mask == nullptr) {
+				return false;
+			}
+			const size_t mask_size = CPU_ALLOC_SIZE(num_cpus);
+			CPU_ZERO_S(mask_size, mask);
+			errno = 0;
+			const int result = sched_getaffinity(0, mask_size, mask);
+			const int error = errno;
+			if (result == 0) {
+				for (int cpu = 0; cpu < num_cpus; ++cpu) {
+					if (CPU_ISSET_S(static_cast<size_t>(cpu), mask_size, mask)) {
+						cpus->insert(cpu);
+					}
+				}
+				CPU_FREE(mask);
+				return !cpus->empty();
+			}
+			CPU_FREE(mask);
+			if (error != EINVAL) {
+				break;
+			}
+		}
+		return false;
+	}
+
 	int NumPerformanceCores() {
 		// Only CPUs this process may run on are considered
 		std::set<int> cpus;
-		cpu_set_t affinity;
-		CPU_ZERO(&affinity);
-		if (sched_getaffinity(0, sizeof(affinity), &affinity) == 0) {
-			for (int cpu = 0; cpu < CPU_SETSIZE; ++cpu) {
-				if (CPU_ISSET(cpu, &affinity)) {
-					cpus.insert(cpu);
-				}
-			}
-		}
-		if (cpus.empty()) {
-			std::string online_cpu_list;
-			if (!ReadSysFileLine("/sys/devices/system/cpu/online", &online_cpu_list) ||
-				!ParseCpuList(online_cpu_list, &cpus)) {
-				return 0;
-			}
+		if (!AvailableCpus(&cpus)) {
+			return 0;
 		}
 		// On Intel hybrid CPUs, the 'cpu_core' performance monitoring unit lists the logical CPUs of the
 		// performance cores (and 'cpu_atom' the ones of the efficiency cores)

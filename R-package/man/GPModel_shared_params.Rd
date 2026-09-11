@@ -16,10 +16,12 @@ GPModel_shared_params(likelihood = NULL, likelihood_additional_param = NULL,
   num_ind_points = NULL, cover_tree_radius = NULL,
   matrix_inversion_method = NULL, seed = NULL, vecchia_pred_type = NULL,
   num_neighbors_pred = NULL, cg_delta_conv_pred = NULL,
-  nsim_var_pred = NULL, rank_pred_approx_matrix_lanczos = NULL,
-  cluster_ids = NULL, weights = NULL, likelihood_learning_rate = NULL,
-  free_raw_data = NULL, y = NULL, X = NULL, params = NULL,
-  offset = NULL, fixed_effects = NULL, group_data_pred = NULL,
+  cg_convergence_criterion_pred = NULL, cg_rel_tol_pred = NULL,
+  cg_abs_tol_pred = NULL, nsim_var_pred = NULL,
+  rank_pred_approx_matrix_lanczos = NULL, cluster_ids = NULL,
+  weights = NULL, likelihood_learning_rate = NULL, free_raw_data = NULL,
+  y = NULL, X = NULL, params = NULL, offset = NULL,
+  fixed_effects = NULL, group_data_pred = NULL,
   group_rand_coef_data_pred = NULL, gp_coords_pred = NULL,
   gp_rand_coef_data_pred = NULL, cluster_ids_pred = NULL, X_pred = NULL,
   predict_cov_mat = NULL, predict_var = NULL, sample_posterior = NULL,
@@ -315,8 +317,9 @@ for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecch
 If num_parallel_threads = NULL, the number of physical performance cores is used. On CPUs whose
 cores have different speeds (e.g., the performance and efficiency cores of recent Intel CPUs or
 Apple silicon), only the fastest cores are counted, and hyperthreads are counted only once, since
-slow threads can slow down an entire model. All available threads are used if the environment
-variable OMP_NUM_THREADS is set or if the cores of the CPU cannot be determined.
+slow threads can slow down an entire model. The number of threads that OpenMP is configured to use
+is kept if the environment variable OMP_NUM_THREADS is set or if the cores of the CPU cannot be
+determined.
 For ordinary use, leave num_parallel_threads unspecified to use this default. Setting
 num_parallel_threads = 1 disables the OpenMP parallelization of the model and can substantially
 increase the runtime. A single thread should be chosen deliberately, e.g., to distribute the
@@ -417,6 +420,22 @@ checking convergence in conjugate gradient algorithms when being used for predic
 This is the tolerance of the "absolute" criterion only, the "relative" criterion is controlled
 by cg_rel_tol_pred and cg_abs_tol_pred.
 Default value if NULL: 1e-3}
+
+\item{cg_convergence_criterion_pred}{a \code{string} specifying the stopping rule of conjugate
+gradient algorithms when being used for prediction: "absolute" (stop when ||r||_2 < cg_delta_conv_pred)
+or "relative" (stop when ||r||_2 <= max(cg_abs_tol_pred, cg_rel_tol_pred * ||b||_2)).
+Default value if NULL: the value of cg_convergence_criterion used for the parameter estimation}
+
+\item{cg_rel_tol_pred}{a \code{numeric} specifying the relative tolerance of the "relative"
+stopping rule when being used for prediction.
+Default value if NULL: the value of cg_rel_tol used for the parameter estimation. This is
+inherited independently of cg_convergence_criterion_pred}
+
+\item{cg_abs_tol_pred}{a \code{numeric} specifying the absolute tolerance floor of the "relative"
+stopping rule when being used for prediction. This makes the rule robust for right-hand sides
+that are zero or very small.
+Default value if NULL: the value of cg_abs_tol used for the parameter estimation. This is
+inherited independently of the other two prediction options}
 
 \item{nsim_var_pred}{an \code{integer} specifying the number of samples when simulation 
 is used for calculating predictive variances
@@ -693,22 +712,6 @@ square root of diagonal of a numerically approximated inverse Hessian for non-Ga
 \item{vecchia_approx}{Discontinued. Use the argument \code{gp_approx} instead}
 
 \item{num_data}{A \code{numeric} with the number of samples. This is only used for iid models}
-
-\item{cg_convergence_criterion_pred}{a \code{string} specifying the stopping rule of conjugate
-gradient algorithms when being used for prediction: "absolute" (stop when ||r||_2 < cg_delta_conv_pred)
-or "relative" (stop when ||r||_2 <= max(cg_abs_tol_pred, cg_rel_tol_pred * ||b||_2)).
-Default value if NULL: the value of cg_convergence_criterion used for the parameter estimation}
-
-\item{cg_rel_tol_pred}{a \code{numeric} specifying the relative tolerance of the "relative"
-stopping rule when being used for prediction.
-Default value if NULL: the value of cg_rel_tol used for the parameter estimation. This is
-inherited independently of cg_convergence_criterion_pred}
-
-\item{cg_abs_tol_pred}{a \code{numeric} specifying the absolute tolerance floor of the "relative"
-stopping rule when being used for prediction. This makes the rule robust for right-hand sides
-that are zero or very small.
-Default value if NULL: the value of cg_abs_tol used for the parameter estimation. This is
-inherited independently of the other two prediction options}
 }
 \description{
 Documentation for parameters shared by \code{GPModel}, \code{gpb.cv}, and \code{gpboost}
