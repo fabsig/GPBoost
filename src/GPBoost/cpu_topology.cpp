@@ -42,6 +42,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <cmath>
 #include <iterator>
@@ -189,10 +190,12 @@ namespace GPBoost {
 		const int num_performance_levels = SysctlInt("hw.nperflevels");
 		if (num_performance_levels > 1) {
 			int num_cores = 0;
+			bool all_levels_read = true;
 			for (int level = 0; level < num_performance_levels; ++level) {
 				const std::string name = "hw.perflevel" + std::to_string(level) + ".physicalcpu";
 				const int num_cores_of_level = SysctlInt(name.c_str());
 				if (num_cores_of_level <= 0) {
+					all_levels_read = false;
 					break;
 				}
 				num_cores += num_cores_of_level;
@@ -200,7 +203,9 @@ namespace GPBoost {
 					break;
 				}
 			}
-			if (num_cores > 0) {
+			// A level that could not be read leaves too few cores, and the number of physical cores below is
+			// then the better answer
+			if (num_cores >= MIN_NUM_CORES_OF_FASTEST_CLASSES || (all_levels_read && num_cores > 0)) {
 				return num_cores;
 			}
 		}
@@ -332,6 +337,19 @@ namespace GPBoost {
 #endif
 			return !cpus->empty();
 		}
+#elif defined(_OPENMP)
+		// OpenMP before 4.0 has neither 'omp_get_proc_bind()' nor places, but 'OMP_PROC_BIND' already binds
+		// the threads since OpenMP 3.1. The affinity of the calling thread can then not be trusted, and
+		// since there is no way to ask for the places, the available CPUs stay unknown
+		const char* proc_bind_env = std::getenv("OMP_PROC_BIND");
+		const char* places_env = std::getenv("OMP_PLACES");
+		const bool binding_requested =
+			(proc_bind_env != nullptr && proc_bind_env[0] != '\0' &&
+				std::strncmp(proc_bind_env, "false", 5) != 0 && std::strncmp(proc_bind_env, "FALSE", 5) != 0) ||
+			(places_env != nullptr && places_env[0] != '\0');
+		if (binding_requested) {
+			return false;
+		}
 #endif
 		// 'cpu_set_t' has room for 'CPU_SETSIZE' (1024) CPUs only. A larger mask makes 'sched_getaffinity()'
 		// fail with EINVAL and has to be allocated dynamically
@@ -425,10 +443,133 @@ namespace GPBoost {
 	*		show up in the processor affinity. More threads than this only make the group be throttled
 	* \return Number of CPUs, or 0 if there is no quota or it cannot be determined
 	*/
+	/*!
+	* \brief Splits a string at a delimiter
+	* \param text The string
+	* \param delimiter The delimiter
+	* \return The parts between the delimiters
+	*/
+	std::vector<std::string> SplitString(const std::string& text, const char delimiter) {
+		std::vector<std::string> parts;
+		size_t start = 0;
+		while (true) {
+			const size_t position = text.find(delimiter, start);
+			parts.push_back(text.substr(start, position == std::string::npos ? std::string::npos : position - start));
+			if (position == std::string::npos) {
+				return parts;
+			}
+			start = position + 1;
+		}
+	}
+
+	/*!
+	* \brief True if a comma-separated list contains a token. The token has to match completely: the list of
+	*		control group controllers "cpuacct" does not contain the controller "cpu"
+	* \param list Comma-separated list
+	* \param token The token
+	* \return True if the list contains the token
+	*/
+	bool ListContainsToken(const std::string& list, const std::string& token) {
+		const std::vector<std::string> tokens = SplitString(list, ',');
+		return std::find(tokens.begin(), tokens.end(), token) != tokens.end();
+	}
+
+	/*!
+	* \brief Directory in which the control group of this process can be read
+	* \param cgroup_path Path of the control group relative to the root of its hierarchy, as written in
+	*		'/proc/self/cgroup'
+	* \param version_2 True for the control group hierarchy v2, false for the v1 hierarchy of the controller 'cpu'
+	* \param[out] directory Directory of the control group
+	* \param[out] mount_point Directory at which the hierarchy is mounted, i.e., the highest visible ancestor
+	* \return True if the control group could be located. A mount can show a subtree of the hierarchy, so the
+	*		path from '/proc/self/cgroup' must not simply be appended to the mount point: it is relative to the
+	*		root of the hierarchy, while the mount shows the subtree below the root of the mount
+	*/
+	bool ResolveCgroupDirectory(const std::string& cgroup_path,
+		const bool version_2,
+		std::string* directory,
+		std::string* mount_point) {
+		if (cgroup_path.empty()) {
+			return false;
+		}
+		std::ifstream mountinfo_file("/proc/self/mountinfo");
+		std::string line;
+		while (std::getline(mountinfo_file, line)) {
+			// "id parent major:minor root mount_point options... - filesystem source super_options"
+			const size_t separator = line.find(" - ");
+			if (separator == std::string::npos) {
+				continue;
+			}
+			const std::vector<std::string> fields = SplitString(line.substr(0, separator), ' ');
+			const std::vector<std::string> filesystem_fields = SplitString(line.substr(separator + 3), ' ');
+			if (fields.size() < 5 || filesystem_fields.size() < 3) {
+				continue;
+			}
+			const std::string& root = fields[3];
+			const std::string& point = fields[4];
+			const std::string& filesystem = filesystem_fields[0];
+			const std::string& super_options = filesystem_fields[2];
+			if (version_2 ? filesystem != "cgroup2"
+				: (filesystem != "cgroup" || !ListContainsToken(super_options, "cpu"))) {
+				continue;
+			}
+			// Only the part of the hierarchy below the root of the mount is visible
+			std::string relative_path = cgroup_path;
+			if (root != "/") {
+				if (cgroup_path.compare(0, root.size(), root) != 0 ||
+					(cgroup_path.size() > root.size() && cgroup_path[root.size()] != '/')) {
+					continue;
+				}
+				relative_path = cgroup_path.substr(root.size());
+			}
+			*directory = point + (relative_path == "/" ? std::string() : relative_path);
+			*mount_point = point;
+			return true;
+		}
+		return false;
+	}
+
+	/*!
+	* \brief Reads the CPU bandwidth quota of a control group and keeps it if it is the smallest one so far
+	* \param directory Directory of the control group
+	* \param version_2 True for the control group hierarchy v2
+	* \param[out] smallest_num_cpus Smallest number of CPUs found so far, negative if there is none
+	*/
+	void UpdateSmallestQuota(const std::string& directory,
+		const bool version_2,
+		double* smallest_num_cpus) {
+		double quota = -1., period = -1.;
+		std::string quota_string, period_string;
+		if (version_2) {
+			// 'cpu.max' contains the quota and the period, and "max" means that there is no limit
+			if (ReadSysFileLine(directory + "/cpu.max", &quota_string) &&
+				quota_string.compare(0, 3, "max") != 0) {
+				char* next = nullptr;
+				quota = std::strtod(quota_string.c_str(), &next);
+				if (next != quota_string.c_str()) {
+					period = std::strtod(next, nullptr);
+				}
+			}
+		}
+		else if (ReadSysFileLine(directory + "/cpu.cfs_quota_us", &quota_string) &&
+			ReadSysFileLine(directory + "/cpu.cfs_period_us", &period_string)) {
+			// A negative quota means that there is no limit
+			quota = std::strtod(quota_string.c_str(), nullptr);
+			period = std::strtod(period_string.c_str(), nullptr);
+		}
+		if (quota > 0. && period > 0.) {
+			const double num_cpus = std::ceil(quota / period);
+			if (num_cpus >= 1. && (*smallest_num_cpus < 0. || num_cpus < *smallest_num_cpus)) {
+				*smallest_num_cpus = num_cpus;
+			}
+		}
+	}
+
 	int CpuQuotaLimit() {
-		// The path of the control group of this process relative to the mount point of the hierarchy. Every
-		// line of '/proc/self/cgroup' is "hierarchy:controllers:path", where v2 uses the hierarchy 0 with an
-		// empty list of controllers
+		// The path of the control group of this process relative to the root of its hierarchy. Every line of
+		// '/proc/self/cgroup' is "hierarchy:controllers:path", where v2 uses the hierarchy 0 with an empty
+		// list of controllers. The hierarchies are independent, so 'cpu' and, e.g., 'cpuacct' can have
+		// different paths and the controller has to be matched exactly
 		std::string cgroup_path_v1, cgroup_path_v2, line;
 		std::ifstream cgroup_file("/proc/self/cgroup");
 		while (std::getline(cgroup_file, line)) {
@@ -445,52 +586,28 @@ namespace GPBoost {
 			if (controllers.empty()) {
 				cgroup_path_v2 = path;
 			}
-			else if (controllers.find("cpu") != std::string::npos &&
-				controllers.find("cpuset") == std::string::npos) {
+			else if (ListContainsToken(controllers, "cpu")) {
 				cgroup_path_v1 = path;
 			}
 		}
 		// A quota of an ancestor also applies, so the smallest one of the control group and of all of its
-		// ancestors is used. Only the usual mount points are looked at, '/proc/self/mountinfo' is not parsed
+		// visible ancestors is used
 		double smallest_num_cpus = -1.;
-		const char* v1_mount_points[] = { "/sys/fs/cgroup/cpu", "/sys/fs/cgroup/cpu,cpuacct" };
-		for (int hierarchy = 0; hierarchy < 3; ++hierarchy) {
-			const bool is_v2 = hierarchy == 0;
-			const std::string mount_point = is_v2 ? "/sys/fs/cgroup" : v1_mount_points[hierarchy - 1];
-			std::string path = is_v2 ? cgroup_path_v2 : cgroup_path_v1;
-			// Walk from the control group up to the root of the hierarchy
+		for (int version = 2; version >= 1; --version) {
+			const bool version_2 = version == 2;
+			std::string directory, mount_point;
+			if (!ResolveCgroupDirectory(version_2 ? cgroup_path_v2 : cgroup_path_v1, version_2,
+				&directory, &mount_point)) {
+				continue;
+			}
 			while (true) {
-				double quota = -1., period = -1.;
-				const std::string directory = mount_point + path;
-				std::string quota_string, period_string;
-				if (is_v2) {
-					// 'cpu.max' contains the quota and the period, and "max" means that there is no limit
-					if (ReadSysFileLine(directory + "/cpu.max", &quota_string) &&
-						quota_string.compare(0, 3, "max") != 0) {
-						char* next = nullptr;
-						quota = std::strtod(quota_string.c_str(), &next);
-						if (next != quota_string.c_str()) {
-							period = std::strtod(next, nullptr);
-						}
-					}
-				}
-				else if (ReadSysFileLine(directory + "/cpu.cfs_quota_us", &quota_string) &&
-					ReadSysFileLine(directory + "/cpu.cfs_period_us", &period_string)) {
-					// A negative quota means that there is no limit
-					quota = std::strtod(quota_string.c_str(), nullptr);
-					period = std::strtod(period_string.c_str(), nullptr);
-				}
-				if (quota > 0. && period > 0.) {
-					const double num_cpus = std::ceil(quota / period);
-					if (num_cpus >= 1. && (smallest_num_cpus < 0. || num_cpus < smallest_num_cpus)) {
-						smallest_num_cpus = num_cpus;
-					}
-				}
-				if (path.empty() || path == "/") {
+				UpdateSmallestQuota(directory, version_2, &smallest_num_cpus);
+				if (directory.size() <= mount_point.size()) {
 					break;
 				}
-				const size_t last_slash = path.find_last_of('/');
-				path = last_slash == std::string::npos ? std::string() : path.substr(0, last_slash);
+				const size_t last_slash = directory.find_last_of('/');
+				directory = (last_slash == std::string::npos || last_slash < mount_point.size())
+					? mount_point : directory.substr(0, last_slash);
 			}
 		}
 		if (!(smallest_num_cpus >= 1.) || smallest_num_cpus > (double)(1 << 20)) {

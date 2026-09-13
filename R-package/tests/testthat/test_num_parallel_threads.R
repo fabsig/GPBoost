@@ -101,7 +101,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 # 'helpers/run_tests_coverage_R_package.R' sets, would be inherited, and since an explicitly requested
 # number of threads is used as is, the code under test would never run
 .gpb_num_threads_in_new_process <- function(commands, env = character(0)) {
-  rscript <- file.path(R.home("bin"), "Rscript")
+  rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
   if (!file.exists(rscript)) {
     return(NA_integer_)
   }
@@ -116,8 +116,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       do.call(Sys.setenv, as.list(values_set_before))
     }
   }, add = TRUE)
+  # '--vanilla' keeps a '.Renviron' from setting OMP_NUM_THREADS again and a startup profile from loading
+  # the package before the commands below do
   output <- suppressWarnings(
-    tryCatch(system2(rscript, c("-e", shQuote(script)), stdout = TRUE, stderr = FALSE, env = env)
+    tryCatch(system2(rscript, c("--vanilla", "-e", shQuote(script)), stdout = TRUE, stderr = FALSE, env = env)
              , error = function(e) NA_character_)
   )
   suppressWarnings(as.integer(utils::tail(output, 1L)))
