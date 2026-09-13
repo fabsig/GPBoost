@@ -343,10 +343,13 @@ namespace GPBoost {
 		// since there is no way to ask for the places, the available CPUs stay unknown
 		const char* proc_bind_env = std::getenv("OMP_PROC_BIND");
 		const char* places_env = std::getenv("OMP_PLACES");
+		// 'GOMP_CPU_AFFINITY' of the GNU implementation binds the threads as well
+		const char* gnu_affinity_env = std::getenv("GOMP_CPU_AFFINITY");
 		const bool binding_requested =
 			(proc_bind_env != nullptr && proc_bind_env[0] != '\0' &&
 				std::strncmp(proc_bind_env, "false", 5) != 0 && std::strncmp(proc_bind_env, "FALSE", 5) != 0) ||
-			(places_env != nullptr && places_env[0] != '\0');
+			(places_env != nullptr && places_env[0] != '\0') ||
+			(gnu_affinity_env != nullptr && gnu_affinity_env[0] != '\0');
 		if (binding_requested) {
 			return false;
 		}
@@ -475,23 +478,71 @@ namespace GPBoost {
 	}
 
 	/*!
-	* \brief Directory in which the control group of this process can be read
+	* \brief Decodes the octal escapes that '/proc/self/mountinfo' writes for spaces, tabs, newlines and
+	*		backslashes in paths
+	* \param path Path as written in '/proc/self/mountinfo'
+	* \return The path with the escapes replaced by the characters they stand for
+	*/
+	std::string DecodeMountPath(const std::string& path) {
+		std::string decoded;
+		for (size_t position = 0; position < path.size(); ++position) {
+			const bool is_escape = path[position] == '\\' && position + 3 < path.size() &&
+				path[position + 1] >= '0' && path[position + 1] <= '7' &&
+				path[position + 2] >= '0' && path[position + 2] <= '7' &&
+				path[position + 3] >= '0' && path[position + 3] <= '7';
+			if (is_escape) {
+				const int value = (path[position + 1] - '0') * 64 + (path[position + 2] - '0') * 8 +
+					(path[position + 3] - '0');
+				decoded.push_back(static_cast<char>(value));
+				position += 3;
+			}
+			else {
+				decoded.push_back(path[position]);
+			}
+		}
+		return decoded;
+	}
+
+	/*!
+	* \brief True if a path contains a '..' component. A control group namespace writes such a path when the
+	*		process has been moved outside the root of its namespace. The group is then not visible, and the
+	*		path must not be resolved: removing the component would name a different group
+	* \param path The path
+	* \return True if the path contains a '..' component
+	*/
+	bool PathHasParentComponent(const std::string& path) {
+		const std::vector<std::string> components = SplitString(path, '/');
+		return std::find(components.begin(), components.end(), std::string("..")) != components.end();
+	}
+
+	/*! \brief A control group as it can be read through one mount of its hierarchy */
+	struct CgroupMapping {
+		/*! \brief Directory of the control group */
+		std::string directory;
+		/*! \brief Directory at which the hierarchy is mounted, i.e., the highest ancestor visible here */
+		std::string mount_point;
+	};
+
+	/*!
+	* \brief Directories in which the control group of this process can be read
 	* \param cgroup_path Path of the control group relative to the root of its hierarchy, as written in
 	*		'/proc/self/cgroup'
 	* \param version_2 True for the control group hierarchy v2, false for the v1 hierarchy of the controller 'cpu'
-	* \param[out] directory Directory of the control group
-	* \param[out] mount_point Directory at which the hierarchy is mounted, i.e., the highest visible ancestor
-	* \return True if the control group could be located. A mount can show a subtree of the hierarchy, so the
-	*		path from '/proc/self/cgroup' must not simply be appended to the mount point: it is relative to the
-	*		root of the hierarchy, while the mount shows the subtree below the root of the mount
+	* \return One entry per mount through which the control group is visible, empty if it cannot be located.
+	*		A mount can show a subtree of the hierarchy, so the path from '/proc/self/cgroup' must not simply
+	*		be appended to the mount point: it is relative to the root of the hierarchy, while the mount shows
+	*		the subtree below the root of the mount. Different mounts can also make different ancestors
+	*		readable, so all of them are returned
 	*/
-	bool ResolveCgroupDirectory(const std::string& cgroup_path,
-		const bool version_2,
-		std::string* directory,
-		std::string* mount_point) {
-		if (cgroup_path.empty()) {
-			return false;
+	std::vector<CgroupMapping> ResolveCgroupDirectories(const std::string& cgroup_path,
+		const bool version_2) {
+		std::vector<CgroupMapping> mappings;
+		if (cgroup_path.empty() || PathHasParentComponent(cgroup_path)) {
+			return mappings;
 		}
+		// A mount that is listed later covers an earlier one at the same mount point, and only the covering
+		// one can be read, so every mount point is kept only once
+		std::vector<CgroupMapping> mounts;// 'directory' holds the root of the mount here
 		std::ifstream mountinfo_file("/proc/self/mountinfo");
 		std::string line;
 		while (std::getline(mountinfo_file, line)) {
@@ -505,14 +556,28 @@ namespace GPBoost {
 			if (fields.size() < 5 || filesystem_fields.size() < 3) {
 				continue;
 			}
-			const std::string& root = fields[3];
-			const std::string& point = fields[4];
 			const std::string& filesystem = filesystem_fields[0];
 			const std::string& super_options = filesystem_fields[2];
 			if (version_2 ? filesystem != "cgroup2"
 				: (filesystem != "cgroup" || !ListContainsToken(super_options, "cpu"))) {
 				continue;
 			}
+			CgroupMapping mount;
+			mount.directory = DecodeMountPath(fields[3]);
+			mount.mount_point = DecodeMountPath(fields[4]);
+			size_t existing = 0;
+			while (existing < mounts.size() && mounts[existing].mount_point != mount.mount_point) {
+				++existing;
+			}
+			if (existing < mounts.size()) {
+				mounts[existing] = mount;
+			}
+			else {
+				mounts.push_back(mount);
+			}
+		}
+		for (size_t i = 0; i < mounts.size(); ++i) {
+			const std::string& root = mounts[i].directory;
 			// Only the part of the hierarchy below the root of the mount is visible
 			std::string relative_path = cgroup_path;
 			if (root != "/") {
@@ -522,11 +587,12 @@ namespace GPBoost {
 				}
 				relative_path = cgroup_path.substr(root.size());
 			}
-			*directory = point + (relative_path == "/" ? std::string() : relative_path);
-			*mount_point = point;
-			return true;
+			CgroupMapping mapping;
+			mapping.mount_point = mounts[i].mount_point;
+			mapping.directory = mapping.mount_point + (relative_path == "/" ? std::string() : relative_path);
+			mappings.push_back(mapping);
 		}
-		return false;
+		return mappings;
 	}
 
 	/*!
@@ -595,19 +661,20 @@ namespace GPBoost {
 		double smallest_num_cpus = -1.;
 		for (int version = 2; version >= 1; --version) {
 			const bool version_2 = version == 2;
-			std::string directory, mount_point;
-			if (!ResolveCgroupDirectory(version_2 ? cgroup_path_v2 : cgroup_path_v1, version_2,
-				&directory, &mount_point)) {
-				continue;
-			}
-			while (true) {
-				UpdateSmallestQuota(directory, version_2, &smallest_num_cpus);
-				if (directory.size() <= mount_point.size()) {
-					break;
+			const std::vector<CgroupMapping> mappings =
+				ResolveCgroupDirectories(version_2 ? cgroup_path_v2 : cgroup_path_v1, version_2);
+			for (size_t i = 0; i < mappings.size(); ++i) {
+				const std::string& mount_point = mappings[i].mount_point;
+				std::string directory = mappings[i].directory;
+				while (true) {
+					UpdateSmallestQuota(directory, version_2, &smallest_num_cpus);
+					if (directory.size() <= mount_point.size()) {
+						break;
+					}
+					const size_t last_slash = directory.find_last_of('/');
+					directory = (last_slash == std::string::npos || last_slash < mount_point.size())
+						? mount_point : directory.substr(0, last_slash);
 				}
-				const size_t last_slash = directory.find_last_of('/');
-				directory = (last_slash == std::string::npos || last_slash < mount_point.size())
-					? mount_point : directory.substr(0, last_slash);
 			}
 		}
 		if (!(smallest_num_cpus >= 1.) || smallest_num_cpus > (double)(1 << 20)) {
