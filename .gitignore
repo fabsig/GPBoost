@@ -159,6 +159,9 @@ python-package/gpboost/VERSION.txt
 # R build artefacts
 **/autom4te.cache/
 conftest*
+# 'conftest*' are artefacts of the configure script, the settings of the tests of the
+# Python package are not
+!tests/python_package_test/conftest.py
 R-package/config.status
 R-package/docs
 R-package/src/CMakeLists.txt

@@ -1620,6 +1620,52 @@ GPBOOST_C_EXPORT int GPB_GetNumParallelThreads(int* num_threads);
 GPBOOST_C_EXPORT int GPB_SetNumParallelThreads(int num_threads);
 
 /*!
+* \brief Get the number of threads that models use when no number of threads is specified for them. This is the
+*   number of threads that has been set for the session, if there is one, and the automatically selected number
+*   of threads otherwise
+*   Note: You should pre-allocate memory for num_threads (length = 1)
+* \param[out] num_threads Number of threads
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetDefaultNumParallelThreads(int* num_threads);
+
+/*!
+* \brief Get the automatically selected number of threads, i.e., the number of physical performance cores of the
+*   CPU limited by the number of threads that OMP uses and by a CPU quota
+*   Note: You should pre-allocate memory for num_threads (length = 1)
+* \param[out] num_threads Number of threads
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetAutoNumParallelThreads(int* num_threads);
+
+/*!
+* \brief Get the largest number of threads that GPBoost uses on its own, i.e., the number of threads that OMP uses
+*   when the automatically selected number of threads is determined. This is the upper limit for a number of
+*   threads that is set for the session
+*   Note: You should pre-allocate memory for num_threads (length = 1)
+* \param[out] num_threads Number of threads
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetMaxNumParallelThreads(int* num_threads);
+
+/*!
+* \brief Set the number of threads that models use when no number of threads is specified for them. In contrast to
+*   'GPB_SetNumParallelThreads', this does not change the number of threads of the process: it only changes the
+*   number of threads that is used when nothing else is requested
+* \param num_threads Number of threads. It is limited by 'GPB_GetMaxNumParallelThreads'. If num_threads <= 0, the
+*   automatically selected number of threads is used again
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_SetDefaultNumParallelThreads(int num_threads);
+
+/*!
+* \brief Do not write the message about the automatically selected number of threads. The message is written once
+*   per process when a model uses the automatically selected number of threads for the first time
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_SuppressAutoNumParallelThreadsMessage();
+
+/*!
 * \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
 * \param handle Handle of REModel
 * \param num_data_pred Number of data points for which predictions are made

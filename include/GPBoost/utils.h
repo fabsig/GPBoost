@@ -37,23 +37,111 @@ namespace GPBoost {
 	int NumPerformanceCores();
 
 	/*!
-	* \brief Determines the default number of parallel threads, see 'DefaultNumParallelThreads()'.
+	* \brief Determines the automatically selected number of parallel threads, see 'AutoNumParallelThreads()'.
 	*		Implemented in 'cpu_topology.cpp'
-	* \return Default number of parallel threads
+	* \return Automatically selected number of parallel threads
 	*/
 	int ComputeDefaultNumParallelThreads();
 
 	/*!
-	* \brief Number of threads that are used when no number of threads is explicitly requested. This is the number of
-	*		physical performance cores, see 'NumPerformanceCores()', limited by the number of threads that OMP uses
-	*		when this function is called for the first time (i.e., before any model has changed it), which is usually
-	*		determined by the environment variable 'OMP_NUM_THREADS' or the number of cores. If 'OMP_NUM_THREADS' is
-	*		set, it is used as is, and the same holds if the topology of the CPU cannot be determined
+	* \brief Number of threads that are used when no number of threads is explicitly requested and no default has
+	*		been set for the session, see 'SetDefaultNumParallelThreads()'. This is the number of physical
+	*		performance cores, see 'NumPerformanceCores()', limited by the number of threads that OMP uses when
+	*		this function is called for the first time (i.e., before any model has changed it), which is usually
+	*		determined by the environment variable 'OMP_NUM_THREADS' or the number of cores. If 'OMP_NUM_THREADS'
+	*		is set, it is used as is, and the same holds if the topology of the CPU cannot be determined.
+	*		Implemented in 'cpu_topology.cpp'
+	* \return Automatically selected number of parallel threads
+	*/
+	int AutoNumParallelThreads();
+
+	/*!
+	* \brief Largest number of threads that GPBoost uses on its own, i.e., the number of threads that OMP uses when
+	*		the automatic number of threads is determined for the first time. This is usually the number of logical
+	*		processors, or the value of the environment variable 'OMP_NUM_THREADS' if it is set. It is not smaller
+	*		than 'AutoNumParallelThreads()', which counts only the physical performance cores, and it is the upper
+	*		limit for a default that is set for the session. Implemented in 'cpu_topology.cpp'
+	* \return Largest number of threads that GPBoost uses on its own
+	*/
+	int MaxNumParallelThreads();
+
+	/*!
+	* \brief Number of threads that has been set as the default of the session, see 'SetDefaultNumParallelThreads()'.
+	*		Implemented in 'cpu_topology.cpp'
+	* \return Number of threads set for the session, or 0 if no such number has been set
+	*/
+	int TunedNumParallelThreads();
+
+	/*!
+	* \brief Sets the number of threads that is used by all models for which no number of threads is explicitly
+	*		requested. In contrast to the number of threads of the process, which is set by
+	*		'SetNumParallelThreads()', this is only the number that is used when nothing else is requested, and it
+	*		is thus not changed and restored again by the operations of a model. It is intended for a number of
+	*		threads that has been determined by benchmarking the machine. Implemented in 'cpu_topology.cpp'
+	* \param num_threads Number of threads. It is limited by 'MaxNumParallelThreads()'. If it is not positive, the
+	*		automatically selected number of threads is used again
+	*/
+	void SetDefaultNumParallelThreads(int num_threads);
+
+	/*! \brief Uses the automatically selected number of threads as the default of the session again */
+	inline void ResetDefaultNumParallelThreads() {
+		SetDefaultNumParallelThreads(0);
+	}
+
+	/*!
+	* \brief Number of threads that is used when no number of threads is explicitly requested: the number of threads
+	*		that has been set for the session, if there is one, and the automatically selected number of threads
+	*		otherwise
 	* \return Default number of parallel threads
 	*/
 	inline int DefaultNumParallelThreads() {
-		static const int default_num_parallel_threads = ComputeDefaultNumParallelThreads();
-		return(default_num_parallel_threads);
+		const int num_threads_tuned = TunedNumParallelThreads();
+		// 'TunedNumParallelThreads()' is only positive after 'SetDefaultNumParallelThreads()' has determined the
+		//	automatic number of threads, so the latter is determined before any model changes the number of threads
+		//	also when it is not read here
+		return(num_threads_tuned > 0 ? num_threads_tuned : AutoNumParallelThreads());
+	}
+
+	/*!
+	* \brief Reports whether the message about the automatically selected number of threads still has to be written,
+	*		and marks it as written. It is written only once per process, and not at all if the number of threads
+	*		has been requested explicitly via the environment variable 'OMP_NUM_THREADS' or if the environment
+	*		variable 'GPBOOST_THREAD_MESSAGE' is set to '0'. Implemented in 'cpu_topology.cpp'
+	* \return True if the message has to be written now
+	*/
+	bool ClaimAutoNumParallelThreadsMessage();
+
+	/*!
+	* \brief Marks the message about the automatically selected number of threads as written, so that it is not
+	*		written any more. Implemented in 'cpu_topology.cpp'
+	*/
+	void SuppressAutoNumParallelThreadsMessage();
+
+	/*!
+	* \brief Writes a message about the automatically selected number of threads if no number of threads has been
+	*		requested, neither for the operation nor for the session, and if the message has not been written
+	*		before. The message also makes the tuning of the number of threads discoverable
+	* \param num_threads_requested Number of threads that has been requested for the operation
+	* \param num_threads_used Number of threads that is used for the operation
+	*/
+	inline void MaybeLogAutoNumParallelThreadsMessage(int num_threads_requested, int num_threads_used) {
+		if (num_threads_requested > 0 || TunedNumParallelThreads() > 0) {
+			return;
+		}
+		if (!ClaimAutoNumParallelThreadsMessage()) {
+			return;
+		}
+		// Note: this is called from the thread that creates a 'ParallelThreadsScope' and thus never from a parallel
+		//	region. In the R package, the message is written by 'Rprintf', which must not be called by other threads
+#ifdef LGB_R_BUILD
+		Log::REInfo("GPBoost is using %d OpenMP threads by default for parallel computations. Run "
+			"gpb.tune.num.threads() to benchmark different numbers of threads and to select a tuned default "
+			"for this session, or manually set 'num_parallel_threads' for a 'GPModel'.", num_threads_used);
+#else
+		Log::REInfo("GPBoost is using %d OpenMP threads by default for parallel computations. Run "
+			"gpboost.tune_num_threads() to benchmark different numbers of threads and to select a tuned "
+			"default for this session, or manually set 'num_parallel_threads' for a 'GPModel'.", num_threads_used);
+#endif
 	}
 
 	/*!
@@ -79,7 +167,10 @@ namespace GPBoost {
 	*		models or by other libraries in the same process. If no number of threads is requested (i.e., if
 	*		'num_threads' is not positive), 'DefaultNumParallelThreads()' is used, i.e., an operation of a model for
 	*		which no number of threads has been specified always uses the default number of threads and not, e.g., a
-	*		number of threads that has been set by another model or by the boosting part of the library
+	*		number of threads that has been set by another model or by the boosting part of the library.
+	*		The default of the session can be changed while an operation is running: the number of threads is read
+	*		once when the object is created, and the numbers of threads that are restored afterwards are the ones
+	*		that have been found, so that such a change only affects the operations that start afterwards
 	*/
 	class ParallelThreadsScope {
 	public:
@@ -93,10 +184,11 @@ namespace GPBoost {
 			// that this or another scope has already set
 			const int num_threads_default = DefaultNumParallelThreads();
 			int num_threads_used = num_threads > 0 ? num_threads : num_threads_default;
+			MaybeLogAutoNumParallelThreadsMessage(num_threads, num_threads_used);
 			num_threads_previous_omp_ = omp_get_max_threads();
 			num_threads_previous_eigen_ = Eigen::nbThreads();
 			if (num_threads_used != num_threads_previous_omp_ || num_threads_used != num_threads_previous_eigen_) {
-				omp_set_num_threads(num_threads_used);
+				SetNumParallelThreads(num_threads_used);
 				Eigen::setNbThreads(num_threads_used);
 				num_threads_have_been_changed_ = true;
 			}
@@ -105,7 +197,7 @@ namespace GPBoost {
 		/*! \brief Destructor. Restores the numbers of threads used before */
 		~ParallelThreadsScope() {
 			if (num_threads_have_been_changed_) {
-				omp_set_num_threads(num_threads_previous_omp_);
+				SetNumParallelThreads(num_threads_previous_omp_);
 				Eigen::setNbThreads(num_threads_previous_eigen_);
 			}
 		}

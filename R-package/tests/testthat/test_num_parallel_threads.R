@@ -100,13 +100,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 # variables). Otherwise a variable of the calling process, e.g. the OMP_NUM_THREADS = 10 that
 # 'helpers/run_tests_coverage_R_package.R' sets, would be inherited, and since an explicitly requested
 # number of threads is used as is, the code under test would never run
-.gpb_num_threads_in_new_process <- function(commands, env = character(0)) {
+.gpb_output_of_new_process <- function(commands, env = character(0)) {
   rscript <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript")
   if (!file.exists(rscript)) {
-    return(NA_integer_)
+    return(NA_character_)
   }
   script <- paste0(".libPaths(", paste0(deparse(.libPaths()), collapse = ""), "); "
-                   , "suppressMessages(library(gpboost)); ", commands, "cat(gpb.get.num.threads())")
+                   , "suppressMessages(library(gpboost)); ", commands)
   omp_variables <- c("OMP_NUM_THREADS", "OMP_PROC_BIND", "OMP_PLACES", "OMP_THREAD_LIMIT")
   values_before <- Sys.getenv(omp_variables, names = TRUE, unset = NA_character_)
   Sys.unsetenv(omp_variables)
@@ -122,6 +122,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     tryCatch(system2(rscript, c("--vanilla", "-e", shQuote(script)), stdout = TRUE, stderr = FALSE, env = env)
              , error = function(e) NA_character_)
   )
+  return(output)
+}
+
+.gpb_num_threads_in_new_process <- function(commands, env = character(0)) {
+  output <- .gpb_output_of_new_process(paste0(commands, "cat(gpb.get.num.threads())"), env = env)
+  if (length(output) == 0L || all(is.na(output))) {
+    return(NA_integer_)
+  }
   suppressWarnings(as.integer(utils::tail(output, 1L)))
 }
 
@@ -179,5 +187,132 @@ test_that("OpenMP thread binding does not reduce the default number of threads",
                                     , env = c("OMP_PLACES=cores", "OMP_PROC_BIND=spread"))
     , num_threads_default
   )
+
+})
+
+test_that("the default number of threads of the session can be set and reset", {
+
+  num_threads_auto <- gpboost:::gpb.get.auto.num.threads()
+  num_threads_max <- gpboost:::gpb.get.max.num.threads()
+  expect_gte(num_threads_auto, 1L)
+  # The automatically selected number of threads counts only the physical performance cores, the
+  # maximum is the number of threads that OMP uses when the default is determined
+  expect_gte(num_threads_max, num_threads_auto)
+
+  num_threads_omp <- gpb.get.num.threads()
+  # Both the default of the session and the number of threads of the process have to be restored for
+  # the test files that run afterwards, also if an expectation below fails
+  on.exit({
+    gpb.set.default.num.threads(-1L)
+    gpb.set.num.threads(num_threads_omp)
+  }, add = TRUE)
+
+  expect_equal(gpb.get.default.num.threads(), num_threads_auto)
+  gpb.set.default.num.threads(1L)
+  expect_equal(gpb.get.default.num.threads(), 1L)
+  # The default of the session is limited by the largest number of threads
+  gpb.set.default.num.threads(num_threads_max + 10L)
+  expect_equal(gpb.get.default.num.threads(), num_threads_max)
+  # A non-positive number uses the automatically selected number of threads again
+  gpb.set.default.num.threads(-1L)
+  expect_equal(gpb.get.default.num.threads(), num_threads_auto)
+  expect_error(gpb.set.default.num.threads("two")
+               , "num_threads needs to be an integer of length one", fixed = TRUE)
+
+  # Setting the number of threads of the process does not change the default of the session: the two
+  # are different things, the default is what models use when nothing else is requested
+  gpb.set.num.threads(1L)
+  expect_equal(gpb.get.default.num.threads(), num_threads_auto)
+  # ... and a non-positive number of threads of the process means the default of the session
+  gpb.set.default.num.threads(1L)
+  gpb.set.num.threads(-1L)
+  expect_equal(gpb.get.num.threads(), 1L)
+
+})
+
+test_that("the numbers of threads that are benchmarked are spread out", {
+
+  expect_equal(gpboost:::gpb.thread.candidates(16L, 16L), c(1L, 2L, 4L, 8L, 16L))
+  expect_equal(gpboost:::gpb.thread.candidates(1L, 1L), 1L)
+  expect_equal(gpboost:::gpb.thread.candidates(6L, 12L), c(1L, 2L, 3L, 4L, 6L, 8L, 12L))
+  # A single thread, the automatically selected number of threads and the largest number of threads
+  # are always benchmarked, and the number of candidates is limited
+  candidates <- gpboost:::gpb.thread.candidates(64L, 128L)
+  expect_lte(length(candidates), 7L)
+  expect_true(all(c(1L, 64L, 128L) %in% candidates))
+  expect_false(is.unsorted(candidates))
+
+})
+
+test_that("gpb.tune.num.threads validates arguments before benchmarking", {
+
+  expect_error(gpb.tune.num.threads(n_rep = 1.5), "positive integer", fixed = TRUE)
+  expect_error(gpb.tune.num.threads(tolerance = Inf), "non-negative number", fixed = TRUE)
+  expect_error(gpb.tune.num.threads(max_time = NaN), "positive number", fixed = TRUE)
+  expect_error(gpb.tune.num.threads(set_default = 1L), "TRUE or FALSE", fixed = TRUE)
+  expect_error(gpb.tune.num.threads(num_threads_candidates = c(1L, 1.5)),
+               "positive integers", fixed = TRUE)
+
+})
+
+test_that("gpb.tune.num.threads measures without changing anything", {
+
+  num_threads_omp <- gpb.get.num.threads()
+  num_threads_default <- gpb.get.default.num.threads()
+  on.exit({
+    gpb.set.default.num.threads(-1L)
+    gpb.set.num.threads(num_threads_omp)
+  }, add = TRUE)
+
+  results <- gpb.tune.num.threads(workloads = "grouped_re", workload_size = "small"
+                                  , num_threads_candidates = c(1L, 2L), n_rep = 2L
+                                  , set_default = FALSE, verbose = FALSE)
+  expect_equal(nrow(results[["timings"]]), 2L)
+  expect_true(all(results[["timings"]][["median"]] > 0))
+  expect_equal(results[["aggregate"]][["num_threads"]], c(1L, 2L))
+  # The runtimes are relative to the fastest number of threads of a workload, so the smallest one is 1
+  expect_equal(min(results[["aggregate"]][["relative_runtime"]]), 1)
+  expect_false(results[["default_was_set"]])
+  expect_equal(gpb.get.default.num.threads(), num_threads_default)
+  # The benchmark gives its number of threads to the models and does not change the process
+  expect_equal(gpb.get.num.threads(), num_threads_omp)
+  expect_error(gpb.tune.num.threads(workloads = "not_a_workload"), "unknown workload", fixed = TRUE)
+
+})
+
+test_that("the message about the automatically selected number of threads is written once", {
+
+  if (Sys.getenv("OMP_NUM_THREADS") != "") {
+    skip("the message is not written when the number of threads has been requested explicitly")
+  }
+  message_text <- "OpenMP threads by default"
+  create_two_models <- paste0(
+    "group <- rep(1:10, each = 10); "
+    , "invisible(GPModel(group_data = group, likelihood = \"gaussian\")); "
+    , "invisible(GPModel(group_data = group, likelihood = \"gaussian\")); "
+  )
+  output <- .gpb_output_of_new_process(create_two_models)
+  if (length(output) == 0L || all(is.na(output))) {
+    skip("a new R process is needed for this test")
+  }
+  # The message makes the tuning of the number of threads discoverable, but only once per process
+  expect_equal(sum(grepl(message_text, output, fixed = TRUE)), 1L)
+
+  # No message if the number of threads has been requested for the model ...
+  output_explicit <- .gpb_output_of_new_process(paste0(
+    "group <- rep(1:10, each = 10); "
+    , "invisible(GPModel(group_data = group, likelihood = \"gaussian\", num_parallel_threads = 1L)); "
+  ))
+  expect_equal(sum(grepl(message_text, output_explicit, fixed = TRUE)), 0L)
+
+  # ... or for the session ...
+  output_session <- .gpb_output_of_new_process(paste0(
+    "gpb.set.default.num.threads(1L); ", create_two_models))
+  expect_equal(sum(grepl(message_text, output_session, fixed = TRUE)), 0L)
+
+  # ... or if the message has been switched off
+  output_switched_off <- .gpb_output_of_new_process(create_two_models
+                                                    , env = "GPBOOST_THREAD_MESSAGE=0")
+  expect_equal(sum(grepl(message_text, output_switched_off, fixed = TRUE)), 0L)
 
 })

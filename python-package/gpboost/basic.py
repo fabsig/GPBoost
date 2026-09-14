@@ -7,8 +7,10 @@ Modified work Copyright (c) 2020 - 2026 Fabio Sigrist. All rights reserved.
 Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 """
 import ctypes
+import gc
 import json
 import os
+import time
 import warnings
 from collections import OrderedDict
 from copy import deepcopy
@@ -119,6 +121,498 @@ def set_num_threads(num_threads):
     if not isinstance(num_threads, (int, np.integer)):
         raise ValueError('num_threads needs to be an integer')
     _safe_call(_LIB.GPB_SetNumParallelThreads(ctypes.c_int(num_threads)))
+
+
+def get_default_num_threads():
+    """Get the number of threads used by models for which no number of threads is specified.
+
+    This is the number of threads that a GPModel uses when no number of threads has been specified
+    for it via the 'num_parallel_threads' argument. It is the number of threads that has been set
+    for the session, either by tune_num_threads() or by set_default_num_threads(), and the
+    automatically selected number of threads (the number of physical performance cores) if no such
+    number has been set.
+
+    This is not the number of threads that OMP currently uses, see get_num_threads(): a model for
+    which no number of threads has been specified sets the number of threads returned here (and
+    resets it again) whenever it does calculations, irrespective of the number of threads of the
+    process.
+
+    Returns
+    -------
+    num_threads : int
+        The number of threads used by models for which no number of threads is specified
+
+    :Authors:
+        Fabio Sigrist
+    """
+    num_threads = ctypes.c_int(0)
+    _safe_call(_LIB.GPB_GetDefaultNumParallelThreads(ctypes.byref(num_threads)))
+    return num_threads.value
+
+
+def set_default_num_threads(num_threads):
+    """Set the number of threads used by models for which no number of threads is specified.
+
+    Use this to apply a number of threads that has been determined by tune_num_threads() in an
+    earlier session, without running the benchmark again.
+
+    In contrast to set_num_threads(), this does not change the number of threads that OMP currently
+    uses: it only changes the number of threads that models use when nothing else is requested. The
+    number of threads specified for an individual model always takes precedence.
+
+    Parameters
+    ----------
+    num_threads : int
+        The number of threads. It is limited by the number of threads that OMP uses when GPBoost
+        determines its default (usually the number of logical processors, or the value of the
+        environment variable 'OMP_NUM_THREADS' if it is set). If num_threads is not positive, the
+        automatically selected number of threads is used again
+
+    :Authors:
+        Fabio Sigrist
+    """
+    if not isinstance(num_threads, (int, np.integer)):
+        raise ValueError('num_threads needs to be an integer')
+    _safe_call(_LIB.GPB_SetDefaultNumParallelThreads(ctypes.c_int(num_threads)))
+
+
+def _get_auto_num_threads():
+    """Get the automatically selected number of threads, i.e. the number of physical performance cores."""
+    num_threads = ctypes.c_int(0)
+    _safe_call(_LIB.GPB_GetAutoNumParallelThreads(ctypes.byref(num_threads)))
+    return num_threads.value
+
+
+def _get_max_num_threads():
+    """Get the largest number of threads that GPBoost uses on its own."""
+    num_threads = ctypes.c_int(0)
+    _safe_call(_LIB.GPB_GetMaxNumParallelThreads(ctypes.byref(num_threads)))
+    return num_threads.value
+
+
+def _suppress_num_threads_message():
+    """Do not write the message about the automatically selected number of threads.
+
+    The message is written once per process when a model uses the automatically selected number of
+    threads for the first time. Tests call this so that the message does not appear in the output of
+    whichever test happens to run first.
+    """
+    _safe_call(_LIB.GPB_SuppressAutoNumParallelThreadsMessage())
+
+
+_THREAD_WORKLOAD_NAMES = ("grouped_re", "vecchia_non_gaussian", "crossed_re_iterative")
+
+
+def _thread_candidates(num_threads_auto, num_threads_max, max_num_candidates=7):
+    """Numbers of threads that are benchmarked.
+
+    One thread, the automatically selected number of threads, half of it and the largest number of
+    threads that GPBoost uses on its own are always benchmarked. Powers of two are added, the one in
+    the largest gap first, until the benchmark would get too long.
+    """
+    candidates = sorted({1, -(-int(num_threads_auto) // 2), int(num_threads_auto),
+                         int(num_threads_max)})
+    candidates = [value for value in candidates if 1 <= value <= num_threads_max]
+    remaining = [value for value in (2 ** power for power in range(31))
+                 if 1 <= value <= num_threads_max and value not in candidates]
+    while len(candidates) < max_num_candidates and len(remaining) > 0:
+        best_index = 0
+        best_gap = -1.
+        for index, value in enumerate(remaining):
+            lower = max(candidate for candidate in candidates if candidate < value)
+            upper = min(candidate for candidate in candidates if candidate > value)
+            gap = np.log(upper) - np.log(lower)
+            # Of several equally large gaps, the one with the smallest numbers of threads is split
+            # first, so that the result does not depend on rounding
+            if gap > best_gap + 1e-9:
+                best_gap = gap
+                best_index = index
+        candidates = sorted(candidates + [remaining.pop(best_index)])
+    return candidates
+
+
+def _thread_cov_pars(cov_pars, evaluation):
+    """Covariance parameters of one evaluation of a benchmark workload.
+
+    The covariance parameters are varied over the evaluations of a workload, so that every evaluation
+    does the same work as an evaluation during an optimization. Reusing the same covariance parameters
+    would allow quantities of a previous evaluation to be reused.
+    """
+    return cov_pars * (1. + 0.02 * ((evaluation - 1) % 5))
+
+
+def _thread_workload(workload, workload_size="default"):
+    """Data and model of a benchmark workload.
+
+    The data are simulated only once, and the models are created outside of the timed sections, so
+    that neither the simulation nor the setup of a model (e.g. the search for the neighbors of the
+    Vecchia approximation) is part of a measurement.
+    """
+    small = workload_size == "small"
+    rng = np.random.default_rng(1)
+    if workload == "grouped_re":
+        # A single grouped random effect with a Gaussian likelihood. The calculations are sparse and
+        # cheap per data point, so that the overhead of the parallelization is visible: this workload
+        # is the one that shows when a large number of threads does not pay off any more
+        n = 20000 if small else 1000000
+        num_groups = n // 100
+        group_data = np.repeat(np.arange(num_groups), n // num_groups)
+        y = rng.standard_normal(n) + np.repeat(rng.standard_normal(num_groups), n // num_groups)
+
+        def make_model(num_threads):
+            return GPModel(group_data=group_data, likelihood="gaussian",
+                           num_parallel_threads=num_threads)
+
+        return {"name": workload, "y": y, "cov_pars": np.array([1., 1.]),
+                "num_evaluations": 2 if small else 40, "make_model": make_model}
+    if workload == "vecchia_non_gaussian":
+        # A non-Gaussian likelihood with a Vecchia approximation and iterative methods. This exercises
+        # the Vecchia calculations, the Laplace approximation and the conjugate gradient and stochastic
+        # Lanczos quadrature calculations together
+        n = 1000 if small else 10000
+        gp_coords = rng.random((n, 2))
+        # A smooth spatial signal, so that the mode finding converges as it does for data from the model
+        signal = np.sin(2 * np.pi * gp_coords[:, 0]) + np.cos(2 * np.pi * gp_coords[:, 1])
+        y = rng.binomial(1, 1. / (1. + np.exp(-signal))).astype(np.float64)
+
+        def make_model(num_threads):
+            gp_model = GPModel(gp_coords=gp_coords, cov_function="exponential",
+                               likelihood="bernoulli_logit", gp_approx="vecchia",
+                               num_neighbors=20, matrix_inversion_method="iterative",
+                               num_parallel_threads=num_threads)
+            gp_model.set_optim_params(params={"cg_preconditioner_type": "vadu",
+                                              "num_rand_vec_trace": 20,
+                                              "seed_rand_vec_trace": 1,
+                                              "reuse_rand_vec_trace": True})
+            return gp_model
+
+        return {"name": workload, "y": y, "cov_pars": np.array([1., 0.1]),
+                "num_evaluations": 1, "make_model": make_model}
+    if workload == "crossed_re_iterative":
+        # Two crossed grouped random effects with iterative methods. This exercises the products with
+        # the sparse matrices of grouped random effects together with conjugate gradient and stochastic
+        # Lanczos quadrature calculations, without the dense parts of a Gaussian process
+        n = 5000 if small else 200000
+        num_groups = 100 if small else 1000
+        group_data = np.column_stack((rng.integers(0, num_groups, n),
+                                      rng.integers(0, num_groups, n)))
+        y = (rng.standard_normal(n) + rng.standard_normal(num_groups)[group_data[:, 0]]
+             + rng.standard_normal(num_groups)[group_data[:, 1]])
+
+        def make_model(num_threads):
+            gp_model = GPModel(group_data=group_data, likelihood="gaussian",
+                               matrix_inversion_method="iterative",
+                               num_parallel_threads=num_threads)
+            gp_model.set_optim_params(params={"cg_preconditioner_type": "ssor",
+                                              "num_rand_vec_trace": 20,
+                                              "seed_rand_vec_trace": 1,
+                                              "reuse_rand_vec_trace": True})
+            return gp_model
+
+        return {"name": workload, "y": y, "cov_pars": np.array([1., 1., 1.]),
+                "num_evaluations": 1 if small else 5, "make_model": make_model}
+    raise ValueError("tune_num_threads: unknown workload '" + str(workload) + "'")
+
+
+def _thread_time_section(gp_model, workload):
+    """Time one section of a benchmark workload."""
+    gc.collect()
+    start = time.perf_counter()
+    for evaluation in range(1, workload["num_evaluations"] + 1):
+        gp_model.neg_log_likelihood(cov_pars=_thread_cov_pars(workload["cov_pars"], evaluation),
+                                    y=workload["y"])
+    return time.perf_counter() - start
+
+
+def _relative_mad(values):
+    """Median absolute deviation relative to the median, with the constant that R uses."""
+    values = values[~np.isnan(values)]
+    if len(values) < 2:
+        return np.nan
+    center = np.median(values)
+    return 1.4826 * np.median(np.abs(values - center)) / center
+
+
+def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tolerance=0.03,
+                     max_time=120., set_default=True, verbose=True, workload_size="default"):
+    """Benchmark different numbers of threads and select a tuned default.
+
+    Measures how long representative GPBoost calculations take with different numbers of OpenMP
+    threads and selects a number of threads that is used by all models for which no number of threads
+    is specified via the 'num_parallel_threads' argument of GPModel, for the rest of the session.
+
+    The benchmark is never run automatically: the number of threads that GPBoost uses without it is
+    the number of physical performance cores of the CPU. The selected number of threads is a tuned
+    default and not an optimal number of threads: the best number of threads depends on the model, on
+    the size of the data and on the machine. Use the 'num_parallel_threads' argument of GPModel for a
+    model whose number of threads should differ from the default.
+
+    The measured times are the times of evaluations of the negative log-likelihood, which is the
+    calculation that dominates the estimation of a model. The simulation of the data and the setup of
+    the models (e.g. the search for the neighbors of the Vecchia approximation) happen outside of the
+    timed sections.
+
+    Parameters
+    ----------
+    workloads : str or list of str, optional (default="all")
+        The workloads that are benchmarked:
+
+            - "all": all workloads below
+            - "grouped_re": a single-level grouped random effect model. The calculations are cheap
+              per data point, which makes the overhead of the parallelization visible
+            - "vecchia_non_gaussian": a non-Gaussian Gaussian process model with a Vecchia
+              approximation and iterative methods
+            - "crossed_re_iterative": crossed grouped random effects with iterative methods
+
+        Restrict the workloads to the model class that you mainly use if you know it
+    num_threads_candidates : list of int or None, optional (default=None)
+        The numbers of threads that are benchmarked. If None, powers of two, the number of physical
+        performance cores and the largest number of threads that GPBoost uses on its own are
+        benchmarked
+    n_rep : int, optional (default=5)
+        The number of repeated measurements per workload and number of threads. The median of the
+        repetitions is used
+    tolerance : float, optional (default=0.03)
+        The relative difference in runtime that is considered negligible. The smallest number of
+        threads whose aggregated runtime is within this tolerance of the best aggregated runtime is
+        selected, so that more threads are not used for a negligible gain. If the measurements are
+        noisier than this, the observed noise is used instead
+    max_time : float, optional (default=120.)
+        Approximately how many seconds the benchmark may take. Repetitions are dropped if the
+        measurements take longer
+    set_default : bool, optional (default=True)
+        If True, the selected number of threads is set as the default of the session, see
+        set_default_num_threads(). Set this to False to only measure
+    verbose : bool, optional (default=True)
+        If True, the progress and the results are printed
+    workload_size : str, optional (default="default")
+        Either "default" or "small". The small workloads run in a few seconds, but they are too small
+        for the number of threads to matter, so they are only useful for checking that the benchmark
+        runs and the default of the session is never changed for them
+
+    Returns
+    -------
+    results : dict
+        A dict with the following entries:
+
+            - "num_threads": the selected number of threads
+            - "num_threads_automatic": the automatically selected number of threads
+            - "num_threads_max": the largest number of threads that GPBoost uses on its own
+            - "default_was_set": whether the default of the session has been changed
+            - "timings": a pandas DataFrame with the measurements per workload and number of threads
+              (median, minimum and relative median absolute deviation of the repetitions)
+            - "aggregate": a pandas DataFrame with the aggregated relative runtime per number of
+              threads, i.e. the geometric mean over the workloads of the runtime relative to the
+              fastest measurement of the workload
+            - "tolerance_used": the tolerance that has been used for the selection
+
+    :Authors:
+        Fabio Sigrist
+    """
+    if isinstance(workloads, str):
+        workloads = list(_THREAD_WORKLOAD_NAMES) if workloads == "all" else [workloads]
+    workloads = list(workloads)
+    if len(workloads) == 0:
+        raise ValueError("tune_num_threads: 'workloads' must not be empty")
+    unknown = [name for name in workloads if name not in _THREAD_WORKLOAD_NAMES]
+    if len(unknown) > 0:
+        raise ValueError("tune_num_threads: unknown workload(s) " + ", ".join(unknown)
+                         + ". Possible workloads are " + ", ".join(_THREAD_WORKLOAD_NAMES)
+                         + " or 'all'")
+    workloads = list(dict.fromkeys(workloads))
+    if isinstance(n_rep, (bool, np.bool_)) or not isinstance(n_rep, (int, np.integer)) or n_rep < 1:
+        raise ValueError("tune_num_threads: 'n_rep' needs to be a positive integer")
+    n_rep = int(n_rep)
+    if (isinstance(tolerance, (bool, np.bool_)) or
+            not isinstance(tolerance, (int, float, np.number)) or
+            not np.isreal(tolerance) or not np.isfinite(tolerance) or tolerance < 0):
+        raise ValueError("tune_num_threads: 'tolerance' needs to be a non-negative number")
+    if (isinstance(max_time, (bool, np.bool_)) or
+            not isinstance(max_time, (int, float, np.number)) or
+            not np.isreal(max_time) or not np.isfinite(max_time) or max_time <= 0):
+        raise ValueError("tune_num_threads: 'max_time' needs to be a positive number")
+    if not isinstance(set_default, (bool, np.bool_)):
+        raise ValueError("tune_num_threads: 'set_default' needs to be True or False")
+    if not isinstance(verbose, (bool, np.bool_)):
+        raise ValueError("tune_num_threads: 'verbose' needs to be True or False")
+    if not isinstance(workload_size, str) or workload_size not in ("default", "small"):
+        raise ValueError("tune_num_threads: 'workload_size' needs to be 'default' or 'small'")
+
+    # The small workloads are so small that a single thread wins, which would make a single thread
+    # the default of the session. They are only there to check that the benchmark runs
+    if workload_size == "small" and set_default:
+        set_default = False
+        if verbose:
+            print("The small workloads are too small for the number of threads to matter, the "
+                  "default of the session is not changed.")
+
+    candidates = None
+    if num_threads_candidates is not None:
+        if isinstance(num_threads_candidates, (int, np.integer)):
+            num_threads_candidates = [num_threads_candidates]
+        try:
+            candidates_raw = list(num_threads_candidates)
+        except TypeError:
+            raise ValueError("tune_num_threads: 'num_threads_candidates' needs to contain positive "
+                             "integers") from None
+        if (any(isinstance(value, (bool, np.bool_)) or
+                not isinstance(value, (int, np.integer)) or value < 1
+                for value in candidates_raw)):
+            raise ValueError("tune_num_threads: 'num_threads_candidates' needs to contain positive "
+                             "integers")
+        candidates = sorted({int(value) for value in candidates_raw})
+    num_threads_auto = _get_auto_num_threads()
+    num_threads_max = _get_max_num_threads()
+    if candidates is None:
+        candidates = _thread_candidates(num_threads_auto, num_threads_max)
+    else:
+        above_max = [value for value in candidates if value > num_threads_max]
+        if len(above_max) > 0:
+            warnings.warn("tune_num_threads: " + ", ".join(str(value) for value in above_max)
+                          + " threads cannot be used, the number of threads is limited to "
+                          + str(num_threads_max) + ". Set the environment variable "
+                          "'OMP_NUM_THREADS' before importing gpboost to use more threads")
+            candidates = [value for value in candidates if value <= num_threads_max]
+    if len(candidates) == 0:
+        raise ValueError("tune_num_threads: no number of threads left to benchmark")
+    if len(candidates) == 1:
+        if verbose:
+            print("Only %d thread(s) can be used on this machine, there is nothing to benchmark."
+                  % candidates[0])
+        return {"num_threads": candidates[0], "num_threads_automatic": num_threads_auto,
+                "num_threads_max": num_threads_max, "default_was_set": False,
+                "timings": None, "aggregate": None, "tolerance_used": tolerance}
+
+    # The number of threads of the process is not changed by the benchmark: every model gets its
+    # number of threads via 'num_parallel_threads', which is set and reset again by every operation
+    # of the model
+    if verbose:
+        print("Benchmarking %d workload(s) with %s thread(s), %d repetition(s) each."
+              % (len(workloads), ", ".join(str(value) for value in candidates), n_rep))
+        print("GPBoost selects %d thread(s) automatically, at most %d thread(s) can be used."
+              % (num_threads_auto, num_threads_max))
+
+    start_time = time.perf_counter()
+    times = np.full((len(workloads), len(candidates), n_rep), np.nan)
+    time_budget_reached = False
+
+    for index_workload, name in enumerate(workloads):
+        if verbose:
+            print("  %s: simulating data ..." % name, end="", flush=True)
+        workload = _thread_workload(name, workload_size)
+        # The models are created once per number of threads, so that the setup of a model is not
+        # measured, and one section is timed and discarded per model: the first evaluation of the
+        # negative log-likelihood does more work than the following ones, e.g. because the mode of
+        # the Laplace approximation is initialized
+        models = [workload["make_model"](num_threads) for num_threads in candidates]
+        for gp_model in models:
+            _thread_time_section(gp_model, workload)
+        if verbose:
+            print(" measuring ...", end="", flush=True)
+        for rep in range(n_rep):
+            # The numbers of threads are measured in a rotating order, so that a drift of the speed
+            # of the machine (e.g. because of the temperature of the CPU) affects all of them in the
+            # same way
+            for offset in range(len(candidates)):
+                index_candidate = (offset + rep) % len(candidates)
+                times[index_workload, index_candidate, rep] = \
+                    _thread_time_section(models[index_candidate], workload)
+            elapsed = time.perf_counter() - start_time
+            if rep + 1 < n_rep and elapsed * (rep + 2) / (rep + 1) > max_time:
+                time_budget_reached = True
+                break
+        del models, workload
+        if verbose:
+            print(" done")
+
+    # Median over the repetitions, and the relative median absolute deviation as a measure of the noise
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        medians = np.nanmedian(times, axis=2)
+        minima = np.nanmin(times, axis=2)
+    relative_mad = np.array([[_relative_mad(times[j, k, :]) for k in range(len(candidates))]
+                             for j in range(len(workloads))])
+
+    # The runtimes are normalized per workload, so that every workload has the same weight
+    # irrespective of how long it takes, and aggregated with the geometric mean. Note that the
+    # normalization does not influence which number of threads is selected: it only makes the numbers
+    # easier to read
+    normalized = medians / medians.min(axis=1, keepdims=True)
+    aggregate = np.exp(np.mean(np.log(normalized), axis=0))
+    # A number of threads that is much worse than the best one for a single workload is not selected,
+    # even if the geometric mean over the workloads looks acceptable
+    acceptable = np.all(normalized <= 1.25, axis=0)
+    if not np.any(acceptable):
+        acceptable = np.ones(len(candidates), dtype=bool)
+    # The tolerance is not smaller than the noise of the aggregated runtimes that are compared with
+    # it. The relative median absolute deviation is the noise of a single measurement, the aggregated
+    # runtime of a number of threads is a median over the repetitions and a mean over the workloads,
+    # so that its noise is smaller by the square root of the number of measurements that it summarizes
+    num_measurements = np.count_nonzero(~np.isnan(times)) / len(candidates)
+    noise = np.nanmedian(relative_mad) / np.sqrt(max(num_measurements, 1.))
+    if not np.isfinite(noise):
+        noise = 0.
+    tolerance_used = max(tolerance, noise)
+    best = np.min(aggregate[acceptable])
+    within_tolerance = acceptable & (aggregate <= best * (1. + tolerance_used))
+    num_threads_selected = int(candidates[int(np.where(within_tolerance)[0][0])])
+
+    timings = pd.DataFrame({
+        "workload": [name for name in workloads for _ in candidates],
+        "num_threads": [value for _ in workloads for value in candidates],
+        "median": medians.reshape(-1),
+        "min": minima.reshape(-1),
+        "relative_mad": relative_mad.reshape(-1),
+        "relative_runtime": normalized.reshape(-1)})
+    aggregate_table = pd.DataFrame({"num_threads": candidates, "relative_runtime": aggregate})
+
+    # The default is only changed if the measurements say that the automatically selected number of
+    # threads is not good enough: a difference within the tolerance is not a reason to change anything
+    automatic_is_good_enough = False
+    if num_threads_auto in candidates:
+        index_auto = candidates.index(num_threads_auto)
+        automatic_is_good_enough = bool(acceptable[index_auto]) and \
+            bool(aggregate[index_auto] <= best * (1. + tolerance_used))
+    default_was_set = False
+    if set_default and not automatic_is_good_enough:
+        set_default_num_threads(num_threads_selected)
+        default_was_set = True
+    elif automatic_is_good_enough:
+        num_threads_selected = num_threads_auto
+
+    if verbose:
+        print("\nRuntime relative to the fastest number of threads of the same workload "
+              "(smaller is better):")
+        print_table = pd.DataFrame({"num_threads": candidates})
+        for index_workload, name in enumerate(workloads):
+            print_table[name] = ["%.3f" % value for value in normalized[index_workload, :]]
+        print_table["aggregate"] = ["%.3f" % value for value in aggregate]
+        print(print_table.to_string(index=False))
+        if time_budget_reached:
+            print("Fewer than %d repetitions have been measured: the time budget of %g seconds has "
+                  "been reached." % (n_rep, max_time))
+        print("Measurement noise: %.1f%%, tolerance used: %.1f%%"
+              % (100 * noise, 100 * tolerance_used))
+        if default_was_set:
+            print("GPBoost now uses %d thread(s) as the tuned default of this session (it used %d). "
+                  "This is not an optimal number of threads: the best number of threads depends on "
+                  "the model and on the data." % (num_threads_selected, num_threads_auto))
+            print("Call gpboost.set_default_num_threads(%d) to use it again in a later session."
+                  % num_threads_selected)
+        elif automatic_is_good_enough:
+            print("The default of %d thread(s) is within the tolerance of the fastest measurement "
+                  "and has not been changed." % num_threads_auto)
+        else:
+            print("%d thread(s) would be used, the default has not been changed."
+                  % num_threads_selected)
+
+    return {"num_threads": num_threads_selected,
+            "num_threads_automatic": num_threads_auto,
+            "num_threads_max": num_threads_max,
+            "default_was_set": default_was_set,
+            "timings": timings,
+            "aggregate": aggregate_table,
+            "tolerance_used": tolerance_used}
 
 
 
@@ -4705,7 +5199,9 @@ class GPModel(object):
                 bandwidth limit of a control group (e.g., of a container) is respected as well. The number of
                 threads that OpenMP is configured to use is kept if the environment variable OMP_NUM_THREADS is set
                 or if the cores of the CPU cannot be determined. For ordinary use, leave num_parallel_threads unspecified to use this
-                default. Setting num_parallel_threads=1 disables the OpenMP parallelization of the model and
+                default. The default of the session can be changed with tune_num_threads(), which benchmarks different
+                numbers of threads, or with set_default_num_threads(). Setting
+                num_parallel_threads=1 disables the OpenMP parallelization of the model and
                 can substantially increase the runtime. A single thread should be chosen deliberately, e.g.,
                 to distribute the resources among concurrent model fits or for a specific test; it is not
                 required for correctness or reproducibility

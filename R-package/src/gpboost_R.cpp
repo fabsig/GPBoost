@@ -1148,6 +1148,41 @@ SEXP GPB_SetNumParallelThreads_R(SEXP num_threads) {
 	return R_NilValue;
 }
 
+SEXP GPB_GetDefaultNumParallelThreads_R(SEXP num_threads) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetDefaultNumParallelThreads(R_INT_PTR(num_threads)));
+	R_API_END();
+	return R_NilValue;
+}
+
+SEXP GPB_GetAutoNumParallelThreads_R(SEXP num_threads) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetAutoNumParallelThreads(R_INT_PTR(num_threads)));
+	R_API_END();
+	return R_NilValue;
+}
+
+SEXP GPB_GetMaxNumParallelThreads_R(SEXP num_threads) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetMaxNumParallelThreads(R_INT_PTR(num_threads)));
+	R_API_END();
+	return R_NilValue;
+}
+
+SEXP GPB_SetDefaultNumParallelThreads_R(SEXP num_threads) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_SetDefaultNumParallelThreads(Rf_asInteger(num_threads)));
+	R_API_END();
+	return R_NilValue;
+}
+
+SEXP GPB_SuppressAutoNumParallelThreadsMessage_R() {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_SuppressAutoNumParallelThreadsMessage());
+	R_API_END();
+	return R_NilValue;
+}
+
 SEXP GPB_SetPredictionData_R(SEXP handle,
 	SEXP num_data_pred,
 	SEXP cluster_ids_data_pred,
@@ -1487,6 +1522,11 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_HasStdCylBesselK_R"           , (DL_FUNC)&GPB_HasStdCylBesselK_R           , 1},
   {"GPB_GetNumParallelThreads_R"      , (DL_FUNC)&GPB_GetNumParallelThreads_R      , 1},
   {"GPB_SetNumParallelThreads_R"      , (DL_FUNC)&GPB_SetNumParallelThreads_R      , 1},
+  {"GPB_GetDefaultNumParallelThreads_R", (DL_FUNC)&GPB_GetDefaultNumParallelThreads_R, 1},
+  {"GPB_GetAutoNumParallelThreads_R"  , (DL_FUNC)&GPB_GetAutoNumParallelThreads_R  , 1},
+  {"GPB_GetMaxNumParallelThreads_R"   , (DL_FUNC)&GPB_GetMaxNumParallelThreads_R   , 1},
+  {"GPB_SetDefaultNumParallelThreads_R", (DL_FUNC)&GPB_SetDefaultNumParallelThreads_R, 1},
+  {"GPB_SuppressAutoNumParallelThreadsMessage_R", (DL_FUNC)&GPB_SuppressAutoNumParallelThreadsMessage_R, 0},
   {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 16},
   {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 21},
   {"GPB_PredictREModelTrainingDataRandomEffects_R", (DL_FUNC)&GPB_PredictREModelTrainingDataRandomEffects_R, 6},

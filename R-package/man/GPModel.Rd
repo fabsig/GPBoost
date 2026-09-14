@@ -294,7 +294,9 @@ threads can slow down an entire model. The next fastest cores are added if the f
 would leave only a single thread. On Linux, a CPU bandwidth limit of a control group (e.g., of a
 container) is respected as well. The number of threads that OpenMP is configured to use is kept if
 the environment variable OMP_NUM_THREADS is set or if the cores of the CPU cannot be determined.
-For ordinary use, leave num_parallel_threads unspecified to use this default. Setting
+For ordinary use, leave num_parallel_threads unspecified to use this default. The default of the
+session can be changed with \code{\link{gpb.tune.num.threads}}, which benchmarks different numbers
+of threads, or with \code{\link{gpb.set.default.num.threads}}. Setting
 num_parallel_threads = 1 disables the OpenMP parallelization of the model and can substantially
 increase the runtime. A single thread should be chosen deliberately, e.g., to distribute the
 resources among concurrent model fits or for a specific test; it is not required for correctness

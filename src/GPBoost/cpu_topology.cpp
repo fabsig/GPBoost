@@ -8,7 +8,9 @@
 */
 #include <GPBoost/utils.h>
 
+#include <atomic>     // std::atomic
 #include <cstdlib>    // std::getenv
+#include <cstring>    // std::strcmp
 
 #if defined(_MSC_VER)
 #pragma warning( disable : 4996) // Suppress unnecessary warning ('getenv' is considered unsafe, but it is portable and the environment is only read here)
@@ -780,24 +782,135 @@ namespace GPBoost {
 
 #endif
 
-	int ComputeDefaultNumParallelThreads() {
-		int num_threads = omp_get_max_threads();
-		// An explicitly requested number of threads is always used as is
-		const char* omp_num_threads_env = std::getenv("OMP_NUM_THREADS");
-		if (omp_num_threads_env != nullptr && omp_num_threads_env[0] != '\0') {
+	namespace {
+
+		/*! \brief Determines the automatically selected number of threads from an already read number of threads of OMP */
+		int ComputeAutoNumParallelThreadsFrom(int num_threads) {
+			// An explicitly requested number of threads is always used as is
+			const char* omp_num_threads_env = std::getenv("OMP_NUM_THREADS");
+			if (omp_num_threads_env != nullptr && omp_num_threads_env[0] != '\0') {
+				return num_threads;
+			}
+			// The number of performance cores and the quota can only lower the number of threads, so that a
+			// number of threads that is restricted by, e.g., a processor affinity mask is never exceeded
+			const int num_performance_cores = NumPerformanceCores();
+			if (num_performance_cores > 0 && num_performance_cores < num_threads) {
+				num_threads = num_performance_cores;
+			}
+			const int num_cpus_quota = CpuQuotaLimit();
+			if (num_cpus_quota > 0 && num_cpus_quota < num_threads) {
+				num_threads = num_cpus_quota;
+			}
 			return num_threads;
 		}
-		// The number of performance cores and the quota can only lower the number of threads, so that a
-		// number of threads that is restricted by, e.g., a processor affinity mask is never exceeded
-		const int num_performance_cores = NumPerformanceCores();
-		if (num_performance_cores > 0 && num_performance_cores < num_threads) {
-			num_threads = num_performance_cores;
+
+	}  // namespace
+
+	int ComputeDefaultNumParallelThreads() {
+		return ComputeAutoNumParallelThreadsFrom(omp_get_max_threads());
+	}
+
+	namespace {
+
+		/*! \brief True if the number of threads has been requested explicitly via the environment */
+		bool OmpNumThreadsEnvIsSet() {
+			const char* omp_num_threads_env = std::getenv("OMP_NUM_THREADS");
+			return omp_num_threads_env != nullptr && omp_num_threads_env[0] != '\0';
 		}
-		const int num_cpus_quota = CpuQuotaLimit();
-		if (num_cpus_quota > 0 && num_cpus_quota < num_threads) {
-			num_threads = num_cpus_quota;
+
+		/*! \brief True if the message about the automatically selected number of threads has been switched off */
+		bool AutoNumParallelThreadsMessageIsDisabled() {
+			const char* message_env = std::getenv("GPBOOST_THREAD_MESSAGE");
+			if (message_env == nullptr || message_env[0] == '\0') {
+				return false;
+			}
+			return std::strcmp(message_env, "0") == 0 || std::strcmp(message_env, "false") == 0 ||
+				std::strcmp(message_env, "FALSE") == 0;
 		}
-		return num_threads;
+
+		/*! \brief The numbers of threads that are determined once, from a single number of threads of OMP */
+		struct NumParallelThreadsDefaults {
+			/*! \brief Automatically selected number of threads */
+			int automatic;
+			/*! \brief Largest number of threads that is used on its own */
+			int maximum;
+			/*! \brief True if the number of threads has been requested explicitly via the environment */
+			bool omp_num_threads_env_is_set;
+		};
+
+		/*!
+		* \brief The numbers of threads that are derived from the machine. They are determined when this function is
+		*		called for the first time, which must happen before the library has changed the number of threads
+		*		of the process: the number of threads of OMP is the upper limit for both of them
+		* \return The numbers of threads that are derived from the machine
+		*/
+		const NumParallelThreadsDefaults& NumParallelThreadsDefaultsOfMachine() {
+			static const NumParallelThreadsDefaults defaults = []() {
+				NumParallelThreadsDefaults values;
+				values.maximum = omp_get_max_threads();
+				values.omp_num_threads_env_is_set = OmpNumThreadsEnvIsSet();
+				values.automatic = ComputeAutoNumParallelThreadsFrom(values.maximum);
+				if (values.maximum < values.automatic) {
+					values.maximum = values.automatic;
+				}
+				return values;
+			}();
+			return defaults;
+		}
+
+		/*! \brief The number of threads that has been set for the session, or 0 if there is none */
+		std::atomic<int>& TunedNumParallelThreadsStorage() {
+			static std::atomic<int> num_threads_tuned(0);
+			return num_threads_tuned;
+		}
+
+		/*! \brief True if the message about the automatically selected number of threads has already been written */
+		std::atomic<bool>& AutoNumParallelThreadsMessageIsDone() {
+			// A number of threads that has been requested explicitly via the environment is a decision of the user:
+			//	the message is not written in that case, and thus also not when the message is switched off
+			static std::atomic<bool> is_done(NumParallelThreadsDefaultsOfMachine().omp_num_threads_env_is_set ||
+				AutoNumParallelThreadsMessageIsDisabled());
+			return is_done;
+		}
+
+	}  // namespace
+
+	int AutoNumParallelThreads() {
+		return NumParallelThreadsDefaultsOfMachine().automatic;
+	}
+
+	int MaxNumParallelThreads() {
+		return NumParallelThreadsDefaultsOfMachine().maximum;
+	}
+
+	int TunedNumParallelThreads() {
+		return TunedNumParallelThreadsStorage().load(std::memory_order_relaxed);
+	}
+
+	void SetDefaultNumParallelThreads(int num_threads) {
+		// The numbers of threads of the machine are determined before the default is changed, and also when the
+		//	default is only reset here: they must not be derived from a number of threads that the library has set
+		const NumParallelThreadsDefaults& defaults = NumParallelThreadsDefaultsOfMachine();
+		int num_threads_used = num_threads;
+		if (num_threads_used > defaults.maximum) {
+			num_threads_used = defaults.maximum;
+		}
+		if (num_threads_used < 0) {
+			num_threads_used = 0;
+		}
+		TunedNumParallelThreadsStorage().store(num_threads_used, std::memory_order_relaxed);
+	}
+
+	bool ClaimAutoNumParallelThreadsMessage() {
+		std::atomic<bool>& is_done = AutoNumParallelThreadsMessageIsDone();
+		if (is_done.load(std::memory_order_relaxed)) {
+			return false;
+		}
+		return !is_done.exchange(true, std::memory_order_relaxed);
+	}
+
+	void SuppressAutoNumParallelThreadsMessage() {
+		AutoNumParallelThreadsMessageIsDone().store(true, std::memory_order_relaxed);
 	}
 
 }  // namespace GPBoost

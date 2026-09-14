@@ -940,6 +940,52 @@ GPBOOST_C_EXPORT SEXP GPB_SetNumParallelThreads_R(
 );
 
 /*!
+* \brief Get the number of threads that models use when no number of threads is specified for them
+*   Note: You should pre-allocate memory for num_threads (length = 1)
+* \param[out] num_threads Number of threads
+* \return R NULL value
+*/
+GPBOOST_C_EXPORT SEXP GPB_GetDefaultNumParallelThreads_R(
+	SEXP num_threads
+);
+
+/*!
+* \brief Get the automatically selected number of threads
+*   Note: You should pre-allocate memory for num_threads (length = 1)
+* \param[out] num_threads Number of threads
+* \return R NULL value
+*/
+GPBOOST_C_EXPORT SEXP GPB_GetAutoNumParallelThreads_R(
+	SEXP num_threads
+);
+
+/*!
+* \brief Get the largest number of threads that GPBoost uses on its own
+*   Note: You should pre-allocate memory for num_threads (length = 1)
+* \param[out] num_threads Number of threads
+* \return R NULL value
+*/
+GPBOOST_C_EXPORT SEXP GPB_GetMaxNumParallelThreads_R(
+	SEXP num_threads
+);
+
+/*!
+* \brief Set the number of threads that models use when no number of threads is specified for them
+* \param num_threads Number of threads. If num_threads <= 0, the automatically selected number of threads is
+*   used again
+* \return R NULL value
+*/
+GPBOOST_C_EXPORT SEXP GPB_SetDefaultNumParallelThreads_R(
+	SEXP num_threads
+);
+
+/*!
+* \brief Do not write the message about the automatically selected number of threads
+* \return R NULL value
+*/
+GPBOOST_C_EXPORT SEXP GPB_SuppressAutoNumParallelThreadsMessage_R();
+
+/*!
 * \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
 * \param handle Handle of REModel
 * \param num_data_pred Number of data points for which predictions are made
