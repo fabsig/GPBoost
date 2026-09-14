@@ -40,7 +40,9 @@
 
 #elif defined(__linux__)
 
+#include <fcntl.h>
 #include <sched.h>
+#include <unistd.h>
 #include <algorithm>
 #include <cerrno>
 #include <cstdlib>
@@ -519,6 +521,8 @@ namespace GPBoost {
 
 	/*! \brief One entry of '/proc/self/mountinfo' */
 	struct MountEntry {
+		/*! \brief Identifier of the mount, which the kernel also reports for an open file of it */
+		int id;
 		/*! \brief Directory of the mounted filesystem that is shown, '/' for all of it */
 		std::string root;
 		/*! \brief Directory at which it is shown */
@@ -528,6 +532,76 @@ namespace GPBoost {
 		/*! \brief Options of the filesystem, which list the controllers of a v1 control group hierarchy */
 		std::string super_options;
 	};
+
+	/*!
+	* \brief Opens a file for reading. Wrapped in a function of its own so that the tests can replace it
+	* \param path Path of the file
+	* \return Descriptor of the open file, or a negative number if it could not be opened
+	*/
+	int OpenFileForReading(const std::string& path) {
+		return open(path.c_str(), O_RDONLY | O_CLOEXEC);
+	}
+
+	/*!
+	* \brief Reads from an open file. Wrapped in a function of its own so that the tests can replace it
+	* \param descriptor Descriptor of the open file
+	* \param[out] buffer Buffer to read into
+	* \param size Size of the buffer
+	* \return Number of bytes read, or a negative number if the file could not be read
+	*/
+	long ReadFromFile(int descriptor, char* buffer, size_t size) {
+		return static_cast<long>(read(descriptor, buffer, size));
+	}
+
+	/*! \brief Closes an open file. Wrapped in a function of its own so that the tests can replace it */
+	void CloseFile(int descriptor) {
+		close(descriptor);
+	}
+
+	/*!
+	* \brief Reads the first line of a file, but only if the kernel confirms that the file is served by a
+	*		given mount. A directory of a control group hierarchy can be covered by another mount, which makes
+	*		it show a different control group, and which mount serves a path cannot be determined reliably from
+	*		the paths in '/proc/self/mountinfo' alone. The kernel reports the mount of an open file as 'mnt_id'
+	*		in '/proc/self/fdinfo', and only the file that this identifies is used
+	* \param path Path of the file
+	* \param mount_id Identifier of the mount that has to serve the file
+	* \param[out] line First line of the file
+	* \return True if the file is served by the mount and a non-empty line has been read
+	*/
+	bool ReadFileFromMount(const std::string& path,
+		const int mount_id,
+		std::string* line) {
+		const int descriptor = OpenFileForReading(path);
+		if (descriptor < 0) {
+			return false;
+		}
+		bool serves = false;
+		std::string fdinfo_line;
+		std::ifstream fdinfo_file("/proc/self/fdinfo/" + std::to_string(descriptor));
+		const std::string key = "mnt_id:";
+		while (std::getline(fdinfo_file, fdinfo_line)) {
+			if (fdinfo_line.compare(0, key.size(), key) == 0) {
+				serves = std::atoi(fdinfo_line.c_str() + key.size()) == mount_id;
+				break;
+			}
+		}
+		bool read_line = false;
+		if (serves) {
+			// The quota files hold a few numbers only
+			char buffer[256];
+			const long num_bytes = ReadFromFile(descriptor, buffer, sizeof(buffer) - 1);
+			if (num_bytes > 0) {
+				buffer[num_bytes] = '\0';
+				const std::string content(buffer);
+				const size_t newline = content.find('\n');
+				*line = newline == std::string::npos ? content : content.substr(0, newline);
+				read_line = !line->empty();
+			}
+		}
+		CloseFile(descriptor);
+		return read_line;
+	}
 
 	/*!
 	* \brief True if a path is a directory or lies below it
@@ -562,6 +636,7 @@ namespace GPBoost {
 				continue;
 			}
 			MountEntry entry;
+			entry.id = std::atoi(fields[0].c_str());
 			entry.root = DecodeMountPath(fields[3]);
 			entry.point = DecodeMountPath(fields[4]);
 			entry.filesystem = filesystem_fields[0];
@@ -571,59 +646,14 @@ namespace GPBoost {
 		return entries;
 	}
 
-	/*!
-	* \brief Marks the mounts that cannot be reached: a mount that is listed after another one and is at the
-	*		same directory or at one of its ancestors covers it. Mounts of all filesystems have to be taken
-	*		into account here, since, e.g., a temporary filesystem can cover a control group hierarchy
-	* \param entries All entries of '/proc/self/mountinfo'
-	* \return For every entry whether it is covered
-	*/
-	std::vector<bool> FindHiddenMounts(const std::vector<MountEntry>& entries) {
-		std::vector<bool> hidden(entries.size(), false);
-		for (size_t index = 0; index < entries.size(); ++index) {
-			for (size_t later = index + 1; later < entries.size(); ++later) {
-				if (PathIsBelow(entries[index].point, entries[later].point)) {
-					hidden[index] = true;
-					break;
-				}
-			}
-		}
-		return hidden;
-	}
-
-	/*!
-	* \brief The mount that a path is read through: the visible mount with the longest matching directory,
-	*		and the last one of those if several match
-	* \param entries All entries of '/proc/self/mountinfo'
-	* \param hidden For every entry whether it is covered, see 'FindHiddenMounts'
-	* \param path The path
-	* \return Index of the mount, or the number of entries if no mount matches
-	*/
-	size_t FindServingMount(const std::vector<MountEntry>& entries,
-		const std::vector<bool>& hidden,
-		const std::string& path) {
-		size_t serving = entries.size();
-		size_t longest = 0;
-		for (size_t index = 0; index < entries.size(); ++index) {
-			if (hidden[index] || !PathIsBelow(path, entries[index].point)) {
-				continue;
-			}
-			if (serving == entries.size() || entries[index].point.size() >= longest) {
-				serving = index;
-				longest = entries[index].point.size();
-			}
-		}
-		return serving;
-	}
-
 	/*! \brief A control group as it can be read through one mount of its hierarchy */
 	struct CgroupMapping {
 		/*! \brief Directory of the control group */
 		std::string directory;
 		/*! \brief Directory at which the hierarchy is mounted, i.e., the highest ancestor visible here */
 		std::string mount_point;
-		/*! \brief Index of the mount in the entries of '/proc/self/mountinfo' */
-		size_t mount_index;
+		/*! \brief Identifier of the mount through which the control group is read */
+		int mount_id;
 	};
 
 	/*!
@@ -638,7 +668,6 @@ namespace GPBoost {
 	*		readable, so all of them are returned
 	*/
 	std::vector<CgroupMapping> ResolveCgroupDirectories(const std::vector<MountEntry>& entries,
-		const std::vector<bool>& hidden,
 		const std::string& cgroup_path,
 		const bool version_2) {
 		std::vector<CgroupMapping> mappings;
@@ -646,9 +675,6 @@ namespace GPBoost {
 			return mappings;
 		}
 		for (size_t index = 0; index < entries.size(); ++index) {
-			if (hidden[index]) {
-				continue;
-			}
 			const MountEntry& entry = entries[index];
 			if (version_2 ? entry.filesystem != "cgroup2"
 				: (entry.filesystem != "cgroup" || !ListContainsToken(entry.super_options, "cpu"))) {
@@ -665,12 +691,9 @@ namespace GPBoost {
 			CgroupMapping mapping;
 			mapping.mount_point = entry.point;
 			mapping.directory = entry.point + (relative_path == "/" ? std::string() : relative_path);
-			mapping.mount_index = index;
-			// Another mount can be at the directory of the control group or at one of its ancestors below
-			// the mount point, which makes the directory show a different control group
-			if (FindServingMount(entries, hidden, mapping.directory) != index) {
-				continue;
-			}
+			mapping.mount_id = entry.id;
+			// Whether this mount really serves the directory is confirmed by the kernel when the quota is
+			// read, see 'ReadFileFromMount'
 			mappings.push_back(mapping);
 		}
 		return mappings;
@@ -680,16 +703,18 @@ namespace GPBoost {
 	* \brief Reads the CPU bandwidth quota of a control group and keeps it if it is the smallest one so far
 	* \param directory Directory of the control group
 	* \param version_2 True for the control group hierarchy v2
+	* \param mount_id Identifier of the mount that has to serve the files
 	* \param[out] smallest_num_cpus Smallest number of CPUs found so far, negative if there is none
 	*/
 	void UpdateSmallestQuota(const std::string& directory,
 		const bool version_2,
+		const int mount_id,
 		double* smallest_num_cpus) {
 		double quota = -1., period = -1.;
 		std::string quota_string, period_string;
 		if (version_2) {
 			// 'cpu.max' contains the quota and the period, and "max" means that there is no limit
-			if (ReadSysFileLine(directory + "/cpu.max", &quota_string) &&
+			if (ReadFileFromMount(directory + "/cpu.max", mount_id, &quota_string) &&
 				quota_string.compare(0, 3, "max") != 0) {
 				char* next = nullptr;
 				quota = std::strtod(quota_string.c_str(), &next);
@@ -698,8 +723,8 @@ namespace GPBoost {
 				}
 			}
 		}
-		else if (ReadSysFileLine(directory + "/cpu.cfs_quota_us", &quota_string) &&
-			ReadSysFileLine(directory + "/cpu.cfs_period_us", &period_string)) {
+		else if (ReadFileFromMount(directory + "/cpu.cfs_quota_us", mount_id, &quota_string) &&
+			ReadFileFromMount(directory + "/cpu.cfs_period_us", mount_id, &period_string)) {
 			// A negative quota means that there is no limit
 			quota = std::strtod(quota_string.c_str(), nullptr);
 			period = std::strtod(period_string.c_str(), nullptr);
@@ -740,21 +765,18 @@ namespace GPBoost {
 		// A quota of an ancestor also applies, so the smallest one of the control group and of all of its
 		// visible ancestors is used
 		const std::vector<MountEntry> entries = ReadMountEntries();
-		const std::vector<bool> hidden = FindHiddenMounts(entries);
 		double smallest_num_cpus = -1.;
 		for (int version = 2; version >= 1; --version) {
 			const bool version_2 = version == 2;
 			const std::vector<CgroupMapping> mappings = ResolveCgroupDirectories(
-				entries, hidden, version_2 ? cgroup_path_v2 : cgroup_path_v1, version_2);
+				entries, version_2 ? cgroup_path_v2 : cgroup_path_v1, version_2);
 			for (size_t i = 0; i < mappings.size(); ++i) {
 				const std::string& mount_point = mappings[i].mount_point;
 				std::string directory = mappings[i].directory;
 				while (true) {
-					// An ancestor directory can be served by another mount and then belong to a different
-					// control group, so only the directories of this mount are read
-					if (FindServingMount(entries, hidden, directory) == mappings[i].mount_index) {
-						UpdateSmallestQuota(directory, version_2, &smallest_num_cpus);
-					}
+					// A directory can be covered by another mount and then belong to a different control
+					// group. Only a file that the kernel reports as served by this mount is used
+					UpdateSmallestQuota(directory, version_2, mappings[i].mount_id, &smallest_num_cpus);
 					if (directory.size() <= mount_point.size()) {
 						break;
 					}

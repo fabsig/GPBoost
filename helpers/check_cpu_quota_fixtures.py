@@ -44,13 +44,95 @@ def v1_quota(files, directory, quota):
     files[directory + "/cpu.cfs_period_us"] = "100000"
 
 
+def decode_mount_path(path):
+    """Undoes the octal escapes that '/proc/self/mountinfo' writes for spaces and similar characters."""
+    out, index = "", 0
+    while index < len(path):
+        if path[index] == chr(92) and path[index + 1:index + 4].isdigit():
+            out += chr(int(path[index + 1:index + 4], 8))
+            index += 4
+        else:
+            out += path[index]
+            index += 1
+    return out
+
+
+def path_is_below(path, directory):
+    """True if 'path' is 'directory' or lies below it."""
+    if directory == "/":
+        return True
+    return path == directory or path.startswith(directory + "/")
+
+
+def parse_mounts(mountinfo):
+    """The entries of a '/proc/self/mountinfo' as dictionaries, in the order in which they are listed."""
+    mounts = []
+    for line in mountinfo.splitlines():
+        if " - " not in line:
+            continue
+        fields = line.split(" - ")[0].split(" ")
+        if len(fields) < 5:
+            continue
+        mounts.append({"id": int(fields[0]), "parent": int(fields[1]),
+                       "root": decode_mount_path(fields[3]), "point": decode_mount_path(fields[4])})
+    return mounts
+
+
+def reachable_mounts(mounts):
+    """
+    The mounts that a path lookup can reach. A mount is covered by a later one at its own directory or
+    at an ancestor of it, and a mount below a covered one cannot be reached either. A mount that covers
+    its own parent stays reachable, since it is the one on top. This is the behaviour that the kernel
+    reports through 'mnt_id', and it is modelled here so that the fixtures know the answer that the
+    kernel would give.
+    """
+    identifiers = {mount["id"] for mount in mounts}
+    reachable = {mount["id"]: True for mount in mounts}
+    changed = True
+    while changed:
+        changed = False
+        for index, mount in enumerate(mounts):
+            if not reachable[mount["id"]]:
+                continue
+            covered = any(reachable[later["id"]] and later["id"] != mount["id"]
+                          and path_is_below(mount["point"], later["point"])
+                          for later in mounts[index + 1:])
+            parent_ok = (mount["parent"] not in identifiers
+                         or reachable[mount["parent"]]
+                         or any(other["id"] == mount["parent"] and other["point"] == mount["point"]
+                                for other in mounts))
+            if covered or not parent_ok:
+                reachable[mount["id"]] = False
+                changed = True
+    return reachable
+
+
+def served_by_of(files):
+    """For every injected file the identifier of the mount that the kernel would report for it."""
+    mounts = parse_mounts(files.get("/proc/self/mountinfo", ""))
+    reachable = reachable_mounts(mounts)
+    served = {}
+    for path in files:
+        if path.startswith("/proc/"):
+            continue
+        serving = None
+        for mount in mounts:
+            if reachable[mount["id"]] and path_is_below(path, mount["point"]):
+                if serving is None or len(mount["point"]) >= len(serving["point"]):
+                    serving = mount
+        if serving is not None:
+            served[path] = serving["id"]
+    return served
+
+
 def fixture_cases():
     """The layouts to check, as (name, injected files, expected quota, expected default)."""
     cases = []
 
     def add(name, files, expected, default=None):
         cases.append((name, files.copy(), expected,
-                      (min(16, expected) if expected else 16) if default is None else default))
+                      (min(16, expected) if expected else 16) if default is None else default,
+                      served_by_of(files)))
 
     # The hierarchies are independent, so the controller has to be matched exactly: 'cpuacct' is not
     # the controller 'cpu' and its path must not be used for the quota
@@ -218,12 +300,25 @@ def fixture_cases():
              "/cg/tenant/job/cpu.max": "100000 100000",
              "/clean/tenant/job/cpu.max": "400000 100000"}
     add("non-cgroup overmount hides a cgroup mount", files, 4)
+
+    # A mount below a covered one cannot be reached either, although it is listed later and its
+    # directory is the longest one that matches: its parent is the mount that has been covered
+    files = {"/proc/self/cgroup": "0::/tenant/job\n",
+             "/proc/self/mountinfo": (
+                 base_mount
+                 + "20 10 0:26 / /view rw - tmpfs tmpfs rw\n"
+                 + mount(root="/tenant", point="/view", mount_id=30, parent_id=20)
+                 + mount(root="/", point="/view/cg", mount_id=40, parent_id=20)),
+             "/view/job/cpu.max": "400000 100000",
+             "/view/cg/tenant/job/cpu.max": "100000 100000"}
+    add("later child of a hidden parent is still unreachable", files, 4)
     return cases
 
 
 IO_HEADER = r"""
 #pragma once
 #include <map>
+#include <cstdlib>
 #include <sched.h>
 #include <sstream>
 #include <string>
@@ -242,9 +337,51 @@ inline std::string ReviewNormalizePath(const std::string& path) {
     for (const auto& item : parts) result += "/" + item;
     return result.empty() ? "/" : result;
 }
+extern std::map<std::string, int> review_served_by;
+inline std::vector<std::string>& ReviewOpenPaths() {
+    static std::vector<std::string> paths;
+    return paths;
+}
+// The descriptors start at 3, as the first free one of a process
+inline int ReviewOpen(const std::string& path) {
+    const std::string normalized = ReviewNormalizePath(path);
+    if (review_files.find(normalized) == review_files.end()) return -1;
+    ReviewOpenPaths().push_back(normalized);
+    return static_cast<int>(ReviewOpenPaths().size()) + 2;
+}
+inline long ReviewRead(int descriptor, char* buffer, size_t size) {
+    const size_t index = static_cast<size_t>(descriptor) - 3;
+    if (descriptor < 3 || index >= ReviewOpenPaths().size()) return -1;
+    const std::string& content = review_files[ReviewOpenPaths()[index]];
+    const size_t count = content.size() < size ? content.size() : size;
+    content.copy(buffer, count);
+    return static_cast<long>(count);
+}
+inline void ReviewClose(int) {}
+// '/proc/self/fdinfo/<descriptor>' reports the mount that the kernel used for an open file
+inline bool ReviewFdInfo(const std::string& path, std::string* content) {
+    const std::string prefix = "/proc/self/fdinfo/";
+    if (path.compare(0, prefix.size(), prefix) != 0) return false;
+    const int descriptor = std::atoi(path.c_str() + prefix.size());
+    const size_t index = static_cast<size_t>(descriptor) - 3;
+    *content = "pos:\t0\nflags:\t0100000\n";
+    if (descriptor >= 3 && index < ReviewOpenPaths().size()) {
+        const auto found = review_served_by.find(ReviewOpenPaths()[index]);
+        if (found != review_served_by.end()) {
+            *content += "mnt_id:\t" + std::to_string(found->second) + "\n";
+        }
+    }
+    return true;
+}
 class ReviewInputFile : public std::istringstream {
 public:
     explicit ReviewInputFile(const std::string& path) {
+        std::string content;
+        if (ReviewFdInfo(path, &content)) {
+            open_ = true;
+            str(content);
+            return;
+        }
         const auto found = review_files.find(ReviewNormalizePath(path));
         open_ = found != review_files.end();
         if (open_) str(found->second);
@@ -278,15 +415,20 @@ def driver_source(cases):
 #include <GPBoost/utils.h>
 #include <iostream>
 std::map<std::string, std::string> review_files;
+std::map<std::string, int> review_served_by;
 int main() {
     int failures = 0;
 """]
-    for name, files, quota, default in cases:
+    for name, files, quota, default, served_by in cases:
         entries = ",\n".join(
             "{" + json.dumps(key) + ", " + json.dumps(value) + "}"
             for key, value in files.items())
+        served = ",\n".join(
+            "{" + json.dumps(key) + ", " + str(value) + "}"
+            for key, value in served_by.items())
         output.append(f"""
     review_files = {{{entries}}};
+    review_served_by = {{{served}}};
     {{
         const int quota = GPBoost::CpuQuotaLimit();
         const int threads = GPBoost::ComputeDefaultNumParallelThreads();
@@ -317,7 +459,7 @@ def main():
     source_path = args.checkout.resolve() / "src/GPBoost/cpu_topology.cpp"
     source_bytes = source_path.read_bytes()
     source = source_bytes.decode("utf-8-sig")
-    if source.count("std::ifstream") != 3:
+    if source.count("std::ifstream") != 4:
         parser.error("Source I/O changed: inspect this script before adapting its redirects.")
     affinity_call = "sched_getaffinity(0, mask_size, mask)"
     if source.count(affinity_call) != 1:
@@ -326,6 +468,12 @@ def main():
     print("SHA256:", hashlib.sha256(source_bytes).hexdigest(), flush=True)
     source = '#include "fixture_io.h"\n' + source.replace("std::ifstream", "ReviewInputFile")
     source = source.replace(affinity_call, "ReviewGetAffinity(0, mask_size, mask)")
+    for original, replacement in (("open(path.c_str(), O_RDONLY | O_CLOEXEC)", "ReviewOpen(path)"),
+                                  ("read(descriptor, buffer, size)", "ReviewRead(descriptor, buffer, size)"),
+                                  ("close(descriptor)", "ReviewClose(descriptor)")):
+        if source.count(original) != 1:
+            parser.error(f"Source file access changed: {original} is not used exactly once.")
+        source = source.replace(original, replacement)
     with tempfile.TemporaryDirectory(prefix="gpboost-quota-fixtures-") as temporary:
         work = Path(temporary)
         (work / "GPBoost").mkdir()
