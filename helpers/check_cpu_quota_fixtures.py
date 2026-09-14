@@ -156,6 +156,68 @@ def fixture_cases():
              "/broad/parent/tenant/job/cpu.max": "400000 100000",
              "/broad/parent/cpu.max": "200000 100000"}
     add("broader visible mount exposes ancestor", files, 2)
+
+    # A quota is only read where the mount that shows the control group really serves the directory.
+    # Another mount can cover the hierarchy, redirect the directory of the control group, or redirect
+    # one of its ancestors, and the control group found there is then a different one
+    base_mount = "10 1 8:1 / / rw - ext4 /dev/root rw\n"
+    for version in (1, 2):
+        membership = "0::/tenant/job\n" if version == 2 else "8:cpu:/tenant/job\n"
+
+        def set_quota(files, directory, value, version=version):
+            if version == 2:
+                files[directory + "/cpu.max"] = f"{value} 100000"
+            else:
+                v1_quota(files, directory, value)
+
+        # A mount at '/view' covers the mount at '/view/cgroup' below it
+        files = {"/proc/self/cgroup": membership,
+                 "/proc/self/mountinfo": (
+                     base_mount
+                     + "20 10 0:26 / /view rw - tmpfs tmpfs rw\n"
+                     + mount(point="/view/cgroup", version=version, mount_id=30, parent_id=20)
+                     + mount(root="/tenant", point="/view", version=version, mount_id=31, parent_id=20))}
+        set_quota(files, "/view/job", 400000)
+        # Through the covering mount this would be the control group '/tenant/cgroup/tenant/job'
+        set_quota(files, "/view/cgroup/tenant/job", 100000)
+        add(f"v{version} mount hidden by an overmounted parent", files, 4)
+
+        # The mount at '/cg' is visible, but another control group is mounted over the directory that
+        # the control group of the process would have there. Only the view at '/clean' can be used
+        files = {"/proc/self/cgroup": membership,
+                 "/proc/self/mountinfo": (
+                     base_mount
+                     + mount(point="/cg", version=version, mount_id=30, parent_id=10)
+                     + mount(root="/unrelated", point="/cg/tenant/job", version=version,
+                             mount_id=31, parent_id=30)
+                     + mount(point="/clean", version=version, mount_id=32, parent_id=10))}
+        set_quota(files, "/cg/tenant/job", 100000)
+        set_quota(files, "/clean/tenant/job", 400000)
+        add(f"v{version} quota path redirected by a submount", files, 4)
+
+    # The directory of the control group is correct, but an ancestor directory is served by a mount of
+    # an unrelated control group, whose quota must not be taken for the one of an ancestor
+    files = {"/proc/self/cgroup": "0::/tenant/job\n",
+             "/proc/self/mountinfo": (
+                 base_mount
+                 + mount(point="/cg", mount_id=30, parent_id=10)
+                 + mount(root="/unrelated", point="/cg/tenant", mount_id=31, parent_id=30)
+                 + mount(root="/tenant/job", point="/cg/tenant/job", mount_id=32, parent_id=31)),
+             "/cg/tenant/job/cpu.max": "400000 100000",
+             "/cg/tenant/cpu.max": "100000 100000"}
+    add("ancestor walk crosses into an unrelated mount", files, 4)
+
+    # Mounts of other filesystems have to be taken into account as well: the file below the temporary
+    # filesystem is ordinary data and not the quota of a control group
+    files = {"/proc/self/cgroup": "0::/tenant/job\n",
+             "/proc/self/mountinfo": (
+                 base_mount
+                 + mount(point="/cg", mount_id=30, parent_id=10)
+                 + "31 30 0:26 / /cg rw - tmpfs tmpfs rw\n"
+                 + mount(point="/clean", mount_id=32, parent_id=10)),
+             "/cg/tenant/job/cpu.max": "100000 100000",
+             "/clean/tenant/job/cpu.max": "400000 100000"}
+    add("non-cgroup overmount hides a cgroup mount", files, 4)
     return cases
 
 

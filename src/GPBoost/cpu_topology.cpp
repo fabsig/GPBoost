@@ -515,34 +515,37 @@ namespace GPBoost {
 		return std::find(components.begin(), components.end(), std::string("..")) != components.end();
 	}
 
-	/*! \brief A control group as it can be read through one mount of its hierarchy */
-	struct CgroupMapping {
-		/*! \brief Directory of the control group */
-		std::string directory;
-		/*! \brief Directory at which the hierarchy is mounted, i.e., the highest ancestor visible here */
-		std::string mount_point;
+	/*! \brief One entry of '/proc/self/mountinfo' */
+	struct MountEntry {
+		/*! \brief Directory of the mounted filesystem that is shown, '/' for all of it */
+		std::string root;
+		/*! \brief Directory at which it is shown */
+		std::string point;
+		/*! \brief Type of the filesystem, e.g. "cgroup2" */
+		std::string filesystem;
+		/*! \brief Options of the filesystem, which list the controllers of a v1 control group hierarchy */
+		std::string super_options;
 	};
 
 	/*!
-	* \brief Directories in which the control group of this process can be read
-	* \param cgroup_path Path of the control group relative to the root of its hierarchy, as written in
-	*		'/proc/self/cgroup'
-	* \param version_2 True for the control group hierarchy v2, false for the v1 hierarchy of the controller 'cpu'
-	* \return One entry per mount through which the control group is visible, empty if it cannot be located.
-	*		A mount can show a subtree of the hierarchy, so the path from '/proc/self/cgroup' must not simply
-	*		be appended to the mount point: it is relative to the root of the hierarchy, while the mount shows
-	*		the subtree below the root of the mount. Different mounts can also make different ancestors
-	*		readable, so all of them are returned
+	* \brief True if a path is a directory or lies below it
+	* \param path The path
+	* \param directory The directory
+	* \return True if 'path' is 'directory' or below it
 	*/
-	std::vector<CgroupMapping> ResolveCgroupDirectories(const std::string& cgroup_path,
-		const bool version_2) {
-		std::vector<CgroupMapping> mappings;
-		if (cgroup_path.empty() || PathHasParentComponent(cgroup_path)) {
-			return mappings;
+	bool PathIsBelow(const std::string& path, const std::string& directory) {
+		if (directory == "/") {
+			return true;
 		}
-		// A mount that is listed later covers an earlier one at the same mount point, and only the covering
-		// one can be read, so every mount point is kept only once
-		std::vector<CgroupMapping> mounts;// 'directory' holds the root of the mount here
+		if (path.size() < directory.size() || path.compare(0, directory.size(), directory) != 0) {
+			return false;
+		}
+		return path.size() == directory.size() || path[directory.size()] == '/';
+	}
+
+	/*! \brief All entries of '/proc/self/mountinfo', in the order in which they are listed */
+	std::vector<MountEntry> ReadMountEntries() {
+		std::vector<MountEntry> entries;
 		std::ifstream mountinfo_file("/proc/self/mountinfo");
 		std::string line;
 		while (std::getline(mountinfo_file, line)) {
@@ -556,40 +559,116 @@ namespace GPBoost {
 			if (fields.size() < 5 || filesystem_fields.size() < 3) {
 				continue;
 			}
-			const std::string& filesystem = filesystem_fields[0];
-			const std::string& super_options = filesystem_fields[2];
-			if (version_2 ? filesystem != "cgroup2"
-				: (filesystem != "cgroup" || !ListContainsToken(super_options, "cpu"))) {
-				continue;
-			}
-			CgroupMapping mount;
-			mount.directory = DecodeMountPath(fields[3]);
-			mount.mount_point = DecodeMountPath(fields[4]);
-			size_t existing = 0;
-			while (existing < mounts.size() && mounts[existing].mount_point != mount.mount_point) {
-				++existing;
-			}
-			if (existing < mounts.size()) {
-				mounts[existing] = mount;
-			}
-			else {
-				mounts.push_back(mount);
+			MountEntry entry;
+			entry.root = DecodeMountPath(fields[3]);
+			entry.point = DecodeMountPath(fields[4]);
+			entry.filesystem = filesystem_fields[0];
+			entry.super_options = filesystem_fields[2];
+			entries.push_back(entry);
+		}
+		return entries;
+	}
+
+	/*!
+	* \brief Marks the mounts that cannot be reached: a mount that is listed after another one and is at the
+	*		same directory or at one of its ancestors covers it. Mounts of all filesystems have to be taken
+	*		into account here, since, e.g., a temporary filesystem can cover a control group hierarchy
+	* \param entries All entries of '/proc/self/mountinfo'
+	* \return For every entry whether it is covered
+	*/
+	std::vector<bool> FindHiddenMounts(const std::vector<MountEntry>& entries) {
+		std::vector<bool> hidden(entries.size(), false);
+		for (size_t index = 0; index < entries.size(); ++index) {
+			for (size_t later = index + 1; later < entries.size(); ++later) {
+				if (PathIsBelow(entries[index].point, entries[later].point)) {
+					hidden[index] = true;
+					break;
+				}
 			}
 		}
-		for (size_t i = 0; i < mounts.size(); ++i) {
-			const std::string& root = mounts[i].directory;
+		return hidden;
+	}
+
+	/*!
+	* \brief The mount that a path is read through: the visible mount with the longest matching directory,
+	*		and the last one of those if several match
+	* \param entries All entries of '/proc/self/mountinfo'
+	* \param hidden For every entry whether it is covered, see 'FindHiddenMounts'
+	* \param path The path
+	* \return Index of the mount, or the number of entries if no mount matches
+	*/
+	size_t FindServingMount(const std::vector<MountEntry>& entries,
+		const std::vector<bool>& hidden,
+		const std::string& path) {
+		size_t serving = entries.size();
+		size_t longest = 0;
+		for (size_t index = 0; index < entries.size(); ++index) {
+			if (hidden[index] || !PathIsBelow(path, entries[index].point)) {
+				continue;
+			}
+			if (serving == entries.size() || entries[index].point.size() >= longest) {
+				serving = index;
+				longest = entries[index].point.size();
+			}
+		}
+		return serving;
+	}
+
+	/*! \brief A control group as it can be read through one mount of its hierarchy */
+	struct CgroupMapping {
+		/*! \brief Directory of the control group */
+		std::string directory;
+		/*! \brief Directory at which the hierarchy is mounted, i.e., the highest ancestor visible here */
+		std::string mount_point;
+		/*! \brief Index of the mount in the entries of '/proc/self/mountinfo' */
+		size_t mount_index;
+	};
+
+	/*!
+	* \brief Directories in which the control group of this process can be read
+	* \param cgroup_path Path of the control group relative to the root of its hierarchy, as written in
+	*		'/proc/self/cgroup'
+	* \param version_2 True for the control group hierarchy v2, false for the v1 hierarchy of the controller 'cpu'
+	* \return One entry per mount through which the control group is visible, empty if it cannot be located.
+	*		A mount can show a subtree of the hierarchy, so the path from '/proc/self/cgroup' must not simply
+	*		be appended to the mount point: it is relative to the root of the hierarchy, while the mount shows
+	*		the subtree below the root of the mount. Different mounts can also make different ancestors
+	*		readable, so all of them are returned
+	*/
+	std::vector<CgroupMapping> ResolveCgroupDirectories(const std::vector<MountEntry>& entries,
+		const std::vector<bool>& hidden,
+		const std::string& cgroup_path,
+		const bool version_2) {
+		std::vector<CgroupMapping> mappings;
+		if (cgroup_path.empty() || PathHasParentComponent(cgroup_path)) {
+			return mappings;
+		}
+		for (size_t index = 0; index < entries.size(); ++index) {
+			if (hidden[index]) {
+				continue;
+			}
+			const MountEntry& entry = entries[index];
+			if (version_2 ? entry.filesystem != "cgroup2"
+				: (entry.filesystem != "cgroup" || !ListContainsToken(entry.super_options, "cpu"))) {
+				continue;
+			}
 			// Only the part of the hierarchy below the root of the mount is visible
 			std::string relative_path = cgroup_path;
-			if (root != "/") {
-				if (cgroup_path.compare(0, root.size(), root) != 0 ||
-					(cgroup_path.size() > root.size() && cgroup_path[root.size()] != '/')) {
+			if (entry.root != "/") {
+				if (!PathIsBelow(cgroup_path, entry.root)) {
 					continue;
 				}
-				relative_path = cgroup_path.substr(root.size());
+				relative_path = cgroup_path.substr(entry.root.size());
 			}
 			CgroupMapping mapping;
-			mapping.mount_point = mounts[i].mount_point;
-			mapping.directory = mapping.mount_point + (relative_path == "/" ? std::string() : relative_path);
+			mapping.mount_point = entry.point;
+			mapping.directory = entry.point + (relative_path == "/" ? std::string() : relative_path);
+			mapping.mount_index = index;
+			// Another mount can be at the directory of the control group or at one of its ancestors below
+			// the mount point, which makes the directory show a different control group
+			if (FindServingMount(entries, hidden, mapping.directory) != index) {
+				continue;
+			}
 			mappings.push_back(mapping);
 		}
 		return mappings;
@@ -658,16 +737,22 @@ namespace GPBoost {
 		}
 		// A quota of an ancestor also applies, so the smallest one of the control group and of all of its
 		// visible ancestors is used
+		const std::vector<MountEntry> entries = ReadMountEntries();
+		const std::vector<bool> hidden = FindHiddenMounts(entries);
 		double smallest_num_cpus = -1.;
 		for (int version = 2; version >= 1; --version) {
 			const bool version_2 = version == 2;
-			const std::vector<CgroupMapping> mappings =
-				ResolveCgroupDirectories(version_2 ? cgroup_path_v2 : cgroup_path_v1, version_2);
+			const std::vector<CgroupMapping> mappings = ResolveCgroupDirectories(
+				entries, hidden, version_2 ? cgroup_path_v2 : cgroup_path_v1, version_2);
 			for (size_t i = 0; i < mappings.size(); ++i) {
 				const std::string& mount_point = mappings[i].mount_point;
 				std::string directory = mappings[i].directory;
 				while (true) {
-					UpdateSmallestQuota(directory, version_2, &smallest_num_cpus);
+					// An ancestor directory can be served by another mount and then belong to a different
+					// control group, so only the directories of this mount are read
+					if (FindServingMount(entries, hidden, directory) == mappings[i].mount_index) {
+						UpdateSmallestQuota(directory, version_2, &smallest_num_cpus);
+					}
 					if (directory.size() <= mount_point.size()) {
 						break;
 					}
