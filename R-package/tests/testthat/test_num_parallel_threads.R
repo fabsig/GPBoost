@@ -152,6 +152,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   suppressWarnings(as.integer(utils::tail(output, 1L)))
 }
 
+# True if the library has been built with OpenMP. Without OpenMP, 'omp_set_num_threads()' is a stub
+# that does nothing and 'omp_get_max_threads()' always reports one thread, so a number of threads that
+# is set and read back again distinguishes the two builds. Note that this reads and writes the number
+# of threads of the process, which is restored before returning
+.gpb_has_openmp <- function() {
+  num_threads_before <- gpb.get.num.threads()
+  on.exit(gpb.set.num.threads(num_threads_before), add = TRUE)
+  gpb.set.num.threads(2L)
+  return(gpb.get.num.threads() == 2L)
+}
+
 # A test that expects a message not to appear cannot tell a process that has not written the message
 # apart from a process that has not run at all, so every command ends with a sentinel
 .gpb_output_with_sentinel <- function(commands, env = character(0)) {
@@ -342,7 +353,10 @@ test_that("the message about the automatically selected number of threads is wri
   if (Sys.getenv("OMP_NUM_THREADS") != "") {
     skip("the message is not written when the number of threads has been requested explicitly")
   }
-  message_text <- "OpenMP threads by default"
+  # Not a fixed string: the message is singular for a single thread
+  message_pattern <- "OpenMP threads? by default"
+  # A build without OpenMP has nothing to parallelize and thus nothing to tune, so it says nothing
+  num_messages_expected <- if (.gpb_has_openmp()) 1L else 0L
   create_two_models <- paste0(
     "group <- rep(1:10, each = 10); "
     , "invisible(GPModel(group_data = group, likelihood = \"gaussian\")); "
@@ -353,7 +367,7 @@ test_that("the message about the automatically selected number of threads is wri
     skip("a new R process is needed for this test")
   }
   # The message makes the tuning of the number of threads discoverable, but only once per process
-  expect_equal(sum(grepl(message_text, output, fixed = TRUE)), 1L)
+  expect_equal(sum(grepl(message_pattern, output)), num_messages_expected)
 
   # No message if the number of threads has been requested for the model ...
   output_explicit <- .gpb_output_with_sentinel(paste0(
@@ -361,19 +375,19 @@ test_that("the message about the automatically selected number of threads is wri
     , "invisible(GPModel(group_data = group, likelihood = \"gaussian\", num_parallel_threads = 1L)); "
   ))
   expect_false(is.null(output_explicit))
-  expect_equal(sum(grepl(message_text, output_explicit, fixed = TRUE)), 0L)
+  expect_equal(sum(grepl(message_pattern, output_explicit)), 0L)
 
   # ... or for the session ...
   output_session <- .gpb_output_with_sentinel(paste0(
     "gpb.set.default.num.threads(1L); ", create_two_models))
   expect_false(is.null(output_session))
-  expect_equal(sum(grepl(message_text, output_session, fixed = TRUE)), 0L)
+  expect_equal(sum(grepl(message_pattern, output_session)), 0L)
 
   # ... or if the message has been switched off
   output_switched_off <- .gpb_output_with_sentinel(create_two_models
                                                    , env = "GPBOOST_THREAD_MESSAGE=0")
   expect_false(is.null(output_switched_off))
-  expect_equal(sum(grepl(message_text, output_switched_off, fixed = TRUE)), 0L)
+  expect_equal(sum(grepl(message_pattern, output_switched_off)), 0L)
 
 })
 
@@ -525,7 +539,9 @@ test_that("the message is not written any more after the benchmark has been run"
   if (Sys.getenv("OMP_NUM_THREADS") != "") {
     skip("the message is not written when the number of threads has been requested explicitly")
   }
-  message_text <- "OpenMP threads by default"
+  # Not a fixed string: the message is singular for a single thread, and an assertion that it does
+  # not appear has to find both forms
+  message_pattern <- "OpenMP threads? by default"
   # The benchmark selects the automatically selected number of threads here, so the default of the
   # session stays at zero and only the message flag can prevent the message
   output <- .gpb_output_with_sentinel(paste0(
@@ -537,7 +553,7 @@ test_that("the message is not written any more after the benchmark has been run"
   if (is.null(output)) {
     skip("a new R process is needed for this test")
   }
-  expect_equal(sum(grepl(message_text, output, fixed = TRUE)), 0L)
+  expect_equal(sum(grepl(message_pattern, output)), 0L)
 
 })
 
