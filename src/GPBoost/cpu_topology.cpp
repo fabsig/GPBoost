@@ -869,9 +869,20 @@ namespace GPBoost {
 		const NumParallelThreadsDefaults& NumParallelThreadsDefaultsOfMachine() {
 			static const NumParallelThreadsDefaults defaults = []() {
 				NumParallelThreadsDefaults values;
-				values.maximum = omp_get_max_threads();
+				const int num_threads_omp = omp_get_max_threads();
 				values.omp_num_threads_env_is_set = OmpNumThreadsEnvIsSet();
-				values.automatic = ComputeAutoNumParallelThreadsFrom(values.maximum);
+				values.automatic = ComputeAutoNumParallelThreadsFrom(num_threads_omp);
+				// The largest number of threads is not limited by the number of performance cores: a
+				// benchmark can find that the slower cores or the hyperthreads help. A CPU bandwidth limit
+				// of a control group is a limit of the machine and not a property of the cores, so it
+				// applies here as well, unless the number of threads has been requested explicitly
+				values.maximum = num_threads_omp;
+				if (!values.omp_num_threads_env_is_set) {
+					const int num_cpus_quota = CpuQuotaLimit();
+					if (num_cpus_quota > 0 && num_cpus_quota < values.maximum) {
+						values.maximum = num_cpus_quota;
+					}
+				}
 				if (values.maximum < values.automatic) {
 					values.maximum = values.automatic;
 				}

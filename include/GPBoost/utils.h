@@ -57,10 +57,12 @@ namespace GPBoost {
 
 	/*!
 	* \brief Largest number of threads that GPBoost uses on its own, i.e., the number of threads that OMP uses when
-	*		the automatic number of threads is determined for the first time. This is usually the number of logical
-	*		processors, or the value of the environment variable 'OMP_NUM_THREADS' if it is set. It is not smaller
-	*		than 'AutoNumParallelThreads()', which counts only the physical performance cores, and it is the upper
-	*		limit for a default that is set for the session. Implemented in 'cpu_topology.cpp'
+	*		the automatic number of threads is determined for the first time, limited by a CPU bandwidth limit of a
+	*		control group on Linux. This is usually the number of logical processors, or the value of the environment
+	*		variable 'OMP_NUM_THREADS' if it is set. In contrast to 'AutoNumParallelThreads()' it is not limited by
+	*		the number of physical performance cores, since a benchmark can find that the slower cores or the
+	*		hyperthreads help. It is the upper limit for a default that is set for the session. Implemented in
+	*		'cpu_topology.cpp'
 	* \return Largest number of threads that GPBoost uses on its own
 	*/
 	int MaxNumParallelThreads();
@@ -133,15 +135,10 @@ namespace GPBoost {
 		}
 		// Note: this is called from the thread that creates a 'ParallelThreadsScope' and thus never from a parallel
 		//	region. In the R package, the message is written by 'Rprintf', which must not be called by other threads
-#ifdef LGB_R_BUILD
 		Log::REInfo("GPBoost is using %d OpenMP threads by default for parallel computations. Run "
-			"gpb.tune.num.threads() to benchmark different numbers of threads and to select a tuned default "
-			"for this session, or manually set 'num_parallel_threads' for a 'GPModel'.", num_threads_used);
-#else
-		Log::REInfo("GPBoost is using %d OpenMP threads by default for parallel computations. Run "
-			"gpboost.tune_num_threads() to benchmark different numbers of threads and to select a tuned "
-			"default for this session, or manually set 'num_parallel_threads' for a 'GPModel'.", num_threads_used);
-#endif
+			"gpboost_tune_num_threads() to benchmark different numbers of threads and to select a tuned "
+			"default for this session. For the best performance, try different values of "
+			"'num_parallel_threads' on the 'GPModel' you are using.", num_threads_used);
 	}
 
 	/*!
@@ -170,7 +167,11 @@ namespace GPBoost {
 	*		number of threads that has been set by another model or by the boosting part of the library.
 	*		The default of the session can be changed while an operation is running: the number of threads is read
 	*		once when the object is created, and the numbers of threads that are restored afterwards are the ones
-	*		that have been found, so that such a change only affects the operations that start afterwards
+	*		that have been found, so that such a change only affects the operations that start afterwards.
+	*		Note that this holds for operations that run one after the other, which is how models are used from R
+	*		and Python. The number of threads of Eigen is stored once for the process and not per thread, so two
+	*		operations that run at the same time in different threads of the host process can overwrite the value
+	*		of each other
 	*/
 	class ParallelThreadsScope {
 	public:

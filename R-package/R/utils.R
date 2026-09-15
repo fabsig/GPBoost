@@ -275,6 +275,23 @@ has_std_cyl_bessel_k <- function() {
   return(has_bessel[1L] == 1L)
 }
 
+#' @title Check a number of threads that has been passed to one of the functions below
+#' @description A number of threads is an integer. Rounding a number silently or letting it become
+#'              \code{NA_integer_} because it does not fit into an \code{integer} would change which
+#'              number of threads is used, and a non-positive number has a meaning of its own
+#' @param num_threads The number of threads to check
+#' @param name Name of the calling function, for the error message
+#' @return The number of threads as an \code{integer} of length one
+#' @keywords internal
+#' @noRd
+gpb.check.num.threads <- function(num_threads, name) {
+  if (!is.numeric(num_threads) || length(num_threads) != 1L || !is.finite(num_threads) ||
+      num_threads != floor(num_threads) || abs(num_threads) > .Machine$integer.max) {
+    stop(name, ": num_threads needs to be an integer of length one")
+  }
+  return(as.integer(num_threads))
+}
+
 #' @title Get the number of threads used for parallelization
 #' @description Returns the number of threads that OMP currently uses for parallelization.
 #'              Note that models for which the number of threads has been specified via the
@@ -303,9 +320,11 @@ gpb.get.num.threads <- function() {
 #'              this: such models set (and reset) the number of threads themselves whenever they do
 #'              calculations.
 #' @param num_threads An \code{integer} specifying the number of threads. If \code{num_threads} is
-#'                    not positive, the default number of threads is used (the number of physical
-#'                    performance cores, see the \code{num_parallel_threads} argument of
-#'                    \code{\link{GPModel}})
+#'                    not positive, the default number of threads of the session is used, see
+#'                    \code{\link{gpboost_get_default_num_threads}}. Initially, this is the automatically
+#'                    selected number of physical performance cores, and it is the number of threads
+#'                    set by \code{\link{gpboost_tune_num_threads}} or
+#'                    \code{\link{gpboost_set_default_num_threads}} once one of them has been called
 #' @return This function does not return anything
 #' @author Fabio Sigrist
 #' @examples
@@ -315,12 +334,10 @@ gpb.get.num.threads <- function() {
 #' @rdname gpb.set.num.threads
 #' @export
 gpb.set.num.threads <- function(num_threads) {
-  if (!is.numeric(num_threads) || length(num_threads) != 1L || is.na(num_threads)) {
-    stop('gpb.set.num.threads: num_threads needs to be an integer of length one')
-  }
+  num_threads <- gpb.check.num.threads(num_threads, "gpb.set.num.threads")
   .Call(
     GPB_SetNumParallelThreads_R
-    , as.integer(num_threads)
+    , num_threads
   )
   return(invisible(NULL))
 }
@@ -329,7 +346,7 @@ gpb.set.num.threads <- function(num_threads) {
 #' @description Returns the number of threads that a \code{\link{GPModel}} uses when no number of
 #'              threads has been specified for it via the \code{num_parallel_threads} argument. This
 #'              is the number of threads that has been set for the session, either by
-#'              \code{\link{gpb.tune.num.threads}} or by \code{\link{gpb.set.default.num.threads}},
+#'              \code{\link{gpboost_tune_num_threads}} or by \code{\link{gpboost_set_default_num_threads}},
 #'              and the automatically selected number of threads (the number of physical performance
 #'              cores) if no such number has been set.
 #'
@@ -341,10 +358,10 @@ gpb.set.num.threads <- function(num_threads) {
 #'         of threads is specified
 #' @author Fabio Sigrist
 #' @examples
-#' num_threads <- gpb.get.default.num.threads()
-#' @rdname gpb.get.default.num.threads
+#' num_threads <- gpboost_get_default_num_threads()
+#' @rdname gpboost_get_default_num_threads
 #' @export
-gpb.get.default.num.threads <- function() {
+gpboost_get_default_num_threads <- function() {
   num_threads <- integer(1L)
   .Call(
     GPB_GetDefaultNumParallelThreads_R
@@ -357,7 +374,7 @@ gpb.get.default.num.threads <- function() {
 #' @description Sets the number of threads that a \code{\link{GPModel}} uses when no number of
 #'              threads has been specified for it via the \code{num_parallel_threads} argument. Use
 #'              this to apply a number of threads that has been determined by
-#'              \code{\link{gpb.tune.num.threads}} in an earlier session, without running the
+#'              \code{\link{gpboost_tune_num_threads}} in an earlier session, without running the
 #'              benchmark again.
 #'
 #'              In contrast to \code{\link{gpb.set.num.threads}}, this does not change the number of
@@ -372,18 +389,16 @@ gpb.get.default.num.threads <- function() {
 #' @return This function does not return anything
 #' @author Fabio Sigrist
 #' @examples
-#' num_threads_old <- gpb.get.default.num.threads()
-#' gpb.set.default.num.threads(2L)
-#' gpb.set.default.num.threads(num_threads_old)
-#' @rdname gpb.set.default.num.threads
+#' num_threads_old <- gpboost_get_default_num_threads()
+#' gpboost_set_default_num_threads(2L)
+#' gpboost_set_default_num_threads(num_threads_old)
+#' @rdname gpboost_set_default_num_threads
 #' @export
-gpb.set.default.num.threads <- function(num_threads) {
-  if (!is.numeric(num_threads) || length(num_threads) != 1L || is.na(num_threads)) {
-    stop('gpb.set.default.num.threads: num_threads needs to be an integer of length one')
-  }
+gpboost_set_default_num_threads <- function(num_threads) {
+  num_threads <- gpb.check.num.threads(num_threads, "gpboost_set_default_num_threads")
   .Call(
     GPB_SetDefaultNumParallelThreads_R
-    , as.integer(num_threads)
+    , num_threads
   )
   return(invisible(NULL))
 }
