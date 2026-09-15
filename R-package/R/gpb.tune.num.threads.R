@@ -201,7 +201,8 @@ gpb.thread.time.section <- function(gp_model, workload) {
 #'              \code{\link{GPModel}}, for the rest of the session.
 #'
 #'              The benchmark is never run automatically: the number of threads that GPBoost uses
-#'              without it is the number of physical performance cores of the CPU. The selected number
+#'              without it is the automatically selected one, which is normally based on the number of
+#'              physical performance cores. The selected number
 #'              of threads is a tuned default and not an optimal number of threads: the best number of
 #'              threads depends on the model, on the size of the data and on the machine. Use the
 #'              \code{num_parallel_threads} argument of \code{\link{GPModel}} for a model whose number
@@ -223,8 +224,8 @@ gpb.thread.time.section <- function(gp_model, workload) {
 #'                  }
 #'                  Restrict the workloads to the model class that you mainly use if you know it
 #' @param num_threads_candidates An \code{integer} vector with the numbers of threads that are
-#'                               benchmarked. If \code{NULL}, powers of two, the number of physical
-#'                               performance cores and the largest number of threads that GPBoost uses
+#'                               benchmarked. If \code{NULL}, powers of two, the automatically selected
+#'                               number of threads and the largest number of threads that GPBoost uses
 #'                               on its own are benchmarked
 #' @param n_rep An \code{integer} specifying the number of repeated measurements per workload and
 #'              number of threads. The median of the repetitions is used. Every workload is measured at
@@ -265,7 +266,8 @@ gpb.thread.time.section <- function(gp_model, workload) {
 #'           \item{aggregate: a \code{data.frame} with the aggregated relative runtime per number of
 #'           threads, i.e. the geometric mean over the workloads of the runtime relative to the fastest
 #'           measurement of the workload, and whether the number of threads is acceptable, i.e. whether
-#'           it is not slower than \code{max_relative_slowdown} for a single workload}
+#'           it is not slower than \code{max_relative_slowdown} for a single workload. It is
+#'           \code{NULL} whenever \code{timings} is}
 #'           \item{num_threads_before: the default of the session before the benchmark}
 #'           \item{tolerance_used: the tolerance that has been used for the selection}
 #'           \item{safeguard_was_relaxed: \code{TRUE} if no number of threads was within
@@ -386,7 +388,8 @@ gpb.tune.num.threads <- function(workloads = "all",
     num_threads_selected <- candidates[1L]
     if (verbose) {
       if (num_threads_max == 1L) {
-        cat("Only one thread can be used on this machine, there is nothing to benchmark.\n")
+        cat(paste0("Only one thread is available to the tuner under the current OpenMP and system",
+                   " settings, there is nothing to benchmark.\n"))
       } else {
         cat(sprintf(paste0("Only %d thread(s) have been requested, there is nothing to benchmark.\n")
                     , num_threads_selected))
@@ -427,8 +430,8 @@ gpb.tune.num.threads <- function(workloads = "all",
   if (verbose) {
     cat(sprintf("Benchmarking %d workload(s) with %s thread(s), %d repetition(s) each.\n",
                 length(workloads), paste(candidates, collapse = ", "), n_rep))
-    cat(sprintf("GPBoost selects %d thread(s) automatically, at most %d thread(s) can be used.\n",
-                num_threads_auto, num_threads_max))
+    cat(sprintf(paste0("GPBoost selects %d thread(s) automatically, the largest number that GPBoost ",
+                       "uses on its own is %d.\n"), num_threads_auto, num_threads_max))
   }
 
   start_time <- Sys.time()

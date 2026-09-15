@@ -59,8 +59,8 @@ namespace GPBoost {
 	/*!
 	* \brief Largest number of threads that GPBoost uses on its own, i.e., the number of threads that OMP uses when
 	*		the automatic number of threads is determined for the first time, limited by the contention group of
-	*		OMP ('OMP_THREAD_LIMIT') and by a CPU bandwidth limit of a control group on Linux. This is usually
-	*		the number of logical processors, or the value of the environment
+	*		OMP ('OMP_THREAD_LIMIT') and, unless 'OMP_NUM_THREADS' is set, by a CPU bandwidth limit of a control
+	*		group on Linux. This is usually the number of logical processors, or the value of the environment
 	*		variable 'OMP_NUM_THREADS' if it is set. In contrast to 'AutoNumParallelThreads()' it is not limited by
 	*		the number of physical performance cores, since a benchmark can find that the slower cores or the
 	*		hyperthreads help. It is the upper limit for a default that is set for the session. Implemented in
@@ -129,6 +129,11 @@ namespace GPBoost {
 	* \param num_threads_used Number of threads that is used for the operation
 	*/
 	inline void MaybeLogAutoNumParallelThreadsMessage(int num_threads_requested, int num_threads_used) {
+#ifndef _OPENMP
+		// A build without OpenMP always runs in a single thread, there is nothing to tune
+		(void)num_threads_requested;
+		(void)num_threads_used;
+#else
 		if (num_threads_requested > 0 || TunedNumParallelThreads() > 0) {
 			return;
 		}
@@ -138,15 +143,17 @@ namespace GPBoost {
 		// Note: this is called from the thread that creates a 'ParallelThreadsScope' and thus never from a parallel
 		//	region. In the R package, the message is written by 'Rprintf', which must not be called by other threads
 #ifdef LGB_R_BUILD
-		Log::REInfo("GPBoost is using %d OpenMP threads by default for parallel computations. Run "
+		Log::REInfo("GPBoost is using %d OpenMP thread%s by default for parallel computations. Run "
 			"gpb.tune.num.threads() to benchmark different numbers of threads and to select a tuned default "
 			"for this session. For the best performance, try different values of 'num_parallel_threads' on "
-			"the 'GPModel' you are using.", num_threads_used);
+			"the 'GPModel' you are using.", num_threads_used, num_threads_used == 1 ? "" : "s");
 #else
-		Log::REInfo("GPBoost is using %d OpenMP threads by default for parallel computations. Run "
+		Log::REInfo("GPBoost is using %d OpenMP thread%s by default for parallel computations. Run "
 			"gpboost.tune_num_threads() to benchmark different numbers of threads and to select a tuned "
 			"default for this session. For the best performance, try different values of "
-			"'num_parallel_threads' on the 'GPModel' you are using.", num_threads_used);
+			"'num_parallel_threads' on the 'GPModel' you are using.", num_threads_used,
+			num_threads_used == 1 ? "" : "s");
+#endif
 #endif
 	}
 

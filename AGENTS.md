@@ -19,11 +19,19 @@ requires a restriction, scope it to that purpose and explain it in a nearby comm
 that are only needed for an agent's own temporary validation must not silently become defaults in
 delivered code. Before finishing, check the result for unintended thread restrictions.
 
-By default, a `GPModel` uses the number of physical performance cores, see `NumPerformanceCores()` in
-`src/GPBoost/cpu_topology.cpp`: the fastest cores of the CPU, without their hyperthreads, extended by
-the next fastest ones if that would leave a single thread, and limited by the CPU bandwidth quota of
-the control group on Linux. The boosting parameter `num_threads` is independent of this: `0`, its
-default, means the default number of threads of OpenMP.
+Three layers decide how many threads a `GPModel` uses, in this order: the `num_parallel_threads`
+argument of the model, the default of the session (`SetDefaultNumParallelThreads()`, which
+`gpb.tune.num.threads()` and `tune_num_threads()` set), and the automatically selected number of
+threads. The automatic number is normally the number of physical performance cores, see
+`NumPerformanceCores()` in `src/GPBoost/cpu_topology.cpp`: the fastest cores of the CPU, without their
+hyperthreads, extended by the next fastest ones if that would leave a single thread, and limited by
+the CPU bandwidth quota of the control group on Linux. An explicit `OMP_NUM_THREADS` takes precedence
+over both the cores and that quota, and the limits of the OpenMP runtime itself apply in either case,
+in particular the limit of the contention group (`OMP_THREAD_LIMIT`). `MaxNumParallelThreads()` is the
+largest number that GPBoost uses on its own and thus the upper limit for the default of the session;
+a `num_parallel_threads` that is given for a single model is deliberately not limited by it. The
+boosting parameter `num_threads` is independent of all of this: `0`, its default, means the default
+number of threads of OpenMP.
 
 Everything in the library that changes the number of threads of the process has to go through
 `GPBoost::SetNumParallelThreads()` in `include/GPBoost/utils.h` and not call `omp_set_num_threads()`

@@ -10,8 +10,10 @@ gpb.set.num.threads(num_threads)
 \item{num_threads}{An \code{integer} specifying the number of threads. If \code{num_threads} is
 not positive, the default number of threads of the session is used, see
 \code{\link{gpb.get.default.num.threads}}. Initially, this is the automatically
-selected number of physical performance cores, and it is the number of threads
-set by \code{\link{gpb.tune.num.threads}} or
+selected number of threads (normally based on the number of physical performance
+cores, subject to the settings of OpenMP and of the system, see the
+\code{num_parallel_threads} argument of \code{\link{GPModel}}), and it is the
+number of threads set by \code{\link{gpb.tune.num.threads}} or
 \code{\link{gpb.set.default.num.threads}} once one of them has been called}
 }
 \value{

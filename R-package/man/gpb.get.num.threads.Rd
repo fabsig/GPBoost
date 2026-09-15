@@ -7,7 +7,8 @@
 gpb.get.num.threads()
 }
 \value{
-An \code{integer} of length one: the number of threads currently used by OMP
+An \code{integer} of length one: the current maximum number of threads of OpenMP, as
+        returned by \code{omp_get_max_threads()}
 }
 \description{
 Returns the number of threads that OMP currently uses for parallelization, i.e.

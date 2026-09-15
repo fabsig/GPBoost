@@ -15,8 +15,9 @@ Returns the number of threads that a \code{\link{GPModel}} uses when no number o
              threads has been specified for it via the \code{num_parallel_threads} argument. This
              is the number of threads that has been set for the session, either by
              \code{\link{gpb.tune.num.threads}} or by \code{\link{gpb.set.default.num.threads}},
-             and the automatically selected number of threads (the number of physical performance
-             cores) if no such number has been set.
+             and the automatically selected number of threads (normally based on the number of
+             physical performance cores, subject to the settings of OpenMP and of the system) if no
+             such number has been set.
 
              This is not the number of threads that OMP currently uses, see
              \code{\link{gpb.get.num.threads}}: a model for which no number of threads has been

@@ -108,7 +108,7 @@ def get_num_threads():
     Returns
     -------
     num_threads : int
-        The number of threads currently used by OMP
+        The current maximum number of threads of OpenMP, as returned by omp_get_max_threads()
 
     :Authors:
         Fabio Sigrist
@@ -130,8 +130,10 @@ def set_num_threads(num_threads):
     num_threads : int
         The number of threads. If num_threads is not positive, the default number of threads of the
         session is used, see get_default_num_threads(). Initially, this is the automatically selected
-        number of physical performance cores, and it is the number of threads set by
-        tune_num_threads() or set_default_num_threads() once one of them has been called
+        number of threads (normally based on the number of physical performance cores, subject to the
+        settings of OpenMP and of the system, see the 'num_parallel_threads' argument of GPModel), and
+        it is the number of threads set by tune_num_threads() or set_default_num_threads() once one of
+        them has been called
 
     :Authors:
         Fabio Sigrist
@@ -146,8 +148,8 @@ def get_default_num_threads():
     This is the number of threads that a GPModel uses when no number of threads has been specified
     for it via the 'num_parallel_threads' argument. It is the number of threads that has been set
     for the session, either by tune_num_threads() or by set_default_num_threads(), and the
-    automatically selected number of threads (the number of physical performance cores) if no such
-    number has been set.
+    automatically selected number of threads (normally based on the number of physical performance
+    cores, subject to the settings of OpenMP and of the system) if no such number has been set.
 
     This is not the number of threads that OMP currently uses, see get_num_threads(): a model for
     which no number of threads has been specified sets the number of threads returned here (and
@@ -197,7 +199,11 @@ def set_default_num_threads(num_threads):
 
 
 def _get_auto_num_threads():
-    """Get the automatically selected number of threads, i.e. the number of physical performance cores."""
+    """Get the automatically selected number of threads.
+
+    This is normally based on the number of physical performance cores, subject to the settings of
+    OpenMP and of the system, see the 'num_parallel_threads' argument of GPModel.
+    """
     num_threads = ctypes.c_int(0)
     _safe_call(_LIB.GPB_GetAutoNumParallelThreads(ctypes.byref(num_threads)))
     return num_threads.value
@@ -392,7 +398,8 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
     is specified via the 'num_parallel_threads' argument of GPModel, for the rest of the session.
 
     The benchmark is never run automatically: the number of threads that GPBoost uses without it is
-    the number of physical performance cores of the CPU. The selected number of threads is a tuned
+    the automatically selected one, which is normally based on the number of physical performance
+    cores. The selected number of threads is a tuned
     default and not an optimal number of threads: the best number of threads depends on the model, on
     the size of the data and on the machine. Use the 'num_parallel_threads' argument of GPModel for a
     model whose number of threads should differ from the default.
@@ -416,8 +423,8 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
 
         Restrict the workloads to the model class that you mainly use if you know it
     num_threads_candidates : list of int or None, optional (default=None)
-        The numbers of threads that are benchmarked. If None, powers of two, the number of physical
-        performance cores and the largest number of threads that GPBoost uses on its own are
+        The numbers of threads that are benchmarked. If None, powers of two, the automatically
+        selected number of threads and the largest number of threads that GPBoost uses on its own are
         benchmarked
     n_rep : int, optional (default=5)
         The number of repeated measurements per workload and number of threads. The median of the
@@ -463,7 +470,8 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
             - "aggregate": a pandas DataFrame with the aggregated relative runtime per number of
               threads, i.e. the geometric mean over the workloads of the runtime relative to the
               fastest measurement of the workload, and whether the number of threads is acceptable,
-              i.e. whether it is not slower than max_relative_slowdown for a single workload
+              i.e. whether it is not slower than max_relative_slowdown for a single workload. It is
+              None whenever "timings" is
             - "num_threads_before": the default of the session before the benchmark
             - "tolerance_used": the tolerance that has been used for the selection
             - "safeguard_was_relaxed": True if no number of threads was within
@@ -565,7 +573,8 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
         num_threads_selected = candidates[0]
         if verbose:
             if num_threads_max == 1:
-                print("Only one thread can be used on this machine, there is nothing to benchmark.")
+                print("Only one thread is available to the tuner under the current OpenMP and "
+                      "system settings, there is nothing to benchmark.")
             else:
                 print("Only %d thread(s) have been requested, there is nothing to benchmark."
                       % num_threads_selected)
@@ -589,8 +598,8 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
     if verbose:
         print("Benchmarking %d workload(s) with %s thread(s), %d repetition(s) each."
               % (len(workloads), ", ".join(str(value) for value in candidates), n_rep))
-        print("GPBoost selects %d thread(s) automatically, at most %d thread(s) can be used."
-              % (num_threads_auto, num_threads_max))
+        print("GPBoost selects %d thread(s) automatically, the largest number that GPBoost uses on "
+              "its own is %d." % (num_threads_auto, num_threads_max))
 
     start_time = time.perf_counter()
     times = np.full((len(workloads), len(candidates), n_rep), np.nan)

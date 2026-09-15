@@ -23,8 +23,8 @@ gpb.tune.num.threads(workloads = "all", num_threads_candidates = NULL,
 Restrict the workloads to the model class that you mainly use if you know it}
 
 \item{num_threads_candidates}{An \code{integer} vector with the numbers of threads that are
-benchmarked. If \code{NULL}, powers of two, the number of physical
-performance cores and the largest number of threads that GPBoost uses
+benchmarked. If \code{NULL}, powers of two, the automatically selected
+number of threads and the largest number of threads that GPBoost uses
 on its own are benchmarked}
 
 \item{n_rep}{An \code{integer} specifying the number of repeated measurements per workload and
@@ -74,7 +74,8 @@ A \code{list}, invisibly, with the following elements:
           \item{aggregate: a \code{data.frame} with the aggregated relative runtime per number of
           threads, i.e. the geometric mean over the workloads of the runtime relative to the fastest
           measurement of the workload, and whether the number of threads is acceptable, i.e. whether
-          it is not slower than \code{max_relative_slowdown} for a single workload}
+          it is not slower than \code{max_relative_slowdown} for a single workload. It is
+          \code{NULL} whenever \code{timings} is}
           \item{num_threads_before: the default of the session before the benchmark}
           \item{tolerance_used: the tolerance that has been used for the selection}
           \item{safeguard_was_relaxed: \code{TRUE} if no number of threads was within
@@ -89,7 +90,8 @@ Measures how long representative GPBoost calculations take with different number
              \code{\link{GPModel}}, for the rest of the session.
 
              The benchmark is never run automatically: the number of threads that GPBoost uses
-             without it is the number of physical performance cores of the CPU. The selected number
+             without it is the automatically selected one, which is normally based on the number of
+             physical performance cores. The selected number
              of threads is a tuned default and not an optimal number of threads: the best number of
              threads depends on the model, on the size of the data and on the machine. Use the
              \code{num_parallel_threads} argument of \code{\link{GPModel}} for a model whose number

@@ -1603,7 +1603,9 @@ GPBOOST_C_EXPORT int GPB_GetNumIt(REModelHandle handle,
 GPBOOST_C_EXPORT int GPB_HasStdCylBesselK(int* has_bessel);
 
 /*!
-* \brief Get the number of threads that OMP currently uses for parallelization
+* \brief Get the current maximum number of threads of OpenMP, as returned by 'omp_get_max_threads()'. A team
+*   of threads can be smaller than this if the OpenMP runtime limits it, in particular through the limit of the
+*   contention group ('OMP_THREAD_LIMIT')
 *   Note: You should pre-allocate memory for num_threads (length = 1)
 * \param[out] num_threads Number of threads
 * \return 0 when succeed, -1 when failure happens
@@ -1631,7 +1633,9 @@ GPBOOST_C_EXPORT int GPB_GetDefaultNumParallelThreads(int* num_threads);
 
 /*!
 * \brief Get the automatically selected number of threads, i.e., the number of physical performance cores of the
-*   CPU limited by the number of threads that OMP uses and by a CPU quota
+*   CPU limited by the number of threads that OMP uses and, unless 'OMP_NUM_THREADS' is set, by a CPU quota. An
+*   explicitly requested 'OMP_NUM_THREADS' takes precedence over the cores and the quota, and the limits of the
+*   OpenMP runtime itself ('OMP_THREAD_LIMIT') apply in either case
 *   Note: You should pre-allocate memory for num_threads (length = 1)
 * \param[out] num_threads Number of threads
 * \return 0 when succeed, -1 when failure happens
