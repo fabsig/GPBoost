@@ -454,32 +454,39 @@ test_that("gpb.tune.num.threads applies the number of threads that it reports", 
   }, add = TRUE)
 
   # A single number of threads cannot be compared with anything, but it is still the selected one and
-  # has to be applied, and it has to replace a number of threads of an earlier call. A number of
-  # threads that differs from the automatic one only exists if the machine has room for one
+  # has to be applied, and it has to replace a number of threads of an earlier call. The default before
+  # the benchmark has to differ from the one that is selected, otherwise there is nothing to change
   num_threads_single <- NA_integer_
+  num_threads_old <- NA_integer_
   if (num_threads_max >= 2L) {
     num_threads_single <- if (num_threads_auto == 2L) 1L else 2L
+    num_threads_old <- if (num_threads_auto == 2L) 2L else 1L
   }
   if (!is.na(num_threads_single)) {
-    gpb.set.default.num.threads(1L)
-    expect_equal(gpb.get.default.num.threads(), 1L)
+    gpb.set.default.num.threads(num_threads_old)
+    expect_equal(gpb.get.default.num.threads(), num_threads_old)
     results <- gpb.tune.num.threads(workloads = "grouped_re", workload_size = "default"
                                     , num_threads_candidates = num_threads_single, n_rep = 1L
                                     , verbose = FALSE)
     expect_equal(results[["num_threads"]], num_threads_single)
     expect_equal(gpb.get.default.num.threads(), num_threads_single)
-    expect_equal(results[["num_threads_before"]], 1L)
-    expect_equal(results[["default_was_set"]], num_threads_single != 1L)
+    expect_equal(results[["num_threads_before"]], num_threads_old)
+    expect_true(results[["default_was_set"]])
   }
 
-  # The automatically selected number of threads as the only candidate removes an earlier default
-  gpb.set.default.num.threads(1L)
-  results <- gpb.tune.num.threads(workloads = "grouped_re", workload_size = "default"
-                                  , num_threads_candidates = num_threads_auto, n_rep = 1L
-                                  , verbose = FALSE)
-  expect_equal(results[["num_threads"]], num_threads_auto)
-  expect_equal(gpb.get.default.num.threads(), num_threads_auto)
-  expect_true(results[["default_was_set"]])
+  # The automatically selected number of threads as the only candidate removes an earlier default. The
+  # earlier default has to be a number of threads that the automatic one is not, which does not exist
+  # on a machine that can only use one thread
+  num_threads_before_auto <- if (num_threads_auto == 1L) 2L else 1L
+  if (num_threads_before_auto <= num_threads_max) {
+    gpb.set.default.num.threads(num_threads_before_auto)
+    results <- gpb.tune.num.threads(workloads = "grouped_re", workload_size = "default"
+                                    , num_threads_candidates = num_threads_auto, n_rep = 1L
+                                    , verbose = FALSE)
+    expect_equal(results[["num_threads"]], num_threads_auto)
+    expect_equal(gpb.get.default.num.threads(), num_threads_auto)
+    expect_true(results[["default_was_set"]])
+  }
 
   # ... and it changes nothing if there is no earlier default
   gpb.set.default.num.threads(-1L)
@@ -491,12 +498,12 @@ test_that("gpb.tune.num.threads applies the number of threads that it reports", 
 
   # A single number of threads is not applied when nothing should be set
   if (!is.na(num_threads_single)) {
-    gpb.set.default.num.threads(1L)
+    gpb.set.default.num.threads(num_threads_old)
     results <- gpb.tune.num.threads(workloads = "grouped_re", workload_size = "default"
                                     , num_threads_candidates = num_threads_single, n_rep = 1L
                                     , set_default = FALSE, verbose = FALSE)
     expect_equal(results[["num_threads"]], num_threads_single)
-    expect_equal(gpb.get.default.num.threads(), 1L)
+    expect_equal(gpb.get.default.num.threads(), num_threads_old)
     expect_false(results[["default_was_set"]])
   }
 

@@ -98,6 +98,9 @@ def _check_num_threads(num_threads, name):
 def get_num_threads():
     """Get the number of threads that OMP currently uses for parallelization.
 
+    This is omp_get_max_threads(). Note that a team of threads can be smaller than this if the OpenMP
+    runtime limits it, in particular through the limit of the contention group ('OMP_THREAD_LIMIT').
+
     Note that models for which the number of threads has been specified via the
     'num_parallel_threads' argument of GPModel are not affected by this number: such models set
     (and reset) the number of threads themselves whenever they do calculations.
@@ -177,12 +180,14 @@ def set_default_num_threads(num_threads):
     Parameters
     ----------
     num_threads : int
-        The number of threads. It is limited by the number of threads that GPBoost can use at all:
-        the number of threads that OMP uses when GPBoost determines its default (usually the number
-        of logical processors, or the value of the environment variable 'OMP_NUM_THREADS' if it is
-        set), the limit of the contention group of OpenMP ('OMP_THREAD_LIMIT'), and a CPU bandwidth
-        limit of a control group on Linux. If num_threads is not positive, the automatically selected
-        number of threads is used again
+        The number of threads. It is limited by the largest number of threads that GPBoost uses on
+        its own: the number of threads that OMP uses when GPBoost determines its default (usually the
+        number of logical processors, or the value of the environment variable 'OMP_NUM_THREADS' if
+        it is set), the limit of the contention group of OpenMP ('OMP_THREAD_LIMIT'), and, unless
+        'OMP_NUM_THREADS' is set, a CPU bandwidth limit of a control group on Linux. A number of
+        threads that is specified for an individual model via 'num_parallel_threads' is not limited by
+        this. If num_threads is not positive, the automatically selected number of threads is used
+        again
 
     :Authors:
         Fabio Sigrist
@@ -452,7 +457,9 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
             - "num_threads_max": the largest number of threads that GPBoost uses on its own
             - "default_was_set": whether the default of the session has been changed
             - "timings": a pandas DataFrame with the measurements per workload and number of threads
-              (median, minimum and relative median absolute deviation of the repetitions)
+              (median, minimum and relative median absolute deviation of the repetitions), or None if
+              only one number of threads is left to benchmark, in which case nothing is measured and
+              that number of threads is the selected one
             - "aggregate": a pandas DataFrame with the aggregated relative runtime per number of
               threads, i.e. the geometric mean over the workloads of the runtime relative to the
               fastest measurement of the workload, and whether the number of threads is acceptable,
@@ -469,7 +476,9 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
     """
     if isinstance(workloads, str):
         workloads = list(_THREAD_WORKLOAD_NAMES) if workloads == "all" else [workloads]
-    elif isinstance(workloads, (list, tuple, set, np.ndarray)):
+    elif isinstance(workloads, (list, tuple)):
+        # Not a set and not an array: the order of the workloads decides in which order the machine
+        # warms up and how the remaining time budget is divided, so it must not be arbitrary
         workloads = list(workloads)
     else:
         raise ValueError("tune_num_threads: 'workloads' needs to be a string or a list of strings")
@@ -541,11 +550,12 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
         above_max = [value for value in candidates if value > num_threads_max]
         if len(above_max) > 0:
             warnings.warn("tune_num_threads: " + ", ".join(str(value) for value in above_max)
-                          + " threads cannot be used, the number of threads is limited to "
-                          + str(num_threads_max) + " by the OpenMP runtime (e.g. by "
-                          "'OMP_NUM_THREADS' or 'OMP_THREAD_LIMIT', which are read when OpenMP is "
-                          "initialized and thus have to be set before importing gpboost) or by a CPU "
-                          "limit of the machine")
+                          + " threads are above the largest number of threads that GPBoost uses on "
+                          "its own (" + str(num_threads_max) + ") and are not benchmarked. That "
+                          "number comes from the OpenMP runtime (e.g. from 'OMP_NUM_THREADS' or "
+                          "'OMP_THREAD_LIMIT', which are read when OpenMP is initialized and thus "
+                          "have to be set before importing gpboost) or from a CPU limit of the "
+                          "machine")
             candidates = [value for value in candidates if value <= num_threads_max]
     if len(candidates) == 0:
         raise ValueError("tune_num_threads: no number of threads left to benchmark")
@@ -5320,8 +5330,9 @@ class GPModel(object):
                 fastest cores are added if the fastest ones alone would leave only a single thread. On Linux, a CPU
                 bandwidth limit of a control group (e.g., of a container) is respected as well. The number of
                 threads that OpenMP is configured to use is kept if the environment variable OMP_NUM_THREADS is set,
-                which takes precedence over the topology of the CPU but remains limited by the OpenMP runtime itself
-                (e.g. by the limit of the contention group, OMP_THREAD_LIMIT),
+                which takes precedence over both the topology of the CPU and the limit of the control group but
+                remains limited by the OpenMP runtime itself (e.g. by the limit of the contention group,
+                OMP_THREAD_LIMIT),
                 or if the cores of the CPU cannot be determined. For ordinary use, leave num_parallel_threads unspecified to use this
                 default. The default of the session can be changed with tune_num_threads(), which benchmarks different
                 numbers of threads, or with set_default_num_threads(). Setting

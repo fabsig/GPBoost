@@ -10,7 +10,10 @@ gpb.get.num.threads()
 An \code{integer} of length one: the number of threads currently used by OMP
 }
 \description{
-Returns the number of threads that OMP currently uses for parallelization.
+Returns the number of threads that OMP currently uses for parallelization, i.e.
+             \code{omp_get_max_threads()}. Note that a team of threads can be smaller than this if
+             the OpenMP runtime limits it, in particular through the limit of the contention group
+             (\code{OMP_THREAD_LIMIT}).
              Note that models for which the number of threads has been specified via the
              \code{num_parallel_threads} argument of \code{\link{GPModel}} are not affected by
              this number: such models set (and reset) the number of threads themselves whenever

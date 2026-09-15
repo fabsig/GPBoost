@@ -259,7 +259,9 @@ gpb.thread.time.section <- function(gp_model, workload) {
 #'           \item{num_threads_max: the largest number of threads that GPBoost uses on its own}
 #'           \item{default_was_set: whether the default of the session has been changed}
 #'           \item{timings: a \code{data.frame} with the measurements per workload and number of
-#'           threads (median, minimum and relative median absolute deviation of the repetitions)}
+#'           threads (median, minimum and relative median absolute deviation of the repetitions), or
+#'           \code{NULL} if only one number of threads is left to benchmark, in which case nothing is
+#'           measured and that number of threads is the selected one}
 #'           \item{aggregate: a \code{data.frame} with the aggregated relative runtime per number of
 #'           threads, i.e. the geometric mean over the workloads of the runtime relative to the fastest
 #'           measurement of the workload, and whether the number of threads is acceptable, i.e. whether
@@ -367,10 +369,11 @@ gpb.tune.num.threads <- function(workloads = "all",
     above_max <- candidates[candidates > num_threads_max]
     if (length(above_max) > 0L) {
       warning("gpb.tune.num.threads: ", paste(above_max, collapse = ", "),
-              " threads cannot be used, the number of threads is limited to ", num_threads_max,
-              " by the OpenMP runtime (e.g. by ", sQuote("OMP_NUM_THREADS"), " or ",
-              sQuote("OMP_THREAD_LIMIT"), ", which are read when OpenMP is initialized and thus have",
-              " to be set before loading gpboost) or by a CPU limit of the machine")
+              " threads are above the largest number of threads that GPBoost uses on its own (",
+              num_threads_max, ") and are not benchmarked. That number comes from the OpenMP runtime",
+              " (e.g. from ", sQuote("OMP_NUM_THREADS"), " or ", sQuote("OMP_THREAD_LIMIT"),
+              ", which are read when OpenMP is initialized and thus have to be set before loading",
+              " gpboost) or from a CPU limit of the machine")
       candidates <- candidates[candidates <= num_threads_max]
     }
   }

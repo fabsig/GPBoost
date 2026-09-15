@@ -826,7 +826,8 @@ namespace GPBoost {
 
 		/*! \brief Determines the automatically selected number of threads from an already read number of threads of OMP */
 		int ComputeAutoNumParallelThreadsFrom(int num_threads) {
-			// An explicitly requested number of threads is always used as is
+			// An explicitly requested number of threads is used as it is, i.e. neither the cores nor a
+			// quota lower it. The limits of the OpenMP runtime have already been applied to it
 			const char* omp_num_threads_env = std::getenv("OMP_NUM_THREADS");
 			if (omp_num_threads_env != nullptr && omp_num_threads_env[0] != '\0') {
 				return num_threads;

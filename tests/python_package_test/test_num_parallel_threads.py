@@ -179,7 +179,7 @@ def test_time_budget_leaves_every_workload_at_least_two_repetitions():
 
 
 def test_workloads_are_validated():
-    for workloads in (None, [1], 3, [], ["grouped_re", 2]):
+    for workloads in (None, [1], 3, [], ["grouped_re", 2], {"grouped_re"}):
         with pytest.raises(ValueError):
             gpb.tune_num_threads(workloads=workloads)
 
@@ -209,38 +209,49 @@ def test_safeguard_that_no_number_of_threads_satisfies_is_reported():
 
 
 def test_single_number_of_threads_is_selected_and_applied():
-    if _get_max_num_threads() < 2:
+    num_threads_max = _get_max_num_threads()
+    if num_threads_max < 2:
         pytest.skip("two numbers of threads are needed to compare them")
     num_threads_omp = gpb.get_num_threads()
     num_threads_auto = _get_auto_num_threads()
     try:
+        # A single number of threads cannot be compared with anything, but it is still the selected
+        # one and has to be applied. The default before the benchmark has to differ from the one that
+        # is selected, otherwise there is nothing to change
         num_threads_single = 1 if num_threads_auto == 2 else 2
-        gpb.set_default_num_threads(1)
+        num_threads_old = 2 if num_threads_auto == 2 else 1
+        gpb.set_default_num_threads(num_threads_old)
         results = gpb.tune_num_threads(workloads="grouped_re",
                                        num_threads_candidates=[num_threads_single], n_rep=1,
                                        verbose=False)
         assert results["num_threads"] == num_threads_single
         assert gpb.get_default_num_threads() == num_threads_single
-        assert results["num_threads_before"] == 1
-        assert results["default_was_set"] == (num_threads_single != 1)
-
-        # The automatic number of threads as the only candidate removes an earlier default
-        gpb.set_default_num_threads(1)
-        results = gpb.tune_num_threads(workloads="grouped_re",
-                                       num_threads_candidates=[num_threads_auto], n_rep=1,
-                                       verbose=False)
-        assert results["num_threads"] == num_threads_auto
-        assert gpb.get_default_num_threads() == num_threads_auto
+        assert results["num_threads_before"] == num_threads_old
         assert results["default_was_set"]
 
+        # The automatic number of threads as the only candidate removes an earlier default. The
+        # earlier default has to be a number of threads that the automatic one is not
+        num_threads_before_auto = 2 if num_threads_auto == 1 else 1
+        if num_threads_before_auto <= num_threads_max:
+            gpb.set_default_num_threads(num_threads_before_auto)
+            results = gpb.tune_num_threads(workloads="grouped_re",
+                                           num_threads_candidates=[num_threads_auto], n_rep=1,
+                                           verbose=False)
+            assert results["num_threads"] == num_threads_auto
+            assert gpb.get_default_num_threads() == num_threads_auto
+            assert results["default_was_set"]
+
         # A single number of threads is not applied when nothing should be set
-        gpb.set_default_num_threads(1)
+        gpb.set_default_num_threads(num_threads_old)
         results = gpb.tune_num_threads(workloads="grouped_re",
                                        num_threads_candidates=[num_threads_single], n_rep=1,
                                        set_default=False, verbose=False)
         assert results["num_threads"] == num_threads_single
-        assert gpb.get_default_num_threads() == 1
+        assert gpb.get_default_num_threads() == num_threads_old
         assert not results["default_was_set"]
+        # Nothing was measured, so there are no timings
+        assert results["timings"] is None
+        assert results["aggregate"] is None
     finally:
         gpb.set_default_num_threads(-1)
         gpb.set_num_threads(num_threads_omp)

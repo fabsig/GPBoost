@@ -68,7 +68,9 @@ A \code{list}, invisibly, with the following elements:
           \item{num_threads_max: the largest number of threads that GPBoost uses on its own}
           \item{default_was_set: whether the default of the session has been changed}
           \item{timings: a \code{data.frame} with the measurements per workload and number of
-          threads (median, minimum and relative median absolute deviation of the repetitions)}
+          threads (median, minimum and relative median absolute deviation of the repetitions), or
+          \code{NULL} if only one number of threads is left to benchmark, in which case nothing is
+          measured and that number of threads is the selected one}
           \item{aggregate: a \code{data.frame} with the aggregated relative runtime per number of
           threads, i.e. the geometric mean over the workloads of the runtime relative to the fastest
           measurement of the workload, and whether the number of threads is acceptable, i.e. whether
