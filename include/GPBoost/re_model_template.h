@@ -734,6 +734,16 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Set whether a warning is written when the parameter estimation has not converged. This is
+		*		disabled for auxiliary models that are estimated internally to obtain initial values, since
+		*		their convergence status does not say anything about the model of the user
+		* \param report_convergence_warnings If true, a warning is written when the estimation has not converged
+		*/
+		void SetReportConvergenceWarnings(bool report_convergence_warnings) {
+			report_convergence_warnings_ = report_convergence_warnings;
+		}
+
+		/*!
 		* \brief Report whether the restarts of an lbfgs optimizer ('max_num_restarts_lbfgs') have stopped
 		*		since a restart did not improve the objective function anymore
 		* \param restarts_have_stopped_without_improvement True if the restarts have stopped without an improvement
@@ -1971,8 +1981,14 @@ namespace GPBoost {
 				}
 				if (max_iter_reached || num_it == max_iter_) {
 					convergence_status_ = 1;
-					Log::REDebug("GPModel: no convergence after the maximal number of iterations "
-						"(%d, nb. likelihood evaluations = %d) ", max_iter_, num_ll_evaluations_);
+					if (called_in_GPBoost_algorithm || !report_convergence_warnings_) {
+						Log::REDebug("GPModel: no convergence after the maximal number of iterations "
+							"(%d, nb. likelihood evaluations = %d) ", max_iter_, num_ll_evaluations_);
+					}
+					else {
+						Log::REWarning("GPModel: parameter estimation did not converge after the maximum number of iterations "
+							"(%d, nb. likelihood evaluations = %d). Consider increasing 'max_iter' ", max_iter_, num_ll_evaluations_);
+					}
 				}
 				else {
 					Log::REDebug("GPModel: parameter estimation finished after %d iteration "
@@ -1994,9 +2010,15 @@ namespace GPBoost {
 							restart_str = " The restarts of the optimizer still improved the objective function when the maximal "
 								"number of restarts was reached. Consider increasing 'max_num_restarts_lbfgs'";
 						}
-						Log::REDebug(("GPModel: the optimizer '%s' has terminated since its line search has not been successful. "
+						string_t message = "GPModel: the optimizer '%s' has terminated since its line search has not been successful. "
 							"This can mean that no further progress is possible (the parameters are then essentially a local "
-							"optimum) or that the optimizer has stopped prematurely." + restart_str + " ").c_str(), optimizer_cov_pars_.c_str());
+							"optimum) or that the optimizer has stopped prematurely." + restart_str + " ";
+						if (report_convergence_warnings_) {
+							Log::REWarning(message.c_str(), optimizer_cov_pars_.c_str());
+						}
+						else {
+							Log::REDebug(message.c_str(), optimizer_cov_pars_.c_str());
+						}
 					}
 					else {
 						Log::REDebug("GPModel: the last line search of the optimizer '%s' has not been successful, but the restarts "
@@ -6297,6 +6319,9 @@ namespace GPBoost {
 		//	be verified that nothing more can be gained (i.e., restarts have either not been done or they still
 		//	improved the objective function when the last one was done)
 		int convergence_status_ = 0;
+		// If true, a warning is written when the parameter estimation has not converged ('convergence_status_' != 0).
+		//	Set to false for auxiliary models that are estimated internally to obtain initial values
+		bool report_convergence_warnings_ = true;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */

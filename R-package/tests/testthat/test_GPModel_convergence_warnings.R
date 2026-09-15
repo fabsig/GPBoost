@@ -1,0 +1,164 @@
+if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
+
+  context("GPModel_convergence_warnings")
+
+  # The severity convention of the convergence reporting of a 'GPModel':
+  #   Debug   internal optimizer iterations, the behavior of an individual line search, a line search that
+  #           reached 'max_linesearch', and an unsuccessful last line search when the restarts have
+  #           established that nothing more can be gained (convergence status 0)
+  #   Warning the final non-convergence of the optimizer: the maximal number of iterations was reached
+  #           (convergence status 1) or the line search of an lbfgs optimizer was unsuccessful and it
+  #           could not be established that nothing more can be gained (convergence status 2)
+  #
+  # The messages are written to R's output stream by Rprintf() and not by warning(), so they are
+  # captured with capture.output() and not with expect_warning()
+
+  WARNING_MAX_ITER <- "did not converge after the maximum number of iterations"
+  WARNING_LINE_SEARCH <- "has terminated since its line search has not been successful"
+
+  has_warning <- function(out, pattern) {
+    any(grepl("[Warning]", out, fixed = TRUE) & grepl(pattern, out, fixed = TRUE))
+  }
+
+  convergence_status <- function(gp_model) {
+    gp_model$.__enclos_env__$private$get_convergence_status()
+  }
+
+  # Whatever the optimizer did, the reported severity has to correspond to the convergence status
+  expect_reporting_matches_status <- function(out, gp_model) {
+    status <- convergence_status(gp_model)
+    expect_equal(has_warning(out, WARNING_MAX_ITER), status == 1L)
+    expect_equal(has_warning(out, WARNING_LINE_SEARCH), status == 2L)
+  }
+
+  # Function that simulates uniform random variables
+  sim_rand_unif <- function(n, init_c=0.1){
+    mod_lcg <- 134456 # modulus for linear congruential generator (random0 used)
+    sim <- rep(NA, n)
+    sim[1] <- floor(init_c * mod_lcg)
+    for(i in 2:n) sim[i] <- (8121 * sim[i-1] + 28411) %% mod_lcg
+    return(sim / mod_lcg)
+  }
+
+  # Create data: a grouped random effects model
+  n <- 500
+  m <- 50
+  group <- rep(1,n)
+  for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
+  b <- qnorm(sim_rand_unif(n=m, init_c=0.546))
+  xi <- sqrt(0.5) * qnorm(sim_rand_unif(n=n, init_c=0.1))
+  X <- cbind(rep(1,n), sin((1:n-n/2)^2*2*pi/n))
+  beta <- c(2,2)
+  y <- b[group] + xi + as.vector(X %*% beta)
+
+  test_that("reaching the maximal number of iterations gives a warning", {
+    out <- capture.output({
+      gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = "gaussian",
+                             params = list(optimizer_cov = "gradient_descent", lr_cov = 1E-6,
+                                           use_nesterov_acc = FALSE, maxit = 2))
+    })
+    expect_equal(convergence_status(gp_model), 1L)
+    expect_true(has_warning(out, WARNING_MAX_ITER))
+    expect_false(has_warning(out, WARNING_LINE_SEARCH))
+    # The estimates are still returned
+    expect_equal(length(gp_model$get_coef()), 2L)
+  })
+
+  test_that("a converged estimation gives no warning", {
+    out <- capture.output({
+      gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = "gaussian",
+                             params = list(optimizer_cov = "gradient_descent", lr_cov = 0.1,
+                                           use_nesterov_acc = TRUE, maxit = 1000))
+    })
+    expect_equal(convergence_status(gp_model), 0L)
+    expect_false(has_warning(out, WARNING_MAX_ITER))
+    expect_false(has_warning(out, WARNING_LINE_SEARCH))
+  })
+
+  test_that("lbfgs reports a warning only for an unresolved line search failure", {
+    # A line search that reaches 'max_linesearch' but accepts a usable point, and an unsuccessful last
+    # line search after which the restarts no longer improved the objective function, both leave the
+    # convergence status at 0 and must not produce a warning. Which of the cases occurs depends on the
+    # build, so the invariant and not a fixed outcome is tested here.
+    # A 'delta_rel_conv' that is practically zero makes the optimizer run until its line search fails
+    # instead of until the relative change is small, which is what reaches the convergence status 2
+    for (optimizer in c("lbfgs", "lbfgs_linesearch_nocedal_wright")) {
+      for (max_num_restarts in c(0, 2)) {
+        for (delta_rel_conv in c(1E-6, 1E-30)) {
+          out <- capture.output({
+            gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = "gaussian",
+                                   params = list(optimizer_cov = optimizer,
+                                                 max_num_restarts_lbfgs = max_num_restarts,
+                                                 delta_rel_conv = delta_rel_conv, maxit = 10000))
+          })
+          expect_reporting_matches_status(out, gp_model)
+        }
+      }
+    }
+  })
+
+  test_that("an unresolved line search failure warns, restarts that establish convergence do not", {
+    # On the reference platform, 'lbfgs_linesearch_nocedal_wright' without restarts terminates here with
+    # an unsuccessful line search that cannot be resolved (convergence status 2), while the same fit with
+    # restarts ends with restarts that no longer improved the objective function (convergence status 0).
+    # Both are only checked when they actually occur, since this depends on the build
+    fit_with_restarts <- function(max_num_restarts) {
+      out <- capture.output({
+        gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = "gaussian",
+                               params = list(optimizer_cov = "lbfgs_linesearch_nocedal_wright",
+                                             max_num_restarts_lbfgs = max_num_restarts,
+                                             delta_rel_conv = 1E-30, maxit = 10000))
+      })
+      list(out = out, gp_model = gp_model, status = convergence_status(gp_model))
+    }
+    no_restarts <- fit_with_restarts(0)
+    expect_reporting_matches_status(no_restarts$out, no_restarts$gp_model)
+    if (no_restarts$status == 2L) {
+      expect_true(has_warning(no_restarts$out, WARNING_LINE_SEARCH))
+      # The advice on the restarts is part of the warning
+      expect_true(any(grepl("max_num_restarts_lbfgs", no_restarts$out, fixed = TRUE)))
+    }
+    with_restarts <- fit_with_restarts(2)
+    expect_reporting_matches_status(with_restarts$out, with_restarts$gp_model)
+    if (with_restarts$status == 0L) {
+      # An unsuccessful line search after restarts that no longer improved the objective function is
+      # not a non-convergence and must stay at the Debug level
+      expect_false(has_warning(with_restarts$out, WARNING_LINE_SEARCH))
+      expect_false(has_warning(with_restarts$out, WARNING_MAX_ITER))
+    }
+  })
+
+  test_that("a non-Gaussian likelihood reports according to the convergence status", {
+    probs <- 1 / (1 + exp(-(b[group] + as.vector(X %*% beta) - 2)))
+    y_bin <- as.numeric(sim_rand_unif(n=n, init_c=0.978) < probs)
+    # Too few iterations to converge
+    out <- capture.output({
+      gp_model <- fitGPModel(group_data = group, y = y_bin, X = X, likelihood = "bernoulli_probit",
+                             params = list(maxit = 2))
+    })
+    expect_equal(convergence_status(gp_model), 1L)
+    expect_true(has_warning(out, WARNING_MAX_ITER))
+    # Enough iterations
+    out <- capture.output({
+      gp_model <- fitGPModel(group_data = group, y = y_bin, X = X, likelihood = "bernoulli_probit")
+    })
+    expect_reporting_matches_status(out, gp_model)
+  })
+
+  test_that("the GPBoost algorithm does not warn about the internal parameter estimations", {
+    # The covariance parameters are re-estimated in every boosting iteration, often without converging.
+    # These internal estimations stay at the Debug level, also with a very small 'maxit'
+    for (maxit in c(2, 1000)) {
+      gp_model <- GPModel(group_data = group, likelihood = "gaussian")
+      gp_model$set_optim_params(params = list(maxit = maxit))
+      out <- capture.output({
+        bst <- gpboost(data = X[, 2, drop = FALSE], label = y, gp_model = gp_model,
+                       nrounds = 5, learning_rate = 0.1, max_depth = 2,
+                       objective = "regression_l2", verbose = 0)
+      })
+      expect_false(has_warning(out, WARNING_MAX_ITER))
+      expect_false(has_warning(out, WARNING_LINE_SEARCH))
+    }
+  })
+
+}

@@ -467,6 +467,9 @@ namespace GPBoost {
 			CHECK(re_model_iid->NumAuxPars() == NumAuxPars());
 			re_model_iid->SetAuxPars(re_model->GetAuxPars());
 		}
+		// The convergence status of this auxiliary model says nothing about the model of the user, its
+		//	non-convergence is thus not reported as a warning
+		re_model_iid->SetReportConvergenceWarnings(false);
 		vec_t init_cov_pars_iid = vec_t::Ones(re_model_iid->num_cov_par_);
 		vec_t cov_pars_iid(re_model_iid->num_cov_par_);
 		vec_t coef_iid(num_sets_fixed_effects_ * num_covariates);
