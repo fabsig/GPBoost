@@ -28,7 +28,9 @@ performance cores and the largest number of threads that GPBoost uses
 on its own are benchmarked}
 
 \item{n_rep}{An \code{integer} specifying the number of repeated measurements per workload and
-number of threads. The median of the repetitions is used}
+number of threads. The median of the repetitions is used. Every workload is measured at
+least twice if \code{n_rep} is at least two, since a single measurement has no spread
+from which the noise could be estimated}
 
 \item{tolerance}{A \code{numeric} specifying the relative difference in runtime that is considered
 negligible. The smallest number of threads whose aggregated runtime is within this

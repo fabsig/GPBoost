@@ -8,9 +8,11 @@ gpb.set.default.num.threads(num_threads)
 }
 \arguments{
 \item{num_threads}{An \code{integer} specifying the number of threads. It is limited by the number
-of threads that OMP uses when GPBoost determines its default (usually the number
-of logical processors, or the value of the environment variable
-\code{OMP_NUM_THREADS} if it is set). If \code{num_threads} is not positive, the
+of threads that GPBoost can use at all: the number of threads that OMP uses when
+GPBoost determines its default (usually the number of logical processors, or the
+value of the environment variable \code{OMP_NUM_THREADS} if it is set), the limit
+of the contention group of OpenMP (\code{OMP_THREAD_LIMIT}), and a CPU bandwidth
+limit of a control group on Linux. If \code{num_threads} is not positive, the
 automatically selected number of threads is used again}
 }
 \value{

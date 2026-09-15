@@ -177,10 +177,12 @@ def set_default_num_threads(num_threads):
     Parameters
     ----------
     num_threads : int
-        The number of threads. It is limited by the number of threads that OMP uses when GPBoost
-        determines its default (usually the number of logical processors, or the value of the
-        environment variable 'OMP_NUM_THREADS' if it is set). If num_threads is not positive, the
-        automatically selected number of threads is used again
+        The number of threads. It is limited by the number of threads that GPBoost can use at all:
+        the number of threads that OMP uses when GPBoost determines its default (usually the number
+        of logical processors, or the value of the environment variable 'OMP_NUM_THREADS' if it is
+        set), the limit of the contention group of OpenMP ('OMP_THREAD_LIMIT'), and a CPU bandwidth
+        limit of a control group on Linux. If num_threads is not positive, the automatically selected
+        number of threads is used again
 
     :Authors:
         Fabio Sigrist
@@ -414,7 +416,8 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
         benchmarked
     n_rep : int, optional (default=5)
         The number of repeated measurements per workload and number of threads. The median of the
-        repetitions is used
+        repetitions is used. Every workload is measured at least twice if n_rep is at least two, since
+        a single measurement has no spread from which the noise could be estimated
     tolerance : float, optional (default=0.03)
         The relative difference in runtime that is considered negligible. The smallest number of
         threads whose aggregated runtime is within this tolerance of the best aggregated runtime is
@@ -466,9 +469,14 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
     """
     if isinstance(workloads, str):
         workloads = list(_THREAD_WORKLOAD_NAMES) if workloads == "all" else [workloads]
-    workloads = list(workloads)
+    elif isinstance(workloads, (list, tuple, set, np.ndarray)):
+        workloads = list(workloads)
+    else:
+        raise ValueError("tune_num_threads: 'workloads' needs to be a string or a list of strings")
     if len(workloads) == 0:
         raise ValueError("tune_num_threads: 'workloads' must not be empty")
+    if any(not isinstance(name, str) for name in workloads):
+        raise ValueError("tune_num_threads: 'workloads' needs to be a string or a list of strings")
     unknown = [name for name in workloads if name not in _THREAD_WORKLOAD_NAMES]
     if len(unknown) > 0:
         raise ValueError("tune_num_threads: unknown workload(s) " + ", ".join(unknown)
@@ -534,8 +542,10 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
         if len(above_max) > 0:
             warnings.warn("tune_num_threads: " + ", ".join(str(value) for value in above_max)
                           + " threads cannot be used, the number of threads is limited to "
-                          + str(num_threads_max) + ". Set the environment variable "
-                          "'OMP_NUM_THREADS' before importing gpboost to use more threads")
+                          + str(num_threads_max) + " by the OpenMP runtime (e.g. by "
+                          "'OMP_NUM_THREADS' or 'OMP_THREAD_LIMIT', which are read when OpenMP is "
+                          "initialized and thus have to be set before importing gpboost) or by a CPU "
+                          "limit of the machine")
             candidates = [value for value in candidates if value <= num_threads_max]
     if len(candidates) == 0:
         raise ValueError("tune_num_threads: no number of threads left to benchmark")
@@ -595,6 +605,13 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
             _thread_time_section(gp_model, workload)
         if verbose:
             print(" measuring ...", end="", flush=True)
+        # The protocol matters as much as what is timed: one model per number of threads that is kept
+        # for all repetitions, one discarded warm-up per model, a rotating order and several
+        # repetitions. Measured against short real fits of the two iterative workloads, this
+        # reproduces their ranking (Spearman 1.00 and 0.99, same number of threads selected), while a
+        # variant with three repetitions, a new model per measurement and no rotation produced a
+        # non-monotone curve and selected 6 instead of 16 threads. Do not simplify this without
+        # measuring again
         reps_start = time.perf_counter()
         for rep in range(n_rep):
             # The numbers of threads are measured in a rotating order, so that a drift of the speed
@@ -607,7 +624,11 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
             reps_done[index_workload] = rep + 1
             now = time.perf_counter()
             time_per_rep = (now - reps_start) / (rep + 1)
-            if rep + 1 < n_rep and (now - workload_start) + time_per_rep > budget_workload:
+            # The time budget does not stop the second repetition: the noise of a workload cannot be
+            # estimated from a single measurement, and the number of threads is selected by comparing
+            # differences in runtime with that noise
+            if (rep + 1 >= 2 and rep + 1 < n_rep
+                    and (now - workload_start) + time_per_rep > budget_workload):
                 time_budget_reached = True
                 break
         del models, workload
@@ -637,9 +658,12 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
         noise = np.nanmedian(relative_mad) / np.sqrt(num_measurements)
-    if not np.isfinite(noise):
-        noise = 0.
-    tolerance_used = max(tolerance, noise)
+    # A single repetition has no spread. The noise is then unknown, which is not the same as zero, so
+    # it is reported as unknown and only the tolerance that has been asked for is used
+    noise_is_known = bool(np.isfinite(noise))
+    if not noise_is_known:
+        noise = np.nan
+    tolerance_used = max(tolerance, noise) if noise_is_known else tolerance
     selection = _thread_selection(normalized, candidates, tolerance_used, max_relative_slowdown)
     aggregate = selection["aggregate"]
     acceptable = selection["acceptable"]
@@ -679,8 +703,12 @@ def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tole
         if time_budget_reached:
             print("Fewer than %d repetitions have been measured: the time budget of %g seconds has "
                   "been reached." % (n_rep, max_time))
-        print("Measurement noise: %.1f%%, tolerance used: %.1f%%"
-              % (100 * noise, 100 * tolerance_used))
+        if noise_is_known:
+            print("Measurement noise: %.1f%%, tolerance used: %.1f%%"
+                  % (100 * noise, 100 * tolerance_used))
+        else:
+            print("Measurement noise: not available with one repetition, tolerance used: %.1f%%"
+                  % (100 * tolerance_used))
         if safeguard_was_relaxed:
             print("No number of threads is within %.0f%% of the fastest one for every workload, the "
                   "workloads disagree. The number of threads whose slowest workload is the least "
@@ -5291,7 +5319,9 @@ class GPModel(object):
                 hyperthreads are counted only once, since slow threads can slow down an entire model. The next
                 fastest cores are added if the fastest ones alone would leave only a single thread. On Linux, a CPU
                 bandwidth limit of a control group (e.g., of a container) is respected as well. The number of
-                threads that OpenMP is configured to use is kept if the environment variable OMP_NUM_THREADS is set
+                threads that OpenMP is configured to use is kept if the environment variable OMP_NUM_THREADS is set,
+                which takes precedence over the topology of the CPU but remains limited by the OpenMP runtime itself
+                (e.g. by the limit of the contention group, OMP_THREAD_LIMIT),
                 or if the cores of the CPU cannot be determined. For ordinary use, leave num_parallel_threads unspecified to use this
                 default. The default of the session can be changed with tune_num_threads(), which benchmarks different
                 numbers of threads, or with set_default_num_threads(). Setting

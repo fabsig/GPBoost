@@ -71,6 +71,8 @@ def test_tune_num_threads_validates_arguments_before_benchmarking():
 
 
 def test_tune_num_threads_measures_without_changing_anything():
+    if _get_max_num_threads() < 2:
+        pytest.skip("two numbers of threads are needed to compare them")
     num_threads_omp = gpb.get_num_threads()
     num_threads_default = gpb.get_default_num_threads()
     try:
@@ -121,6 +123,8 @@ def test_smallest_number_of_threads_within_the_tolerance_is_selected():
 
 
 def test_tune_num_threads_applies_the_number_of_threads_that_it_reports():
+    if _get_max_num_threads() < 2:
+        pytest.skip("two numbers of threads are needed to compare them")
     num_threads_omp = gpb.get_num_threads()
     try:
         gpb.set_default_num_threads(1)
@@ -138,6 +142,8 @@ def test_tune_num_threads_applies_the_number_of_threads_that_it_reports():
 
 
 def test_all_benchmark_workloads_run():
+    if _get_max_num_threads() < 2:
+        pytest.skip("two numbers of threads are needed to compare them")
     num_threads_omp = gpb.get_num_threads()
     try:
         results = gpb.tune_num_threads(workloads="all", workload_size="small",
@@ -155,7 +161,9 @@ def test_all_benchmark_workloads_run():
         gpb.set_num_threads(num_threads_omp)
 
 
-def test_time_budget_leaves_every_workload_at_least_one_repetition():
+def test_time_budget_leaves_every_workload_at_least_two_repetitions():
+    if _get_max_num_threads() < 2:
+        pytest.skip("two numbers of threads are needed to compare them")
     num_threads_omp = gpb.get_num_threads()
     try:
         results = gpb.tune_num_threads(workloads="all", workload_size="small",
@@ -163,9 +171,17 @@ def test_time_budget_leaves_every_workload_at_least_one_repetition():
                                        verbose=False)
         assert len(results["timings"]) == 6
         assert np.all(np.isfinite(results["timings"]["median"].values))
+        # Two repetitions are guaranteed, so the noise of every workload can be estimated
+        assert np.all(np.isfinite(results["timings"]["relative_mad"].values))
     finally:
         gpb.set_default_num_threads(-1)
         gpb.set_num_threads(num_threads_omp)
+
+
+def test_workloads_are_validated():
+    for workloads in (None, [1], 3, [], ["grouped_re", 2]):
+        with pytest.raises(ValueError):
+            gpb.tune_num_threads(workloads=workloads)
 
 
 def test_safeguard_that_no_number_of_threads_satisfies_is_reported():
@@ -193,10 +209,12 @@ def test_safeguard_that_no_number_of_threads_satisfies_is_reported():
 
 
 def test_single_number_of_threads_is_selected_and_applied():
+    if _get_max_num_threads() < 2:
+        pytest.skip("two numbers of threads are needed to compare them")
     num_threads_omp = gpb.get_num_threads()
     num_threads_auto = _get_auto_num_threads()
     try:
-        num_threads_single = 3 if num_threads_auto == 2 else 2
+        num_threads_single = 1 if num_threads_auto == 2 else 2
         gpb.set_default_num_threads(1)
         results = gpb.tune_num_threads(workloads="grouped_re",
                                        num_threads_candidates=[num_threads_single], n_rep=1,
@@ -204,7 +222,7 @@ def test_single_number_of_threads_is_selected_and_applied():
         assert results["num_threads"] == num_threads_single
         assert gpb.get_default_num_threads() == num_threads_single
         assert results["num_threads_before"] == 1
-        assert results["default_was_set"]
+        assert results["default_was_set"] == (num_threads_single != 1)
 
         # The automatic number of threads as the only candidate removes an earlier default
         gpb.set_default_num_threads(1)

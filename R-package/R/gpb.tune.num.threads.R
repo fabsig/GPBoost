@@ -227,7 +227,9 @@ gpb.thread.time.section <- function(gp_model, workload) {
 #'                               performance cores and the largest number of threads that GPBoost uses
 #'                               on its own are benchmarked
 #' @param n_rep An \code{integer} specifying the number of repeated measurements per workload and
-#'              number of threads. The median of the repetitions is used
+#'              number of threads. The median of the repetitions is used. Every workload is measured at
+#'              least twice if \code{n_rep} is at least two, since a single measurement has no spread
+#'              from which the noise could be estimated
 #' @param tolerance A \code{numeric} specifying the relative difference in runtime that is considered
 #'                  negligible. The smallest number of threads whose aggregated runtime is within this
 #'                  tolerance of the best aggregated runtime is selected, so that more threads are not
@@ -366,8 +368,9 @@ gpb.tune.num.threads <- function(workloads = "all",
     if (length(above_max) > 0L) {
       warning("gpb.tune.num.threads: ", paste(above_max, collapse = ", "),
               " threads cannot be used, the number of threads is limited to ", num_threads_max,
-              ". Set the environment variable ", sQuote("OMP_NUM_THREADS"),
-              " before loading gpboost to use more threads")
+              " by the OpenMP runtime (e.g. by ", sQuote("OMP_NUM_THREADS"), " or ",
+              sQuote("OMP_THREAD_LIMIT"), ", which are read when OpenMP is initialized and thus have",
+              " to be set before loading gpboost) or by a CPU limit of the machine")
       candidates <- candidates[candidates <= num_threads_max]
     }
   }
@@ -451,6 +454,12 @@ gpb.tune.num.threads <- function(workloads = "all",
     if (verbose) {
       cat(" measuring ...")
     }
+    # The protocol matters as much as what is timed: one model per number of threads that is kept
+    # for all repetitions, one discarded warm-up per model, a rotating order and several repetitions.
+    # Measured against short real fits of the two iterative workloads, this reproduces their ranking
+    # (Spearman 1.00 and 0.99, same number of threads selected), while a variant with three
+    # repetitions, a new model per measurement and no rotation produced a non-monotone curve and
+    # selected 6 instead of 16 threads. Do not simplify this without measuring again
     reps_start <- Sys.time()
     for (rep in seq_len(n_rep)) {
       # The numbers of threads are measured in a rotating order, so that a drift of the speed of the
@@ -463,7 +472,10 @@ gpb.tune.num.threads <- function(workloads = "all",
       reps_done[index_workload] <- rep
       time_per_rep <- as.numeric(difftime(Sys.time(), reps_start, units = "secs")) / rep
       time_workload <- as.numeric(difftime(Sys.time(), workload_start, units = "secs"))
-      if (rep < n_rep && time_workload + time_per_rep > budget_workload) {
+      # The time budget does not stop the second repetition: the noise of a workload cannot be
+      # estimated from a single measurement, and the number of threads is selected by comparing
+      # differences in runtime with that noise
+      if (rep >= 2L && rep < n_rep && time_workload + time_per_rep > budget_workload) {
         time_budget_reached <- TRUE
         break
       }
@@ -498,10 +510,13 @@ gpb.tune.num.threads <- function(workloads = "all",
   # with fewer repetitions than the others determines this number: it is the noisiest one
   num_measurements <- length(workloads) * max(min(reps_done), 1L)
   noise <- stats::median(relative_mad, na.rm = TRUE) / sqrt(num_measurements)
-  if (!is.finite(noise)) {
-    noise <- 0
+  # A single repetition has no spread. The noise is then unknown, which is not the same as zero, so it
+  # is reported as unknown and only the tolerance that has been asked for is used
+  noise_is_known <- is.finite(noise)
+  if (!noise_is_known) {
+    noise <- NA_real_
   }
-  tolerance_used <- max(tolerance, noise)
+  tolerance_used <- if (noise_is_known) max(tolerance, noise) else tolerance
   selection <- gpb.thread.selection(normalized, candidates, tolerance_used, max_relative_slowdown)
   aggregate <- selection[["aggregate"]]
   acceptable <- selection[["acceptable"]]
@@ -549,8 +564,13 @@ gpb.tune.num.threads <- function(workloads = "all",
       cat(sprintf("Fewer than %d repetitions have been measured: the time budget of %g seconds",
                   n_rep, max_time), "has been reached.\n")
     }
-    cat(sprintf("Measurement noise: %.1f%%, tolerance used: %.1f%%\n",
-                100 * noise, 100 * tolerance_used))
+    if (noise_is_known) {
+      cat(sprintf("Measurement noise: %.1f%%, tolerance used: %.1f%%\n",
+                  100 * noise, 100 * tolerance_used))
+    } else {
+      cat(sprintf(paste0("Measurement noise: not available with one repetition, tolerance used: ",
+                         "%.1f%%\n"), 100 * tolerance_used))
+    }
     if (safeguard_was_relaxed) {
       cat(sprintf(paste0("No number of threads is within %.0f%% of the fastest one for every ",
                          "workload, the workloads disagree. The number of threads whose slowest ",

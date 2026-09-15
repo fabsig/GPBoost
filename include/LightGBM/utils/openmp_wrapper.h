@@ -10,6 +10,13 @@
 
 #include <omp.h>
 
+#if _OPENMP < 200805
+// 'omp_get_thread_limit()' is part of OpenMP 3.0. MSVC implements OpenMP 2.0 with '/openmp', where the
+// limit of the contention group cannot be queried. Zero means that there is no limit to respect, which
+// is how the callers treat a limit that is not known
+inline int omp_get_thread_limit() { return 0; }
+#endif
+
 #include <exception>
 #include <memory>
 #include <mutex>

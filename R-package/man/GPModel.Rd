@@ -294,8 +294,10 @@ cores have different speeds (e.g., the performance and efficiency cores of recen
 Apple silicon), the fastest cores are counted, and hyperthreads are counted only once, since slow
 threads can slow down an entire model. The next fastest cores are added if the fastest ones alone
 would leave only a single thread. On Linux, a CPU bandwidth limit of a control group (e.g., of a
-container) is respected as well. The number of threads that OpenMP is configured to use is kept if
-the environment variable OMP_NUM_THREADS is set or if the cores of the CPU cannot be determined.
+container) is respected as well. The environment variable OMP_NUM_THREADS takes precedence over the
+topology of the CPU if it is set, as does the number of threads that OpenMP is configured to use if
+the cores of the CPU cannot be determined. Both remain limited by the OpenMP runtime itself, e.g. by
+the limit of the contention group (OMP_THREAD_LIMIT).
 For ordinary use, leave num_parallel_threads unspecified to use this default. The default of the
 session can be changed with \code{\link{gpb.tune.num.threads}}, which benchmarks different numbers
 of threads, or with \code{\link{gpb.set.default.num.threads}}. Setting

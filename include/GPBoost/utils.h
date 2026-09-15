@@ -49,16 +49,18 @@ namespace GPBoost {
 	*		performance cores, see 'NumPerformanceCores()', limited by the number of threads that OMP uses when
 	*		this function is called for the first time (i.e., before any model has changed it), which is usually
 	*		determined by the environment variable 'OMP_NUM_THREADS' or the number of cores. If 'OMP_NUM_THREADS'
-	*		is set, it is used as is, and the same holds if the topology of the CPU cannot be determined.
-	*		Implemented in 'cpu_topology.cpp'
+	*		is set, it takes precedence over the topology of the CPU, and the same holds if the topology
+	*		cannot be determined. It is still limited by the OpenMP runtime itself, i.e. by the limit of the
+	*		contention group ('OMP_THREAD_LIMIT'). Implemented in 'cpu_topology.cpp'
 	* \return Automatically selected number of parallel threads
 	*/
 	int AutoNumParallelThreads();
 
 	/*!
 	* \brief Largest number of threads that GPBoost uses on its own, i.e., the number of threads that OMP uses when
-	*		the automatic number of threads is determined for the first time, limited by a CPU bandwidth limit of a
-	*		control group on Linux. This is usually the number of logical processors, or the value of the environment
+	*		the automatic number of threads is determined for the first time, limited by the contention group of
+	*		OMP ('OMP_THREAD_LIMIT') and by a CPU bandwidth limit of a control group on Linux. This is usually
+	*		the number of logical processors, or the value of the environment
 	*		variable 'OMP_NUM_THREADS' if it is set. In contrast to 'AutoNumParallelThreads()' it is not limited by
 	*		the number of physical performance cores, since a benchmark can find that the slower cores or the
 	*		hyperthreads help. It is the upper limit for a default that is set for the session. Implemented in
