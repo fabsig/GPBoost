@@ -54,8 +54,8 @@ test_that("all continuous carriers estimate, evaluate, and predict", {
                          egpd_power_beta=c("shape", "delta", "kappa"),
                          egpd_power_mixture=c("shape", "kappa1", "delta_kappa", "p"))
   for(likelihood in names(expected)){
-    fit <- fitGPModel(group_data=group, y=y, X=cbind(1, x), likelihood=likelihood,
-                      params=list(maxit=15, delta_rel_conv=1e-5, init_aux_pars=initial[[likelihood]], init_coef_aux_pars_from_iid_model=FALSE))
+    capture.output( fit <- fitGPModel(group_data=group, y=y, X=cbind(1, x), likelihood=likelihood,
+                                      params=list(maxit=15, delta_rel_conv=1e-5, init_aux_pars=initial[[likelihood]], init_coef_aux_pars_from_iid_model=FALSE)) , file='NUL')
     actual_aux <- fit$get_aux_pars()
     reference <- expected[[likelihood]]
     expect_identical(names(actual_aux), expected_names[[likelihood]])

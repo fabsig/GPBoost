@@ -1987,7 +1987,7 @@ namespace GPBoost {
 					}
 					else {
 						Log::REWarning("GPModel: parameter estimation did not converge after the maximum number of iterations "
-							"(%d, nb. likelihood evaluations = %d). Consider increasing 'max_iter' ", max_iter_, num_ll_evaluations_);
+							"(%d, nb. likelihood evaluations = %d). Consider increasing 'maxit' ", max_iter_, num_ll_evaluations_);
 					}
 				}
 				else {
