@@ -229,28 +229,28 @@ test_that("the default number of threads of the session can be set and reset", {
   # Both the default of the session and the number of threads of the process have to be restored for
   # the test files that run afterwards, also if an expectation below fails
   on.exit({
-    gpboost_set_default_num_threads(-1L)
+    gpb.set.default.num.threads(-1L)
     gpb.set.num.threads(num_threads_omp)
   }, add = TRUE)
 
-  expect_equal(gpboost_get_default_num_threads(), num_threads_auto)
-  gpboost_set_default_num_threads(1L)
-  expect_equal(gpboost_get_default_num_threads(), 1L)
+  expect_equal(gpb.get.default.num.threads(), num_threads_auto)
+  gpb.set.default.num.threads(1L)
+  expect_equal(gpb.get.default.num.threads(), 1L)
   # The default of the session is limited by the largest number of threads
-  gpboost_set_default_num_threads(num_threads_max + 10L)
-  expect_equal(gpboost_get_default_num_threads(), num_threads_max)
+  gpb.set.default.num.threads(num_threads_max + 10L)
+  expect_equal(gpb.get.default.num.threads(), num_threads_max)
   # A non-positive number uses the automatically selected number of threads again
-  gpboost_set_default_num_threads(-1L)
-  expect_equal(gpboost_get_default_num_threads(), num_threads_auto)
-  expect_error(gpboost_set_default_num_threads("two")
+  gpb.set.default.num.threads(-1L)
+  expect_equal(gpb.get.default.num.threads(), num_threads_auto)
+  expect_error(gpb.set.default.num.threads("two")
                , "num_threads needs to be an integer of length one", fixed = TRUE)
 
   # Setting the number of threads of the process does not change the default of the session: the two
   # are different things, the default is what models use when nothing else is requested
   gpb.set.num.threads(1L)
-  expect_equal(gpboost_get_default_num_threads(), num_threads_auto)
+  expect_equal(gpb.get.default.num.threads(), num_threads_auto)
   # ... and a non-positive number of threads of the process means the default of the session
-  gpboost_set_default_num_threads(1L)
+  gpb.set.default.num.threads(1L)
   gpb.set.num.threads(-1L)
   expect_equal(gpb.get.num.threads(), 1L)
 
@@ -270,27 +270,27 @@ test_that("the numbers of threads that are benchmarked are spread out", {
 
 })
 
-test_that("gpboost_tune_num_threads validates arguments before benchmarking", {
+test_that("gpb.tune.num.threads validates arguments before benchmarking", {
 
-  expect_error(gpboost_tune_num_threads(n_rep = 1.5), "positive integer", fixed = TRUE)
-  expect_error(gpboost_tune_num_threads(tolerance = Inf), "non-negative number", fixed = TRUE)
-  expect_error(gpboost_tune_num_threads(max_time = NaN), "positive number", fixed = TRUE)
-  expect_error(gpboost_tune_num_threads(set_default = 1L), "TRUE or FALSE", fixed = TRUE)
-  expect_error(gpboost_tune_num_threads(num_threads_candidates = c(1L, 1.5)),
+  expect_error(gpb.tune.num.threads(n_rep = 1.5), "positive integer", fixed = TRUE)
+  expect_error(gpb.tune.num.threads(tolerance = Inf), "non-negative number", fixed = TRUE)
+  expect_error(gpb.tune.num.threads(max_time = NaN), "positive number", fixed = TRUE)
+  expect_error(gpb.tune.num.threads(set_default = 1L), "TRUE or FALSE", fixed = TRUE)
+  expect_error(gpb.tune.num.threads(num_threads_candidates = c(1L, 1.5)),
                "positive integers", fixed = TRUE)
 
 })
 
-test_that("gpboost_tune_num_threads measures without changing anything", {
+test_that("gpb.tune.num.threads measures without changing anything", {
 
   num_threads_omp <- gpb.get.num.threads()
-  num_threads_default <- gpboost_get_default_num_threads()
+  num_threads_default <- gpb.get.default.num.threads()
   on.exit({
-    gpboost_set_default_num_threads(-1L)
+    gpb.set.default.num.threads(-1L)
     gpb.set.num.threads(num_threads_omp)
   }, add = TRUE)
 
-  results <- gpboost_tune_num_threads(workloads = "grouped_re", workload_size = "small"
+  results <- gpb.tune.num.threads(workloads = "grouped_re", workload_size = "small"
                                   , num_threads_candidates = c(1L, 2L), n_rep = 2L
                                   , set_default = FALSE, verbose = FALSE)
   expect_equal(nrow(results[["timings"]]), 2L)
@@ -299,10 +299,10 @@ test_that("gpboost_tune_num_threads measures without changing anything", {
   # The runtimes are relative to the fastest number of threads of a workload, so the smallest one is 1
   expect_equal(min(results[["aggregate"]][["relative_runtime"]]), 1)
   expect_false(results[["default_was_set"]])
-  expect_equal(gpboost_get_default_num_threads(), num_threads_default)
+  expect_equal(gpb.get.default.num.threads(), num_threads_default)
   # The benchmark gives its number of threads to the models and does not change the process
   expect_equal(gpb.get.num.threads(), num_threads_omp)
-  expect_error(gpboost_tune_num_threads(workloads = "not_a_workload"), "unknown workload", fixed = TRUE)
+  expect_error(gpb.tune.num.threads(workloads = "not_a_workload"), "unknown workload", fixed = TRUE)
 
 })
 
@@ -334,7 +334,7 @@ test_that("the message about the automatically selected number of threads is wri
 
   # ... or for the session ...
   output_session <- .gpb_output_with_sentinel(paste0(
-    "gpboost_set_default_num_threads(1L); ", create_two_models))
+    "gpb.set.default.num.threads(1L); ", create_two_models))
   expect_false(is.null(output_session))
   expect_equal(sum(grepl(message_text, output_session, fixed = TRUE)), 0L)
 
@@ -383,34 +383,91 @@ test_that("the smallest number of threads within the tolerance is selected", {
 
 })
 
-test_that("gpboost_tune_num_threads applies the number of threads that it reports", {
+test_that("a safeguard that no number of threads satisfies is reported and not pretended", {
+
+  # The workloads disagree: neither number of threads is within 25% of the fastest one for both of
+  # them, which is a legitimate outcome and not a reason to call both of them acceptable
+  normalized <- matrix(c(1.00, 1.50,
+                         1.50, 1.00), nrow = 2L, byrow = TRUE)
+  selection <- gpboost:::gpb.thread.selection(normalized, c(4L, 16L), 0.03, 0.25)
+  expect_equal(unname(selection[["acceptable"]]), c(FALSE, FALSE))
+  expect_true(selection[["safeguard_was_relaxed"]])
+  # Both have the same worst workload here, so the smaller number of threads is selected
+  expect_equal(selection[["num_threads"]], 4L)
+
+  # The number of threads whose slowest workload is the least slow is the compromise
+  normalized <- matrix(c(1.00, 1.30, 1.60,
+                         1.60, 1.30, 1.00), nrow = 2L, byrow = TRUE)
+  selection <- gpboost:::gpb.thread.selection(normalized, c(1L, 2L, 4L), 0.03, 0.25)
+  expect_equal(unname(selection[["acceptable"]]), c(FALSE, FALSE, FALSE))
+  expect_true(selection[["safeguard_was_relaxed"]])
+  expect_equal(selection[["num_threads"]], 2L)
+
+  # Nothing is relaxed when the safeguard is satisfied
+  normalized <- matrix(c(1.00, 1.10,
+                         1.10, 1.00), nrow = 2L, byrow = TRUE)
+  selection <- gpboost:::gpb.thread.selection(normalized, c(4L, 16L), 0.03, 0.25)
+  expect_equal(unname(selection[["acceptable"]]), c(TRUE, TRUE))
+  expect_false(selection[["safeguard_was_relaxed"]])
+
+})
+
+test_that("gpb.tune.num.threads applies the number of threads that it reports", {
 
   num_threads_omp <- gpb.get.num.threads()
   num_threads_auto <- gpboost:::gpb.get.auto.num.threads()
   on.exit({
-    gpboost_set_default_num_threads(-1L)
+    gpb.set.default.num.threads(-1L)
     gpb.set.num.threads(num_threads_omp)
   }, add = TRUE)
 
-  # A number of threads of an earlier call has to be replaced by the result of the benchmark, also
-  # when the benchmark selects the automatically selected number of threads
-  gpboost_set_default_num_threads(1L)
-  expect_equal(gpboost_get_default_num_threads(), 1L)
-  results <- gpboost_tune_num_threads(workloads = "grouped_re", workload_size = "default"
+  # A single number of threads cannot be compared with anything, but it is still the selected one and
+  # has to be applied, and it has to replace a number of threads of an earlier call
+  gpb.set.default.num.threads(1L)
+  expect_equal(gpb.get.default.num.threads(), 1L)
+  num_threads_single <- if (num_threads_auto == 2L) 3L else 2L
+  results <- gpb.tune.num.threads(workloads = "grouped_re", workload_size = "default"
+                                  , num_threads_candidates = num_threads_single, n_rep = 1L
+                                  , verbose = FALSE)
+  expect_equal(results[["num_threads"]], num_threads_single)
+  expect_equal(gpb.get.default.num.threads(), num_threads_single)
+  expect_equal(results[["num_threads_before"]], 1L)
+  expect_true(results[["default_was_set"]])
+
+  # The automatically selected number of threads as the only candidate removes an earlier default
+  gpb.set.default.num.threads(1L)
+  results <- gpb.tune.num.threads(workloads = "grouped_re", workload_size = "default"
                                   , num_threads_candidates = num_threads_auto, n_rep = 1L
                                   , verbose = FALSE)
-  # With a single number of threads there is nothing to benchmark, but the default that is reported
-  # still has to be the one that is active
-  expect_equal(results[["num_threads"]], gpboost_get_default_num_threads())
+  expect_equal(results[["num_threads"]], num_threads_auto)
+  expect_equal(gpb.get.default.num.threads(), num_threads_auto)
+  expect_true(results[["default_was_set"]])
 
-  gpboost_set_default_num_threads(1L)
-  results <- gpboost_tune_num_threads(workloads = "grouped_re", workload_size = "small"
+  # ... and it changes nothing if there is no earlier default
+  gpb.set.default.num.threads(-1L)
+  results <- gpb.tune.num.threads(workloads = "grouped_re", workload_size = "default"
+                                  , num_threads_candidates = num_threads_auto, n_rep = 1L
+                                  , verbose = FALSE)
+  expect_equal(results[["num_threads"]], num_threads_auto)
+  expect_false(results[["default_was_set"]])
+
+  # A single number of threads is not applied when nothing should be set
+  gpb.set.default.num.threads(1L)
+  results <- gpb.tune.num.threads(workloads = "grouped_re", workload_size = "default"
+                                  , num_threads_candidates = num_threads_single, n_rep = 1L
+                                  , set_default = FALSE, verbose = FALSE)
+  expect_equal(results[["num_threads"]], num_threads_single)
+  expect_equal(gpb.get.default.num.threads(), 1L)
+  expect_false(results[["default_was_set"]])
+
+  gpb.set.default.num.threads(1L)
+  results <- gpb.tune.num.threads(workloads = "grouped_re", workload_size = "small"
                                   , num_threads_candidates = c(1L, 2L), n_rep = 2L
                                   , set_default = FALSE, verbose = FALSE)
   # Without 'set_default' nothing is changed, and the default before the benchmark is reported
   expect_equal(results[["num_threads_before"]], 1L)
   expect_false(results[["default_was_set"]])
-  expect_equal(gpboost_get_default_num_threads(), 1L)
+  expect_equal(gpb.get.default.num.threads(), 1L)
 
 })
 
@@ -423,7 +480,7 @@ test_that("the message is not written any more after the benchmark has been run"
   # The benchmark selects the automatically selected number of threads here, so the default of the
   # session stays at zero and only the message flag can prevent the message
   output <- .gpb_output_with_sentinel(paste0(
-    "invisible(gpboost_tune_num_threads(workloads = \"grouped_re\", workload_size = \"small\""
+    "invisible(gpb.tune.num.threads(workloads = \"grouped_re\", workload_size = \"small\""
     , ", num_threads_candidates = c(1L, 2L), n_rep = 1L, verbose = FALSE)); "
     , "group <- rep(1:10, each = 10); "
     , "invisible(GPModel(group_data = group, likelihood = \"gaussian\")); "
@@ -442,11 +499,11 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
 
     num_threads_omp <- gpb.get.num.threads()
     on.exit({
-      gpboost_set_default_num_threads(-1L)
+      gpb.set.default.num.threads(-1L)
       gpb.set.num.threads(num_threads_omp)
     }, add = TRUE)
 
-    results <- gpboost_tune_num_threads(workloads = "all", workload_size = "small"
+    results <- gpb.tune.num.threads(workloads = "all", workload_size = "small"
                                     , num_threads_candidates = c(1L, 2L), n_rep = 2L
                                     , verbose = FALSE)
     expect_equal(sort(unique(results[["timings"]][["workload"]]))
@@ -465,12 +522,12 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
 
     num_threads_omp <- gpb.get.num.threads()
     on.exit({
-      gpboost_set_default_num_threads(-1L)
+      gpb.set.default.num.threads(-1L)
       gpb.set.num.threads(num_threads_omp)
     }, add = TRUE)
 
     # A budget that cannot be met: every workload is still simulated, created and measured once
-    results <- gpboost_tune_num_threads(workloads = "all", workload_size = "small"
+    results <- gpb.tune.num.threads(workloads = "all", workload_size = "small"
                                     , num_threads_candidates = c(1L, 2L), n_rep = 5L
                                     , max_time = 1e-6, verbose = FALSE)
     expect_equal(nrow(results[["timings"]]), 6L)

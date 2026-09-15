@@ -806,6 +806,24 @@ namespace GPBoost {
 
 	namespace {
 
+		/*!
+		* \brief Largest number of threads that OMP can run. The number of threads of a parallel region is
+		*		limited both by the number of threads that OMP would use ('omp_get_max_threads()', usually the
+		*		number of logical processors or the value of 'OMP_NUM_THREADS') and by the limit of the
+		*		contention group ('omp_get_thread_limit()', the value of 'OMP_THREAD_LIMIT'). The two are
+		*		different internal control variables, so the first one alone can report more threads than OMP
+		*		would ever create
+		* \return Largest number of threads that OMP can run
+		*/
+		int OmpThreadCeiling() {
+			int num_threads = omp_get_max_threads();
+			const int num_threads_contention_group = omp_get_thread_limit();
+			if (num_threads_contention_group > 0 && num_threads_contention_group < num_threads) {
+				num_threads = num_threads_contention_group;
+			}
+			return num_threads;
+		}
+
 		/*! \brief Determines the automatically selected number of threads from an already read number of threads of OMP */
 		int ComputeAutoNumParallelThreadsFrom(int num_threads) {
 			// An explicitly requested number of threads is always used as is
@@ -829,7 +847,7 @@ namespace GPBoost {
 	}  // namespace
 
 	int ComputeDefaultNumParallelThreads() {
-		return ComputeAutoNumParallelThreadsFrom(omp_get_max_threads());
+		return ComputeAutoNumParallelThreadsFrom(OmpThreadCeiling());
 	}
 
 	namespace {
@@ -869,7 +887,7 @@ namespace GPBoost {
 		const NumParallelThreadsDefaults& NumParallelThreadsDefaultsOfMachine() {
 			static const NumParallelThreadsDefaults defaults = []() {
 				NumParallelThreadsDefaults values;
-				const int num_threads_omp = omp_get_max_threads();
+				const int num_threads_omp = OmpThreadCeiling();
 				values.omp_num_threads_env_is_set = OmpNumThreadsEnvIsSet();
 				values.automatic = ComputeAutoNumParallelThreadsFrom(num_threads_omp);
 				// The largest number of threads is not limited by the number of performance cores: a

@@ -401,6 +401,7 @@ inline int ReviewGetAffinity(pid_t, size_t size, cpu_set_t* mask) {
 UTILS_HEADER = r"""
 #pragma once
 inline int omp_get_max_threads() { return 16; }
+inline int omp_get_thread_limit() { return 16; }
 namespace GPBoost {
     int CpuQuotaLimit();
     int ComputeDefaultNumParallelThreads();

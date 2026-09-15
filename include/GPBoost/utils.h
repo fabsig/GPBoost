@@ -135,10 +135,17 @@ namespace GPBoost {
 		}
 		// Note: this is called from the thread that creates a 'ParallelThreadsScope' and thus never from a parallel
 		//	region. In the R package, the message is written by 'Rprintf', which must not be called by other threads
+#ifdef LGB_R_BUILD
 		Log::REInfo("GPBoost is using %d OpenMP threads by default for parallel computations. Run "
-			"gpboost_tune_num_threads() to benchmark different numbers of threads and to select a tuned "
+			"gpb.tune.num.threads() to benchmark different numbers of threads and to select a tuned default "
+			"for this session. For the best performance, try different values of 'num_parallel_threads' on "
+			"the 'GPModel' you are using.", num_threads_used);
+#else
+		Log::REInfo("GPBoost is using %d OpenMP threads by default for parallel computations. Run "
+			"gpboost.tune_num_threads() to benchmark different numbers of threads and to select a tuned "
 			"default for this session. For the best performance, try different values of "
 			"'num_parallel_threads' on the 'GPModel' you are using.", num_threads_used);
+#endif
 	}
 
 	/*!

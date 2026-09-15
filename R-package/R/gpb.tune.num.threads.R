@@ -1,6 +1,6 @@
 #' @name GPB_THREAD_WORKLOAD_NAMES
 #' @title Names of the benchmark workloads
-#' @description The workloads of \code{\link{gpboost_tune_num_threads}}. They cover the parallel
+#' @description The workloads of \code{\link{gpb.tune.num.threads}}. They cover the parallel
 #'              computational kernels that dominate the different model classes of GPBoost: sparse
 #'              operations for grouped random effects, Vecchia and Laplace calculations, and conjugate
 #'              gradient and stochastic Lanczos quadrature calculations
@@ -129,7 +129,7 @@ gpb.thread.workload <- function(workload, workload_size = "default") {
     return(list(name = workload, y = y, cov_pars = c(1, 1, 1),
                 num_evaluations = if (small) 1L else 5L, make_model = make_model))
   }
-  stop("gpboost_tune_num_threads: unknown workload ", sQuote(workload))
+  stop("gpb.tune.num.threads: unknown workload ", sQuote(workload))
 }
 
 #' @title Select a number of threads from the measured runtimes
@@ -142,25 +142,34 @@ gpb.thread.workload <- function(workload, workload_size = "default") {
 #' @param candidates An \code{integer} vector with the numbers of threads, in increasing order
 #' @param tolerance Relative difference in runtime that is considered negligible
 #' @param max_relative_slowdown Largest relative slowdown of a single workload that is accepted
-#' @return A \code{list} with the selected number of threads, the aggregated runtimes and which numbers
-#'         of threads are acceptable
+#' @return A \code{list} with the selected number of threads, the aggregated runtimes, which numbers
+#'         of threads are acceptable, and whether the safeguard had to be relaxed
 #' @keywords internal
 #' @noRd
 gpb.thread.selection <- function(normalized, candidates, tolerance, max_relative_slowdown) {
   aggregate <- exp(colMeans(log(normalized), na.rm = TRUE))
   acceptable <- apply(normalized <= 1 + max_relative_slowdown, 2L,
                       function(column) all(column, na.rm = TRUE))
-  if (!any(acceptable)) {
-    acceptable <- rep(TRUE, length(candidates))
+  # If no number of threads is fast enough for every workload, the workloads disagree about which one
+  # is fast, e.g. because one of them scales and another one does not. The number of threads whose
+  # slowest workload is the least slow is then the best compromise. 'acceptable' keeps saying which
+  # numbers of threads satisfy the safeguard, which is none of them in that case
+  safeguard_was_relaxed <- !any(acceptable)
+  if (safeguard_was_relaxed) {
+    worst <- apply(normalized, 2L, function(column) max(column, na.rm = TRUE))
+    eligible <- worst <= min(worst) * (1 + 1e-9)
+  } else {
+    eligible <- acceptable
   }
-  best <- min(aggregate[acceptable])
+  best <- min(aggregate[eligible])
   # The candidates are in increasing order, so the first one within the tolerance is the smallest one:
   # more threads are not used for a difference in runtime that is negligible
-  within_tolerance <- acceptable & (aggregate <= best * (1 + tolerance))
+  within_tolerance <- eligible & (aggregate <= best * (1 + tolerance))
   return(list(
     num_threads = candidates[which(within_tolerance)[1L]]
     , aggregate = aggregate
     , acceptable = acceptable
+    , safeguard_was_relaxed = safeguard_was_relaxed
     , best = best
   ))
 }
@@ -234,7 +243,7 @@ gpb.thread.time.section <- function(gp_model, workload) {
 #'                              for one model class is selected because the aggregate over all
 #'                              workloads looks acceptable
 #' @param set_default A \code{logical}. If \code{TRUE}, the selected number of threads is set as the
-#'                    default of the session, see \code{\link{gpboost_set_default_num_threads}}. Set this to
+#'                    default of the session, see \code{\link{gpb.set.default.num.threads}}. Set this to
 #'                    \code{FALSE} to only measure
 #' @param verbose A \code{logical}. If \code{TRUE}, the progress and the results are printed
 #' @param workload_size A \code{string}, either "default" or "small". The small workloads run in a few
@@ -255,23 +264,26 @@ gpb.thread.time.section <- function(gp_model, workload) {
 #'           it is not slower than \code{max_relative_slowdown} for a single workload}
 #'           \item{num_threads_before: the default of the session before the benchmark}
 #'           \item{tolerance_used: the tolerance that has been used for the selection}
+#'           \item{safeguard_was_relaxed: \code{TRUE} if no number of threads was within
+#'           \code{max_relative_slowdown} of the fastest one for every workload, i.e. if the workloads
+#'           disagree. The number of threads whose slowest workload is the least slow is selected then}
 #'         }
 #' @author Fabio Sigrist
 #' @examples
 #' \donttest{
 #' # Benchmark all workloads and use the result for the rest of the session
-#' results <- gpboost_tune_num_threads()
+#' results <- gpb.tune.num.threads()
 #'
 #' # Benchmark only the model class that is mainly used
-#' results <- gpboost_tune_num_threads(workloads = "grouped_re")
+#' results <- gpb.tune.num.threads(workloads = "grouped_re")
 #'
 #' # Only measure, without changing the default
-#' results <- gpboost_tune_num_threads(set_default = FALSE)
+#' results <- gpb.tune.num.threads(set_default = FALSE)
 #' }
 #' @importFrom stats mad median rbinom rnorm runif
-#' @rdname gpboost_tune_num_threads
+#' @rdname gpb.tune.num.threads
 #' @export
-gpboost_tune_num_threads <- function(workloads = "all",
+gpb.tune.num.threads <- function(workloads = "all",
                                  num_threads_candidates = NULL,
                                  n_rep = 5L,
                                  tolerance = 0.03,
@@ -282,43 +294,43 @@ gpboost_tune_num_threads <- function(workloads = "all",
                                  workload_size = "default") {
 
   if (!is.character(workloads) || length(workloads) == 0L || anyNA(workloads)) {
-    stop("gpboost_tune_num_threads: ", sQuote("workloads"), " needs to be a character vector")
+    stop("gpb.tune.num.threads: ", sQuote("workloads"), " needs to be a character vector")
   }
   if (identical(workloads, "all")) {
     workloads <- GPB_THREAD_WORKLOAD_NAMES
   }
   unknown <- setdiff(workloads, GPB_THREAD_WORKLOAD_NAMES)
   if (length(unknown) > 0L) {
-    stop("gpboost_tune_num_threads: unknown workload(s) ", paste(sQuote(unknown), collapse = ", "),
+    stop("gpb.tune.num.threads: unknown workload(s) ", paste(sQuote(unknown), collapse = ", "),
          ". Possible workloads are ", paste(sQuote(GPB_THREAD_WORKLOAD_NAMES), collapse = ", "),
          " or ", sQuote("all"))
   }
   workloads <- unique(workloads)
   if (!is.numeric(n_rep) || length(n_rep) != 1L || !is.finite(n_rep) || n_rep < 1L ||
       n_rep != floor(n_rep) || n_rep > .Machine$integer.max) {
-    stop("gpboost_tune_num_threads: ", sQuote("n_rep"), " needs to be a positive integer of length one")
+    stop("gpb.tune.num.threads: ", sQuote("n_rep"), " needs to be a positive integer of length one")
   }
   n_rep <- as.integer(n_rep)
   if (!is.numeric(tolerance) || length(tolerance) != 1L || !is.finite(tolerance) || tolerance < 0) {
-    stop("gpboost_tune_num_threads: ", sQuote("tolerance"), " needs to be a non-negative number")
+    stop("gpb.tune.num.threads: ", sQuote("tolerance"), " needs to be a non-negative number")
   }
   if (!is.numeric(max_time) || length(max_time) != 1L || !is.finite(max_time) || max_time <= 0) {
-    stop("gpboost_tune_num_threads: ", sQuote("max_time"), " needs to be a positive number")
+    stop("gpb.tune.num.threads: ", sQuote("max_time"), " needs to be a positive number")
   }
   if (!is.numeric(max_relative_slowdown) || length(max_relative_slowdown) != 1L ||
       !is.finite(max_relative_slowdown) || max_relative_slowdown < 0) {
-    stop("gpboost_tune_num_threads: ", sQuote("max_relative_slowdown"),
+    stop("gpb.tune.num.threads: ", sQuote("max_relative_slowdown"),
          " needs to be a non-negative number")
   }
   if (!is.logical(set_default) || length(set_default) != 1L || is.na(set_default)) {
-    stop("gpboost_tune_num_threads: ", sQuote("set_default"), " needs to be TRUE or FALSE")
+    stop("gpb.tune.num.threads: ", sQuote("set_default"), " needs to be TRUE or FALSE")
   }
   if (!is.logical(verbose) || length(verbose) != 1L || is.na(verbose)) {
-    stop("gpboost_tune_num_threads: ", sQuote("verbose"), " needs to be TRUE or FALSE")
+    stop("gpb.tune.num.threads: ", sQuote("verbose"), " needs to be TRUE or FALSE")
   }
   if (!is.character(workload_size) || length(workload_size) != 1L ||
       !(workload_size %in% c("default", "small"))) {
-    stop("gpboost_tune_num_threads: ", sQuote("workload_size"), " needs to be ", sQuote("default"),
+    stop("gpb.tune.num.threads: ", sQuote("workload_size"), " needs to be ", sQuote("default"),
          " or ", sQuote("small"))
   }
 
@@ -337,7 +349,7 @@ gpboost_tune_num_threads <- function(workloads = "all",
     if (!is.numeric(num_threads_candidates) || any(!is.finite(num_threads_candidates)) ||
         any(num_threads_candidates < 1L) || any(num_threads_candidates != floor(num_threads_candidates)) ||
         any(num_threads_candidates > .Machine$integer.max)) {
-      stop("gpboost_tune_num_threads: ", sQuote("num_threads_candidates"),
+      stop("gpb.tune.num.threads: ", sQuote("num_threads_candidates"),
            " needs to be a vector of positive integers")
     }
     candidates <- sort(unique(as.integer(num_threads_candidates)))
@@ -345,14 +357,14 @@ gpboost_tune_num_threads <- function(workloads = "all",
   num_threads_auto <- gpb.get.auto.num.threads()
   num_threads_max <- gpb.get.max.num.threads()
   # The default that is active now: it is not necessarily the automatically selected one, an earlier
-  # call of this function or of 'gpboost_set_default_num_threads()' may have changed it
-  num_threads_before <- gpboost_get_default_num_threads()
+  # call of this function or of 'gpb.set.default.num.threads()' may have changed it
+  num_threads_before <- gpb.get.default.num.threads()
   if (is.null(candidates)) {
     candidates <- gpb.thread.candidates(num_threads_auto, num_threads_max)
   } else {
     above_max <- candidates[candidates > num_threads_max]
     if (length(above_max) > 0L) {
-      warning("gpboost_tune_num_threads: ", paste(above_max, collapse = ", "),
+      warning("gpb.tune.num.threads: ", paste(above_max, collapse = ", "),
               " threads cannot be used, the number of threads is limited to ", num_threads_max,
               ". Set the environment variable ", sQuote("OMP_NUM_THREADS"),
               " before loading gpboost to use more threads")
@@ -360,24 +372,38 @@ gpboost_tune_num_threads <- function(workloads = "all",
     }
   }
   if (length(candidates) == 0L) {
-    stop("gpboost_tune_num_threads: no number of threads left to benchmark")
+    stop("gpb.tune.num.threads: no number of threads left to benchmark")
   }
   if (length(candidates) == 1L) {
+    # There is nothing to compare, but the single number of threads is the selected one and is applied
+    # like the result of a benchmark
+    num_threads_selected <- candidates[1L]
     if (verbose) {
-      cat(sprintf(paste0("Only %d thread(s) can be used on this machine, there is nothing to ",
-                         "benchmark.\n"), candidates))
+      if (num_threads_max == 1L) {
+        cat("Only one thread can be used on this machine, there is nothing to benchmark.\n")
+      } else {
+        cat(sprintf(paste0("Only %d thread(s) have been requested, there is nothing to benchmark.\n")
+                    , num_threads_selected))
+      }
+    }
+    default_was_set <- FALSE
+    if (set_default) {
+      gpb.set.default.num.threads(if (num_threads_selected == num_threads_auto) 0L
+                                  else num_threads_selected)
+      default_was_set <- gpb.get.default.num.threads() != num_threads_before
     }
     # The message that points to this function has done its job once this function has been called
     gpb.suppress.num.threads.message()
     return(invisible(list(
-      num_threads = gpboost_get_default_num_threads()
+      num_threads = num_threads_selected
       , num_threads_automatic = num_threads_auto
       , num_threads_max = num_threads_max
-      , num_threads_before = gpboost_get_default_num_threads()
-      , default_was_set = FALSE
+      , num_threads_before = num_threads_before
+      , default_was_set = default_was_set
       , timings = NULL
       , aggregate = NULL
       , tolerance_used = tolerance
+      , safeguard_was_relaxed = FALSE
     )))
   }
 
@@ -479,6 +505,7 @@ gpboost_tune_num_threads <- function(workloads = "all",
   selection <- gpb.thread.selection(normalized, candidates, tolerance_used, max_relative_slowdown)
   aggregate <- selection[["aggregate"]]
   acceptable <- selection[["acceptable"]]
+  safeguard_was_relaxed <- selection[["safeguard_was_relaxed"]]
   num_threads_selected <- selection[["num_threads"]]
 
   timings <- data.frame(
@@ -502,9 +529,9 @@ gpboost_tune_num_threads <- function(workloads = "all",
   # does: the default of the session is not necessarily the automatic one when this function is called
   default_was_set <- FALSE
   if (set_default) {
-    gpboost_set_default_num_threads(if (num_threads_selected == num_threads_auto) 0L
+    gpb.set.default.num.threads(if (num_threads_selected == num_threads_auto) 0L
                                 else num_threads_selected)
-    default_was_set <- gpboost_get_default_num_threads() != num_threads_before
+    default_was_set <- gpb.get.default.num.threads() != num_threads_before
   }
   # The message that points to this function has done its job once this function has been called
   gpb.suppress.num.threads.message()
@@ -524,12 +551,18 @@ gpboost_tune_num_threads <- function(workloads = "all",
     }
     cat(sprintf("Measurement noise: %.1f%%, tolerance used: %.1f%%\n",
                 100 * noise, 100 * tolerance_used))
+    if (safeguard_was_relaxed) {
+      cat(sprintf(paste0("No number of threads is within %.0f%% of the fastest one for every ",
+                         "workload, the workloads disagree. The number of threads whose slowest ",
+                         "workload is the least slow has been selected.\n"),
+                  100 * max_relative_slowdown))
+    }
     if (default_was_set) {
       cat(sprintf(paste0("GPBoost now uses %d thread(s) as the tuned default of this session ",
                          "(it used %d). This is not an optimal number of threads: the best number ",
                          "of threads depends on the model and on the data.\n"),
                   num_threads_selected, num_threads_before))
-      cat(sprintf("Call gpboost_set_default_num_threads(%d) to use it again in a later session.\n",
+      cat(sprintf("Call gpb.set.default.num.threads(%d) to use it again in a later session.\n",
                   num_threads_selected))
     } else if (set_default) {
       cat(sprintf("GPBoost continues to use %d thread(s) by default.\n", num_threads_selected))
@@ -548,5 +581,6 @@ gpboost_tune_num_threads <- function(workloads = "all",
     , timings = timings
     , aggregate = aggregate_table
     , tolerance_used = tolerance_used
+    , safeguard_was_relaxed = safeguard_was_relaxed
   )))
 }

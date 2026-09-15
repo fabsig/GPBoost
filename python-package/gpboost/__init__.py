@@ -4,8 +4,8 @@
  Modified work Copyright (c) 2020 - 2024 Fabio Sigrist. All rights reserved.
 """
 from .basic import Booster, Dataset, register_logger, GPModel, get_nested_categories, \
-    get_num_threads, set_num_threads, gpboost_get_default_num_threads, gpboost_set_default_num_threads, \
-    gpboost_tune_num_threads
+    get_num_threads, set_num_threads, get_default_num_threads, set_default_num_threads, \
+    tune_num_threads
 from .callback import (early_stopping, print_evaluation, record_evaluation,
                        reset_parameter)
 from .engine import cv, train, CVBooster, grid_search_tune_parameters, tune_pars_TPE_algorithm_optuna
@@ -31,7 +31,7 @@ if os.path.isfile(os.path.join(dir_path, 'VERSION.txt')):
 
 __all__ = ['Dataset', 'Booster', 'CVBooster', 'GPModel', 'get_nested_categories',
            'get_num_threads', 'set_num_threads',
-           'gpboost_get_default_num_threads', 'gpboost_set_default_num_threads', 'gpboost_tune_num_threads',
+           'get_default_num_threads', 'set_default_num_threads', 'tune_num_threads',
            'register_logger',
            'train', 'cv', 'grid_search_tune_parameters', 'tune_pars_TPE_algorithm_optuna',
            'GPBoostModel', 'GPBoostRegressor', 'GPBoostClassifier', 'GPBoostRanker',

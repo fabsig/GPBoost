@@ -315,7 +315,7 @@ for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecch
 
 \item{num_parallel_threads}{An \code{integer} specifying the number of parallel threads for OMP.
 If num_parallel_threads = NULL, the default number of threads of the session is used, see
-\code{\link{gpboost_get_default_num_threads}}. Initially, this is the number of physical performance
+\code{\link{gpb.get.default.num.threads}}. Initially, this is the number of physical performance
 cores, which is determined automatically as follows. On CPUs whose
 cores have different speeds (e.g., the performance and efficiency cores of recent Intel CPUs or
 Apple silicon), the fastest cores are counted, and hyperthreads are counted only once, since slow
@@ -324,8 +324,8 @@ would leave only a single thread. On Linux, a CPU bandwidth limit of a control g
 container) is respected as well. The number of threads that OpenMP is configured to use is kept if
 the environment variable OMP_NUM_THREADS is set or if the cores of the CPU cannot be determined.
 For ordinary use, leave num_parallel_threads unspecified to use this default. The default of the
-session can be changed with \code{\link{gpboost_tune_num_threads}}, which benchmarks different numbers
-of threads, or with \code{\link{gpboost_set_default_num_threads}}. Setting
+session can be changed with \code{\link{gpb.tune.num.threads}}, which benchmarks different numbers
+of threads, or with \code{\link{gpb.set.default.num.threads}}. Setting
 num_parallel_threads = 1 disables the OpenMP parallelization of the model and can substantially
 increase the runtime. A single thread should be chosen deliberately, e.g., to distribute the
 resources among concurrent model fits or for a specific test; it is not required for correctness

@@ -126,9 +126,9 @@ def set_num_threads(num_threads):
     ----------
     num_threads : int
         The number of threads. If num_threads is not positive, the default number of threads of the
-        session is used, see gpboost_get_default_num_threads(). Initially, this is the automatically selected
+        session is used, see get_default_num_threads(). Initially, this is the automatically selected
         number of physical performance cores, and it is the number of threads set by
-        gpboost_tune_num_threads() or gpboost_set_default_num_threads() once one of them has been called
+        tune_num_threads() or set_default_num_threads() once one of them has been called
 
     :Authors:
         Fabio Sigrist
@@ -137,12 +137,12 @@ def set_num_threads(num_threads):
     _safe_call(_LIB.GPB_SetNumParallelThreads(ctypes.c_int(num_threads)))
 
 
-def gpboost_get_default_num_threads():
+def get_default_num_threads():
     """Get the number of threads used by models for which no number of threads is specified.
 
     This is the number of threads that a GPModel uses when no number of threads has been specified
     for it via the 'num_parallel_threads' argument. It is the number of threads that has been set
-    for the session, either by gpboost_tune_num_threads() or by gpboost_set_default_num_threads(), and the
+    for the session, either by tune_num_threads() or by set_default_num_threads(), and the
     automatically selected number of threads (the number of physical performance cores) if no such
     number has been set.
 
@@ -164,10 +164,10 @@ def gpboost_get_default_num_threads():
     return num_threads.value
 
 
-def gpboost_set_default_num_threads(num_threads):
+def set_default_num_threads(num_threads):
     """Set the number of threads used by models for which no number of threads is specified.
 
-    Use this to apply a number of threads that has been determined by gpboost_tune_num_threads() in an
+    Use this to apply a number of threads that has been determined by tune_num_threads() in an
     earlier session, without running the benchmark again.
 
     In contrast to set_num_threads(), this does not change the number of threads that OMP currently
@@ -185,7 +185,7 @@ def gpboost_set_default_num_threads(num_threads):
     :Authors:
         Fabio Sigrist
     """
-    num_threads = _check_num_threads(num_threads, 'gpboost_set_default_num_threads')
+    num_threads = _check_num_threads(num_threads, 'set_default_num_threads')
     _safe_call(_LIB.GPB_SetDefaultNumParallelThreads(ctypes.c_int(num_threads)))
 
 
@@ -324,7 +324,7 @@ def _thread_workload(workload, workload_size="default"):
 
         return {"name": workload, "y": y, "cov_pars": np.array([1., 1., 1.]),
                 "num_evaluations": 1 if small else 5, "make_model": make_model}
-    raise ValueError("gpboost_tune_num_threads: unknown workload '" + str(workload) + "'")
+    raise ValueError("tune_num_threads: unknown workload '" + str(workload) + "'")
 
 
 def _thread_selection(normalized, candidates, tolerance, max_relative_slowdown):
@@ -337,14 +337,23 @@ def _thread_selection(normalized, candidates, tolerance, max_relative_slowdown):
     """
     aggregate = np.exp(np.mean(np.log(normalized), axis=0))
     acceptable = np.all(normalized <= 1. + max_relative_slowdown, axis=0)
-    if not np.any(acceptable):
-        acceptable = np.ones(len(candidates), dtype=bool)
-    best = np.min(aggregate[acceptable])
+    # If no number of threads is fast enough for every workload, the workloads disagree about which
+    # one is fast, e.g. because one of them scales and another one does not. The number of threads
+    # whose slowest workload is the least slow is then the best compromise. "acceptable" keeps saying
+    # which numbers of threads satisfy the safeguard, which is none of them in that case
+    safeguard_was_relaxed = not np.any(acceptable)
+    if safeguard_was_relaxed:
+        worst = np.max(normalized, axis=0)
+        eligible = worst <= np.min(worst) * (1. + 1e-9)
+    else:
+        eligible = acceptable
+    best = np.min(aggregate[eligible])
     # The candidates are in increasing order, so the first one within the tolerance is the smallest
     # one: more threads are not used for a difference in runtime that is negligible
-    within_tolerance = acceptable & (aggregate <= best * (1. + tolerance))
+    within_tolerance = eligible & (aggregate <= best * (1. + tolerance))
     return {"num_threads": int(candidates[int(np.where(within_tolerance)[0][0])]),
-            "aggregate": aggregate, "acceptable": acceptable, "best": best}
+            "aggregate": aggregate, "acceptable": acceptable,
+            "safeguard_was_relaxed": safeguard_was_relaxed, "best": best}
 
 
 def _thread_time_section(gp_model, workload):
@@ -366,7 +375,7 @@ def _relative_mad(values):
     return 1.4826 * np.median(np.abs(values - center)) / center
 
 
-def gpboost_tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tolerance=0.03,
+def tune_num_threads(workloads="all", num_threads_candidates=None, n_rep=5, tolerance=0.03,
                      max_time=120., max_relative_slowdown=0.25, set_default=True, verbose=True,
                      workload_size="default"):
     """Benchmark different numbers of threads and select a tuned default.
@@ -422,7 +431,7 @@ def gpboost_tune_num_threads(workloads="all", num_threads_candidates=None, n_rep
         one model class is selected because the aggregate over all workloads looks acceptable
     set_default : bool, optional (default=True)
         If True, the selected number of threads is set as the default of the session, see
-        gpboost_set_default_num_threads(). Set this to False to only measure
+        set_default_num_threads(). Set this to False to only measure
     verbose : bool, optional (default=True)
         If True, the progress and the results are printed
     workload_size : str, optional (default="default")
@@ -447,6 +456,10 @@ def gpboost_tune_num_threads(workloads="all", num_threads_candidates=None, n_rep
               i.e. whether it is not slower than max_relative_slowdown for a single workload
             - "num_threads_before": the default of the session before the benchmark
             - "tolerance_used": the tolerance that has been used for the selection
+            - "safeguard_was_relaxed": True if no number of threads was within
+              max_relative_slowdown of the fastest one for every workload, i.e. if the workloads
+              disagree. The number of threads whose slowest workload is the least slow is selected
+              then
 
     :Authors:
         Fabio Sigrist
@@ -455,36 +468,36 @@ def gpboost_tune_num_threads(workloads="all", num_threads_candidates=None, n_rep
         workloads = list(_THREAD_WORKLOAD_NAMES) if workloads == "all" else [workloads]
     workloads = list(workloads)
     if len(workloads) == 0:
-        raise ValueError("gpboost_tune_num_threads: 'workloads' must not be empty")
+        raise ValueError("tune_num_threads: 'workloads' must not be empty")
     unknown = [name for name in workloads if name not in _THREAD_WORKLOAD_NAMES]
     if len(unknown) > 0:
-        raise ValueError("gpboost_tune_num_threads: unknown workload(s) " + ", ".join(unknown)
+        raise ValueError("tune_num_threads: unknown workload(s) " + ", ".join(unknown)
                          + ". Possible workloads are " + ", ".join(_THREAD_WORKLOAD_NAMES)
                          + " or 'all'")
     workloads = list(dict.fromkeys(workloads))
     if isinstance(n_rep, (bool, np.bool_)) or not isinstance(n_rep, (int, np.integer)) or n_rep < 1:
-        raise ValueError("gpboost_tune_num_threads: 'n_rep' needs to be a positive integer")
+        raise ValueError("tune_num_threads: 'n_rep' needs to be a positive integer")
     n_rep = int(n_rep)
     if (isinstance(tolerance, (bool, np.bool_)) or
             not isinstance(tolerance, (int, float, np.number)) or
             not np.isreal(tolerance) or not np.isfinite(tolerance) or tolerance < 0):
-        raise ValueError("gpboost_tune_num_threads: 'tolerance' needs to be a non-negative number")
+        raise ValueError("tune_num_threads: 'tolerance' needs to be a non-negative number")
     if (isinstance(max_time, (bool, np.bool_)) or
             not isinstance(max_time, (int, float, np.number)) or
             not np.isreal(max_time) or not np.isfinite(max_time) or max_time <= 0):
-        raise ValueError("gpboost_tune_num_threads: 'max_time' needs to be a positive number")
+        raise ValueError("tune_num_threads: 'max_time' needs to be a positive number")
     if (isinstance(max_relative_slowdown, (bool, np.bool_)) or
             not isinstance(max_relative_slowdown, (int, float, np.number)) or
             not np.isreal(max_relative_slowdown) or not np.isfinite(max_relative_slowdown) or
             max_relative_slowdown < 0):
-        raise ValueError("gpboost_tune_num_threads: 'max_relative_slowdown' needs to be a non-negative "
+        raise ValueError("tune_num_threads: 'max_relative_slowdown' needs to be a non-negative "
                          "number")
     if not isinstance(set_default, (bool, np.bool_)):
-        raise ValueError("gpboost_tune_num_threads: 'set_default' needs to be True or False")
+        raise ValueError("tune_num_threads: 'set_default' needs to be True or False")
     if not isinstance(verbose, (bool, np.bool_)):
-        raise ValueError("gpboost_tune_num_threads: 'verbose' needs to be True or False")
+        raise ValueError("tune_num_threads: 'verbose' needs to be True or False")
     if not isinstance(workload_size, str) or workload_size not in ("default", "small"):
-        raise ValueError("gpboost_tune_num_threads: 'workload_size' needs to be 'default' or 'small'")
+        raise ValueError("tune_num_threads: 'workload_size' needs to be 'default' or 'small'")
 
     # The small workloads are so small that a single thread wins, which would make a single thread
     # the default of the session. They are only there to check that the benchmark runs
@@ -501,42 +514,54 @@ def gpboost_tune_num_threads(workloads="all", num_threads_candidates=None, n_rep
         try:
             candidates_raw = list(num_threads_candidates)
         except TypeError:
-            raise ValueError("gpboost_tune_num_threads: 'num_threads_candidates' needs to contain positive "
+            raise ValueError("tune_num_threads: 'num_threads_candidates' needs to contain positive "
                              "integers") from None
         if (any(isinstance(value, (bool, np.bool_)) or
                 not isinstance(value, (int, np.integer)) or value < 1
                 for value in candidates_raw)):
-            raise ValueError("gpboost_tune_num_threads: 'num_threads_candidates' needs to contain positive "
+            raise ValueError("tune_num_threads: 'num_threads_candidates' needs to contain positive "
                              "integers")
         candidates = sorted({int(value) for value in candidates_raw})
     num_threads_auto = _get_auto_num_threads()
     num_threads_max = _get_max_num_threads()
     # The default that is active now: it is not necessarily the automatically selected one, an earlier
-    # call of this function or of gpboost_set_default_num_threads() may have changed it
-    num_threads_before = gpboost_get_default_num_threads()
+    # call of this function or of set_default_num_threads() may have changed it
+    num_threads_before = get_default_num_threads()
     if candidates is None:
         candidates = _thread_candidates(num_threads_auto, num_threads_max)
     else:
         above_max = [value for value in candidates if value > num_threads_max]
         if len(above_max) > 0:
-            warnings.warn("gpboost_tune_num_threads: " + ", ".join(str(value) for value in above_max)
+            warnings.warn("tune_num_threads: " + ", ".join(str(value) for value in above_max)
                           + " threads cannot be used, the number of threads is limited to "
                           + str(num_threads_max) + ". Set the environment variable "
                           "'OMP_NUM_THREADS' before importing gpboost to use more threads")
             candidates = [value for value in candidates if value <= num_threads_max]
     if len(candidates) == 0:
-        raise ValueError("gpboost_tune_num_threads: no number of threads left to benchmark")
+        raise ValueError("tune_num_threads: no number of threads left to benchmark")
     if len(candidates) == 1:
+        # There is nothing to compare, but the single number of threads is the selected one and is
+        # applied like the result of a benchmark
+        num_threads_selected = candidates[0]
         if verbose:
-            print("Only %d thread(s) can be used on this machine, there is nothing to benchmark."
-                  % candidates[0])
+            if num_threads_max == 1:
+                print("Only one thread can be used on this machine, there is nothing to benchmark.")
+            else:
+                print("Only %d thread(s) have been requested, there is nothing to benchmark."
+                      % num_threads_selected)
+        default_was_set = False
+        if set_default:
+            set_default_num_threads(0 if num_threads_selected == num_threads_auto
+                                    else num_threads_selected)
+            default_was_set = get_default_num_threads() != num_threads_before
         # The message that points to this function has done its job once it has been called
         _suppress_num_threads_message()
-        return {"num_threads": gpboost_get_default_num_threads(),
+        return {"num_threads": num_threads_selected,
                 "num_threads_automatic": num_threads_auto,
                 "num_threads_max": num_threads_max,
-                "num_threads_before": gpboost_get_default_num_threads(), "default_was_set": False,
-                "timings": None, "aggregate": None, "tolerance_used": tolerance}
+                "num_threads_before": num_threads_before, "default_was_set": default_was_set,
+                "timings": None, "aggregate": None, "tolerance_used": tolerance,
+                "safeguard_was_relaxed": False}
 
     # The number of threads of the process is not changed by the benchmark: every model gets its
     # number of threads via 'num_parallel_threads', which is set and reset again by every operation
@@ -618,6 +643,7 @@ def gpboost_tune_num_threads(workloads="all", num_threads_candidates=None, n_rep
     selection = _thread_selection(normalized, candidates, tolerance_used, max_relative_slowdown)
     aggregate = selection["aggregate"]
     acceptable = selection["acceptable"]
+    safeguard_was_relaxed = selection["safeguard_was_relaxed"]
     num_threads_selected = selection["num_threads"]
 
     timings = pd.DataFrame({
@@ -636,9 +662,9 @@ def gpboost_tune_num_threads(workloads="all", num_threads_candidates=None, n_rep
     # this function is called
     default_was_set = False
     if set_default:
-        gpboost_set_default_num_threads(0 if num_threads_selected == num_threads_auto
+        set_default_num_threads(0 if num_threads_selected == num_threads_auto
                                 else num_threads_selected)
-        default_was_set = gpboost_get_default_num_threads() != num_threads_before
+        default_was_set = get_default_num_threads() != num_threads_before
     # The message that points to this function has done its job once this function has been called
     _suppress_num_threads_message()
 
@@ -655,11 +681,15 @@ def gpboost_tune_num_threads(workloads="all", num_threads_candidates=None, n_rep
                   "been reached." % (n_rep, max_time))
         print("Measurement noise: %.1f%%, tolerance used: %.1f%%"
               % (100 * noise, 100 * tolerance_used))
+        if safeguard_was_relaxed:
+            print("No number of threads is within %.0f%% of the fastest one for every workload, the "
+                  "workloads disagree. The number of threads whose slowest workload is the least "
+                  "slow has been selected." % (100 * max_relative_slowdown))
         if default_was_set:
             print("GPBoost now uses %d thread(s) as the tuned default of this session (it used %d). "
                   "This is not an optimal number of threads: the best number of threads depends on "
                   "the model and on the data." % (num_threads_selected, num_threads_before))
-            print("Call gpboost_set_default_num_threads(%d) to use it again in a later session."
+            print("Call gpboost.set_default_num_threads(%d) to use it again in a later session."
                   % num_threads_selected)
         elif set_default:
             print("GPBoost continues to use %d thread(s) by default." % num_threads_selected)
@@ -674,7 +704,8 @@ def gpboost_tune_num_threads(workloads="all", num_threads_candidates=None, n_rep
             "default_was_set": default_was_set,
             "timings": timings,
             "aggregate": aggregate_table,
-            "tolerance_used": tolerance_used}
+            "tolerance_used": tolerance_used,
+            "safeguard_was_relaxed": safeguard_was_relaxed}
 
 
 
@@ -5254,7 +5285,7 @@ class GPModel(object):
 
             num_parallel_threads : integer, optional (default=None)
                 The number of parallel threads for OMP. If num_parallel_threads=None, the default number of threads
-                of the session is used, see gpboost_get_default_num_threads(). Initially, this is the number of physical
+                of the session is used, see get_default_num_threads(). Initially, this is the number of physical
                 performance cores is used. On CPUs whose cores have different speeds (e.g., the performance and
                 efficiency cores of recent Intel CPUs or Apple silicon), the fastest cores are counted, and
                 hyperthreads are counted only once, since slow threads can slow down an entire model. The next
@@ -5262,8 +5293,8 @@ class GPModel(object):
                 bandwidth limit of a control group (e.g., of a container) is respected as well. The number of
                 threads that OpenMP is configured to use is kept if the environment variable OMP_NUM_THREADS is set
                 or if the cores of the CPU cannot be determined. For ordinary use, leave num_parallel_threads unspecified to use this
-                default. The default of the session can be changed with gpboost_tune_num_threads(), which benchmarks different
-                numbers of threads, or with gpboost_set_default_num_threads(). Setting
+                default. The default of the session can be changed with tune_num_threads(), which benchmarks different
+                numbers of threads, or with set_default_num_threads(). Setting
                 num_parallel_threads=1 disables the OpenMP parallelization of the model and
                 can substantially increase the runtime. A single thread should be chosen deliberately, e.g.,
                 to distribute the resources among concurrent model fits or for a specific test; it is not
