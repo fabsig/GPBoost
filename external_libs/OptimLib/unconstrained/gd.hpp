@@ -256,9 +256,16 @@ internal::gd_basic_impl(
         x = inv_transform(x, bounds_type, lower_bounds, upper_bounds);
     }
 
-    error_reporting(init_out_vals, x, opt_objfn, opt_data, 
-                    success, grad_err, grad_err_tol, iter, iter_max, 
+    error_reporting(init_out_vals, x, opt_objfn, opt_data,
+                    success, grad_err, grad_err_tol, iter, iter_max,
                     conv_failure_switch, settings_inp);
+
+    // ChangedForGPBoost: 'success' is determined by 'grad_err' alone, the second convergence criterion of
+    //	this algorithm is reported separately. Set after 'error_reporting', which overwrites the other
+    //	returned values
+    if (settings_inp) {
+        settings_inp->opt_rel_sol_change = rel_sol_change;
+    }
 
     //
 

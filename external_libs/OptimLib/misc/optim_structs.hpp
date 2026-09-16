@@ -25,6 +25,8 @@
 #ifndef optim_structs_HPP
 #define optim_structs_HPP
 
+#include <limits> // ChangedForGPBoost: for 'opt_rel_sol_change' below
+
 // BFGS
 
 struct bfgs_settings_t
@@ -229,6 +231,11 @@ struct algo_settings_t
 
     size_t opt_iter;
     double opt_error_value;
+    // ChangedForGPBoost: the relative change in the parameters on the last iteration. 'opt_error_value' only
+    //	holds the error of one of the convergence criteria (the change in the objective function for 'nm', the
+    //	norm of the gradient for 'gd'), so the second criterion of these algorithms cannot be checked without it.
+    //	Infinity if the algorithm does not set it
+    double opt_rel_sol_change = std::numeric_limits<double>::infinity();
 
     // algorithm-specific parameters
 

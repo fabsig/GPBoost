@@ -362,8 +362,15 @@ internal::nm_impl(
     }
 
     error_reporting(init_out_vals, prop_out, opt_objfn, opt_data,
-                    success, rel_objfn_change, rel_objfn_change_tol, iter, iter_max, 
+                    success, rel_objfn_change, rel_objfn_change_tol, iter, iter_max,
                     conv_failure_switch, settings_inp);
+
+    // ChangedForGPBoost: 'success' is determined by 'rel_objfn_change' alone, the second convergence
+    //	criterion of this algorithm is reported separately. Set after 'error_reporting', which overwrites
+    //	the other returned values
+    if (settings_inp) {
+        settings_inp->opt_rel_sol_change = rel_sol_change;
+    }
 
     //
     

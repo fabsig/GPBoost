@@ -179,12 +179,41 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("the parameter criterion in the last allowed iteration is not a non-convergence", {
+    # The optimizers of OptimLib report only one of their two convergence criteria through their return
+    # value ('rel_objfn_change' for 'nelder_mead', the norm of the gradient for 'adam'). With
+    # 'relative_change_in_parameters' the criterion that GPBoost has selected is the other one
+    for (optimizer in c("nelder_mead", "adam")) {
+      params <- list(optimizer_cov = optimizer, convergence_criterion = "relative_change_in_parameters")
+      out <- capture.output({
+        gp_full <- fitGPModel(group_data = group, y = y, X = X, likelihood = "gaussian",
+                              params = c(params, list(maxit = 1000)))
+      })
+      expect_equal(convergence_status(gp_full), 0L)
+      num_it <- gp_full$get_num_optim_iter()
+      expect_gt(num_it, 1)
+      out <- capture.output({
+        gp_exact <- fitGPModel(group_data = group, y = y, X = X, likelihood = "gaussian",
+                               params = c(params, list(maxit = num_it)))
+      })
+      expect_equal(convergence_status(gp_exact), 0L)
+      expect_false(has_warning(out, WARNING_MAX_ITER))
+      out <- capture.output({
+        gp_short <- fitGPModel(group_data = group, y = y, X = X, likelihood = "gaussian",
+                               params = c(params, list(maxit = num_it - 1)))
+      })
+      expect_equal(convergence_status(gp_short), 1L)
+      expect_true(has_warning(out, WARNING_MAX_ITER))
+    }
+  })
+
   test_that("a forced Vecchia neighbour redetermination keeps the reporting consistent", {
     # With an ARD covariance function the nearest neighbours are redetermined in the transformed space, and
-    # the redetermination is forced in the iteration in which the optimizer stops. The convergence criterion
-    # is therefore evaluated anew at the state that is returned, also when the iteration budget is exhausted.
-    # Whether the criterion still holds after the redetermination depends on the data, so the invariant
-    # between the status and the reported severity is tested and not a fixed status
+    # the redetermination is forced in the iteration in which the optimizer stops, so this exercises that
+    # path. Note what this does not do: it does not check that the criterion is re-evaluated after the
+    # redetermination, since whether the criterion still holds afterwards depends on the data. Only the
+    # invariant between the status and the reported severity is tested, which an implementation that keeps
+    # a stale criterion would also satisfy
     coords <- cbind(sim_rand_unif(n = n, init_c = 0.23), sim_rand_unif(n = n, init_c = 0.77))
     y_gp <- b[group] + xi
     fit_ard <- function(maxit) {

@@ -812,11 +812,14 @@ namespace GPBoost {
 		//}
 		if (optimizer != "lbfgs" && optimizer != "lbfgs_linesearch_nocedal_wright") {//only for optimizers from OptimLib
 			num_it = (int)settings.opt_iter;
-			//the value returned by OptimLib is based on the change in the objective function only. For
-			//	'relative_change_in_parameters', the tolerance for the objective function is set to 1e-20 above, so an
-			//	optimizer that stopped since the parameters did not change anymore reports no convergence. Stopping
-			//	before the iterations are used up means that one of the criteria was satisfied in either case
-			convergence_criterion_satisfied = convergence_criterion_satisfied || num_it < max_iter;
+			//The optimizers of OptimLib stop when the error of one of their two convergence criteria is within its
+			//	tolerance or when the maximal number of iterations is reached. The value they return covers only the
+			//	first criterion ('rel_objfn_change' for 'nm', 'grad_err' for 'gd'), the error of the second one is
+			//	reported in 'opt_rel_sol_change'. Whichever of the two GPBoost has selected through
+			//	'convergence_criterion' is the one whose tolerance is not set to 1e-20 above, so the two conditions
+			//	together say whether the optimizer converged, for every criterion and also in the last iteration
+			convergence_criterion_satisfied = convergence_criterion_satisfied ||
+				settings.opt_rel_sol_change <= settings.rel_sol_change_tol;
 			neg_log_likelihood = settings.opt_fn_value;
 			if (profile_out_error_variance || profile_out_regression_coef) {
 				vec_t* grad_dummy = nullptr;
