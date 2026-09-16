@@ -226,11 +226,14 @@ struct algo_settings_t
 
     // values returned upon successful completion
 
-    double opt_fn_value;      // will be returned by the optimization algorithm
+    // ChangedForGPBoost: these are written by 'error_reporting()'. An algorithm that returns before it, such as
+    //	'gd' and 'bfgs' when the starting point already satisfies the gradient criterion, would otherwise leave
+    //	them indeterminate for the caller. NaN so that a value that was never written does not pass unnoticed
+    double opt_fn_value = std::numeric_limits<double>::quiet_NaN();      // will be returned by the optimization algorithm
     Vec_t opt_root_fn_values; // will be returned by the root-finding method
 
-    size_t opt_iter;
-    double opt_error_value;
+    size_t opt_iter = 0;
+    double opt_error_value = std::numeric_limits<double>::quiet_NaN();
     // ChangedForGPBoost: the relative change in the parameters on the last iteration. 'opt_error_value' only
     //	holds the error of one of the convergence criteria (the change in the objective function for 'nm', the
     //	norm of the gradient for 'gd'), so the second criterion of these algorithms cannot be checked without it.

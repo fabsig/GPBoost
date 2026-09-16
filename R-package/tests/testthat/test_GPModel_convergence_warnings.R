@@ -251,6 +251,30 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("'adam' returns defined results when it starts at the optimum", {
+    # 'adam' returns before the number of iterations and the objective function value are written when the
+    # gradient criterion already holds at the starting point, so these have to be set for that case as well
+    out <- capture.output({
+      gp_full <- fitGPModel(group_data = group, y = y, likelihood = "gaussian",
+                            params = list(optimizer_cov = "adam", maxit = 1000))
+    })
+    expect_equal(convergence_status(gp_full), 0L)
+    nll_full <- gp_full$get_current_neg_log_likelihood()
+    out <- capture.output({
+      gp_opt <- fitGPModel(group_data = group, y = y, likelihood = "gaussian",
+                           params = list(optimizer_cov = "adam", maxit = 1000,
+                                         init_cov_pars = as.numeric(gp_full$get_cov_pars())))
+    })
+    expect_equal(convergence_status(gp_opt), 0L)
+    expect_false(has_warning(out, WARNING_MAX_ITER))
+    num_it <- gp_opt$get_num_optim_iter()
+    expect_true(is.finite(num_it))
+    expect_gte(num_it, 0)
+    expect_lte(num_it, 1000)
+    expect_true(is.finite(gp_opt$get_current_neg_log_likelihood()))
+    expect_equal(gp_opt$get_current_neg_log_likelihood(), nll_full, tolerance = 1E-3)
+  })
+
   test_that("the GPBoost algorithm does not warn about the internal parameter estimations", {
     # The covariance parameters are re-estimated in every boosting iteration, often without converging.
     # These internal estimations stay at the Debug level, also with a very small 'maxit'
