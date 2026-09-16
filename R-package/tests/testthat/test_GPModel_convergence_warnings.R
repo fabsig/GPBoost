@@ -145,6 +145,56 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_reporting_matches_status(out, gp_model)
   })
 
+  test_that("convergence in the last allowed iteration is not a non-convergence", {
+    # The number of iterations does not distinguish an optimizer that satisfied its convergence criterion
+    # in the last allowed iteration from one that exhausted its iteration budget: both report 'maxit'
+    # iterations. The number of iterations of a converged run is measured first and then used as 'maxit',
+    # so that the criterion is satisfied in exactly the last allowed iteration
+    for (optimizer in c("gradient_descent", "fisher_scoring", "lbfgs", "lbfgs_linesearch_nocedal_wright")) {
+      out <- capture.output({
+        gp_full <- fitGPModel(group_data = group, y = y, X = X, likelihood = "gaussian",
+                              params = list(optimizer_cov = optimizer, maxit = 1000))
+      })
+      expect_equal(convergence_status(gp_full), 0L)
+      num_it <- gp_full$get_num_optim_iter()
+      expect_gt(num_it, 1)
+      # Exactly enough iterations
+      out <- capture.output({
+        gp_exact <- fitGPModel(group_data = group, y = y, X = X, likelihood = "gaussian",
+                               params = list(optimizer_cov = optimizer, maxit = num_it))
+      })
+      expect_equal(gp_exact$get_num_optim_iter(), num_it)
+      expect_equal(convergence_status(gp_exact), 0L)
+      expect_false(has_warning(out, WARNING_MAX_ITER))
+      # One iteration too few: the budget is genuinely exhausted
+      out <- capture.output({
+        gp_short <- fitGPModel(group_data = group, y = y, X = X, likelihood = "gaussian",
+                               params = list(optimizer_cov = optimizer, maxit = num_it - 1))
+      })
+      expect_equal(convergence_status(gp_short), 1L)
+      expect_true(has_warning(out, WARNING_MAX_ITER))
+    }
+  })
+
+  test_that("an estimation that starts at the optimum does not warn with maxit = 1", {
+    # lbfgs reports one iteration both when the initial point is already a minimizer and when a single
+    # iteration was all that was allowed
+    for (optimizer in c("lbfgs", "lbfgs_linesearch_nocedal_wright")) {
+      out <- capture.output({
+        gp_full <- fitGPModel(group_data = group, y = y, likelihood = "gaussian",
+                              params = list(optimizer_cov = optimizer, maxit = 1000))
+      })
+      expect_equal(convergence_status(gp_full), 0L)
+      out <- capture.output({
+        gp_one <- fitGPModel(group_data = group, y = y, likelihood = "gaussian",
+                             params = list(optimizer_cov = optimizer, maxit = 1,
+                                           init_cov_pars = as.numeric(gp_full$get_cov_pars())))
+      })
+      expect_equal(convergence_status(gp_one), 0L)
+      expect_false(has_warning(out, WARNING_MAX_ITER))
+    }
+  })
+
   test_that("the GPBoost algorithm does not warn about the internal parameter estimations", {
     # The covariance parameters are re-estimated in every boosting iteration, often without converging.
     # These internal estimations stay at the Debug level, also with a very small 'maxit'

@@ -35,6 +35,11 @@ private:
     Scalar m_gnorm;                     // Norm of the gradient
     Vector m_gradp;                     // Old gradient
     Vector m_drt;                       // Moving direction
+    // ChangedForGPBoost: true if the last run of 'minimize()' has terminated since the convergence criterion
+    //	(norm of the gradient or change in the objective function) was satisfied, false if it has terminated
+    //	since the maximal number of iterations was reached. The two cannot be distinguished from the returned
+    //	number of iterations, which is the same in both cases when convergence occurs in the last iteration
+    bool m_criterion_satisfied = false;
 
     // Reset internal variables
     // n: dimension of the vector to be optimized
@@ -153,6 +158,7 @@ public:
         // Early exit if the initial x is already a minimizer
         if (m_gnorm <= m_param.epsilon || m_gnorm <= m_param.epsilon_rel * x.norm())
         {
+            m_criterion_satisfied = true; // ChangedForGPBoost
             return 1;
         }
 
@@ -220,6 +226,10 @@ public:
                     has_converged = true;
                 }
             }
+            // ChangedForGPBoost: the convergence criterion is recorded before the test on the number of
+            //	iterations, so that a run which satisfies the criterion in its last allowed iteration is
+            //	not mistaken for one that has exhausted its iteration budget
+            bool criterion_satisfied = has_converged;
             // Maximum number of iterations
             if (m_param.max_iterations != 0 && k >= m_param.max_iterations)
             {
@@ -258,11 +268,13 @@ public:
                             has_converged = true;
                         }
                     }
+                    criterion_satisfied = has_converged; // ChangedForGPBoost
                 }//end check convergence again
             }//end potentially redetermine nearest neighbors for Vecchia approximation or/and inducing points
 
             if (has_converged)
             {
+                m_criterion_satisfied = criterion_satisfied; // ChangedForGPBoost
                 m_bfgs_given = m_bfgs;
                 return k;
             }
@@ -315,6 +327,12 @@ public:
     /// Returning the Euclidean norm of the final gradient.
     ///
     Scalar final_grad_norm() const { return m_gnorm; }
+
+    ///
+    /// ChangedForGPBoost: Returning whether the last run of `minimize()` has terminated since the
+    /// convergence criterion was satisfied and not since the maximal number of iterations was reached.
+    ///
+    bool CriterionSatisfied() const { return m_criterion_satisfied; }
 };
 
 }  // namespace LBFGSpp

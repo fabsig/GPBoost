@@ -622,6 +622,9 @@ namespace GPBoost {
 	*		Restarts are only done as long as the objective function still decreases by more than 'delta_rel_conv' and as long as the total
 	*		number of iterations is below 'max_iter'. This can help when the line search fails (e.g., for non-smooth approximate marginal
 	*		likelihoods such as the one of the 'asymmetric_laplace' likelihood), since lbfgs then terminates without having converged
+	* \param[out] convergence_criterion_satisfied True if the optimizer has terminated since its convergence criterion was satisfied,
+	*		false if it has terminated since the maximal number of iterations was reached. This cannot be inferred from 'num_it', which
+	*		is the same in both cases when the criterion is satisfied in the last allowed iteration
 	*/
 	template<typename T_mat, typename T_chol>
 	void OptimExternal(REModelTemplate<T_mat, T_chol>* re_model_templ,
@@ -644,7 +647,8 @@ namespace GPBoost {
 		double initial_step_factor,
 		bool reuse_m_bfgs_from_previous_call,
 		int m_lbfgs,
-		int max_num_restarts_lbfgs) {
+		int max_num_restarts_lbfgs,
+		bool& convergence_criterion_satisfied) {
 		// Some checks
 		if (re_model_templ->EstimateAuxPars()) {
 			CHECK(num_cov_par + nb_aux_pars == (int)cov_pars.size());
@@ -748,11 +752,13 @@ namespace GPBoost {
 					param_LBFGSpp.linesearch = 1;//LBFGS_LINESEARCH_BACKTRACKING_ARMIJO
 					LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchBacktracking> solver(param_LBFGSpp);
 					num_it_restart = solver.minimize(ll_fun, pars_init, neg_log_likelihood, reuse_m_bfgs, re_model_templ->GetMBFGS());
+					convergence_criterion_satisfied = solver.CriterionSatisfied();
 				}
 				else if (optimizer == "lbfgs_linesearch_nocedal_wright") {
 					param_LBFGSpp.linesearch = 3;//LBFGS_LINESEARCH_BACKTRACKING_STRONG_WOLFE
 					LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchNocedalWright> solver(param_LBFGSpp);
 					num_it_restart = solver.minimize(ll_fun, pars_init, neg_log_likelihood, reuse_m_bfgs, re_model_templ->GetMBFGS());
+					convergence_criterion_satisfied = solver.CriterionSatisfied();
 				}
 				num_it += num_it_restart;
 				double nll_current = neg_log_likelihood;
@@ -803,6 +809,8 @@ namespace GPBoost {
 		//}
 		if (optimizer != "lbfgs" && optimizer != "lbfgs_linesearch_nocedal_wright") {//only for optimizers from OptimLib
 			num_it = (int)settings.opt_iter;
+			//the optimizers of OptimLib do not report why they have terminated, the number of iterations is the only indication
+			convergence_criterion_satisfied = num_it < max_iter;
 			neg_log_likelihood = settings.opt_fn_value;
 			if (profile_out_error_variance || profile_out_regression_coef) {
 				vec_t* grad_dummy = nullptr;

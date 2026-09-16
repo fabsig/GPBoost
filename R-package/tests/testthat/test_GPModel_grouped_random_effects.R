@@ -627,16 +627,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         params_loc <- list(optimizer_cov = "lbfgs",  
                            cg_preconditioner_type=cg_preconditioner_type, num_rand_vec_trace=100, 
                            init_cov_pars=c(0.23, 0.1, 0.5), estimate_cov_par_index = c(1,1,0), init_coef_aux_pars_from_iid_model = FALSE)
-        capture.output( gp_model_fix <- fitGPModel(group_data = cbind(group,group2), y = y, matrix_inversion_method = inv_method,
-                                                   params = params_loc) , file='NUL')
+        invisible(capture.output( gp_model_fix <- fitGPModel(group_data = cbind(group,group2), y = y, matrix_inversion_method = inv_method,
+                                                             params = params_loc) ))
         nll_opt_fix <- 1328.897384
         cov_pars_fix <- c(0.52972794645, 0.02562029714, 1.21929637610, 0.18314784671, 0.50000000000, 0.10972005168)
         expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE))-cov_pars_fix)),tolerance_loc_1)
         expect_lt(sum(abs(gp_model_fix$get_cov_pars(std_err = TRUE)[1,3]-params_loc$init_cov_pars[3])),TOLERANCE_STRICT)
         expect_lt(abs(gp_model_fix$get_current_neg_log_likelihood()-nll_opt_fix), tolerance_loc_4)
         # with weights
-        capture.output( gp_model_fix_w <- fitGPModel(group_data = cbind(group,group2), y = y, matrix_inversion_method = inv_method,
-                                                     weights = weights, params = params_loc) , file='NUL')
+        invisible(capture.output( gp_model_fix_w <- fitGPModel(group_data = cbind(group,group2), y = y, matrix_inversion_method = inv_method,
+                                                               weights = weights, params = params_loc) ))
         expect_lt(sum(abs(as.vector(gp_model_fix_w$get_cov_pars(std_err = TRUE))-cov_pars_fix)),tolerance_loc_1)
         expect_lt(sum(abs(gp_model_fix_w$get_cov_pars(std_err = TRUE)[1,3]-params_loc$init_cov_pars[3])),TOLERANCE_STRICT)
         expect_lt(abs(gp_model_fix_w$get_current_neg_log_likelihood()-nll_opt_fix), tolerance_loc_4)
@@ -705,11 +705,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     ## Two crossed random effects and a random slope
     y <- Z1%*%b1 + Z2%*%b2 + Z3%*%b3 + xi
-    capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2),
-                                           group_rand_coef_data = x,
-                                           ind_effect_group_rand_coef = 1,
-                                           y = y, matrix_inversion_method = "cholesky",
-                                           params = list(optimizer_cov = "fisher_scoring", maxit=5, init_coef_aux_pars_from_iid_model = FALSE)) , file='NUL')
+    invisible(capture.output( gp_model <- fitGPModel(group_data = cbind(group,group2),
+                                                     group_rand_coef_data = x,
+                                                     ind_effect_group_rand_coef = 1,
+                                                     y = y, matrix_inversion_method = "cholesky",
+                                                     params = list(optimizer_cov = "fisher_scoring", maxit=5, init_coef_aux_pars_from_iid_model = FALSE)) ))
     expected_values <- c(0.49554952, 0.02546769, 1.24880860, 0.18983953, 1.05505134, 0.22337199, 1.13840014, 0.17950490)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-expected_values)),TOLERANCE_MEDIUM)
     expect_equal(gp_model$get_num_optim_iter(), 5)
@@ -812,8 +812,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # The names of the covariance parameters are only available after the parameters have been
     #   set / estimated. One optimizer iteration is enough for this ('maxit = 1')
     cov_par_names <- function(..., y_train = y) {
-      capture.output( gp_model <- fitGPModel(..., y = y_train, matrix_inversion_method = "cholesky",
-                                             params = list(maxit = 1, init_coef_aux_pars_from_iid_model = FALSE)) , file='NUL')
+      invisible(capture.output( gp_model <- fitGPModel(..., y = y_train, matrix_inversion_method = "cholesky",
+                                                       params = list(maxit = 1, init_coef_aux_pars_from_iid_model = FALSE)) ))
       names(gp_model$get_cov_pars())
     }
     

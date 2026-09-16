@@ -896,11 +896,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
     # Continue training
     params <- list(optimizer_cov = "gradient_descent", lr_cov=0.01, maxit = 2, init_coef_aux_pars_from_iid_model = FALSE)
-    capture.output( gp_model_2 <- fitGPModel(gp_coords = coords, cov_function = "exponential", y = y, X = X, params = params) , file='NUL')
+    invisible(capture.output( gp_model_2 <- fitGPModel(gp_coords = coords, cov_function = "exponential", y = y, X = X, params = params) ))
     expect_equal(gp_model_2$get_num_optim_iter(), 2)
     params$maxit <- 1
-    capture.output( gp_model_1_1 <- fitGPModel(gp_coords = coords, cov_function = "exponential", y = y, X = X, params = params) , file='NUL')
-    capture.output( fit(gp_model_1_1, y = y, X = X, params = params) , file='NUL')
+    invisible(capture.output( gp_model_1_1 <- fitGPModel(gp_coords = coords, cov_function = "exponential", y = y, X = X, params = params) ))
+    invisible(capture.output( fit(gp_model_1_1, y = y, X = X, params = params) ))
     expect_lt(sum(abs(as.vector(gp_model_1_1$get_cov_pars(std_err = TRUE))-as.vector(gp_model_2$get_cov_pars(std_err = TRUE)))), TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model_1_1$get_coef(std_err = TRUE))-as.vector(gp_model_2$get_coef(std_err = TRUE)))), TOLERANCE_MEDIUM)
     expect_lt(abs(gp_model_1_1$get_current_neg_log_likelihood() - gp_model_2$get_current_neg_log_likelihood()), TOLERANCE_MEDIUM)
@@ -2768,10 +2768,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         # Holding some parameters fix
         params_fix <- params
         params_fix$estimate_cov_par_index <- c(1,0,0)
-        capture.output( gp_model_fix <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                                   gp_approx = gp_approx, num_ind_points = 50, num_neighbors = 10,
-                                                   y = y, X = X,  matrix_inversion_method = "cholesky",
-                                                   params = params_fix) , file='NUL')
+        invisible(capture.output( gp_model_fix <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                             gp_approx = gp_approx, num_ind_points = 50, num_neighbors = 10,
+                                                             y = y, X = X,  matrix_inversion_method = "cholesky",
+                                                             params = params_fix) ))
         cov_pars_fix <- c(0.08591799937, 1.43524508454, 0.17864807736)
         nll_fix <- 122.8497227
         expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = FALSE))-cov_pars_fix)), TOLERANCE_LOOSE)

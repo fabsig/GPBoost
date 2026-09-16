@@ -1531,7 +1531,10 @@ namespace GPBoost {
 					RedetermineNearestNeighborsVecchiaInducingPointsFITC(true);//called if gp_approx_ == "vecchia" or  gp_approx_ == "full_scale_vecchia" and neighbors are selected based on correlations and not distances or gp_approx_ == "fitc" with ard kernel
 				}
 				bool na_or_inf_occurred = false;
-				bool max_iter_reached = false;//true if the maximal number of iterations has been reached (for cold restarts: in the last restart, since 'num_it' is the sum over all restarts)
+				//true if the optimizer has terminated since its convergence criterion was satisfied and not since the maximal
+				//	number of iterations was reached. The number of iterations does not distinguish the two cases: an optimizer
+				//	that satisfies its criterion in the last allowed iteration reports the full budget as well
+				bool convergence_criterion_satisfied = false;
 				line_search_has_not_been_successful_ = false;
 				restarts_have_stopped_without_improvement_ = false;
 				convergence_status_ = 0;
@@ -1614,9 +1617,8 @@ namespace GPBoost {
 							optimizer_cov_pars_, profile_out_error_variance_, profile_out_coef,
 							neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_,
 							cold_restart == 0 && reuse_m_bfgs_from_previous_call,//restarts use a re-initialized approximate Hessian
-							m_lbfgs_, num_restarts_in_optim_external);
-						num_it_total += num_it;
-						max_iter_reached = num_it >= max_iter_;//'num_it' is the number of iterations of this (cold) restart, 'num_it_total' the sum over all restarts
+							m_lbfgs_, num_restarts_in_optim_external, convergence_criterion_satisfied);
+						num_it_total += num_it;//'num_it' is the number of iterations of this (cold) restart, 'num_it_total' the sum over all restarts
 						// Check for NA or Inf
 						if (optimizer_cov_pars_ == "bfgs_optim_lib" || optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright") {
 							if (learn_covariance_parameters) {
@@ -1930,6 +1932,7 @@ namespace GPBoost {
 						// Check whether to terminate
 						if (terminate_optim) {
 							num_it = num_iter_ + 1;
+							convergence_criterion_satisfied = true;
 							break;
 						}
 						//increase learning rates again
@@ -1977,9 +1980,9 @@ namespace GPBoost {
 						delta_rel_conv_, convergence_criterion_, num_it,
 						learn_covariance_parameters, "nelder_mead", profile_out_error_variance_, false,
 						neg_log_likelihood_, num_cov_par_, NumAuxPars(), GetAuxPars(), has_covariates_, lr_cov_init_, reuse_m_bfgs_from_previous_call,
-						m_lbfgs_, 0);
+						m_lbfgs_, 0, convergence_criterion_satisfied);
 				}
-				if (max_iter_reached || num_it == max_iter_) {
+				if (!convergence_criterion_satisfied) {
 					convergence_status_ = 1;
 					if (called_in_GPBoost_algorithm || !report_convergence_warnings_) {
 						Log::REDebug("GPModel: no convergence after the maximal number of iterations "

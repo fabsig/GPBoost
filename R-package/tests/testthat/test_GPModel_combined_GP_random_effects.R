@@ -717,11 +717,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y <- eps_svc + xi
     init_cov_pars <- c(var(y)/2,var(y)/2,var(y)/2,var(y)/2,var(y)/2,mean(dist(coords))/3,var(y)/2,mean(dist(coords))/3,var(y)/2,mean(dist(coords))/3)
     # Fit model
-    capture.output( gp_model <- fitGPModel(y = y, gp_coords = coords, cov_function = "exponential", gp_rand_coef_data = Z_SVC,
-                                           group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
-                                           params = list(optimizer_cov = "gradient_descent",
-                                                         lr_cov = 0.1, use_nesterov_acc = TRUE,
-                                                         acc_rate_cov = 0.5, maxit=10, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE)) , file='NUL')
+    invisible(capture.output( gp_model <- fitGPModel(y = y, gp_coords = coords, cov_function = "exponential", gp_rand_coef_data = Z_SVC,
+                                                     group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                                                     params = list(optimizer_cov = "gradient_descent",
+                                                                   lr_cov = 0.1, use_nesterov_acc = TRUE,
+                                                                   acc_rate_cov = 0.5, maxit=10, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE)) ))
     expected_values <- c(0.4005820, 0.3111155, 0.4564903, 0.2693683, 1.3819153, 0.7034572,
                          1.0378165, 0.5916405, 1.3684672, 0.6861339, 0.1854759, 0.1430030,
                          0.5790945, 0.9748316, 0.2103132, 0.4453663, 0.2639379, 0.8772996, 0.2210313, 0.9282390)
@@ -746,10 +746,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),1E-6)
     
     # Fisher scoring
-    capture.output( gp_model <- fitGPModel(y = y, gp_coords = coords, cov_function = "exponential", gp_rand_coef_data = Z_SVC,
-                                           group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
-                                           params = list(optimizer_cov = "fisher_scoring",
-                                                         use_nesterov_acc= FALSE, maxit=2, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE)) , file='NUL')
+    invisible(capture.output( gp_model <- fitGPModel(y = y, gp_coords = coords, cov_function = "exponential", gp_rand_coef_data = Z_SVC,
+                                                     group_data = cbind(group,group2), group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                                                     params = list(optimizer_cov = "fisher_scoring",
+                                                                   use_nesterov_acc= FALSE, maxit=2, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE)) ))
     expected_values <- c(0.3522488799, 0.5692314997, 1.4557330868, 1.0711929149, 1.5665274019, 0.1601443490, 0.9923054860, 0.1095828593, 0.2211923864, 0.3846536135)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-expected_values)),1E-6)
     expect_equal(gp_model$get_num_optim_iter(), 2)

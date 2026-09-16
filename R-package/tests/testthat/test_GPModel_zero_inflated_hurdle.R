@@ -113,7 +113,7 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     est2 <- c(gp2$get_cov_pars(), as.numeric(gp2$get_coef()), gp2$get_aux_pars(), gp2$get_current_neg_log_likelihood())
     expect_equal(as.numeric(est2), c(0.30056, -0.103469, 0.239158, 1.74669, 0.276, 864.526), tolerance = TOL_MED)
     # undocumented alias zero_inflated_gpd -> hurdle_gpd
-    capture.output( gp3 <- fitGPModel(group_data = group, likelihood = "zero_inflated_gpd", y = yg, X = X, params = list(maxit = 5, trace = FALSE)) , file='NUL')
+    invisible(capture.output( gp3 <- fitGPModel(group_data = group, likelihood = "zero_inflated_gpd", y = yg, X = X, params = list(maxit = 5, trace = FALSE)) ))
     expect_equal(gp3$get_likelihood_name(), "hurdle_gpd")
   })
 
@@ -188,9 +188,9 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     # Vecchia GP (Cholesky) -> exercises the Vecchia coupled grad_F
     muv <- exp(-0.2 + gp_re + 0.6 * xc)
     yv <- ifelse(u1 < p0r, 0L, qpois(u2, muv))
-    capture.output( gpv <- fitGPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "vecchia", num_neighbors = 15L,
-                                      vecchia_ordering = "none", likelihood = "zero_inflated_regression_poisson", y = yv, X = Xr,
-                                      matrix_inversion_method = "cholesky", params = list(maxit = 100, trace = FALSE)) , file='NUL')
+    invisible(capture.output( gpv <- fitGPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "vecchia", num_neighbors = 15L,
+                                                vecchia_ordering = "none", likelihood = "zero_inflated_regression_poisson", y = yv, X = Xr,
+                                                matrix_inversion_method = "cholesky", params = list(maxit = 100, trace = FALSE)) ))
     expect_equal(as.numeric(c(gpv$get_cov_pars(), as.numeric(gpv$get_coef()), gpv$get_current_neg_log_likelihood())),
                  c(0.549663, 0.150791, 0.031629, 0.74816, -0.277397, 1.42993, 580.322), tolerance = TOL_MED)
   })
@@ -212,8 +212,8 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     gi$set_optim_params(params = it_par)
     nll_i <- gi$neg_log_likelihood(cov_pars = c(0.5, 0.3), y = yc, fixed_effects = rep(0.0, 2 * n))
     expect_equal(nll_i, nll_c, tolerance = TOL_ITER)
-    capture.output( gfit <- fitGPModel(group_data = group_crossed, likelihood = "zero_inflated_regression_poisson_fisher_laplace", y = yc, X = Xr,
-                                       matrix_inversion_method = "iterative", params = c(list(maxit = 20, trace = FALSE), it_par)) , file='NUL')
+    invisible(capture.output( gfit <- fitGPModel(group_data = group_crossed, likelihood = "zero_inflated_regression_poisson_fisher_laplace", y = yc, X = Xr,
+                                                 matrix_inversion_method = "iterative", params = c(list(maxit = 20, trace = FALSE), it_par)) ))
     expect_true(all(is.finite(c(gfit$get_cov_pars(), as.numeric(gfit$get_coef())))))
     # Vecchia GP (distinct coordinates -> the !use_random_effects_indices_of_data_ zeta-gradient path): iterative
     # fitting must run and reproduce the Cholesky estimates.
@@ -223,8 +223,8 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
       num_neighbors = 15L, vecchia_ordering = "none", likelihood = "zero_inflated_regression_poisson_fisher_laplace",
       y = yv, X = Xr, matrix_inversion_method = mim, params = c(list(maxit = 100, trace = FALSE), extra))
     est_of <- function(gp) c(gp$get_cov_pars(), as.numeric(gp$get_coef()))
-    capture.output( est_vc <- est_of(fit_vecchia("cholesky")) , file='NUL')
-    capture.output( est_vi <- est_of(fit_vecchia("iterative", it_par)) , file='NUL')
+    invisible(capture.output( est_vc <- est_of(fit_vecchia("cholesky")) ))
+    invisible(capture.output( est_vi <- est_of(fit_vecchia("iterative", it_par)) ))
     expect_equal(est_vi, est_vc, tolerance = TOL_ITER)
   })
 
@@ -403,12 +403,12 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
       # Cholesky reference; the hurdle families use their default observed-Hessian Laplace (positive W, iterative supported).
       if (fam %in% iter_fams) {
         lik_it <- if (is_count(fam)) paste0(fam, "_fisher_laplace") else fam
-        capture.output( gp_ref <- if (is_count(fam)) fitGPModel(gp_coords = coords_rep, cov_function = "exponential", gp_approx = "vecchia",
-                                                                num_neighbors = 15L, vecchia_ordering = "none", likelihood = lik_it, y = y, X = X,
-                                                                matrix_inversion_method = "cholesky", params = list(maxit = 100, trace = FALSE)) else gp , file='NUL')
-        capture.output( gpi <- fitGPModel(gp_coords = coords_rep, cov_function = "exponential", gp_approx = "vecchia", num_neighbors = 15L,
-                                          vecchia_ordering = "none", likelihood = lik_it, y = y, X = X, matrix_inversion_method = "iterative",
-                                          params = c(list(maxit = 100, trace = FALSE), it_par)) , file='NUL')
+        invisible(capture.output( gp_ref <- if (is_count(fam)) fitGPModel(gp_coords = coords_rep, cov_function = "exponential", gp_approx = "vecchia",
+                                                                          num_neighbors = 15L, vecchia_ordering = "none", likelihood = lik_it, y = y, X = X,
+                                                                          matrix_inversion_method = "cholesky", params = list(maxit = 100, trace = FALSE)) else gp ))
+        invisible(capture.output( gpi <- fitGPModel(gp_coords = coords_rep, cov_function = "exponential", gp_approx = "vecchia", num_neighbors = 15L,
+                                                    vecchia_ordering = "none", likelihood = lik_it, y = y, X = X, matrix_inversion_method = "iterative",
+                                                    params = c(list(maxit = 100, trace = FALSE), it_par)) ))
         expect_equal(as.numeric(c(gpi$get_cov_pars(), gpi$get_coef(), gpi$get_aux_pars())),
                      as.numeric(c(gp_ref$get_cov_pars(), gp_ref$get_coef(), gp_ref$get_aux_pars())), tolerance = TOL_ITER)
       }
@@ -417,10 +417,10 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
 
   test_that("undocumented aliases resolve to the canonical likelihood", {
     y <- sim_y("zero_inflated_poisson", eta_true("zero_inflated_poisson", 0.7 * b1[group]))
-    capture.output( gp1 <- fitGPModel(group_data = group, likelihood = "hurdle_poisson", y = y, X = X, params = list(maxit = 5, trace = FALSE)) , file='NUL')
+    invisible(capture.output( gp1 <- fitGPModel(group_data = group, likelihood = "hurdle_poisson", y = y, X = X, params = list(maxit = 5, trace = FALSE)) ))
     expect_equal(gp1$get_likelihood_name(), "zero_inflated_poisson")
     yln <- sim_y("hurdle_lognormal", eta_true("hurdle_lognormal", 0.7 * b1[group]))
-    capture.output( gp2 <- fitGPModel(group_data = group, likelihood = "zero_inflated_lognormal", y = yln, X = X, params = list(maxit = 5, trace = FALSE)) , file='NUL')
+    invisible(capture.output( gp2 <- fitGPModel(group_data = group, likelihood = "zero_inflated_lognormal", y = yln, X = X, params = list(maxit = 5, trace = FALSE)) ))
     expect_equal(gp2$get_likelihood_name(), "hurdle_lognormal")
   })
 
