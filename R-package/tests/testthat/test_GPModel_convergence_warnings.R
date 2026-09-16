@@ -267,10 +267,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     })
     expect_equal(convergence_status(gp_opt), 0L)
     expect_false(has_warning(out, WARNING_MAX_ITER))
-    num_it <- gp_opt$get_num_optim_iter()
-    expect_true(is.finite(num_it))
-    expect_gte(num_it, 0)
-    expect_lte(num_it, 1000)
+    # Exactly zero iterations: this is the early return that is being tested, a larger number would mean
+    # that the starting point no longer satisfies the gradient criterion and that the branch is not reached
+    expect_equal(gp_opt$get_num_optim_iter(), 0L)
     expect_true(is.finite(gp_opt$get_current_neg_log_likelihood()))
     expect_equal(gp_opt$get_current_neg_log_likelihood(), nll_full, tolerance = 1E-3)
   })
