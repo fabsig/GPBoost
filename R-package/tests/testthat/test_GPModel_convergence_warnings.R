@@ -150,7 +150,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # in the last allowed iteration from one that exhausted its iteration budget: both report 'maxit'
     # iterations. The number of iterations of a converged run is measured first and then used as 'maxit',
     # so that the criterion is satisfied in exactly the last allowed iteration
-    for (optimizer in c("gradient_descent", "fisher_scoring", "lbfgs", "lbfgs_linesearch_nocedal_wright")) {
+    # 'nelder_mead' and 'adam' come from OptimLib, which reports whether its convergence criterion was
+    # satisfied through its return value. 'adam' is experimental but exercises the same path
+    for (optimizer in c("gradient_descent", "fisher_scoring", "nelder_mead", "adam",
+                        "lbfgs", "lbfgs_linesearch_nocedal_wright")) {
       out <- capture.output({
         gp_full <- fitGPModel(group_data = group, y = y, X = X, likelihood = "gaussian",
                               params = list(optimizer_cov = optimizer, maxit = 1000))
@@ -173,6 +176,30 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       })
       expect_equal(convergence_status(gp_short), 1L)
       expect_true(has_warning(out, WARNING_MAX_ITER))
+    }
+  })
+
+  test_that("a forced Vecchia neighbour redetermination keeps the reporting consistent", {
+    # With an ARD covariance function the nearest neighbours are redetermined in the transformed space, and
+    # the redetermination is forced in the iteration in which the optimizer stops. The convergence criterion
+    # is therefore evaluated anew at the state that is returned, also when the iteration budget is exhausted.
+    # Whether the criterion still holds after the redetermination depends on the data, so the invariant
+    # between the status and the reported severity is tested and not a fixed status
+    coords <- cbind(sim_rand_unif(n = n, init_c = 0.23), sim_rand_unif(n = n, init_c = 0.77))
+    y_gp <- b[group] + xi
+    fit_ard <- function(maxit) {
+      fitGPModel(gp_coords = coords, cov_function = "matern_ard", gp_approx = "vecchia",
+                 num_neighbors = 10L, vecchia_ordering = "none", y = y_gp,
+                 params = list(optimizer_cov = "lbfgs", maxit = maxit))
+    }
+    out <- capture.output({ gp_full <- fit_ard(1000) })
+    expect_reporting_matches_status(out, gp_full)
+    num_it <- gp_full$get_num_optim_iter()
+    expect_gt(num_it, 1)
+    for (maxit in c(num_it, num_it - 1)) {
+      out <- capture.output({ gp <- fit_ard(maxit) })
+      expect_reporting_matches_status(out, gp)
+      expect_true(all(is.finite(gp$get_cov_pars())))
     }
   })
 

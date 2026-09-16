@@ -248,13 +248,16 @@ public:
                 m_fx[k % fpast] = f(m_xp, m_gradp, true, true);       // recalculate lag-1 objective and gradient
                 fx = f(x, m_grad, true, true); // recalculate new objective and gradient
                 // check convergence again
-                if (has_converged && !has_converged_maxit)
+                // ChangedForGPBoost: the criterion is also re-evaluated when the maximal number of iterations has
+                //	been reached. The optimizer stops in that case either way, but whether it has converged is decided
+                //	by the state after the redetermination, which is the state that is returned
+                if (has_converged)
                 {
-                    has_converged = false;
+                    criterion_satisfied = false;
                     m_gnorm = m_grad.norm();  // new gradient norm
                     if (m_gnorm <= m_param.epsilon || m_gnorm <= m_param.epsilon_rel * x.norm())
                     {
-                        has_converged = true;
+                        criterion_satisfied = true;
                     }
                     if (fpast > 0)
                     {
@@ -265,10 +268,13 @@ public:
                         const Scalar fxd = m_fx[k % fpast];
                         if (k >= fpast && (fxd - fx) <= m_param.delta * std::max(abs(fxd), Scalar(1)))
                         {
-                            has_converged = true;
+                            criterion_satisfied = true;
                         }
                     }
-                    criterion_satisfied = has_converged; // ChangedForGPBoost
+                    if (!has_converged_maxit)
+                    {
+                        has_converged = criterion_satisfied; // the stopping rule is unchanged: with 'has_converged_maxit' the optimizer stops regardless
+                    }
                 }//end check convergence again
             }//end potentially redetermine nearest neighbors for Vecchia approximation or/and inducing points
 

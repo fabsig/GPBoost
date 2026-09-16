@@ -709,16 +709,19 @@ namespace GPBoost {
 			settings.grad_err_tol = delta_rel_conv;
 			settings.rel_sol_change_tol = 1e-20;
 		}
+		//the optimizers of OptimLib return whether they converged ('error_reporting()' in external_libs/OptimLib),
+		//	which they also do when the criterion is satisfied in the last allowed iteration. The returned value only
+		//	covers the change in the objective function, though, and not the change in the parameters, see below
 		if (optimizer == "nelder_mead") {
-			optim::nm(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
+			convergence_criterion_satisfied = optim::nm(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
 		}
 		else if (optimizer == "bfgs_optim_lib") {
-			optim::bfgs(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
+			convergence_criterion_satisfied = optim::bfgs(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
 		}
 		else if (optimizer == "adam") {
 			settings.gd_settings.method = 6;
 			settings.gd_settings.ada_max = false;
-			optim::gd(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
+			convergence_criterion_satisfied = optim::gd(pars_init, EvalLLforOptimLib<T_mat, T_chol>, &opt_data, settings);
 		}
 		else if (optimizer == "lbfgs" || optimizer == "lbfgs_linesearch_nocedal_wright") {
 			LBFGSpp::LBFGSParam<double> param_LBFGSpp;
@@ -809,8 +812,11 @@ namespace GPBoost {
 		//}
 		if (optimizer != "lbfgs" && optimizer != "lbfgs_linesearch_nocedal_wright") {//only for optimizers from OptimLib
 			num_it = (int)settings.opt_iter;
-			//the optimizers of OptimLib do not report why they have terminated, the number of iterations is the only indication
-			convergence_criterion_satisfied = num_it < max_iter;
+			//the value returned by OptimLib is based on the change in the objective function only. For
+			//	'relative_change_in_parameters', the tolerance for the objective function is set to 1e-20 above, so an
+			//	optimizer that stopped since the parameters did not change anymore reports no convergence. Stopping
+			//	before the iterations are used up means that one of the criteria was satisfied in either case
+			convergence_criterion_satisfied = convergence_criterion_satisfied || num_it < max_iter;
 			neg_log_likelihood = settings.opt_fn_value;
 			if (profile_out_error_variance || profile_out_regression_coef) {
 				vec_t* grad_dummy = nullptr;
