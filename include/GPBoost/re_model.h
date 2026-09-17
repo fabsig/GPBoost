@@ -356,6 +356,11 @@ namespace GPBoost {
 		*/
 		void SetOffsetData(const double* fixed_effects);
 
+		/*!
+		* \brief Mark the model as being used in the GPBoost algorithm (see 'SetUsedInGPBoostAlgorithm' in 're_model_template.h')
+		*/
+		void SetUsedInGPBoostAlgorithm();
+
 		bool CanCalculateStandardErrorsCovPars() const;
 
 		/*!

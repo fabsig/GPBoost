@@ -145,6 +145,7 @@ namespace LightGBM {
 		const label_t* label) {
 		CHECK(re_model != nullptr);
 		re_model_ = re_model;
+		re_model_->SetUsedInGPBoostAlgorithm();
 		if (train_gp_model_cov_pars) {
 			re_model_->ResetCovPars();
 		}

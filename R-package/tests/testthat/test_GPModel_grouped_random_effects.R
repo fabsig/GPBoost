@@ -347,10 +347,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     group_data_w <- cbind(group1_w, group2_w)
     y_w <- c(0.25, -0.40, 1.20, 0.75, -0.15, 1.45, 0.05, -0.70)
     weights_w <- c(1.0, 2.0, 3.0, 1.5, 0.7, 2.2, 1.3, 0.8)
-    weights_w <- rep(1, length(y_w))
     cov_pars_w <- c(0.6, 1.4, 0.35)
     
-    capture.output( gp_model_w <- GPModel(group_data = group_data_w, matrix_inversion_method = "cholesky") , file='NUL')
+    capture.output( gp_model_w <- GPModel(group_data = group_data_w, weights = weights_w,
+                                          matrix_inversion_method = "cholesky") , file='NUL')
     nll_w <- gp_model_w$neg_log_likelihood(cov_pars = cov_pars_w, y = y_w)
     
     Z1_w <- model.matrix(rep(1, length(group1_w)) ~ factor(group1_w) - 1)
@@ -360,6 +360,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     chol_Sigma_w <- chol(Sigma_w)
     nll_w_manual <- 0.5 * drop(crossprod(y_w, solve(Sigma_w, y_w))) +
       sum(log(diag(chol_Sigma_w))) + length(y_w) / 2 * log(2 * pi)
+    expect_lt(abs(nll_w - nll_w_manual), TOLERANCE_STRICT)
     
     group_pred_w <- cbind(c(1, 2, 4), c(1, 3, 2))
     pred_w <- predict(gp_model_w, y = y_w, group_data_pred = group_pred_w,
@@ -388,7 +389,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                  cg_max_num_it = 1000,
                                                  cg_max_num_it_tridiag = 1000, init_coef_aux_pars_from_iid_model = FALSE))
     nll_w_it <- gp_model_w_it$neg_log_likelihood(cov_pars = cov_pars_w, y = y_w)
-    expect_lt(abs(nll_w_it - nll_w_manual), 0.005)
+    # The iterative method estimates the log-determinant stochastically. The tolerances below are
+    #   deliberately not relaxed on other platforms: they have to stay well below the term that this
+    #   checks for, the log-determinant of the weights, which is -0.5 * sum(log(weights_w)) = -1.33 here
+    expect_lt(abs(nll_w_it - nll_w_manual), 0.05)
     
     capture.output( gp_model_w_fit_it <- fitGPModel(group_data = group_data_w, y = y_w,
                                                     weights = weights_w,
@@ -399,7 +403,26 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                                   cg_delta_conv = 1E-8,
                                                                   cg_max_num_it = 1000,
                                                                   cg_max_num_it_tridiag = 1000, init_coef_aux_pars_from_iid_model = FALSE)) , file='NUL')
-    expect_lt(abs(gp_model_w_fit_it$get_current_neg_log_likelihood() - 9.409914), relax_tolerance_nll(0.001))
+    # The parameters after one iteration differ between the two solvers, since the Fisher information of
+    #   the iterative method is stochastic, so the fit is compared with the dense calculation at its own
+    #   parameters instead of with the fit of the Cholesky solver
+    cov_pars_fit_w_it <- as.vector(gp_model_w_fit_it$get_cov_pars())
+    Sigma_fit_w_it <- cov_pars_fit_w_it[2] * tcrossprod(Z1_w) +
+      cov_pars_fit_w_it[3] * tcrossprod(Z2_w) + cov_pars_fit_w_it[1] * diag(1 / weights_w)
+    nll_fit_w_it_manual <- 0.5 * drop(crossprod(y_w, solve(Sigma_fit_w_it, y_w))) +
+      sum(log(diag(chol(Sigma_fit_w_it)))) + length(y_w) / 2 * log(2 * pi)
+    expect_lt(abs(gp_model_w_fit_it$get_current_neg_log_likelihood() - nll_fit_w_it_manual), 0.05)
+    capture.output( gp_model_w_fit_chol <- fitGPModel(group_data = group_data_w, y = y_w,
+                                                      weights = weights_w,
+                                                      matrix_inversion_method = "cholesky",
+                                                      params = list(optimizer_cov = "fisher_scoring",
+                                                                    maxit = 1, init_coef_aux_pars_from_iid_model = FALSE)) , file='NUL')
+    cov_pars_fit_w <- as.vector(gp_model_w_fit_chol$get_cov_pars())
+    Sigma_fit_w <- cov_pars_fit_w[2] * tcrossprod(Z1_w) +
+      cov_pars_fit_w[3] * tcrossprod(Z2_w) + cov_pars_fit_w[1] * diag(1 / weights_w)
+    nll_fit_w_manual <- 0.5 * drop(crossprod(y_w, solve(Sigma_fit_w, y_w))) +
+      sum(log(diag(chol(Sigma_fit_w)))) + length(y_w) / 2 * log(2 * pi)
+    expect_lt(abs(gp_model_w_fit_chol$get_current_neg_log_likelihood() - nll_fit_w_manual), TOLERANCE_STRICT)
   })
   
   test_that("linear mixed effects model with grouped random effects ", {

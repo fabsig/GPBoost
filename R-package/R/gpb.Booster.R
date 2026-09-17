@@ -63,7 +63,7 @@ Booster <- R6::R6Class(
           
           private$has_gp_model <- TRUE
           private$gp_model <- gp_model
-          private$gp_model$.__enclos_env__$private$used_in_gpboost_algorithm <- TRUE
+          private$gp_model$set_used_in_gpboost_algorithm()
           # Store booster handle
           handle <- .Call(
             LGBM_GPBoosterCreate_R
@@ -145,6 +145,7 @@ Booster <- R6::R6Class(
             private$gp_model_prediction_data_loaded_from_file <- TRUE
           }
           private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
+          private$gp_model$set_used_in_gpboost_algorithm()
           private$gp_model$.__enclos_env__$private$model_fitted <- FALSE
           
         } else { # has no gp_model
@@ -199,6 +200,7 @@ Booster <- R6::R6Class(
             private$gp_model_prediction_data_loaded_from_file <- TRUE
           }
           private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
+          private$gp_model$set_used_in_gpboost_algorithm()
           private$gp_model$.__enclos_env__$private$model_fitted <- FALSE
           
         } else { # has no gp_model

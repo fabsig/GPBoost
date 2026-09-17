@@ -2814,6 +2814,23 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(pred$cov, pred_loaded$cov)
     expect_equal(cov_pars_est, gp_model_loaded$get_cov_pars(std_err = TRUE))
     expect_equal(coef_est, gp_model_loaded$get_coef(std_err = TRUE))
+
+    # A model that was saved before the internal default-value sentinel was changed to -999 contains the
+    #   former sentinel -1 for the parameters whose default is set in C++
+    json_legacy <- paste(readLines(filename, warn = FALSE), collapse = "\n")
+    for (param_name in c("delta_rel_conv", "lr_cov", "fitc_piv_chol_preconditioner_rank",
+                         "m_lbfgs", "delta_conv_mode_finding")) {
+      pattern <- paste0('("', param_name, '"[[:space:]]*:[[:space:]]*)[-+0-9.eE]+')
+      expect_true(grepl(pattern, json_legacy))
+      json_legacy <- sub(pattern, "\\1-1", json_legacy)
+    }
+    filename_legacy <- tempfile(fileext = ".json")
+    writeLines(json_legacy, filename_legacy)
+    capture.output( gp_model_legacy <- loadGPModel(filename = filename_legacy), file='NUL')
+    pred_legacy <- predict(gp_model_legacy, gp_coords_pred = coord_test, X_pred = coord_test,
+                           predict_cov_mat = TRUE)
+    expect_equal(pred$mu, pred_legacy$mu)
+    expect_equal(pred$cov, pred_legacy$cov)
     
     # With Vecchia approximation
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",

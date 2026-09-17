@@ -916,6 +916,18 @@ namespace GPBoost {
 		}
 	}
 
+	void REModel::SetUsedInGPBoostAlgorithm() {
+		if (matrix_format_ == "sp_mat_t") {
+			re_model_sp_->SetUsedInGPBoostAlgorithm();
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			re_model_sp_rm_->SetUsedInGPBoostAlgorithm();
+		}
+		else {
+			re_model_den_->SetUsedInGPBoostAlgorithm();
+		}
+	}
+
 	bool REModel::CanCalculateStandardErrorsCovPars() const {
 		if (matrix_format_ == "sp_mat_t") {
 			return re_model_sp_->CanCalculateStandardErrorsCovPars();

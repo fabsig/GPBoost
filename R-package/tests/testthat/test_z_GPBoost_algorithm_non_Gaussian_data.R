@@ -1766,6 +1766,19 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         cov_pars_est <- c(0.6015308, 0.5169128)
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),tolerance_loc_2)
         expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-1.447807)),tolerance_loc_2)
+        # Standard errors of the covariance and auxiliary parameters cannot be calculated for a model that is
+        #   used in the GPBoost algorithm: they are obtained from the Hessian of the negative log-likelihood,
+        #   which requires the fixed effects of the location parameter given by the tree ensemble. Requesting
+        #   them returns the estimates alone and does not change the state of the model
+        expect_false(gp_model$can_calculate_standard_errors_cov_pars())
+        expect_false(gp_model$can_calculate_standard_errors_aux_pars())
+        negll_before_std_err <- gp_model$get_current_neg_log_likelihood()
+        expect_equal(length(as.vector(gp_model$get_cov_pars(std_err = TRUE))),
+                     length(as.vector(gp_model$get_cov_pars(std_err = FALSE))))
+        expect_equal(length(as.vector(gp_model$get_aux_pars(std_err = TRUE))),
+                     length(as.vector(gp_model$get_aux_pars(std_err = FALSE))))
+        capture.output( summary(gp_model) , file='NUL')
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood() - negll_before_std_err), TOLERANCE_STRICT)
       }
     })
     
@@ -1993,6 +2006,11 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_equal(pred_resp$response_mean, pred_resp_loaded$response_mean)
       expect_equal(pred_resp$response_var, pred_resp_loaded$response_var)
       expect_lt(sum(abs(cov_pars_before_save - as.vector(bst_loaded$.__enclos_env__$private$gp_model$get_cov_pars(std_err = FALSE)))),TOLERANCE_STRICT)
+      # A loaded model is also used in the GPBoost algorithm and thus has no standard errors either
+      gp_model_loaded <- bst_loaded$.__enclos_env__$private$gp_model
+      expect_false(gp_model_loaded$can_calculate_standard_errors_cov_pars())
+      expect_equal(length(as.vector(gp_model_loaded$get_cov_pars(std_err = TRUE))),
+                   length(as.vector(gp_model_loaded$get_cov_pars(std_err = FALSE))))
       # Same num_iteration when saving but different one for prediction
       pred_loaded <- predict(bst_loaded, data = X_test, group_data_pred = group_data_test,
                              predict_var = TRUE, pred_latent = TRUE, num_iteration = 22, start_iteration = 0)

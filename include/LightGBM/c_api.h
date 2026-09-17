@@ -1854,6 +1854,15 @@ GPBOOST_C_EXPORT int GPB_SetLikelihood(REModelHandle handle,
     const char* likelihood);
 
 /*!
+* \brief Mark the model as being used in the GPBoost algorithm. Standard errors of covariance and
+*        auxiliary parameters cannot be calculated for such a model since they require the fixed effects
+*        of the location parameter, which are given by the tree ensemble
+* \param handle Handle of REModel
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_SetUsedInGPBoostAlgorithm(REModelHandle handle);
+
+/*!
 * \brief Return (last used) response variable data
 * \param handle Handle of REModel
 * \param[out] response_data Response variable data (memory needs to be preallocated)

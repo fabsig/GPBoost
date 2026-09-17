@@ -834,6 +834,10 @@ GPBOOST_C_EXPORT SEXP GPB_GetCurrentNegLogLikelihood_R(
 	SEXP negll
 );
 
+GPBOOST_C_EXPORT SEXP GPB_SetUsedInGPBoostAlgorithm_R(
+	SEXP handle
+);
+
 GPBOOST_C_EXPORT SEXP GPB_CanCalculateStandardErrorsCovPars_R(
 	SEXP handle,
 	SEXP out

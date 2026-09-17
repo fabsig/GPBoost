@@ -640,7 +640,10 @@
 #' @param num_prior_samples A \code{numeric} with the number of prior samples to draw if 'sample_prior=TRUE'
 #' @param std_err A \code{boolean}. If TRUE, (approximate) standard errors are calculated 
 #'                (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
-#'                square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)
+#'                square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods).
+#'                For non-Gaussian likelihoods, no standard errors of the covariance and auxiliary parameters
+#'                are calculated if the model is used in the GPBoost algorithm, since they require the
+#'                fixed effects given by the tree ensemble
 #' @param vecchia_approx Discontinued. Use the argument \code{gp_approx} instead
 #' @param num_data A \code{numeric} with the number of samples. This is only used for iid models
 
@@ -1301,6 +1304,16 @@ gpb.GPModel <- R6::R6Class(
       if (private$model_has_been_loaded_from_saved_file) {
         # pseudo call to fit to save things in C++ 
         params <- model_list[["params"]]
+        # Models that were saved before the internal default-value sentinel was changed to -999
+        #   contain the former sentinel -1, which is now rejected as an invalid value
+        legacy_sentinels <- list(delta_rel_conv = -999., lr_cov = -999.,
+                                 fitc_piv_chol_preconditioner_rank = -999L, m_lbfgs = -999L,
+                                 delta_conv_mode_finding = -999.)
+        for (param_name in names(legacy_sentinels)) {
+          if (!is.null(params[[param_name]]) && params[[param_name]] == -1) {
+            params[[param_name]] <- legacy_sentinels[[param_name]]
+          }
+        }
         params[["maxit"]] <- 0
         if (private$has_covariates) {
           X_loaded <- private$X_loaded_from_file
@@ -2580,6 +2593,17 @@ gpb.GPModel <- R6::R6Class(
     #   (approximated) Hessian are not valid
     can_calculate_standard_errors_coef = function() {
       return(self$get_likelihood_name() != "asymmetric_laplace")
+    },
+
+    set_used_in_gpboost_algorithm = function() {
+      # Standard errors of covariance and auxiliary parameters cannot be calculated for a model that is used
+      #   in the GPBoost algorithm since they require the fixed effects given by the tree ensemble
+      private$used_in_gpboost_algorithm <- TRUE
+      .Call(
+        GPB_SetUsedInGPBoostAlgorithm_R
+        , private$handle
+      )
+      return(invisible(NULL))
     },
 
     get_num_aux_pars = function() {

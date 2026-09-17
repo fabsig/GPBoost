@@ -1339,6 +1339,9 @@ namespace GPBoost {
 				has_fixed_effects_ = true;
 				fixed_effects_ = Eigen::Map<const vec_t>(fixed_effects, num_data_ * num_sets_fixed_effects_);
 			}
+			if (called_in_GPBoost_algorithm) {
+				used_in_GPBoost_algorithm_ = true;
+			}
 			// Initialization of covariance parameters
 			int num_cov_par_estimate = num_cov_par_;
 			if (estimate_aux_pars_) {
@@ -2090,29 +2093,37 @@ namespace GPBoost {
 			optimization_running_currently_ = false;
 		}//end OptimLinRegrCoefCovPar
 
+		/*!
+		* \brief Mark this model as being used in the GPBoost algorithm. Called when a booster is trained with this
+		*		 model and when a saved GPBoost model is loaded, i.e., also when the covariance parameters are not
+		*		 estimated in the GPBoost algorithm
+		*/
+		void SetUsedInGPBoostAlgorithm() {
+			used_in_GPBoost_algorithm_ = true;
+		}
+
 		bool CanCalculateStandardErrorsCovPars() const {
 			if (gauss_likelihood_) {
 				return gp_approx_ != "full_scale_vecchia";
 			}
 			// For likelihoods with a fixed-effects-only location parameter block (e.g., the log-error variance
 			// for 'gaussian_heteroscedastic'), standard errors require re-evaluating the fixed effects at 'beta_'
-			// and/or the saved offset. If neither covariates nor a saved offset are available - as is the case for
-			// a GPBoost-algorithm-only model queried after training, where the tree-boosting scores are owned by
-			// the booster and not stored in this object - this cannot be done
+			// and/or the saved offset. If neither covariates nor a saved offset are available, this cannot be done
 			if (num_sets_fixed_effects_ > num_sets_re_ && !has_covariates_ && !has_fixed_effects_) {
 				return false;
 			}
 			// For non-Gaussian likelihoods, standard errors are obtained from a numerical approximation
 			// of the Hessian of the negative log-likelihood (see 'CalcHessianCovParAuxPars') which is
-			// supported for all approximations
-			return true;
+			// supported for all approximations. It requires the fixed effects of the location parameter,
+			// which are given by the tree ensemble and not available here for a model used in the GPBoost algorithm
+			return !used_in_GPBoost_algorithm_;
 		}
 
 		/*!
 		* \brief Returns true if standard errors for the auxiliary (additional) parameters of non-Gaussian likelihoods can be calculated
 		*/
 		bool CanCalculateStandardErrorsAuxPars() const {
-			return (!gauss_likelihood_ && estimate_aux_pars_);
+			return (!gauss_likelihood_ && estimate_aux_pars_ && !used_in_GPBoost_algorithm_);
 		}
 
 		/*!
@@ -2203,6 +2214,11 @@ namespace GPBoost {
 		* \return Pointer to the fixed effects (can be nullptr if there are neither covariates nor an offset)
 		*/
 		const double* GetFixedEffectsPtrForStdDevCalc() {
+			if (used_in_GPBoost_algorithm_) {
+				Log::REFatal("Standard errors of covariance and auxiliary parameters cannot be calculated for a model "
+					"that is used in the GPBoost algorithm: they require the fixed effects of the location parameter, "
+					"which are given by the tree ensemble and not stored in the 'GPModel' ");
+			}
 			fixed_effects_std_dev_calc_ = vec_t();
 			if (has_covariates_) {
 				UpdateFixedEffects(beta_, has_fixed_effects_ ? fixed_effects_.data() : nullptr, fixed_effects_std_dev_calc_);
@@ -3313,7 +3329,10 @@ namespace GPBoost {
 								Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 							}
 							// LogDet Estimation
-							LogDetStochTridiag(Tdiags_, Tsubdiags_, log_det_Psi_, num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
+							//'LogDetStochTridiag' writes (and does not add to) its output, so it is accumulated separately
+							double log_det_Psi_stoch = 0.;
+							LogDetStochTridiag(Tdiags_, Tsubdiags_, log_det_Psi_stoch, num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
+							log_det_Psi_ += log_det_Psi_stoch;
 							// Correction for Preconditioner (necessary if using preconditioner)
 							if (cg_preconditioner_type_ == "fitc") {
 								log_det_Psi_ -= 2. * (((den_mat_t)GetForCluster(chol_fact_sigma_ip_preconditioner_, cluster_i, 0).matrixL()).diagonal().array().log().sum());
@@ -3397,7 +3416,11 @@ namespace GPBoost {
 										Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 									}
 									// LogDet Estimation
-									LogDetStochTridiag(Tdiags_, Tsubdiags_, log_det_Psi_, cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_);
+									//'LogDetStochTridiag' writes (and does not add to) its output, so it is accumulated separately and
+									//	does not discard the contribution of 'LogDetR' (or of other clusters)
+									double log_det_Psi_stoch = 0.;
+									LogDetStochTridiag(Tdiags_, Tsubdiags_, log_det_Psi_stoch, cum_num_rand_eff_[cluster_i][num_comps_total_], num_rand_vec_trace_);
+									log_det_Psi_ += log_det_Psi_stoch;
 									// Correction for preconditioner
 									if (cg_preconditioner_type_ == "incomplete_cholesky") {
 										//log|P| = log|L| + log|L^T|
@@ -6112,6 +6135,8 @@ namespace GPBoost {
 		vec_t fixed_effects_;
 		/*! \brief Used to keep the memory of the fixed effects (offset + X * beta_) returned by 'GetFixedEffectsPtrForStdDevCalc' alive */
 		vec_t fixed_effects_std_dev_calc_;
+		/*! \brief True if this model is used in the GPBoost algorithm. The fixed effects are then the tree-ensemble scores, which are owned by the booster and not stored here */
+		bool used_in_GPBoost_algorithm_ = false;
 
 		/*! \brief Variance of idiosyncratic error term (nugget effect) */
 		double sigma2_ = 1.;//initialize with 1. to avoid valgrind false positives in EvalLLforLBFGSpp() in optim_utils.h

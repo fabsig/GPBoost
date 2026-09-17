@@ -715,7 +715,10 @@ predictive variances are calculated}
 
 \item{std_err}{A \code{boolean}. If TRUE, (approximate) standard errors are calculated 
 (= square root of diagonal of the inverse Fisher information for Gaussian likelihoods and 
-square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods)}
+square root of diagonal of a numerically approximated inverse Hessian for non-Gaussian likelihoods).
+For non-Gaussian likelihoods, no standard errors of the covariance and auxiliary parameters
+are calculated if the model is used in the GPBoost algorithm, since they require the fixed
+effects given by the tree ensemble}
 
 \item{vecchia_approx}{Discontinued. Use the argument \code{gp_approx} instead}
 

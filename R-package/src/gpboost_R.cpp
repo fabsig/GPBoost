@@ -1058,6 +1058,13 @@ SEXP GPB_GetCurrentNegLogLikelihood_R(SEXP handle,
 	return R_NilValue;
 }
 
+SEXP GPB_SetUsedInGPBoostAlgorithm_R(SEXP handle) {
+	R_API_BEGIN();
+	CHECK_CALL(GPB_SetUsedInGPBoostAlgorithm(R_ExternalPtrAddr(handle)));
+	R_API_END();
+	return R_NilValue;
+}
+
 SEXP GPB_CanCalculateStandardErrorsCovPars_R(
 	SEXP handle,
 	SEXP out) {
@@ -1508,6 +1515,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 32},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
   {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 37},
+  {"GPB_SetUsedInGPBoostAlgorithm_R", (DL_FUNC)&GPB_SetUsedInGPBoostAlgorithm_R, 1},
   {"GPB_CanCalculateStandardErrorsCovPars_R", (DL_FUNC)&GPB_CanCalculateStandardErrorsCovPars_R, 2},
   {"GPB_CanCalculateStandardErrorsAuxPars_R", (DL_FUNC)&GPB_CanCalculateStandardErrorsAuxPars_R, 2},
   {"GPB_OptimCovPar_R"                , (DL_FUNC)&GPB_OptimCovPar_R                , 3},

@@ -3161,6 +3161,13 @@ int GPB_SetLikelihood(REModelHandle handle,
 	API_END();
 }
 
+int GPB_SetUsedInGPBoostAlgorithm(REModelHandle handle) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	ref_remodel->SetUsedInGPBoostAlgorithm();
+	API_END();
+}
+
 int GPB_GetResponseData(REModelHandle handle,
 	double* response_data) {
 	API_BEGIN();

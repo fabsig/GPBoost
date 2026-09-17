@@ -3097,7 +3097,7 @@ class Booster:
                     raise ValueError("Number of data points in gp_model and train_set are not equal")
                 self.has_gp_model = True
                 self.gp_model = gp_model
-                self.gp_model.used_in_gpboost_algorithm = True
+                self.gp_model._set_used_in_gpboost_algorithm()
                 _safe_call(_LIB.LGBM_GPBoosterCreate(
                     train_set.construct().handle,
                     c_str(params_str),
@@ -3151,7 +3151,7 @@ class Booster:
                         save_data['gp_model_str']['y'] = np.array(save_data['label'])
                     self.gp_model_prediction_data_loaded_from_file = True
                 self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
-                self.gp_model.used_in_gpboost_algorithm = True
+                self.gp_model._set_used_in_gpboost_algorithm()
                 self.gp_model.model_fitted = False
             else:  # has no gp_model
                 out_num_iterations = ctypes.c_int(0)
@@ -3186,7 +3186,7 @@ class Booster:
                         save_data['gp_model_str']['y'] = np.array(save_data['label'])
                     self.gp_model_prediction_data_loaded_from_file = True
                 self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
-                self.gp_model.used_in_gpboost_algorithm = True
+                self.gp_model._set_used_in_gpboost_algorithm()
                 self.gp_model.model_fitted = False
             else:  # has no gp_model
                 self.model_from_string(model_str, not silent)
@@ -3237,7 +3237,7 @@ class Booster:
                 save_data = json.loads(model_str)
                 bst_str = save_data['booster_str']
                 state['gp_model'] = GPModel(model_dict=save_data['gp_model_str'])
-                state['gp_model'].used_in_gpboost_algorithm = True
+                state['gp_model']._set_used_in_gpboost_algorithm()
                 if save_data.get("raw_data") is not None:
                     state['train_set'] = Dataset(data=save_data['raw_data']['data'],
                                                  label=save_data['raw_data']['label'])
@@ -6045,6 +6045,13 @@ class GPModel(object):
                 model_dict["params"]['init_aux_pars'] = np.array(model_dict["params"]['init_aux_pars'])
             if model_dict["params"]['init_coef'] is not None:
                 model_dict["params"]['init_coef'] = np.array(model_dict["params"]['init_coef'])
+            # Models that were saved before the internal default-value sentinel was changed to -999
+            #   contain the former sentinel -1, which is now rejected as an invalid value
+            for param_name, sentinel in (("delta_rel_conv", -999.), ("lr_cov", -999.),
+                                         ("fitc_piv_chol_preconditioner_rank", -999), ("m_lbfgs", -999),
+                                         ("delta_conv_mode_finding", -999.)):
+                if model_dict["params"].get(param_name) == -1:
+                    model_dict["params"][param_name] = sentinel
             # pseudo call to fit to save things in C++
             params = model_dict["params"]
             params['maxit'] = 0
@@ -6892,7 +6899,10 @@ class GPModel(object):
         Parameters
         ----------
         std_err : bool (default=False)
-            If True, (approximate) standard errors are calculated 
+            If True, (approximate) standard errors are calculated.
+            For non-Gaussian likelihoods, no standard errors of the covariance and auxiliary parameters
+            are calculated if the model is used in the GPBoost algorithm, since they require the fixed
+            effects given by the tree ensemble
         format_pandas : bool (default=True)
             If True, a pandas DataFrame is returned, otherwise a numpy array is returned
 
@@ -6936,7 +6946,10 @@ class GPModel(object):
         Parameters
         ----------
         std_err : bool (default=False)
-            If True, (approximate) standard errors are calculated
+            If True, (approximate) standard errors are calculated.
+            For non-Gaussian likelihoods, no standard errors of the covariance and auxiliary parameters
+            are calculated if the model is used in the GPBoost algorithm, since they require the fixed
+            effects given by the tree ensemble
         format_pandas : bool (default=True)
             If True, a pandas DataFrame is returned, otherwise a numpy array is returned
 
@@ -6982,7 +6995,10 @@ class GPModel(object):
         Parameters
         ----------
         std_err : bool (default=False)
-            If True, (approximate) standard errors are calculated
+            If True, (approximate) standard errors are calculated.
+            For non-Gaussian likelihoods, no standard errors of the covariance and auxiliary parameters
+            are calculated if the model is used in the GPBoost algorithm, since they require the fixed
+            effects given by the tree ensemble
         format_pandas : bool (default=True)
             If True, a pandas DataFrame is returned, otherwise a numpy array is returned
 
@@ -7035,7 +7051,10 @@ class GPModel(object):
         Parameters
         ----------
         std_err : bool (default=False)
-            If True, (approximate) standard errors are calculated 
+            If True, (approximate) standard errors are calculated.
+            For non-Gaussian likelihoods, no standard errors of the covariance and auxiliary parameters
+            are calculated if the model is used in the GPBoost algorithm, since they require the fixed
+            effects given by the tree ensemble
 
         Example
         -------
@@ -8018,6 +8037,12 @@ class GPModel(object):
             ctypes.byref(tmp_out_len)))
         ret = string_buffer.value.decode()
         return ret
+
+    def _set_used_in_gpboost_algorithm(self):
+        # Standard errors of covariance and auxiliary parameters cannot be calculated for a model that is used
+        #   in the GPBoost algorithm since they require the fixed effects given by the tree ensemble
+        self.used_in_gpboost_algorithm = True
+        _safe_call(_LIB.GPB_SetUsedInGPBoostAlgorithm(self.handle))
 
     def _set_likelihood(self, likelihood):
         self.__update_cov_par_names(likelihood)
