@@ -10,6 +10,8 @@ bit-wise across compilers and would turn every rebuild into a golden update.
 The model classes covered are chosen so that the sparse Cholesky paths are
 exercised as well: crossed grouped random effects, tapering, FITC and Vecchia.
 """
+import json
+
 import numpy as np
 import pytest
 
@@ -313,6 +315,55 @@ def test_save_and_load_several_fixed_effects_predictors(tmp_path, likelihood, nu
     from_dict = gpb.GPModel(model_dict=gp_model.model_to_dict(include_response_data=True))
     np.testing.assert_allclose(np.asarray(from_dict.get_coef(format_pandas=False), dtype=float).ravel(),
                                coef, rtol=1e-10)
+
+
+def test_load_heteroscedastic_model_saved_with_the_former_likelihood_name(tmp_path):
+    # "gaussian_heteroscedastic" used to denote the likelihood whose variance predictor contains both
+    # fixed and random effects, which is now called "gaussian_heteroscedastic_fixed_and_random". Such
+    # a saved model is recognized by num_sets_re = 2 and has to be migrated when it is loaded,
+    # otherwise the variance GP is silently dropped and the predictions change
+    rng = np.random.default_rng(1)
+    n = 60
+    coords = rng.uniform(size=(n, 2))
+    y = rng.normal(size=n)
+    cov_pars = np.array([0.6, 0.25, 2.0, 0.35])
+    gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential", gp_approx="vecchia",
+                           num_neighbors=20, likelihood="gaussian_heteroscedastic_fixed_and_random")
+    gp_model.fit(y=y, params={"init_cov_pars": cov_pars, "optimizer_cov": "gradient_descent",
+                              "lr_cov": 1e-8, "maxit": 1, "use_nesterov_acc": False,
+                              "init_coef_aux_pars_from_iid_model": False, "trace": False})
+    fname = str(tmp_path / "gp_model.json")
+    gp_model.save_model(fname)
+    coords_test = coords[:2, :]
+    pred = gp_model.predict(y=y, cov_pars=cov_pars, gp_coords_pred=coords_test, predict_var=True)
+
+    # A file written by the older version differs only in the name of the likelihood
+    with open(fname) as f:
+        model_dict = json.load(f)
+    assert model_dict["num_sets_re"] == 2
+    model_dict["likelihood"] = "gaussian_heteroscedastic"
+    fname_old_name = str(tmp_path / "gp_model_old_name.json")
+    with open(fname_old_name, "w") as f:
+        json.dump(model_dict, f)
+
+    loaded = gpb.GPModel(model_file=fname_old_name)
+    assert loaded._get_likelihood_name() == "gaussian_heteroscedastic_fixed_and_random"
+    np.testing.assert_allclose(np.asarray(loaded.get_cov_pars(format_pandas=False), dtype=float).ravel(),
+                               cov_pars, rtol=1e-10)
+    pred_loaded = loaded.predict(y=y, cov_pars=cov_pars, gp_coords_pred=coords_test, predict_var=True)
+    np.testing.assert_allclose(pred_loaded["mu"], pred["mu"], rtol=1e-10)
+    np.testing.assert_allclose(pred_loaded["var"], pred["var"], rtol=1e-10)
+
+    # A model saved by the current version keeps its name: "gaussian_heteroscedastic" now has a
+    # variance predictor with fixed effects only (num_sets_re = 1) and must not be migrated
+    group, X, ys = _sim_several_fe_predictors()
+    gp_model_fe = gpb.GPModel(group_data=group, likelihood="gaussian_heteroscedastic")
+    gp_model_fe.fit(y=ys["gaussian_heteroscedastic"], X=X, params={"maxit": 0, "trace": False})
+    fname_fe = str(tmp_path / "gp_model_fe.json")
+    gp_model_fe.save_model(fname_fe)
+    with open(fname_fe) as f:
+        assert json.load(f)["num_sets_re"] == 1
+    assert gpb.GPModel(model_file=fname_fe)._get_likelihood_name() == "gaussian_heteroscedastic"
 
 
 @pytest.mark.parametrize("likelihood,num_sets_fe", [("gamma_varying_shape", 2),

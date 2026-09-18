@@ -902,6 +902,24 @@ namespace GPBoost {
 		}//end SetPropertiesLikelihood
 
 		/*!
+		* \brief Set whether the first covariance parameter is a multiplicative factor of the entire covariance matrix
+		* \param first_cov_par_scales_cov_mat True if the first covariance parameter scales the entire covariance matrix
+		*/
+		void SetFirstCovParScalesCovMat(bool first_cov_par_scales_cov_mat) {
+			first_cov_par_scales_cov_mat_ = first_cov_par_scales_cov_mat;
+		}
+
+		/*!
+		* \brief True if the gradient calculation can use the shortcut dSigma/dpar = Sigma for the first covariance parameter
+		* \param num_comps_total Total number of random effect components
+		* \param ind_par Index of the covariance parameter within a component
+		*/
+		bool UseFirstCovParScalingShortcut(int num_comps_total,
+			int ind_par) const {
+			return(num_comps_total == 1 && ind_par == 0 && first_cov_par_scales_cov_mat_);
+		}
+
+		/*!
 		* \brief Determine cap_change_mode_newton_
 		*/
 		void DetermineWhetherToCapChangeModeNewton() {
@@ -7975,6 +7993,10 @@ namespace GPBoost {
 		bool grad_information_wrt_mode_can_be_zero_for_some_points_ = false;
 		/*! \brief True, if the information has off-diagonal elements */
 		bool information_has_off_diagonal_ = false;
+		/*! \brief If true, the first covariance parameter is a multiplicative factor of the entire covariance matrix of a
+		*		random effect component, which allows for shortcuts when calculating gradients. This is false, e.g., for the
+		*		AR(1) multifidelity covariances, whose first variance parameter scales the low-fidelity component only */
+		bool first_cov_par_scales_cov_mat_ = true;
 		/*! \brief If true, the (expected) Fisher information is used for the mode finding */
 		bool use_fisher_for_mode_finding_ = false;
 		/*! \brief If true, the mode finding is continued with an (approximae) Hessian after convergence has been achieved with the Fisher information */

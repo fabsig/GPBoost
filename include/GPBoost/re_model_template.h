@@ -8039,9 +8039,18 @@ namespace GPBoost {
 						num_rand_vec_trace_, reuse_rand_vec_trace_, seed_rand_vec_trace_,
 						cg_preconditioner_type_, fitc_piv_chol_preconditioner_rank_, rank_pred_approx_matrix_lanczos_, nsim_var_pred_,
 						delta_conv_mode_finding_, cg_convergence_params_, cg_convergence_params_pred_);
+					likelihood_[cluster_i]->SetFirstCovParScalesCovMat(FirstCovParScalesCovMat());
 				}
 			}
 		}//end SetPropertiesLikelihood
+
+		/*!
+		* \brief True if the first covariance parameter of a GP component is a multiplicative factor of the entire covariance
+		*		matrix of that component. This allows for shortcuts when calculating gradients
+		*/
+		bool FirstCovParScalesCovMat() const {
+			return(CovFunctionName().rfind("ar1_mf_", 0) != 0);
+		}
 
 		/*!
 		* \brief Initialize individual component models and collect them in a containter
@@ -8198,6 +8207,118 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Select inducing points from a set of unique coordinates with the method given by 'ind_points_selection_'
+		*		('space_time_kmeans++' is not handled here since it constructs an irregular grid from two separate selections)
+		* \param coords_unique Unique coordinates from which the inducing points are selected
+		* \param[out] num_ind_points Number of inducing points. This is an input for all methods except 'cover_tree', for which
+		*		the number is determined by the algorithm and returned here
+		* \param[out] gp_coords_ip_mat Coordinates of the selected inducing points
+		*/
+		void SelectIndPointsFromCoords(const den_mat_t& coords_unique,
+			int& num_ind_points,
+			den_mat_t& gp_coords_ip_mat) {
+			if (ind_points_selection_ == "cover_tree") {
+				CoverTree(coords_unique, cover_tree_radius_, rng_, gp_coords_ip_mat);
+				num_ind_points = (int)gp_coords_ip_mat.rows();
+			}
+			else if (ind_points_selection_ == "random") {
+				if (gp_approx_ == "full_scale_vecchia" && !gauss_likelihood_) {
+					Log::REFatal("Method '%s' is not supported for finding inducing points in the full-scale-vecchia approximation for non-Gaussian data", ind_points_selection_.c_str());
+				}
+				std::vector<int> indices;
+				SampleIntNoReplaceSort((int)coords_unique.rows(), num_ind_points, rng_, indices);
+				gp_coords_ip_mat.resize(num_ind_points, coords_unique.cols());
+				for (int j = 0; j < num_ind_points; ++j) {
+					gp_coords_ip_mat.row(j) = coords_unique.row(indices[j]);
+				}
+			}
+			else if (ind_points_selection_ == "kmeans++") {
+				gp_coords_ip_mat.resize(num_ind_points, coords_unique.cols());
+				int max_it_kmeans = 1000;
+				kmeans_plusplus(coords_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans, false);
+			}
+			else {
+				Log::REFatal("Method '%s' is not supported for finding inducing points ", ind_points_selection_.c_str());
+			}
+		}//end SelectIndPointsFromCoords
+
+		/*!
+		* \brief Select inducing points for an AR(1) multifidelity covariance function. The last coordinate column is the
+		*		fidelity indicator, which is not a spatial coordinate: averaging it, as 'kmeans++' and 'cover_tree' do, produces
+		*		fractional fidelities that the covariance function rejects. The inducing points are therefore selected separately
+		*		within every fidelity level, using the spatial coordinates only, and the requested number of inducing points is
+		*		split between the levels proportionally to their number of unique locations
+		* \param coords_unique Unique coordinates (spatial coordinates and fidelity indicator) from which the inducing points are selected
+		* \param cov_fct Type of covariance function (only used for error messages)
+		* \param[out] num_ind_points Number of inducing points, see 'SelectIndPointsFromCoords'
+		* \param[out] gp_coords_ip_mat Coordinates of the selected inducing points
+		*/
+		void SelectIndPointsAR1Multifidelity(const den_mat_t& coords_unique,
+			const string_t& cov_fct,
+			int& num_ind_points,
+			den_mat_t& gp_coords_ip_mat) {
+			if (ind_points_selection_ == "space_time_kmeans++") {
+				Log::REFatal("Method '%s' for selecting inducing points is currently not supported for the covariance function '%s' ",
+					ind_points_selection_.c_str(), cov_fct.c_str());
+			}
+			const int dim_spatial = (int)coords_unique.cols() - 1;
+			std::vector<std::vector<int>> ind_fidelity(2);
+			for (int i = 0; i < (int)coords_unique.rows(); ++i) {
+				double fidelity = coords_unique(i, dim_spatial);
+				if (TwoNumbersAreEqual<double>(fidelity, 0.)) {
+					ind_fidelity[0].push_back(i);
+				}
+				else if (TwoNumbersAreEqual<double>(fidelity, 1.)) {
+					ind_fidelity[1].push_back(i);
+				}
+				else {
+					Log::REFatal("The last coordinate column for covariance function '%s' must contain only 0 (low fidelity) and 1 (high fidelity), found %g ",
+						cov_fct.c_str(), fidelity);
+				}
+			}
+			int num_low = (int)ind_fidelity[0].size(), num_high = (int)ind_fidelity[1].size();
+			std::vector<int> num_ind_points_fidelity(2);
+			if (num_low == 0 || num_high == 0) {
+				num_ind_points_fidelity[0] = num_low == 0 ? 0 : num_ind_points;
+				num_ind_points_fidelity[1] = num_ind_points - num_ind_points_fidelity[0];
+			}
+			else {
+				int num_ip_low = (int)std::round((double)num_ind_points * num_low / (double)(num_low + num_high));
+				num_ip_low = std::max(1, std::min(std::min(num_ind_points - 1, num_low), num_ip_low));
+				if (num_ind_points - num_ip_low > num_high) {
+					num_ip_low = num_ind_points - num_high;
+				}
+				num_ind_points_fidelity[0] = num_ip_low;
+				num_ind_points_fidelity[1] = num_ind_points - num_ip_low;
+			}
+			std::vector<den_mat_t> gp_coords_ip_fidelity(2);
+			int num_ind_points_total = 0;
+			for (int level = 0; level < 2; ++level) {
+				if (num_ind_points_fidelity[level] < 1) {
+					continue;
+				}
+				den_mat_t coords_spatial = coords_unique(ind_fidelity[level], Eigen::all).leftCols(dim_spatial);
+				int num_ind_points_level = num_ind_points_fidelity[level];
+				den_mat_t coords_ip_spatial;
+				SelectIndPointsFromCoords(coords_spatial, num_ind_points_level, coords_ip_spatial);
+				gp_coords_ip_fidelity[level].resize(coords_ip_spatial.rows(), dim_spatial + 1);
+				gp_coords_ip_fidelity[level].leftCols(dim_spatial) = coords_ip_spatial;
+				gp_coords_ip_fidelity[level].col(dim_spatial).setConstant((double)level);
+				num_ind_points_total += (int)coords_ip_spatial.rows();
+			}
+			gp_coords_ip_mat.resize(num_ind_points_total, dim_spatial + 1);
+			int row_start = 0;
+			for (int level = 0; level < 2; ++level) {
+				int num_rows = (int)gp_coords_ip_fidelity[level].rows();
+				if (num_rows > 0) {
+					gp_coords_ip_mat.middleRows(row_start, num_rows) = gp_coords_ip_fidelity[level];
+					row_start += num_rows;
+				}
+			}
+			num_ind_points = num_ind_points_total;
+		}//end SelectIndPointsAR1Multifidelity
+
+		/*!
 		* \brief Initialize individual component models and collect them in a containter
 		* \param num_data Number of data points
 		* \param data_indices_per_cluster Keys: Labels of independent realizations of REs/GPs, values: vectors with indices for data points
@@ -8280,7 +8401,15 @@ namespace GPBoost {
 			}
 			std::vector<int> indices;
 			den_mat_t gp_coords_ip_mat;
-			if (ind_points_selection_ == "cover_tree") {
+			if (cov_fct.rfind("ar1_mf_", 0) == 0) {
+				Log::REDebug("Starting the '%s' algorithm separately for every fidelity level for determining inducing points ", ind_points_selection_.c_str());
+				SelectIndPointsAR1Multifidelity(gp_coords_all_unique, cov_fct, num_ind_points, gp_coords_ip_mat);
+				Log::REDebug("Inducing points have been determined ");
+				if (!for_prediction_new_cluster) {
+					num_ind_points_ = num_ind_points;
+				}
+			}
+			else if (ind_points_selection_ == "cover_tree") {
 				Log::REDebug("Starting cover tree algorithm for determining inducing points ");
 				CoverTree(gp_coords_all_unique, cover_tree_radius_, rng_, gp_coords_ip_mat);
 				Log::REDebug("Inducing points have been determined ");
@@ -10210,7 +10339,7 @@ namespace GPBoost {
 				estimate_cov_par_index_gp = estimate_cov_par_index_;
 			}
 			bool exclude_marg_var_grad = !gauss_likelihood_ && (GetForCluster(re_comps_vecchia_, unique_clusters_[0], 0).size() == 1) &&
-				!(gp_approx_ == "full_scale_vecchia");//gradient is not needed if there is only one GP for non-Gaussian likelihoods
+				!(gp_approx_ == "full_scale_vecchia") && FirstCovParScalesCovMat();//gradient is not needed if there is only one GP for non-Gaussian likelihoods and the first parameter scales the entire covariance matrix
 			for (const auto& cluster_i : unique_clusters_) {
 				for (int igp = 0; igp < num_sets_re_; ++igp) {
 					data_size_t num_re_cluster_i = GetForCluster(re_comps_vecchia_, cluster_i, igp)[0]->GetNumUniqueREs();

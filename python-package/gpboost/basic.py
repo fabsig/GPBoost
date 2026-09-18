@@ -5631,6 +5631,14 @@ class GPModel(object):
             if model_dict.get("cluster_ids") is not None:
                 cluster_ids = np.array(model_dict.get("cluster_ids"))
             likelihood = model_dict.get("likelihood")
+            if likelihood == "gaussian_heteroscedastic":
+                # Up to and including the models saved with num_sets_re = 2, "gaussian_heteroscedastic" denoted the
+                # likelihood whose variance predictor contains both fixed and random effects. That model is now called
+                # "gaussian_heteroscedastic_fixed_and_random", and "gaussian_heteroscedastic" has a variance predictor
+                # with fixed effects only (num_sets_re = 1)
+                num_sets_re_saved = model_dict.get("num_sets_re")
+                if num_sets_re_saved is None or num_sets_re_saved > 1:
+                    likelihood = "gaussian_heteroscedastic_fixed_and_random"
             likelihood_additional_param = model_dict.get("likelihood_additional_param")
             matrix_inversion_method = model_dict.get("matrix_inversion_method")
             if model_dict.get("weights") is not None:

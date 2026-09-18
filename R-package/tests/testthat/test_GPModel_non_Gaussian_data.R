@@ -4157,6 +4157,54 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }# end loop inv_method in c("cholesky", "iterative")
   }) #end gaussian_heteroscedastic_fixed_and_random likelihood
 
+  test_that("Loading a model saved when 'gaussian_heteroscedastic' had a variance GP works ", {
+    # 'gaussian_heteroscedastic' used to denote the likelihood whose variance predictor contains both
+    # fixed and random effects, which is now called 'gaussian_heteroscedastic_fixed_and_random'. Such
+    # a saved model is recognized by num_sets_re = 2 and has to be migrated when it is loaded,
+    # otherwise the variance GP is silently dropped
+    n_het <- 60
+    coords_het <- cbind(sim_rand_unif(n = n_het, init_c = 0.11), sim_rand_unif(n = n_het, init_c = 0.77))
+    y_het <- qnorm(sim_rand_unif(n = n_het, init_c = 0.53))
+    coord_test <- cbind(c(0.1, 0.7), c(0.9, 0.55))
+    cov_pars_het <- c(0.6, 0.25, 2.0, 0.35)
+    gp_model <- GPModel(gp_coords = coords_het, cov_function = "exponential", gp_approx = "vecchia",
+                        num_neighbors = 20, likelihood = "gaussian_heteroscedastic_fixed_and_random")
+    capture.output( fit(gp_model, y = y_het, params = list(
+      init_cov_pars = cov_pars_het, optimizer_cov = "gradient_descent", lr_cov = 1e-8, maxit = 1,
+      use_nesterov_acc = FALSE, init_coef_aux_pars_from_iid_model = FALSE, trace = FALSE)), file = 'NUL')
+    filename <- tempfile(fileext = ".json")
+    saveGPModel(gp_model, filename = filename)
+    pred <- predict(gp_model, y = y_het, cov_pars = cov_pars_het, gp_coords_pred = coord_test,
+                    predict_var = TRUE)
+    # A file written by the older version differs only in the name of the likelihood
+    json_old_name <- gsub("gaussian_heteroscedastic_fixed_and_random", "gaussian_heteroscedastic",
+                          paste(readLines(filename, warn = FALSE), collapse = "\n"))
+    filename_old_name <- tempfile(fileext = ".json")
+    writeLines(json_old_name, filename_old_name)
+    capture.output( gp_model_loaded <- loadGPModel(filename = filename_old_name), file = 'NUL')
+    expect_equal(gp_model_loaded$get_likelihood_name(), "gaussian_heteroscedastic_fixed_and_random")
+    expect_equal(as.numeric(gp_model_loaded$get_cov_pars()), cov_pars_het, tolerance = TOLERANCE_STRICT)
+    pred_loaded <- predict(gp_model_loaded, y = y_het, cov_pars = cov_pars_het,
+                           gp_coords_pred = coord_test, predict_var = TRUE)
+    expect_equal(pred$mu, pred_loaded$mu)
+    expect_equal(pred$var, pred_loaded$var)
+    # A model saved by the current version keeps its name: 'gaussian_heteroscedastic' now has a
+    # variance predictor with fixed effects only (num_sets_re = 1) and must not be migrated
+    n_fe <- 100
+    group_fe <- rep(1:10, each = 10)
+    X_fe <- cbind(rep(1, n_fe), sim_rand_unif(n = n_fe, init_c = 0.256))
+    b_fe <- qnorm(sim_rand_unif(n = 10, init_c = 0.741))
+    y_fe <- as.vector(X_fe %*% c(0.3, 0.7)) + b_fe[group_fe] +
+      qnorm(sim_rand_unif(n = n_fe, init_c = 0.369)) * exp(0.5 * as.vector(X_fe %*% c(-0.5, 1.2)))
+    gp_model_fe <- GPModel(group_data = group_fe, likelihood = "gaussian_heteroscedastic")
+    capture.output( fit(gp_model_fe, y = y_fe, X = X_fe, params = list(
+      maxit = 2, init_coef_aux_pars_from_iid_model = FALSE, trace = FALSE)), file = 'NUL')
+    filename_fe <- tempfile(fileext = ".json")
+    saveGPModel(gp_model_fe, filename = filename_fe)
+    capture.output( gp_model_fe_loaded <- loadGPModel(filename = filename_fe), file = 'NUL')
+    expect_equal(gp_model_fe_loaded$get_likelihood_name(), "gaussian_heteroscedastic")
+  })
+
   test_that("gaussian_heteroscedastic likelihood (fixed effects only) for linear and GPBoost models ", {
 
     n_het <- 100

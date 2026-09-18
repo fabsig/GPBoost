@@ -821,6 +821,16 @@ gpb.GPModel <- R6::R6Class(
         GPU_use = model_list[["GPU_use"]]
         cluster_ids = model_list[["cluster_ids"]]
         likelihood = model_list[["likelihood"]]
+        if (!is.null(likelihood) && likelihood == "gaussian_heteroscedastic") {
+          # Up to and including the models saved with num_sets_re = 2, "gaussian_heteroscedastic" denoted the
+          # likelihood whose variance predictor contains both fixed and random effects. That model is now called
+          # "gaussian_heteroscedastic_fixed_and_random", and "gaussian_heteroscedastic" has a variance predictor
+          # with fixed effects only (num_sets_re = 1)
+          num_sets_re_saved = model_list[["num_sets_re"]]
+          if (is.null(num_sets_re_saved) || num_sets_re_saved > 1) {
+            likelihood = "gaussian_heteroscedastic_fixed_and_random"
+          }
+        }
         likelihood_additional_param = model_list[["likelihood_additional_param"]]
         # Set additionally required data
         private$model_has_been_loaded_from_saved_file = TRUE

@@ -3055,7 +3055,7 @@ namespace GPBoost {
 							if (estimate_cov_par_index[ipar] > 0) {
 								std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
 								den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
-								if (ipar == 0) {
+								if (UseFirstCovParScalingShortcut((int)re_comps_ip_cluster_i.size(), ipar)) {
 									SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
 								}
 								else {
@@ -3114,7 +3114,16 @@ namespace GPBoost {
 									sigma_ip_inv_sigma_cross_cov_preconditioner.transpose() * ((*cross_cov_preconditioner_grad).transpose() * PI_Z) -
 									sigma_ip_inv_sigma_cross_cov_preconditioner.transpose() * (sigma_ip_preconditioner_grad * sigma_ip_inv_cross_cov_preconditioner_PI_Z);
 								vec_t diagonal_approx_preconditioner_grad_ = vec_t::Zero(dim_mode_);
-								diagonal_approx_preconditioner_grad_.array() += sigma_ip_preconditioner_grad.coeffRef(0, 0);
+								if (re_comps_cross_cov_preconditioner_cluster_i[j]->VarianceOnDiagonal()) {
+									diagonal_approx_preconditioner_grad_.array() += sigma_ip_preconditioner_grad.coeffRef(0, 0);
+								}
+								else {
+									CHECK(dim_mode_ == re_comps_cross_cov_preconditioner_cluster_i[j]->GetNumUniqueREs());
+#pragma omp parallel for schedule(static)
+									for (int ii = 0; ii < dim_mode_; ++ii) {
+										diagonal_approx_preconditioner_grad_[ii] += re_comps_cross_cov_preconditioner_cluster_i[j]->GetZSigmaZtGradDiagonal_ii(ii, ipar, true, 0.);
+									}
+								}
 								//den_mat_t sigma_ip_grad_inv_sigma_cross_cov_preconditioner = sigma_ip_preconditioner_grad * sigma_ip_inv_sigma_cross_cov_preconditioner;
 								den_mat_t sigma_ip_grad_inv_sigma_cross_cov_preconditioner;
 								GPBoost::matmul(sigma_ip_preconditioner_grad, sigma_ip_inv_sigma_cross_cov_preconditioner, sigma_ip_grad_inv_sigma_cross_cov_preconditioner, GPU_use);
@@ -3439,7 +3448,7 @@ namespace GPBoost {
 								std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
 								den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
 								den_mat_t sigma_ip_inv_sigma_ip_grad = chol_fact_sigma_ip.solve(sigma_ip_grad);
-								if (ipar == 0) {
+								if (UseFirstCovParScalingShortcut((int)re_comps_ip_cluster_i.size(), ipar)) {
 									SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
 								}
 								else {
@@ -3826,8 +3835,11 @@ namespace GPBoost {
 							sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
 							sigma_ip_inv_sigma_ip_grad = chol_fact_sigma_ip.solve(sigma_ip_grad);
 							// Calculate SigmaI_deriv
-							if (ipar == 0) {
+							if (UseFirstCovParScalingShortcut((int)re_comps_ip_cluster_i.size(), ipar)) {
 								SigmaI_deriv = -B.transpose() * D_inv_B;//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
+							}
+							else if (estimate_cov_par_index[par_count] == 0) {
+								SigmaI_deriv = -B.transpose() * D_inv_B;//this is not a derivative, only the sparsity pattern of Sigma^-1 is used for 'SigmaI_plus_W_inv' below
 							}
 							else {
 								SigmaI_deriv = B_grad[ipar].transpose() * D_inv_B;
@@ -4090,7 +4102,7 @@ namespace GPBoost {
 						if (estimate_cov_par_index[j + igp * num_par] > 0) {
 							// Calculate SigmaI_deriv
 							if (num_sets_re_ == 1) {
-								if (num_comps_total == 1 && j == 0) {
+								if (UseFirstCovParScalingShortcut(num_comps_total, j)) {
 									SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
 								}
 								else {
@@ -4109,7 +4121,7 @@ namespace GPBoost {
 							}
 							else {
 								CHECK(num_sets_re_ == 2);
-								if (num_comps_total == 1 && j == 0) {
+								if (UseFirstCovParScalingShortcut(num_comps_total, j)) {
 									SigmaI_deriv_rm = sp_mat_rm_t(-B[igp].transpose() * D_inv_B);//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
 								}
 								else {
@@ -4276,7 +4288,7 @@ namespace GPBoost {
 					sp_mat_t D_inv_B = D_inv[igp] * B[igp];
 					for (int j = 0; j < num_par; ++j) {
 						// Calculate SigmaI_deriv
-						if (num_comps_total == 1 && j == 0) {
+						if (UseFirstCovParScalingShortcut(num_comps_total, j)) {
 							SigmaI_deriv = -B[igp].transpose() * D_inv_B;//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
 						}
 						else if (estimate_cov_par_index[j + igp * num_par] > 0) {
@@ -4284,6 +4296,9 @@ namespace GPBoost {
 							Bt_Dinv_Bgrad = SigmaI_deriv.transpose();
 							SigmaI_deriv += Bt_Dinv_Bgrad - D_inv_B.transpose() * D_grad[igp][j] * D_inv_B;
 							Bt_Dinv_Bgrad.resize(0, 0);
+						}
+						else if (j == 0) {
+							SigmaI_deriv = -B[igp].transpose() * D_inv_B;//this is not a derivative, only the sparsity pattern of Sigma^-1 is used for 'SigmaI_plus_W_inv' below
 						}
 						if (num_sets_re_ > 1) {
 							CHECK(num_sets_re_ == 2);
@@ -4319,7 +4334,7 @@ namespace GPBoost {
 						if (estimate_cov_par_index[j + igp * num_par] > 0) {
 							vec_t SigmaI_deriv_mode = SigmaI_deriv * mode_;
 							explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode) + (SigmaI_deriv.cwiseProduct(SigmaI_plus_W_inv)).sum());
-							if (num_comps_total == 1 && j == 0) {
+							if (UseFirstCovParScalingShortcut(num_comps_total, j)) {
 								explicit_derivative += 0.5 * dim_mode_per_set_re_;
 							}
 							else {
@@ -4494,7 +4509,16 @@ namespace GPBoost {
 						den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
 						den_mat_t sigma_ip_inv_sigma_ip_grad = chol_fact_sigma_ip.solve(sigma_ip_grad);
 						vec_t fitc_diag_grad = vec_t::Zero(dim_mode_);
-						fitc_diag_grad.array() += sigma_ip_grad.coeffRef(0, 0);
+						if (re_comps_cross_cov_cluster_i[j]->VarianceOnDiagonal()) {
+							fitc_diag_grad.array() += sigma_ip_grad.coeffRef(0, 0);
+						}
+						else {
+							CHECK(dim_mode_ == re_comps_cross_cov_cluster_i[j]->GetNumUniqueREs());
+#pragma omp parallel for schedule(static)
+							for (int ii = 0; ii < dim_mode_; ++ii) {
+								fitc_diag_grad[ii] += re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGradDiagonal_ii(ii, ipar, true, 0.);//uses the coordinates of all data points to calculate Sigma[ii,ii]
+							}
+						}
 						den_mat_t sigma_ip_inv_cross_cov_T = chol_fact_sigma_ip.solve((*cross_cov).transpose());
 						den_mat_t sigma_ip_grad_sigma_ip_inv_cross_cov_T = sigma_ip_grad * sigma_ip_inv_cross_cov_T;
 						fitc_diag_grad -= 2 * (sigma_ip_inv_cross_cov_T.cwiseProduct((*cross_cov_grad).transpose())).colwise().sum();
@@ -7286,7 +7310,7 @@ namespace GPBoost {
 			double tr_SigmaI_plus_W_inv_SigmaI_deriv = zt_SigmaI_plus_W_inv_SigmaI_deriv_PI_z.mean();
 			d_log_det_Sigma_W_plus_I_d_cov_pars = tr_SigmaI_plus_W_inv_SigmaI_deriv;
 			//tr(Sigma^(-1) dSigma/dtheta_j)
-			if (num_comps_total == 1 && j == 0) {
+			if (UseFirstCovParScalingShortcut(num_comps_total, j)) {
 				d_log_det_Sigma_W_plus_I_d_cov_pars += num_data;
 			}
 			else {
@@ -7296,7 +7320,7 @@ namespace GPBoost {
 				//variance reduction
 				double tr_D_inv_plus_W_inv_D_inv_deriv = 0., tr_PI_P_deriv = 0.;
 				vec_t zt_PI_P_deriv_PI_z;
-				if (num_comps_total == 1 && j == 0) {
+				if (UseFirstCovParScalingShortcut(num_comps_total, j)) {
 					//dD/dsigma2 = D and dB/dsigma2 = 0
 					//deterministic tr((D^(-1) + W)^(-1) dD^(-1)/dsigma2), where dD^(-1)/dsigma2 = -D^(-1)
 					tr_D_inv_plus_W_inv_D_inv_deriv = -1 * (D_inv_plus_W_inv_diag.array() * D_inv_rm_.diagonal().array()).sum();

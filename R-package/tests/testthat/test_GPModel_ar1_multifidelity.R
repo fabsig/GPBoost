@@ -54,8 +54,9 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     latent <- drop(t(chol(covariance + 1e-10 * diag(nrow(gp_coords)))) %*% qnorm(sim_rand_unif(nrow(gp_coords), init_c = 0.8)))
     y_gaussian <- latent + sqrt(cov_pars[1]) * qnorm(sim_rand_unif(length(latent), init_c = 0.1))
     y_binary <- as.numeric(sim_rand_unif(length(latent), init_c = 0.2341) < pnorm(0.2 + latent))
+    y_poisson <- qpois(sim_rand_unif(length(latent), init_c = 0.31), lambda = exp(latent))
     list(gp_coords = gp_coords, cov_pars = cov_pars, latent = latent,
-         y_gaussian = y_gaussian, y_binary = y_binary)
+         y_gaussian = y_gaussian, y_binary = y_binary, y_poisson = y_poisson)
   }
 
   test_that("exact Gaussian AR1 multifidelity likelihood agrees with R", {
@@ -168,7 +169,7 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
         optim_params$fitc_piv_chol_preconditioner_rank <- 10
         # 'seed_rand_vec_trace' only makes the fit reproducible: 'cov_pars' and the nll below are bit-identical for any
         # number of OpenMP threads, whereas the stochastic prediction is not. Measured against the values below (which
-        # were recorded with 16 threads), the largest deviation over 1, 2, 3, 4, 6, 8, 10, 12 and 16 threads is 3.5e-3,
+        # were recorded with 6 threads), the largest deviation over 1, 2, 3, 4, 8, 12 and 16 threads is 6.1e-3,
         # so the tolerance has to accommodate that. Note: this must not be solved by pinning the number of threads of
         # the model, since that would only hide the dependence on the number of threads instead of covering it
         tol_pred <- 1e-2
@@ -178,10 +179,10 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
       }
       invisible(capture.output(fit(gp_model, y = data$y_binary, params = optim_params)))
       expected_fit <- list(
-        cholesky = list(cov_pars = c(1.1208846731049009, 0.2837165041795852, 0.5265774974772421, 0.1241828718058514, -0.1234287872320286),
-                        nll = 17.743260933163558, mu = c(0.8232655588081717, 0.6753089735531903), var = c(0.1454993784884405, 0.2192667637917268)),
-        iterative = list(cov_pars = c(1.1055593547491722, 0.2824705662808080, 0.5300671780510321, 0.1250140324130210, -0.1027052545776411),
-                         nll = 17.577849124499139, mu = c(0.8237742637310388, 0.6794675882713714), var = c(0.1451702261454237, 0.2177913847600575)))
+        cholesky = list(cov_pars = c(1.0661956334178793, 0.2837297651975412, 0.5263592091708343, 0.1241549552226316, -0.1278426999830472),
+                        nll = 17.786924024394054, mu = c(0.8203132350256910, 0.6748932540516034), var = c(0.1473994314673764, 0.2194123496872413)),
+        iterative = list(cov_pars = c(1.0410513074049415, 0.2825117036462009, 0.5304750217357596, 0.1244834725673703, -0.0953183940478825),
+                         nll = 17.606109542086166, mu = c(0.8188778853882207, 0.6815214692354954), var = c(0.1483168942103368, 0.2170499562065871)))
       expected <- expected_fit[[inversion_method]]
       expect_equal(as.numeric(gp_model$get_cov_pars()), expected$cov_pars, tolerance = relax_tolerance(1e-8))
       expect_equal(as.numeric(gp_model$get_current_neg_log_likelihood()), expected$nll, tolerance = relax_tolerance(1e-8))
@@ -189,6 +190,81 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
       expect_equal(prediction$mu, expected$mu, tolerance = relax_tolerance(tol_pred))
       expect_equal(prediction$var, expected$var, tolerance = relax_tolerance(tol_pred))
     }
+  })
+
+  test_that("non-Gaussian AR1 multifidelity covariance gradients agree with the exact model", {
+    # Vecchia with all previous points as neighbors, FITC with every data point as an inducing point,
+    # and full-scale Vecchia with all previous points as neighbors are exactly equivalent to the model
+    # without an approximation, so the covariance parameter gradients have to agree as well. They only
+    # do if the first variance parameter is not treated as a factor of the entire covariance matrix (it
+    # scales the low-fidelity component alone) and if the derivative of the covariance diagonal is
+    # evaluated at every location (it differs between the two fidelity levels)
+    data <- simulate_ar1_mf_test_data()
+    n_data <- nrow(data$gp_coords)
+    process_cov_pars <- data$cov_pars[-1]
+    settings <- list(
+      none = list(gp_approx = "none"),
+      vecchia = list(gp_approx = "vecchia", num_neighbors = n_data - 1L, vecchia_ordering = "none"),
+      fitc = list(gp_approx = "fitc", num_ind_points = n_data, ind_points_selection = "random"),
+      full_scale_vecchia = list(gp_approx = "full_scale_vecchia", num_neighbors = n_data - 1L,
+                                vecchia_ordering = "none", num_ind_points = 5L)
+    )
+    expected_nll <- 65.653681881238981
+    expected_cov_pars <- c(1.3265111106825676, 0.2453506478036946, 0.4633590664305500,
+                           0.1129057756477863, -0.4394352771585056)
+    for (gp_approx_name in names(settings)) {
+      gp_model <- do.call(GPModel, c(
+        list(gp_coords = data$gp_coords, cov_function = "ar1_mf_exponential", likelihood = "poisson",
+             matrix_inversion_method = "cholesky"), settings[[gp_approx_name]]))
+      expect_equal(gp_model$neg_log_likelihood(y = data$y_poisson, cov_pars = process_cov_pars),
+                   expected_nll, tolerance = 1e-8)
+      invisible(capture.output(fit(gp_model, y = data$y_poisson, params = list(
+        init_cov_pars = process_cov_pars, optimizer_cov = "gradient_descent", lr_cov = 0.05,
+        maxit = 3, use_nesterov_acc = FALSE, init_coef_aux_pars_from_iid_model = FALSE,
+        trace = FALSE))))
+      expect_equal(as.numeric(gp_model$get_cov_pars()), expected_cov_pars,
+                   tolerance = relax_tolerance(1e-6))
+    }
+  })
+
+  test_that("AR1 multifidelity inducing points keep a 0/1 fidelity indicator", {
+    # The fidelity indicator is the last coordinate column but is not a spatial coordinate. Averaging
+    # it, as 'kmeans++' and 'cover_tree' do, gives fractional fidelities that the covariance function
+    # rejects, so the inducing points are selected separately within every fidelity level
+    n_data <- 120L
+    coords <- cbind(10 * sim_rand_unif(n = n_data, init_c = 0.23),
+                    10 * sim_rand_unif(n = n_data, init_c = 0.61))
+    fidelity <- as.numeric(sim_rand_unif(n = n_data, init_c = 0.44) < 0.5)
+    gp_coords <- cbind(coords, fidelity)
+    cov_pars <- c(1.0, 2.0, 0.5, 1.0, 0.7)
+    covariance <- ar1_mf_exponential_covariance(gp_coords, cov_pars)
+    latent <- drop(t(chol(covariance + 1e-8 * diag(n_data))) %*% qnorm(sim_rand_unif(n_data, init_c = 0.19)))
+    y_gaussian <- latent + 0.3 * qnorm(sim_rand_unif(n_data, init_c = 0.37))
+    y_poisson <- qpois(sim_rand_unif(n_data, init_c = 0.83), lambda = exp(latent))
+    expected_nll <- list("fitc" = c(gaussian = 145.99454312750748, poisson = 218.34721467970454),
+                         "full_scale_vecchia" = c(gaussian = 140.09552616999730, poisson = 218.60080095637534))
+    for (gp_approx in names(expected_nll)) {
+      for (likelihood in c("gaussian", "poisson")) {
+        model_args <- list(gp_coords = gp_coords, cov_function = "ar1_mf_exponential",
+                           likelihood = likelihood, gp_approx = gp_approx, num_ind_points = 20L,
+                           matrix_inversion_method = "cholesky")
+        if (gp_approx == "full_scale_vecchia") {
+          model_args$num_neighbors <- 10L
+          model_args$vecchia_ordering <- "none"
+        }
+        gp_model <- do.call(GPModel, model_args)# 'ind_points_selection' is "kmeans++" by default
+        y <- if (likelihood == "gaussian") y_gaussian else y_poisson
+        pars <- if (likelihood == "gaussian") c(0.09, cov_pars) else cov_pars
+        expect_equal(gp_model$neg_log_likelihood(y = y, cov_pars = pars),
+                     expected_nll[[gp_approx]][[likelihood]], tolerance = relax_tolerance(1e-8))
+      }
+    }
+    gp_model <- GPModel(gp_coords = gp_coords, cov_function = "ar1_mf_exponential",
+                        likelihood = "poisson", gp_approx = "fitc", num_ind_points = 20L,
+                        ind_points_selection = "cover_tree", cover_tree_radius = 1.5,
+                        matrix_inversion_method = "cholesky")
+    expect_equal(gp_model$neg_log_likelihood(y = y_poisson, cov_pars = cov_pars),
+                 218.14420331974057, tolerance = relax_tolerance(1e-8))
   })
 
   test_that("AR1 multifidelity can be used by the GPBoost algorithm", {
