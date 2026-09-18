@@ -303,7 +303,10 @@ inline EGPDEvalStatus CalcEGPDLogLikAndDerivatives(double y, double eta, const E
 	return out->status = EGPDEvalStatus::kValid;
 }
 
-inline double EGPDCarrierDensity(double u, const EGPDParams& pars, EGPDVariant variant) {
+// Carrier density at u, where log_r is the logarithm of r = 1 - u. It is a separate
+// argument because r is not recoverable from a u close to one, and the beta carriers
+// depend on r through r^delta.
+inline double EGPDCarrierDensity(double u, double log_r, const EGPDParams& pars, EGPDVariant variant) {
 	if (variant == EGPDVariant::kGPD) return 1.;
 	if (variant == EGPDVariant::kPower) return pars.kappa * std::pow(u, pars.kappa - 1.);
 	if (variant == EGPDVariant::kPowerMixture) {
@@ -311,12 +314,36 @@ inline double EGPDCarrierDensity(double u, const EGPDParams& pars, EGPDVariant v
 		const double k2 = pars.kappa1 + pars.delta_kappa;
 		return p * pars.kappa1 * std::pow(u, pars.kappa1 - 1.) + (1. - p) * k2 * std::pow(u, k2 - 1.);
 	}
-	const double r = 1. - u;
-	const double rd = std::pow(r, pars.delta);
-	const double B = (pars.delta - (1. + pars.delta) * r + r * rd) / pars.delta;
-	const double Bp = (1. + pars.delta) * (1. - rd) / pars.delta;
+	const double c = 1. + pars.delta;
+	const double Bp = -c * std::expm1(pars.delta * log_r) / pars.delta;
 	if (variant == EGPDVariant::kBeta) return Bp;
+	double B;
+	if (c * u < 0.5) {
+		// B is the binomial series sum_{k >= 2} binom(c, k) (-u)^k / delta and vanishes
+		// quadratically as u -> 0, where the closed form below cancels.
+		double term = 0.5 * c * pars.delta * u * u;
+		B = term;
+		for (int k = 3; k <= 60; ++k) {
+			term *= -u * (c - k + 1.) / k;
+			B += term;
+			if (std::abs(term) <= 1e-18 * std::abs(B)) break;
+		}
+		B /= pars.delta;
+	}
+	else {
+		B = (c * u + std::expm1(c * log_r)) / pars.delta;
+	}
+	B = std::max(0., B);
 	return 0.5 * pars.kappa * std::pow(B, 0.5 * pars.kappa - 1.) * Bp;
+}
+
+inline double EGPDCarrierDensity(double u, const EGPDParams& pars, EGPDVariant variant) {
+	return EGPDCarrierDensity(u, std::log1p(-u), pars, variant);
+}
+
+inline double EGPDLogExpm1(double x) {
+	if (!(x > 0.)) return -std::numeric_limits<double>::infinity();
+	return x > 0.5 ? x + std::log1p(-std::exp(-x)) : std::log(std::expm1(x));
 }
 
 inline EGPDMoments CalcEGPDUnitScaleMoments(const EGPDParams& pars, EGPDVariant variant) {
@@ -327,26 +354,63 @@ inline EGPDMoments CalcEGPDUnitScaleMoments(const EGPDParams& pars, EGPDVariant 
 	ans.mean_exists = xi < 1.;
 	ans.variance_exists = xi < 0.5;
 	if (!ans.mean_exists) return ans;
-	// Midpoint-rule quadrature under the substitution u = sin(pi v / 2)^2, which
-	// regularizes both carrier endpoints (du/dv vanishes at v = 0 and v = 1).
-	// Moment calculations are auxiliary-only and occur once per prediction call,
-	// never in an observation loop.
-	constexpr int n = 160;
-	double first = 0., second = 0.;
-	for (int i = 0; i < n; ++i) {
-		const double v = (i + 0.5) / n;
-		const double s = std::sin(0.5 * 3.14159265358979323846 * v);
-		const double u = s * s;
-		const double du_dv = 3.14159265358979323846 * s * std::cos(0.5 * 3.14159265358979323846 * v);
-		const double log_r = std::log1p(-u);
-		const double z = xi == 0. ? -log_r : std::expm1(-xi * log_r) / xi;
-		const double weight = EGPDCarrierDensity(u, pars, variant) * du_dv / n;
-		first += weight * z;
-		if (ans.variance_exists) second += weight * z * z;
+	// The moments are integrals over the exceedance probability r = 1 - u,
+	// E[Z^k] = int_0^1 g(r) z(r)^k dr with the unit-scale quantile z(r) = (r^-xi - 1) / xi
+	// and the carrier density g(r) at u = 1 - r. The integrand of the highest required
+	// moment k grows like r^(-k xi) at the upper tail r -> 0, which no rule on r itself
+	// integrates accurately for a shape close to the existence boundary. The substitution
+	// r = w^p with p = 1 / (1 - k xi) turns that factor into a constant, and tanh-sinh
+	// quadrature handles the integrable endpoint behaviour that the carrier density can
+	// have at both ends. All factors are accumulated on the log scale because the
+	// individual ones overflow for a large p. Moment calculations are auxiliary-only and
+	// occur once per prediction call, never in an observation loop.
+	double p = 1.;
+	if (xi > 0.) p = ans.variance_exists ? 1. / (1. - 2. * xi) : 1. / (1. - xi);
+	const double log_xi = xi > 0. ? std::log(xi) : 0.;
+	constexpr double kPi = 3.14159265358979323846;
+	constexpr double kStep = 1. / 32.;
+	// Beyond abs(tau) = kStep * kNumHalf the tanh-sinh weights are below the smallest
+	// positive double and every further node is numerically zero.
+	constexpr int kNumHalf = 218;
+	double zeroth = 0., first = 0., second = 0.;
+	for (int i = -kNumHalf; i <= kNumHalf; ++i) {
+		const double tau = i * kStep;
+		const double s = 0.5 * kPi * std::sinh(tau);
+		// The tanh-sinh node is w = 1 / (1 + exp(-2 s)); log(w) and log(1 - w) are formed
+		// directly because w itself is indistinguishable from 0 or 1 near the endpoints.
+		const double log_w = s <= 0. ? 2. * s - std::log1p(std::exp(2. * s)) : -std::log1p(std::exp(-2. * s));
+		const double log_1mw = s >= 0. ? -2. * s - std::log1p(std::exp(-2. * s)) : -std::log1p(std::exp(2. * s));
+		const double log_weight = std::log(kStep * kPi * std::cosh(tau)) + log_w + log_1mw;
+		const double log_r = p * log_w;
+		const double u = -std::expm1(log_r);
+		if (!(u > 0.)) continue;
+		const double g = EGPDCarrierDensity(u, log_r, pars, variant);
+		if (!(g > 0.) || !std::isfinite(g)) continue;
+		const double log_base = std::log(p * g) + log_weight + (p - 1.) * log_w;
+		double log_z;
+		if (xi > 0.) {
+			log_z = EGPDLogExpm1(-xi * log_r) - log_xi;
+		}
+		else {
+			const double z = xi < 0. ? std::expm1(-xi * log_r) / xi : -log_r;
+			log_z = z > 0. ? std::log(z) : -std::numeric_limits<double>::infinity();
+		}
+		zeroth += std::exp(log_base);
+		first += std::exp(log_base + log_z);
+		if (ans.variance_exists) second += std::exp(log_base + 2. * log_z);
 	}
 	ans.mean_unit_scale = first;
 	if (ans.variance_exists) ans.variance_unit_scale = std::max(0., second - first * first);
-	if (!std::isfinite(ans.mean_unit_scale) || (ans.variance_exists && !std::isfinite(ans.variance_unit_scale))) ans.status = EGPDEvalStatus::kQuadratureFailure;
+	// The same rule integrates the carrier density itself to one. The tolerance is coarse
+	// because this only has to detect a breakdown of the quadrature: over the parameter
+	// range for which the rule is accurate to machine precision the deviation is at most
+	// a few times the rounding error, and it stays below 1e-2 even for a carrier that is
+	// as concentrated as kappa = 500 at a shape at the variance boundary, where the
+	// moments themselves are still accurate to about 1e-4.
+	if (!std::isfinite(ans.mean_unit_scale) || (ans.variance_exists && !std::isfinite(ans.variance_unit_scale)) ||
+		!(std::abs(zeroth - 1.) < 1e-2)) {
+		ans.status = EGPDEvalStatus::kQuadratureFailure;
+	}
 	return ans;
 }
 

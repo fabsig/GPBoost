@@ -649,6 +649,9 @@ Dataset <- R6::R6Class(
       }
       if (!gpb.is.null.handle(private$handle)) private$finalize()
       private$raw_data <- cbind(private$raw_data, AR1_MF_fidelity = fidelity)
+      if (!is.null(private$colnames) && !("AR1_MF_fidelity" %in% private$colnames)) {
+        private$colnames <- c(private$colnames, "AR1_MF_fidelity")
+      }
       private$ar1_mf_fidelity_added <- TRUE
       private$ar1_mf_fidelity <- fidelity
       private$version <- private$version + 1L

@@ -104,7 +104,7 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     expect_equal(as.numeric(est), c(0.313569, 0.0602354, 0.181543, 0.276, 767.427), tolerance = TOL_MED)
     pd <- predict(gp, group_data_pred = c(1L, 2L, max(group) + 1L), X_pred = matrix(1.0, 3, 1), predict_var = TRUE, predict_response = TRUE)
     expect_equal(as.numeric(pd$mu), c(0.713328, 1.2867, 1.09925), tolerance = TOL_MED)
-    expect_equal(as.numeric(pd$var), c(1.57714, 4.85236, 4.66652), tolerance = TOL_MED)
+    expect_equal(as.numeric(pd$var), c(1.57439, 4.84381, 4.65866), tolerance = TOL_MED)
     # hurdle_egpd_power (auxiliary: shape, kappa, p0)
     ye <- ifelse(u1 < 0.3, 0, qegpd_power(u2, sigma, 0.2, 1.5))
     gpm2 <- GPModel(group_data = group, likelihood = "hurdle_egpd_power")

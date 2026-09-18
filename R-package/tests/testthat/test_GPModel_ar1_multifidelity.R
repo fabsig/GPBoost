@@ -218,6 +218,36 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     expect_equal(tree_mean, c(2.8165058065167723, 2.9922163527923269), tolerance = 1e-8)
   })
 
+  test_that("cross-validation uses the same boosting features as training", {
+    data <- simulate_ar1_mf_test_data()
+    features <- cbind(x = data$gp_coords[, 1], nonlinear = sin(4 * data$gp_coords[, 1]))
+    label <- data$y_gaussian + 5 * data$gp_coords[, 2]
+    folds <- list(seq(1, nrow(data$gp_coords), by = 2), seq(2, nrow(data$gp_coords), by = 2))
+    run_cv <- function(fidelity_specific_mean) {
+      gp_model <- GPModel(
+        gp_coords = data$gp_coords, cov_function = "ar1_mf_exponential", likelihood = "gaussian",
+        fidelity_specific_mean = fidelity_specific_mean
+      )
+      gp_model$set_optim_params(params = list(
+        init_cov_pars = data$cov_pars, init_coef_aux_pars_from_iid_model = FALSE
+      ))
+      dtrain <- gpb.Dataset(data = features, label = label, free_raw_data = FALSE)
+      cv_result <- gpb.cv(
+        data = dtrain, gp_model = gp_model, train_gp_model_cov_pars = FALSE, nrounds = 25, folds = folds,
+        learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 4, objective = "regression_l2",
+        metric = "l2", use_gp_model_for_validation = FALSE, verbose = 0
+      )
+      list(dataset = dtrain, error = cv_result$best_score)
+    }
+    with_feature <- run_cv(TRUE)
+    expect_equal(with_feature$dataset$dim()[2], 3L)
+    expect_equal(tail(with_feature$dataset$get_colnames(), 1), "AR1_MF_fidelity")
+    without_feature <- run_cv(FALSE)
+    expect_equal(without_feature$dataset$dim()[2], 2L)
+    # The two fidelities differ by a constant of 5, which only the fidelity feature can represent
+    expect_lt(with_feature$error, 0.5 * without_feature$error)
+  })
+
   test_that("AR1 multifidelity has independent low- and high-fidelity linear means", {
     data <- simulate_ar1_mf_test_data()
     fidelity <- data$gp_coords[, 2]

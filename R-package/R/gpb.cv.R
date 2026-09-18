@@ -189,7 +189,15 @@ gpb.cv <- function(params = list()
     begin_iteration <- predictor$current_iter() + 1L
   }
   end_iteration <- begin_iteration + params[["num_iterations"]] - 1L
-  
+
+  use_ar1_mf_fidelity_mean <- !is.null(gp_model) && gp_model$has_fidelity_specific_mean()
+  if (use_ar1_mf_fidelity_mean) {
+    data$add_ar1_mf_fidelity_feature(gp_model$get_fidelity_indicator())
+    if (!is.null(colnames) && !"AR1_MF_fidelity" %in% colnames) {
+      colnames <- c(colnames, "AR1_MF_fidelity")
+    }
+  }
+
   # Construct datasets, if needed
   data$update_params(params = params)
   if (data$.__enclos_env__$private$free_raw_data) {
@@ -485,6 +493,7 @@ gpb.cv <- function(params = list()
                                           , gp_coords = gp_coords
                                           , gp_rand_coef_data = gp_rand_coef_data
                                           , cov_function = gp_model$.__enclos_env__$private$cov_function
+                                          , fidelity_specific_mean = gp_model$has_fidelity_specific_mean()
                                           , cov_fct_shape = gp_model$.__enclos_env__$private$cov_fct_shape
                                           , gp_approx = gp_model$.__enclos_env__$private$gp_approx
                                           , num_parallel_threads = gp_model$.__enclos_env__$private$num_parallel_threads

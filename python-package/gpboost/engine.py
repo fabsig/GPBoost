@@ -19,6 +19,30 @@ from .basic import Booster, Dataset, GPBoostError, _ConfigAliases, _InnerPredict
 from .compat import SKLEARN_INSTALLED, _GPBoostGroupKFold, _GPBoostStratifiedKFold, pd_Series, is_dtype_sparse, pd_DataFrame
 
 
+def _add_ar1_mf_fidelity_feature(dataset, fidelity):
+    """Append the AR1 multifidelity indicator as an additional boosting feature to a Dataset."""
+    fidelity = np.asarray(fidelity).reshape(-1)
+    if getattr(dataset, "_ar1_mf_fidelity_added", False):
+        if not np.array_equal(fidelity, dataset._ar1_mf_fidelity):
+            raise ValueError("This Dataset already contains a different AR1 multifidelity indicator")
+        return
+    if dataset.data is None or not hasattr(dataset.data, "shape"):
+        raise ValueError("Fidelity-specific GPBoost means require retained matrix-like Dataset data")
+    if fidelity.shape[0] != dataset.data.shape[0] or not np.all(np.isin(fidelity, (0., 1.))):
+        raise ValueError("The AR1 multifidelity indicator must contain one value (0 or 1) per Dataset row")
+    if dataset.handle is not None:
+        dataset._free_handle()
+    if scipy.sparse.issparse(dataset.data):
+        dataset.data = scipy.sparse.hstack((dataset.data, fidelity[:, None]), format=dataset.data.format)
+    elif isinstance(dataset.data, pd_DataFrame):
+        dataset.data = dataset.data.copy()
+        dataset.data["AR1_MF_fidelity"] = fidelity
+    else:
+        dataset.data = np.column_stack((dataset.data, fidelity))
+    dataset._ar1_mf_fidelity_added = True
+    dataset._ar1_mf_fidelity = fidelity.copy()
+
+
 def train(params, train_set, num_boost_round=100,
           gp_model=None, use_gp_model_for_validation=True, train_gp_model_cov_pars=True,
           valid_sets=None, valid_names=None,
@@ -205,32 +229,10 @@ def train(params, train_set, num_boost_round=100,
 
     use_ar1_mf_fidelity_mean = gp_model is not None and gp_model.fidelity_specific_mean
 
-    def _add_fidelity_feature(dataset, fidelity):
-        fidelity = np.asarray(fidelity).reshape(-1)
-        if getattr(dataset, "_ar1_mf_fidelity_added", False):
-            if not np.array_equal(fidelity, dataset._ar1_mf_fidelity):
-                raise ValueError("This Dataset already contains a different AR1 multifidelity indicator")
-            return
-        if dataset.data is None or not hasattr(dataset.data, "shape"):
-            raise ValueError("Fidelity-specific GPBoost means require retained matrix-like Dataset data")
-        if fidelity.shape[0] != dataset.data.shape[0] or not np.all(np.isin(fidelity, (0., 1.))):
-            raise ValueError("The AR1 multifidelity indicator must contain one value (0 or 1) per Dataset row")
-        if dataset.handle is not None:
-            dataset._free_handle()
-        if scipy.sparse.issparse(dataset.data):
-            dataset.data = scipy.sparse.hstack((dataset.data, fidelity[:, None]), format=dataset.data.format)
-        elif isinstance(dataset.data, pd_DataFrame):
-            dataset.data = dataset.data.copy()
-            dataset.data["AR1_MF_fidelity"] = fidelity
-        else:
-            dataset.data = np.column_stack((dataset.data, fidelity))
-        dataset._ar1_mf_fidelity_added = True
-        dataset._ar1_mf_fidelity = fidelity.copy()
-
     if use_ar1_mf_fidelity_mean:
         if gp_model.gp_coords is None:
             raise ValueError("Fidelity-specific GPBoost means require retained GP coordinates")
-        _add_fidelity_feature(train_set, gp_model.gp_coords[:, -1])
+        _add_ar1_mf_fidelity_feature(train_set, gp_model.gp_coords[:, -1])
         if feature_name != 'auto':
             feature_name = list(feature_name) + ["AR1_MF_fidelity"]
 
@@ -260,7 +262,7 @@ def train(params, train_set, num_boost_round=100,
             if use_ar1_mf_fidelity_mean:
                 if gp_model.gp_coords_pred is None:
                     raise ValueError("Validation with fidelity-specific GPBoost means requires gp_model.set_prediction_data(gp_coords_pred=...)")
-                _add_fidelity_feature(valid_data, gp_model.gp_coords_pred[:, -1])
+                _add_ar1_mf_fidelity_feature(valid_data, gp_model.gp_coords_pred[:, -1])
             reduced_valid_sets.append(valid_data._update_params(params).set_reference(train_set))
             if valid_names is not None and len(valid_names) > i:
                 name_valid_sets.append(valid_names[i])
@@ -514,6 +516,7 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                      gp_coords=gp_coords,
                                      gp_rand_coef_data=gp_rand_coef_data,
                                      cov_function=gp_model.cov_function,
+                                     fidelity_specific_mean=gp_model.fidelity_specific_mean,
                                      cov_fct_shape=gp_model.cov_fct_shape,
                                      gp_approx=gp_model.gp_approx,
                                      num_parallel_threads=gp_model.num_parallel_threads,
@@ -771,6 +774,12 @@ def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_ro
         # update gp_model related parameters
         params['use_gp_model_for_validation'] = use_gp_model_for_validation
         params['train_gp_model_cov_pars'] = train_gp_model_cov_pars
+        if gp_model.fidelity_specific_mean:
+            if gp_model.gp_coords is None:
+                raise ValueError("Fidelity-specific GPBoost means require retained GP coordinates")
+            _add_ar1_mf_fidelity_feature(train_set, gp_model.gp_coords[:, -1])
+            if feature_name != 'auto':
+                feature_name = list(feature_name) + ["AR1_MF_fidelity"]
 
     if num_boost_round <= 0:
         raise ValueError("num_boost_round should be greater than zero.")

@@ -39,17 +39,17 @@ test_that("all continuous carriers estimate, evaluate, and predict", {
                   egpd_power_beta=c(0.05, 1, 1.2), egpd_power_mixture=c(0.05, 0.9, 0.6, 0.6))
   expected <- list(
     gpd=list(aux=-0.1904527582, coef=c(0.4118840337, 0.5137677124), cov=0.04699721933, nll=97.73954415,
-             given=100.13358045, mu=c(0.8522038025, 0.7835895604), var=c(0.5759926659, 0.4869757118)),
+             given=100.13358045, mu=c(0.8521648785, 0.7835537704), var=c(0.5758636686, 0.4868666503)),
     egpd_power=list(aux=c(-0.08742481805, 1.1517620975), coef=c(0.2475385011, 0.5370884373), cov=0.02808931417,
-                    nll=97.49848773, given=98.71975502, mu=c(0.8713290923, 0.7981281827), var=c(0.6003439312, 0.5037104818)),
+                    nll=97.49848773, given=98.71975502, mu=c(0.8712688920, 0.7980730399), var=c(0.6000544331, 0.5034675824)),
     egpd_beta=list(aux=c(0.2405998405, 1.7151732379), coef=c(-0.3452957342, 0.5867795921), cov=0.007032903292,
-                   nll=100.40833525, given=108.62519397, mu=c(0.8833455357, 0.8025926386), var=c(1.0165839065, 0.8392132597)),
+                   nll=100.40833525, given=108.62519397, mu=c(0.8830301793, 0.8023061111), var=c(1.0172073750, 0.8397279473)),
     egpd_power_beta=list(aux=c(-0.08668289867, 1.0469984245, 1.1559812290), coef=c(0.2527227024, 0.5378556834),
-                         cov=0.02642681026, nll=97.49633508, given=98.71975502, mu=c(0.8730075086, 0.7995653591),
-                         var=c(0.6031604222, 0.5059467598)),
+                         cov=0.02642681026, nll=97.49633508, given=98.71975502, mu=c(0.8729478358, 0.7995107063),
+                         var=c(0.6028702195, 0.5057033301)),
     egpd_power_mixture=list(aux=c(-0.05164320454, 1.0751327224, 0.3677128479, 0.6463666057), coef=c(0.1827105737, 0.5408923322),
-                            cov=0.01536002914, nll=97.59735768, given=99.48223799, mu=c(0.8767495404, 0.8025942982),
-                            var=c(0.6161613395, 0.5163396687)))
+                            cov=0.01536002914, nll=97.59735768, given=99.48223799, mu=c(0.8766779771, 0.8025287876),
+                            var=c(0.6157654620, 0.5160079256)))
   expected_names <- list(gpd="shape", egpd_power=c("shape", "kappa"), egpd_beta=c("shape", "delta"),
                          egpd_power_beta=c("shape", "delta", "kappa"),
                          egpd_power_mixture=c("shape", "kappa1", "delta_kappa", "p"))
@@ -96,8 +96,8 @@ test_that("GPD covers grouped, crossed, Vecchia, and combined latent models", {
   expect_equal(fit_group$neg_log_likelihood(unname(fit_group$get_cov_pars()), y_group, fixed_effects=drop(cbind(1, x) %*% fit_group$get_coef()),
                                             aux_pars=unname(fit_group$get_aux_pars())), 96.60467923, tolerance=1e-4)
   pred_group <- predict(fit_group, group_data_pred=group1[1:3], X_pred=cbind(1, x[1:3]), predict_response=TRUE, predict_var=TRUE)
-  expect_equal(unname(pred_group$mu), c(1.4913611673, 1.4823656181, 1.4870656611), tolerance=1e-4)
-  expect_equal(unname(pred_group$var), c(2.4511914239, 2.4217105525, 2.4370916272), tolerance=1e-4)
+  expect_equal(unname(pred_group$mu), c(1.4912413010, 1.4822464750, 1.4869461400), tolerance=1e-4)
+  expect_equal(unname(pred_group$var), c(2.4496678650, 2.4202053180, 2.4355768330), tolerance=1e-4)
 
   eta_crossed <- 0.1 + b1[group1] + b2[group2]
   y_crossed <- sim_gpd_lcg(eta_crossed, 0.1, 0.47)
@@ -162,8 +162,8 @@ test_that("GPD covers grouped, crossed, Vecchia, and combined latent models", {
   expect_equal(evaluated, 112.08649465, tolerance=1e-4)
   pred_combined <- predict(fit_combined, group_data_pred=group1[1:3], gp_coords_pred=coords[1:3, ], X_pred=cbind(1, x[1:3]),
                            predict_response=TRUE, predict_var=TRUE)
-  expect_equal(unname(pred_combined$mu), c(1.0381680386, 0.9326345468, 0.9862718573), tolerance=1e-4)
-  expect_equal(unname(pred_combined$var), c(1.8530712810, 1.4954773708, 1.6724384879), tolerance=1e-4)
+  expect_equal(unname(pred_combined$mu), c(1.0378871800, 0.9323822383, 0.9860050383), tolerance=1e-4)
+  expect_equal(unname(pred_combined$var), c(1.8502888240, 1.4932318550, 1.6699272580), tolerance=1e-4)
 })
 
 test_that("EGPD carriers with multiple observations at the same location (Vecchia, Cholesky and iterative)", {
@@ -227,6 +227,40 @@ test_that("EGPD response and auxiliary parameter validation is explicit", {
   expect_error(fitGPModel(group_data=1:3, y=c(1, 2, 3), likelihood="egpd_power", params=list(init_aux_pars=c(0, 0))), "larger than 0")
   expect_error(fitGPModel(group_data=1:3, y=c(1, 2, 3), likelihood="egpd_power_mixture", params=list(init_aux_pars=c(0, 1, 1, 1))),
                "strictly between 0 and 1")
+})
+
+test_that("response mean and variance match the closed-form moments for a heavy tail", {
+  # For an unobserved group the predictive latent distribution is the prior N(0, sigma^2), so the
+  # response moments are those of exp(latent) times the unit-scale carrier variable Z. The unit-scale
+  # moments follow from M(t) = E[R^-t] with R the exceedance probability of the carrier:
+  # E[Z] = (M(xi) - 1) / xi and E[Z^2] = (M(2 xi) - 2 M(xi) + 1) / xi^2. These are exact, independent
+  # of the quadrature in the library, and increasingly sensitive to it as the shape approaches the
+  # variance boundary xi = 0.5.
+  n <- 40
+  group <- rep(1:8, each=5)
+  y <- sim_gpd_lcg(rep(0.2, n), 0.3, 0.19)
+  latent_var <- 0.2
+  M_gpd <- function(t, pars) 1 / (1 - t)
+  M_power <- function(t, pars) exp(lgamma(1 - t) + lgamma(pars[2] + 1) - lgamma(pars[2] + 1 - t))
+  M_beta <- function(t, pars) (1 + pars[2]) / ((1 - t) * (1 + pars[2] - t))
+  cases <- list(list(likelihood="gpd", pars=0.4, M=M_gpd),
+                list(likelihood="gpd", pars=0.45, M=M_gpd),
+                list(likelihood="egpd_power", pars=c(0.35, 1.4), M=M_power),
+                list(likelihood="egpd_power", pars=c(0.45, 0.7), M=M_power),
+                list(likelihood="egpd_beta", pars=c(0.42, 0.8), M=M_beta))
+  for(case in cases){
+    gp_model <- GPModel(group_data=group, likelihood=case$likelihood)
+    gp_model$set_optim_params(params=list(init_aux_pars=case$pars))
+    pred <- gp_model$predict(y=y, group_data_pred=max(group) + 1L, cov_pars=latent_var,
+                             predict_var=TRUE, predict_response=TRUE)
+    xi <- case$pars[1]
+    first <- (case$M(xi, case$pars) - 1) / xi
+    second <- (case$M(2 * xi, case$pars) - 2 * case$M(xi, case$pars) + 1) / xi^2
+    response_mean <- first * exp(0.5 * latent_var)
+    expect_equal(as.numeric(pred$mu), response_mean, tolerance=1e-7, info=case$likelihood)
+    expect_equal(as.numeric(pred$var), second * exp(2 * latent_var) - response_mean^2,
+                 tolerance=1e-7, info=case$likelihood)
+  }
 })
 
 test_that("EGPD carriers reduce to their special cases and match a closed-form GPD density", {
