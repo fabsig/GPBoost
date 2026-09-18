@@ -39,6 +39,12 @@ def _add_ar1_mf_fidelity_feature(dataset, fidelity):
         dataset.data["AR1_MF_fidelity"] = fidelity
     else:
         dataset.data = np.column_stack((dataset.data, fidelity))
+    # Feature names that were given to the Dataset itself have to follow the added column,
+    # they are otherwise one short of the number of features when the Dataset is constructed
+    stored_feature_name = dataset.feature_name
+    if stored_feature_name is not None and not isinstance(stored_feature_name, str) \
+            and "AR1_MF_fidelity" not in list(stored_feature_name):
+        dataset.feature_name = list(stored_feature_name) + ["AR1_MF_fidelity"]
     dataset._ar1_mf_fidelity_added = True
     dataset._ar1_mf_fidelity = fidelity.copy()
 

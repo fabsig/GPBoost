@@ -240,14 +240,22 @@ test_that("response mean and variance match the closed-form moments for a heavy 
   group <- rep(1:8, each=5)
   y <- sim_gpd_lcg(rep(0.2, n), 0.3, 0.19)
   latent_var <- 0.2
+  M_power_kappa <- function(t, kappa) exp(lgamma(1 - t) + lgamma(kappa + 1) - lgamma(kappa + 1 - t))
   M_gpd <- function(t, pars) 1 / (1 - t)
-  M_power <- function(t, pars) exp(lgamma(1 - t) + lgamma(pars[2] + 1) - lgamma(pars[2] + 1 - t))
+  M_power <- function(t, pars) M_power_kappa(t, pars[2])
   M_beta <- function(t, pars) (1 + pars[2]) / ((1 - t) * (1 + pars[2] - t))
+  # The mixture carrier is the mixture of its two power carriers, and the power-beta carrier is
+  # the power carrier with the same kappa at delta = 1, where B(u) = u^2 and B'(u) = 2 u
+  M_power_mixture <- function(t, pars) pars[4] * M_power_kappa(t, pars[2]) +
+    (1 - pars[4]) * M_power_kappa(t, pars[2] + pars[3])
+  M_power_beta <- function(t, pars) M_power_kappa(t, pars[3])
   cases <- list(list(likelihood="gpd", pars=0.4, M=M_gpd),
                 list(likelihood="gpd", pars=0.45, M=M_gpd),
                 list(likelihood="egpd_power", pars=c(0.35, 1.4), M=M_power),
                 list(likelihood="egpd_power", pars=c(0.45, 0.7), M=M_power),
-                list(likelihood="egpd_beta", pars=c(0.42, 0.8), M=M_beta))
+                list(likelihood="egpd_beta", pars=c(0.42, 0.8), M=M_beta),
+                list(likelihood="egpd_power_mixture", pars=c(0.4, 0.8, 2.2, 0.35), M=M_power_mixture),
+                list(likelihood="egpd_power_beta", pars=c(0.44, 1, 1.6), M=M_power_beta))
   for(case in cases){
     gp_model <- GPModel(group_data=group, likelihood=case$likelihood)
     gp_model$set_optim_params(params=list(init_aux_pars=case$pars))
