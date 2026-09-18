@@ -917,6 +917,10 @@ namespace GPBoost {
 	}
 
 	void REModel::SetUsedInGPBoostAlgorithm() {
+		//standard errors that have been calculated before the model became part of a booster do not
+		//	apply to it anymore and must not be returned from the cache
+		std_dev_cov_pars_calculated_ = false;
+		std_dev_aux_pars_calculated_ = false;
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->SetUsedInGPBoostAlgorithm();
 		}

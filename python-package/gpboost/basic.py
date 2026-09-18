@@ -6045,12 +6045,14 @@ class GPModel(object):
                 model_dict["params"]['init_aux_pars'] = np.array(model_dict["params"]['init_aux_pars'])
             if model_dict["params"]['init_coef'] is not None:
                 model_dict["params"]['init_coef'] = np.array(model_dict["params"]['init_coef'])
-            # Models that were saved before the internal default-value sentinel was changed to -999
-            #   contain the former sentinel -1, which is now rejected as an invalid value
+            # Before the internal default-value sentinel was changed to -999, any non-positive value of
+            #   these parameters was a request for the internal default (the former default was -1), so a
+            #   saved model can contain -1, another negative number, or 0, all of which are rejected now
             for param_name, sentinel in (("delta_rel_conv", -999.), ("lr_cov", -999.),
                                          ("fitc_piv_chol_preconditioner_rank", -999), ("m_lbfgs", -999),
                                          ("delta_conv_mode_finding", -999.)):
-                if model_dict["params"].get(param_name) == -1:
+                param_value = model_dict["params"].get(param_name)
+                if param_value is not None and param_value <= 0:
                     model_dict["params"][param_name] = sentinel
             # pseudo call to fit to save things in C++
             params = model_dict["params"]
@@ -6947,9 +6949,6 @@ class GPModel(object):
         ----------
         std_err : bool (default=False)
             If True, (approximate) standard errors are calculated.
-            For non-Gaussian likelihoods, no standard errors of the covariance and auxiliary parameters
-            are calculated if the model is used in the GPBoost algorithm, since they require the fixed
-            effects given by the tree ensemble
         format_pandas : bool (default=True)
             If True, a pandas DataFrame is returned, otherwise a numpy array is returned
 

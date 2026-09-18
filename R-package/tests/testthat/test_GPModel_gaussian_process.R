@@ -2815,14 +2815,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(cov_pars_est, gp_model_loaded$get_cov_pars(std_err = TRUE))
     expect_equal(coef_est, gp_model_loaded$get_coef(std_err = TRUE))
 
-    # A model that was saved before the internal default-value sentinel was changed to -999 contains the
-    #   former sentinel -1 for the parameters whose default is set in C++
+    # Before the internal default-value sentinel was changed to -999, any non-positive value of these
+    #   parameters was a request for the internal default, and a saved model can thus contain -1 (the
+    #   former default), another negative number, or 0
     json_legacy <- paste(readLines(filename, warn = FALSE), collapse = "\n")
-    for (param_name in c("delta_rel_conv", "lr_cov", "fitc_piv_chol_preconditioner_rank",
-                         "m_lbfgs", "delta_conv_mode_finding")) {
-      pattern <- paste0('("', param_name, '"[[:space:]]*:[[:space:]]*)[-+0-9.eE]+')
+    legacy_params <- c("delta_rel_conv", "lr_cov", "fitc_piv_chol_preconditioner_rank",
+                       "m_lbfgs", "delta_conv_mode_finding")
+    legacy_values <- c(-1, -2, 0, -1, -2)
+    for (i in seq_along(legacy_params)) {
+      pattern <- paste0('("', legacy_params[i], '"[[:space:]]*:[[:space:]]*)[-+0-9.eE]+')
       expect_true(grepl(pattern, json_legacy))
-      json_legacy <- sub(pattern, "\\1-1", json_legacy)
+      json_legacy <- sub(pattern, paste0("\\1", legacy_values[i]), json_legacy)
     }
     filename_legacy <- tempfile(fileext = ".json")
     writeLines(json_legacy, filename_legacy)

@@ -1304,13 +1304,14 @@ gpb.GPModel <- R6::R6Class(
       if (private$model_has_been_loaded_from_saved_file) {
         # pseudo call to fit to save things in C++ 
         params <- model_list[["params"]]
-        # Models that were saved before the internal default-value sentinel was changed to -999
-        #   contain the former sentinel -1, which is now rejected as an invalid value
+        # Before the internal default-value sentinel was changed to -999, any non-positive value of
+        #   these parameters was a request for the internal default (the former default was -1), so a
+        #   saved model can contain -1, another negative number, or 0, all of which are rejected now
         legacy_sentinels <- list(delta_rel_conv = -999., lr_cov = -999.,
                                  fitc_piv_chol_preconditioner_rank = -999L, m_lbfgs = -999L,
                                  delta_conv_mode_finding = -999.)
         for (param_name in names(legacy_sentinels)) {
-          if (!is.null(params[[param_name]]) && params[[param_name]] == -1) {
+          if (!is.null(params[[param_name]]) && params[[param_name]] <= 0) {
             params[[param_name]] <- legacy_sentinels[[param_name]]
           }
         }
