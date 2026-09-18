@@ -954,6 +954,11 @@ namespace GPBoost {
 							CheckCholeskyFactorization(chol_fact_sigma_woodbury_woodbury_, "FindModePostRandEffCalcMLLFSVA iterative determinant preconditioner");
 						}
 					}
+					else if (cg_preconditioner_type_ == "vifdu") {
+						// W is the same as in the last mode update, and so is the Woodbury matrix of the preconditioner
+						sigma_woodbury_woodbury_ = sigma_woodbury_woodbury;
+						chol_fact_sigma_woodbury_woodbury_ = chol_fact_sigma_woodbury_woodbury;
+					}
 					double log_det_Sigma_W_plus_I;
 					CalcLogDetStochFSVA(dim_mode_, cg_max_num_it_tridiag, chol_fact_sigma_woodbury, chol_ip_cross_cov, chol_fact_sigma_ip, chol_fact_sigma_ip_preconditioner,
 						cross_cov, re_comps_cross_cov_preconditioner_cluster_i, W_D_inv_inv, chol_fact_sigma_woodbury_woodbury_, W_D_inv,

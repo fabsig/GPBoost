@@ -13,10 +13,76 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # a run on master is not cancelled, so that every commit of the history gets a result
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # the Linux runners have 4 vCPUs, and neither 'build_r.R' nor 'R CMD INSTALL' sets this
+  MAKEFLAGS: "-j4"
 
 jobs:
+
+  generated-files:
+    name: Generated files and build lists
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Check that the generated parameter files are in step with config.h
+        run: |
+          python helpers/parameter_generator.py
+          git diff --exit-code -- docs/Parameters.rst src/LightGBM/io/config_auto.cpp
+
+      - name: Check that every source file is in the object lists of the R package
+        run: |
+          python helpers/check_makevars_objects.py
+
+  cpp-build:
+    name: C++ build (${{ matrix.compiler }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential
+          if [ "${{ matrix.compiler }}" = "clang" ]; then
+            sudo apt-get install -y clang libomp-dev
+          fi
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: cpp-build-${{ matrix.compiler }}
+
+      - name: Build the library
+        env:
+          CC: ${{ matrix.compiler == 'clang' && 'clang' || 'gcc' }}
+          CXX: ${{ matrix.compiler == 'clang' && 'clang++' || 'g++' }}
+        run: |
+          cmake -B build -S . \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake --build build --parallel 4
 
   python-tests:
     name: Python tests
@@ -26,8 +92,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -39,10 +103,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake build-essential graphviz
 
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: python-tests
+
       - name: Install Python test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest psutil matplotlib graphviz
+          # numpy, pandas, scipy and scikit-learn are dependencies of the package itself, but the
+          # tests import them directly, so they are requested here as well
+          python -m pip install pytest psutil numpy pandas scipy scikit-learn joblib packaging matplotlib graphviz
 
       - name: Build and install GPBoost
         run: |
@@ -50,19 +121,24 @@ jobs:
 
       - name: Run Python tests
         run: |
-          pytest -q tests/python_package_test
+          pytest -q --junit-xml=python-test-results.xml tests/python_package_test
 
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: python-test-results
+          path: python-test-results.xml
+          retention-days: 7
 
-  r-tests:
-    name: R package tests
+  r-build:
+    name: R package build
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 90
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
-        with:
-          submodules: recursive
 
       - name: Set up R
         uses: r-lib/actions/setup-r@v2
@@ -75,6 +151,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake build-essential
 
+      # the packages are listed by hand: 'deps::.' cannot be used because the repository has no
+      # DESCRIPTION at its root and the one of the R package carries the '~~VERSION~~' placeholder
+      # that 'build_r.R' substitutes
       - name: Install R dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
@@ -86,13 +165,138 @@ jobs:
             any::processx
             any::testthat
 
-      - name: Build and install GPBoost R package
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1
+        with:
+          key: r-build
+
+      - name: Build and install the R package
         run: |
+          mkdir -p ~/.R
+          printf 'CC = ccache gcc\nCXX = ccache g++\nCXX14 = ccache g++\nCXX17 = ccache g++\n' > ~/.R/Makevars
           Rscript build_r.R
 
-      - name: Run full R test suite
+      # the test jobs below install this instead of building the package a second time
+      - name: Pack the installed package
+        run: |
+          pkg_dir=$(Rscript -e 'cat(find.package("gpboost"))')
+          tar -czf gpboost-r-installed.tar.gz -C "$(dirname "${pkg_dir}")" gpboost
+
+      - name: Upload the installed package
+        uses: actions/upload-artifact@v7
+        with:
+          name: gpboost-r-installed
+          path: gpboost-r-installed.tar.gz
+          retention-days: 7
+
+  r-tests-fast:
+    name: R tests (fast subset)
+    needs: r-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+          use-public-rspm: true
+
+      - name: Install R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::R6
+            any::data.table
+            any::RJSONIO
+            any::Matrix
+            any::processx
+            any::testthat
+
+      - name: Download the installed package
+        uses: actions/download-artifact@v8
+        with:
+          name: gpboost-r-installed
+
+      - name: Install the package from the build job
+        run: |
+          mkdir -p "${R_LIBS_USER}"
+          tar -xzf gpboost-r-installed.tar.gz -C "${R_LIBS_USER}"
+
+      # a first verdict within a few minutes, before the full suite below has finished
+      - name: Run the fast test files
         env:
           GPBOOST_ALL_TESTS: GPBOOST_ALL_TESTS
           GPBOOST_STRICT_TOLERANCES: "false"
         run: |
-          Rscript -e 'library(gpboost); options(testthat.summary.max_reports = 100); testthat::test_dir("R-package/tests/testthat", reporter = "summary", stop_on_failure = TRUE)'
+          Rscript -e 'library(gpboost); testthat::test_dir("R-package/tests/testthat", filter = "(test_basic|test_dataset|test_parameters|test_Predictor|test_GPModel_grouped_random_effects)$", reporter = "summary", stop_on_failure = TRUE)'
+
+  r-tests-full:
+    name: R tests (shard ${{ matrix.shard }} of 4)
+    needs: r-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+          use-public-rspm: true
+
+      - name: Install R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::R6
+            any::data.table
+            any::RJSONIO
+            any::Matrix
+            any::processx
+            any::testthat
+
+      - name: Download the installed package
+        uses: actions/download-artifact@v8
+        with:
+          name: gpboost-r-installed
+
+      - name: Install the package from the build job
+        run: |
+          mkdir -p "${R_LIBS_USER}"
+          tar -xzf gpboost-r-installed.tar.gz -C "${R_LIBS_USER}"
+
+      # the files are dealt out one by one over the shards, which spreads the long ones without
+      # knowing how long they take; this can be replaced by an explicit assignment once the run
+      # times of the individual files are known
+      - name: Run the R test suite
+        env:
+          GPBOOST_ALL_TESTS: GPBOOST_ALL_TESTS
+          GPBOOST_STRICT_TOLERANCES: "false"
+          SHARD: ${{ matrix.shard }}
+          NUM_SHARDS: "4"
+        run: |
+          Rscript -e '
+            library(gpboost)
+            shard <- as.integer(Sys.getenv("SHARD"))
+            num_shards <- as.integer(Sys.getenv("NUM_SHARDS"))
+            test_dir <- "R-package/tests/testthat"
+            files <- sort(list.files(test_dir, pattern = "^test.*[.][rR]$"), method = "radix")
+            files <- files[seq(from = shard, to = length(files), by = num_shards)]
+            cat("Test files of this shard:", paste(files, collapse = ", "), "\n")
+            # the filter of test_dir() is matched against the whole path without the extension, so
+            # it is anchored at the end only
+            filter <- paste0("(", paste(gsub("[.]", "[.]", sub("[.][rR]$", "", files)), collapse = "|"), ")$")
+            options(testthat.summary.max_reports = 100)
+            testthat::test_dir(test_dir, filter = filter, reporter = "summary", stop_on_failure = TRUE)
+          '

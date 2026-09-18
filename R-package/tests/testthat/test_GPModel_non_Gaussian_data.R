@@ -4468,10 +4468,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                           matrix_inversion_method = "iterative",
                                                           y = y_het2, X = X_het2, params = optim_params_fsva_iter_vifdu), file = "NUL")
     coef_fsva_iter_vifdu <- as.vector(gp_model_fsva_iter_vifdu$get_coef(std_err = FALSE))
-    expected_coef_fsva_iter_vifdu <- c(0.36452982, 0.55026778, -1.02258335, 2.51333719)
+    expected_coef_fsva_iter_vifdu <- c(0.36474695, 0.54937080, -1.02123830, 2.50914439)
     expect_lt(sum(abs(coef_fsva_iter_vifdu - expected_coef_fsva_iter_vifdu)), TOLERANCE_NON_CONVEX)
-    expect_lt(sum(abs(as.vector(gp_model_fsva_iter_vifdu$get_cov_pars(std_err = FALSE)) - c(0.88243463, 0.06380923))), TOLERANCE_NON_CONVEX)
-    expect_lt(abs(gp_model_fsva_iter_vifdu$get_current_neg_log_likelihood() - 170.19579450), TOLERANCE_NON_CONVEX)
+    expect_lt(sum(abs(as.vector(gp_model_fsva_iter_vifdu$get_cov_pars(std_err = FALSE)) - c(0.77986027, 0.06217334))), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(gp_model_fsva_iter_vifdu$get_current_neg_log_likelihood() - 169.45524082), TOLERANCE_NON_CONVEX)
   })
 
   test_that("gamma_varying_shape likelihood for linear, GP and GPBoost models ", {
