@@ -113,7 +113,7 @@ jobs:
           Rscript -e 'library(gpboost); options(testthat.summary.max_reports = 100); testthat::test_dir("R-package/tests/testthat", reporter = "summary", stop_on_failure = TRUE)'
 
   cran-check:
-    name: R CMD check --as-cran
+    name: R CMD check --as-cran (no manual)
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -146,18 +146,26 @@ jobs:
             any::Matrix
             any::processx
             any::testthat
+            any::rcmdcheck
 
       # the tests of the package skip themselves when 'GPBOOST_ALL_TESTS' is not set, which is what
-      # CRAN sees as well; the full suite is run by the R test jobs of the CI workflow
+      # CRAN sees as well; the full suite is run by the R test jobs of the CI workflow.
+      # 'R CMD check' returns 0 for a check that only has warnings, so the exit status is determined
+      # by rcmdcheck instead, which fails on a warning as well
       - name: Build and check the CRAN source package
         run: |
           sh build-cran-package.sh
-          R CMD check --as-cran --no-manual gpboost_*.tar.gz
+          Rscript -e '
+            tarball <- Sys.glob("gpboost_*.tar.gz")
+            stopifnot(length(tarball) == 1L)
+            rcmdcheck::rcmdcheck(tarball, args = c("--as-cran", "--no-manual"),
+                                 error_on = "warning", check_dir = "check")
+          '
 
       - name: Upload the check directory
         if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: gpboost-Rcheck
-          path: gpboost.Rcheck
+          path: check/gpboost.Rcheck
           retention-days: 7

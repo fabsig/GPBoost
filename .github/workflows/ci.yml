@@ -13,13 +13,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  # a run on master is not cancelled, so that every commit of the history gets a result
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # 'github.head_ref' is set for a pull request and is the same for all of its commits, so a new
+  # commit cancels the run of the previous one. For a push it is empty, and the unique 'github.run_id'
+  # puts every commit in its own group: it neither cancels nor replaces the run of another commit
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 env:
   # the Linux runners have 4 vCPUs, and neither 'build_r.R' nor 'R CMD INSTALL' sets this
   MAKEFLAGS: "-j4"
+  # CMake reads these for 'CMAKE_<LANG>_COMPILER_LAUNCHER', which is how the CMake calls that are
+  # made by 'setup.py' and by 'src/install.libs.R' are routed through ccache
+  CMAKE_C_COMPILER_LAUNCHER: ccache
+  CMAKE_CXX_COMPILER_LAUNCHER: ccache
 
 jobs:
 
@@ -103,10 +109,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake build-essential graphviz
 
+      # 'setup.py' calls CMake itself, so ccache is wired in through the compiler launcher and
+      # through the symlinks that the action puts in front of the compilers on the PATH
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
           key: python-tests
+          create-symlink: true
 
       - name: Install Python test dependencies
         run: |
@@ -165,15 +174,17 @@ jobs:
             any::processx
             any::testthat
 
+      # 'src/install.libs.R' builds the library with CMake, also on Linux, so the compile rules of R
+      # (and a '~/.R/Makevars') never see it: ccache is wired in through the compiler launcher and
+      # through the symlinks that the action puts in front of the compilers on the PATH
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
           key: r-build
+          create-symlink: true
 
       - name: Build and install the R package
         run: |
-          mkdir -p ~/.R
-          printf 'CC = ccache gcc\nCXX = ccache g++\nCXX14 = ccache g++\nCXX17 = ccache g++\n' > ~/.R/Makevars
           Rscript build_r.R
 
       # the test jobs below install this instead of building the package a second time
@@ -232,7 +243,7 @@ jobs:
           GPBOOST_ALL_TESTS: GPBOOST_ALL_TESTS
           GPBOOST_STRICT_TOLERANCES: "false"
         run: |
-          Rscript -e 'library(gpboost); testthat::test_dir("R-package/tests/testthat", filter = "(test_basic|test_dataset|test_parameters|test_Predictor|test_GPModel_grouped_random_effects)$", reporter = "summary", stop_on_failure = TRUE)'
+          Rscript -e 'library(gpboost); testthat::test_dir("R-package/tests/testthat", filter = "^(basic|dataset|parameters|Predictor|GPModel_grouped_random_effects)$", reporter = "summary", stop_on_failure = TRUE)'
 
   r-tests-full:
     name: R tests (shard ${{ matrix.shard }} of 4)
@@ -294,9 +305,9 @@ jobs:
             files <- sort(list.files(test_dir, pattern = "^test.*[.][rR]$"), method = "radix")
             files <- files[seq(from = shard, to = length(files), by = num_shards)]
             cat("Test files of this shard:", paste(files, collapse = ", "), "\n")
-            # the filter of test_dir() is matched against the whole path without the extension, so
-            # it is anchored at the end only
-            filter <- paste0("(", paste(gsub("[.]", "[.]", sub("[.][rR]$", "", files)), collapse = "|"), ")$")
+            # the filter of test_dir() is matched against the file name without the leading "test_"
+            # and without the extension
+            filter <- paste0("^(", paste(gsub("[.]", "[.]", sub("^test[-_]", "", sub("[.][rR]$", "", files))), collapse = "|"), ")$")
             options(testthat.summary.max_reports = 100)
             testthat::test_dir(test_dir, filter = filter, reporter = "summary", stop_on_failure = TRUE)
           '
