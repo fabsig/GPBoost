@@ -13,10 +13,12 @@ permissions:
   contents: read
 
 concurrency:
-  # 'github.head_ref' is set for a pull request and is the same for all of its commits, so a new
-  # commit cancels the run of the previous one. For a push it is empty, and the unique 'github.run_id'
-  # puts every commit in its own group: it neither cancels nor replaces the run of another commit
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  # the number of a pull request is the same for all of its commits and unique across the repository,
+  # so a new commit cancels the run of the previous one and two pull requests never collide, also when
+  # they come from branches of the same name in different forks. For a push there is no pull request
+  # and the unique 'github.run_id' puts every commit in its own group: it neither cancels nor replaces
+  # the run of another commit
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 env:

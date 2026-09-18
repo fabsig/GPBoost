@@ -64,6 +64,10 @@ jobs:
 
     env:
       MAKEFLAGS: "-j4"
+      # CMake reads these for 'CMAKE_<LANG>_COMPILER_LAUNCHER', which is how the CMake calls that are
+      # made by 'src/install.libs.R' are routed through ccache
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
 
     steps:
       - name: Check out repository
@@ -91,15 +95,17 @@ jobs:
             any::processx
             any::testthat
 
+      # 'src/install.libs.R' builds the library with CMake, also on Linux, so the compile rules of R
+      # (and a '~/.R/Makevars') never see it: ccache is wired in through the compiler launcher and
+      # through the symlinks that the action puts in front of the compilers on the PATH
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1
         with:
           key: r-tests-slow
+          create-symlink: true
 
       - name: Build and install the R package
         run: |
-          mkdir -p ~/.R
-          printf 'CC = ccache gcc\nCXX = ccache g++\nCXX14 = ccache g++\nCXX17 = ccache g++\n' > ~/.R/Makevars
           Rscript build_r.R
 
       # 'GPBOOST_ADDITIONAL_SLOW_TESTS' adds the cases that the CI workflow leaves out, everything
