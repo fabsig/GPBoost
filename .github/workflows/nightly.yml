@@ -99,7 +99,7 @@ jobs:
       # (and a '~/.R/Makevars') never see it: ccache is wired in through the compiler launcher and
       # through the symlinks that the action puts in front of the compilers on the PATH
       - name: Set up ccache
-        uses: hendrikmuhs/ccache-action@v1
+        uses: hendrikmuhs/ccache-action@v1.2.24
         with:
           key: r-tests-slow
           create-symlink: true
