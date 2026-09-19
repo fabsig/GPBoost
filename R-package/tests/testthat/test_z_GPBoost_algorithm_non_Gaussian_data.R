@@ -2184,6 +2184,43 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       }
     })
 
+    # The GPBoost algorithm reuses the approximate Hessian of the lbfgs optimizer of the covariance
+    # parameters between boosting iterations. It cannot be reused when the optimization of the previous
+    # iteration has not stored a single correction pair, which happens when its line search is already
+    # unsuccessful in the first iteration, and the matrix of the solver has to be initialized instead.
+    # 'maxit' is deliberately small: what matters here is the second call of the optimizer. The fit is
+    # only checked for finiteness, the point of the test is that it runs at all
+    test_that("GPBoost algorithm with a Gaussian process model and an lbfgs optimization without a correction pair", {
+      
+      ntrain <- ntest <- 500
+      n <- ntrain + ntest
+      sim_data <- sim_friedman3(n=n, n_irrelevant=5, init_c=0.69)
+      f <- sim_data$f
+      f <- f - mean(f)
+      X <- sim_data$X
+      coords <- matrix(sim_rand_unif(n=n*2, init_c=0.63), ncol=2)
+      D <- as.matrix(dist(coords))
+      Sigma <- exp(-D/0.1) + diag(1E-20,n)
+      C <- t(chol(Sigma))
+      eps <- as.vector(C %*% qnorm(sim_rand_unif(n=n, init_c=0.987864)))
+      probs <- 1/(1+exp(-(f+eps)))
+      y <- as.numeric(sim_rand_unif(n=n, init_c=0.52574) < probs)
+      dtrain <- gpb.Dataset(data = X[1:ntrain,], label = y[1:ntrain])
+      gp_model <- GPModel(gp_coords = coords[1:ntrain,], cov_function = "exponential",
+                          likelihood = "gaussian_heteroscedastic_fixed_and_random", gp_approx = "vecchia",
+                          matrix_inversion_method = "cholesky")
+      gp_model$set_optim_params(params = list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", maxit = 2,
+                                             init_coef_aux_pars_from_iid_model = FALSE))
+      capture.output( bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 1,
+                                       learning_rate = 0.5, max_depth = 6, min_data_in_leaf = 5,
+                                       verbose = 0, deterministic = TRUE), file='NUL')
+      cov_pars <- as.vector(gp_model$get_cov_pars())
+      expect_equal(length(cov_pars), 4L)
+      expect_true(all(is.finite(cov_pars)))
+      expect_true(all(cov_pars > 0))
+      expect_true(is.finite(gp_model$get_current_neg_log_likelihood()))
+    })
+    
     if (Sys.getenv("GPBOOST_ADDITIONAL_SLOW_TESTS") == "GPBOOST_ADDITIONAL_SLOW_TESTS") {
       # slow test 
       test_that("GPBoost algorithm with Gaussian process model and 'gaussian_heteroscedastic_fixed_and_random' likelihood", {

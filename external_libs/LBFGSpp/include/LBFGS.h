@@ -98,7 +98,12 @@ public:
 
         // Dimension of the vector
         const int n = (int)x.size();
-        reset(n, reuse_m_bfgs_from_previous_call);
+        // ChangedForGPBoost: the approximate Hessian of a previous call can only be reused if that call has
+        //	stored corrections and if it had the same number of parameters. The decision is made here, before
+        //	'reset()', which initializes the matrix of this solver whenever it is not reused
+        const bool really_reuse_m_bfgs_from_previous_call = reuse_m_bfgs_from_previous_call &&
+            (m_bfgs_given.get_m_ncorr() > 0) && (n == m_bfgs_given.get_dim_param());
+        reset(n, really_reuse_m_bfgs_from_previous_call);
 
         // The length of lag for objective function value to test convergence
         const int fpast = m_param.past;
@@ -164,11 +169,6 @@ public:
 
         // Initial step size
         Scalar step;
-        bool really_reuse_m_bfgs_from_previous_call = reuse_m_bfgs_from_previous_call;
-        if (reuse_m_bfgs_from_previous_call)
-        {
-            really_reuse_m_bfgs_from_previous_call = reuse_m_bfgs_from_previous_call && (m_bfgs_given.get_m_ncorr() > 0) && ((int) x.size() == m_bfgs_given.get_dim_param());
-        }
         if (really_reuse_m_bfgs_from_previous_call)
         {
             CHECK(m_bfgs_given.get_m_ncorr() > 0);
