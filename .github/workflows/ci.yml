@@ -313,3 +313,40 @@ jobs:
             options(testthat.summary.max_reports = 100)
             testthat::test_dir(test_dir, filter = filter, reporter = "summary", stop_on_failure = TRUE)
           '
+
+  # a single required check for the branch protection rule, so that the rule does not have to list
+  # every job; it also fails when a job is skipped or cancelled, which a required check of that job
+  # would not
+  ci-required:
+    name: CI required
+    if: always()
+    needs:
+      - generated-files
+      - cpp-build
+      - python-tests
+      - r-build
+      - r-tests-fast
+      - r-tests-full
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check the results of all jobs
+        env:
+          RESULTS: |
+            generated-files ${{ needs.generated-files.result }}
+            cpp-build ${{ needs.cpp-build.result }}
+            python-tests ${{ needs.python-tests.result }}
+            r-build ${{ needs.r-build.result }}
+            r-tests-fast ${{ needs.r-tests-fast.result }}
+            r-tests-full ${{ needs.r-tests-full.result }}
+        run: |
+          status=0
+          while read -r job result; do
+            [ -n "${job}" ] || continue
+            echo "${job}: ${result}"
+            if [ "${result}" != "success" ]; then
+              echo "::error::the job ${job} did not succeed: ${result}"
+              status=1
+            fi
+          done <<< "${RESULTS}"
+          exit "${status}"
