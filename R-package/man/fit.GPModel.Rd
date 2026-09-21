@@ -172,13 +172,20 @@ fixed effects linear regression term (if there is one)}
     The convergence criterion used for terminating the optimization algorithm.
     Options: "relative_change_in_log_likelihood" or "relative_change_in_parameters".
     If convergence_criterion = "default", internal default values are used }
-    \item{lr_cov: \code{numeric} (default = 0.1 for "gradient_descent" and 1. otherwise, only relevant for "gradient_descent", "fisher_scoring", and "newton"). 
+    \item{lr_cov: \code{numeric} (default = 0.1 for "gradient_descent" and 1. otherwise, relevant for "gradient_descent", "fisher_scoring", "newton", and "lbfgs"). 
     Initial learning rate for covariance parameters if a gradient-based optimization method is used 
     \itemize{
     \item{If lr_cov = -999, internal default values are used (0.1 for "gradient_descent" and 1. otherwise) }
     \item{If there are additional auxiliary parameters for non-Gaussian likelihoods, 
     'lr_cov' is also used for those }
-    \item{For "lbfgs", this is divided by the norm of the gradient in the first iteration }}}
+    \item{For "gradient_descent", "fisher_scoring", and "newton", this is the learning rate by which the 
+    search direction is multiplied. It can be decreased, and increased again, during the optimization }
+    \item{For "lbfgs" and "lbfgs_linesearch_nocedal_wright", this is not a learning rate by which every 
+    update is multiplied. It only determines the first trial step, which is the negative gradient divided 
+    by its norm and multiplied by 'lr_cov', i.e., a step of length 'lr_cov'. The subsequent steps are 
+    determined by the approximate Hessian of the L-BFGS algorithm and the line search. 'lr_cov' has no 
+    effect when the approximate Hessian of a previous call is reused (see 'reuse_learning_rates_gp_model' 
+    of the GPBoost algorithm) }}}
     \item{lr_coef: \code{numeric} (default = 0.1, only relevant for "gradient_descent", "fisher_scoring", and "newton"). 
     Learning rate for fixed effect regression coefficients if gradient descent is used.
     If lr_coef = -999, internal default values are used }

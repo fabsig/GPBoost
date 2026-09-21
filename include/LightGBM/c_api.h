@@ -1401,7 +1401,7 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \brief Set configuration parameters for the optimizer
 * \param handle Handle of REModel
 * \param init_cov_pars Initial values for covariance parameters of RE components
-* \param lr Learning rate for covariance parameters. If lr = -999, internal default values are used (0.1 for "gradient_descent" and 1. otherwise)
+* \param lr Learning rate for covariance parameters. If lr = -999, internal default values are used (0.1 for "gradient_descent" and 1. otherwise). For "lbfgs", this is not a learning rate which multiplies every update but the length of the first trial step: it is divided by the norm of the gradient in the first iteration
 * \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0). If acc_rate_cov = -999, internal default values are used
 * \param max_iter Maximal number of iterations. If max_iter = -999, internal default values are used
 * \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. For "bfgs", the L2 norm of the gradient is used instead of the relative change in the log-likelihood. If delta_rel_conv = -999, internal default values are used
