@@ -465,7 +465,12 @@ The elements of 'cluster_ids' can be integer, double, or character.}
 \item{weights}{A \code{vector} with sample weights. For a Gaussian likelihood, the error variance ("nugget") for
 observation \code{i} is divided by \code{weights[i]}. For non-Gaussian likelihoods, the conditional
 log-likelihood contribution of observation \code{i} is multiplied by \code{weights[i]}. Consequently,
-weights affect the estimation of both random and fixed effects.}
+weights affect the estimation of both random and fixed effects. Note that a Gaussian likelihood is
+calculated via the Laplace approximation when \code{gp_approx = "vecchia_latent"}, when
+\code{likelihood = "gaussian_latent"}, and when grouped random effects are combined with a
+Vecchia-approximated Gaussian process. In these cases, the weights act as for a non-Gaussian likelihood,
+i.e., the Gaussian log-likelihood contribution of observation \code{i} is multiplied by
+\code{weights[i]} instead of the error variance being divided by it.}
 
 \item{likelihood_learning_rate}{A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)}
 

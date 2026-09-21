@@ -410,7 +410,12 @@
 #' @param weights A \code{vector} with sample weights. For a Gaussian likelihood, the error variance ("nugget") for
 #' observation \code{i} is divided by \code{weights[i]}. For non-Gaussian likelihoods, the conditional
 #' log-likelihood contribution of observation \code{i} is multiplied by \code{weights[i]}. Consequently,
-#' weights affect the estimation of both random and fixed effects.
+#' weights affect the estimation of both random and fixed effects. Note that a Gaussian likelihood is
+#' calculated via the Laplace approximation when \code{gp_approx = "vecchia_latent"}, when
+#' \code{likelihood = "gaussian_latent"}, and when grouped random effects are combined with a
+#' Vecchia-approximated Gaussian process. In these cases, the weights act as for a non-Gaussian likelihood,
+#' i.e., the Gaussian log-likelihood contribution of observation \code{i} is multiplied by
+#' \code{weights[i]} instead of the error variance being divided by it.
 #' @param likelihood_learning_rate A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)
 #' @param free_raw_data A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 #' is freed in R after initialization
@@ -821,6 +826,19 @@ gpb.GPModel <- R6::R6Class(
         GPU_use = model_list[["GPU_use"]]
         cluster_ids = model_list[["cluster_ids"]]
         likelihood = model_list[["likelihood"]]
+        if (!is.null(likelihood) && likelihood %in% c("zero_inflated_gamma", "zero-inflated-gamma")) {
+          # A saved model always contains the canonical likelihood name, so this name identifies a model that
+          # was saved with GPBoost <= 1.7.0. There, the predictor was the mean of the entire response,
+          # E(y) = exp(eta), whereas the predictor of "hurdle_gamma" is the mean of the positive part,
+          # E(y | y > 0) = exp(eta). The two differ by the factor 1 - p0, so loading such a model under the
+          # current parameterization would change its predictions
+          stop("The model was saved with the likelihood 'zero_inflated_gamma' of GPBoost <= 1.7.0, whose ",
+               "predictor was the mean of the entire response, E(y) = exp(eta). This likelihood is now called ",
+               "'hurdle_gamma' and its predictor is the mean of the positive part, E(y | y > 0) = exp(eta). The ",
+               "model can therefore not be loaded unchanged. Either refit it, or convert it by adding -log(1 - p0) ",
+               "to the predictor (e.g., to the intercept coefficient or to the offset) and setting the likelihood ",
+               "to 'hurdle_gamma' in the saved file")
+        }
         if (!is.null(likelihood) && likelihood == "gaussian_heteroscedastic") {
           # Up to and including the models saved with num_sets_re = 2, "gaussian_heteroscedastic" denoted the
           # likelihood whose variance predictor contains both fixed and random effects. That model is now called

@@ -1651,10 +1651,12 @@ namespace GPBoost {
 		* \param y_data Response variable data
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param num_data Number of data points
+		* \param weights Weights of all data points in the order of 'y_data'. If nullptr, the weights of this cluster are used
 		*/
 		const double* FindInitialAuxPars(const double* y_data,
 			const double* fixed_effects,
-			const data_size_t num_data);
+			const data_size_t num_data,
+			const double* weights = nullptr);
 
 		/*!
 		* \brief Determine constants C_mu and C_sigma2 used for checking whether step sizes for linear regression coefficients are clearly too large

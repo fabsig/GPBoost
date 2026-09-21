@@ -2363,7 +2363,7 @@ class Dataset:
             if self.init_score is not None:
                 init_score_subset = self.init_score[used_indices_sorted]
             ret = Dataset(data_subset, label=label_subset, reference=reference,
-                          weight=group_subset, group=weight_subset, init_score=init_score_subset,
+                          weight=weight_subset, group=group_subset, init_score=init_score_subset,
                           silent=self.silent, params=params, free_raw_data=self.free_raw_data,
                           feature_name=self.feature_name, categorical_feature=self.categorical_feature)
         ret.pandas_categorical = self.pandas_categorical
@@ -3138,7 +3138,11 @@ class Booster:
                     save_data = json.load(f)
                 self.model_from_string(save_data['booster_str'], not silent)
                 if save_data.get("raw_data") is not None:
-                    self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
+                    init_score_train = save_data['raw_data'].get('init_score')
+                    if init_score_train is not None:
+                        init_score_train = np.array(init_score_train)
+                    self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'],
+                                             init_score=init_score_train)
                     save_data['gp_model_str']['y'] = np.array(save_data['raw_data']['label'])
                 else:
                     if save_data['gp_model_str']['likelihood'] == "gaussian" and save_data['gp_model_str']['gp_approx'] != "vecchia_latent":
@@ -3173,7 +3177,11 @@ class Booster:
                 save_data = json.loads(model_str)
                 self.model_from_string(save_data['booster_str'], not silent)
                 if save_data.get("raw_data") is not None:
-                    self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'])
+                    init_score_train = save_data['raw_data'].get('init_score')
+                    if init_score_train is not None:
+                        init_score_train = np.array(init_score_train)
+                    self.train_set = Dataset(data=save_data['raw_data']['data'], label=save_data['raw_data']['label'],
+                                             init_score=init_score_train)
                     save_data['gp_model_str']['y'] = np.array(save_data['raw_data']['label'])
                 else:
                     if save_data['gp_model_str']['likelihood'] == "gaussian" and save_data['gp_model_str']['gp_approx'] != "vecchia_latent":
@@ -3236,18 +3244,30 @@ class Booster:
                 state['has_gp_model'] = True
                 save_data = json.loads(model_str)
                 bst_str = save_data['booster_str']
-                state['gp_model'] = GPModel(model_dict=save_data['gp_model_str'])
-                state['gp_model']._set_used_in_gpboost_algorithm()
+                # The response variable (and the training offset) have to be written into the dictionary of the
+                #   'GPModel' before it is constructed, since its constructor needs them, see the 'model_str'
+                #   constructor of 'Booster' above
                 if save_data.get("raw_data") is not None:
+                    init_score_train = save_data['raw_data'].get('init_score')
+                    if init_score_train is not None:
+                        init_score_train = np.array(init_score_train)
                     state['train_set'] = Dataset(data=save_data['raw_data']['data'],
-                                                 label=save_data['raw_data']['label'])
+                                                 label=save_data['raw_data']['label'],
+                                                 init_score=init_score_train)
+                    save_data['gp_model_str']['y'] = np.array(save_data['raw_data']['label'])
                 else:
-                    if state['gp_model']._get_likelihood_name() == "gaussian" and state['gp_model'].gp_approx != "vecchia_latent":
+                    if save_data['gp_model_str']['likelihood'] == "gaussian" and save_data['gp_model_str']['gp_approx'] != "vecchia_latent":
                         state['residual_loaded_from_file'] = np.array(save_data['residual'])
+                        save_data['gp_model_str']['y'] = np.array(save_data['residual'])
                     else:
                         state['fixed_effect_train_loaded_from_file'] = np.array(save_data['fixed_effect_train'])
                         state['label_loaded_from_file'] = np.array(save_data['label'])
+                        save_data['gp_model_str']['offset'] = np.array(save_data['fixed_effect_train'])
+                        save_data['gp_model_str']['y'] = np.array(save_data['label'])
                     state['gp_model_prediction_data_loaded_from_file'] = True
+                state['gp_model'] = GPModel(model_dict=save_data['gp_model_str'])
+                state['gp_model']._set_used_in_gpboost_algorithm()
+                state['gp_model'].model_fitted = False
             else:  # has no gp_model
                 bst_str = model_str
             handle = ctypes.c_void_p()
@@ -4004,6 +4024,9 @@ class Booster:
                 save_data['raw_data'] = {}
                 save_data['raw_data']['data'] = self.train_set.data
                 save_data['raw_data']['label'] = self.train_set.label
+                # The offset supplied as 'init_score' to the training Dataset is not part of the tree ensemble
+                #   and thus has to be saved separately
+                save_data['raw_data']['init_score'] = self.train_set.init_score
             else:
                 predictor = self._to_predictor(deepcopy(kwargs))
                 fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
@@ -5380,7 +5403,12 @@ class GPModel(object):
                 Sample weights. For a Gaussian likelihood, the error variance ("nugget") for observation ``i`` is
                 divided by ``weights[i]``. For non-Gaussian likelihoods, the conditional log-likelihood
                 contribution of observation ``i`` is multiplied by ``weights[i]``. Consequently, weights
-                affect the estimation of both random and fixed effects.
+                affect the estimation of both random and fixed effects. Note that a Gaussian likelihood is
+                calculated via the Laplace approximation when ``gp_approx = "vecchia_latent"``, when
+                ``likelihood = "gaussian_latent"``, and when grouped random effects are combined with a
+                Vecchia-approximated Gaussian process. In these cases, the weights act as for a non-Gaussian
+                likelihood, i.e., the Gaussian log-likelihood contribution of observation ``i`` is multiplied
+                by ``weights[i]`` instead of the error variance being divided by it.
             likelihood_learning_rate : float, optional (default=1.)
                 A learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)
             cov_fct_taper_range : float, optional (default=1.)
@@ -5631,6 +5659,19 @@ class GPModel(object):
             if model_dict.get("cluster_ids") is not None:
                 cluster_ids = np.array(model_dict.get("cluster_ids"))
             likelihood = model_dict.get("likelihood")
+            if likelihood in ("zero_inflated_gamma", "zero-inflated-gamma"):
+                # A saved model always contains the canonical likelihood name, so this name identifies a model that
+                # was saved with GPBoost <= 1.7.0. There, the predictor was the mean of the entire response,
+                # E(y) = exp(eta), whereas the predictor of "hurdle_gamma" is the mean of the positive part,
+                # E(y | y > 0) = exp(eta). The two differ by the factor 1 - p0, so loading such a model under the
+                # current parameterization would change its predictions
+                raise ValueError("The model was saved with the likelihood 'zero_inflated_gamma' of GPBoost <= 1.7.0, "
+                                 "whose predictor was the mean of the entire response, E(y) = exp(eta). This "
+                                 "likelihood is now called 'hurdle_gamma' and its predictor is the mean of the "
+                                 "positive part, E(y | y > 0) = exp(eta). The model can therefore not be loaded "
+                                 "unchanged. Either refit it, or convert it by adding -log(1 - p0) to the predictor "
+                                 "(e.g., to the intercept coefficient or to the offset) and setting the likelihood "
+                                 "to 'hurdle_gamma' in the saved file")
             if likelihood == "gaussian_heteroscedastic":
                 # Up to and including the models saved with num_sets_re = 2, "gaussian_heteroscedastic" denoted the
                 # likelihood whose variance predictor contains both fixed and random effects. That model is now called

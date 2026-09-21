@@ -2474,8 +2474,9 @@ namespace GPBoost {
 					SigmaI_deriv_PI_RV.setZero();
 					vec_t RVt_trace(num_rand_vec_trace_);// For computing trace estimator: tr(A^{-1} SigmaI_deriv). Hutchinson w/ vectors PI_RV: mean_j ( (A^{-1}PI_RV_j)^T (SigmaI_deriv PI_RV_j) )
 					const vec_t mode_gp = mode_.segment(dim_re_group, dim_gp);// For explicit term: mode^T SigmaI_deriv mode (only GP block)
-					// For implicit term: (A^{-1} d_mll_d_mode)^T (SigmaI_deriv * (Z^T first_deriv_ll_)),  rhs = SigmaI_deriv * (Zt * first_deriv_ll_) efficiently on GP block
-					const vec_t Zt_first = (*Zt_) * first_deriv_ll_;  // dim_mode_
+					// For the implicit term: differentiating the stationarity condition Z^T * l'(mode) = SigmaI * mode
+					//	gives d mode / dtheta = -A^{-1} * SigmaI_deriv * mode, i.e. the right-hand side below is
+					//	-SigmaI_deriv * mode, which is non-zero on the GP block only
 					vec_t rhs(dim_mode_);
 					rhs.setZero();
 					sp_mat_t SigmaI_deriv_gp;     // dim_gp x dim_gp
@@ -2518,11 +2519,10 @@ namespace GPBoost {
 						}
 						cov_grad[cov_ind] = explicit_derivative;
 						// Implicit term through mode
-						// Cholesky version uses: d_mll_d_mode^T * A^{-1} * (SigmaI_deriv * (Zt*first_deriv_ll_))
 						// Iterative: we already computed A^{-1} d_mll_d_mode as SigmaI_plus_ZtWZ_inv_d_mll_d_mode
 						if (grad_information_wrt_mode_non_zero_) {
 							rhs.setZero();
-							rhs.segment(dim_re_group, dim_gp) = SigmaI_deriv_gp * Zt_first.segment(dim_re_group, dim_gp);
+							rhs.segment(dim_re_group, dim_gp) = -SigmaI_deriv_mode_gp;
 							cov_grad[cov_ind] += SigmaI_plus_ZtWZ_inv_d_mll_d_mode.dot(rhs);
 						}
 						SigmaI_deriv_gp.resize(0, 0);
@@ -2725,10 +2725,10 @@ namespace GPBoost {
 							explicit_derivative += 0.5 * (D_inv.diagonal().array() * D_grad[p].diagonal().array()).sum();
 						}
 						cov_grad[cov_ind] = explicit_derivative;
-						// Implicit derivative via mode
+						// Implicit derivative via mode: differentiating the stationarity condition Z^T * l'(mode) = SigmaI * mode
+						//	gives d mode / dtheta = -(SigmaI_plus_ZtWZ)^-1 * SigmaI_deriv * mode
 						if (grad_information_wrt_mode_non_zero_) {
-							vec_t rhs = SigmaI_deriv_full * ((*Zt_) * first_deriv_ll_);
-							d_mode_d_par = L_inv.transpose() * (L_inv * rhs);
+							d_mode_d_par = -(L_inv.transpose() * (L_inv * SigmaI_deriv_mode));
 							cov_grad[cov_ind] += d_mll_d_mode.dot(d_mode_d_par);
 						}
 						SigmaI_deriv_gp.resize(0, 0);
@@ -5059,89 +5059,66 @@ namespace GPBoost {
 						// Note: the code below is correct, but the corresponding code in re_model_template would have to be changed to add only uconditional covariancs
 						//		for new groups and not for all groups (see re_comp->AddPredCovMatrices)
 					}
-					// Grouped random effects part:  pred_cov = Z_pp * Σ_p * Z_pp^T + Z_po * (SigmaI_plus_ZtWZ)^-1 * Z_po^T, Z_po = Ztilde
-					sp_mat_t SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde = Ztilde.transpose();
-					sp_mat_t Mfull_group(dim_mode_, dim_re_group);
-					std::vector<Triplet_t> triplets;
-					triplets.reserve((size_t)SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde.nonZeros());
-					for (int k = 0; k < SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde, k); it; ++it) {
-							triplets.emplace_back(it.row(), it.col(), it.value());
-						}
-					}
-					Mfull_group.setFromTriplets(triplets.begin(), triplets.end());
-					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Mfull_group, Mfull_group, false);
-					SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde = Mfull_group.topRows((int)dim_re_group);
-					Mfull_group.resize(0, 0);
-					//Alternative approach where SigmaI_plus_ZtWZ_I_group_cols is first calculated
-//						sp_mat_t SigmaI_plus_ZtWZ_I_group_cols(dim_mode_, dim_re_group);
-//						std::vector<Triplet_t> triplets(dim_re_group);
-//#pragma omp parallel for schedule(static)
-//						for (data_size_t i = 0; i < dim_re_group; ++i) {
-//							triplets[i] = Triplet_t(i, i, 1.);
-//						}
-//						SigmaI_plus_ZtWZ_I_group_cols.setFromTriplets(triplets.begin(), triplets.end());//dimension dim_mode_ (=dim_re_group + dim_gp) x dim_re_group with identity on the upper part
-//						TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I_group_cols, SigmaI_plus_ZtWZ_I_group_cols, false);
-//						sp_mat_t SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde = SigmaI_plus_ZtWZ_I_group_cols.topRows((int)dim_re_group) * Ztilde.transpose();
-//						SigmaI_plus_ZtWZ_I_group_cols.resize(0, 0);
-					if (calc_pred_cov) {
-						pred_cov += (T_mat)(SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde.transpose() * SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde);
-					}
-					if (calc_pred_var) {
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < (int)pred_mean.size(); ++i) {
-							pred_var[i] += (SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde.col(i)).dot(SigmaI_plus_ZtWZ_I_group_sqrt_Ztilde.col(i));
-						}
-					}
-					// GP part
-					sp_mat_t SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT; //SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT = L\(Bpo^T * Bp^-1), L = Chol(Sigma^-1 + W)
+					// The predictions are A * b with A = [Z_po, -Bp^-1 * Bpo], Z_po = Ztilde, and the (approximate) posterior
+					//	b = (b_group, b_gp) ~ N(mode, (SigmaI_plus_ZtWZ)^-1). The predictive covariance is therefore
+					//	A * (SigmaI_plus_ZtWZ)^-1 * A^T + Bp^-1 * Dp * Bp^-T. The grouped random effects and the GP are
+					//	correlated a posteriori, i.e. their contributions cannot be calculated separately, and the triangular
+					//	solve has to be applied to the entire matrix A^T of dimension dim_mode_ x number of prediction points
+					const int num_pred = (int)pred_mean.size();
+					sp_mat_t Bpo_T_Bp_inv_T; //Bpo_T_Bp_inv_T = Bpo^T * Bp^-T
 					sp_mat_t Bp_inv, Bp_inv_Dp;
 					if (VecchiaCondObsOnly) {
-						SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT = Bpo.transpose();//Bp = Id
+						Bpo_T_Bp_inv_T = Bpo.transpose();//Bp = Id
 					}
 					else {
 						Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
 						Bp_inv.setIdentity();
 						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
-						SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT = Bpo.transpose() * Bp_inv.transpose();
+						Bpo_T_Bp_inv_T = Bpo.transpose() * Bp_inv.transpose();
 						Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 					}
-					sp_mat_t Mfull_gp(dim_mode_, dim_gp);
-					std::vector<Triplet_t> trips;
-					trips.reserve((size_t)SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.nonZeros());
-					for (int k = 0; k < SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT, k); it; ++it) {
-							trips.emplace_back(it.row() + (int)dim_re_group, it.col(), it.value());
+					sp_mat_t Ztilde_T = Ztilde.transpose();
+					sp_mat_t A_T(dim_mode_, num_pred);
+					std::vector<Triplet_t> triplets;
+					triplets.reserve((size_t)(Ztilde_T.nonZeros() + Bpo_T_Bp_inv_T.nonZeros()));
+					for (int k = 0; k < Ztilde_T.outerSize(); ++k) {
+						for (sp_mat_t::InnerIterator it(Ztilde_T, k); it; ++it) {
+							triplets.emplace_back((int)it.row(), (int)it.col(), it.value());
 						}
 					}
-					Mfull_gp.setFromTriplets(trips.begin(), trips.end());
-					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, Mfull_gp, Mfull_gp, false);
-					SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT = Mfull_gp.bottomRows((int)dim_gp);
-					Mfull_gp.resize(0, 0);
+					for (int k = 0; k < Bpo_T_Bp_inv_T.outerSize(); ++k) {
+						for (sp_mat_t::InnerIterator it(Bpo_T_Bp_inv_T, k); it; ++it) {
+							triplets.emplace_back((int)it.row() + (int)dim_re_group, (int)it.col(), -it.value());
+						}
+					}
+					A_T.setFromTriplets(triplets.begin(), triplets.end());
+					Ztilde_T.resize(0, 0);
+					Bpo_T_Bp_inv_T.resize(0, 0);
+					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, A_T, A_T, false);
 					if (calc_pred_cov) {
 						if (VecchiaCondObsOnly) {
-							pred_cov += (T_mat)(SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.transpose() * SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT);
+							pred_cov += (T_mat)(A_T.transpose() * A_T);
 							pred_cov.diagonal().array() += Dp.array();
 						}
 						else {
-							pred_cov += (T_mat)(Bp_inv_Dp * Bp_inv.transpose() + SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.transpose() * SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT);
+							pred_cov += (T_mat)(Bp_inv_Dp * Bp_inv.transpose() + A_T.transpose() * A_T);
 						}
 					}//end calc_pred_cov
 					if (calc_pred_var) {
-						SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT = SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.cwiseProduct(SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT);
+						A_T = A_T.cwiseProduct(A_T);
 						if (VecchiaCondObsOnly) {
 #pragma omp parallel for schedule(static)
-							for (int i = 0; i < (int)pred_mean.size(); ++i) {
-								pred_var[i] += Dp[i] + SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.col(i).sum();
+							for (int i = 0; i < num_pred; ++i) {
+								pred_var[i] += Dp[i] + A_T.col(i).sum();
 							}
 						}
 						else {
 #pragma omp parallel for schedule(static)
-							for (int i = 0; i < (int)pred_mean.size(); ++i) {
-								pred_var[i] += (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i)) + SigmaI_plus_ZtWZ_I_gp_sqrt_BpoT_BpInvT.col(i).sum();
+							for (int i = 0; i < num_pred; ++i) {
+								pred_var[i] += (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i)) + A_T.col(i).sum();
 							}
 						}
-					}//end calc_pred_var					
+					}//end calc_pred_var
 				}//end has_vecchia_gp
 				else {//!has_vecchia_gp
 					//VERSION 1: pred_cov = Z_po * Σ * Z_po^T + Z_pp * Σ_p * Z_pp^T - Z_po * Σ * Z_po^T * (SigmaI_plus_ZtWZ)^-1 * Z * Σ * Z_po^T, Z_po = Ztilde

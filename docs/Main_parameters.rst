@@ -290,7 +290,7 @@ Model specification parameters
 
 -  ``weights`` : one dimensional array (vector) with numeric data or Null, (default = Null)
 
-   -  Sample weights. For a Gaussian likelihood, the error variance ("nugget") for observation ``i`` is divided by ``weights[i]``. For non-Gaussian likelihoods, the conditional log-likelihood contribution of observation ``i`` is multiplied by ``weights[i]``. Consequently, weights affect the estimation of both random and fixed effects.
+   -  Sample weights. For a Gaussian likelihood, the error variance ("nugget") for observation ``i`` is divided by ``weights[i]``. For non-Gaussian likelihoods, the conditional log-likelihood contribution of observation ``i`` is multiplied by ``weights[i]``. Consequently, weights affect the estimation of both random and fixed effects. Note that a Gaussian likelihood is calculated via the Laplace approximation when ``gp_approx = "vecchia_latent"``, when ``likelihood = "gaussian_latent"``, and when grouped random effects are combined with a Vecchia-approximated Gaussian process. In these cases, the weights act as for a non-Gaussian likelihood, i.e., the Gaussian log-likelihood contribution of observation ``i`` is multiplied by ``weights[i]`` instead of the error variance being divided by it.
 
 -  ``cov_fct_taper_range`` : double, (default = 1.)
 

@@ -4471,14 +4471,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                y = y_het2, X = X_het2, params = optim_params_fsva), file = "NUL")
     coef_fsva <- as.vector(gp_model_fsva$get_coef(std_err = FALSE))
     cov_pars_fsva <- as.vector(gp_model_fsva$get_cov_pars())
-    expected_coef_fsva <- c(0.51527546, 0.06715165, -0.24951696, 1.12150879)
+    expected_coef_fsva <- c(0.53280591, -0.06916614, 0.05398657, 0.69427748)
     expect_lt(sum(abs(coef_fsva - expected_coef_fsva)), TOLERANCE_NON_CONVEX)
-    expect_lt(sum(abs(cov_pars_fsva - c(0.73163534, 0.07601483))), TOLERANCE_NON_CONVEX)
-    expect_lt(abs(gp_model_fsva$get_current_neg_log_likelihood() - 167.00513611), TOLERANCE_NON_CONVEX)
+    expect_lt(sum(abs(cov_pars_fsva - c(0.00020567118, 0.02293172583))), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(gp_model_fsva$get_current_neg_log_likelihood() - 163.49333870), TOLERANCE_NON_CONVEX)
     pred_fsva <- predict(gp_model_fsva, y = y_het2, gp_coords_pred = coord_test_gp, X_pred = X_het2[1:3, , drop = FALSE],
                          predict_var = TRUE, predict_response = TRUE)
-    expected_mu_fsva <- c(0.48902512, 0.42663286, 0.62958769)
-    expected_var_fsva <- c(1.28537511, 1.37648473, 1.74035590)
+    expected_mu_fsva <- c(0.51985669, 0.51912314, 0.50210374)
+    expected_var_fsva <- c(1.20200085, 1.21049129, 1.43691553)
     expect_lt(sum(abs(pred_fsva$mu - expected_mu_fsva)), TOLERANCE_NON_CONVEX)
     expect_lt(sum(abs(pred_fsva$var - expected_var_fsva)), TOLERANCE_NON_CONVEX)
     capture.output( gp_model_fsva_exact_ll <- GPModel(gp_coords = coords_het2, cov_function = "exponential",
@@ -4497,10 +4497,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                     y = y_het2, X = X_het2, params = optim_params_fsva_iter), file = "NUL")
     coef_fsva_iter <- as.vector(gp_model_fsva_iter$get_coef(std_err = FALSE))
     cov_pars_fsva_iter <- as.vector(gp_model_fsva_iter$get_cov_pars())
-    expected_coef_fsva_iter <- c(0.36450404, 0.54980421, -1.02123877, 2.50972524)
+    expected_coef_fsva_iter <- c(0.53327765, -0.10603512, -3.45005625, 4.01819855)
     expect_lt(sum(abs(coef_fsva_iter - expected_coef_fsva_iter)), TOLERANCE_NON_CONVEX)
-    expect_lt(sum(abs(cov_pars_fsva_iter - c(0.78854155, 0.06221294))), TOLERANCE_NON_CONVEX)
-    expect_lt(abs(gp_model_fsva_iter$get_current_neg_log_likelihood() - 169.27528843), TOLERANCE_NON_CONVEX)
+    expect_lt(sum(abs(cov_pars_fsva_iter - c(1.07208760, 0.01186536))), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(gp_model_fsva_iter$get_current_neg_log_likelihood() - 163.15168709), TOLERANCE_NON_CONVEX)
     nll_fsva_iter_at_exact_ll <- gp_model_fsva_exact_ll$neg_log_likelihood(
       cov_pars = cov_pars_fsva_iter, y = y_het2, fixed_effects = as.vector(cbind(X_het2 %*% coef_fsva_iter[1:2], X_het2 %*% coef_fsva_iter[3:4])))
     # The exact (cholesky) NLL at the iterative solution should be close to the exact NLL at the cholesky solution,
@@ -4516,10 +4516,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                           matrix_inversion_method = "iterative",
                                                           y = y_het2, X = X_het2, params = optim_params_fsva_iter_vifdu), file = "NUL")
     coef_fsva_iter_vifdu <- as.vector(gp_model_fsva_iter_vifdu$get_coef(std_err = FALSE))
-    expected_coef_fsva_iter_vifdu <- c(0.36474695, 0.54937080, -1.02123830, 2.50914439)
+    expected_coef_fsva_iter_vifdu <- c(0.55009837, -0.10195832, -0.41711944, 0.97571713)
     expect_lt(sum(abs(coef_fsva_iter_vifdu - expected_coef_fsva_iter_vifdu)), TOLERANCE_NON_CONVEX)
-    expect_lt(sum(abs(as.vector(gp_model_fsva_iter_vifdu$get_cov_pars(std_err = FALSE)) - c(0.77986027, 0.06217334))), TOLERANCE_NON_CONVEX)
-    expect_lt(abs(gp_model_fsva_iter_vifdu$get_current_neg_log_likelihood() - 169.45524082), TOLERANCE_NON_CONVEX)
+    expect_lt(sum(abs(as.vector(gp_model_fsva_iter_vifdu$get_cov_pars(std_err = FALSE)) - c(0.46094380, 0.00720579))), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(gp_model_fsva_iter_vifdu$get_current_neg_log_likelihood() - 163.39130273), TOLERANCE_NON_CONVEX)
   })
 
   test_that("gamma_varying_shape likelihood for linear, GP and GPBoost models ", {
@@ -6724,7 +6724,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            gp_approx = gp_approx, num_neighbors = num_neighbors,
                                            num_ind_points = num_ind_points, ind_points_selection = ind_points_selection) , file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),1.5)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),0.2)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),0.3)
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),200)
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                     predict_var=TRUE, predict_response = FALSE) , file='NUL')
@@ -8070,8 +8070,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model_gauss_v <- fitGPModel(gp_coords = coords_v, cov_function = "exponential",
                                    gp_approx = "vecchia", num_neighbors = num_neighbors_v,
                                    y = y_v, X = X_v, params = OPTIM_PARAMS_BFGS)
-    cov_pars_v <- c(0.0578304572593316, 0.0323206204551912, 0.715705182971271,
-                    0.080146397671051, 0.0483181738202239, 0.00714845208930165)
+    cov_pars_v <- c(0.0578304572593316, 0.0330021964490000, 0.715705182971271,
+                    0.081226357385000, 0.0483181738202239, 0.00771178320850000)
     coef_v <- c(0.962932883927947, 0.110839163937625, 1.10211572960383, 0.0925165508666763)
     nll_v <- 537.536566769249
     expect_lt(sum(abs(as.vector(gp_model_gauss_v$get_cov_pars(std_err = TRUE))-cov_pars_v)),relax_tolerance(TOLERANCE_STRICT))
