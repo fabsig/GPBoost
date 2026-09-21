@@ -4046,6 +4046,9 @@ namespace GPBoost {
 			CalcFirstDerivInformationLocPar(y_data, y_data_int, location_par_ptr, deriv_information_diag_loc_par, deriv_information_diag_loc_par_data_scale);
 		}
 		vec_t d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block, SigmaI_plus_W_inv_off_diag;
+		// True if the derivatives through the mode below are calculated with the observed Hessian of the negative
+		//	log-likelihood instead of the matrix "W" of the approximation, see 'ModeJacobianDiffersFromInformation'
+		bool use_observed_hessian_for_mode_jacobian = false;
 		if (matrix_inversion_method_ == "iterative") {
 			if (cg_preconditioner_type_ == "vecchia_response") {
 				Log::REFatal("Calculation of gradients is currently not correctly implemented for the '%s' preconditioner ", cg_preconditioner_type_.c_str());
@@ -4077,6 +4080,10 @@ namespace GPBoost {
 					WI_WI_plus_Sigma_inv_Z, re_comps_cross_cov_cluster_i, GPU_use);
 			}
 			//For implicit derivatives: calculate (Sigma^(-1) + W)^(-1) d_mll_d_mode
+			//	Note: if the observed Hessian differs from "W" (see 'ModeJacobianDiffersFromInformation'), the
+			//	derivatives through the mode should use Sigma^-1 + observed Hessian, as is done in the Cholesky
+			//	branch below. That matrix can be indefinite, so the conjugate gradient algorithm used here does
+			//	not apply to it and the iterative methods keep using "W", which makes these derivatives approximate
 			if (grad_information_wrt_mode_non_zero_) {
 				d_mll_d_mode = 0.5 * d_log_det_Sigma_W_plus_I_d_mode;
 				SigmaI_plus_W_inv_d_mll_d_mode = vec_t(dim_mode_);
@@ -4277,6 +4284,45 @@ namespace GPBoost {
 			L_inv.setIdentity();
 			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
 			sp_mat_t SigmaI_plus_W_inv;
+			// The derivatives through the mode are governed by the Jacobian of the score whose root is the mode, which
+			//	contains the observed Hessian of the negative log-likelihood and not the matrix "W" of the approximation,
+			//	see 'ModeJacobianDiffersFromInformation'. If they differ, Sigma^-1 + observed Hessian is factorized here
+			//	and used for all derivatives through the mode below
+			if (ModeJacobianDiffersFromInformation() && grad_information_wrt_mode_non_zero_ &&
+				(calc_cov_grad || calc_F_grad || calc_aux_par_grad)) {
+				CalcObservedHessianLogLik(y_data, location_par_ptr);
+				sp_mat_t mode_jacobian(dim_mode_, dim_mode_);
+				std::vector<Triplet_t> triplets_SigmaI;
+				for (int igp = 0; igp < num_sets_re_; ++igp) {
+					sp_mat_t SigmaI_igp = B[igp].transpose() * (D_inv[igp] * B[igp]);
+					const int offset = igp * (int)dim_mode_per_set_re_;
+					triplets_SigmaI.reserve(triplets_SigmaI.size() + (size_t)SigmaI_igp.nonZeros());
+					for (int k = 0; k < SigmaI_igp.outerSize(); ++k) {
+						for (sp_mat_t::InnerIterator it(SigmaI_igp, k); it; ++it) {
+							triplets_SigmaI.emplace_back((int)it.row() + offset, (int)it.col() + offset, it.value());
+						}
+					}
+				}
+				mode_jacobian.setFromTriplets(triplets_SigmaI.begin(), triplets_SigmaI.end());
+				mode_jacobian += observed_hessian_ll_mat_;
+				mode_jacobian.makeCompressed();
+				if (!chol_fact_mode_jacobian_pattern_analyzed_) {
+					chol_fact_mode_jacobian_vecchia_.analyzePattern(mode_jacobian);
+					chol_fact_mode_jacobian_pattern_analyzed_ = true;
+				}
+				chol_fact_mode_jacobian_vecchia_.factorize(mode_jacobian);
+				use_observed_hessian_for_mode_jacobian = chol_fact_mode_jacobian_vecchia_.info() == Eigen::Success;
+				if (!use_observed_hessian_for_mode_jacobian) {
+					Log::REDebug("CalcGradNegMargLikelihoodLaplaceApproxVecchia: Sigma^-1 + observed Hessian is not positive definite at the mode, "
+						"i.e. the mode is not a local maximum of the approximated posterior. The derivatives through the mode are calculated "
+						"with the matrix 'W' of the approximation instead, which makes them approximate ");
+				}
+			}
+			// Solve with the Jacobian of the score whose root is the mode, see above
+			auto SolveModeJacobian = [&](const vec_t& rhs) {
+				return use_observed_hessian_for_mode_jacobian ? (vec_t)chol_fact_mode_jacobian_vecchia_.solve(rhs) :
+					(vec_t)(L_inv.transpose() * (L_inv * rhs));
+			};
 			// Calculate gradient wrt covariance parameters
 			bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
 			bool calc_cov_grad_internal = calc_cov_grad && some_cov_par_estimated;
@@ -4328,7 +4374,7 @@ namespace GPBoost {
 								else {
 									d_mll_d_mode = 0.5 * (SigmaI_plus_W_inv.diagonal().array() * deriv_information_diag_loc_par.array()).matrix();
 								}
-								SigmaI_plus_W_inv_d_mll_d_mode = L_inv.transpose() * (L_inv * d_mll_d_mode);
+								SigmaI_plus_W_inv_d_mll_d_mode = SolveModeJacobian(d_mll_d_mode);
 							}
 						}//end if j == 0
 						if (estimate_cov_par_index[j + igp * num_par] > 0) {
@@ -4364,7 +4410,7 @@ namespace GPBoost {
 						else {
 							d_mll_d_mode = (0.5 * SigmaI_plus_W_inv_diag.array() * deriv_information_diag_loc_par.array()).matrix();// gradient of approx. marginal likelihood wrt the mode and thus also F here
 						}
-						SigmaI_plus_W_inv_d_mll_d_mode = L_inv.transpose() * (L_inv * d_mll_d_mode);
+						SigmaI_plus_W_inv_d_mll_d_mode = SolveModeJacobian(d_mll_d_mode);
 					}
 				}
 				else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad) ||
@@ -4386,14 +4432,25 @@ namespace GPBoost {
 				fixed_effect_grad = -first_deriv_ll_data_scale_;
 				if (grad_information_wrt_mode_non_zero_) {
 					if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
+						// The implicit derivative is -(d mode / dF)^T * d_mll_d_mode with d mode / dF = -J^-1 * H, where J is the
+						//	Jacobian of the score and H the observed Hessian of the negative log-likelihood. If the latter differs
+						//	from the matrix "W" of the approximation, H couples the mean and the log-variance block
+						const bool has_cross_terms = use_observed_hessian_for_mode_jacobian;
+						const vec_t& information_mean_block = has_cross_terms ? observed_hessian_ll_data_scale_ : information_ll_data_scale_;
 #pragma omp parallel for schedule(static)
 						for (data_size_t i = 0; i < num_data_; ++i) {
-							fixed_effect_grad[i] -= information_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
+							fixed_effect_grad[i] -= information_mean_block[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];// implicit derivative
+							if (has_cross_terms) {
+								fixed_effect_grad[i] -= observed_hessian_off_diag_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i] + dim_mode_per_set_re_];
+							}
 						}
 #pragma omp parallel for schedule(static)
 						for (data_size_t i = 0; i < num_data_; ++i) {
 							fixed_effect_grad[i + num_data_] += 0.5 * deriv_information_diag_loc_par_data_scale[i] * SigmaI_plus_W_inv_diag[random_effects_indices_of_data_[i]] -
-								information_ll_data_scale_[i + num_data_] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i] + dim_mode_per_set_re_];// implicit derivative
+								information_mean_block[i + num_data_] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i] + dim_mode_per_set_re_];// implicit derivative
+							if (has_cross_terms) {
+								fixed_effect_grad[i + num_data_] -= observed_hessian_off_diag_ll_data_scale_[i] * SigmaI_plus_W_inv_d_mll_d_mode[random_effects_indices_of_data_[i]];
+							}
 						}
 					}
 					else {
@@ -4413,7 +4470,10 @@ namespace GPBoost {
 			else {
 				fixed_effect_grad = -first_deriv_ll_;
 				if (grad_information_wrt_mode_non_zero_) {
-					vec_t d_mll_d_F_implicit = -(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix();// implicit derivative
+					// The observed Hessian couples the blocks if it differs from the matrix "W" of the approximation, see above
+					vec_t d_mll_d_F_implicit = use_observed_hessian_for_mode_jacobian ?
+						(vec_t)(-(observed_hessian_ll_mat_ * SigmaI_plus_W_inv_d_mll_d_mode)) :
+						(vec_t)(-(SigmaI_plus_W_inv_d_mll_d_mode.array() * information_ll_.array()).matrix());// implicit derivative
 					fixed_effect_grad += d_mll_d_mode + d_mll_d_F_implicit;
 				}
 				if (HasExtraFEBlocks()) {

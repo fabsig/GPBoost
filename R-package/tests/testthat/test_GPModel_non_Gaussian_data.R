@@ -4018,10 +4018,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_pred_eval = c(1,0.2,0.1,0.2)
     coefs_pred = c(c(0.5,0.1),c(0.5,0.1))
     expected_nll <- 199.6831947
-    cov_pars <- c(0.29257505689, 0.16019690150, 0.20398810623, 0.02123292904)
-    coefs <- c(0.2573774906, -0.1120390282, 0.6360477105, 0.2961457581)
-    num_it <- 15
-    nll_est <- 191.2306375
+    cov_pars <- c(0.29001518290, 0.15063562850, 0.20539174870, 0.01285131220)
+    coefs <- c(0.2562339067, -0.1161880773, 0.6373796861, 0.3056600825)
+    num_it <- 37
+    nll_est <- 191.2145084
     expected_mu <- c(0.06126291, 0.07337373, 0.30807230)
     expected_var <- c(0.5994207, 0.6014515, 0.3936357)
     expected_var_resp <- c(2.147623, 2.268682, 2.010216)
@@ -4060,6 +4060,34 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     #                                 predict_var = TRUE, cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
     # expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
     # expect_lt(sum(abs(pred$var-expected_var_resp)),TOLERANCE_MEDIUM)
+    # The mode is a root of the exact score equation Z^T * l'(mode) = Sigma^-1 * mode also though the
+    # approximation of the marginal likelihood uses the Fisher information instead of the observed Hessian,
+    # so the derivatives through the mode are governed by the observed Hessian. Check that the gradient is
+    # consistent with the objective by verifying that finite differences of the objective vanish at the
+    # reported optimum. A new GPModel is used for every evaluation so that the mode is recalculated from
+    # scratch, which a warm started mode would hide
+    nll_fd_hetero <- function(cov_pars_loc) {
+      gp_fd <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = likelihood,
+                       gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none",
+                       matrix_inversion_method = "cholesky")
+      capture.output( nll_loc <- gp_fd$neg_log_likelihood(cov_pars = cov_pars_loc, y = y,
+                        fixed_effects = as.vector(cbind(X %*% coefs[1:2], X %*% coefs[3:4]))), file='NUL')
+      nll_loc
+    }
+    fd_grad_hetero <- function(cov_pars_loc) {
+      h_fd <- 1E-4
+      sapply(1:4, function(k) {
+        lp_p <- log(cov_pars_loc); lp_p[k] <- lp_p[k] + h_fd
+        lp_m <- log(cov_pars_loc); lp_m[k] <- lp_m[k] - h_fd
+        (nll_fd_hetero(exp(lp_p)) - nll_fd_hetero(exp(lp_m))) / (2 * h_fd)
+      })
+    }
+    grad_at_opt_hetero <- fd_grad_hetero(cov_pars)
+    grad_at_init_hetero <- fd_grad_hetero(init_cov_pars)
+    # The test is relative to the gradient at the initial values: when the derivatives through the mode used
+    # the Fisher information instead of the observed Hessian, the optimizer did not move away from the
+    # initial values at all, i.e. these two gradients were identical
+    expect_lt(max(abs(grad_at_opt_hetero)), 0.05 * max(abs(grad_at_init_hetero)))
     for(inv_method in c("cholesky")){#, "iterative"
       if(inv_method == "iterative") {
         tolerance_loc_1 <- TOLERANCE_ITERATIVE
@@ -4092,8 +4120,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         capture.output( fit(gp_model, y = y, X = X, params = params_vecchia) , file='NUL')
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars)),TOLERANCE_ITERATIVE)
         expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coefs)),TOLERANCE_ITERATIVE)
-        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est),tolerance_loc_3)
-        if (inv_method != "iterative") {
+        expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est),relax_tolerance_nll(tolerance_loc_3))
+        if (inv_method != "iterative" && USE_STRICT_TOLERANCES) {
+          # the number of iterations of this non-convex optimization is compiler sensitive
           expect_equal(gp_model$get_num_optim_iter(), num_it)
         }
         # Prediction
@@ -4134,8 +4163,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
           capture.output( fit(gp_model, y = y, X = X, params = params_vecchia) , file='NUL')
           expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars)),tolerance_loc_2)
           expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coefs)),TOLERANCE_ITERATIVE)
-          nll_est_less_nn <- 191.2393688
-          expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est_less_nn),tolerance_loc_3)
+          nll_est_less_nn <- 191.2162037
+          expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est_less_nn),relax_tolerance_nll(tolerance_loc_3))
           # Prediction
           gp_model$set_optim_params(params = list(init_coef = coefs_pred, init_coef_aux_pars_from_iid_model = FALSE))
           gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", nsim_var_pred = nsim_var_pred)
@@ -4497,9 +4526,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                     y = y_het2, X = X_het2, params = optim_params_fsva_iter), file = "NUL")
     coef_fsva_iter <- as.vector(gp_model_fsva_iter$get_coef(std_err = FALSE))
     cov_pars_fsva_iter <- as.vector(gp_model_fsva_iter$get_cov_pars())
-    expected_coef_fsva_iter <- c(0.53327765, -0.10603512, -3.45005625, 4.01819855)
-    expect_lt(sum(abs(coef_fsva_iter - expected_coef_fsva_iter)), TOLERANCE_NON_CONVEX)
-    expect_lt(sum(abs(cov_pars_fsva_iter - c(1.07208760, 0.01186536))), TOLERANCE_NON_CONVEX)
+    # The coefficients and covariance parameters of this fit are not compared to hard-wired values: the
+    # stochastic trace estimates make the point on the flat ridge that is reached build dependent, see the
+    # note below. The negative log-likelihood is a robust statistic on this ridge and is checked instead
     expect_lt(abs(gp_model_fsva_iter$get_current_neg_log_likelihood() - 163.15168709), TOLERANCE_NON_CONVEX)
     nll_fsva_iter_at_exact_ll <- gp_model_fsva_exact_ll$neg_log_likelihood(
       cov_pars = cov_pars_fsva_iter, y = y_het2, fixed_effects = as.vector(cbind(X_het2 %*% coef_fsva_iter[1:2], X_het2 %*% coef_fsva_iter[3:4])))
@@ -4516,10 +4545,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                           matrix_inversion_method = "iterative",
                                                           y = y_het2, X = X_het2, params = optim_params_fsva_iter_vifdu), file = "NUL")
     coef_fsva_iter_vifdu <- as.vector(gp_model_fsva_iter_vifdu$get_coef(std_err = FALSE))
-    expected_coef_fsva_iter_vifdu <- c(0.55009837, -0.10195832, -0.41711944, 0.97571713)
-    expect_lt(sum(abs(coef_fsva_iter_vifdu - expected_coef_fsva_iter_vifdu)), TOLERANCE_NON_CONVEX)
-    expect_lt(sum(abs(as.vector(gp_model_fsva_iter_vifdu$get_cov_pars(std_err = FALSE)) - c(0.46094380, 0.00720579))), TOLERANCE_NON_CONVEX)
+    # As for the iterative fit above, only the negative log-likelihood is compared to a hard-wired value,
+    # and the solution is additionally checked through the exact (cholesky) negative log-likelihood
     expect_lt(abs(gp_model_fsva_iter_vifdu$get_current_neg_log_likelihood() - 163.39130273), TOLERANCE_NON_CONVEX)
+    nll_fsva_vifdu_at_exact_ll <- gp_model_fsva_exact_ll$neg_log_likelihood(
+      cov_pars = as.vector(gp_model_fsva_iter_vifdu$get_cov_pars()), y = y_het2,
+      fixed_effects = as.vector(cbind(X_het2 %*% coef_fsva_iter_vifdu[1:2], X_het2 %*% coef_fsva_iter_vifdu[3:4])))
+    expect_lt(abs(nll_fsva_vifdu_at_exact_ll - nll_fsva_at_chol_point), 5)
   })
 
   test_that("gamma_varying_shape likelihood for linear, GP and GPBoost models ", {

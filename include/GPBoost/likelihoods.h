@@ -1367,6 +1367,7 @@ namespace GPBoost {
 			likelihood_type_ = likelihood;
 			CacheLikelihoodTypeDerivedQuantities();
 			chol_fact_pattern_analyzed_ = false;
+			chol_fact_mode_jacobian_pattern_analyzed_ = false;
 			DetermineWhetherToCapChangeModeNewton();
 		}
 
@@ -1417,7 +1418,66 @@ namespace GPBoost {
 		*/
 		void SetCholFactPatternAnalyzedFalse() {
 			chol_fact_pattern_analyzed_ = false;
+			chol_fact_mode_jacobian_pattern_analyzed_ = false;
 		}
+
+		/*!
+		* \brief True if the matrix "W" that is used for the approximation of the marginal likelihood is not the observed
+		*		Hessian of the negative log-likelihood wrt the mode. The mode is a root of the exact score equation
+		*		Z^T * l'(mode) = Sigma^-1 * mode also in this case (Fisher scoring converges to that root), so the implicit
+		*		function theorem gives d mode / dtheta = -(Sigma^-1 + observed Hessian)^-1 * dSigma^-1/dtheta * mode, i.e.
+		*		the derivatives through the mode need the observed Hessian and not "W", see 'CalcObservedHessianLogLik'
+		*/
+		bool ModeJacobianDiffersFromInformation() const {
+			return(likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random" && approximation_type_ == "fisher_laplace");
+		}
+
+		/*!
+		* \brief Calculate the observed Hessian of the negative log-likelihood wrt the mode, both on the data scale
+		*		(used for the gradient wrt the fixed effects) and as a matrix on the mode scale. This is the Jacobian
+		*		of the score whose root is the mode, see 'ModeJacobianDiffersFromInformation'
+		* \param y_data Response variable data
+		* \param location_par Location parameter (random plus fixed effects)
+		*/
+		void CalcObservedHessianLogLik(const double* y_data,
+			const double* location_par) {
+			CHECK(ModeJacobianDiffersFromInformation());
+			CHECK(num_sets_re_ == 2);
+			observed_hessian_ll_data_scale_ = vec_t(num_data_ * 2);
+			observed_hessian_off_diag_ll_data_scale_ = vec_t(num_data_);
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				SecondDerivNegLogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_],
+					observed_hessian_ll_data_scale_[i], observed_hessian_ll_data_scale_[i + num_data_], observed_hessian_off_diag_ll_data_scale_[i]);
+				if (has_weights_) {
+					observed_hessian_ll_data_scale_[i] *= weights_[i];
+					observed_hessian_ll_data_scale_[i + num_data_] *= weights_[i];
+					observed_hessian_off_diag_ll_data_scale_[i] *= weights_[i];
+				}
+			}
+			vec_t diag_mode_scale(dim_mode_), off_diag_mode_scale(dim_mode_per_set_re_);
+			if (use_random_effects_indices_of_data_) {
+				ReduceToModeScale(observed_hessian_ll_data_scale_, diag_mode_scale);
+				CalcZtVGivenIndices(num_data_, dim_mode_per_set_re_, random_effects_indices_of_data_,
+					observed_hessian_off_diag_ll_data_scale_.data(), off_diag_mode_scale.data(), true);
+			}
+			else {
+				diag_mode_scale = observed_hessian_ll_data_scale_;
+				off_diag_mode_scale = observed_hessian_off_diag_ll_data_scale_;
+			}
+			observed_hessian_ll_mat_ = sp_mat_t(dim_mode_, dim_mode_);
+			std::vector<Triplet_t> triplets(dim_mode_per_set_re_ * 4);
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < dim_mode_; ++i) {
+				triplets[i] = Triplet_t(i, i, diag_mode_scale[i]);
+			}
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < dim_mode_per_set_re_; ++i) {
+				triplets[dim_mode_ + i] = Triplet_t(i, i + dim_mode_per_set_re_, off_diag_mode_scale[i]);
+				triplets[dim_mode_ + dim_mode_per_set_re_ + i] = Triplet_t(i + dim_mode_per_set_re_, i, off_diag_mode_scale[i]);
+			}
+			observed_hessian_ll_mat_.setFromTriplets(triplets.begin(), triplets.end());
+		}//end CalcObservedHessianLogLik
 
 		/*!
 		* \brief Returns the type of the response variable (label). Either "double" or "int"
@@ -7756,6 +7816,12 @@ namespace GPBoost {
 		vec_t off_diag_information_ll_data_scale_;
 		/*! \brief (used only if information_has_off_diagonal_) The Fisher information for the log-likelihood (diagonal of matrix "W"). Usually, this consists of the second derivatives of the negative log-likelihood (= the observed FI) */
 		sp_mat_t information_ll_mat_;
+		/*! \brief (used only if 'ModeJacobianDiffersFromInformation()') The observed Hessian of the negative log-likelihood wrt the mode, on the mode scale */
+		sp_mat_t observed_hessian_ll_mat_;
+		/*! \brief (used only if 'ModeJacobianDiffersFromInformation()') The diagonal of the observed Hessian of the negative log-likelihood on the data scale, of length num_data_ * num_sets_re_ */
+		vec_t observed_hessian_ll_data_scale_;
+		/*! \brief (used only if 'ModeJacobianDiffersFromInformation()') The off-diagonal of the observed Hessian of the negative log-likelihood on the data scale, of length num_data_ */
+		vec_t observed_hessian_off_diag_ll_data_scale_;
 		/*! \brief Diagonal of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version 'GroupedRE' when there is only one random effect and ZtWZ is diagonal. Otherwise 'diag_SigmaI_plus_ZtWZ_' is used for grouped REs) */
 		vec_t diag_SigmaI_plus_ZtWZ_;
 		/*! \brief Cholesky factors of matrix Sigma^-1 + Zt * W * Z in Laplace approximation (used only in version'GroupedRE' if there is more than one random effect). */
@@ -7771,6 +7837,10 @@ namespace GPBoost {
 		chol_den_mat_t chol_fact_dense_Newton_;
 		/*! \brief If true, the pattern for the Cholesky factor (chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, chol_fact_SigmaI_plus_ZtWZ_grouped_, or chol_fact_SigmaI_plus_ZtWZ_vecchia_) has been analyzed */
 		bool chol_fact_pattern_analyzed_ = false;
+		/*! \brief Cholesky factor of Sigma^-1 + observed Hessian, the Jacobian of the score whose root is the mode (used only if 'ModeJacobianDiffersFromInformation()') */
+		chol_cholmod_sp_mat_t chol_fact_mode_jacobian_vecchia_;
+		/*! \brief If true, the pattern for 'chol_fact_mode_jacobian_vecchia_' has been analyzed */
+		bool chol_fact_mode_jacobian_pattern_analyzed_ = false;
 		/*! \brief If true, the mode has been initialized to 0 */
 		bool mode_initialized_ = false;
 		/*! \brief If true, the mode has been determined */

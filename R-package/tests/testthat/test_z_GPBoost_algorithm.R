@@ -476,8 +476,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                          valids = valids,
                          early_stopping_rounds = 5,
                          use_gp_model_for_validation = FALSE, metric = "l2")
-        expect_gte(cvbst$best_iter, 52)
-        expect_lte(cvbst$best_iter, 63)
+        # 'cvbst' is from the gpb.cv above that uses random folds, i.e. 'best_iter' varies between runs (59 - 65 over 25 runs)
+        expect_gte(cvbst$best_iter, 45)
+        expect_lte(cvbst$best_iter, 85)
         expect_lt(abs(bst$best_score - 1.0326),10*TOLERANCE)
         # Include random effect predictions for validation 
         gp_model <- GPModel(group_data = group_data_train, matrix_inversion_method = inv_method)
@@ -494,8 +495,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                          valids = valids,
                          early_stopping_rounds = 5,
                          use_gp_model_for_validation = TRUE, metric = "l2")
-        expect_gte(cvbst$best_iter, 52)
-        expect_lte(cvbst$best_iter, 63)
+        # 'cvbst' is from the gpb.cv above that uses random folds, i.e. 'best_iter' varies between runs (59 - 65 over 25 runs)
+        expect_gte(cvbst$best_iter, 45)
+        expect_lte(cvbst$best_iter, 85)
         expect_lt(abs(bst$best_score - 0.04753591),10*TOLERANCE)
         # Same thing using the set_prediction_data method 
         gp_model <- GPModel(group_data = group_data_train, matrix_inversion_method = inv_method)
@@ -512,8 +514,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                          valids = valids,
                          early_stopping_rounds = 5,
                          use_gp_model_for_validation = TRUE, metric = "l2")
-        expect_gte(cvbst$best_iter, 52)
-        expect_lte(cvbst$best_iter, 63)
+        # 'cvbst' is from the gpb.cv above that uses random folds, i.e. 'best_iter' varies between runs (59 - 65 over 25 runs)
+        expect_gte(cvbst$best_iter, 45)
+        expect_lte(cvbst$best_iter, 85)
         expect_lt(abs(bst$best_score - 0.04753591),10*TOLERANCE)
         
         # Use of validation data and cross-validation with custom metric
