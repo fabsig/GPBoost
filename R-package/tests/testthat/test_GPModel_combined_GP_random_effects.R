@@ -814,4 +814,57 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
   })
   
+
+  test_that("Predictive variances of grouped random effects and a Vecchia GP include their posterior covariance ", {
+
+    # With all neighbors the Vecchia approximation is exact, so the predictive variances of this Gaussian
+    # model have to equal the ones of exact Gaussian conditioning. The grouped random effects and the GP are
+    # correlated a posteriori; leaving that covariance out (which the implementations did) changes the result
+    # by a factor of about 2.7 (cholesky) and 4.4 (iterative)
+    n_jc <- 60
+    m_jc <- 6
+    group_jc <- rep(1:m_jc, each = n_jc / m_jc)
+    coords_jc <- cbind(sim_rand_unif(n = n_jc, init_c = 0.312), sim_rand_unif(n = n_jc, init_c = 0.573))
+    D_jc <- as.matrix(dist(coords_jc))
+    sigma2_gp_jc <- 1.0
+    rho_jc <- 0.2
+    sigma2_gr_jc <- 0.7
+    nugget_jc <- 0.4
+    Z_jc <- model.matrix(~ factor(group_jc) - 1)
+    Sigma_jc <- sigma2_gp_jc * exp(-D_jc / rho_jc) + sigma2_gr_jc * (Z_jc %*% t(Z_jc))
+    y_jc <- as.vector(t(chol(Sigma_jc + diag(nugget_jc, n_jc))) %*%
+                        qnorm(sim_rand_unif(n = n_jc, init_c = 0.751)))
+    np_jc <- 4
+    coords_pred_jc <- cbind(c(0.12, 0.44, 0.71, 0.93), c(0.22, 0.51, 0.83, 0.07))
+    group_pred_jc <- c(1, 2, 3, 4)
+    # Exact Gaussian conditioning of the latent process
+    Dpo_jc <- as.matrix(dist(rbind(coords_pred_jc, coords_jc)))[1:np_jc, (np_jc + 1):(np_jc + n_jc)]
+    Dpp_jc <- as.matrix(dist(coords_pred_jc))
+    Zp_jc <- matrix(0, np_jc, m_jc)
+    for (i in 1:np_jc) Zp_jc[i, group_pred_jc[i]] <- 1
+    Cpo_jc <- sigma2_gp_jc * exp(-Dpo_jc / rho_jc) + sigma2_gr_jc * (Zp_jc %*% t(Z_jc))
+    Cpp_jc <- sigma2_gp_jc * exp(-Dpp_jc / rho_jc) + sigma2_gr_jc * (Zp_jc %*% t(Zp_jc))
+    Syy_jc <- Sigma_jc + diag(nugget_jc, n_jc)
+    var_exact_jc <- diag(Cpp_jc - Cpo_jc %*% solve(Syy_jc, t(Cpo_jc)))
+    mu_exact_jc <- as.vector(Cpo_jc %*% solve(Syy_jc, y_jc))
+
+    for (inv_method_jc in c("cholesky", "iterative")) {
+      gp_model_jc <- GPModel(gp_coords = coords_jc, cov_function = "exponential", group_data = group_jc,
+                             gp_approx = "vecchia", num_neighbors = n_jc - 1, vecchia_ordering = "none",
+                             likelihood = "gaussian", matrix_inversion_method = inv_method_jc)
+      gp_model_jc$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all",
+                                      num_neighbors_pred = n_jc + np_jc, nsim_var_pred = 2000)
+      gp_model_jc$set_optim_params(params = list(init_aux_pars = nugget_jc, seed_rand_vec_trace = 1,
+                                                 init_cov_pars = c(sigma2_gr_jc, sigma2_gp_jc, rho_jc),
+                                                 init_coef_aux_pars_from_iid_model = FALSE))
+      capture.output( pred_jc <- gp_model_jc$predict(y = y_jc, gp_coords_pred = coords_pred_jc,
+                                                     group_data_pred = group_pred_jc,
+                                                     cov_pars = c(sigma2_gr_jc, sigma2_gp_jc, rho_jc),
+                                                     predict_var = TRUE, predict_response = FALSE), file = 'NUL')
+      tol_jc <- if (inv_method_jc == "iterative") 1E-2 else 1E-6
+      expect_lt(sum(abs(pred_jc$mu - mu_exact_jc)), tol_jc)
+      expect_lt(sum(abs(as.vector(pred_jc$var) - var_exact_jc)), tol_jc)
+    }
+  })
+
 }

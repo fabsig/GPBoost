@@ -2163,6 +2163,7 @@ namespace GPBoost {
 		bool calc_mode,
 		bool call_for_std_dev_coef,
 		const std::vector<int>& estimate_cov_par_index) {
+		CheckModeJacobianIsImplemented(__func__);
 		if (calc_mode) {// Calculate mode and Cholesky factor of B = (Id + Wsqrt * Sigma * Wsqrt) at mode
 			double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 			FindModePostRandEffCalcMLLStable(y_data, y_data_int, fixed_effects, Sigma, mll);
@@ -2304,6 +2305,7 @@ namespace GPBoost {
 		bool calc_mode,
 		bool call_for_std_dev_coef,
 		const std::vector<int>& estimate_cov_par_index) {
+		CheckModeJacobianIsImplemented(__func__);
 		CHECK(cum_num_rand_eff_cluster_i.back() == dim_mode_);
 		const data_size_t num_grouped_RE = has_vecchia_gp ? (data_size_t)cum_num_rand_eff_cluster_i.size() - 2 : (data_size_t)cum_num_rand_eff_cluster_i.size() - 1;//number of different grouped random effect components
 		const data_size_t dim_re_group = cum_num_rand_eff_cluster_i[num_grouped_RE];//number of grouped random effects
@@ -2807,6 +2809,7 @@ namespace GPBoost {
 		bool calc_mode,
 		bool call_for_std_dev_coef,
 		const std::vector<int>& estimate_cov_par_index) {
+		CheckModeJacobianIsImplemented(__func__);
 		if (calc_mode) {// Calculate mode and Cholesky factor of Sigma^-1 + W at mode
 			double mll;//approximate marginal likelihood. This is a by-product that is not used here.
 			FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_data, y_data_int, fixed_effects, sigma2, mll);
@@ -2933,6 +2936,7 @@ namespace GPBoost {
 		const chol_den_mat_t& chol_fact_sigma_ip_preconditioner,
 		const std::vector<int>& estimate_cov_par_index,
 		bool GPU_use) {
+		CheckModeJacobianIsImplemented(__func__);
 		const den_mat_t* cross_cov = re_comps_cross_cov_cluster_i[0]->GetSigmaPtr();
 		den_mat_t sigma_ip = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
 		int num_ip = (int)(sigma_ip.rows());
@@ -4046,9 +4050,33 @@ namespace GPBoost {
 			CalcFirstDerivInformationLocPar(y_data, y_data_int, location_par_ptr, deriv_information_diag_loc_par, deriv_information_diag_loc_par_data_scale);
 		}
 		vec_t d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, SigmaI_plus_W_inv_diag, SigmaI_plus_W_inv_diag_2nd_block, SigmaI_plus_W_inv_off_diag;
-		// True if the derivatives through the mode below are calculated with the observed Hessian of the negative
-		//	log-likelihood instead of the matrix "W" of the approximation, see 'ModeJacobianDiffersFromInformation'
+		// The derivatives through the mode are governed by the Jacobian of the score whose root is the mode, which
+		//	contains the observed Hessian of the negative log-likelihood and not the matrix "W" of the approximation,
+		//	see 'ModeJacobianDiffersFromInformation'. If they differ, Sigma^-1 + observed Hessian is assembled here and
+		//	used for all derivatives through the mode below. It is not guaranteed to be positive definite, the branches
+		//	below therefore verify their solve and fall back to "W" if it fails
 		bool use_observed_hessian_for_mode_jacobian = false;
+		sp_mat_t mode_jacobian;
+		if (ModeJacobianDiffersFromInformation() && grad_information_wrt_mode_non_zero_ &&
+			(calc_cov_grad || calc_F_grad || calc_aux_par_grad)) {
+			CalcObservedHessianLogLik(y_data, location_par_ptr);
+			mode_jacobian = sp_mat_t(dim_mode_, dim_mode_);
+			std::vector<Triplet_t> triplets_SigmaI;
+			for (int igp = 0; igp < num_sets_re_; ++igp) {
+				sp_mat_t SigmaI_igp = B[igp].transpose() * (D_inv[igp] * B[igp]);
+				const int offset = igp * (int)dim_mode_per_set_re_;
+				triplets_SigmaI.reserve(triplets_SigmaI.size() + (size_t)SigmaI_igp.nonZeros());
+				for (int k = 0; k < SigmaI_igp.outerSize(); ++k) {
+					for (sp_mat_t::InnerIterator it(SigmaI_igp, k); it; ++it) {
+						triplets_SigmaI.emplace_back((int)it.row() + offset, (int)it.col() + offset, it.value());
+					}
+				}
+			}
+			mode_jacobian.setFromTriplets(triplets_SigmaI.begin(), triplets_SigmaI.end());
+			mode_jacobian += observed_hessian_ll_mat_;
+			mode_jacobian.makeCompressed();
+			use_observed_hessian_for_mode_jacobian = true;
+		}
 		if (matrix_inversion_method_ == "iterative") {
 			if (cg_preconditioner_type_ == "vecchia_response") {
 				Log::REFatal("Calculation of gradients is currently not correctly implemented for the '%s' preconditioner ", cg_preconditioner_type_.c_str());
@@ -4080,17 +4108,50 @@ namespace GPBoost {
 					WI_WI_plus_Sigma_inv_Z, re_comps_cross_cov_cluster_i, GPU_use);
 			}
 			//For implicit derivatives: calculate (Sigma^(-1) + W)^(-1) d_mll_d_mode
-			//	Note: if the observed Hessian differs from "W" (see 'ModeJacobianDiffersFromInformation'), the
-			//	derivatives through the mode should use Sigma^-1 + observed Hessian, as is done in the Cholesky
-			//	branch below. That matrix can be indefinite, so the conjugate gradient algorithm used here does
-			//	not apply to it and the iterative methods keep using "W", which makes these derivatives approximate
 			if (grad_information_wrt_mode_non_zero_) {
 				d_mll_d_mode = 0.5 * d_log_det_Sigma_W_plus_I_d_mode;
 				SigmaI_plus_W_inv_d_mll_d_mode = vec_t(dim_mode_);
-				bool has_NA_or_Inf = false;
-				Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, true, has_NA_or_Inf);
-				if (has_NA_or_Inf) {
-					Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
+				if (use_observed_hessian_for_mode_jacobian) {
+					// Solve with the Jacobian of the score whose root is the mode, see above. The conjugate gradient
+					//	algorithm requires a positive definite matrix, which Sigma^-1 + observed Hessian is only at a
+					//	local maximum of the approximated posterior -> the solution is verified through its residual
+					//	and "W" is used instead if the solve did not succeed
+					sp_mat_rm_t mode_jacobian_rm = sp_mat_rm_t(mode_jacobian);
+					vec_t mode_jacobian_diag = mode_jacobian.diagonal();
+					vec_t mode_jacobian_inv_diag = mode_jacobian_diag.cwiseInverse();
+					sp_mat_rm_t not_used_rm;
+					vec_t mode_jacobian_inv_d_mll_d_mode(dim_mode_);
+					bool has_NA_or_Inf_mode_jacobian = false;
+					int num_cg_steps_mode_jacobian;
+					if ((mode_jacobian_diag.array() <= 0.).any() || !mode_jacobian_inv_diag.allFinite()) {
+						has_NA_or_Inf_mode_jacobian = true;
+					}
+					else {
+						CGRandomEffectsVec(mode_jacobian_rm, d_mll_d_mode, mode_jacobian_inv_d_mll_d_mode, has_NA_or_Inf_mode_jacobian,
+							cg_max_num_it_, cg_delta_conv_, true, ZERO_RHS_CG_THRESHOLD, true, "diagonal", not_used_rm, not_used_rm,
+							mode_jacobian_inv_diag, num_cg_steps_mode_jacobian, cg_convergence_params_);
+					}
+					const double rhs_norm = d_mll_d_mode.norm();
+					const double residual_norm = has_NA_or_Inf_mode_jacobian ? std::numeric_limits<double>::infinity() :
+						(mode_jacobian_rm * mode_jacobian_inv_d_mll_d_mode - d_mll_d_mode).norm();
+					if (!has_NA_or_Inf_mode_jacobian && mode_jacobian_inv_d_mll_d_mode.allFinite() &&
+						residual_norm <= MODE_JACOBIAN_CG_RESIDUAL_TOL_ * rhs_norm) {
+						SigmaI_plus_W_inv_d_mll_d_mode = mode_jacobian_inv_d_mll_d_mode;
+					}
+					else {
+						use_observed_hessian_for_mode_jacobian = false;
+						Log::REDebug("CalcGradNegMargLikelihoodLaplaceApproxVecchia: the conjugate gradient algorithm did not solve with "
+							"Sigma^-1 + observed Hessian, i.e. the mode is likely not a local maximum of the approximated posterior. The "
+							"derivatives through the mode are calculated with the matrix 'W' of the approximation instead, which makes "
+							"them approximate ");
+					}
+				}
+				if (!use_observed_hessian_for_mode_jacobian) {
+					bool has_NA_or_Inf = false;
+					Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, true, has_NA_or_Inf);
+					if (has_NA_or_Inf) {
+						Log::REDebug(CG_NA_OR_INF_WARNING_GRADIENT_);
+					}
 				}
 			}
 			// Calculate gradient wrt covariance parameters
@@ -4161,7 +4222,7 @@ namespace GPBoost {
 								}
 								GPBoost::CreatSparseBlockDiagonalMartix<sp_mat_t>(grad_1, grad_2, D_grad_all);
 								CalcLogDetStochDerivCovParVecchia(dim_mode_, num_comps_total, j, SigmaI_deriv_rm, B_grad_all, D_grad_all, D_inv_plus_W_inv_diag,
-									PI_Z, WI_PI_Z, d_log_det_Sigma_W_plus_I_d_cov_pars);
+									PI_Z, WI_PI_Z, d_log_det_Sigma_W_plus_I_d_cov_pars, igp);
 							}//end num_sets_re_ > 1
 							SigmaI_deriv_mode = SigmaI_deriv_rm * mode_;
 							explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode) + d_log_det_Sigma_W_plus_I_d_cov_pars);
@@ -4284,28 +4345,7 @@ namespace GPBoost {
 			L_inv.setIdentity();
 			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
 			sp_mat_t SigmaI_plus_W_inv;
-			// The derivatives through the mode are governed by the Jacobian of the score whose root is the mode, which
-			//	contains the observed Hessian of the negative log-likelihood and not the matrix "W" of the approximation,
-			//	see 'ModeJacobianDiffersFromInformation'. If they differ, Sigma^-1 + observed Hessian is factorized here
-			//	and used for all derivatives through the mode below
-			if (ModeJacobianDiffersFromInformation() && grad_information_wrt_mode_non_zero_ &&
-				(calc_cov_grad || calc_F_grad || calc_aux_par_grad)) {
-				CalcObservedHessianLogLik(y_data, location_par_ptr);
-				sp_mat_t mode_jacobian(dim_mode_, dim_mode_);
-				std::vector<Triplet_t> triplets_SigmaI;
-				for (int igp = 0; igp < num_sets_re_; ++igp) {
-					sp_mat_t SigmaI_igp = B[igp].transpose() * (D_inv[igp] * B[igp]);
-					const int offset = igp * (int)dim_mode_per_set_re_;
-					triplets_SigmaI.reserve(triplets_SigmaI.size() + (size_t)SigmaI_igp.nonZeros());
-					for (int k = 0; k < SigmaI_igp.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(SigmaI_igp, k); it; ++it) {
-							triplets_SigmaI.emplace_back((int)it.row() + offset, (int)it.col() + offset, it.value());
-						}
-					}
-				}
-				mode_jacobian.setFromTriplets(triplets_SigmaI.begin(), triplets_SigmaI.end());
-				mode_jacobian += observed_hessian_ll_mat_;
-				mode_jacobian.makeCompressed();
+			if (use_observed_hessian_for_mode_jacobian) {
 				if (!chol_fact_mode_jacobian_pattern_analyzed_) {
 					chol_fact_mode_jacobian_vecchia_.analyzePattern(mode_jacobian);
 					chol_fact_mode_jacobian_pattern_analyzed_ = true;
@@ -4505,6 +4545,7 @@ namespace GPBoost {
 		bool call_for_std_dev_coef,
 		const std::vector<int>& estimate_cov_par_index,
 		bool GPU_use) {
+		CheckModeJacobianIsImplemented(__func__);
 		int num_ip = (int)((*sigma_ip).rows());
 		CHECK((int)((*cross_cov).rows()) == dim_mode_);
 		CHECK((int)((*cross_cov).cols()) == num_ip);
@@ -4813,6 +4854,45 @@ namespace GPBoost {
 				if (calc_pred_var) {
 					int n_pred = (int)pred_mean.size();
 					vec_t pred_var_global = vec_t::Zero(n_pred);
+					// 'A_pred' maps the mode to the prediction points. For grouped random effects only this is Z_po = Ztilde,
+					//	the predictive variances are then diag(A_pred * (SigmaI_plus_ZtWZ)^-1 * A_pred^T)
+					sp_mat_t Bp_inv, Bp_inv_Dp, A_pred;
+					if (has_vecchia_gp) {
+						// With an additional Vecchia-approximated GP, the predictions are A_pred * b with
+						//	A_pred = [Z_po, -Bp^-1 * Bpo] and the (approximate) posterior b ~ N(mode, (SigmaI_plus_ZtWZ)^-1).
+						//	The grouped random effects and the GP are correlated a posteriori, so the whole matrix A_pred has
+						//	to be used for the stochastic estimate; calculating the grouped and the GP block separately would
+						//	omit their cross-covariance. Only Bp^-1 * Dp * Bp^-T is added separately below, since it is the
+						//	conditional covariance of the Vecchia prediction and does not involve the posterior
+						sp_mat_t Bp_inv_Bpo;
+						if (VecchiaCondObsOnly) {
+							Bp_inv_Bpo = Bpo; //Bp = Id
+						}
+						else {
+							Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
+							Bp_inv.setIdentity();
+							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
+							Bp_inv_Bpo = Bp_inv * Bpo;
+							Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
+						}
+						A_pred = sp_mat_t(n_pred, dim_mode_);
+						std::vector<Triplet_t> triplets_A;
+						triplets_A.reserve((size_t)(Ztilde.nonZeros() + Bp_inv_Bpo.nonZeros()));
+						for (int k = 0; k < Ztilde.outerSize(); ++k) {
+							for (sp_mat_t::InnerIterator it(Ztilde, k); it; ++it) {
+								triplets_A.emplace_back((int)it.row(), (int)it.col(), it.value());
+							}
+						}
+						for (int k = 0; k < Bp_inv_Bpo.outerSize(); ++k) {
+							for (sp_mat_t::InnerIterator it(Bp_inv_Bpo, k); it; ++it) {
+								triplets_A.emplace_back((int)it.row(), (int)it.col() + (int)dim_re_group, -it.value());
+							}
+						}
+						A_pred.setFromTriplets(triplets_A.begin(), triplets_A.end());
+					}
+					else {
+						A_pred = Ztilde;
+					}
 					//Variance reduction
 					sp_mat_rm_t Ztilde_P_sqrt_invt_rm;
 					vec_t varred_global, c_cov, c_var;
@@ -4821,10 +4901,10 @@ namespace GPBoost {
 						c_cov = vec_t::Zero(n_pred);
 						c_var = vec_t::Zero(n_pred);
 						//Calculate P^(-0.5) explicitly
-						sp_mat_rm_t Identity_rm(dim_mode_, dim_re_group);
-						std::vector<Triplet_t> triplets(dim_re_group);
+						sp_mat_rm_t Identity_rm(dim_mode_, dim_mode_);
+						std::vector<Triplet_t> triplets(dim_mode_);
 						#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < dim_re_group; ++i) {
+						for (data_size_t i = 0; i < dim_mode_; ++i) {
 							triplets[i] = Triplet_t(i, i, 1.);
 						}
 						Identity_rm.setFromTriplets(triplets.begin(), triplets.end());
@@ -4835,13 +4915,8 @@ namespace GPBoost {
 						else {
 							TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(P_SSOR_L_D_sqrt_inv_rm_, Identity_rm, P_sqrt_invt_rm, true);
 						}
-						//Z_po P^(-T/2)
-						if (has_vecchia_gp) {
-							Ztilde_P_sqrt_invt_rm = Ztilde * P_sqrt_invt_rm.topRows(dim_re_group);
-						}
-						else {
-							Ztilde_P_sqrt_invt_rm = Ztilde * P_sqrt_invt_rm;
-						}					
+						//A P^(-T/2)
+						Ztilde_P_sqrt_invt_rm = A_pred * P_sqrt_invt_rm;
 					}
 					int num_threads;
 #ifdef _OPENMP
@@ -4890,12 +4965,8 @@ namespace GPBoost {
 									rand_vec_init(j) = -1.;
 								}
 							}
-							//Z_po^T RV
-							vec_t Z_tilde_t_RV = Ztilde.transpose() * rand_vec_init;
-							if (has_vecchia_gp) {
-								Z_tilde_t_RV.conservativeResize(dim_re_group + dim_gp);
-								Z_tilde_t_RV.tail(dim_gp).setZero();
-							}
+							//A^T RV
+							vec_t Z_tilde_t_RV = A_pred.transpose() * rand_vec_init;
 							//Part 2: (Sigma^(-1) + Z^T W Z)^(-1) Z_po^T RV
 							vec_t MInv_Ztilde_t_RV(dim_mode_);
 							bool has_NA_or_Inf = false;
@@ -4904,14 +4975,11 @@ namespace GPBoost {
 								cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
 								L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
 								cg_convergence_params_pred_);
-							if (has_vecchia_gp) {
-								MInv_Ztilde_t_RV.conservativeResize(dim_re_group);
-							}
 							if (has_NA_or_Inf) {
 								na_inf_flag_1 = true;
 							}
-							//Part 2: Z_po (Sigma^(-1) + Z^T W Z)^(-1) Z_po^T RV
-							vec_t rand_vec_final = Ztilde * MInv_Ztilde_t_RV;
+							//Part 2: A (Sigma^(-1) + Z^T W Z)^(-1) A^T RV
+							vec_t rand_vec_final = A_pred * MInv_Ztilde_t_RV;
 							vec_t pred_var_iter = rand_vec_final.cwiseProduct(rand_vec_init);
 							pred_var_private += pred_var_iter;
 							//Variance reduction
@@ -4944,8 +5012,8 @@ namespace GPBoost {
 						varred_global /= nsim_var_pred_;
 						c_cov /= nsim_var_pred_;
 						c_var /= nsim_var_pred_;
-						//Deterministic: diag(Z_po P^(-0.5T) P^(-0.5) Z_po^T)
-						vec_t varred_determ = Ztilde_P_sqrt_invt_rm.cwiseProduct(Ztilde_P_sqrt_invt_rm) * vec_t::Ones(dim_re_group);
+						//Deterministic: diag(A P^(-0.5T) P^(-0.5) A^T)
+						vec_t varred_determ = Ztilde_P_sqrt_invt_rm.cwiseProduct(Ztilde_P_sqrt_invt_rm) * vec_t::Ones(dim_mode_);
 						//optimal c
 						c_cov -= varred_global.cwiseProduct(pred_var_global);
 						c_var -= varred_global.cwiseProduct(varred_global);
@@ -4958,83 +5026,16 @@ namespace GPBoost {
 						}
 						pred_var += c_opt.cwiseProduct(varred_determ - varred_global);
 					}
-					if (has_vecchia_gp) {//Add GP part
-						vec_t pred_var_gp = vec_t::Zero(n_pred);
-						sp_mat_t Bp_inv_Dp, Bp_inv, Bp_inv_Bpo;//Bp^(-1) * Bpo
+					if (has_vecchia_gp) {
+						// The posterior contribution of the GP is already contained in the estimate above, which uses the
+						//	entire matrix A. What remains is the conditional covariance Bp^-1 * Dp * Bp^-T of the Vecchia
+						//	prediction, which does not involve the posterior and is calculated exactly
 						if (VecchiaCondObsOnly) {
-							Bp_inv_Bpo = Bpo; //Bp = Id
+							pred_var += Dp;
 						}
 						else {
-							Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
-							Bp_inv.setIdentity();
-							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
-							Bp_inv_Bpo = Bp_inv * Bpo;
-							Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
+							pred_var += Bp_inv_Dp.cwiseProduct(Bp_inv) * vec_t::Ones(n_pred);
 						}
-						if (HasNegativeValueInformationLogLik()) {
-							Log::REFatal("PredictLaplaceApproxVecchia: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-								"Cannot have negative values when using 'iterative' methods for predictive variances in Vecchia-Laplace approximations ");
-						}
-						vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
-						CHECK(W_diag_sqrt.size() == num_data_);
-						sp_mat_t B_t_D_inv_sqrt = B.transpose() * (D_inv.cwiseSqrt());
-						sp_mat_t SigmaI_sqrt = SigmaI.cwiseSqrt();
-						GPBoost::MakeBlockDiag_D_B<sp_mat_t>(SigmaI_sqrt, B_t_D_inv_sqrt, B_t_D_inv_sqrt);
-						CHECK(B_t_D_inv_sqrt.cols() == dim_mode_);
-						bool na_inf_flag_2 = false;
-#pragma omp parallel
-						{
-							int thread_nb;
-#ifdef _OPENMP
-							thread_nb = omp_get_thread_num();
-#else
-							thread_nb = 0;
-#endif
-							RNG_t rng_local = parallel_rngs[thread_nb];
-							vec_t pred_var_private = vec_t::Zero(n_pred);
-#pragma omp for reduction(||:na_inf_flag_2)
-							for (int i = 0; i < nsim_var_pred_; ++i) {
-								//z_i ~ N(0,I)
-								std::normal_distribution<double> ndist(0.0, 1.0);
-								vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(num_data_);
-								for (int j = 0; j < dim_mode_; j++) {
-									rand_vec_pred_I_1(j) = ndist(rng_local);
-								}
-								for (int j = 0; j < num_data_; j++) {
-									rand_vec_pred_I_2(j) = ndist(rng_local);
-								}
-								//z_i ~ N(0,(Sigma^{-1} + W))
-								vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt * rand_vec_pred_I_1 + (*Zt_) * (W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2));
-								vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
-								//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
-								bool has_NA_or_Inf = false;
-								int num_cg_steps_dummy;
-								CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf,
-									cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_,
-									L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
-									cg_convergence_params_pred_);
-								rand_vec_pred_SigmaI_plus_W_inv = rand_vec_pred_SigmaI_plus_W_inv.tail(dim_gp).eval();
-								if (has_NA_or_Inf) {
-									na_inf_flag_2 = true;
-								}
-								//z_i ~ N(0, Bp^{-1} Bpo (Sigma^{-1} + W)^{-1} Bpo^T Bp^{-1})
-								vec_t rand_vec_pred = Bp_inv_Bpo * rand_vec_pred_SigmaI_plus_W_inv;
-								pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
-							}//end for loop
-#pragma omp critical
-							{
-								pred_var_gp += pred_var_private;
-							}
-						} // end #pragma omp parallel
-						if (na_inf_flag_2) { Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_); }
-						pred_var_gp /= nsim_var_pred_;
-						if (VecchiaCondObsOnly) {
-							pred_var_gp += Dp;
-						}
-						else {
-							pred_var_gp += Bp_inv_Dp.cwiseProduct(Bp_inv) * vec_t::Ones(n_pred);
-						}
-						pred_var += pred_var_gp;
 					}//end has_vecchia_gp adding GP variance
 				} //end calc_pred_var
 				else if (calc_pred_cov) {
@@ -5119,8 +5120,9 @@ namespace GPBoost {
 						// Note: the code below is correct, but the corresponding code in re_model_template would have to be changed to add only uconditional covariancs
 						//		for new groups and not for all groups (see re_comp->AddPredCovMatrices)
 					}
-					// The predictions are A * b with A = [Z_po, -Bp^-1 * Bpo], Z_po = Ztilde, and the (approximate) posterior
-					//	b = (b_group, b_gp) ~ N(mode, (SigmaI_plus_ZtWZ)^-1). The predictive covariance is therefore
+					// With an additional Vecchia-approximated GP, the predictions are A * b with A = [Z_po, -Bp^-1 * Bpo],
+					//	Z_po = Ztilde, and the (approximate) posterior b = (b_group, b_gp) ~ N(mode, (SigmaI_plus_ZtWZ)^-1).
+					//	The predictive covariance is therefore
 					//	A * (SigmaI_plus_ZtWZ)^-1 * A^T + Bp^-1 * Dp * Bp^-T. The grouped random effects and the GP are
 					//	correlated a posteriori, i.e. their contributions cannot be calculated separately, and the triangular
 					//	solve has to be applied to the entire matrix A^T of dimension dim_mode_ x number of prediction points
@@ -7320,7 +7322,8 @@ namespace GPBoost {
 		const vec_t& D_inv_plus_W_inv_diag,
 		const den_mat_t& PI_Z,
 		const den_mat_t& WI_PI_Z,
-		double& d_log_det_Sigma_W_plus_I_d_cov_pars) const {
+		double& d_log_det_Sigma_W_plus_I_d_cov_pars,
+		int ind_set_re) const {
 		if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
 			den_mat_t Sigma_WI_plus_Sigma_inv_Z(num_data, num_rand_vec_trace_);
 			den_mat_t B_invt_PI_Z(num_data, num_rand_vec_trace_), Sigma_PI_Z(num_data, num_rand_vec_trace_);
@@ -7348,7 +7351,9 @@ namespace GPBoost {
 			d_log_det_Sigma_W_plus_I_d_cov_pars = tr_SigmaI_plus_W_inv_SigmaI_deriv;
 			//tr(Sigma^(-1) dSigma/dtheta_j)
 			if (UseFirstCovParScalingShortcut(num_comps_total, j)) {
-				d_log_det_Sigma_W_plus_I_d_cov_pars += num_data;
+				// the parameter scales the covariance matrix of its own set of random effects only, i.e. the
+				//	trace is over that block and not over the entire mode (num_sets_re_ can be larger than 1)
+				d_log_det_Sigma_W_plus_I_d_cov_pars += dim_mode_per_set_re_;
 			}
 			else {
 				d_log_det_Sigma_W_plus_I_d_cov_pars += (D_inv_rm_.diagonal().array() * D_grad_j.diagonal().array()).sum();
@@ -7359,8 +7364,11 @@ namespace GPBoost {
 				vec_t zt_PI_P_deriv_PI_z;
 				if (UseFirstCovParScalingShortcut(num_comps_total, j)) {
 					//dD/dsigma2 = D and dB/dsigma2 = 0
-					//deterministic tr((D^(-1) + W)^(-1) dD^(-1)/dsigma2), where dD^(-1)/dsigma2 = -D^(-1)
-					tr_D_inv_plus_W_inv_D_inv_deriv = -1 * (D_inv_plus_W_inv_diag.array() * D_inv_rm_.diagonal().array()).sum();
+					//deterministic tr((D^(-1) + W)^(-1) dD^(-1)/dsigma2), where dD^(-1)/dsigma2 = -D^(-1) on the block
+					//	of the set of random effects of this parameter, see above
+					const data_size_t offset_set_re = ind_set_re * dim_mode_per_set_re_;
+					tr_D_inv_plus_W_inv_D_inv_deriv = -1 * (D_inv_plus_W_inv_diag.segment(offset_set_re, dim_mode_per_set_re_).array() *
+						vec_t(D_inv_rm_.diagonal()).segment(offset_set_re, dim_mode_per_set_re_).array()).sum();
 					//stochastic tr(P^(-1) dP/dsigma2), where dP/dsigma2 = -Sigma^(-1)
 					zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(SigmaI_deriv_rm * PI_Z)).colwise().sum()).transpose();
 					tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();

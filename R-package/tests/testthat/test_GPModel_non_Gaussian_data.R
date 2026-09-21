@@ -4066,28 +4066,43 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # consistent with the objective by verifying that finite differences of the objective vanish at the
     # reported optimum. A new GPModel is used for every evaluation so that the mode is recalculated from
     # scratch, which a warm started mode would hide
-    nll_fd_hetero <- function(cov_pars_loc) {
+    nll_fd_hetero <- function(cov_pars_loc, coefs_loc) {
       gp_fd <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = likelihood,
                        gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = "none",
                        matrix_inversion_method = "cholesky")
       capture.output( nll_loc <- gp_fd$neg_log_likelihood(cov_pars = cov_pars_loc, y = y,
-                        fixed_effects = as.vector(cbind(X %*% coefs[1:2], X %*% coefs[3:4]))), file='NUL')
+                        fixed_effects = as.vector(cbind(X %*% coefs_loc[1:2], X %*% coefs_loc[3:4]))), file='NUL')
       nll_loc
     }
-    fd_grad_hetero <- function(cov_pars_loc) {
+    fd_grad_hetero <- function(cov_pars_loc, coefs_loc) {
       h_fd <- 1E-4
       sapply(1:4, function(k) {
         lp_p <- log(cov_pars_loc); lp_p[k] <- lp_p[k] + h_fd
         lp_m <- log(cov_pars_loc); lp_m[k] <- lp_m[k] - h_fd
-        (nll_fd_hetero(exp(lp_p)) - nll_fd_hetero(exp(lp_m))) / (2 * h_fd)
+        (nll_fd_hetero(exp(lp_p), coefs_loc) - nll_fd_hetero(exp(lp_m), coefs_loc)) / (2 * h_fd)
       })
     }
-    grad_at_opt_hetero <- fd_grad_hetero(cov_pars)
-    grad_at_init_hetero <- fd_grad_hetero(init_cov_pars)
-    # The test is relative to the gradient at the initial values: when the derivatives through the mode used
-    # the Fisher information instead of the observed Hessian, the optimizer did not move away from the
-    # initial values at all, i.e. these two gradients were identical
-    expect_lt(max(abs(grad_at_opt_hetero)), 0.05 * max(abs(grad_at_init_hetero)))
+    grad_at_init_hetero <- fd_grad_hetero(init_cov_pars, coefs)
+    # The optimum that is reported has to be a stationary point of the objective. The test is relative to the
+    # gradient at the initial values: when the derivatives through the mode used the Fisher information instead
+    # of the observed Hessian, the optimizer did not move away from the initial values at all, i.e. the two
+    # gradients were identical. Both matrix inversion methods are checked since they calculate the gradient
+    # differently (the iterative methods use stochastic estimates)
+    for (inv_method_fd in c("cholesky", "iterative")) {
+      params_fd <- params_vecchia
+      params_fd$cg_preconditioner_type <- "vadu"# the other preconditioners are not supported for this likelihood
+      params_fd$num_rand_vec_trace <- 500
+      params_fd$reuse_rand_vec_trace <- TRUE
+      params_fd$seed_rand_vec_trace <- 1
+      capture.output( gp_model_fd <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                likelihood = likelihood, gp_approx = "vecchia",
+                                                num_neighbors = n-1, vecchia_ordering = "none",
+                                                matrix_inversion_method = inv_method_fd,
+                                                y = y, X = X, params = params_fd), file='NUL')
+      grad_at_opt_hetero <- fd_grad_hetero(as.vector(gp_model_fd$get_cov_pars(std_err = FALSE)),
+                                           as.vector(gp_model_fd$get_coef(std_err = FALSE)))
+      expect_lt(max(abs(grad_at_opt_hetero)), 0.05 * max(abs(grad_at_init_hetero)))
+    }
     for(inv_method in c("cholesky")){#, "iterative"
       if(inv_method == "iterative") {
         tolerance_loc_1 <- TOLERANCE_ITERATIVE

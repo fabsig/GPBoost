@@ -377,3 +377,71 @@ def test_choose_param_value():
         "num_trees": 81
     }
     assert original_params == expected_params
+
+
+def test_dataset_subset_keeps_weight_and_group():
+    # 'Dataset.subset' passed the weight as the ranking group and vice versa, which made weighted
+    # cross-validation fail with "Sum of query counts is not same with #data" when free_raw_data=False
+    rng = np.random.default_rng(1)
+    n = 120
+    X = rng.normal(size=(n, 3))
+    y = X @ np.array([1.0, -0.5, 0.3]) + rng.normal(size=n) * 0.4
+    w = rng.uniform(0.5, 2.0, n)
+    ds = gpb.Dataset(X, label=y, weight=w, free_raw_data=False)
+    sub = ds.subset(list(range(0, 80)))
+    sub._update_params({})
+    sub.construct()
+    np.testing.assert_allclose(sub.get_weight(), w[:80])
+    assert sub.get_group() is None
+    for free_raw_data in (False, True):
+        gpb.cv(params={"objective": "regression_l2", "learning_rate": 0.1, "verbose": -1},
+               train_set=gpb.Dataset(X, label=y, weight=w, free_raw_data=free_raw_data),
+               num_boost_round=5, nfold=3, verbose_eval=False)
+
+
+def test_pickle_booster_with_gp_model():
+    # '__setstate__' constructed the GPModel before writing the response variable into its dictionary,
+    # unlike the 'model_str' constructor, so unpickling failed with a missing / invalid 'y'
+    import pickle
+    rng = np.random.default_rng(1)
+    n, m = 120, 12
+    group = np.repeat(np.arange(m), n // m)
+    X = rng.normal(size=(n, 3))
+    b = rng.normal(size=m) * 0.7
+    y = X @ np.array([1.0, -0.5, 0.3]) + b[group] + rng.normal(size=n) * 0.4
+    gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+    bst = gpb.train(params={"objective": "regression_l2", "learning_rate": 0.1, "verbose": -1},
+                    train_set=gpb.Dataset(X, label=y), gp_model=gp_model, num_boost_round=5)
+    bst_unpickled = pickle.loads(pickle.dumps(bst))
+    pred = bst.predict(data=X, group_data_pred=group, predict_var=False)
+    pred_unpickled = bst_unpickled.predict(data=X, group_data_pred=group, predict_var=False)
+    np.testing.assert_allclose(pred["response_mean"], pred_unpickled["response_mean"])
+
+
+def test_save_raw_data_keeps_init_score():
+    # 'model_to_string(save_raw_data=True)' did not save the training offset ('init_score'), so the
+    # random effects of the reloaded model were conditioned on the wrong training predictor
+    rng = np.random.default_rng(1)
+    n, m = 120, 12
+    group = np.repeat(np.arange(m), n // m)
+    X = rng.normal(size=(n, 3))
+    b = rng.normal(size=m) * 0.7
+    offset = rng.uniform(0.5, 1.5, n)
+    y = rng.poisson(np.exp(0.2 * X[:, 0] + b[group] + offset))
+    train_set = gpb.Dataset(X, label=y, init_score=offset, free_raw_data=False)
+    gp_model = gpb.GPModel(group_data=group, likelihood="poisson")
+    bst = gpb.train(params={"objective": "poisson", "learning_rate": 0.1, "verbose": -1},
+                    train_set=train_set, gp_model=gp_model, num_boost_round=5)
+    pred_before = bst.predict(data=X, group_data_pred=group, offset_pred=offset,
+                              predict_var=False)["response_mean"]
+    bst_loaded = gpb.Booster(model_str=bst.model_to_string(save_raw_data=True))
+    pred_after = bst_loaded.predict(data=X, group_data_pred=group, offset_pred=offset,
+                                    predict_var=False)["response_mean"]
+    np.testing.assert_allclose(pred_before, pred_after, rtol=1e-10)
+
+
+def test_load_legacy_zero_inflated_gamma_is_refused():
+    # the predictor of 'zero_inflated_gamma' (GPBoost <= 1.7.0) was the mean of the entire response,
+    # the one of 'hurdle_gamma' is the mean of the positive part -> such a model must not be loaded silently
+    with pytest.raises(ValueError, match="zero_inflated_gamma"):
+        gpb.GPModel(model_dict={"likelihood": "zero_inflated_gamma", "gp_approx": "none"})

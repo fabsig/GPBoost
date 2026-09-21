@@ -4,7 +4,7 @@ name: Nightly
 # run once a night on master and on request
 on:
   schedule:
-    - cron: "0 3 * * *"
+    - cron: "0 22 * * *"
   workflow_dispatch:
 
 permissions:

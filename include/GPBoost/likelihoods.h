@@ -1427,9 +1427,30 @@ namespace GPBoost {
 		*		Z^T * l'(mode) = Sigma^-1 * mode also in this case (Fisher scoring converges to that root), so the implicit
 		*		function theorem gives d mode / dtheta = -(Sigma^-1 + observed Hessian)^-1 * dSigma^-1/dtheta * mode, i.e.
 		*		the derivatives through the mode need the observed Hessian and not "W", see 'CalcObservedHessianLogLik'
+		*		The two matrices differ when "W" is the Fisher information ('approximation_type_' = "fisher_laplace"), when
+		*		it depends on the mode ('grad_information_wrt_mode_non_zero_', otherwise there is no derivative through the
+		*		mode at all), and when it is not replaced by the observed Hessian after the mode finding
+		*		('information_changes_after_mode_finding_', which is the default of the zero-inflated count likelihoods and
+		*		of 'negative_binomial_1'). An explicit list of likelihoods is used instead of these conditions since the
+		*		Fisher information also equals the observed Hessian for canonical links such as 'bernoulli_logit'.
+		*		Only 'CalcGradNegMargLikelihoodLaplaceApproxVecchia' implements this, which currently covers every case:
+		*		the likelihood below has num_sets_re_ = 2 and is restricted to a Vecchia approximation in
+		*		'DetermineCovarianceParameterIndicesNumCovPars'. 'CheckModeJacobianIsImplemented' guards the other versions
 		*/
 		bool ModeJacobianDiffersFromInformation() const {
 			return(likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random" && approximation_type_ == "fisher_laplace");
+		}
+
+		/*!
+		* \brief Raise an error if the derivatives through the mode need the observed Hessian of the negative log-likelihood
+		*		but the calling routine does not implement this, see 'ModeJacobianDiffersFromInformation'
+		* \param caller Name of the calling function
+		*/
+		void CheckModeJacobianIsImplemented(const char* caller) const {
+			if (ModeJacobianDiffersFromInformation() && grad_information_wrt_mode_non_zero_) {
+				Log::REFatal("%s: the derivatives through the mode need the observed Hessian of the negative log-likelihood "
+					"for likelihood = '%s', which is currently only implemented for the Vecchia approximation ", caller, likelihood_type_.c_str());
+			}
 		}
 
 		/*!
@@ -7219,7 +7240,8 @@ namespace GPBoost {
 			const vec_t& D_inv_plus_W_inv_diag,
 			const den_mat_t& PI_Z,
 			const den_mat_t& WI_PI_Z,
-			double& d_log_det_Sigma_W_plus_I_d_cov_pars) const;
+			double& d_log_det_Sigma_W_plus_I_d_cov_pars,
+			int ind_set_re = 0) const;
 
 		/*!
 		* \brief Calculate dlog|Sigma W + I|/daux, using stochastic trace estimation and variance reduction.
@@ -7841,6 +7863,11 @@ namespace GPBoost {
 		chol_cholmod_sp_mat_t chol_fact_mode_jacobian_vecchia_;
 		/*! \brief If true, the pattern for 'chol_fact_mode_jacobian_vecchia_' has been analyzed */
 		bool chol_fact_mode_jacobian_pattern_analyzed_ = false;
+		/*! \brief Relative residual below which an iterative solve with the mode Jacobian is accepted, see
+		*		'ModeJacobianDiffersFromInformation'. This detects a breakdown of the conjugate gradient algorithm, which
+		*		requires a positive definite matrix, and is deliberately not stricter than the convergence criterion of
+		*		the algorithm itself */
+		const double MODE_JACOBIAN_CG_RESIDUAL_TOL_ = 0.1;
 		/*! \brief If true, the mode has been initialized to 0 */
 		bool mode_initialized_ = false;
 		/*! \brief If true, the mode has been determined */
