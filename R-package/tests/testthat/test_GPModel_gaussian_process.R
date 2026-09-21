@@ -2628,9 +2628,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                      list(gp_approx = "full_scale_tapering", var = cov_pars_nc[2], deterministic = FALSE,
                           args = list(num_ind_points = 8, ind_points_selection = "random",
                                       cov_fct_taper_range = 1e6, cov_fct_taper_shape = 2)),
-                     list(gp_approx = "vecchia", var = cov_pars_nc[2] + cov_pars_nc[1], deterministic = TRUE,
+                     list(gp_approx = "vecchia", var = cov_pars_nc[2], deterministic = TRUE,
                           args = list(num_neighbors = 20, vecchia_ordering = "none")),
-                     list(gp_approx = "full_scale_vecchia", var = cov_pars_nc[2] + cov_pars_nc[1], deterministic = TRUE,
+                     list(gp_approx = "full_scale_vecchia", var = cov_pars_nc[2], deterministic = TRUE,
                           args = list(num_ind_points = 8, ind_points_selection = "random",
                                       num_neighbors = 20, vecchia_ordering = "none")))
     for (case_nc in cases_nc) {

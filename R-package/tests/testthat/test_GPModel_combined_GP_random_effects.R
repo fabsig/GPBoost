@@ -865,6 +865,49 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(pred_jc$mu - mu_exact_jc)), tol_jc)
       expect_lt(sum(abs(as.vector(pred_jc$var) - var_exact_jc)), tol_jc)
     }
+
+    # The same with an additional random slope, and with a group that does not occur in the training data.
+    # The unconditional variance of a random slope must only be added for such a new group, its posterior
+    # variance is already contained in the joint calculation above for the groups that do occur
+    x_jc <- 0.5 + sim_rand_unif(n = n_jc, init_c = 0.234)
+    Zx_jc <- diag(x_jc) %*% Z_jc
+    s2_slp_jc <- 0.5
+    Sigma_s_jc <- Sigma_jc + s2_slp_jc * (Zx_jc %*% t(Zx_jc))
+    Syy_s_jc <- Sigma_s_jc + diag(nugget_jc, n_jc)
+    y_s_jc <- as.vector(t(chol(Syy_s_jc)) %*% qnorm(sim_rand_unif(n = n_jc, init_c = 0.337)))
+    group_pred_s_jc <- c(1, 2, 3, 99999)# the last group does not occur in the training data
+    x_pred_jc <- c(1.2, 0.7, 1.1, 0.9)
+    Zp_s_jc <- matrix(0, np_jc, m_jc)
+    for (i in 1:np_jc) if (group_pred_s_jc[i] <= m_jc) Zp_s_jc[i, group_pred_s_jc[i]] <- 1
+    Cpo_s_jc <- sigma2_gr_jc * (Zp_s_jc %*% t(Z_jc)) +
+      s2_slp_jc * (diag(x_pred_jc) %*% Zp_s_jc %*% t(Z_jc) %*% diag(x_jc)) + sigma2_gp_jc * exp(-Dpo_jc / rho_jc)
+    Cpp_s_jc <- sigma2_gr_jc * (Zp_s_jc %*% t(Zp_s_jc)) +
+      s2_slp_jc * (diag(x_pred_jc) %*% Zp_s_jc %*% t(Zp_s_jc) %*% diag(x_pred_jc)) + sigma2_gp_jc * exp(-Dpp_jc / rho_jc)
+    for (i in 1:np_jc) {
+      if (group_pred_s_jc[i] > m_jc) {# a new group still has its prior random effects
+        Cpp_s_jc[i, i] <- Cpp_s_jc[i, i] + sigma2_gr_jc + s2_slp_jc * x_pred_jc[i]^2
+      }
+    }
+    var_exact_s_jc <- diag(Cpp_s_jc - Cpo_s_jc %*% solve(Syy_s_jc, t(Cpo_s_jc)))
+    for (inv_method_jc in c("cholesky", "iterative")) {
+      gp_model_s_jc <- GPModel(group_data = group_jc, group_rand_coef_data = x_jc,
+                               ind_effect_group_rand_coef = 1, gp_coords = coords_jc,
+                               cov_function = "exponential", gp_approx = "vecchia",
+                               num_neighbors = n_jc - 1, vecchia_ordering = "none",
+                               likelihood = "gaussian", matrix_inversion_method = inv_method_jc)
+      gp_model_s_jc$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all",
+                                        num_neighbors_pred = n_jc + np_jc, nsim_var_pred = 2000)
+      gp_model_s_jc$set_optim_params(params = list(init_aux_pars = nugget_jc, seed_rand_vec_trace = 1,
+                                                   init_cov_pars = c(sigma2_gr_jc, s2_slp_jc, sigma2_gp_jc, rho_jc),
+                                                   init_coef_aux_pars_from_iid_model = FALSE))
+      capture.output( pred_s_jc <- gp_model_s_jc$predict(y = y_s_jc, gp_coords_pred = coords_pred_jc,
+                                                         group_data_pred = group_pred_s_jc,
+                                                         group_rand_coef_data_pred = x_pred_jc,
+                                                         cov_pars = c(sigma2_gr_jc, s2_slp_jc, sigma2_gp_jc, rho_jc),
+                                                         predict_var = TRUE, predict_response = FALSE), file = 'NUL')
+      tol_s_jc <- if (inv_method_jc == "iterative") 1E-2 else 1E-6
+      expect_lt(sum(abs(as.vector(pred_s_jc$var) - var_exact_s_jc)), tol_s_jc)
+    }
   })
 
 }

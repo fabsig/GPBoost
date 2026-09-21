@@ -123,11 +123,16 @@ Booster <- R6::R6Class(
           )
           if (!is.null(save_data[["raw_data"]])) {
             
+            init_score_loaded <- save_data[["raw_data"]]$init_score
+            if (!is.null(init_score_loaded)) {
+              init_score_loaded <- as.vector(unlist(init_score_loaded))
+            }
             private$train_set <- gpb.Dataset(
               data = matrix(unlist(save_data[["raw_data"]]$data),
                             nrow = length(save_data[["raw_data"]]$data),
                             byrow = TRUE),
-              label = save_data[["raw_data"]]$label)
+              label = save_data[["raw_data"]]$label,
+              init_score = init_score_loaded)
             save_data[["gp_model_str"]][["y"]] <- save_data[["raw_data"]]$label
             
           } else {
@@ -178,11 +183,16 @@ Booster <- R6::R6Class(
           )
           if (!is.null(save_data[["raw_data"]])) {
             
+            init_score_loaded <- save_data[["raw_data"]]$init_score
+            if (!is.null(init_score_loaded)) {
+              init_score_loaded <- as.vector(unlist(init_score_loaded))
+            }
             private$train_set <- gpb.Dataset(
               data = matrix(unlist(save_data[["raw_data"]]$data),
                             nrow = length(save_data[["raw_data"]]$data),
                             byrow = TRUE),
-              label = save_data[["raw_data"]]$label)
+              label = save_data[["raw_data"]]$label,
+              init_score = init_score_loaded)
             save_data[["gp_model_str"]][["y"]] <- save_data[["raw_data"]]$label
             
           } else {
@@ -639,6 +649,9 @@ Booster <- R6::R6Class(
           
           save_data[["raw_data"]] <- list()
           save_data[["raw_data"]][["label"]] <- as.vector(private$train_set$.__enclos_env__$private$info$label)
+          # The offset supplied as 'init_score' to gpb.Dataset() for the training data is not part of the
+          #   tree ensemble and thus has to be saved separately
+          save_data[["raw_data"]][["init_score"]] <- private$train_set$.__enclos_env__$private$info$init_score
           save_data[["raw_data"]][["data"]] <- private$train_set$.__enclos_env__$private$raw_data
           if (is.matrix(save_data[["raw_data"]][["data"]])) {
             if (dim(save_data[["raw_data"]][["data"]])[2] == 1) {

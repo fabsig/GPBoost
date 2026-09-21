@@ -814,7 +814,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief Set configuration parameters for the optimizer
-		* \param lr_cov Learning rate for covariance parameters. If lr_cov = -999, internal default values are used
+		* \param lr_cov Learning rate for covariance parameters. If lr_cov = -999, internal default values are used. For "lbfgs", this is not a learning rate which multiplies every update but the length of the first trial step: it is divided by the norm of the gradient in the first iteration
 		* \param acc_rate_cov Acceleration rate for covariance parameters for Nesterov acceleration (only relevant if nesterov_schedule_version == 0). If acc_rate_cov = -999, internal default values are used
 		* \param max_iter Maximal number of iterations. If max_iter = -999, internal default values are used
 		* \param delta_rel_conv Convergence tolerance. The algorithm stops if the relative change in eiher the log-likelihood or the parameters is below this value. If delta_rel_conv = -999, internal default values are used
@@ -3892,6 +3892,15 @@ namespace GPBoost {
 						sp_mat_t B_inv_D_sqrt;
 						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B_cluster_i, D_sqrt, B_inv_D_sqrt, false);
 						psi = B_inv_D_sqrt * B_inv_D_sqrt.transpose();
+						// The Vecchia approximation is applied to the observed process for a Gaussian likelihood, i.e. 'psi'
+						//	already contains the nugget effect, which is subtracted again when the latent process is predicted
+						//	(the same is done for the clusters with observed data in 'Predict')
+						if (gauss_likelihood_ && !predict_response) {
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < num_REs_pred; ++i) {
+								psi.coeffRef(i, i) -= 1.;
+							}
+						}
 					}//end gp_approx_ == "vecchia"
 					else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
 						std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp_clus0 = GetForCluster(re_comps_ip_, unique_clusters_[0], 0)[0];
@@ -3963,12 +3972,10 @@ namespace GPBoost {
 					else if (gp_approx_ == "full_scale_vecchia") {
 						std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp_clus0 = GetForCluster(re_comps_ip_, unique_clusters_[0], 0)[0];
 						psi = T_mat(num_REs_pred, num_REs_pred);
-						if (gauss_likelihood_ && predict_response) {
-							psi.setIdentity();//nugget effect
-						}
-						else {
-							psi.setZero();
-						}
+						// In contrast to the other approximations, the Vecchia approximation of the residual process is applied
+						//	to the observed process for a Gaussian likelihood, i.e. the residual part added below already contains
+						//	the nugget effect. It is subtracted again when the latent process is predicted
+						psi.setZero();
 						std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 						std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 						std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
@@ -4055,6 +4062,12 @@ namespace GPBoost {
 						T_mat psi_interim;
 						ConvertTo_T_mat_FromDense<T_mat>(sigma_interim, psi_interim);
 						psi += psi_interim;
+						if (gauss_likelihood_ && !predict_response) {
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < num_REs_pred; ++i) {
+								psi.coeffRef(i, i) -= 1.;//see the note above
+							}
+						}
 					}
 					else if (gp_approx_ == "none") {
 						string_t cov_fct = "";
@@ -12226,7 +12239,12 @@ namespace GPBoost {
 									false, true, false, false, rand_coef_data.data());
 							}
 							if (predict_var) {
-								re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, rand_coef_data.data());
+								if (matrix_inversion_method_ == "iterative" || grouped_RE_and_vecchia_GP_) {
+									re_comp->AddPredUncondVarNewGroups(var_pred_id.data(), num_REs_pred, rand_coef_data.data(), group_data_pred);
+								}
+								else if (matrix_inversion_method_ == "cholesky") {
+									re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, rand_coef_data.data());
+								}
 							}
 							cn += 1;
 						}
@@ -12538,15 +12556,17 @@ namespace GPBoost {
 										}
 										//Part 2: Z_po (Sigma^(-1) + Z^T Z)^(-1) Z_po^T RV
 										vec_t rand_vec_final = Ztilde * MInv_Ztilde_t_RV;
-										pred_var_private += rand_vec_final.cwiseProduct(rand_vec_init);
+										vec_t pred_var_iter = rand_vec_final.cwiseProduct(rand_vec_init);
+										pred_var_private += pred_var_iter;
 										//Variance reduction
 										if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
 											//Stochastic: Z_po P^(-0.5T) P^(-0.5) Z_po^T RV
 											vec_t P_sqrt_inv_Ztilde_t_RV = Ztilde_P_sqrt_invt_rm.transpose() * rand_vec_init;
 											vec_t rand_vec_varred = Ztilde_P_sqrt_invt_rm * P_sqrt_inv_Ztilde_t_RV;
-											varred_private += rand_vec_varred.cwiseProduct(rand_vec_init);
-											c_cov_private += varred_private.cwiseProduct(pred_var_private);
-											c_var_private += varred_private.cwiseProduct(varred_private);
+											vec_t varred_iter = rand_vec_varred.cwiseProduct(rand_vec_init);
+											varred_private += varred_iter;
+											c_cov_private += varred_iter.cwiseProduct(pred_var_iter);
+											c_var_private += varred_iter.cwiseProduct(varred_iter);
 										}
 
 									} //end for loop

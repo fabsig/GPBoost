@@ -4900,23 +4900,18 @@ namespace GPBoost {
 						varred_global = vec_t::Zero(n_pred);
 						c_cov = vec_t::Zero(n_pred);
 						c_var = vec_t::Zero(n_pred);
-						//Calculate P^(-0.5) explicitly
-						sp_mat_rm_t Identity_rm(dim_mode_, dim_mode_);
-						std::vector<Triplet_t> triplets(dim_mode_);
-						#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < dim_mode_; ++i) {
-							triplets[i] = Triplet_t(i, i, 1.);
-						}
-						Identity_rm.setFromTriplets(triplets.begin(), triplets.end());
-						sp_mat_rm_t P_sqrt_invt_rm;
+						//A * P^(-T/2) = (P^(-1/2) * A^T)^T, calculated with A^T as the right hand side of the triangular
+						//	solve. Inverting the triangular factor explicitly would need one right hand side per random
+						//	effect instead of one per prediction point
+						sp_mat_rm_t A_pred_t_rm = sp_mat_rm_t(A_pred.transpose());
+						sp_mat_rm_t P_sqrt_inv_A_pred_t_rm;
 						if (cg_preconditioner_type_ == "incomplete_cholesky") {
-							TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(L_SigmaI_plus_ZtWZ_rm_, Identity_rm, P_sqrt_invt_rm, true);
+							TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(L_SigmaI_plus_ZtWZ_rm_, A_pred_t_rm, P_sqrt_inv_A_pred_t_rm, false);
 						}
 						else {
-							TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(P_SSOR_L_D_sqrt_inv_rm_, Identity_rm, P_sqrt_invt_rm, true);
+							TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(P_SSOR_L_D_sqrt_inv_rm_, A_pred_t_rm, P_sqrt_inv_A_pred_t_rm, false);
 						}
-						//A P^(-T/2)
-						Ztilde_P_sqrt_invt_rm = A_pred * P_sqrt_invt_rm;
+						Ztilde_P_sqrt_invt_rm = sp_mat_rm_t(P_sqrt_inv_A_pred_t_rm.transpose());
 					}
 					int num_threads;
 #ifdef _OPENMP
@@ -6688,15 +6683,17 @@ namespace GPBoost {
 						na_inf_flag_9 = true;
 					}
 					//Part 2: RV o (Sigma^(-1) + Z^T W Z)^(-1) RV
-					pred_var_private += MInv_RV.cwiseProduct(rand_vec_init);
+					vec_t pred_var_iter = MInv_RV.cwiseProduct(rand_vec_init);
+					pred_var_private += pred_var_iter;
 					//Variance reduction
 					if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
 						//Stochastic: P^(-0.5T) P^(-0.5) RV
 						vec_t P_sqrt_inv_RV = P_sqrt_invt_rm.transpose() * rand_vec_init;
 						vec_t rand_vec_varred = P_sqrt_invt_rm * P_sqrt_inv_RV;
-						varred_private += rand_vec_varred.cwiseProduct(rand_vec_init);
-						c_cov_private += varred_private.cwiseProduct(pred_var_private);
-						c_var_private += varred_private.cwiseProduct(varred_private);
+						vec_t varred_iter = rand_vec_varred.cwiseProduct(rand_vec_init);
+						varred_private += varred_iter;
+						c_cov_private += varred_iter.cwiseProduct(pred_var_iter);
+						c_var_private += varred_iter.cwiseProduct(varred_iter);
 					}
 				} //end for loop
 #pragma omp critical

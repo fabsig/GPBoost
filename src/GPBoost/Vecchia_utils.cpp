@@ -2196,7 +2196,9 @@ namespace GPBoost {
 			//release matrices that are not needed anymore
 			Bpo.resize(0, 0);
 			Bp.resize(0, 0);
-			Dp.resize(0);
+			if (!sample_posterior) {
+				Dp.resize(0);//Dp is needed afterwards for removing the nugget effect from samples of the latent process
+			}
 		}
 	}//end CalcPredVecchiaObservedFirstOrder
 
