@@ -4109,4 +4109,73 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+
+  test_that("Standard errors of covariance parameters for FITC and full-scale tapering with several clusters ", {
+
+    # Both approximations are exact here (FITC with as many inducing points as data points per cluster,
+    # full-scale tapering with a taper range that covers all distances), so they have to give the same
+    # standard errors as the model without an approximation. The scaling of the Fisher information with
+    # the error variance is applied once to the sum over all clusters; applying it inside the loop over
+    # the clusters rescaled the contributions of the previous clusters again
+    n_cl_fi <- 4
+    cluster_ids_fi <- rep(1:n_cl_fi, each = n / n_cl_fi)
+    y_fi <- eps + xi
+    params_fi <- c(OPTIM_PARAMS_BFGS,
+                   list(init_cov_pars = c(var(y_fi) / 2, var(y_fi) / 2, mean(dist(coords)) / 3),
+                        num_rand_vec_trace = 1000, reuse_rand_vec_trace = TRUE, seed_rand_vec_trace = 1))
+    args_fi <- list(gp_coords = coords, cov_function = "exponential", cluster_ids = cluster_ids_fi,
+                    y = y_fi, params = params_fi)
+    capture.output( gp_model_exact_fi <- do.call(fitGPModel, args_fi), file = 'NUL')
+    cov_pars_exact_fi <- gp_model_exact_fi$get_cov_pars(std_err = TRUE)
+    args_approx_fi <- list(
+      fitc = c(args_fi, list(gp_approx = "fitc", num_ind_points = n / n_cl_fi,
+                             ind_points_selection = "random")),
+      full_scale_tapering = c(args_fi, list(gp_approx = "full_scale_tapering",
+                                            num_ind_points = n / n_cl_fi - 1,
+                                            ind_points_selection = "random",
+                                            cov_fct_taper_range = 1e6, cov_fct_taper_shape = 2,
+                                            matrix_inversion_method = "cholesky")))
+    for (gp_approx_fi in names(args_approx_fi)) {
+      capture.output( gp_model_fi <- do.call(fitGPModel, args_approx_fi[[gp_approx_fi]]), file = 'NUL')
+      cov_pars_fi <- gp_model_fi$get_cov_pars(std_err = TRUE)
+      expect_lt(max(abs(cov_pars_fi[1, ] / cov_pars_exact_fi[1, ] - 1)), TOLERANCE_MEDIUM)
+      # The Fisher information of these approximations is calculated with stochastic trace estimation,
+      #   so the standard errors are only equal up to a Monte Carlo error
+      expect_lt(max(abs(cov_pars_fi[2, ] / cov_pars_exact_fi[2, ] - 1)), TOLERANCE_ITERATIVE)
+    }
+  })
+
+  test_that("Calculating standard errors of covariance parameters does not change later predictions ", {
+
+    # The standard errors are calculated with the factorization on the original scale, the rest of the
+    # code expects it on the transformed scale with the error variance factored out. Leaving the
+    # factorization behind on the original scale changed the prior samples drawn afterwards
+    y_se <- eps + xi
+    for (gp_approx_se in c("none", "vecchia")) {
+      capture.output( gp_model_se <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                gp_approx = gp_approx_se, num_neighbors = n - 1,
+                                                vecchia_ordering = "none", y = y_se,
+                                                params = list(init_coef_aux_pars_from_iid_model = FALSE)),
+                      file = 'NUL')
+      cov_pars_se <- as.numeric(gp_model_se$get_cov_pars())
+      pred_se <- predict(gp_model_se, gp_coords_pred = coords[1:5, ], predict_var = TRUE,
+                         predict_response = FALSE)
+      num_samples_se <- 2000
+      prior_before_se <- predict(gp_model_se, gp_coords_pred = coords[1:3, ], sample_prior = TRUE,
+                                 num_prior_samples = num_samples_se)$prior_samples
+      expect_equal(dim(prior_before_se), c(n, num_samples_se))
+      invisible(gp_model_se$get_cov_pars(std_err = TRUE))
+      prior_after_se <- predict(gp_model_se, gp_coords_pred = coords[1:3, ], sample_prior = TRUE,
+                                num_prior_samples = num_samples_se)$prior_samples
+      pred_after_se <- predict(gp_model_se, gp_coords_pred = coords[1:5, ], predict_var = TRUE,
+                               predict_response = FALSE)
+      # The prior samples have the marginal variance of the Gaussian process
+      expect_lt(abs(mean(prior_before_se^2) / cov_pars_se[2] - 1), TOLERANCE_ITERATIVE)
+      expect_lt(abs(mean(prior_after_se^2) / cov_pars_se[2] - 1), TOLERANCE_ITERATIVE)
+      # The posterior predictions must not change either
+      expect_lt(max(abs(pred_after_se$mu - pred_se$mu)), TOLERANCE_STRICT)
+      expect_lt(max(abs(as.vector(pred_after_se$var) - as.vector(pred_se$var))), TOLERANCE_STRICT)
+    }
+  })
+
 }

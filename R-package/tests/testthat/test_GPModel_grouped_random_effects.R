@@ -1135,4 +1135,55 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+
+  test_that("Grouped random coefficient without an intercept random effect and several clusters ", {
+
+    # The components that are kept and their indices have to be determined once for the entire model.
+    # Determining them while constructing the components of a cluster made every cluster after the
+    # first one see a different number of components
+    y_dc <- as.vector(Z3 %*% b3) + xi
+    cov_pars_dc <- c(0.5, 1.2)# error variance and variance of the random coefficient
+    clusters_dc <- unique(cluster_ids)
+    # The clusters are independent, and the random effects of a group are independent between clusters
+    nll_dc_manual <- 0
+    for (cl_dc in clusters_dc) {
+      idx_dc <- cluster_ids == cl_dc
+      Z_cl_dc <- Z3[idx_dc, , drop = FALSE]
+      psi_cl_dc <- cov_pars_dc[2] * (Z_cl_dc %*% t(Z_cl_dc)) + diag(cov_pars_dc[1], sum(idx_dc))
+      nll_dc_manual <- nll_dc_manual +
+        as.numeric(0.5 * (determinant(psi_cl_dc, logarithm = TRUE)$modulus +
+                            t(y_dc[idx_dc]) %*% solve(psi_cl_dc, y_dc[idx_dc]) + sum(idx_dc) * log(2 * pi)))
+    }
+    gp_model_dc <- GPModel(group_data = group, group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                           drop_intercept_group_rand_effect = TRUE, cluster_ids = cluster_ids)
+    expect_lt(abs(gp_model_dc$neg_log_likelihood(cov_pars = cov_pars_dc, y = y_dc) - nll_dc_manual),
+              TOLERANCE_MEDIUM)
+    # Estimation and prediction
+    capture.output( gp_model_dc <- fitGPModel(group_data = group, group_rand_coef_data = x,
+                                              ind_effect_group_rand_coef = 1,
+                                              drop_intercept_group_rand_effect = TRUE,
+                                              cluster_ids = cluster_ids, y = y_dc,
+                                              matrix_inversion_method = "cholesky",
+                                              params = list(optimizer_cov = "gradient_descent",
+                                                            init_cov_pars = c(var(y_dc) / 2, var(y_dc) / 2),
+                                                            init_coef_aux_pars_from_iid_model = FALSE))
+                    , file = 'NUL')
+    cov_pars_fit_dc <- as.numeric(gp_model_dc$get_cov_pars())
+    expect_equal(length(cov_pars_fit_dc), 2)
+    pred_dc <- predict(gp_model_dc, group_data_pred = group, group_rand_coef_data_pred = x,
+                       cluster_ids_pred = cluster_ids, predict_var = TRUE, predict_response = FALSE)
+    for (cl_dc in clusters_dc) {
+      idx_dc <- cluster_ids == cl_dc
+      Z_cl_dc <- Z3[idx_dc, , drop = FALSE]
+      prior_cov_cl_dc <- cov_pars_fit_dc[2] * (Z_cl_dc %*% t(Z_cl_dc))
+      psi_cl_dc <- prior_cov_cl_dc + diag(cov_pars_fit_dc[1], sum(idx_dc))
+      expect_lt(max(abs(pred_dc$mu[idx_dc] -
+                          as.vector(prior_cov_cl_dc %*% solve(psi_cl_dc, y_dc[idx_dc])))),
+                TOLERANCE_MEDIUM)
+      expect_lt(max(abs(as.vector(pred_dc$var)[idx_dc] -
+                          diag(prior_cov_cl_dc - prior_cov_cl_dc %*% solve(psi_cl_dc, prior_cov_cl_dc)))),
+                TOLERANCE_MEDIUM)
+    }
+  })
+
 }

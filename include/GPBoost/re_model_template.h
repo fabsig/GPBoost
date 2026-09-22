@@ -256,12 +256,19 @@ namespace GPBoost {
 						for (int j = 0; j < num_re_group_; ++j) {
 							drop_intercept_group_rand_effect_[j] = drop_intercept_group_rand_effect[j] > 0;
 						}
+						int num_dropped_intercepts = 0;
 						for (int j = 0; j < num_re_group_; ++j) { // check that all dropped intercept random effects have at least on random slope
-							if (drop_intercept_group_rand_effect_[j] &&
-								std::find(ind_effect_group_rand_coef_.begin(), ind_effect_group_rand_coef_.end(), j) != ind_effect_group_rand_coef_.end()) {
-								Log::REFatal("Cannot drop intercept random effect number %d as this random effect has no corresponding random coefficients", j);
+							if (drop_intercept_group_rand_effect_[j]) {
+								if (std::find(ind_effect_group_rand_coef_.begin(), ind_effect_group_rand_coef_.end(), j + 1) == ind_effect_group_rand_coef_.end()) {//counting starts at one in 'ind_effect_group_rand_coef_'
+									Log::REFatal("Cannot drop intercept random effect number %d as this random effect has no corresponding random coefficients", j + 1);
+								}
+								num_dropped_intercepts += 1;
 							}
 						}
+						//The number of components and the indices of the components are determined here once for all clusters.
+						//	'num_group_variables_' keeps counting the grouped random effect variables of the data, 'num_re_group_'
+						//	counts the intercept random effect components that are created from them
+						num_re_group_ -= num_dropped_intercepts;
 					}
 				}
 				num_re_group_total_ = num_re_group_ + num_re_group_rand_coef_;
@@ -5148,11 +5155,13 @@ namespace GPBoost {
 									}//end use_woodbury_identity_
 									else {//!use_woodbury_identity_
 										T_mat M_aux;
+										//The triangular solve uses the slope-weighted design, the mapping of the resulting
+										//	covariance of the coefficients back to the observations uses the unweighted one
 										TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], *Z_j, M_aux, false);
-										T_mat M_aux2 = (*Z_j) * M_aux.transpose();
 										if (GetForCluster(re_comps_, cluster_i, 0)[cn]->IsRandCoef()) {
 											Z_j = &Z_base_j;
 										}
+										T_mat M_aux2 = (*Z_j) * M_aux.transpose();
 #pragma omp parallel for schedule(static)
 										for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
 											var_pred_id[i] = cov_pars[0] * (sigma - sigma * sigma * M_aux2.row(i).squaredNorm());
@@ -8177,8 +8186,11 @@ namespace GPBoost {
 			double cov_fct_taper_shape,
 			std::vector<std::shared_ptr<RECompBase<T_mat>>>& re_comps_cluster_i) {
 			//Grouped random effects
-			if (num_re_group_ > 0) {
-				for (int j = 0; j < num_re_group_; ++j) {
+			if (num_group_variables_ > 0) {
+				//The intercept components are created for all grouped random effect variables, also for those whose
+				//	intercept is dropped, since 'ind_effect_group_rand_coef_' refers to this original numbering.
+				//	The dropped ones are removed again below
+				for (int j = 0; j < num_group_variables_; ++j) {
 					std::vector<re_group_t> group_data;
 					for (const auto& id : data_indices_per_cluster[cluster_i]) {
 						group_data.push_back(re_group_levels[j][id]);
@@ -8200,17 +8212,14 @@ namespace GPBoost {
 					}
 					// drop some intercept random effects (if specified)
 					int num_droped = 0;
-					for (int j = 0; j < num_re_group_; ++j) {
+					for (int j = 0; j < num_group_variables_; ++j) {
 						if (drop_intercept_group_rand_effect_[j]) {
-							re_comps_cluster_i.erase(re_comps_cluster_i.begin() + j);
+							re_comps_cluster_i.erase(re_comps_cluster_i.begin() + (j - num_droped));//the components before have already been removed
 							num_droped += 1;
 						}
 					}
-					num_re_group_ -= num_droped;
-					num_re_group_total_ -= num_droped;
-					num_comps_total_ -= num_droped;
 				}
-			}//end num_re_group_ > 0
+			}//end num_group_variables_ > 0
 			//GPs
 			if (num_gp_ > 0) {
 				std::vector<double> gp_coords;
@@ -11384,10 +11393,11 @@ namespace GPBoost {
 						FI(par_nb + first_cov_par, par_nb_cross + first_cov_par) += (sigma_grad_sigma_inv_rand_vec_[par_nb]).cwiseProduct(sigma_inv_sigma_grad_rand_vec_[par_nb_cross]).colwise().sum().mean() / 2.;
 					}
 				}
-				if (!transf_scale) {
-					FI /= (cov_pars[0] * cov_pars[0]);
-				}
 			}//end loop over cluster_i
+			if (!transf_scale) {
+				//The scaling is applied once to the sum over all clusters and not inside the loop over the clusters
+				FI /= (cov_pars[0] * cov_pars[0]);
+			}
 		}//end CalcFisherInformation_FITC_FSA
 
 		void CalcFisherInformation_Only_Grouped_REs_Woodbury(const vec_t& cov_pars,
@@ -11695,6 +11705,10 @@ namespace GPBoost {
 			else {
 				Log::REWarning("Cannot calculate standard deviations for covariance parameters since the Fisher information is not positive definite ");
 			}
+			//The calculations above are done on the original scale. The rest of the code (in particular predictions and
+			//	the sampling from the prior) expects the factorization on the transformed scale with the error variance
+			//	factored out, and it is thus restored here
+			CalcCovFactor(true, 1.);
 		}
 
 		/*!
@@ -12344,7 +12358,8 @@ namespace GPBoost {
 							group_data.push_back(re_group_levels_pred[ind_effect_group_rand_coef_[j] - 1][id]);//subtract 1 since counting starts at one for this index
 						}
 						re_comp->AddPredCovMatrices(group_data, cross_cov, cov_mat_pred_id,
-							true, predict_cov_mat, false, false, rand_coef_data.data());
+							true, predict_cov_mat, dont_add_but_overwrite, false, rand_coef_data.data());
+						dont_add_but_overwrite = false;//a random coefficient can be the first component when the intercept random effect is dropped
 						if (predict_var) {
 							re_comp->AddPredUncondVar(var_pred_id.data(), num_REs_pred, rand_coef_data.data());
 						}

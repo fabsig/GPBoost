@@ -910,4 +910,92 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+
+  test_that("Predictive variances of training data grouped random coefficients with a Gaussian process ", {
+
+    # The posterior covariance of the coefficients of a grouped random slope is mapped back to the
+    # observations with the unweighted group incidence matrix. Using the slope-weighted one (which the
+    # implementation did) multiplies the variance reduction with the squared covariate of the observation
+    # and makes most of the variances negative
+    y_rs <- as.vector(L %*% b_1) + as.vector(Z1 %*% b_gr_1) + as.vector(Z3 %*% b_gr_3) + xi
+    init_cov_pars_rs <- c(rep(var(y_rs) / 4, 4), mean(dist(coords)) / 3)
+    for (use_weights_rs in c(FALSE, TRUE)) {
+      weights_rs <- if (use_weights_rs) 0.5 + sim_rand_unif(n = n, init_c = 0.828) else NULL
+      error_var_scale_rs <- if (use_weights_rs) 1 / weights_rs else rep(1, n)
+      capture.output( gp_model_rs <- fitGPModel(group_data = group, group_rand_coef_data = x,
+                                                ind_effect_group_rand_coef = 1, gp_coords = coords,
+                                                cov_function = "exponential", y = y_rs, weights = weights_rs,
+                                                params = c(OPTIM_PARAMS_BFGS,
+                                                           list(init_cov_pars = init_cov_pars_rs))), file = 'NUL')
+      cov_pars_rs <- as.numeric(gp_model_rs$get_cov_pars())
+      # Exact Gaussian conditioning: the training data random effect of an observation is the random
+      #   coefficient of its group, not the random coefficient times the covariate
+      Sigma_gp_rs <- cov_pars_rs[4] * exp(-D / cov_pars_rs[5])
+      psi_rs <- cov_pars_rs[2] * (Z1 %*% t(Z1)) + cov_pars_rs[3] * (Z3 %*% t(Z3)) + Sigma_gp_rs +
+        diag(cov_pars_rs[1] * error_var_scale_rs, n)
+      psi_inv_y_rs <- solve(psi_rs, y_rs)
+      post_var_int_rs <- cov_pars_rs[2] * diag(m) - cov_pars_rs[2]^2 * (t(Z1) %*% solve(psi_rs, Z1))
+      post_var_slope_rs <- cov_pars_rs[3] * diag(m) - cov_pars_rs[3]^2 * (t(Z3) %*% solve(psi_rs, Z3))
+      expected_rs <- cbind(as.vector(cov_pars_rs[2] * Z1 %*% (t(Z1) %*% psi_inv_y_rs)),
+                           as.vector(cov_pars_rs[3] * Z1 %*% (t(Z3) %*% psi_inv_y_rs)),
+                           as.vector(Sigma_gp_rs %*% psi_inv_y_rs),
+                           diag(post_var_int_rs)[group],
+                           diag(post_var_slope_rs)[group],
+                           diag(Sigma_gp_rs - Sigma_gp_rs %*% solve(psi_rs, Sigma_gp_rs)))
+      re_rs <- predict_training_data_random_effects(gp_model_rs, predict_var = TRUE)
+      expect_equal(dim(re_rs), c(n, 6))
+      expect_true(all(re_rs[, 4:6] > 0))
+      expect_lt(max(abs(as.vector(re_rs) - as.vector(expected_rs))), TOLERANCE_MEDIUM)
+    }
+  })
+
+  test_that("Grouped random coefficient without an intercept random effect and a Gaussian process ", {
+
+    # Dropping an intercept random effect changes the number of components and thus the index of the
+    # Gaussian process component. Both have to be determined once and not while constructing the
+    # components of a cluster, which left the model in an inconsistent state
+    y_di <- as.vector(L %*% b_1) + as.vector(Z3 %*% b_gr_3) + xi
+    cov_pars_di <- c(0.2, 0.8, 1.1, 0.15)# error variance, random slope variance, GP variance, GP range
+    Sigma_gp_di <- cov_pars_di[3] * exp(-D / cov_pars_di[4])
+    psi_di <- cov_pars_di[2] * (Z3 %*% t(Z3)) + Sigma_gp_di + diag(cov_pars_di[1], n)
+    nll_di_manual <- as.numeric(0.5 * (determinant(psi_di, logarithm = TRUE)$modulus +
+                                         t(y_di) %*% solve(psi_di, y_di) + n * log(2 * pi)))
+    gp_model_di <- GPModel(group_data = group, group_rand_coef_data = x, ind_effect_group_rand_coef = 1,
+                           drop_intercept_group_rand_effect = TRUE, gp_coords = coords,
+                           cov_function = "exponential")
+    expect_lt(abs(gp_model_di$neg_log_likelihood(cov_pars = cov_pars_di, y = y_di) - nll_di_manual),
+              TOLERANCE_MEDIUM)
+    # Training data random effects: the random coefficient and the Gaussian process
+    capture.output( gp_model_di <- fitGPModel(group_data = group, group_rand_coef_data = x,
+                                              ind_effect_group_rand_coef = 1,
+                                              drop_intercept_group_rand_effect = TRUE, gp_coords = coords,
+                                              cov_function = "exponential", y = y_di,
+                                              params = c(OPTIM_PARAMS_BFGS,
+                                                         list(init_cov_pars = c(rep(var(y_di) / 3, 3),
+                                                                                mean(dist(coords)) / 3)))), file = 'NUL')
+    cov_pars_fit_di <- as.numeric(gp_model_di$get_cov_pars())
+    expect_equal(length(cov_pars_fit_di), 4)
+    expect_equal(names(gp_model_di$get_cov_pars()),
+                 c("Error_var", "Group_1_rand_coef_nb_1", "GP_var", "GP_range"))
+    Sigma_gp_fit_di <- cov_pars_fit_di[3] * exp(-D / cov_pars_fit_di[4])
+    psi_fit_di <- cov_pars_fit_di[2] * (Z3 %*% t(Z3)) + Sigma_gp_fit_di + diag(cov_pars_fit_di[1], n)
+    psi_inv_y_di <- solve(psi_fit_di, y_di)
+    post_var_slope_di <- cov_pars_fit_di[2] * diag(m) - cov_pars_fit_di[2]^2 * (t(Z3) %*% solve(psi_fit_di, Z3))
+    expected_di <- cbind(as.vector(cov_pars_fit_di[2] * Z1 %*% (t(Z3) %*% psi_inv_y_di)),
+                         as.vector(Sigma_gp_fit_di %*% psi_inv_y_di),
+                         diag(post_var_slope_di)[group],
+                         diag(Sigma_gp_fit_di - Sigma_gp_fit_di %*% solve(psi_fit_di, Sigma_gp_fit_di)))
+    re_di <- predict_training_data_random_effects(gp_model_di, predict_var = TRUE)
+    expect_equal(dim(re_di), c(n, 4))
+    expect_lt(max(abs(as.vector(re_di) - as.vector(expected_di))), TOLERANCE_MEDIUM)
+    # Prediction for the observed locations and groups
+    pred_di <- predict(gp_model_di, group_data_pred = group, group_rand_coef_data_pred = x,
+                       gp_coords_pred = coords, predict_var = TRUE, predict_response = FALSE)
+    prior_cov_di <- cov_pars_fit_di[2] * (Z3 %*% t(Z3)) + Sigma_gp_fit_di
+    expect_lt(max(abs(pred_di$mu - as.vector(prior_cov_di %*% psi_inv_y_di))), TOLERANCE_MEDIUM)
+    expect_lt(max(abs(as.vector(pred_di$var) -
+                        diag(prior_cov_di - prior_cov_di %*% solve(psi_fit_di, prior_cov_di)))),
+              TOLERANCE_MEDIUM)
+  })
+
 }
