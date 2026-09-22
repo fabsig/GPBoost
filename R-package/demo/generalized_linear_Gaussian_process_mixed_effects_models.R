@@ -4,7 +4,7 @@
 #   - grouped (aka clustered) random effects models including random slopes
 #   - Gaussian process (GP) models
 #   - combined GP and grouped random effects
-#   - iid models without random effects
+#   - independent models without random effects or GPs
 # 
 # - Currently supported likelihoods: 
 #     see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood 
@@ -229,7 +229,7 @@ opt <- optim(par = pars, fn = eval_nll, gp_model = gp_model, y = y, X = X,
              likelihood = likelihood, method = "Nelder-Mead")
 opt
 
-# --------------------iid model without random effects or GP----------------
+# --------------------Independent model without random effects or GPs----------------
 gp_model <- fitGPModel(y = y, X = X, likelihood = likelihood)
 summary(gp_model)
 

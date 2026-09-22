@@ -5,7 +5,7 @@ mixed effects models with various likelihoods and different random effects model
     - grouped (aka clustered) random effects models including random slopes
     - Gaussian process (GP) models
     - combined GP and grouped random effects
-    - iid models without random effects
+    - independent models without random effects of GPs
 
 - Currently supported likelihoods: 
      see https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#likelihood 
@@ -230,7 +230,7 @@ coef = [0, 0.1]
 fixed_effects = X.dot(coef)
 gp_model.neg_log_likelihood(cov_pars=cov_pars, y=y, fixed_effects=fixed_effects)
 
-# --------------------iid model without random effects or GP----------------
+# --------------------Independent model without random effects or GPs----------------
 gp_model = gpb.GPModel(num_data=n, likelihood=likelihood)
 gp_model.fit(y=y, X=X)
 gp_model.summary()
