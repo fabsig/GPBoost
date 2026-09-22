@@ -1439,6 +1439,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     tol_cov <- 0.01
     expect_lt(sum(abs(apply(pred$posterior_samples,1,mean)-expected_mu_vecchia)), tol_mu)
     expect_lt(sum(abs(as.vector(cov(t(pred$posterior_samples)))-expected_cov_vecchia)), tol_cov)
+    # Sampling from the posterior of the latent process: the samples must have the predictive variance of
+    #   the latent process, i.e. they must not contain the nugget effect of the observed process
+    pred_latent <- predict(gp_model, gp_coords_pred = coord_test, predict_response = FALSE,
+                           predict_var = TRUE, sample_posterior = TRUE, num_post_samples = 1000000)
+    expect_lt(sum(abs(apply(pred_latent$posterior_samples, 1, var) - pred_latent$var)), tol_cov)
+    expect_lt(sum(abs(apply(pred_latent$posterior_samples, 1, mean) - expected_mu_vecchia)), tol_mu)
+    # the nugget effect is the difference to the predictive variances of the observed process above
+    expect_lt(sum(abs(expected_cov_vecchia[c(1, 5, 9)] - pred_latent$var - cov_pars_vecchia[1])), tol_cov)
     # Sampling from prior
     pred <- predict(gp_model, gp_coords_pred = coord_test, predict_response = TRUE,
                     cov_pars = c(1E-20,sigma2_1,rho), sample_prior = TRUE, num_prior_samples = 100000)
@@ -2619,9 +2627,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cluster_ids_pred_nc <- rep(c(1, 2, 3), length.out = n_pred_nc)# cluster 3 has not been observed
     is_new_nc <- cluster_ids_pred_nc == 3
     cov_pars_nc <- c(0.1, 1.3, 0.2)# error variance, marginal variance, range
-    # Note: the predictive variances of 'full_scale_tapering' are not deterministic (repeating the same
-    # prediction for the same model gives slightly different variances), which is why the comparison of
-    # the observed clusters below is not made for it
+    # The predictive distribution of a cluster without observed data is the prior, i.e. the variance of the
+    # latent process is the marginal variance for every approximation. Note: the predictive variances of
+    # 'full_scale_tapering' are not deterministic (repeating the same prediction for the same model gives
+    # slightly different variances), which is why the comparison of the observed clusters below is not
+    # made for it
     cases_nc <- list(list(gp_approx = "none", var = cov_pars_nc[2], deterministic = TRUE, args = list()),
                      list(gp_approx = "fitc", var = cov_pars_nc[2], deterministic = TRUE,
                           args = list(num_ind_points = 8, ind_points_selection = "random")),

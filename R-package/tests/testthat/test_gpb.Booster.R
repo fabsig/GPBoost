@@ -853,6 +853,36 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_identical(preds, preds2)
   })
   
+
+  test_that("Saving a booster with a gp_model and raw data keeps the training offset", {
+
+    # 'init_score' is the training offset and is not part of the tree ensemble, so it has to be saved
+    # separately. Without it, the random effects of the reloaded model are conditioned on a wrong
+    # training predictor and the predictions change
+    n_os <- 120L
+    m_os <- 12L
+    group_os <- rep(1:m_os, each = n_os / m_os)
+    set.seed(17)# the test compares predictions with each other, it does not use hard-wired values
+    X_os <- matrix(runif(3L * n_os), ncol = 3L)
+    b_os <- rnorm(m_os)
+    offset_os <- 0.5 + runif(n_os)
+    y_os <- rpois(n_os, lambda = exp(0.2 * X_os[, 1] + b_os[group_os] + offset_os))
+    dtrain_os <- gpb.Dataset(data = X_os, label = y_os, init_score = offset_os)
+    gp_model_os <- GPModel(group_data = group_os, likelihood = "poisson")
+    capture.output( bst_os <- gpb.train(data = dtrain_os, gp_model = gp_model_os, nrounds = 5L,
+                                        params = list(objective = "poisson", learning_rate = 0.1,
+                                                      verbose = -1L)), file = 'NUL')
+    capture.output( pred_os <- predict(bst_os, data = X_os, group_data_pred = group_os,
+                                       offset_pred = offset_os, predict_var = FALSE), file = 'NUL')
+    file_os <- file.path(tempdir(), "gpb_booster_offset.json")
+    capture.output( gpb.save(bst_os, filename = file_os, save_raw_data = TRUE), file = 'NUL')
+    capture.output( bst_os_loaded <- gpb.load(filename = file_os), file = 'NUL')
+    capture.output( pred_os_loaded <- predict(bst_os_loaded, data = X_os, group_data_pred = group_os,
+                                              offset_pred = offset_os, predict_var = FALSE), file = 'NUL')
+    expect_lt(max(abs(pred_os$response_mean - pred_os_loaded$response_mean)), 1E-10)
+    unlink(file_os)
+  })
 } else {
   Sys.sleep(30)
+
 }

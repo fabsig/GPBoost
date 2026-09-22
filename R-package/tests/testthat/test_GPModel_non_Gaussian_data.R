@@ -4009,7 +4009,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     likelihood <- "gaussian_heteroscedastic_fixed_and_random"
 
     # Simulate data and define expected values
-    Sigma2 <- 0.1 * exp(-D/0.2) + diag(1E-20,n)
+    # Note: the GP of the log-error variance is simulated with the same covariance 'Sigma' as the GP of
+    #   the mean. With a smaller marginal variance its estimated variance collapses to about 3e-05 at this
+    #   sample size, which would no longer exercise the two sets of random effects
     L2 <- t(chol(Sigma))
     b_2 <- qnorm(sim_rand_unif(n=n, init_c=0.834))
     y <- L %*% b_1 + qnorm(sim_rand_unif(n=n, init_c=0.1234)) * exp(0.5 * L2 %*% b_2)

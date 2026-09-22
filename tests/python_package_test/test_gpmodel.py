@@ -140,24 +140,24 @@ def test_gp_approximations(gp_approx, kwargs):
 
 
 
-@pytest.mark.parametrize("gp_approx,kwargs,contains_nugget,deterministic", [
-    ("none", {}, False, True),
-    ("fitc", {"num_ind_points": 8, "ind_points_selection": "random"}, False, True),
+@pytest.mark.parametrize("gp_approx,kwargs,deterministic", [
+    ("none", {}, True),
+    ("fitc", {"num_ind_points": 8, "ind_points_selection": "random"}, True),
     ("full_scale_tapering", {"num_ind_points": 8, "ind_points_selection": "random",
-                             "cov_fct_taper_range": 1e6, "cov_fct_taper_shape": 2}, False, False),
-    ("vecchia", {"num_neighbors": 20, "vecchia_ordering": "none"}, True, True),
+                             "cov_fct_taper_range": 1e6, "cov_fct_taper_shape": 2}, False),
+    ("vecchia", {"num_neighbors": 20, "vecchia_ordering": "none"}, True),
     ("full_scale_vecchia", {"num_ind_points": 8, "ind_points_selection": "random",
-                            "num_neighbors": 20, "vecchia_ordering": "none"}, True, True),
+                            "num_neighbors": 20, "vecchia_ordering": "none"}, True),
 ])
-def test_predict_for_a_cluster_without_observed_data(gp_approx, kwargs, contains_nugget, deterministic):
+def test_predict_for_a_cluster_without_observed_data(gp_approx, kwargs, deterministic):
     """A cluster in 'cluster_ids_pred' that does not occur in 'cluster_ids' has no observed data.
 
-    The predictive distribution of the latent GP is then its prior, i.e. the mean is zero and the
-    variance is the marginal variance. The Vecchia-based approximations return the variance of the
-    observable process, which additionally contains the nugget effect. Predicting for such a cluster
-    must not change the model, i.e. the predictions for the observed clusters stay the same. The
-    predictive variances of 'full_scale_tapering' are not deterministic (repeating the same prediction
-    for the same model gives slightly different variances), hence the flag 'deterministic'.
+    The predictive distribution is then the prior, i.e. the mean is zero, the variance of the latent
+    process is the marginal variance and the variance of the response additionally contains the nugget
+    effect. This has to hold for every approximation. Predicting for such a cluster must not change the
+    model, i.e. the predictions for the observed clusters stay the same. The predictive variances of
+    'full_scale_tapering' are not deterministic (repeating the same prediction for the same model gives
+    slightly different variances), hence the flag 'deterministic'.
     """
     coords, y = _sim_coords(n=100)
     cluster_ids = np.repeat([0, 1], 50)
@@ -172,9 +172,14 @@ def test_predict_for_a_cluster_without_observed_data(gp_approx, kwargs, contains
     pred = gp_model.predict(y=y, cov_pars=cov_pars, gp_coords_pred=coords_pred,
                             cluster_ids_pred=cluster_ids_pred, predict_var=True,
                             predict_response=False)
-    expected_var = cov_pars[1] + cov_pars[0] if contains_nugget else cov_pars[1]
     np.testing.assert_allclose(pred["mu"][is_new], 0.0, atol=1e-10)
-    np.testing.assert_allclose(pred["var"][is_new], expected_var, atol=1e-3)
+    np.testing.assert_allclose(pred["var"][is_new], cov_pars[1], atol=1e-3)
+
+    pred_resp = gp_model.predict(y=y, cov_pars=cov_pars, gp_coords_pred=coords_pred,
+                                 cluster_ids_pred=cluster_ids_pred, predict_var=True,
+                                 predict_response=True)
+    np.testing.assert_allclose(pred_resp["mu"][is_new], 0.0, atol=1e-10)
+    np.testing.assert_allclose(pred_resp["var"][is_new], cov_pars[1] + cov_pars[0], atol=1e-3)
 
     pred_obs = gp_model.predict(y=y, cov_pars=cov_pars, gp_coords_pred=coords_pred[~is_new],
                                 cluster_ids_pred=cluster_ids_pred[~is_new], predict_var=True,
