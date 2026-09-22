@@ -911,6 +911,219 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
 
 
+  test_that("Predictive covariances and posterior sampling of grouped random effects and a Vecchia GP ", {
+
+    # Neither is implemented for this model class: the predictive covariance would have to add the
+    # unconditional covariance only for the groups that do not occur in the training data, and the
+    # posterior sampling does not cover several random effect components. The guards are checked here so
+    # that they cannot be dropped without the results being compared to exact Gaussian conditioning
+    n_ni <- 40
+    m_ni <- 5
+    group_ni <- rep(1:m_ni, each = n_ni / m_ni)
+    coords_ni <- cbind(sim_rand_unif(n = n_ni, init_c = 0.312), sim_rand_unif(n = n_ni, init_c = 0.573))
+    y_ni <- qnorm(sim_rand_unif(n = n_ni, init_c = 0.751))
+    cov_pars_ni <- c(0.7, 1.0, 0.2)
+    coords_pred_ni <- cbind(c(0.12, 0.44), c(0.22, 0.51))
+    group_pred_ni <- c(1, 2)
+    for (inv_method_ni in c("cholesky", "iterative")) {
+      gp_model_ni <- GPModel(gp_coords = coords_ni, cov_function = "exponential", group_data = group_ni,
+                             gp_approx = "vecchia", num_neighbors = n_ni - 1, vecchia_ordering = "none",
+                             likelihood = "gaussian", matrix_inversion_method = inv_method_ni)
+      gp_model_ni$set_optim_params(params = list(init_aux_pars = 0.4, seed_rand_vec_trace = 1,
+                                                 init_cov_pars = cov_pars_ni,
+                                                 init_coef_aux_pars_from_iid_model = FALSE))
+      expect_error(gp_model_ni$predict(y = y_ni, gp_coords_pred = coords_pred_ni,
+                                       group_data_pred = group_pred_ni, cov_pars = cov_pars_ni,
+                                       predict_cov_mat = TRUE, predict_response = FALSE),
+                   "Predictive covariances are not implemented")
+      expect_error(gp_model_ni$predict(y = y_ni, gp_coords_pred = coords_pred_ni,
+                                       group_data_pred = group_pred_ni, cov_pars = cov_pars_ni,
+                                       predict_var = TRUE, predict_response = FALSE,
+                                       sample_posterior = TRUE, num_post_samples = 10),
+                   "Posterior sampling is not implemented")
+    }
+  })
+
+
+  test_that("Predictions of a non-Gaussian model with a grouped random slope and a Vecchia GP ", {
+
+    # With all neighbors the Vecchia approximation is exact, so the predictions have to equal the ones of
+    # the same model without an approximation. The groups that occur in the training data and one that
+    # does not are predicted together: the unconditional variance of the intercept random effect and of
+    # the random slope is added only for the new group
+    n_ng <- 60
+    m_ng <- 6
+    group_ng <- rep(1:m_ng, each = n_ng / m_ng)
+    coords_ng <- cbind(sim_rand_unif(n = n_ng, init_c = 0.312), sim_rand_unif(n = n_ng, init_c = 0.573))
+    x_ng <- 0.5 + sim_rand_unif(n = n_ng, init_c = 0.234)
+    D_ng <- as.matrix(dist(coords_ng))
+    Z_ng <- model.matrix(~ factor(group_ng) - 1)
+    Zx_ng <- diag(x_ng) %*% Z_ng
+    cov_pars_ng <- c(0.7, 0.5, 1.0, 0.2)# group variance, random slope variance, GP variance, GP range
+    Sigma_ng <- cov_pars_ng[1] * (Z_ng %*% t(Z_ng)) + cov_pars_ng[2] * (Zx_ng %*% t(Zx_ng)) +
+      cov_pars_ng[3] * exp(-D_ng / cov_pars_ng[4])
+    b_ng <- as.vector(t(chol(Sigma_ng + diag(1E-10, n_ng))) %*% qnorm(sim_rand_unif(n = n_ng, init_c = 0.751)))
+    y_ng <- qgamma(sim_rand_unif(n = n_ng, init_c = 0.418), shape = 1, rate = exp(-b_ng))
+    coords_pred_ng <- cbind(c(0.12, 0.44, 0.71, 0.93), c(0.22, 0.51, 0.83, 0.07))
+    group_pred_ng <- c(1, 2, 3, 99999)# the last group does not occur in the training data
+    x_pred_ng <- c(1.2, 0.7, 1.1, 0.9)
+
+    args_ng <- list(group_data = group_ng, group_rand_coef_data = x_ng, ind_effect_group_rand_coef = 1,
+                    gp_coords = coords_ng, cov_function = "exponential", likelihood = "gamma")
+    predict_ng <- function(args) {
+      gp_model_ng <- do.call(GPModel, args)
+      gp_model_ng$set_optim_params(params = list(seed_rand_vec_trace = 1, num_rand_vec_trace = 1000,
+                                                 init_coef_aux_pars_from_iid_model = FALSE))
+      if (!is.null(args$gp_approx)) gp_model_ng$set_prediction_data(nsim_var_pred = 2000)
+      capture.output( pred_ng <- gp_model_ng$predict(y = y_ng, gp_coords_pred = coords_pred_ng,
+                                                     group_data_pred = group_pred_ng,
+                                                     group_rand_coef_data_pred = x_pred_ng,
+                                                     cov_pars = cov_pars_ng, predict_var = TRUE,
+                                                     predict_response = FALSE), file = 'NUL')
+      pred_ng
+    }
+    pred_exact_ng <- predict_ng(args_ng)
+    for (inv_method_ng in c("cholesky", "iterative")) {
+      pred_vecchia_ng <- predict_ng(c(args_ng, list(gp_approx = "vecchia", num_neighbors = n_ng - 1,
+                                                    vecchia_ordering = "none",
+                                                    matrix_inversion_method = inv_method_ng)))
+      tol_ng <- if (inv_method_ng == "iterative") 1E-2 else 1E-6
+      expect_lt(sum(abs(pred_vecchia_ng$mu - pred_exact_ng$mu)), tol_ng)
+      expect_lt(sum(abs(as.vector(pred_vecchia_ng$var) - as.vector(pred_exact_ng$var))), tol_ng)
+    }
+  })
+
+
+  test_that("Predictions of a weighted model with grouped random effects and a Vecchia GP ", {
+
+    # The error variance of observation i is 'cov_pars[1] / weights[i]'. With all neighbors the Vecchia
+    # approximation is exact, so the predictions have to equal exact Gaussian conditioning with that
+    # error covariance. Only the predictions are compared: the weighted negative log-likelihood of this
+    # model class currently uses frequency weights instead of the precision weights that the Gaussian
+    # likelihood uses everywhere else, see the test file of the weights
+    n_w <- 60
+    m_w <- 6
+    group_w <- rep(1:m_w, each = n_w / m_w)
+    coords_w <- cbind(sim_rand_unif(n = n_w, init_c = 0.312), sim_rand_unif(n = n_w, init_c = 0.573))
+    D_w <- as.matrix(dist(coords_w))
+    Z_w <- model.matrix(~ factor(group_w) - 1)
+    cov_pars_w <- c(0.4, 0.7, 1.0, 0.2)# error variance, group variance, GP variance, GP range
+    weights_w <- 0.5 + sim_rand_unif(n = n_w, init_c = 0.828)
+    Sigma_w <- cov_pars_w[2] * (Z_w %*% t(Z_w)) + cov_pars_w[3] * exp(-D_w / cov_pars_w[4])
+    Syy_w <- Sigma_w + diag(cov_pars_w[1] / weights_w)
+    y_w <- as.vector(t(chol(Syy_w)) %*% qnorm(sim_rand_unif(n = n_w, init_c = 0.751)))
+    np_w <- 4
+    coords_pred_w <- cbind(c(0.12, 0.44, 0.71, 0.93), c(0.22, 0.51, 0.83, 0.07))
+    group_pred_w <- c(1, 2, 3, 4)
+    Dpo_w <- as.matrix(dist(rbind(coords_pred_w, coords_w)))[1:np_w, (np_w + 1):(np_w + n_w)]
+    Dpp_w <- as.matrix(dist(coords_pred_w))
+    Zp_w <- matrix(0, np_w, m_w)
+    for (i in 1:np_w) Zp_w[i, group_pred_w[i]] <- 1
+    Cpo_w <- cov_pars_w[3] * exp(-Dpo_w / cov_pars_w[4]) + cov_pars_w[2] * (Zp_w %*% t(Z_w))
+    Cpp_w <- cov_pars_w[3] * exp(-Dpp_w / cov_pars_w[4]) + cov_pars_w[2] * (Zp_w %*% t(Zp_w))
+    mu_exact_w <- as.vector(Cpo_w %*% solve(Syy_w, y_w))
+    var_exact_w <- diag(Cpp_w - Cpo_w %*% solve(Syy_w, t(Cpo_w)))
+
+    for (inv_method_w in c("cholesky", "iterative")) {
+      capture.output( gp_model_w <- GPModel(gp_coords = coords_w, cov_function = "exponential",
+                                            group_data = group_w, weights = weights_w,
+                                            gp_approx = "vecchia", num_neighbors = n_w - 1,
+                                            vecchia_ordering = "none", likelihood = "gaussian",
+                                            matrix_inversion_method = inv_method_w), file = 'NUL')
+      gp_model_w$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all",
+                                     num_neighbors_pred = n_w + np_w, nsim_var_pred = 2000)
+      gp_model_w$set_optim_params(params = list(init_aux_pars = cov_pars_w[1], seed_rand_vec_trace = 1,
+                                                init_cov_pars = cov_pars_w[2:4],
+                                                init_coef_aux_pars_from_iid_model = FALSE))
+      capture.output( pred_w <- gp_model_w$predict(y = y_w, gp_coords_pred = coords_pred_w,
+                                                   group_data_pred = group_pred_w,
+                                                   cov_pars = cov_pars_w[2:4], predict_var = TRUE,
+                                                   predict_response = FALSE), file = 'NUL')
+      tol_w <- if (inv_method_w == "iterative") 1E-2 else 1E-6
+      expect_lt(sum(abs(pred_w$mu - mu_exact_w)), tol_w)
+      expect_lt(sum(abs(as.vector(pred_w$var) - var_exact_w)), tol_w)
+    }
+  })
+
+
+  test_that("Grouped random coefficient without an intercept random effect and a Vecchia GP ", {
+
+    # Dropping an intercept random effect changes the number of components and thus the index of the
+    # Gaussian process component, which the Vecchia approximation uses to separate the grouped random
+    # effects from the GP. With all neighbors the approximation is exact, so both the likelihood and the
+    # predictions have to equal exact Gaussian conditioning
+    n_di <- 60
+    m_di <- 6
+    group_di <- rep(1:m_di, each = n_di / m_di)
+    coords_di <- cbind(sim_rand_unif(n = n_di, init_c = 0.312), sim_rand_unif(n = n_di, init_c = 0.573))
+    x_di <- 0.5 + sim_rand_unif(n = n_di, init_c = 0.234)
+    D_di <- as.matrix(dist(coords_di))
+    Z_di <- model.matrix(~ factor(group_di) - 1)
+    Zx_di <- diag(x_di) %*% Z_di
+    cov_pars_di <- c(0.4, 0.5, 1.0, 0.2)# error variance, random slope variance, GP variance, GP range
+    np_di <- 4
+    coords_pred_di <- cbind(c(0.12, 0.44, 0.71, 0.93), c(0.22, 0.51, 0.83, 0.07))
+    group_pred_di <- c(1, 2, 3, 4)
+    x_pred_di <- c(1.2, 0.7, 1.1, 0.9)
+    Dpo_di <- as.matrix(dist(rbind(coords_pred_di, coords_di)))[1:np_di, (np_di + 1):(np_di + n_di)]
+    Dpp_di <- as.matrix(dist(coords_pred_di))
+    Zp_di <- matrix(0, np_di, m_di)
+    for (i in 1:np_di) Zp_di[i, group_pred_di[i]] <- 1
+    Zxp_di <- diag(x_pred_di) %*% Zp_di
+
+    # A single cluster, and several clusters with independent realizations of all components
+    for (several_clusters_di in c(FALSE, TRUE)) {
+      cluster_ids_di <- if (several_clusters_di) c(rep(1, 0.4 * n_di), rep(2, 0.6 * n_di)) else rep(1, n_di)
+      cluster_pred_di <- if (several_clusters_di) c(1, 1, 2, 2) else rep(1, np_di)
+      same_cl_di <- outer(cluster_ids_di, cluster_ids_di, "==") * 1
+      same_cl_po_di <- outer(cluster_pred_di, cluster_ids_di, "==") * 1
+      same_cl_pp_di <- outer(cluster_pred_di, cluster_pred_di, "==") * 1
+      Sigma_di <- (cov_pars_di[2] * (Zx_di %*% t(Zx_di)) +
+                     cov_pars_di[3] * exp(-D_di / cov_pars_di[4])) * same_cl_di
+      Syy_di <- Sigma_di + diag(cov_pars_di[1], n_di)
+      y_di <- as.vector(t(chol(Syy_di)) %*% qnorm(sim_rand_unif(n = n_di, init_c = 0.751)))
+      nll_exact_di <- as.numeric(0.5 * (determinant(Syy_di, logarithm = TRUE)$modulus +
+                                          t(y_di) %*% solve(Syy_di, y_di) + n_di * log(2 * pi)))
+      Cpo_di <- (cov_pars_di[2] * (Zxp_di %*% t(Zx_di)) +
+                   cov_pars_di[3] * exp(-Dpo_di / cov_pars_di[4])) * same_cl_po_di
+      Cpp_di <- (cov_pars_di[2] * (Zxp_di %*% t(Zxp_di)) +
+                   cov_pars_di[3] * exp(-Dpp_di / cov_pars_di[4])) * same_cl_pp_di
+      mu_exact_di <- as.vector(Cpo_di %*% solve(Syy_di, y_di))
+      var_exact_di <- diag(Cpp_di - Cpo_di %*% solve(Syy_di, t(Cpo_di)))
+
+      for (inv_method_di in c("cholesky", "iterative")) {
+        gp_model_di <- GPModel(group_data = group_di, group_rand_coef_data = x_di,
+                               ind_effect_group_rand_coef = 1, drop_intercept_group_rand_effect = TRUE,
+                               gp_coords = coords_di, cov_function = "exponential",
+                               cluster_ids = cluster_ids_di, gp_approx = "vecchia",
+                               num_neighbors = n_di - 1, vecchia_ordering = "none",
+                               likelihood = "gaussian", matrix_inversion_method = inv_method_di)
+        gp_model_di$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all",
+                                        nsim_var_pred = 2000)
+        gp_model_di$set_optim_params(params = list(init_aux_pars = cov_pars_di[1], seed_rand_vec_trace = 1,
+                                                   num_rand_vec_trace = 1000,
+                                                   init_cov_pars = cov_pars_di[2:4],
+                                                   init_coef_aux_pars_from_iid_model = FALSE))
+        capture.output( nll_di <- gp_model_di$neg_log_likelihood(cov_pars = cov_pars_di[2:4], y = y_di,
+                                                                 aux_pars = cov_pars_di[1]), file = 'NUL')
+        # The log determinant of the iterative methods is a stochastic estimate, its tolerance is far
+        #   above the observed deviation of about 0.08 but far below what a misplaced component gives
+        tol_di <- if (inv_method_di == "iterative") 0.5 else 1E-6
+        expect_lt(abs(nll_di - nll_exact_di), tol_di)
+        capture.output( pred_di <- gp_model_di$predict(y = y_di, gp_coords_pred = coords_pred_di,
+                                                       group_data_pred = group_pred_di,
+                                                       group_rand_coef_data_pred = x_pred_di,
+                                                       cluster_ids_pred = cluster_pred_di,
+                                                       cov_pars = cov_pars_di[2:4], predict_var = TRUE,
+                                                       predict_response = FALSE), file = 'NUL')
+        tol_pred_di <- if (inv_method_di == "iterative") 1E-2 else 1E-6
+        expect_lt(sum(abs(pred_di$mu - mu_exact_di)), tol_pred_di)
+        expect_lt(sum(abs(as.vector(pred_di$var) - var_exact_di)), tol_pred_di)
+      }
+    }
+  })
+
+
   test_that("Predictive variances of training data grouped random coefficients with a Gaussian process ", {
 
     # The posterior covariance of the coefficients of a grouped random slope is mapped back to the
