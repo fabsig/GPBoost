@@ -4037,4 +4037,76 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
   })
    
+  test_that("Prediction does not leave state behind that changes later predictions", {
+
+    y <- eps + xi
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", y = y,
+                                           params = list(optimizer_cov = "fisher_scoring",
+                                                         init_coef_aux_pars_from_iid_model = FALSE))
+                    , file='NUL')
+    training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+    preds <- predict(gp_model, gp_coords_pred = coords, predict_var = TRUE, predict_response = FALSE)
+
+    # Providing covariance parameters to predict() must not leave a factorization behind that is
+    #   then reused by predict_training_data_random_effects() with the estimated parameters
+    invisible(capture.output( predict(gp_model, gp_coords_pred = coords[1:3, ],
+                                      cov_pars = 3 * as.numeric(gp_model$get_cov_pars()),
+                                      predict_var = TRUE) , file='NUL'))
+    training_data_random_effects_after <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+    expect_lt(max(abs(training_data_random_effects_after - training_data_random_effects)), TOLERANCE_STRICT)
+
+    # Sampling from the prior must not change the response data of the model and thus not the
+    #   posterior predictions made afterwards
+    prior_samples <- predict(gp_model, gp_coords_pred = coords[1:3, ], sample_prior = TRUE,
+                             num_prior_samples = 2)$prior_samples
+    expect_equal(dim(prior_samples), c(length(y), 2))
+    expect_true(all(is.finite(prior_samples)))
+    preds_after <- predict(gp_model, gp_coords_pred = coords, predict_var = TRUE, predict_response = FALSE)
+    expect_lt(max(abs(preds_after$mu - preds$mu)), TOLERANCE_STRICT)
+    expect_lt(max(abs(as.vector(preds_after$var) - as.vector(preds$var))), TOLERANCE_STRICT)
+
+  })
+
+  test_that("Training data random effects and prior sampling for a Gaussian Vecchia approximation", {
+
+    # With all neighbors the Vecchia approximation is exact and can be compared with dense algebra.
+    # This also covers the default ('lbfgs') optimizer, for which the preparations for the
+    #   prediction must not try to calculate covariance matrices of individual components
+    y <- eps + xi
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           gp_approx = "vecchia", num_neighbors = n - 1,
+                                           vecchia_ordering = "none", y = y,
+                                           params = list(init_coef_aux_pars_from_iid_model = FALSE))
+                    , file='NUL')
+    cov_pars <- as.numeric(gp_model$get_cov_pars())
+    prior_cov <- cov_pars[2] * exp(-D / cov_pars[3])
+    psi <- prior_cov + cov_pars[1] * diag(n)
+    expected_mean <- as.vector(prior_cov %*% solve(psi, y))
+    expected_var <- diag(prior_cov - prior_cov %*% solve(psi, prior_cov))
+    training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+    expect_lt(max(abs(training_data_random_effects[, 1] - expected_mean)), TOLERANCE_MEDIUM)
+    expect_lt(max(abs(training_data_random_effects[, 2] - expected_var)), TOLERANCE_MEDIUM)
+    prior_samples <- predict(gp_model, gp_coords_pred = coords[1:3, ], sample_prior = TRUE,
+                             num_prior_samples = 2)$prior_samples
+    expect_equal(dim(prior_samples), c(n, 2))
+    expect_true(all(is.finite(prior_samples)))
+
+    # with weights: the error variance of observation i is cov_pars[1] / weights[i]
+    weights <- 0.5 + sim_rand_unif(n = n, init_c = 0.914)
+    capture.output( gp_model_w <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                             gp_approx = "vecchia", num_neighbors = n - 1,
+                                             vecchia_ordering = "none", weights = weights, y = y,
+                                             params = list(init_coef_aux_pars_from_iid_model = FALSE))
+                    , file='NUL')
+    cov_pars_w <- as.numeric(gp_model_w$get_cov_pars())
+    prior_cov_w <- cov_pars_w[2] * exp(-D / cov_pars_w[3])
+    psi_w <- prior_cov_w + cov_pars_w[1] * diag(1 / weights)
+    expected_mean_w <- as.vector(prior_cov_w %*% solve(psi_w, y))
+    expected_var_w <- diag(prior_cov_w - prior_cov_w %*% solve(psi_w, prior_cov_w))
+    training_data_random_effects_w <- predict_training_data_random_effects(gp_model_w, predict_var = TRUE)
+    expect_lt(max(abs(training_data_random_effects_w[, 1] - expected_mean_w)), TOLERANCE_MEDIUM)
+    expect_lt(max(abs(training_data_random_effects_w[, 2] - expected_var_w)), TOLERANCE_MEDIUM)
+
+  })
+
 }

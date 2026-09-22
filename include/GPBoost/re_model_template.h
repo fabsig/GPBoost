@@ -4369,10 +4369,21 @@ namespace GPBoost {
 				Log::REFatal("Cannot sample from prior and posterior simultaneously ");
 			}
 			vec_t y_zero_dummy;
+			std::map<data_size_t, vec_t> y_before_prior_sampling;
+			std::map<data_size_t, vec_int_t> y_int_before_prior_sampling;
+			std::map<data_size_t, vec_t> Zty_before_prior_sampling, y_aux_before_prior_sampling;
+			bool y_has_been_set_before_prior_sampling = y_has_been_set_;
+			bool y_aux_has_been_calculated_before_prior_sampling = y_aux_has_been_calculated_;
 			if (sample_prior) {
 				if (predict_cov_mat || predict_var) {
 					Log::REFatal("Cannot calculate predictive (co-)variances if sampling from prior ");
 				}
+				// Prior samples do not condition on the response variable. A zero response is used since the
+				//	calculations below expect one, and the response data of the model is restored at the end
+				y_before_prior_sampling = y_;
+				y_int_before_prior_sampling = y_int_;
+				Zty_before_prior_sampling = Zty_;
+				y_aux_before_prior_sampling = y_aux_;
 				y_zero_dummy = vec_t::Zero(num_data_);
 				y_obs = y_zero_dummy.data();
 			}
@@ -4963,6 +4974,14 @@ namespace GPBoost {
 					}
 				}
 			}
+			if (sample_prior) {
+				y_ = y_before_prior_sampling;
+				y_int_ = y_int_before_prior_sampling;
+				Zty_ = Zty_before_prior_sampling;
+				y_aux_ = y_aux_before_prior_sampling;
+				y_has_been_set_ = y_has_been_set_before_prior_sampling;
+				y_aux_has_been_calculated_ = y_aux_has_been_calculated_before_prior_sampling;
+			}
 		}//end Predict
 
 		/*!
@@ -5022,16 +5041,24 @@ namespace GPBoost {
 							Log::REFatal("PredictTrainingDataRandomEffects() is not implemented for the Vecchia approximation "
 								"when having multiple GPs / random coefficient GPs ");
 						}
+						// The error variance of observation i is 'cov_pars[0] * error_var_scale[i]' (= cov_pars[0] for equal weights).
+						//	With Psi = Sigma + error variances, the latent process has the posterior mean y - error_var_scale * Psi^-1 * y
+						//	and the posterior variance cov_pars[0] * (error_var_scale - error_var_scale^2 * (Psi^-1)_ii)
+						vec_t error_var_scale = vec_t::Ones(num_data_per_cluster_[cluster_i]);
+						if (has_weights_) {
+							error_var_scale = weights_[cluster_i].cwiseInverse();
+						}
 #pragma omp parallel for schedule(static)// Write mean on output
 						for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
-							out_predict[data_indices_per_cluster_[cluster_i][i]] = y_[cluster_i][i] - y_aux_[cluster_i][i];
+							out_predict[data_indices_per_cluster_[cluster_i][i]] = y_[cluster_i][i] - error_var_scale[i] * y_aux_[cluster_i][i];
 						}
 						if (calc_var) {
 							sp_mat_t B_inv(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
 							sp_mat_t M_aux = B_[cluster_i][0].cwiseProduct(D_inv_[cluster_i][0] * B_[cluster_i][0]);
 #pragma omp parallel for schedule(static)// Write on output
 							for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
-								out_predict[data_indices_per_cluster_[cluster_i][i] + num_data_ * num_comps_total_] = cov_pars[0] * (1. - M_aux.col(i).sum());
+								out_predict[data_indices_per_cluster_[cluster_i][i] + num_data_ * num_comps_total_] =
+									cov_pars[0] * error_var_scale[i] * (1. - error_var_scale[i] * M_aux.col(i).sum());
 							}
 						}
 					}
@@ -5090,7 +5117,10 @@ namespace GPBoost {
 									mean_pred_id = sigma * (*Z_j) * ((*Z_j).transpose() * (*y_aux));
 								}
 								if (calc_var) {
-									sp_mat_t ZjtZj = (*Z_j).transpose() * (*Z_j);
+									//Z_j^T * R^-1 * Z_j, where R is the diagonal error covariance after profiling out sigma2, consistent with 'ZtZj_'
+									sp_mat_t ZjtZj = (has_weights_ && gauss_likelihood_) ?
+										(sp_mat_t)((*Z_j).transpose() * (weights_[cluster_i].asDiagonal() * (*Z_j))) :
+										(sp_mat_t)((*Z_j).transpose() * (*Z_j));
 									if (use_woodbury_identity_) {
 										if (matrix_inversion_method_ == "iterative") {
 											Log::REFatal("PredictTrainingDataRandomEffects() is currently not implemented for matrix_inversion_method_ == '%s' and likelihood == 'Gaussian'. Call the predict() function instead.",
@@ -5147,7 +5177,6 @@ namespace GPBoost {
 							std::shared_ptr<RECompGP<T_mat>> re_comp_base = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][0][cn]);
 							sp_mat_t* Z_j = nullptr, * Z_base_j = nullptr;
 							for (int j = 0; j < num_gp_total_; ++j) {
-								double sigma = GetForCluster(re_comps_, cluster_i, 0)[cn]->cov_pars_[0];
 								std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_[cluster_i][0][cn]);
 								if (re_comp->IsRandCoef() || re_comp_base->HasZ()) {
 									Z_j = re_comp->GetZ();
@@ -5175,10 +5204,16 @@ namespace GPBoost {
 									else {
 										M_aux = re_comp->sigma_;
 									}
+									//Prior variance of the predicted random effect. This is not the marginal variance parameter 'sigma'
+									//	for covariance functions whose variance varies over the locations (e.g. 'ar1_mf_*' and 'hurst')
+									vec_t prior_var_diag = re_comp->sigma_.diagonal();
+									if (re_comp_base->HasZ()) {
+										prior_var_diag = (*Z_base_j) * prior_var_diag;
+									}
 									TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_facts_[cluster_i], M_aux, M_aux2, false);
 #pragma omp parallel for schedule(static)
 									for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
-										var_pred_id[i] = cov_pars[0] * (sigma - M_aux2.col(i).squaredNorm());
+										var_pred_id[i] = cov_pars[0] * (prior_var_diag[i] - M_aux2.col(i).squaredNorm());
 									}
 								}
 #pragma omp parallel for schedule(static)// Write on output
@@ -7645,8 +7680,11 @@ namespace GPBoost {
 			}
 			// Define options for faster calculations for special cases of RE models (these options depend on the type of likelihood)
 			only_one_GP_calculations_on_RE_scale_ = (num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_ && gp_approx_ == "none") || Vecchia_calculations_on_RE_scale_;//If there is only one GP, we do calculations on the b-scale instead of Zb-scale (only for non-Gaussian likelihoods)
-			only_one_grouped_RE_calculations_on_RE_scale_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods)
-			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = num_re_group_total_ == 1 && num_comps_total_ == 1 && gauss_likelihood_;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods)
+			// Note: the calculations on the b-scale ignore the values in Z and thus require that the single component is a random intercept and not a random coefficient.
+			//	A single random coefficient component occurs when the corresponding intercept random effect is dropped ('drop_intercept_group_rand_effect_')
+			bool only_one_grouped_RE_intercept = num_re_group_total_ == 1 && num_comps_total_ == 1 && num_re_group_rand_coef_ == 0;
+			only_one_grouped_RE_calculations_on_RE_scale_ = only_one_grouped_RE_intercept && !gauss_likelihood_;//If there is only one grouped RE, we do (all) calculations on the b-scale instead of the Zb-scale (this flag is only used for non-Gaussian likelihoods)
+			only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ = only_one_grouped_RE_intercept && gauss_likelihood_;//If there is only one grouped RE, we do calculations for prediction on the b-scale instead of the Zb-scale (this flag is only used for Gaussian likelihoods)
 			if (num_gp_total_ == 1 && num_comps_total_ == 1) {
 				if (cov_fct == "linear" && gp_approx_ == "none") {
 					use_woodbury_identity_ = true;
@@ -12051,13 +12089,34 @@ namespace GPBoost {
 					}//end not gauss_likelihood_
 				}//end if calc_cov_factor
 				if (gauss_likelihood_) {
-					if (optimizer_cov_pars_ == "lbfgs_not_profile_out_nugget" || optimizer_cov_pars_ == "lbfgs") {
+					if ((optimizer_cov_pars_ == "lbfgs_not_profile_out_nugget" || optimizer_cov_pars_ == "lbfgs") &&
+						gp_approx_ != "vecchia") {//there are no covariance matrices of individual components for the Vecchia approximation, everything is done in 'CalcCovFactor' above
 						CalcSigmaComps();
 					}
 					CalcYAux(1., false);//note: in some cases a call to CalcYAux() could be avoided (e.g. no covariates and not GPBoost algorithm)...
 				}
 			}//end not (gp_approx_ == "vecchia" && gauss_likelihood_)
 		}// end SetYCalcCovCalcYAuxForPred
+
+		/*!
+		* \brief Calculate L^-1 * Z^T * R^(-1) * Z, where L is the Cholesky factor of 'SigmaI + Z^T R^-1 Z' and R is the
+		*		diagonal Gaussian nugget covariance after profiling out sigma2. Used for predictive (co-)variances when the
+		*		Woodbury identity is applied
+		* \param cluster_i Cluster index for which this is calculated
+		* \param SigmaI_plus_ZtZ_is_diagonal If true, only the square root diagonal of 'SigmaI + Z^T R^-1 Z' is available
+		* \param[out] L_inv_ZtZ L^-1 * Z^T * R^(-1) * Z
+		*/
+		void CalcLInvZtZUseWoodbury(data_size_t cluster_i,
+			bool SigmaI_plus_ZtZ_is_diagonal,
+			T_mat& L_inv_ZtZ) {
+			if (SigmaI_plus_ZtZ_is_diagonal) {
+				sp_mat_t L_inv_ZtZ_sp = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].cwiseInverse().asDiagonal() * ZtZ_[cluster_i];
+				L_inv_ZtZ = T_mat(L_inv_ZtZ_sp);
+			}
+			else {
+				TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], ZtZ_[cluster_i], L_inv_ZtZ, false);
+			}
+		}//end CalcLInvZtZUseWoodbury
 
 		/*!
 		 * \brief Calculate predictions (conditional mean and covariance matrix) for one cluster
@@ -12338,6 +12397,9 @@ namespace GPBoost {
 			}//end calculate cross-covariances for !only_one_grouped_RE_calculations_on_RE_scale_ && !use_woodbury_identity_ && !grouped_RE_and_vecchia_GP_
 			// Calculate predictive means and covariances
 			if (gauss_likelihood_) {//Gaussian data
+				//'SigmaI + Z^T R^-1 Z' is diagonal when there is only one grouped random effect component. 'CalcCovFactor' then saves only
+				//	its square root diagonal in 'sqrt_diag_SigmaI_plus_ZtZ_' and calculates neither a Cholesky factor nor a preconditioner
+				bool SigmaI_plus_ZtZ_is_diagonal = num_re_group_total_ == 1 && num_comps_total_ == 1;
 				if (only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
 					vec_t Zt_y_aux(num_REs_obs);
 					CalcZtVGivenIndices(num_data_per_cluster_[cluster_i], num_REs_obs,
@@ -12367,14 +12429,14 @@ namespace GPBoost {
 				}
 				if (predict_cov_mat) {
 					if (use_woodbury_identity_) {
-						if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
+						if (only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {//only one grouped random intercept effect -> ZtZ_ is diagonal and 'cross_cov' has been calculated above
 							T_mat ZtM_aux = (T_mat)(Zt_[cluster_i] * cross_cov.transpose());
 							ZtM_aux = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().inverse().matrix().asDiagonal() * ZtM_aux;
 							cov_mat_pred_id -= (T_mat)(cross_cov * cross_cov.transpose());
 							cov_mat_pred_id += (T_mat)(ZtM_aux.transpose() * ZtM_aux);
 						}
 						else {
-							if (matrix_inversion_method_ == "iterative") {
+							if (matrix_inversion_method_ == "iterative" && !SigmaI_plus_ZtZ_is_diagonal) {
 								den_mat_t pred_cov_global = den_mat_t::Zero(num_REs_pred, num_REs_pred);
 								vec_t SigmaI_diag_sqrt = Sigma.diagonal().cwiseInverse().cwiseSqrt();
 								if (!cg_generator_seeded_) {
@@ -12443,7 +12505,7 @@ namespace GPBoost {
 							} //end iterative
 							else { //begin cholesky
 								T_mat M_aux;
-								TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], ZtZ_[cluster_i], M_aux, false);
+								CalcLInvZtZUseWoodbury(cluster_i, SigmaI_plus_ZtZ_is_diagonal, M_aux);
 								sp_mat_t ZtildeSigma = Ztilde * Sigma;
 								T_mat M_aux2 = M_aux * ZtildeSigma.transpose();
 								M_aux.resize(0, 0);
@@ -12460,7 +12522,7 @@ namespace GPBoost {
 				}//end predict_cov_mat
 				if (predict_var) {
 					if (use_woodbury_identity_) {
-						if (num_re_group_total_ == 1 && num_comps_total_ == 1) {//only one random effect -> ZtZ_ is diagonal
+						if (only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {//only one grouped random intercept effect -> ZtZ_ is diagonal and 'random_effects_indices_of_pred' has been calculated above
 							vec_t SigmaI_plus_ZtZ_inv = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().square().inverse().matrix();
 #pragma omp parallel for schedule(static)
 							for (int i = 0; i < (int)random_effects_indices_of_pred.size(); ++i) {
@@ -12469,8 +12531,8 @@ namespace GPBoost {
 								}
 							}
 						}
-						else {//more than one grouped RE component
-							if (matrix_inversion_method_ == "iterative") {
+						else {
+							if (matrix_inversion_method_ == "iterative" && !SigmaI_plus_ZtZ_is_diagonal) {
 								vec_t pred_var_global = vec_t::Zero(num_REs_pred);
 								//Variance reduction
 								sp_mat_rm_t Ztilde_P_sqrt_invt_rm;
@@ -12605,7 +12667,7 @@ namespace GPBoost {
 							} //end iterative
 							else { //begin cholesky
 								T_mat M_aux;
-								TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], ZtZ_[cluster_i], M_aux, false);
+								CalcLInvZtZUseWoodbury(cluster_i, SigmaI_plus_ZtZ_is_diagonal, M_aux);
 								sp_mat_t ZtildeSigma = Ztilde * Sigma;
 								T_mat M_aux2 = M_aux * ZtildeSigma.transpose();
 								M_aux.resize(0, 0);

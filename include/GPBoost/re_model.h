@@ -476,7 +476,7 @@ namespace GPBoost {
 			const double* y_obs,
 			double* out_predict,
 			const double* fixed_effects,
-			bool calc_var) const;
+			bool calc_var);
 
 		int GetNumIt() const;
 

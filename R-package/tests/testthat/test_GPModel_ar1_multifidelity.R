@@ -474,4 +474,63 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     expect_equal(actual_nll_hurst, expected_nll_hurst, tolerance = 1e-8)
     expect_equal(actual_nll_hurst, 34.029297710299844, tolerance = 1e-8)
   })
+  test_that("Training data random effect variances of a non constant prior variance", {
+
+    # The prior variance of the AR1 multifidelity and of the Hurst covariance functions is not the
+    # marginal variance parameter but depends on the fidelity level and on the location
+    hurst_cov_matrix <- function(x, var, H) {
+      n <- length(x)
+      sqrd <- x^2
+      var / 2 * (outer(sqrd^H, rep(1, n)) + outer(rep(1, n), sqrd^H) -
+                   (outer(x, x, "-")^2)^H)
+    }
+    ar1_mf_combine <- function(gp_coords, cov_low, cov_discrepancy, rho) {
+      fidelity <- gp_coords[, ncol(gp_coords)]
+      loading <- ifelse(fidelity == 0, 1, rho)
+      cov_low * outer(loading, loading) + cov_discrepancy * outer(fidelity, fidelity)
+    }
+    check_training_data_random_effects <- function(gp_model, y, error_var, Sigma) {
+      psi <- Sigma + error_var * diag(length(y))
+      expected_mean <- as.vector(Sigma %*% solve(psi, y))
+      expected_var <- diag(Sigma - Sigma %*% solve(psi, Sigma))
+      training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+      expect_true(all(training_data_random_effects[, 2] > 0))
+      expect_equal(unname(as.numeric(training_data_random_effects[, 1])), unname(expected_mean), tolerance = 1e-6)
+      expect_equal(unname(as.numeric(training_data_random_effects[, 2])), unname(expected_var), tolerance = 1e-6)
+    }
+
+    data <- simulate_ar1_mf_test_data()
+    x <- data$gp_coords[, 1, drop = FALSE]
+
+    gp_model <- GPModel(
+      gp_coords = data$gp_coords, cov_function = "ar1_mf_exponential", likelihood = "gaussian",
+      gp_approx = "none", matrix_inversion_method = "cholesky"
+    )
+    invisible(capture.output(
+      fit(gp_model, y = data$y_gaussian, params = list(init_cov_pars = data$cov_pars, maxit = 1, trace = FALSE))
+    ))
+    cov_pars <- as.numeric(gp_model$get_cov_pars())
+    Sigma <- ar1_mf_exponential_covariance(data$gp_coords, cov_pars[-1])
+    check_training_data_random_effects(gp_model, data$y_gaussian, cov_pars[1], Sigma)
+
+    init_hurst_cov_pars <- c(error_var = 0.08, low_var = 1.0, low_H = 0.3,
+                             discrepancy_var = 0.5, discrepancy_H = 0.6, rho = -0.6)
+    gp_model_hurst <- GPModel(
+      gp_coords = data$gp_coords, cov_function = "ar1_mf_hurst", likelihood = "gaussian",
+      gp_approx = "none", matrix_inversion_method = "cholesky"
+    )
+    invisible(capture.output(
+      fit(gp_model_hurst, y = data$y_gaussian, params = list(init_cov_pars = init_hurst_cov_pars, maxit = 1, trace = FALSE))
+    ))
+    hurst_cov_pars <- as.numeric(gp_model_hurst$get_cov_pars())
+    Sigma_hurst <- ar1_mf_combine(
+      data$gp_coords,
+      hurst_cov_matrix(x[, 1], hurst_cov_pars[2], hurst_cov_pars[3]),
+      hurst_cov_matrix(x[, 1], hurst_cov_pars[4], hurst_cov_pars[5]),
+      hurst_cov_pars[6]
+    )
+    check_training_data_random_effects(gp_model_hurst, data$y_gaussian, hurst_cov_pars[1], Sigma_hurst)
+
+  })
+
 }

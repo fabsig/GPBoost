@@ -1066,4 +1066,73 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
   })
   
+  test_that("Predictions for a single grouped random coefficient without an intercept random effect", {
+
+    # Dropping the intercept random effect of the only grouping variable leaves a model with a single
+    # grouped random coefficient component. The predictive (co-)variances must not use the shortcuts
+    # for a single random intercept, which ignore the covariate of the random coefficient
+    y <- as.vector(Z3 %*% b3) + xi
+    init_cov_pars <- c(var(y)/2, var(y)/2)
+    capture.output( gp_model <- fitGPModel(group_data = group, group_rand_coef_data = x,
+                                           ind_effect_group_rand_coef = 1,
+                                           drop_intercept_group_rand_effect = TRUE,
+                                           y = y, matrix_inversion_method = "cholesky",
+                                           params = list(optimizer_cov = "gradient_descent", init_cov_pars = init_cov_pars,
+                                                         init_coef_aux_pars_from_iid_model = FALSE))
+                    , file='NUL')
+    cov_pars <- as.numeric(gp_model$get_cov_pars())
+    expect_equal(length(cov_pars), 2)
+    # Posterior of Z3 %*% b3 for b3 ~ N(0, cov_pars[2] * I) and error variance cov_pars[1]
+    prior_cov <- cov_pars[2] * Z3 %*% t(Z3)
+    psi <- prior_cov + cov_pars[1] * diag(n)
+    expected_mu <- as.vector(prior_cov %*% solve(psi, y))
+    expected_cov <- prior_cov - prior_cov %*% solve(psi, prior_cov)
+    pred <- predict(gp_model, group_data_pred = group, group_rand_coef_data_pred = x,
+                    predict_var = TRUE, predict_response = FALSE)
+    expect_lt(max(abs(pred$mu - expected_mu)), TOLERANCE_STRICT)
+    expect_lt(max(abs(as.vector(pred$var) - diag(expected_cov))), TOLERANCE_STRICT)
+    pred_cov <- predict(gp_model, group_data_pred = group, group_rand_coef_data_pred = x,
+                        predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(max(abs(pred_cov$cov - expected_cov)), TOLERANCE_STRICT)
+    # A group that does not appear in the training data keeps its prior variance
+    pred_new <- predict(gp_model, group_data_pred = c(group[1], m + 1),
+                        group_rand_coef_data_pred = c(x[1], 2),
+                        predict_var = TRUE, predict_response = FALSE)
+    expect_lt(abs(as.vector(pred_new$var)[1] - diag(expected_cov)[1]), TOLERANCE_STRICT)
+    expect_lt(abs(as.vector(pred_new$var)[2] - 4 * cov_pars[2]), TOLERANCE_STRICT)
+
+  })
+
+  test_that("Training data random effects of a weighted grouped random effects model", {
+
+    # The weights give observation i the error variance sigma2 / weights[i]. Both the posterior
+    # means and the posterior variances of the random effects have to account for this
+    y <- as.vector(Z1 %*% b1) + as.vector(Z3 %*% b3) + xi
+    weights <- 0.5 + sim_rand_unif(n = n, init_c = 0.914)
+    init_cov_pars <- c(var(y)/3, var(y)/3, var(y)/3)
+    capture.output( gp_model <- fitGPModel(group_data = group, group_rand_coef_data = x,
+                                           ind_effect_group_rand_coef = 1, weights = weights,
+                                           y = y, matrix_inversion_method = "cholesky",
+                                           params = list(optimizer_cov = "gradient_descent", init_cov_pars = init_cov_pars,
+                                                         init_coef_aux_pars_from_iid_model = FALSE))
+                    , file='NUL')
+    cov_pars <- as.numeric(gp_model$get_cov_pars())
+    Z <- cbind(Z1, Z3)
+    Sigma <- diag(c(rep(cov_pars[2], ncol(Z1)), rep(cov_pars[3], ncol(Z3))))
+    psi <- Z %*% Sigma %*% t(Z) + cov_pars[1] * diag(1 / weights)
+    posterior_mean <- Sigma %*% t(Z) %*% solve(psi, y)
+    posterior_cov <- Sigma - Sigma %*% t(Z) %*% solve(psi, Z %*% Sigma)
+    training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+    # The random effects are reported on the scale of the intercept, i.e. without the covariate
+    #   of the random coefficient
+    for (comp in 1:2) {
+      block <- (comp - 1) * ncol(Z1) + 1:ncol(Z1)
+      expected_mean <- as.vector(Z1 %*% posterior_mean[block])
+      expected_var <- rowSums((Z1 %*% posterior_cov[block, block]) * Z1)
+      expect_lt(max(abs(training_data_random_effects[, comp] - expected_mean)), TOLERANCE_STRICT)
+      expect_lt(max(abs(training_data_random_effects[, 2 + comp] - expected_var)), TOLERANCE_STRICT)
+    }
+
+  })
+
 }

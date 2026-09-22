@@ -1263,7 +1263,7 @@ namespace GPBoost {
 		const double* y_obs,
 		double* out_predict,
 		const double* fixed_effects,
-		bool calc_var) const {
+		bool calc_var) {
 		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		bool calc_cov_factor = true;
 		vec_t cov_pars_pred_trans;
@@ -1279,6 +1279,7 @@ namespace GPBoost {
 			else {
 				re_model_den_->TransformCovPars(cov_pars_pred_orig, cov_pars_pred_trans);
 			}
+			cov_pars_have_been_provided_for_prediction_ = true;
 		}//end if cov_pars_pred != nullptr
 		else {// use saved cov_pars
 			if (!cov_pars_initialized_) {
@@ -1286,7 +1287,9 @@ namespace GPBoost {
 			}
 			cov_pars_pred_trans = cov_pars_;
 			if (GaussLikelihood()) {
-				calc_cov_factor = !covariance_matrix_has_been_factorized_;
+				// If cov_pars_have_been_provided_for_prediction_, we redo the factorization since the saved factorization
+				//	will likely not correspond to the parameters in cov_pars_, see the comment in 'Predict'
+				calc_cov_factor = !covariance_matrix_has_been_factorized_ || cov_pars_have_been_provided_for_prediction_;
 			}
 		}// end use saved cov_pars
 		if (has_covariates_) {
