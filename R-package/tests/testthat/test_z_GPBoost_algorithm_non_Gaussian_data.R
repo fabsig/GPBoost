@@ -2270,21 +2270,28 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                          max_depth = 6,
                          min_data_in_leaf = 5,
                          verbose = 0, deterministic = TRUE)
-        cov_pars_est <- c(1.004392e+01, 1.430622e-01, 1.114672e-04, 8.846119e-01)
+        # the response is binary while the likelihood is a heteroscedastic Gaussian one, so the model is
+        #	misspecified and the optimum of both range parameters lies at the boundary: the mean process
+        #	becomes uncorrelated with a marginal variance close to the variance of the observations and the
+        #	process of the log-error variance becomes constant. The negative log-likelihood is 361.6 there
+        #	and 723.2 at the values that this test expected before, so the fit is well separated from them
+        cov_pars_est <- c(2.489125e-01, 1.621601e-06, 5.241877e-07, 1.796105e-04)
         expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),relax_tolerance_stoch(0.4))
-        
+
         # Prediction
         pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                         predict_var = TRUE, pred_latent = TRUE)
         npred <- dim(X_test)[1]
-        expect_lt(sum(abs(pred$fixed_effect[1:4]-c(0.3015436, 0.3015436, 0.1814516, 0.5506871))),relax_tolerance_stoch(2))
-        expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.039984345, -0.169768594, 0.266601771, 0.647497952))),relax_tolerance_stoch(0.4))
-        expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(2.93709078, 0.89644701, 1.03548303, 1.91728993))),relax_tolerance_stoch(0.4))
+        expect_lt(sum(abs(pred$fixed_effect[1:4]-c(0.5871531, 0.5670663, 0.6189220, 0.5871531))),relax_tolerance_stoch(2))
+        # the mean process is uncorrelated, so its posterior mean at new locations is zero and its
+        #	predictive variance is the marginal variance
+        expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0, 0, 0, 0))),relax_tolerance_stoch(0.4))
+        expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.2489125, 0.2489125, 0.2489125, 0.2489125))),relax_tolerance_stoch(0.4))
         # Predict response
         pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                         predict_var = TRUE, pred_latent = FALSE)
-        expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.7142228, 0.1317750, 0.9861000, 1.3669962))),relax_tolerance_stoch(1))
-        expect_lt(sum(abs(tail(pred$response_var, n=4)-c(2.9370917, 0.8964478, 1.0354839, 1.9172908))),relax_tolerance_stoch(0.3))
+        expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.6192911, 0.5871531, 0.5967787, -0.7748928))),relax_tolerance_stoch(1))
+        expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.2489135, 0.2489135, 0.2489135, 0.2489135))),relax_tolerance_stoch(0.3))
         
         # Parameter tuning
         if (!identical(Sys.info()[["sysname"]], "Darwin")) {# these tests fail on Mac OS
@@ -2302,10 +2309,10 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                                         data = dtrain, gp_model = gp_model, verbose_eval = 1,
                                                         nrounds = 100, early_stopping_rounds = 5,
                                                         metric = metric, folds = folds)
-          expect_lt(abs(opt_params$best_score-0.3119921),0.01)
-          # the number of boosting iterations that the tuning selects differs between builds
-          # (18 with MSVC, 16 with gcc on Linux), so it is only bracketed here
-          expect_gte(opt_params$best_iter,12)
+          expect_lt(abs(opt_params$best_score-0.2826264),0.01)
+          # the number of boosting iterations that the tuning selects can differ between builds, so it is
+          # only bracketed here (3 with MSVC and with gcc on Linux)
+          expect_gte(opt_params$best_iter,2)
           expect_lte(opt_params$best_iter,24)
           expect_equal(opt_params$best_params$learning_rate,0.11)
           expect_gte(opt_params$best_params$max_bin,10)
