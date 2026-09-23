@@ -7278,7 +7278,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            y = y, X=X, params = params, matrix_inversion_method = "cholesky")
                     , file='NUL')
     expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.2682095671)),0.01)
-    expect_lt(sum(abs(gp_model$get_aux_pars()-c(22.879799528, 0.168605624))),0.3)
+    # Note: the log-likelihood of this model is very flat in the precision parameter. The covariance
+    #   parameter, the regression coefficients and the negative log-likelihood agree closely across
+    #   compilers, the precision does not: the optimizer stops at a slightly different point along that
+    #   direction
+    expect_lt(sum(abs(gp_model$get_aux_pars()-c(22.879799528, 0.168605624))),relax_tolerance(0.6))
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.11240688283, 0.88192071991))),0.008)
     nll <- -44.08117687
     expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-nll))),relax_tolerance_nll(0.002))
@@ -7290,7 +7294,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     predict_var=TRUE, predict_response = TRUE)
     expected_mu <- c(0.3900424970, 0.3251828138, 0.3809477867, 0.7292149088)
     expected_var <- c(0.01993931983, 0.01913466436, 0.02000007302, 0.03469011762)
-    expect_lt(sum(abs(pred$mu-expected_mu)),0.004)
+    # see the note on the precision parameter above: 0.006 has been measured on the Linux CI
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01))
     expect_lt(sum(abs(pred$var-expected_var)),0.0008)
 
     ## GPBoost algorithm
