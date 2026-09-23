@@ -21,6 +21,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   
   OPTIM_PARAMS_BFGS <- list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", maxit = 1000,
                             init_coef_aux_pars_from_iid_model = FALSE)
+
+  # Configurations of the matrix inversion that every test combining grouped random effects with a
+  #   Vecchia approximated Gaussian process runs through. The iterative methods are run with both
+  #   preconditioners that are supported for this model class, see
+  #   'SUPPORTED_PRECONDITIONERS_VECCHIA_GROUPED_RE_' in re_model_template.h ('ssor' is the default).
+  #   'params' is prepended to the optimizer parameters of a test and is empty for the Cholesky
+  #   decomposition, which has no preconditioner
+  INVERSION_CONFIGS_VECCHIA_GROUPED_RE <- list(
+    list(method = "cholesky", params = list()),
+    list(method = "iterative", params = list(cg_preconditioner_type = "ssor")),
+    list(method = "iterative", params = list(cg_preconditioner_type = "incomplete_cholesky")))
   
   # Function that simulates uniform random variables
   sim_rand_unif <- function(n, init_c=0.1){
@@ -168,9 +179,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
     
-    # matrix_inversion_method = "cholesky"
     # with Vecchia
-    for (matrix_inversion_method in c("cholesky","iterative")) {
+    for (inversion_config in INVERSION_CONFIGS_VECCHIA_GROUPED_RE) {
+      matrix_inversion_method <- inversion_config$method
+      preconditioner_params <- inversion_config$params
       if (matrix_inversion_method == "cholesky") {
         tol_loc <- 1E-6
         tol_loc2 <- 0.2
@@ -187,23 +199,26 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       # Evaluate negative log-likelihood
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = n-1, matrix_inversion_method = matrix_inversion_method)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_optim_params(params = c(preconditioner_params,
+                                           list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE)))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
       expect_lt(abs(nll-nll_exp),tol_loc)
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none", 
                           matrix_inversion_method = matrix_inversion_method)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_optim_params(params = c(preconditioner_params,
+                                           list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE)))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
       expect_lt(abs(nll-nll_exp),tol_loc2)
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none", 
                           matrix_inversion_method = matrix_inversion_method, weights=weights)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_optim_params(params = c(preconditioner_params,
+                                           list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE)))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
       expect_lt(abs(nll-nll_exp),tol_loc2)
       # Estimation 
-      params = OPTIM_PARAMS_BFGS
+      params = c(OPTIM_PARAMS_BFGS, preconditioner_params)
       if (matrix_inversion_method == "iterative") params$maxit <- 5 ## very slow for iterative methods likely due to small sample size
       ## numerically unstable for iterative methods due to small sample size (it works well for larger data sets)
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group, y = y,
@@ -219,7 +234,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
       # Prediction
       predict_var <- TRUE
-      gp_model$set_optim_params(params=list(init_cov_pars=cov_pars_pred[-1], init_aux_pars = cov_pars_pred[1], init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_optim_params(params=c(preconditioner_params,
+                                         list(init_cov_pars=cov_pars_pred[-1], init_aux_pars = cov_pars_pred[1], init_coef_aux_pars_from_iid_model = FALSE)))
       gp_model$set_prediction_data(nsim_var_pred = 1000)
       capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                                       group_data_pred = group_test, predict_var = predict_var, predict_response = FALSE), file='NUL')
@@ -277,14 +293,23 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
     expect_lt(abs(nll-nll_exp),1E-6)
     # with Vecchia
-    gp_model <- GPModel(gp_coords = coords_dupl, cov_function = "exponential", group_data = group, 
-                        gp_approx = "vecchia", num_neighbors = 90, matrix_inversion_method = "cholesky")
-    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
-    expect_lt(abs(nll-nll_exp),1E-6)
-    gp_model <- GPModel(gp_coords = coords_dupl, cov_function = "exponential", group_data = group, 
-                        gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = "cholesky")
-    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
-    expect_lt(abs(nll-nll_exp), 0.3)
+    for (config_dupl in INVERSION_CONFIGS_VECCHIA_GROUPED_RE) {
+      iterative_dupl <- config_dupl$method == "iterative"
+      for (num_neighbors_dupl in c(90, 20)) {
+        gp_model <- GPModel(gp_coords = coords_dupl, cov_function = "exponential", group_data = group, 
+                            gp_approx = "vecchia", num_neighbors = num_neighbors_dupl,
+                            matrix_inversion_method = config_dupl$method)
+        gp_model$set_optim_params(params = c(config_dupl$params,
+                                             list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE)))
+        nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:4], y=y, aux_pars=cov_pars_eval[1])
+        # 90 neighbors are all of them for these duplicated coordinates, the approximation is then exact.
+        #   The iterative tolerances leave room above the observed deviations of 0.017 and 0.125, which
+        #   come from the stochastic estimate of the log determinant
+        tol_dupl <- if (num_neighbors_dupl == 90) (if (iterative_dupl) 0.2 else 1E-6)
+                    else (if (iterative_dupl) 0.5 else 0.3)
+        expect_lt(abs(nll-nll_exp), tol_dupl)
+      }
+    }
     
     # with weights
     coords_w <- cbind(c(0.05, 0.18, 0.31, 0.52, 0.74, 0.91),
@@ -429,8 +454,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(cov(t(pred$posterior_samples))-pred$cov)), 0.3)
     
     # with Vecchia
-    # matrix_inversion_method = "cholesky"
-    for (matrix_inversion_method in c("cholesky","iterative")) {
+    for (inversion_config in INVERSION_CONFIGS_VECCHIA_GROUPED_RE) {
+      matrix_inversion_method <- inversion_config$method
+      preconditioner_params <- inversion_config$params
       if (matrix_inversion_method == "cholesky") {
         tol_loc <- 1E-6
         tol_loc2 <- 0.1
@@ -446,17 +472,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = n-1, matrix_inversion_method = matrix_inversion_method, 
                           likelihood=likelihood)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_optim_params(params = c(preconditioner_params,
+                                           list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE)))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval, y=y, aux_pars=aux_pars_eval)
       expect_lt(abs(nll-nll_exp),tol_loc)
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = matrix_inversion_method,
                           likelihood=likelihood)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_optim_params(params = c(preconditioner_params,
+                                           list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE)))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval, y=y, aux_pars=aux_pars_eval)
       expect_lt(abs(nll-nll_exp),tol_loc2)
       # Estimation 
-      params <- OPTIM_PARAMS_BFGS
+      params <- c(OPTIM_PARAMS_BFGS, preconditioner_params)
       params$num_rand_vec_trace <- 1000
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group, y = y,
                                              gp_approx = "vecchia", num_neighbors = n-1, matrix_inversion_method = matrix_inversion_method,
@@ -467,7 +495,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_fit_exp)),relax_tolerance_nll(tol_loc2))
       # Prediction
       predict_var <- TRUE
-      gp_model$set_optim_params(params=list(init_aux_pars=aux_pars_pred, init_cov_pars=cov_pars_pred, init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_optim_params(params=c(preconditioner_params,
+                                         list(init_aux_pars=aux_pars_pred, init_cov_pars=cov_pars_pred, init_coef_aux_pars_from_iid_model = FALSE)))
       capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                                       group_data_pred = group_test, predict_var = predict_var, predict_response = FALSE), file='NUL')
       expect_lt(sum(abs(pred$mu-expected_mu)),tol_loc4)
@@ -594,8 +623,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),1E-6)
     
     # with Vecchia
-    # matrix_inversion_method = "iterative"
-    for (matrix_inversion_method in c("cholesky","iterative")) {
+    for (inversion_config in INVERSION_CONFIGS_VECCHIA_GROUPED_RE) {
+      matrix_inversion_method <- inversion_config$method
+      preconditioner_params <- inversion_config$params
       if (matrix_inversion_method == "cholesky") {
         tol_loc <- 1E-6
         tol_loc2 <- 0.2
@@ -611,17 +641,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = n-1, matrix_inversion_method = matrix_inversion_method, 
                           likelihood=likelihood)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_optim_params(params = c(preconditioner_params,
+                                           list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE)))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval, y=y, aux_pars=aux_pars_eval)
       expect_lt(abs(nll-nll_exp),tol_loc)
       gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", group_data = group, 
                           gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = matrix_inversion_method,
                           likelihood=likelihood)
-      gp_model$set_optim_params(params = list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_optim_params(params = c(preconditioner_params,
+                                           list(num_rand_vec_trace=1000, init_coef_aux_pars_from_iid_model = FALSE)))
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval, y=y, aux_pars=aux_pars_eval)
       expect_lt(abs(nll-nll_exp),tol_loc2)
       # Estimation 
-      params = OPTIM_PARAMS_BFGS
+      params = c(OPTIM_PARAMS_BFGS, preconditioner_params)
       if (matrix_inversion_method == "iterative") params$maxit <- 5 ## very slow for iterative methods likely due to small sample size
       capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", group_data = group, y = y,
                                              gp_approx = "vecchia", num_neighbors = n-1, matrix_inversion_method = matrix_inversion_method,
@@ -636,7 +668,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
       # Prediction
       predict_var <- TRUE
-      gp_model$set_optim_params(params=list(init_aux_pars=aux_pars_pred, init_cov_pars=cov_pars_pred, init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_optim_params(params=c(preconditioner_params,
+                                         list(init_aux_pars=aux_pars_pred, init_cov_pars=cov_pars_pred, init_coef_aux_pars_from_iid_model = FALSE)))
       capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
                                       group_data_pred = group_test, predict_var = predict_var, predict_response = FALSE), file='NUL')
       expect_lt(sum(abs(pred$mu-expected_mu)),tol_loc4)
@@ -848,20 +881,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     var_exact_jc <- diag(Cpp_jc - Cpo_jc %*% solve(Syy_jc, t(Cpo_jc)))
     mu_exact_jc <- as.vector(Cpo_jc %*% solve(Syy_jc, y_jc))
 
-    for (inv_method_jc in c("cholesky", "iterative")) {
+    for (config_jc in INVERSION_CONFIGS_VECCHIA_GROUPED_RE) {
       gp_model_jc <- GPModel(gp_coords = coords_jc, cov_function = "exponential", group_data = group_jc,
                              gp_approx = "vecchia", num_neighbors = n_jc - 1, vecchia_ordering = "none",
-                             likelihood = "gaussian", matrix_inversion_method = inv_method_jc)
+                             likelihood = "gaussian", matrix_inversion_method = config_jc$method)
       gp_model_jc$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all",
                                       num_neighbors_pred = n_jc + np_jc, nsim_var_pred = 2000)
-      gp_model_jc$set_optim_params(params = list(init_aux_pars = nugget_jc, seed_rand_vec_trace = 1,
-                                                 init_cov_pars = c(sigma2_gr_jc, sigma2_gp_jc, rho_jc),
-                                                 init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model_jc$set_optim_params(params = c(config_jc$params,
+                                              list(init_aux_pars = nugget_jc, seed_rand_vec_trace = 1,
+                                                   init_cov_pars = c(sigma2_gr_jc, sigma2_gp_jc, rho_jc),
+                                                   init_coef_aux_pars_from_iid_model = FALSE)))
       capture.output( pred_jc <- gp_model_jc$predict(y = y_jc, gp_coords_pred = coords_pred_jc,
                                                      group_data_pred = group_pred_jc,
                                                      cov_pars = c(sigma2_gr_jc, sigma2_gp_jc, rho_jc),
                                                      predict_var = TRUE, predict_response = FALSE), file = 'NUL')
-      tol_jc <- if (inv_method_jc == "iterative") 1E-2 else 1E-6
+      tol_jc <- if (config_jc$method == "iterative") 1E-2 else 1E-6
       expect_lt(sum(abs(pred_jc$mu - mu_exact_jc)), tol_jc)
       expect_lt(sum(abs(as.vector(pred_jc$var) - var_exact_jc)), tol_jc)
     }
@@ -889,23 +923,24 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
     }
     var_exact_s_jc <- diag(Cpp_s_jc - Cpo_s_jc %*% solve(Syy_s_jc, t(Cpo_s_jc)))
-    for (inv_method_jc in c("cholesky", "iterative")) {
+    for (config_jc in INVERSION_CONFIGS_VECCHIA_GROUPED_RE) {
       gp_model_s_jc <- GPModel(group_data = group_jc, group_rand_coef_data = x_jc,
                                ind_effect_group_rand_coef = 1, gp_coords = coords_jc,
                                cov_function = "exponential", gp_approx = "vecchia",
                                num_neighbors = n_jc - 1, vecchia_ordering = "none",
-                               likelihood = "gaussian", matrix_inversion_method = inv_method_jc)
+                               likelihood = "gaussian", matrix_inversion_method = config_jc$method)
       gp_model_s_jc$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all",
                                         num_neighbors_pred = n_jc + np_jc, nsim_var_pred = 2000)
-      gp_model_s_jc$set_optim_params(params = list(init_aux_pars = nugget_jc, seed_rand_vec_trace = 1,
-                                                   init_cov_pars = c(sigma2_gr_jc, s2_slp_jc, sigma2_gp_jc, rho_jc),
-                                                   init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model_s_jc$set_optim_params(params = c(config_jc$params,
+                                                list(init_aux_pars = nugget_jc, seed_rand_vec_trace = 1,
+                                                     init_cov_pars = c(sigma2_gr_jc, s2_slp_jc, sigma2_gp_jc, rho_jc),
+                                                     init_coef_aux_pars_from_iid_model = FALSE)))
       capture.output( pred_s_jc <- gp_model_s_jc$predict(y = y_s_jc, gp_coords_pred = coords_pred_jc,
                                                          group_data_pred = group_pred_s_jc,
                                                          group_rand_coef_data_pred = x_pred_jc,
                                                          cov_pars = c(sigma2_gr_jc, s2_slp_jc, sigma2_gp_jc, rho_jc),
                                                          predict_var = TRUE, predict_response = FALSE), file = 'NUL')
-      tol_s_jc <- if (inv_method_jc == "iterative") 1E-2 else 1E-6
+      tol_s_jc <- if (config_jc$method == "iterative") 1E-2 else 1E-6
       expect_lt(sum(abs(as.vector(pred_s_jc$var) - var_exact_s_jc)), tol_s_jc)
     }
   })
@@ -925,13 +960,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_ni <- c(0.7, 1.0, 0.2)
     coords_pred_ni <- cbind(c(0.12, 0.44), c(0.22, 0.51))
     group_pred_ni <- c(1, 2)
-    for (inv_method_ni in c("cholesky", "iterative")) {
+    for (config_ni in INVERSION_CONFIGS_VECCHIA_GROUPED_RE) {
       gp_model_ni <- GPModel(gp_coords = coords_ni, cov_function = "exponential", group_data = group_ni,
                              gp_approx = "vecchia", num_neighbors = n_ni - 1, vecchia_ordering = "none",
-                             likelihood = "gaussian", matrix_inversion_method = inv_method_ni)
-      gp_model_ni$set_optim_params(params = list(init_aux_pars = 0.4, seed_rand_vec_trace = 1,
-                                                 init_cov_pars = cov_pars_ni,
-                                                 init_coef_aux_pars_from_iid_model = FALSE))
+                             likelihood = "gaussian", matrix_inversion_method = config_ni$method)
+      gp_model_ni$set_optim_params(params = c(config_ni$params,
+                                              list(init_aux_pars = 0.4, seed_rand_vec_trace = 1,
+                                                   init_cov_pars = cov_pars_ni,
+                                                   init_coef_aux_pars_from_iid_model = FALSE)))
       expect_error(gp_model_ni$predict(y = y_ni, gp_coords_pred = coords_pred_ni,
                                        group_data_pred = group_pred_ni, cov_pars = cov_pars_ni,
                                        predict_cov_mat = TRUE, predict_response = FALSE),
@@ -970,10 +1006,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
     args_ng <- list(group_data = group_ng, group_rand_coef_data = x_ng, ind_effect_group_rand_coef = 1,
                     gp_coords = coords_ng, cov_function = "exponential", likelihood = "gamma")
-    predict_ng <- function(args) {
+    predict_ng <- function(args, preconditioner_params = list()) {
       gp_model_ng <- do.call(GPModel, args)
-      gp_model_ng$set_optim_params(params = list(seed_rand_vec_trace = 1, num_rand_vec_trace = 1000,
-                                                 init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model_ng$set_optim_params(params = c(preconditioner_params,
+                                              list(seed_rand_vec_trace = 1, num_rand_vec_trace = 1000,
+                                                   init_coef_aux_pars_from_iid_model = FALSE)))
       if (!is.null(args$gp_approx)) gp_model_ng$set_prediction_data(nsim_var_pred = 2000)
       capture.output( pred_ng <- gp_model_ng$predict(y = y_ng, gp_coords_pred = coords_pred_ng,
                                                      group_data_pred = group_pred_ng,
@@ -983,11 +1020,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       pred_ng
     }
     pred_exact_ng <- predict_ng(args_ng)
-    for (inv_method_ng in c("cholesky", "iterative")) {
+    for (config_ng in INVERSION_CONFIGS_VECCHIA_GROUPED_RE) {
       pred_vecchia_ng <- predict_ng(c(args_ng, list(gp_approx = "vecchia", num_neighbors = n_ng - 1,
                                                     vecchia_ordering = "none",
-                                                    matrix_inversion_method = inv_method_ng)))
-      tol_ng <- if (inv_method_ng == "iterative") 1E-2 else 1E-6
+                                                    matrix_inversion_method = config_ng$method)),
+                                    config_ng$params)
+      tol_ng <- if (config_ng$method == "iterative") 1E-2 else 1E-6
       expect_lt(sum(abs(pred_vecchia_ng$mu - pred_exact_ng$mu)), tol_ng)
       expect_lt(sum(abs(as.vector(pred_vecchia_ng$var) - as.vector(pred_exact_ng$var))), tol_ng)
     }
@@ -1024,22 +1062,23 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     mu_exact_w <- as.vector(Cpo_w %*% solve(Syy_w, y_w))
     var_exact_w <- diag(Cpp_w - Cpo_w %*% solve(Syy_w, t(Cpo_w)))
 
-    for (inv_method_w in c("cholesky", "iterative")) {
+    for (config_w in INVERSION_CONFIGS_VECCHIA_GROUPED_RE) {
       capture.output( gp_model_w <- GPModel(gp_coords = coords_w, cov_function = "exponential",
                                             group_data = group_w, weights = weights_w,
                                             gp_approx = "vecchia", num_neighbors = n_w - 1,
                                             vecchia_ordering = "none", likelihood = "gaussian",
-                                            matrix_inversion_method = inv_method_w), file = 'NUL')
+                                            matrix_inversion_method = config_w$method), file = 'NUL')
       gp_model_w$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all",
                                      num_neighbors_pred = n_w + np_w, nsim_var_pred = 2000)
-      gp_model_w$set_optim_params(params = list(init_aux_pars = cov_pars_w[1], seed_rand_vec_trace = 1,
-                                                init_cov_pars = cov_pars_w[2:4],
-                                                init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model_w$set_optim_params(params = c(config_w$params,
+                                             list(init_aux_pars = cov_pars_w[1], seed_rand_vec_trace = 1,
+                                                  init_cov_pars = cov_pars_w[2:4],
+                                                  init_coef_aux_pars_from_iid_model = FALSE)))
       capture.output( pred_w <- gp_model_w$predict(y = y_w, gp_coords_pred = coords_pred_w,
                                                    group_data_pred = group_pred_w,
                                                    cov_pars = cov_pars_w[2:4], predict_var = TRUE,
                                                    predict_response = FALSE), file = 'NUL')
-      tol_w <- if (inv_method_w == "iterative") 1E-2 else 1E-6
+      tol_w <- if (config_w$method == "iterative") 1E-2 else 1E-6
       expect_lt(sum(abs(pred_w$mu - mu_exact_w)), tol_w)
       expect_lt(sum(abs(as.vector(pred_w$var) - var_exact_w)), tol_w)
     }
@@ -1091,24 +1130,25 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       mu_exact_di <- as.vector(Cpo_di %*% solve(Syy_di, y_di))
       var_exact_di <- diag(Cpp_di - Cpo_di %*% solve(Syy_di, t(Cpo_di)))
 
-      for (inv_method_di in c("cholesky", "iterative")) {
+      for (config_di in INVERSION_CONFIGS_VECCHIA_GROUPED_RE) {
         gp_model_di <- GPModel(group_data = group_di, group_rand_coef_data = x_di,
                                ind_effect_group_rand_coef = 1, drop_intercept_group_rand_effect = TRUE,
                                gp_coords = coords_di, cov_function = "exponential",
                                cluster_ids = cluster_ids_di, gp_approx = "vecchia",
                                num_neighbors = n_di - 1, vecchia_ordering = "none",
-                               likelihood = "gaussian", matrix_inversion_method = inv_method_di)
+                               likelihood = "gaussian", matrix_inversion_method = config_di$method)
         gp_model_di$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all",
                                         nsim_var_pred = 2000)
-        gp_model_di$set_optim_params(params = list(init_aux_pars = cov_pars_di[1], seed_rand_vec_trace = 1,
-                                                   num_rand_vec_trace = 1000,
-                                                   init_cov_pars = cov_pars_di[2:4],
-                                                   init_coef_aux_pars_from_iid_model = FALSE))
+        gp_model_di$set_optim_params(params = c(config_di$params,
+                                                list(init_aux_pars = cov_pars_di[1], seed_rand_vec_trace = 1,
+                                                     num_rand_vec_trace = 1000,
+                                                     init_cov_pars = cov_pars_di[2:4],
+                                                     init_coef_aux_pars_from_iid_model = FALSE)))
         capture.output( nll_di <- gp_model_di$neg_log_likelihood(cov_pars = cov_pars_di[2:4], y = y_di,
                                                                  aux_pars = cov_pars_di[1]), file = 'NUL')
         # The log determinant of the iterative methods is a stochastic estimate, its tolerance is far
         #   above the observed deviation of about 0.08 but far below what a misplaced component gives
-        tol_di <- if (inv_method_di == "iterative") 0.5 else 1E-6
+        tol_di <- if (config_di$method == "iterative") 0.5 else 1E-6
         expect_lt(abs(nll_di - nll_exact_di), tol_di)
         capture.output( pred_di <- gp_model_di$predict(y = y_di, gp_coords_pred = coords_pred_di,
                                                        group_data_pred = group_pred_di,
@@ -1116,7 +1156,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                        cluster_ids_pred = cluster_pred_di,
                                                        cov_pars = cov_pars_di[2:4], predict_var = TRUE,
                                                        predict_response = FALSE), file = 'NUL')
-        tol_pred_di <- if (inv_method_di == "iterative") 1E-2 else 1E-6
+        tol_pred_di <- if (config_di$method == "iterative") 1E-2 else 1E-6
         expect_lt(sum(abs(pred_di$mu - mu_exact_di)), tol_pred_di)
         expect_lt(sum(abs(as.vector(pred_di$var) - var_exact_di)), tol_pred_di)
       }
