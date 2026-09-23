@@ -294,6 +294,44 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     expect_equal(tree_mean, c(2.8165058065167723, 2.9922163527923269), tolerance = 1e-8)
   })
 
+  test_that("AR1 multifidelity boosters can predict after being saved and loaded", {
+    data <- simulate_ar1_mf_test_data()
+    features <- cbind(x = data$gp_coords[, 1], nonlinear = sin(4 * data$gp_coords[, 1]))
+    dtrain <- gpb.Dataset(data = features, label = data$y_gaussian + 5 * data$gp_coords[, 2])
+    gp_model <- GPModel(
+      gp_coords = data$gp_coords, cov_function = "ar1_mf_exponential", likelihood = "gaussian",
+      gp_approx = "vecchia", num_neighbors = 6, vecchia_ordering = "none"
+    )
+    gp_model$set_optim_params(params = list(
+      init_cov_pars = data$cov_pars, init_coef_aux_pars_from_iid_model = FALSE
+    ))
+    booster <- gpb.train(
+      data = dtrain, gp_model = gp_model, train_gp_model_cov_pars = FALSE, nrounds = 2,
+      learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 4, objective = "regression_l2", verbose = 0
+    )
+    features_pred <- features[c(2, 20), , drop = FALSE]
+    coords_pred <- data$gp_coords[c(2, 20), , drop = FALSE]
+    prediction <- predict(booster, data = features_pred, gp_coords_pred = coords_pred, predict_var = TRUE)
+
+    # With the default 'save_raw_data = FALSE' the training data is not restored, so the number of
+    # training features, which the fidelity-specific mean needs in order to append the fidelity
+    # indicator, has to be taken from the saved model
+    model_file <- file.path(tempdir(), "ar1_mf_booster.json")
+    gpb.save(booster, filename = model_file)
+    booster_file <- gpb.load(filename = model_file)
+    prediction_file <- predict(booster_file, data = features_pred, gp_coords_pred = coords_pred,
+                               predict_var = TRUE)
+    expect_equal(prediction_file$response_mean, prediction$response_mean, tolerance = 1e-8)
+    expect_equal(prediction_file$response_var, prediction$response_var, tolerance = 1e-8)
+
+    booster_string <- gpb.load(model_str = booster$save_model_to_string())
+    prediction_string <- predict(booster_string, data = features_pred, gp_coords_pred = coords_pred,
+                                 predict_var = TRUE)
+    expect_equal(prediction_string$response_mean, prediction$response_mean, tolerance = 1e-8)
+    expect_equal(prediction_string$response_var, prediction$response_var, tolerance = 1e-8)
+    unlink(model_file)
+  })
+
   test_that("cross-validation uses the same boosting features as training", {
     data <- simulate_ar1_mf_test_data()
     features <- cbind(x = data$gp_coords[, 1], nonlinear = sin(4 * data$gp_coords[, 1]))

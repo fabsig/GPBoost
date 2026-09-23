@@ -2622,17 +2622,18 @@ namespace GPBoost {
 							// row-major
 							sp_mat_rm_t B_grad_rm = sp_mat_rm_t(B_grad_[cluster_i][0][num_par_comp * j + ipar]);
 							// B_grad * cross_cov
-							den_mat_t cross_cov_B_grad(num_data_per_cluster_[cluster_i], num_ind_points_);
-#pragma omp parallel for schedule(static)   
-							for (int i = 0; i < num_ind_points_; ++i) {
+							const int num_ind_points_cluster_i = (int)(*cross_cov).cols();
+							den_mat_t cross_cov_B_grad(num_data_per_cluster_[cluster_i], num_ind_points_cluster_i);
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < num_ind_points_cluster_i; ++i) {
 								cross_cov_B_grad.col(i) = B_grad_rm * (*cross_cov).col(i);
 							}
 							// row-major
 							sp_mat_rm_t D_grad_rm = sp_mat_rm_t(D_grad_[cluster_i][0][num_par_comp * j + ipar]);
 							// D_grad * D^-1 * B * t(cross_cov)
-							den_mat_t D_grad_sigma_resid_inv_cross_cov_T(num_data_per_cluster_[cluster_i], num_ind_points_);
-#pragma omp parallel for schedule(static)   
-							for (int i = 0; i < num_ind_points_; ++i) {
+							den_mat_t D_grad_sigma_resid_inv_cross_cov_T(num_data_per_cluster_[cluster_i], num_ind_points_cluster_i);
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < num_ind_points_cluster_i; ++i) {
 								D_grad_sigma_resid_inv_cross_cov_T.col(i) = D_grad_rm * D_inv_B_cross_cov_[cluster_i][0].col(i);
 							}
 							// cross_crov_grad *  sigma_resid^-1 * t(cross_cov)
@@ -4538,9 +4539,19 @@ namespace GPBoost {
 					int num_gp_pred = predict_var_or_response ? num_sets_re_ : 1;
 					// Calculate predictions
 					if (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") {
-						if (gp_approx_ == "vecchia" && sample_prior) {
-							B_rm_[cluster_i][0] = sp_mat_rm_t(B_[cluster_i][0]);
-							D_inv_rm_[cluster_i][0] = sp_mat_rm_t(D_inv_[cluster_i][0]);
+						if (sample_prior) {
+							if (gauss_likelihood_ && !predict_response) {
+								// B_ and D_inv_ describe the observed process and thus contain the nugget effect,
+								//	the prior of the latent process is obtained from the corresponding factors without it
+								sp_mat_t B_latent, D_inv_latent;
+								CalcCovFactorVecchiaLatent(cluster_i, B_latent, D_inv_latent);
+								B_rm_[cluster_i][0] = sp_mat_rm_t(B_latent);
+								D_inv_rm_[cluster_i][0] = sp_mat_rm_t(D_inv_latent);
+							}
+							else if (gp_approx_ == "vecchia") {
+								B_rm_[cluster_i][0] = sp_mat_rm_t(B_[cluster_i][0]);
+								D_inv_rm_[cluster_i][0] = sp_mat_rm_t(D_inv_[cluster_i][0]);
+							}
 						}
 						std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp = re_comps_vecchia_[cluster_i][0][0];
 						den_mat_t cov_mat_pred_vecchia_id;
@@ -8515,7 +8526,11 @@ namespace GPBoost {
 				Log::REDebug("Starting cover tree algorithm for determining inducing points ");
 				CoverTree(gp_coords_all_unique, cover_tree_radius_, rng_, gp_coords_ip_mat);
 				Log::REDebug("Inducing points have been determined ");
+				// the cover tree determines the number of inducing points itself
 				num_ind_points = (int)gp_coords_ip_mat.rows();
+				if (!for_prediction_new_cluster) {
+					num_ind_points_ = num_ind_points;
+				}
 			}
 			else if (ind_points_selection_ == "random") {
 				if (gp_approx_ == "full_scale_vecchia" && !gauss_likelihood_) {
@@ -10179,6 +10194,20 @@ namespace GPBoost {
 		}//end CalcZSigmaZt
 
 		/*!
+		* \brief Calculate the covariance matrix of the latent random effects, i.e. the covariance matrix of the
+		*			observed process without the nugget effect for a Gaussian likelihood
+		* \param[out] ZSigmaZt Covariance matrix of the latent random effects
+		* \param cluster_i Cluster index for which the covariance matrix is calculated
+		*/
+		void CalcZSigmaZtLatent(T_mat& ZSigmaZt, data_size_t cluster_i) {
+			ZSigmaZt = T_mat(num_data_per_cluster_[cluster_i], num_data_per_cluster_[cluster_i]);
+			ZSigmaZt.setZero();
+			for (int j = 0; j < num_comps_total_; ++j) {
+				ZSigmaZt += (*(GetForCluster(re_comps_, cluster_i, 0)[j]->GetZSigmaZt()));
+			}
+		}//end CalcZSigmaZtLatent
+
+		/*!
 		* \brief Calculate the mode of the posterior of the latent random effects and the Laplace-approximated marginal log-likelihood. This function is only used for non-Gaussian likelihoods
 		* \param fixed_effects Fixed effects component of location parameter
 		* \param calc_mll If true the marginal log-likelihood is also calculated (only relevant for (gp_approx_ == "vecchia" || only grouped random effects) && matrix_inversion_method_ == "iterative")
@@ -10392,6 +10421,33 @@ namespace GPBoost {
 			}
 		}//end CalcCovFactorVecchia
 
+		/*!
+		* \brief Calculate the matrices B and D^-1 of the Vecchia approximation of the latent process, i.e. without the
+		*			nugget effect, for a Gaussian likelihood. This is used for sampling from the prior of the latent process
+		* \param cluster_i Cluster index for which the matrices are calculated
+		* \param[out] B_latent Matrix B of the Vecchia approximation of the latent process
+		* \param[out] D_inv_latent Matrix D^-1 of the Vecchia approximation of the latent process
+		*/
+		void CalcCovFactorVecchiaLatent(data_size_t cluster_i,
+			sp_mat_t& B_latent,
+			sp_mat_t& D_inv_latent) {
+			CHECK(gauss_likelihood_);
+			CHECK(gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia");
+			data_size_t num_re_cluster_i = GetForCluster(re_comps_vecchia_, cluster_i, 0)[0]->GetNumUniqueREs();
+			std::vector<sp_mat_t> B_grad_not_used, D_grad_not_used;
+			den_mat_t sigma_ip_inv_cross_cov_T_not_used;
+			std::vector<den_mat_t> sigma_ip_grad_sigma_ip_inv_cross_cov_T_not_used;
+			CalcCovFactorGradientVecchia(num_re_cluster_i, true, false, re_comps_vecchia_[cluster_i][0],
+				re_comps_cross_cov_[cluster_i][0], re_comps_ip_[cluster_i][0], GetForCluster(chol_fact_sigma_ip_, cluster_i, 0),
+				GetForCluster(chol_ip_cross_cov_, cluster_i, 0), nearest_neighbors_[cluster_i][0],
+				dist_obs_neighbors_[cluster_i][0], dist_between_neighbors_[cluster_i][0],
+				entries_init_B_[cluster_i][0], z_outer_z_obs_neighbors_[cluster_i][0],
+				B_latent, D_inv_latent, B_grad_not_used, D_grad_not_used, sigma_ip_inv_cross_cov_T_not_used,
+				sigma_ip_grad_sigma_ip_inv_cross_cov_T_not_used, true, 1.,
+				false, num_gp_total_, false, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
+				nullptr, EstimateCovParIndexGrad(), nearest_neighbors_determined_, false);
+		}//end CalcCovFactorVecchiaLatent
+
 		void Calc_FITC_Preconditioner_Vecchia() {
 			CHECK(!gauss_likelihood_ && matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "fitc");
 			for (const auto& cluster_i : unique_clusters_) {
@@ -10546,11 +10602,12 @@ namespace GPBoost {
 						if (gauss_likelihood_) {
 							Log::REFatal("The iterative methods are not implemented for the Full-Scale-Vecchia approximation with Gaussian likelihood. Please use Cholesky.");
 						}
-						D_inv_B_cross_cov_[cluster_i][0].resize(num_data_per_cluster_[cluster_i], num_ind_points_);
-						B_cross_cov_[cluster_i][0].resize(num_data_per_cluster_[cluster_i], num_ind_points_);
-						B_T_D_inv_B_cross_cov_[cluster_i][0].resize(num_data_per_cluster_[cluster_i], num_ind_points_);
-#pragma omp parallel for schedule(static)   
-						for (int i = 0; i < num_ind_points_; ++i) {
+						const int num_ind_points_cluster_i = (int)(*cross_cov).cols();
+						D_inv_B_cross_cov_[cluster_i][0].resize(num_data_per_cluster_[cluster_i], num_ind_points_cluster_i);
+						B_cross_cov_[cluster_i][0].resize(num_data_per_cluster_[cluster_i], num_ind_points_cluster_i);
+						B_T_D_inv_B_cross_cov_[cluster_i][0].resize(num_data_per_cluster_[cluster_i], num_ind_points_cluster_i);
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_ind_points_cluster_i; ++i) {
 							B_cross_cov_[cluster_i][0].col(i) = B_rm_[cluster_i][0] * (*cross_cov).col(i);
 							D_inv_B_cross_cov_[cluster_i][0].col(i) = D_inv_rm_[cluster_i][0] * B_cross_cov_[cluster_i][0].col(i);
 							B_T_D_inv_B_cross_cov_[cluster_i][0].col(i) = B_t_D_inv_rm_[cluster_i][0] * B_cross_cov_[cluster_i][0].col(i);
@@ -10605,11 +10662,12 @@ namespace GPBoost {
 						sigma_woodbury = sigma_resid_Ihalf_cross_cov.transpose() * sigma_resid_Ihalf_cross_cov;
 					}
 					else if (gp_approx_ == "full_scale_vecchia") {
-						D_inv_B_cross_cov_[cluster_i][0].resize(num_data_per_cluster_[cluster_i], num_ind_points_);
-						B_cross_cov_[cluster_i][0].resize(num_data_per_cluster_[cluster_i], num_ind_points_);
-						B_T_D_inv_B_cross_cov_[cluster_i][0].resize(num_data_per_cluster_[cluster_i], num_ind_points_);
-#pragma omp parallel for schedule(static)   
-						for (int i = 0; i < num_ind_points_; ++i) {
+						const int num_ind_points_cluster_i = (int)(*cross_cov).cols();
+						D_inv_B_cross_cov_[cluster_i][0].resize(num_data_per_cluster_[cluster_i], num_ind_points_cluster_i);
+						B_cross_cov_[cluster_i][0].resize(num_data_per_cluster_[cluster_i], num_ind_points_cluster_i);
+						B_T_D_inv_B_cross_cov_[cluster_i][0].resize(num_data_per_cluster_[cluster_i], num_ind_points_cluster_i);
+#pragma omp parallel for schedule(static)
+						for (int i = 0; i < num_ind_points_cluster_i; ++i) {
 							B_cross_cov_[cluster_i][0].col(i) = B_rm_[cluster_i][0] * (*cross_cov).col(i);
 							D_inv_B_cross_cov_[cluster_i][0].col(i) = D_inv_rm_[cluster_i][0] * B_cross_cov_[cluster_i][0].col(i);
 							B_T_D_inv_B_cross_cov_[cluster_i][0].col(i) = B_t_D_inv_rm_[cluster_i][0] * B_cross_cov_[cluster_i][0].col(i);
@@ -12754,9 +12812,24 @@ namespace GPBoost {
 					!use_woodbury_identity_ && !grouped_RE_and_vecchia_GP_) {
 					prior_samples_id = den_mat_t(num_REs_obs, num_prior_samples);
 					GenRandVecNormalParallel(seed_rng_, cg_generator_counter_, prior_samples_id);
-					prior_samples_id = chol_facts_[cluster_i].CholFactMatrix().template triangularView<Eigen::Lower>() * prior_samples_id;
-					if (CholeskyHasPermutation<T_chol>(chol_facts_[cluster_i])) {
-						ApplyPermutationCholeskyFactor<den_mat_t, T_chol>(chol_facts_[cluster_i], prior_samples_id, prior_samples_id, /*transpose=*/true);
+					if (gauss_likelihood_ && !predict_response) {
+						// 'chol_facts_' is the factor of the covariance of the observed process, which contains the nugget effect.
+						//	The prior of the latent process is obtained from the covariance of the random effects only
+						T_mat sigma_latent;
+						CalcZSigmaZtLatent(sigma_latent, cluster_i);
+						sigma_latent.diagonal().array() *= JITTER_MUL;//the latent covariance is singular when there are duplicate locations
+						T_chol chol_fact_sigma_latent;
+						chol_fact_sigma_latent.compute(sigma_latent);
+						prior_samples_id = chol_fact_sigma_latent.CholFactMatrix().template triangularView<Eigen::Lower>() * prior_samples_id;
+						if (CholeskyHasPermutation<T_chol>(chol_fact_sigma_latent)) {
+							ApplyPermutationCholeskyFactor<den_mat_t, T_chol>(chol_fact_sigma_latent, prior_samples_id, prior_samples_id, /*transpose=*/true);
+						}
+					}
+					else {
+						prior_samples_id = chol_facts_[cluster_i].CholFactMatrix().template triangularView<Eigen::Lower>() * prior_samples_id;
+						if (CholeskyHasPermutation<T_chol>(chol_facts_[cluster_i])) {
+							ApplyPermutationCholeskyFactor<den_mat_t, T_chol>(chol_facts_[cluster_i], prior_samples_id, prior_samples_id, /*transpose=*/true);
+						}
 					}
 				}
 			}//end sample_prior

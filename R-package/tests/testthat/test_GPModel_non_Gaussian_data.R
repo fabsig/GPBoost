@@ -7240,7 +7240,29 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- GPModel(group_data = group, likelihood = likelihood,
                         matrix_inversion_method = "cholesky")
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9),y=y, aux_pars = c(phi, u))
-    expect_lt(abs(nll-52.12617684),3e-5)
+    expect_lt(abs(nll-54.04809846),3e-5)
+
+    # The censoring probabilities are the beta CDF at t0 and t1. With an essentially zero random effect
+    #   variance, the negative log-likelihood has to agree with the censored beta log-likelihood
+    #   evaluated at a zero random effect, which is calculated here with 'pbeta' and 'dbeta'
+    mu_beta <- 0.4
+    phi_beta <- 8
+    u_beta <- 0.4
+    a_beta <- mu_beta * phi_beta
+    b_beta <- (1 - mu_beta) * phi_beta
+    t0_beta <- u_beta / (1 + 2 * u_beta)
+    t1_beta <- (1 + u_beta) / (1 + 2 * u_beta)
+    y_beta <- c(0, 0, 1, 1, 0.2, 0.5, 0.8, 0.95)
+    t_beta <- (y_beta + u_beta) / (1 + 2 * u_beta)
+    ll_beta <- sum(ifelse(y_beta <= 0, log(pbeta(t0_beta, a_beta, b_beta)),
+                          ifelse(y_beta >= 1, log(1 - pbeta(t1_beta, a_beta, b_beta)),
+                                 dbeta(t_beta, a_beta, b_beta, log = TRUE) - log(1 + 2 * u_beta))))
+    gp_model_beta <- GPModel(group_data = 1:length(y_beta), likelihood = likelihood,
+                             matrix_inversion_method = "cholesky")
+    nll_beta <- gp_model_beta$neg_log_likelihood(cov_pars = c(1e-12), y = y_beta,
+                                                 aux_pars = c(phi_beta, u_beta),
+                                                 fixed_effects = rep(log(mu_beta / (1 - mu_beta)), length(y_beta)))
+    expect_lt(abs(nll_beta + ll_beta), 1e-6)
 
     # Label needs to have the correct support
     yt <- y
@@ -7255,10 +7277,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
                                            y = y, X=X, params = params, matrix_inversion_method = "cholesky")
                     , file='NUL')
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.1945649727)),0.01)
-    expect_lt(sum(abs(gp_model$get_aux_pars()-c(29.748038906, 0.289104109))),0.3)
-    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.0813684525, 0.71460257263))),0.008)
-    nll <- -46.42265403
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.2682095671)),0.01)
+    expect_lt(sum(abs(gp_model$get_aux_pars()-c(22.879799528, 0.168605624))),0.3)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.11240688283, 0.88192071991))),0.008)
+    nll <- -44.08117687
     expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-nll))),relax_tolerance_nll(0.002))
     expect_gt(gp_model$get_num_optim_iter(), 0)
     # Prediction
@@ -7266,37 +7288,31 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
     pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test,
                     predict_var=TRUE, predict_response = TRUE)
-    expected_mu <- c(0.3927253661, 0.3321704886, 0.3861809101, 0.7298256767)
-    expected_var <- c(0.02161799049, 0.02084689485, 0.02168851371, 0.04924037565)
+    expected_mu <- c(0.3900424970, 0.3251828138, 0.3809477867, 0.7292149088)
+    expected_var <- c(0.01993931983, 0.01913466436, 0.02000007302, 0.03469011762)
     expect_lt(sum(abs(pred$mu-expected_mu)),0.004)
     expect_lt(sum(abs(pred$var-expected_var)),0.0008)
 
     ## GPBoost algorithm
     dtrain <- gpb.Dataset(data = X, label = y)
     gp_model <- GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = "cholesky")
-    # Note: with the default convergence tolerance, the covariance parameter estimated here is bimodal: depending on
-    #   the order in which floating point numbers are summed (i.e., on the number of OpenMP threads), the optimizer
-    #   stops either at approximately 0.16 or at approximately 0.33. A tighter tolerance makes the result essentially
-    #   thread-independent, but not bit-identical: deviations of up to about 0.01 have been observed for the
-    #   covariance parameter and the predicted means below, which the tolerances have to accommodate
+    # Note: with the default convergence tolerance, the covariance parameter estimated here depends on the order in
+    #   which floating point numbers are summed, i.e. on the number of OpenMP threads. A tighter tolerance makes the
+    #   result essentially thread-independent, but not bit-identical: deviations of up to about 0.01 have been
+    #   observed for the covariance parameter and the predicted means below, which the tolerances have to accommodate
     gp_model$set_optim_params(params=modifyList(OPTIM_PARAMS_BFGS, list(delta_rel_conv = 1e-10)))
     bst <- gpboost(data = dtrain, gp_model = gp_model,
                    nrounds = 30, learning_rate = 0.1, max_depth = 6,
                    min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)
-    # Which of the two modes is reached depends on the platform, so the estimate is accepted at either of
-    #   them (the reference platform stops at the first one, clang / libc++ at the second one). The
-    #   predicted values are only compared with the expected values on the reference platform: they are
-    #   not available for the second mode, and they react much more sensitively to the summation order
-    #   than the estimate itself
-    expect_lt(min(sum(abs(gp_model$get_cov_pars(std_err = FALSE) - 0.1589997424)),
-                  sum(abs(gp_model$get_cov_pars(std_err = FALSE) - 0.3190))),
-              relax_tolerance(0.05))
+    # The predicted values are only compared with the expected values on the reference platform: they react
+    #   much more sensitively to the summation order than the estimate itself
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE) - 0.0972135292)), relax_tolerance(0.05))
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_test,
                     predict_var = TRUE, pred_latent = FALSE)
     if (USE_STRICT_TOLERANCES) {
-      expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.3889933901, 0.3305930951, 0.1999567510, 0.7131849737))),0.05)
-      expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.019326910879, 0.018747560249, 0.015420479708, 0.044852818320))), 0.05)
+      expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.3781333136, 0.3284435388, 0.1879960730, 0.7152683344))),0.05)
+      expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.015931476492, 0.015692558118, 0.013436139072, 0.033427809073))), 0.05)
     } else {
       # Note: the response is censored at 0 and 1, so a predicted variance can be 0
       expect_true(all(is.finite(pred$response_mean)) &&
@@ -7313,12 +7329,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                               nrounds = 100, early_stopping_rounds = 5,
                                               use_gp_model_for_validation = TRUE, folds = folds, verbose = 0,
                                               deterministic = TRUE) )
-    expect_lte(cvbst$best_score,-0.906197716909493*0.5)
-    expect_gte(cvbst$best_score,-0.906197716909493*2)
+    expect_lte(cvbst$best_score,-0.309881596335*0.5)
+    expect_gte(cvbst$best_score,-0.309881596335*2)
     # Note: which iteration is selected here depends on validation scores that differ in the last digits between
-    #   runs with different numbers of OpenMP threads (2 to 5 have been observed), so only a range is checked
-    expect_lte(cvbst$best_iter, 5)
-    expect_gte(cvbst$best_iter, 2)
+    #   runs with different numbers of OpenMP threads, so only a range is checked
+    expect_lte(cvbst$best_iter, 10)
+    expect_gte(cvbst$best_iter, 4)
 
   }) # end zero_one_censored_transformed_beta regression
 

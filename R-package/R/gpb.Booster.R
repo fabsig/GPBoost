@@ -149,6 +149,7 @@ Booster <- R6::R6Class(
             }
             private$gp_model_prediction_data_loaded_from_file <- TRUE
           }
+          private$num_features_train_loaded_from_file <- save_data[["num_features_train"]]
           private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
           private$gp_model$set_used_in_gpboost_algorithm()
           private$gp_model$.__enclos_env__$private$model_fitted <- FALSE
@@ -209,6 +210,7 @@ Booster <- R6::R6Class(
             }
             private$gp_model_prediction_data_loaded_from_file <- TRUE
           }
+          private$num_features_train_loaded_from_file <- save_data[["num_features_train"]]
           private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
           private$gp_model$set_used_in_gpboost_algorithm()
           private$gp_model$.__enclos_env__$private$model_fitted <- FALSE
@@ -644,7 +646,9 @@ Booster <- R6::R6Class(
         save_data[["has_gp_model"]] <- 1L
         save_data[["booster_str"]] <- bst_model_str
         save_data[["gp_model_str"]] <- private$gp_model$model_to_list(include_response_data = FALSE)
-        
+        # The number of training features is needed for fidelity-specific means, also when the raw data is not saved
+        save_data[["num_features_train"]] <- as.integer(private$train_set$dim()[2])
+
         if (save_raw_data) {
           
           save_data[["raw_data"]] <- list()
@@ -827,7 +831,16 @@ Booster <- R6::R6Class(
         if (!(is.matrix(data) || methods::is(data, "dgCMatrix"))) {
           stop("Independent fidelity-specific GPBoost means require prediction data to be a numeric matrix")
         }
-        num_features_train <- private$train_set$dim()[2]
+        if (!is.null(private$train_set)) {
+          num_features_train <- private$train_set$dim()[2]
+        } else {
+          num_features_train <- private$num_features_train_loaded_from_file
+        }
+        if (is.null(num_features_train)) {
+          stop("predict: the number of training features of the fidelity-specific GPBoost mean is not available. ",
+               "Set ", sQuote("save_raw_data = TRUE"), " when you save the model")
+        }
+        num_features_train <- as.integer(num_features_train)
         if (ncol(data) == num_features_train - 1L) {
           fidelity_pred <- if (!is.null(gp_coords_pred)) {
             as.matrix(gp_coords_pred)[, ncol(as.matrix(gp_coords_pred))]
@@ -1150,6 +1163,7 @@ Booster <- R6::R6Class(
   private = list(
     handle = NULL,
     train_set = NULL,
+    num_features_train_loaded_from_file = NULL,
     name_train_set = "training",
     gp_model = NULL,
     has_gp_model = FALSE,

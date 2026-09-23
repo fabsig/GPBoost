@@ -4178,4 +4178,62 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Prior samples of the latent process do not contain the nugget effect ", {
+
+    # 'predict_response = FALSE' has to draw from the covariance of the latent Gaussian process,
+    # 'predict_response = TRUE' from the covariance of the observed process, which adds the nugget effect
+    nugget_pr <- 0.8
+    sigma2_pr <- 1.2
+    cov_pars_pr <- c(nugget_pr, sigma2_pr, rho)
+    num_samples_pr <- 30000
+    for (gp_approx_pr in c("none", "vecchia", "full_scale_vecchia")) {
+      capture.output( gp_model_pr <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                             gp_approx = gp_approx_pr, num_neighbors = n - 1,
+                                             num_ind_points = 20, ind_points_selection = "random",
+                                             vecchia_ordering = "none"), file = 'NUL')
+      latent_pr <- predict(gp_model_pr, gp_coords_pred = coords[1:3, ], cov_pars = cov_pars_pr,
+                           sample_prior = TRUE, num_prior_samples = num_samples_pr,
+                           predict_response = FALSE)$prior_samples
+      response_pr <- predict(gp_model_pr, gp_coords_pred = coords[1:3, ], cov_pars = cov_pars_pr,
+                             sample_prior = TRUE, num_prior_samples = num_samples_pr,
+                             predict_response = TRUE)$prior_samples
+      expect_equal(dim(latent_pr), c(n, num_samples_pr))
+      expect_lt(abs(mean(latent_pr^2) / sigma2_pr - 1), TOLERANCE_ITERATIVE)
+      expect_lt(abs(mean(response_pr^2) / (sigma2_pr + nugget_pr) - 1), TOLERANCE_ITERATIVE)
+    }
+
+    # At duplicate locations the latent process takes the same value, the observed process does not
+    coords_pr <- rbind(coords[1:10, ], coords[1:10, ])
+    for (gp_approx_pr in c("none", "vecchia")) {
+      capture.output( gp_model_pr <- GPModel(gp_coords = coords_pr, cov_function = "exponential",
+                                             gp_approx = gp_approx_pr,
+                                             num_neighbors = nrow(coords_pr) - 1,
+                                             vecchia_ordering = "none"), file = 'NUL')
+      latent_pr <- predict(gp_model_pr, gp_coords_pred = coords[1:3, ], cov_pars = cov_pars_pr,
+                           sample_prior = TRUE, num_prior_samples = 1000,
+                           predict_response = FALSE)$prior_samples
+      expect_lt(max(abs(latent_pr[1:10, ] - latent_pr[11:20, ])), 1e-3)
+    }
+  })
+
+  test_that("Full-scale Vecchia approximation with cover tree inducing points ", {
+
+    # The cover tree determines the number of inducing points itself, so the result must not depend on
+    # 'num_ind_points'. With all Vecchia neighbors the approximation is exact and can be compared with
+    # the model without an approximation
+    y_ct <- eps + xi
+    cov_pars_ct <- c(0.05, sigma2_1, rho)
+    gp_model_exact_ct <- GPModel(gp_coords = coords, cov_function = "exponential")
+    nll_exact_ct <- gp_model_exact_ct$neg_log_likelihood(cov_pars = cov_pars_ct, y = y_ct)
+    for (num_ind_points_ct in c(10, 20, 50)) {
+      capture.output( gp_model_ct <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                             gp_approx = "full_scale_vecchia", num_neighbors = n - 1,
+                                             vecchia_ordering = "none",
+                                             num_ind_points = num_ind_points_ct,
+                                             ind_points_selection = "cover_tree"), file = 'NUL')
+      nll_ct <- gp_model_ct$neg_log_likelihood(cov_pars = cov_pars_ct, y = y_ct)
+      expect_lt(abs(nll_ct - nll_exact_ct), TOLERANCE_MEDIUM)
+    }
+  })
+
 }

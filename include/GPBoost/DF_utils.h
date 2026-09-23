@@ -134,11 +134,13 @@ namespace GPBoost {
 				double aa1 = m * (bb - m) * xx / ((qam + m2) * (aa + m2));
 				d = 1.0 + aa1 * d; if (std::abs(d) < FPMIN) d = FPMIN;
 				c = 1.0 + aa1 / c; if (std::abs(c) < FPMIN) c = FPMIN;
-				h *= d * (1.0 / c);
+				d = 1.0 / d;
+				h *= d * c;
 				double aa2 = -(aa + m) * (qab + m) * xx / ((aa + m2) * (qap + m2));
 				d = 1.0 + aa2 * d; if (std::abs(d) < FPMIN) d = FPMIN;
 				c = 1.0 + aa2 / c; if (std::abs(c) < FPMIN) c = FPMIN;
-				double del = d * (1.0 / c);
+				d = 1.0 / d;
+				double del = d * c;
 				h *= del;
 				if (std::abs(del - 1.0) < EPS) break;
 			}
