@@ -1,0 +1,335 @@
+name: Sanitizers
+
+# The checks of 'helpers/check_R_package_rhub.R' in the R-hub containers. They are far too slow for
+# every commit and they are therefore only started by hand, from the "Actions" tab or with
+# 'gh workflow run sanitizers.yml -f valgrind=16'.
+#
+# A job on a GitHub-hosted runner is killed after 6 hours. The instrumented code is roughly 2x
+# slower than a normal build, and under valgrind 20-50x, with all threads serialized onto one core.
+# The whole test suite therefore does not fit into one job under valgrind, and it is tight under
+# ASan.
+#
+# Inside a single check there is nothing left to parallelize: valgrind emulates one CPU and runs all
+# threads of the process on it, and testthat works through the test files one after the other. The
+# run time is shortened by distributing the test FILES over several jobs instead, which run on
+# separate runners at the same time. Each of the three containers is selected by the number of jobs
+# its test files are spread over, or by 'off'; 'test_filter' narrows the suite down to the files of
+# interest before it is distributed, and 'all_tests' switches the suite off completely.
+#
+# On the number of shards: the CI workflow already needs four of them for the uninstrumented suite
+# on the same runners, so four is the smallest number that gives an ASan run a comfortable margin,
+# and it is the default for the two ASan containers. valgrind is so much slower that it needs 12 or
+# more, which is why the number is chosen per container: one dispatch can run the ASan checks over
+# four jobs and valgrind over sixteen. Every shard installs the dependencies and compiles the
+# package again, which is what limits the gain from going much higher. A run may not ask for more
+# than 20 jobs at once, which is the limit of the plan.
+#
+# Note that every test file of the package is gated on 'GPBOOST_ALL_TESTS'. With 'all_tests' off,
+# not a single test runs and only the examples of the help pages exercise the library, which is what
+# CRAN sees; this is useful as a quick first run, not as a check of the library.
+on:
+  workflow_dispatch:
+    inputs:
+      clang_asan:
+        description: "clang-asan (ASan and UBSan): number of jobs, or off"
+        type: choice
+        default: "4"
+        options: ["off", "1", "2", "4", "8", "12", "16"]
+      gcc_asan:
+        description: "gcc-asan (ASan, UBSan and bounds-strict): number of jobs, or off"
+        type: choice
+        default: "4"
+        options: ["off", "1", "2", "4", "8", "12", "16"]
+      valgrind:
+        description: "valgrind (memcheck, very slow): number of jobs, or off"
+        type: choice
+        default: "off"
+        options: ["off", "1", "2", "4", "8", "12", "16"]
+      rchk:
+        description: "rchk container (use of the R C API)"
+        type: boolean
+        default: false
+      clang_warnings:
+        description: "compiler warnings with clang"
+        type: boolean
+        default: false
+      all_tests:
+        description: "run the test suite (GPBOOST_ALL_TESTS), not only the examples"
+        type: boolean
+        default: true
+      test_filter:
+        description: "regular expression for the test files to run, e.g. '^GPModel_.*' (empty: all)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  # 'R CMD check' writes everything into a single '<package>.Rcheck' folder, and two runs of this
+  # workflow would compete for the runners for hours; they are therefore queued rather than started
+  # next to each other
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  select:
+    name: Select the containers
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      any: ${{ steps.select.outputs.any }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      # the three containers below are all driven by the 'r-check' script, only their arguments
+      # differ, so they are run by one matrix job that is assembled here, with one entry per
+      # container and shard
+      - name: Build the matrix from the selected checks
+        id: select
+        env:
+          CLANG_ASAN: ${{ inputs.clang_asan }}
+          GCC_ASAN: ${{ inputs.gcc_asan }}
+          VALGRIND: ${{ inputs.valgrind }}
+          RCHK: ${{ inputs.rchk }}
+          CLANG_WARNINGS: ${{ inputs.clang_warnings }}
+          ALL_TESTS: ${{ inputs.all_tests }}
+          TEST_FILTER: ${{ inputs.test_filter }}
+        run: |
+          python3 - >> "${GITHUB_OUTPUT}" <<'PY'
+          import json, os, re, sys
+
+          test_dir = "R-package/tests/testthat"
+          all_tests = os.environ["ALL_TESTS"] == "true"
+          user_filter = os.environ["TEST_FILTER"]
+
+          # the filter of testthat is matched against the file name without the leading 'test_' and
+          # without the extension
+          names = sorted(
+              re.sub(r"[.][rR]$", "", re.sub(r"^test[-_]", "", f))
+              for f in os.listdir(test_dir)
+              if re.match(r"^test.*[.][rR]$", f)
+          )
+          if user_filter:
+              names = [n for n in names if re.search(user_filter, n)]
+              if not names:
+                  raise SystemExit(f"no test file matches '{user_filter}'")
+
+          def filter_of(shard, num_shards):
+              if num_shards == 1:
+                  return user_filter
+              # the files are dealt out one by one over the shards, which spreads the long ones
+              # without knowing how long they take, as the CI workflow does
+              chosen = names[shard - 1::num_shards]
+              return "^(" + "|".join(n.replace(".", "[.]") for n in chosen) + ")$"
+
+          # the number of shards is given per container: valgrind needs many more of them than the
+          # ASan containers, and one dispatch should be able to run both
+          containers = [
+              ("clang-asan", "ghcr.io/r-hub/containers/clang-asan", os.environ["CLANG_ASAN"]),
+              ("gcc-asan", "ghcr.io/r-hub/containers/gcc-asan", os.environ["GCC_ASAN"]),
+              ("valgrind", "ghcr.io/r-hub/containers/valgrind", os.environ["VALGRIND"]),
+          ]
+
+          entries = []
+          for name, image, shards in containers:
+              if shards == "off":
+                  continue
+              # without 'GPBOOST_ALL_TESTS' the test files skip themselves and only the examples of
+              # the help pages are left, and those are run by every shard in full: sharding would
+              # then multiply the work instead of dividing it
+              num_shards = int(shards) if all_tests else 1
+              for shard in range(1, num_shards + 1):
+                  # the valgrind container defines 'CHECK_ARGS' itself, and replacing it without
+                  # '--use-valgrind' would run a plain check in which nothing is examined at all,
+                  # while still looking successful. Its default is therefore kept as it is for a
+                  # single job, and reproduced literally when a shard has to be appended to it
+                  if name == "valgrind":
+                      args = "" if num_shards == 1 else "--use-valgrind --extra-arch --no-stop-on-test-error"
+                  else:
+                      args = "--no-manual --no-build-vignettes"
+                  # the examples are not split up, so only the first shard runs them
+                  if num_shards > 1 and shard > 1:
+                      args += " --no-examples"
+                  entries.append({
+                      "name": name if num_shards == 1 else f"{name} (shard {shard} of {num_shards})",
+                      "id": name if num_shards == 1 else f"{name}-{shard}-of-{num_shards}",
+                      "image": image,
+                      "check_args": args,
+                      "test_filter": filter_of(shard, num_shards) if all_tests else "",
+                      "timeout": 350,
+                  })
+
+          # beyond the concurrency limit of the plan the remaining jobs wait for a free runner, and
+          # a check that is spread over more shards than can run at once is slower than a narrower
+          # one, not faster. rchk and the warning check run next to the matrix and take a runner
+          # each, so they are counted here as well
+          others = sum(os.environ[v] == "true" for v in ("RCHK", "CLANG_WARNINGS"))
+          if len(entries) + others > 20:
+              raise SystemExit(
+                  f"{len(entries) + others} jobs were requested, at most 20 can run at once"
+              )
+
+          matrix = json.dumps({"include": entries})
+          print(f"matrix={matrix}")
+          print("any=" + ("true" if entries else "false"))
+          print(json.dumps({"include": entries}, indent=2), file=sys.stderr)
+          PY
+
+  r-check:
+    name: ${{ matrix.name }}
+    needs: select
+    if: needs.select.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ matrix.timeout }}
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+          use-public-rspm: true
+
+      # the images are several GB and the check unpacks and compiles the whole package next to them
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h /
+
+      - name: Build the CRAN source package
+        run: |
+          sh build-cran-package.sh
+          ls -l gpboost_*.tar.gz
+
+      # 'r-check' installs the dependencies of the package (including 'Suggests', so that the tests
+      # are really run), runs 'R CMD check', and exits with status 1 if it finds a report of a
+      # sanitizer or of valgrind in the output, so the exit status can be used directly.
+      # The containers set 'OMP_THREAD_LIMIT=2', as CRAN does; this is deliberately not raised, it
+      # makes the reports more reproducible
+      - name: Run the check in the ${{ matrix.name }} container
+        env:
+          NAME: ${{ matrix.id }}
+          IMAGE: ${{ matrix.image }}
+          CHECK_ARGS: ${{ matrix.check_args }}
+          ALL_TESTS: ${{ inputs.all_tests }}
+          TEST_FILTER: ${{ matrix.test_filter }}
+        run: |
+          # a 'CHECK_ARGS' for the valgrind container that has lost '--use-valgrind' would run a
+          # plain check in which nothing is examined, and 'r-check' would then find no valgrind
+          # output and report success
+          case "${NAME}" in
+            valgrind*)
+              if [ -n "${CHECK_ARGS}" ] && ! echo "${CHECK_ARGS}" | grep -q -- "--use-valgrind"; then
+                echo "::error::CHECK_ARGS for the valgrind container does not contain --use-valgrind"
+                exit 1
+              fi
+              ;;
+            *)
+              opts=(-e ASAN_OPTIONS=detect_leaks=0 -e UBSAN_OPTIONS=print_stacktrace=1)
+              ;;
+          esac
+          opts+=(--rm -v "${PWD}:/check" -e MAKEFLAGS=-j4 -e GPBOOST_STRICT_TOLERANCES=false)
+          if [ "${ALL_TESTS}" = "true" ]; then
+            opts+=(-e GPBOOST_ALL_TESTS=GPBOOST_ALL_TESTS)
+          fi
+          if [ -n "${TEST_FILTER}" ]; then
+            echo "test files of this shard: ${TEST_FILTER}"
+            opts+=(-e GPBOOST_TEST_FILTER="${TEST_FILTER}")
+          fi
+          if [ -n "${CHECK_ARGS}" ]; then
+            opts+=(-e CHECK_ARGS="${CHECK_ARGS}")
+          fi
+          docker run "${opts[@]}" "${IMAGE}" r-check
+
+      # "Status: OK" only means that nothing was found if the tests really ran, which is what the
+      # 'SKIP' count of the testthat summary shows
+      - name: Show how many tests ran
+        if: always()
+        run: |
+          grep -hE "^\[ FAIL" gpboost.Rcheck/tests/*.Rout gpboost.Rcheck/tests/*.Rout.fail 2>/dev/null \
+            || echo "no testthat summary in the check output"
+
+      - name: Upload the check directory
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gpboost-Rcheck-${{ matrix.id }}
+          path: gpboost.Rcheck
+          retention-days: 14
+
+  rchk:
+    name: rchk
+    if: inputs.rchk
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+          use-public-rspm: true
+
+      - name: Build the CRAN source package
+        run: |
+          sh build-cran-package.sh
+
+      # rchk does not run the tests, it compiles the package and analyzes the bitcode. 'r-check'
+      # does not turn its findings into a non-zero exit status, so the output is searched here.
+      # A run without findings prints no '[UP]' or '[PB]' line at all; the three "too many states"
+      # errors that it does print are in functions of R itself
+      - name: Run rchk
+        run: |
+          set -o pipefail
+          docker run --rm -v "${PWD}:/check" -e MAKEFLAGS=-j4 \
+            ghcr.io/r-hub/containers/rchk r-check 2>&1 | tee rchk.log
+          if grep -qE "^\[(UP|PB|PC)\]" rchk.log; then
+            echo "::error::rchk reported findings"
+            grep -E "^\[(UP|PB|PC)\]" rchk.log
+            exit 1
+          fi
+          if ! grep -q "rchk bcheck" rchk.log; then
+            echo "::error::rchk did not run, see the log"
+            exit 1
+          fi
+
+      - name: Upload the rchk log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rchk-log
+          path: rchk.log
+          retention-days: 14
+
+  clang-warnings:
+    name: Compiler warnings (clang)
+    if: inputs.clang_warnings
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      # the rchk container is used here simply because it contains a clang; 'libomp-14-dev' supplies
+      # the 'omp.h' of clang's OpenMP runtime, which the image does not have, and '-w /check' is
+      # needed because the script changes into the directory of its own parent
+      - name: Compile with clang and the warning options of the helper script
+        run: |
+          docker run --rm -v "${PWD}:/check" -w /check ghcr.io/r-hub/containers/rchk \
+            sh -c "apt-get update -qq && apt-get install -y -qq libomp-14-dev > /dev/null 2>&1 && CXX=clang++ sh helpers/check_compiler_warnings.sh"
