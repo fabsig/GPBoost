@@ -1,8 +1,8 @@
-name: Sanitizers
+name: Memory and code checks
 
 # The checks of 'helpers/check_R_package_rhub.R' in the R-hub containers. They are far too slow for
 # every commit and are therefore started by hand, from the "Actions" tab or with
-# 'gh workflow run sanitizers.yml -f valgrind=16', and once a month on their own.
+# 'gh workflow run memory-and-code-checks.yml -f valgrind=16', and once a month on their own.
 #
 # The monthly runs are spread over the Sundays of the month so that they never compete for the
 # runners: ASan, UBSan and rchk on the first Sunday, valgrind on the third. The cron below fires on
@@ -45,13 +45,13 @@ on:
     - cron: "0 0 * * 0"
   workflow_dispatch:
     inputs:
-      clang_asan:
-        description: "clang-asan (ASan and UBSan): number of jobs, or off"
+      clang_asan_ubsan:
+        description: "ASan and UBSan with clang ('clang-asan' image): number of jobs, or off"
         type: choice
         default: "4"
         options: ["off", "1", "2", "4", "8", "12", "16"]
-      gcc_asan:
-        description: "gcc-asan (ASan, UBSan and bounds-strict): number of jobs, or off"
+      gcc_asan_ubsan:
+        description: "ASan, UBSan and bounds-strict with gcc ('gcc-asan' image): number of jobs, or off"
         type: choice
         default: "4"
         options: ["off", "1", "2", "4", "8", "12", "16"]
@@ -114,8 +114,8 @@ jobs:
         id: select
         env:
           EVENT: ${{ github.event_name }}
-          CLANG_ASAN: ${{ inputs.clang_asan }}
-          GCC_ASAN: ${{ inputs.gcc_asan }}
+          CLANG_ASAN_UBSAN: ${{ inputs.clang_asan_ubsan }}
+          GCC_ASAN_UBSAN: ${{ inputs.gcc_asan_ubsan }}
           VALGRIND: ${{ inputs.valgrind }}
           RCHK: ${{ inputs.rchk }}
           CLANG_WARNINGS: ${{ inputs.clang_warnings }}
@@ -133,13 +133,13 @@ jobs:
               # first one of a month falls on a day between 1 and 7, the third one between 15 and 21
               day = datetime.datetime.now(datetime.timezone.utc).day
               if 1 <= day <= 7:
-                  settings = {"CLANG_ASAN": "4", "GCC_ASAN": "4", "VALGRIND": "off",
+                  settings = {"CLANG_ASAN_UBSAN": "4", "GCC_ASAN_UBSAN": "4", "VALGRIND": "off",
                               "RCHK": "true", "CLANG_WARNINGS": "false"}
               elif 15 <= day <= 21:
-                  settings = {"CLANG_ASAN": "off", "GCC_ASAN": "off", "VALGRIND": "16",
+                  settings = {"CLANG_ASAN_UBSAN": "off", "GCC_ASAN_UBSAN": "off", "VALGRIND": "16",
                               "RCHK": "false", "CLANG_WARNINGS": "false"}
               else:
-                  settings = {"CLANG_ASAN": "off", "GCC_ASAN": "off", "VALGRIND": "off",
+                  settings = {"CLANG_ASAN_UBSAN": "off", "GCC_ASAN_UBSAN": "off", "VALGRIND": "off",
                               "RCHK": "false", "CLANG_WARNINGS": "false"}
               os.environ.update(settings, ALL_TESTS="true", TEST_FILTER="")
               print(f"scheduled run on day {day} of the month: {settings}", file=sys.stderr)
@@ -170,8 +170,8 @@ jobs:
           # the number of shards is given per container: valgrind needs many more of them than the
           # ASan containers, and one dispatch should be able to run both
           containers = [
-              ("clang-asan", "ghcr.io/r-hub/containers/clang-asan", os.environ["CLANG_ASAN"]),
-              ("gcc-asan", "ghcr.io/r-hub/containers/gcc-asan", os.environ["GCC_ASAN"]),
+              ("clang-asan-ubsan", "ghcr.io/r-hub/containers/clang-asan", os.environ["CLANG_ASAN_UBSAN"]),
+              ("gcc-asan-ubsan", "ghcr.io/r-hub/containers/gcc-asan", os.environ["GCC_ASAN_UBSAN"]),
               ("valgrind", "ghcr.io/r-hub/containers/valgrind", os.environ["VALGRIND"]),
           ]
 
@@ -295,13 +295,87 @@ jobs:
           fi
           docker run "${opts[@]}" "${IMAGE}" r-check
 
-      # "Status: OK" only means that nothing was found if the tests really ran, which is what the
-      # 'SKIP' count of the testthat summary shows
-      - name: Show how many tests ran
+      # The sanitizers write nothing when they find nothing, so "Status: OK" only means that the
+      # code is clean if the tests really ran. A suite that skipped itself reports
+      # '[ FAIL 0 | WARN 0 | SKIP 20 | PASS 1 ]' and would otherwise pass as a silent no-op, which
+      # is what is turned into a failure here
+      - name: Check that the tests really ran
         if: always()
+        env:
+          ALL_TESTS: ${{ matrix.all_tests }}
         run: |
-          grep -hE "^\[ FAIL" gpboost.Rcheck/tests/*.Rout gpboost.Rcheck/tests/*.Rout.fail 2>/dev/null \
-            || echo "no testthat summary in the check output"
+          summary=$(grep -hE "^\[ FAIL" gpboost.Rcheck/tests/*.Rout gpboost.Rcheck/tests/*.Rout.fail 2>/dev/null || true)
+          if [ -z "${summary}" ]; then
+            echo "no testthat summary in the check output"
+            if [ "${ALL_TESTS}" = "true" ]; then
+              echo "::error::the test suite produced no summary, so nothing was examined"
+              exit 1
+            fi
+            exit 0
+          fi
+          echo "${summary}"
+          if [ "${ALL_TESTS}" = "true" ]; then
+            passed=$(echo "${summary}" | sed -n "s/.*PASS \([0-9]*\).*/\1/p" | head -1)
+            if [ "${passed:-0}" -le 1 ]; then
+              echo "::error::only ${passed:-0} expectations ran, the suite skipped itself"
+              exit 1
+            fi
+          fi
+
+      # A failure of this job can mean quite different things: a report of one of the sanitizers, a
+      # test whose expected values do not hold for this build, or a check step that did not finish.
+      # They all look the same in the list of jobs, so the findings are counted by kind here and
+      # written to the summary of the run. This only describes the result, it does not change it:
+      # the verdict stays with 'r-check' and with 'R CMD check'.
+      # The leak records of valgrind are counted separately on purpose. R does not free all of its
+      # memory, the default 'VALGRIND_OPTS' of the container contain '--leak-check=full', and the
+      # leak reports match the same '==<pid>==   at' pattern that 'r-check' fails on, so a run can
+      # be red without a single access to uninitialized or foreign memory
+      - name: Summarize what was reported
+        if: always()
+        env:
+          NAME: ${{ matrix.name }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re
+
+          root = pathlib.Path("gpboost.Rcheck")
+          kinds = [
+              ("AddressSanitizer", r"ERROR: AddressSanitizer|AddressSanitizer: "),
+              ("UBSan runtime error", r"runtime error: "),
+              ("valgrind, uninitialized or invalid memory",
+               r"uninitialised value|Invalid (read|write|free)|Mismatched free"),
+              ("valgrind, leak record", r"(definitely|indirectly|possibly) lost"),
+              ("failed test expectation", r"^Failure \(|^Error \("),
+          ]
+          counts = {name: 0 for name, _ in kinds}
+          if root.is_dir():
+              for path in root.rglob("*"):
+                  if not path.is_file() or path.suffix not in (".Rout", ".fail", ".log", ".out"):
+                      continue
+                  text = path.read_text(errors="replace")
+                  for name, pattern in kinds:
+                      counts[name] += len(re.findall(pattern, text, re.MULTILINE))
+
+          status = ""
+          check_log = root / "00check.log"
+          if check_log.is_file():
+              found = re.findall(r"^Status: .*$", check_log.read_text(errors="replace"), re.MULTILINE)
+              status = found[-1] if found else ""
+
+          lines = [f"### {os.environ['NAME']}", "", f"`{status or 'no Status line in 00check.log'}`", ""]
+          if any(counts.values()):
+              lines += ["| reported | count |", "| --- | --- |"]
+              lines += [f"| {name} | {n} |" for name, n in counts.items() if n]
+          else:
+              lines.append("Nothing was reported by the sanitizers, by valgrind or by the tests.")
+          lines += ["", "The full `gpboost.Rcheck` folder is attached to this run as an artifact."]
+
+          report = "\n".join(lines)
+          print(report)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as handle:
+              handle.write(report + "\n\n")
+          PY
 
       - name: Upload the check directory
         if: always()
