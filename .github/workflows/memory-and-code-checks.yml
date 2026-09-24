@@ -83,10 +83,12 @@ permissions:
   contents: read
 
 concurrency:
-  # 'R CMD check' writes everything into a single '<package>.Rcheck' folder, and two runs of this
-  # workflow would compete for the runners for hours; they are therefore queued rather than started
-  # next to each other
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Every run gets its own group, so that a run is never held back by another one. A shared group
+  # queues a dispatch behind a run that is still going, and since a valgrind shard occupies a runner
+  # for hours, a quick ASan run started in the meantime would wait for the whole of it.
+  # The jobs of a run do compete for the runners, but that is already bounded: the 'select' job
+  # refuses a run that asks for more jobs than can execute at once
+  group: ${{ github.workflow }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
