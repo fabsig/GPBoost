@@ -1219,14 +1219,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
                                         vecchia_ordering = "none", matrix_inversion_method = "cholesky"), file='NUL')
-    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll[-1],y=y,aux_pars=cov_pars_ll[1])
+    capture.output( nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll[-1],y=y,aux_pars=cov_pars_ll[1]), file='NUL')
     expect_lt(abs(nll-exp_nll), TOLERANCE_STRICT)
     # "vecchia_latent" with iterative methods (pivoted Cholesky preconditioner)
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
                                         vecchia_ordering = "none", matrix_inversion_method = "iterative"), file='NUL')
     gp_model$set_optim_params(params=list(num_rand_vec_trace = 1000, init_coef_aux_pars_from_iid_model = FALSE))
-    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll[-1],y=y,aux_pars=cov_pars_ll[1])
+    capture.output( nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll[-1],y=y,aux_pars=cov_pars_ll[1]), file='NUL')
     expect_lt(abs(nll-exp_nll), 0.25)
     # "vecchia_latent" with iterative methods (FITC preconditioner)
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
@@ -1256,14 +1256,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
                                         vecchia_ordering = "none", matrix_inversion_method = "cholesky"), file='NUL')
-    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll[-1],y=y,aux_pars=cov_pars_ll[1])
+    capture.output( nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll[-1],y=y,aux_pars=cov_pars_ll[1]), file='NUL')
     expect_lt(abs(nll-exp_nll_less_nn_lat), TOLERANCE_STRICT)
     # "vecchia_latent" with iterative methods (pivoted Cholesky)
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
                                         gp_approx = "vecchia_latent", num_neighbors = n-1,
                                         vecchia_ordering = "none", matrix_inversion_method = "iterative"), file='NUL')
     gp_model$set_optim_params(params=list(num_rand_vec_trace = 1000, init_coef_aux_pars_from_iid_model = FALSE))
-    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll[-1],y=y,aux_pars=cov_pars_ll[1])
+    capture.output( nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_ll[-1],y=y,aux_pars=cov_pars_ll[1]), file='NUL')
     expect_lt(abs(nll-exp_nll_less_nn_lat), 0.25)
     
     # "vecchia_latent" with iterative methods (FITC preconditioner)
@@ -1373,12 +1373,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         vecchia_ordering = "none", matrix_inversion_method = "cholesky"), file='NUL')
     gp_model$set_optim_params(params=list(init_aux_pars = cov_pars[1], init_coef_aux_pars_from_iid_model = FALSE))
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=n+2)
-    pred <- predict(gp_model, y = y, gp_coords_pred = coord_test,
-                    cov_pars = cov_pars[-1], predict_var = TRUE, predict_response = TRUE)
+    capture.output( pred <- predict(gp_model, y = y, gp_coords_pred = coord_test,
+                                    cov_pars = cov_pars[-1], predict_var = TRUE, predict_response = TRUE), file='NUL')
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])), TOLERANCE_STRICT)
-    pred <- predict(gp_model, y = y, gp_coords_pred = coord_test,
-                    cov_pars = cov_pars[-1], predict_var = TRUE, predict_response = FALSE)
+    capture.output( pred <- predict(gp_model, y = y, gp_coords_pred = coord_test,
+                                    cov_pars = cov_pars[-1], predict_var = TRUE, predict_response = FALSE), file='NUL')
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-exp_cov_no_nugget[c(1,5,9)])), TOLERANCE_STRICT)
     # vecchia_latent and iterative methods (pivoted Cholesky)
@@ -1387,12 +1387,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         vecchia_ordering = "none", matrix_inversion_method = "iterative"), file='NUL')
     gp_model$set_optim_params(params=list(init_aux_pars = cov_pars[1], init_coef_aux_pars_from_iid_model = FALSE))
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all", num_neighbors_pred=n+2)
-    pred <- predict(gp_model, y = y, gp_coords_pred = coord_test,
-                    cov_pars = cov_pars[-1], predict_var = TRUE, predict_response = TRUE)
+    capture.output( pred <- predict(gp_model, y = y, gp_coords_pred = coord_test,
+                                    cov_pars = cov_pars[-1], predict_var = TRUE, predict_response = TRUE), file='NUL')
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])), TOLERANCE_LOOSE)
-    pred <- predict(gp_model, y = y, gp_coords_pred = coord_test,
-                    cov_pars = cov_pars[-1], predict_var = TRUE, predict_response = FALSE)
+    capture.output( pred <- predict(gp_model, y = y, gp_coords_pred = coord_test,
+                                    cov_pars = cov_pars[-1], predict_var = TRUE, predict_response = FALSE), file='NUL')
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(pred$var)-exp_cov_no_nugget[c(1,5,9)])), TOLERANCE_LOOSE)
     
@@ -1407,8 +1407,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                     cov_pars = cov_pars[-1], predict_var = TRUE, predict_response = TRUE), file='NUL')
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(pred$var)-expected_cov[c(1,5,9)])), TOLERANCE_LOOSE)
-    pred <- predict(gp_model, y = y, gp_coords_pred = coord_test,
-                    cov_pars = cov_pars[-1], predict_var = TRUE, predict_response = FALSE)
+    capture.output( pred <- predict(gp_model, y = y, gp_coords_pred = coord_test,
+                                    cov_pars = cov_pars[-1], predict_var = TRUE, predict_response = FALSE), file='NUL')
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(pred$var)-exp_cov_no_nugget[c(1,5,9)])), TOLERANCE_LOOSE)
     
@@ -2602,10 +2602,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         }
         pred <- predict(gp_model, gp_coords_pred = coord_test,
                         X_pred = X_test, predict_var = TRUE)
-        expected_mu <- c(1.250332, 4.049631, 3.160899) 
+        expected_mu <- c(1.250332, 4.049631, 3.160899)
         expected_var <- c(0.5981874, 0.3632729, 0.3848723)
         expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE)
-        expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE)
+        # The predictive variances of the FSA depend more strongly on the compiler than the predictive
+        # means, as for the tapering ranges above. The deviation measured with gcc is 0.0113
+        expect_lt(sum(abs(as.vector(pred$var)-expected_var)),2*TOLERANCE)
       }# end (i == "cholesky")
     }# end loop over i (matrix_inversion_method)
   })# end FSA
@@ -4083,8 +4085,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
     expect_lt(max(abs(training_data_random_effects[, 1] - expected_mean)), TOLERANCE_MEDIUM)
     expect_lt(max(abs(training_data_random_effects[, 2] - expected_var)), TOLERANCE_MEDIUM)
-    prior_samples <- predict(gp_model, gp_coords_pred = coords[1:3, ], sample_prior = TRUE,
-                             num_prior_samples = 2)$prior_samples
+    capture.output( prior_samples <- predict(gp_model, gp_coords_pred = coords[1:3, ], sample_prior = TRUE,
+                                             num_prior_samples = 2)$prior_samples, file = 'NUL')
     expect_equal(dim(prior_samples), c(n, 2))
     expect_true(all(is.finite(prior_samples)))
 
@@ -4155,17 +4157,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                 params = list(init_coef_aux_pars_from_iid_model = FALSE)),
                       file = 'NUL')
       cov_pars_se <- as.numeric(gp_model_se$get_cov_pars())
-      pred_se <- predict(gp_model_se, gp_coords_pred = coords[1:5, ], predict_var = TRUE,
-                         predict_response = FALSE)
+      capture.output( pred_se <- predict(gp_model_se, gp_coords_pred = coords[1:5, ], predict_var = TRUE,
+                                         predict_response = FALSE), file = 'NUL')
       num_samples_se <- 2000
-      prior_before_se <- predict(gp_model_se, gp_coords_pred = coords[1:3, ], sample_prior = TRUE,
-                                 num_prior_samples = num_samples_se)$prior_samples
+      capture.output( prior_before_se <- predict(gp_model_se, gp_coords_pred = coords[1:3, ], sample_prior = TRUE,
+                                                 num_prior_samples = num_samples_se)$prior_samples, file = 'NUL')
       expect_equal(dim(prior_before_se), c(n, num_samples_se))
       invisible(gp_model_se$get_cov_pars(std_err = TRUE))
-      prior_after_se <- predict(gp_model_se, gp_coords_pred = coords[1:3, ], sample_prior = TRUE,
-                                num_prior_samples = num_samples_se)$prior_samples
-      pred_after_se <- predict(gp_model_se, gp_coords_pred = coords[1:5, ], predict_var = TRUE,
-                               predict_response = FALSE)
+      capture.output( prior_after_se <- predict(gp_model_se, gp_coords_pred = coords[1:3, ], sample_prior = TRUE,
+                                                num_prior_samples = num_samples_se)$prior_samples, file = 'NUL')
+      capture.output( pred_after_se <- predict(gp_model_se, gp_coords_pred = coords[1:5, ], predict_var = TRUE,
+                                               predict_response = FALSE), file = 'NUL')
       # The prior samples have the marginal variance of the Gaussian process
       expect_lt(abs(mean(prior_before_se^2) / cov_pars_se[2] - 1), TOLERANCE_ITERATIVE)
       expect_lt(abs(mean(prior_after_se^2) / cov_pars_se[2] - 1), TOLERANCE_ITERATIVE)
@@ -4188,12 +4190,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              gp_approx = gp_approx_pr, num_neighbors = n - 1,
                                              num_ind_points = 20, ind_points_selection = "random",
                                              vecchia_ordering = "none"), file = 'NUL')
-      latent_pr <- predict(gp_model_pr, gp_coords_pred = coords[1:3, ], cov_pars = cov_pars_pr,
-                           sample_prior = TRUE, num_prior_samples = num_samples_pr,
-                           predict_response = FALSE)$prior_samples
-      response_pr <- predict(gp_model_pr, gp_coords_pred = coords[1:3, ], cov_pars = cov_pars_pr,
-                             sample_prior = TRUE, num_prior_samples = num_samples_pr,
-                             predict_response = TRUE)$prior_samples
+      capture.output( latent_pr <- predict(gp_model_pr, gp_coords_pred = coords[1:3, ], cov_pars = cov_pars_pr,
+                                           sample_prior = TRUE, num_prior_samples = num_samples_pr,
+                                           predict_response = FALSE)$prior_samples, file = 'NUL')
+      capture.output( response_pr <- predict(gp_model_pr, gp_coords_pred = coords[1:3, ], cov_pars = cov_pars_pr,
+                                             sample_prior = TRUE, num_prior_samples = num_samples_pr,
+                                             predict_response = TRUE)$prior_samples, file = 'NUL')
       expect_equal(dim(latent_pr), c(n, num_samples_pr))
       expect_lt(abs(mean(latent_pr^2) / sigma2_pr - 1), TOLERANCE_ITERATIVE)
       expect_lt(abs(mean(response_pr^2) / (sigma2_pr + nugget_pr) - 1), TOLERANCE_ITERATIVE)
@@ -4206,9 +4208,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              gp_approx = gp_approx_pr,
                                              num_neighbors = nrow(coords_pr) - 1,
                                              vecchia_ordering = "none"), file = 'NUL')
-      latent_pr <- predict(gp_model_pr, gp_coords_pred = coords[1:3, ], cov_pars = cov_pars_pr,
-                           sample_prior = TRUE, num_prior_samples = 1000,
-                           predict_response = FALSE)$prior_samples
+      capture.output( latent_pr <- predict(gp_model_pr, gp_coords_pred = coords[1:3, ], cov_pars = cov_pars_pr,
+                                           sample_prior = TRUE, num_prior_samples = 1000,
+                                           predict_response = FALSE)$prior_samples, file = 'NUL')
       expect_lt(max(abs(latent_pr[1:10, ] - latent_pr[11:20, ])), 1e-3)
     }
   })
@@ -4261,6 +4263,36 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         expect_true(is.finite(nll_ct2))
       }
     }
+  })
+
+  test_that("Profiled-out parameters belong to the parameters that are returned ", {
+
+    # When the line search of 'lbfgs_linesearch_nocedal_wright' runs out of iterations, it returns the best
+    # point found so far and not the one that has been evaluated last. The profiled-out error variance and
+    # regression coefficients have to be moved back to that point as well, otherwise they are the ones of the
+    # rejected last candidate and do not belong to the covariance parameters that are returned (relative
+    # error 1.2e-08 here, and 1.4e-02 when the line search is forced to stop after two iterations)
+    y_po <- eps + as.vector(X %*% beta) + xi
+    for (optimizer_po in c("lbfgs", "lbfgs_linesearch_nocedal_wright")) {
+      capture.output( gp_model_po <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                y = y_po, X = X,
+                                                params = list(optimizer_cov = optimizer_po, maxit = 1000,
+                                                              init_coef_aux_pars_from_iid_model = FALSE)),
+                      file = 'NUL')
+      cov_pars_po <- as.numeric(gp_model_po$get_cov_pars())
+      coef_po <- as.numeric(gp_model_po$get_coef())
+      # the closed-form expressions that are profiled out, with the error variance factored out of the
+      #   covariance matrix (which is the scale on which the optimizer works)
+      psi_po <- (cov_pars_po[2] / cov_pars_po[1]) * exp(-D / cov_pars_po[3]) + diag(n)
+      resid_po <- as.vector(y_po - X %*% coef_po)
+      sigma2_po <- as.numeric(t(resid_po) %*% solve(psi_po, resid_po)) / n
+      coef_wls_po <- as.vector(solve(t(X) %*% solve(psi_po, X), t(X) %*% solve(psi_po, y_po)))
+      expect_lt(abs(cov_pars_po[1] / sigma2_po - 1), 1E-10,
+                label = paste0("profiled-out error variance (", optimizer_po, ")"))
+      expect_lt(max(abs(coef_po / coef_wls_po - 1)), 1E-10,
+                label = paste0("profiled-out regression coefficients (", optimizer_po, ")"))
+    }
+
   })
 
   test_that("Cover tree inducing points with the default number of inducing points ", {

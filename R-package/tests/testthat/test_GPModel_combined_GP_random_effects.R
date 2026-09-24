@@ -968,15 +968,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                               list(init_aux_pars = 0.4, seed_rand_vec_trace = 1,
                                                    init_cov_pars = cov_pars_ni,
                                                    init_coef_aux_pars_from_iid_model = FALSE)))
-      expect_error(gp_model_ni$predict(y = y_ni, gp_coords_pred = coords_pred_ni,
-                                       group_data_pred = group_pred_ni, cov_pars = cov_pars_ni,
-                                       predict_cov_mat = TRUE, predict_response = FALSE),
-                   "Predictive covariances are not implemented")
-      expect_error(gp_model_ni$predict(y = y_ni, gp_coords_pred = coords_pred_ni,
-                                       group_data_pred = group_pred_ni, cov_pars = cov_pars_ni,
-                                       predict_var = TRUE, predict_response = FALSE,
-                                       sample_posterior = TRUE, num_post_samples = 10),
-                   "Posterior sampling is not implemented")
+      capture.output( expect_error(gp_model_ni$predict(y = y_ni, gp_coords_pred = coords_pred_ni,
+                                                       group_data_pred = group_pred_ni, cov_pars = cov_pars_ni,
+                                                       predict_cov_mat = TRUE, predict_response = FALSE),
+                                   "Predictive covariances are not implemented"), file = 'NUL')
+      capture.output( expect_error(gp_model_ni$predict(y = y_ni, gp_coords_pred = coords_pred_ni,
+                                                       group_data_pred = group_pred_ni, cov_pars = cov_pars_ni,
+                                                       predict_var = TRUE, predict_response = FALSE,
+                                                       sample_posterior = TRUE, num_post_samples = 10),
+                                   "Posterior sampling is not implemented"), file = 'NUL')
     }
   })
 
@@ -1131,12 +1131,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       var_exact_di <- diag(Cpp_di - Cpo_di %*% solve(Syy_di, t(Cpo_di)))
 
       for (config_di in INVERSION_CONFIGS_VECCHIA_GROUPED_RE) {
-        gp_model_di <- GPModel(group_data = group_di, group_rand_coef_data = x_di,
-                               ind_effect_group_rand_coef = 1, drop_intercept_group_rand_effect = TRUE,
-                               gp_coords = coords_di, cov_function = "exponential",
-                               cluster_ids = cluster_ids_di, gp_approx = "vecchia",
-                               num_neighbors = n_di - 1, vecchia_ordering = "none",
-                               likelihood = "gaussian", matrix_inversion_method = config_di$method)
+        capture.output( gp_model_di <- GPModel(group_data = group_di, group_rand_coef_data = x_di,
+                                               ind_effect_group_rand_coef = 1, drop_intercept_group_rand_effect = TRUE,
+                                               gp_coords = coords_di, cov_function = "exponential",
+                                               cluster_ids = cluster_ids_di, gp_approx = "vecchia",
+                                               num_neighbors = n_di - 1, vecchia_ordering = "none",
+                                               likelihood = "gaussian", matrix_inversion_method = config_di$method), file = 'NUL')
         gp_model_di$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all",
                                         nsim_var_pred = 2000)
         gp_model_di$set_optim_params(params = c(config_di$params,
