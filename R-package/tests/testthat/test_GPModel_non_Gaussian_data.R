@@ -1402,6 +1402,31 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("Repeated predictions with the same model give the same result ", {
+
+    # The predictive covariance matrix of several grouped random effects is estimated stochastically when
+    # the iterative methods are used. The random number generator has to be seeded at every prediction:
+    # otherwise a prediction that is repeated with unchanged arguments returns a different covariance matrix
+    y_rp <- as.numeric(sim_rand_unif(n = n, init_c = 0.2341) < pnorm(Z1 %*% b_gr_1 + Z2 %*% b_gr_2))
+    cov_pars_rp <- c(0.8, 0.6)
+    group_test_rp <- cbind(c(1, 2, 9999), c(1, 3, 9999))
+    for (inv_method_rp in c("cholesky", "iterative")) {
+      capture.output( gp_model_rp <- GPModel(group_data = cbind(group, group2), likelihood = "bernoulli_probit",
+                                             matrix_inversion_method = inv_method_rp), file = 'NUL')
+      gp_model_rp$set_optim_params(params = list(num_rand_vec_trace = 100, seed_rand_vec_trace = 1))
+      capture.output( pred_rp_1 <- predict(gp_model_rp, y = y_rp, group_data_pred = group_test_rp,
+                                           cov_pars = cov_pars_rp, predict_cov_mat = TRUE,
+                                           predict_response = FALSE), file = 'NUL')
+      capture.output( pred_rp_2 <- predict(gp_model_rp, y = y_rp, group_data_pred = group_test_rp,
+                                           cov_pars = cov_pars_rp, predict_cov_mat = TRUE,
+                                           predict_response = FALSE), file = 'NUL')
+      expect_lt(sum(abs(pred_rp_1$mu - pred_rp_2$mu)), TOLERANCE_STRICT, label = paste0("predictive mean (", inv_method_rp, ")"))
+      expect_lt(sum(abs(as.vector(pred_rp_1$cov) - as.vector(pred_rp_2$cov))), TOLERANCE_STRICT,
+                label = paste0("predictive covariance (", inv_method_rp, ")"))
+    }
+
+  })
+
   test_that("FITC preconditioner with inducing points from the cover tree ", {
 
     # The cover tree determines the number of inducing points of the preconditioner itself, which then

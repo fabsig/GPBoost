@@ -8240,8 +8240,6 @@ namespace GPBoost {
 		//B) RANDOM VECTOR VARIABLES
 		/*! Random number generator used to generate rand_vec_trace_I_ */
 		RNG_t cg_generator_;
-		/*! If the seed of the random number generator cg_generator_ is set, cg_generator_seeded_ is set to true */
-		bool cg_generator_seeded_ = false;
 		/*! See counter for parallel RNG */
 		uint64_t cg_generator_counter_ = 0;
 		/*! If reuse_rand_vec_trace_ is true and rand_vec_trace_I_ has been generated for the first time, then saved_rand_vec_trace_ is set to true */

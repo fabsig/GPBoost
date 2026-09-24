@@ -5056,10 +5056,8 @@ namespace GPBoost {
 					den_mat_t pred_cov_global = den_mat_t::Zero(n_pred, n_pred);
 					vec_t SigmaI_diag_sqrt = SigmaI.diagonal().cwiseSqrt();
 					sp_mat_rm_t Zt_W_sqrt_rm = sp_mat_rm_t((*Zt_) * information_ll_.cwiseSqrt().asDiagonal());
-					if (!cg_generator_seeded_) {
-						cg_generator_ = RNG_t(seed_rand_vec_trace_);
-						cg_generator_seeded_ = true;
-					}
+					// seeded at every call so that repeated predictions with the same model give the same result
+					cg_generator_ = RNG_t(seed_rand_vec_trace_);
 					int num_threads;
 #ifdef _OPENMP
 					num_threads = omp_get_max_threads();

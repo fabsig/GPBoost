@@ -5822,7 +5822,8 @@ namespace GPBoost {
 							GPBoost::solve_lower_triangular(GetForCluster(chol_fact_sigma_ip_, cluster_i, 0),
 								(*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose(), GetForCluster(chol_ip_cross_cov_, cluster_i, 0), GPU_use_);
 							if (gp_approx_ == "full_scale_vecchia") {
-								if (fitc_piv_chol_preconditioner_rank_ == num_ind_points_) {
+								// 'GetNumIndPointsForCluster' still returns the number before the redetermination, which is what is compared here
+								if (fitc_piv_chol_preconditioner_rank_ == GetNumIndPointsForCluster(cluster_i)) {
 									fitc_piv_chol_preconditioner_rank_ = num_ind_points;
 								}
 							}
@@ -5838,18 +5839,16 @@ namespace GPBoost {
 					if (gp_approx_ == "fitc" || ((gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") && (gauss_likelihood_ && !vecchia_latent_approx_gaussian_))) {
 						Log::REFatal("'iterative' methods are not implemented for gp_approx = '%s' and the chosen likelihood ", gp_approx_.c_str());
 					}
-					if (gp_approx_ == "full_scale_tapering" || (fitc_piv_chol_preconditioner_rank_ == num_ind_points_ && gp_approx_ != "vecchia") || ind_points_selection_ == "space_time_kmeans++") {
-						for (const auto& cluster_i : unique_clusters_) {
+					int num_ind_points_max = 0;
+					for (const auto& cluster_i : unique_clusters_) {
+						if (ReuseIndPointsForPreconditioner(cluster_i)) {
 							re_comps_ip_preconditioner_[cluster_i][0] = re_comps_ip_[cluster_i][0];
 							re_comps_cross_cov_preconditioner_[cluster_i][0] = re_comps_cross_cov_[cluster_i][0];
 							GetForCluster(chol_fact_sigma_ip_preconditioner_, cluster_i, 0) = GetForCluster(chol_fact_sigma_ip_, cluster_i, 0);
 							chol_ip_cross_cov_preconditioner_[cluster_i] = chol_ip_cross_cov_[cluster_i];
+							num_ind_points_max = std::max(num_ind_points_max, GetNumIndPointsForCluster(cluster_i));
 						}
-						fitc_piv_chol_preconditioner_rank_ = num_ind_points_;
-					}
-					else {
-						int num_ind_points_max = 0;
-						for (const auto& cluster_i : unique_clusters_) {
+						else {
 							// Every cluster starts from the rank requested by the user, methods that determine the number of inducing points themselves do so separately for every cluster
 							int num_ind_points = fitc_piv_chol_preconditioner_rank_;
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
@@ -5961,8 +5960,8 @@ namespace GPBoost {
 								(*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose(), GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0), GPU_use_);
 							num_ind_points_max = std::max(num_ind_points_max, num_ind_points);
 						}
-						fitc_piv_chol_preconditioner_rank_ = num_ind_points_max;
 					}
+					fitc_piv_chol_preconditioner_rank_ = num_ind_points_max;
 					if (num_ll_evaluations_ > 0) {
 						Log::REDebug("Inducing points for preconditioner redetermined after iteration number %d ", num_iter_ + 1);
 					}
@@ -6506,8 +6505,6 @@ namespace GPBoost {
 		bool reuse_rand_vec_trace_ = true;
 		/*! \brief Seed number to generate random vectors (e.g., Rademacher) */
 		int seed_rand_vec_trace_ = 1;
-		/*! If the seed of the random number generator cg_generator_ is set, cg_generator_seeded_ is set to true*/
-		bool cg_generator_seeded_ = false;
 		/*! \brief General RNG seet */
 		int seed_rng_ = 1;
 		/*! Indicates if we observe a NAN or Inf value in a conjugate gradient iteration */
@@ -8448,6 +8445,49 @@ namespace GPBoost {
 		}//end SelectIndPointsAR1Multifidelity
 
 		/*!
+		* \brief True if the inducing points of the model are also used for the FITC preconditioner of a cluster instead of
+		*		determining separate ones. The number of inducing points can differ among the clusters, the decision is thus
+		*		taken for every cluster separately
+		* \param cluster_i Index / label of the independent realization of the GP
+		*/
+		bool ReuseIndPointsForPreconditioner(data_size_t cluster_i) const {
+			return(gp_approx_ == "full_scale_tapering" ||
+				(fitc_piv_chol_preconditioner_rank_ == GetNumIndPointsForCluster(cluster_i) && gp_approx_ != "vecchia") ||
+				ind_points_selection_ == "space_time_kmeans++");
+		}//end ReuseIndPointsForPreconditioner
+
+		/*!
+		* \brief Check that a number of inducing points is compatible with the data of a cluster
+		* \param num_ind_points Number of inducing points
+		* \param num_data_cluster_i Number of data points of the cluster
+		* \param num_unique_coords Number of unique coordinates of the cluster, not checked if negative
+		* \param selected_by_method True if the number has been determined by the method for choosing the inducing points and not by the user
+		*/
+		void CheckNumIndPointsForCluster(int num_ind_points,
+			data_size_t num_data_cluster_i,
+			int num_unique_coords,
+			bool selected_by_method) const {
+			string_t source = selected_by_method ?
+				("selected by the '" + ind_points_selection_ + "' method") : "given by 'num_ind_points'";
+			if (gp_approx_ == "fitc") {
+				if (num_data_cluster_i < num_ind_points) {
+					Log::REFatal("Cannot have more inducing points (%d, %s) than data points (%d) for the '%s' approximation ",
+						num_ind_points, source.c_str(), num_data_cluster_i, gp_approx_.c_str());
+				}
+			}
+			else if (gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
+				if (num_data_cluster_i <= num_ind_points || num_ind_points < 1) {
+					Log::REFatal("Need to have at least one inducing point and less inducing points (currently %d, %s) "
+						"than data points (%d) if gp_approx = '%s' ", num_ind_points, source.c_str(), num_data_cluster_i, gp_approx_.c_str());
+				}
+			}
+			if (num_unique_coords >= 0 && num_unique_coords < num_ind_points) {
+				Log::REFatal("Cannot have more inducing points (%d, %s) than unique coordinates (%d) for the '%s' approximation ",
+					num_ind_points, source.c_str(), num_unique_coords, gp_approx_.c_str());
+			}
+		}//end CheckNumIndPointsForCluster
+
+		/*!
 		* \brief Save the number of inducing points that has been selected for a cluster
 		* \param cluster_i Index / label of the independent realization of the GP
 		* \param num_ind_points Number of inducing points of this cluster
@@ -8516,16 +8556,12 @@ namespace GPBoost {
 					num_ind_points = std::min(num_ind_points, num_data_cluster_i);
 				}
 			}
-			if (gp_approx_ == "fitc") {
-				if (num_data_cluster_i < num_ind_points) {
-					Log::REFatal("Cannot have more inducing points than data points for '%s' approximation ", gp_approx_.c_str());
-				}
-			}
-			else if (gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
-				if (num_data_cluster_i <= num_ind_points || num_ind_points < 1) {
-					Log::REFatal("Need to have at least one inducing point and less inducing points (currently num_ind_points = %d) "
-						"than data points (%d) if gp_approx = '%s' ", num_ind_points, num_data_cluster_i, gp_approx_.c_str());
-				}
+			// The cover tree determines the number of inducing points itself and ignores 'num_ind_points'. Checking the
+			//	requested number would then reject data sets for which the cover tree selects an admissible number, so
+			//	only the number that has actually been selected is checked (after the selection, see below)
+			const bool num_ind_points_selected_by_method = ind_points_selection_ == "cover_tree";
+			if (!num_ind_points_selected_by_method) {
+				CheckNumIndPointsForCluster(num_ind_points, num_data_cluster_i, -1, false);
 			}
 			CHECK(num_gp_ > 0);
 			std::vector<double> gp_coords_all;
@@ -8553,8 +8589,9 @@ namespace GPBoost {
 					cov_fct_taper_range = 1e-8;
 				}
 				gp_coords_all_unique = gp_coords_all_mat(uniques, Eigen::all);
-				if ((int)gp_coords_all_unique.rows() < num_ind_points) {
-					Log::REFatal("Cannot have more inducing points than unique coordinates for '%s' approximation ", gp_approx_.c_str());
+				if (!num_ind_points_selected_by_method && (int)gp_coords_all_unique.rows() < num_ind_points) {
+					Log::REFatal("Cannot have more inducing points (num_ind_points = %d) than unique coordinates (%d) for the '%s' approximation ",
+						num_ind_points, (int)gp_coords_all_unique.rows(), gp_approx_.c_str());
 				}
 			}
 			std::vector<int> indices;
@@ -8658,6 +8695,9 @@ namespace GPBoost {
 					num_ind_points = (int)gp_coords_ip_mat.rows();
 				}
 			}
+			// Methods that determine the number of inducing points themselves can select a number that does not work for
+			//	the data of this cluster, and the selection can also remove inducing points (see above)
+			CheckNumIndPointsForCluster(num_ind_points, num_data_cluster_i, (int)uniques.size(), num_ind_points_selected_by_method);
 			if (!for_prediction_new_cluster) {
 				gp_coords_ip_mat_[cluster_i] = gp_coords_ip_mat;
 				SetNumIndPointsForCluster(cluster_i, num_ind_points);
@@ -10355,8 +10395,8 @@ namespace GPBoost {
 				if (gauss_likelihood_) {
 					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 						if (cg_preconditioner_type_ == "fitc" && matrix_inversion_method_ == "iterative") {
-							if (gp_approx_ == "full_scale_tapering" || fitc_piv_chol_preconditioner_rank_ == num_ind_points_) {
-								for (const auto& cluster_i : unique_clusters_) {
+							for (const auto& cluster_i : unique_clusters_) {
+								if (ReuseIndPointsForPreconditioner(cluster_i)) {
 									re_comps_ip_preconditioner_[cluster_i][0] = re_comps_ip_[cluster_i][0];
 									re_comps_cross_cov_preconditioner_[cluster_i][0] = re_comps_cross_cov_[cluster_i][0];
 									GetForCluster(chol_fact_sigma_ip_preconditioner_, cluster_i, 0) = GetForCluster(chol_fact_sigma_ip_, cluster_i, 0);
@@ -12545,16 +12585,14 @@ namespace GPBoost {
 							if (matrix_inversion_method_ == "iterative" && !SigmaI_plus_ZtZ_is_diagonal) {
 								den_mat_t pred_cov_global = den_mat_t::Zero(num_REs_pred, num_REs_pred);
 								vec_t SigmaI_diag_sqrt = Sigma.diagonal().cwiseInverse().cwiseSqrt();
-								if (!cg_generator_seeded_) {
-									cg_generator_ = RNG_t(seed_rand_vec_trace_);
-									cg_generator_seeded_ = true;
-								}
 								int num_threads;
 #ifdef _OPENMP
 								num_threads = omp_get_max_threads();
 #else
 								num_threads = 1;
 #endif
+								// seeded at every call so that repeated predictions with the same model give the same result
+								cg_generator_ = RNG_t(seed_rand_vec_trace_);
 								std::uniform_int_distribution<> unif(0, 2147483646);
 								std::vector<RNG_t> parallel_rngs;
 								for (int ig = 0; ig < num_threads; ++ig) {
@@ -12660,16 +12698,14 @@ namespace GPBoost {
 									//Z_po P^(-T/2)
 									Ztilde_P_sqrt_invt_rm = Ztilde * P_sqrt_invt_rm;
 								}
-								if (!cg_generator_seeded_) {
-									cg_generator_ = RNG_t(seed_rand_vec_trace_);
-									cg_generator_seeded_ = true;
-								}
 								int num_threads;
 #ifdef _OPENMP
 								num_threads = omp_get_max_threads();
 #else
 								num_threads = 1;
 #endif
+								// seeded at every call so that repeated predictions with the same model give the same result
+								cg_generator_ = RNG_t(seed_rand_vec_trace_);
 								std::uniform_int_distribution<> unif(0, 2147483646);
 								std::vector<RNG_t> parallel_rngs;
 								for (int ig = 0; ig < num_threads; ++ig) {
@@ -13161,9 +13197,11 @@ namespace GPBoost {
 								den_mat_t woodburry_part_sqrt;
 								TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_[cluster_i], Maux_rhs, woodburry_part_sqrt, false);
 								// Use stochastic estimate of sigma_resid_pred_obs * resid_obs_inv * sigma_resid_pred_obs.transpose()
-								cg_generator_ = RNG_t(seed_rand_vec_trace_);
+								// The random vectors depend only on 'seed_rand_vec_trace_' and not on how many vectors have been drawn
+								//	before, so that repeated predictions with the same model give the same result
+								uint64_t run_id_rand_vecs_pred = 0;
 								den_mat_t rand_vecs(nsim_var_pred, num_REs_obs);
-								GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vecs);
+								GenRandVecNormalParallel(seed_rand_vec_trace_, run_id_rand_vecs_pred, rand_vecs);
 								den_mat_t sample_resid_cov;
 								vec_t sample_resid_var;
 								if (calc_pred_cov) {
@@ -13374,6 +13412,8 @@ namespace GPBoost {
 #else
 								num_threads = 1;
 #endif
+								// seeded at every call so that repeated predictions with the same model give the same result
+								cg_generator_ = RNG_t(seed_rand_vec_trace_);
 								std::uniform_int_distribution<> unif(0, 2147483646);
 								std::vector<RNG_t> parallel_rngs;
 								for (int ig = 0; ig < num_threads; ++ig) {

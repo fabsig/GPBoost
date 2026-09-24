@@ -2628,14 +2628,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     is_new_nc <- cluster_ids_pred_nc == 3
     cov_pars_nc <- c(0.1, 1.3, 0.2)# error variance, marginal variance, range
     # The predictive distribution of a cluster without observed data is the prior, i.e. the variance of the
-    # latent process is the marginal variance for every approximation. Note: the predictive variances of
-    # 'full_scale_tapering' are not deterministic (repeating the same prediction for the same model gives
-    # slightly different variances), which is why the comparison of the observed clusters below is not
-    # made for it
+    # latent process is the marginal variance for every approximation
     cases_nc <- list(list(gp_approx = "none", var = cov_pars_nc[2], deterministic = TRUE, args = list()),
                      list(gp_approx = "fitc", var = cov_pars_nc[2], deterministic = TRUE,
                           args = list(num_ind_points = 8, ind_points_selection = "random")),
-                     list(gp_approx = "full_scale_tapering", var = cov_pars_nc[2], deterministic = FALSE,
+                     list(gp_approx = "full_scale_tapering", var = cov_pars_nc[2], deterministic = TRUE,
                           args = list(num_ind_points = 8, ind_points_selection = "random",
                                       cov_fct_taper_range = 1e6, cov_fct_taper_shape = 2)),
                      list(gp_approx = "vecchia", var = cov_pars_nc[2], deterministic = TRUE,
@@ -4264,6 +4261,62 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         expect_true(is.finite(nll_ct2))
       }
     }
+  })
+
+  test_that("Cover tree inducing points with the default number of inducing points ", {
+
+    # The cover tree determines the number of inducing points itself and ignores 'num_ind_points'. Checking
+    # the requested number (here its default, 500 and 200) against the data rejected data sets for which the
+    # cover tree selects an admissible number, so only the number that has been selected is checked
+    y_ctd <- eps + xi
+    cov_pars_ctd <- c(0.05, sigma2_1, rho)
+    for (gp_approx_ctd in c("fitc", "full_scale_tapering", "full_scale_vecchia")) {
+      capture.output( gp_model_ctd <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                              gp_approx = gp_approx_ctd, ind_points_selection = "cover_tree",
+                                              cover_tree_radius = 0.2, num_neighbors = 20,
+                                              vecchia_ordering = "none", cov_fct_taper_range = 0.5,
+                                              cov_fct_taper_shape = 2,
+                                              matrix_inversion_method = "cholesky"), file = 'NUL')
+      capture.output( nll_ctd <- gp_model_ctd$neg_log_likelihood(cov_pars = cov_pars_ctd, y = y_ctd), file = 'NUL')
+      expect_true(is.finite(nll_ctd))
+    }
+    # a number of inducing points that does not work for the data is still rejected, also when the cover
+    #   tree has selected it (here one inducing point per data point)
+    expect_error( GPModel(gp_coords = coords, cov_function = "exponential",
+                          gp_approx = "full_scale_tapering", ind_points_selection = "cover_tree",
+                          cover_tree_radius = 1e-8, cov_fct_taper_range = 0.5, cov_fct_taper_shape = 2) )
+
+  })
+
+  test_that("Repeated predictions with the same model give the same result ", {
+
+    # The predictive variances of the full-scale approximations are estimated stochastically. The random
+    # vectors have to depend only on the seed: drawing new ones at every call made a prediction that is
+    # repeated with unchanged arguments return different predictive variances
+    y_rp <- eps + xi
+    cov_pars_rp <- c(0.05, sigma2_1, rho)
+    coord_test_rp <- cbind(seq(0.05, 0.95, length.out = 20), seq(0.95, 0.05, length.out = 20))
+    args_rp <- list(
+      fitc = list(gp_approx = "fitc", num_ind_points = 20, ind_points_selection = "kmeans++",
+                  matrix_inversion_method = "cholesky"),
+      full_scale_tapering_cholesky = list(gp_approx = "full_scale_tapering", num_ind_points = 20,
+                                          ind_points_selection = "kmeans++", cov_fct_taper_range = 0.3,
+                                          cov_fct_taper_shape = 2, matrix_inversion_method = "cholesky"),
+      full_scale_tapering_iterative = list(gp_approx = "full_scale_tapering", num_ind_points = 20,
+                                           ind_points_selection = "kmeans++", cov_fct_taper_range = 0.3,
+                                           cov_fct_taper_shape = 2, matrix_inversion_method = "iterative"))
+    for (case_rp in names(args_rp)) {
+      capture.output( gp_model_rp <- do.call(GPModel, c(list(gp_coords = coords, cov_function = "exponential"),
+                                                        args_rp[[case_rp]])), file = 'NUL')
+      capture.output( pred_rp_1 <- predict(gp_model_rp, y = y_rp, gp_coords_pred = coord_test_rp,
+                                           cov_pars = cov_pars_rp, predict_var = TRUE), file = 'NUL')
+      capture.output( pred_rp_2 <- predict(gp_model_rp, y = y_rp, gp_coords_pred = coord_test_rp,
+                                           cov_pars = cov_pars_rp, predict_var = TRUE), file = 'NUL')
+      expect_lt(sum(abs(pred_rp_1$mu - pred_rp_2$mu)), TOLERANCE_STRICT, label = paste0("predictive mean (", case_rp, ")"))
+      expect_lt(sum(abs(as.vector(pred_rp_1$var) - as.vector(pred_rp_2$var))), TOLERANCE_STRICT,
+                label = paste0("predictive variance (", case_rp, ")"))
+    }
+
   })
 
   test_that("Redetermined inducing points of several clusters are those of their own cluster ", {
