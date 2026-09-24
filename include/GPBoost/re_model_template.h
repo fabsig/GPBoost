@@ -3165,6 +3165,44 @@ namespace GPBoost {
 		}//end ResetProfiledOutVariablesToLag1
 
 		/*!
+		* \brief Save the current values of the profiled-out variables (if there are any such as nugget effects, regression coefficients). Used only by external optimizers
+		* \param profile_out_marginal_variance If true, the error variance sigma is profiled out (= use closed-form expression for error / nugget variance)
+		* \param profile_out_regression_coef If true, the linear regression coefficients are profiled out (= use closed-form WLS expression)
+		* \param[out] sigma2_saved Error variance
+		* \param[out] beta_saved Linear regression coefficients
+		*/
+		void SaveProfiledOutVariables(bool profile_out_marginal_variance,
+			bool profile_out_regression_coef,
+			double& sigma2_saved,
+			vec_t& beta_saved) const {
+			if (profile_out_marginal_variance) {
+				sigma2_saved = sigma2_;
+			}
+			if (profile_out_regression_coef) {
+				beta_saved = beta_;
+			}
+		}//end SaveProfiledOutVariables
+
+		/*!
+		* \brief Restore the profiled-out variables (if there are any such as nugget effects, regression coefficients) saved by 'SaveProfiledOutVariables'
+		* \param profile_out_marginal_variance If true, the error variance sigma is profiled out (= use closed-form expression for error / nugget variance)
+		* \param profile_out_regression_coef If true, the linear regression coefficients are profiled out (= use closed-form WLS expression)
+		* \param sigma2_saved Error variance
+		* \param beta_saved Linear regression coefficients
+		*/
+		void RestoreProfiledOutVariables(bool profile_out_marginal_variance,
+			bool profile_out_regression_coef,
+			double sigma2_saved,
+			const vec_t& beta_saved) {
+			if (profile_out_marginal_variance) {
+				sigma2_ = sigma2_saved;
+			}
+			if (profile_out_regression_coef) {
+				beta_ = beta_saved;
+			}
+		}//end RestoreProfiledOutVariables
+
+		/*!
 		* \brief Factorize the covariance matrix (Gaussian data) or
 		*	calculate the posterior mode of the random effects for use in the Laplace approximation (non-Gaussian likelihoods)
 		*	And calculate the negative log-likelihood (Gaussian data) or the negative approx. marginal log-likelihood (non-Gaussian likelihoods)

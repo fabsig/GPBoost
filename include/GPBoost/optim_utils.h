@@ -225,6 +225,9 @@ namespace GPBoost {
 		bool modes_lag1_have_been_set_ = false;
 		std::vector<vec_t> modes_lo_, SigmaI_modes_lo_;// modes of the Laplace approximations at the best point found so far in a line search (see 'SaveModesLo()')
 		bool modes_lo_have_been_set_ = false;
+		double sigma2_lo_;// error variance at the best point found so far in a line search (see 'SaveProfiledOutVariablesLo()')
+		vec_t beta_lo_;// linear regression coefficients at the best point found so far in a line search (see 'SaveProfiledOutVariablesLo()')
+		bool profiled_out_variables_lo_have_been_set_ = false;
 
 		EvalLLforLBFGSpp(REModelTemplate<T_mat, T_chol>* re_model_templ,
 			const double* fixed_effects,
@@ -446,6 +449,28 @@ namespace GPBoost {
 		void RestoreModesLo() {
 			if (modes_lo_have_been_set_) {
 				re_model_templ_->RestoreModeStates(modes_lo_, SigmaI_modes_lo_);
+			}
+		}
+
+		/*!
+		* \brief Save the current values of the profiled-out variables (if there are any such as nugget effects,
+		*		regression coefficients) as the ones of the best point found so far in a line search ('x_lo' in
+		*		'LineSearchNocedalWright'), see 'SaveModesLo()'. They are changed by every evaluation of the objective
+		*		function, exactly like the modes, and are restored with 'RestoreProfiledOutVariablesLo()'
+		*/
+		void SaveProfiledOutVariablesLo() {
+			re_model_templ_->SaveProfiledOutVariables(profile_out_error_variance_, profile_out_regression_coef_,
+				sigma2_lo_, beta_lo_);
+			profiled_out_variables_lo_have_been_set_ = true;
+		}
+
+		/*!
+		* \brief Restore the profiled-out variables that have been saved with 'SaveProfiledOutVariablesLo()'
+		*/
+		void RestoreProfiledOutVariablesLo() {
+			if (profiled_out_variables_lo_have_been_set_) {
+				re_model_templ_->RestoreProfiledOutVariables(profile_out_error_variance_, profile_out_regression_coef_,
+					sigma2_lo_, beta_lo_);
 			}
 		}
 

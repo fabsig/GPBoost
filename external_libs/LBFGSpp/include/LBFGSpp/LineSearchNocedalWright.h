@@ -125,6 +125,7 @@ public:
         // step size along the path when strong Wolfe condition is not met
         Vector x_lo = xp, grad_lo = grad;
         f.SaveModesLo(); // ChangedForGPBoost: the modes of the Laplace approximations currently correspond to 'xp' = 'x_lo'
+        f.SaveProfiledOutVariablesLo(); // ChangedForGPBoost: the profiled-out variables correspond to 'xp' = 'x_lo' as well
 
         // STEP 1: Bracketing Phase
         //   Find a range guaranteed to contain a step satisfying strong Wolfe.
@@ -174,6 +175,7 @@ public:
             x_lo.swap(x);
             grad_lo.swap(grad);
             f.SaveModesLo(); // ChangedForGPBoost: the modes correspond to the point that has just been evaluated, which is now 'x_lo'
+            f.SaveProfiledOutVariablesLo(); // ChangedForGPBoost: the profiled-out variables correspond to it as well
 
             if (dg >= Scalar(0))
                 break;  // Case (3)
@@ -260,6 +262,7 @@ public:
                 x_lo.swap(x);
                 grad_lo.swap(grad);
                 f.SaveModesLo(); // ChangedForGPBoost: the modes correspond to the point that has just been evaluated, which is now 'x_lo'
+                f.SaveProfiledOutVariablesLo(); // ChangedForGPBoost: the profiled-out variables correspond to it as well
             }
 
             iter++;
@@ -292,6 +295,9 @@ public:
                     // ChangedForGPBoost: the modes need to be moved back as well, otherwise they correspond to the
                     //  last candidate point of the zoom phase, which has been rejected, and not to 'x_lo'
                     f.RestoreModesLo();
+                    // ChangedForGPBoost: the profiled-out variables (error variance, regression coefficients) need to be
+                    //  moved back as well, otherwise they correspond to the rejected last candidate point and not to 'x_lo'
+                    f.RestoreProfiledOutVariablesLo();
                 }
                 return;
             }
