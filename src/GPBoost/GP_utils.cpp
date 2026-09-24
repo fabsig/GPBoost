@@ -10,7 +10,7 @@
 #include <GPBoost/utils.h>
 #include <GPBoost/sparse_matrix_utils.h>
 #include <cmath>
-#include <algorithm> // std::set_difference
+#include <algorithm> // std::set_difference, std::lower_bound
 #include <iterator> // std::inserter, std::begin, std::end
 #include <numeric> // std::iota
 
@@ -380,8 +380,10 @@ namespace GPBoost {
 					if ((int)covert_points_old[p].size() == 0) {
 						break;
 					}
+					CHECK(c < (int)means.rows());
 					int v = std::uniform_int_distribution<>(0, (int)(covert_points_old[p].size()) - 1)(gen);
-					means(c, Eigen::all) = data(covert_points_old[p][v], Eigen::all);
+					int index_center_point = covert_points_old[p][v];
+					means(c, Eigen::all) = data(index_center_point, Eigen::all);
 					std::vector<int> indices_ball;
 					data_in_ball(data, covert_points_old[p], R_l, means(c, Eigen::all), indices_ball);
 
@@ -412,6 +414,14 @@ namespace GPBoost {
 							indices_ball_c.begin(), indices_ball_c.end(),
 							std::inserter(diff_vect, diff_vect.begin()));
 						covert_points_old[index_R_neighbors] = diff_vect;
+					}
+					//The node is moved to the centroid of its ball above, which can lie further than 'R_l' away from
+					//the point from which the node has been created. That point is covered by the node in any case,
+					//and removing it explicitly makes every node remove at least one point. The number of nodes of a
+					//level can thus not exceed the number of data points, which is the number of rows of 'means'
+					auto center_point = std::lower_bound(covert_points_old[p].begin(), covert_points_old[p].end(), index_center_point);
+					if (center_point != covert_points_old[p].end() && *center_point == index_center_point) {
+						covert_points_old[p].erase(center_point);
 					}
 
 

@@ -7395,13 +7395,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(group_data = group, likelihood = likelihood,
                                            y = y, X=X, params = params, matrix_inversion_method = "cholesky")
                     , file='NUL')
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.2682095671)),0.01)
-    # Note: the log-likelihood of this model is very flat in the precision parameter. The covariance
-    #   parameter, the regression coefficients and the negative log-likelihood agree closely across
-    #   compilers, the precision does not: the optimizer stops at a slightly different point along that
-    #   direction
+    # Note: the log-likelihood of this model is very flat in the precision parameter, and the optimizer
+    #   stops at a different point along that direction on another compiler. The negative log-likelihood
+    #   is almost unchanged there, the estimates are not: with gcc the covariance parameter deviates by
+    #   0.013 and the regression coefficients by 0.039
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.2682095671)),relax_tolerance(0.01))
     expect_lt(sum(abs(gp_model$get_aux_pars()-c(22.879799528, 0.168605624))),relax_tolerance(0.6))
-    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.11240688283, 0.88192071991))),0.008)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.11240688283, 0.88192071991))),relax_tolerance(0.008))
     nll <- -44.08117687
     expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-nll))),relax_tolerance_nll(0.002))
     expect_gt(gp_model$get_num_optim_iter(), 0)
