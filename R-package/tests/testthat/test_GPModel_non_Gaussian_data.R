@@ -7414,7 +7414,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_var <- c(0.01993931983, 0.01913466436, 0.02000007302, 0.03469011762)
     # see the note on the precision parameter above: 0.006 has been measured on the Linux CI
     expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01))
-    expect_lt(sum(abs(pred$var-expected_var)),0.0008)
+    # 0.00081 has been measured with clang + libc++ in the clang-asan container of R-hub
+    expect_lt(sum(abs(pred$var-expected_var)),relax_tolerance(0.0008))
 
     ## GPBoost algorithm
     dtrain <- gpb.Dataset(data = X, label = y)

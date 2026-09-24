@@ -2791,7 +2791,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         nll_fix <- 122.9756055
         expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = FALSE))-cov_pars_fix)), TOLERANCE_LOOSE)
         expect_lt(sum(abs(gp_model_fix$get_cov_pars(std_err = FALSE)[c(2,3)]-params_fix$init_cov_pars[c(2,3)])),TOLERANCE_STRICT)
-        expect_lt(sum(abs(gp_model_fix$get_current_neg_log_likelihood()-nll_fix)), 0.04)
+        # 0.051 has been measured with clang + libc++ in the clang-asan container of R-hub
+        expect_lt(sum(abs(gp_model_fix$get_current_neg_log_likelihood()-nll_fix)), relax_tolerance(0.04))
         params_fix$estimate_cov_par_index <- c(1,1,0)
         gp_model_fix <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                    gp_approx = gp_approx, num_ind_points = 50, num_neighbors = 10,

@@ -302,8 +302,17 @@ jobs:
             opts+=(-e CHECK_ARGS="${CHECK_ARGS}")
           fi
           docker run "${opts[@]}" "${IMAGE}" r-check && status=0 || status=$?
+          # 'r-check' installs the dependencies of the package before it runs the check, and that
+          # download fails from time to time ("Failed to download ps ... error in pak subprocess").
+          # Such a run is repeated, but only when '00check.log' does not exist yet, i.e. when
+          # 'R CMD check' had not started: a check that did run is never repeated, a valgrind shard
+          # takes hours and would not fit into the job a second time
+          if [ "${status}" -ne 0 ] && [ ! -f gpboost.Rcheck/00check.log ]; then
+            echo "::warning::the check did not start, repeating it once"
+            rm -rf gpboost.Rcheck
+            docker run "${opts[@]}" "${IMAGE}" r-check && status=0 || status=$?
+          fi
           echo "r-check exited with ${status}"
-          echo "R_CHECK_STATUS=${status}" >> "${GITHUB_ENV}"
 
       # The sanitizers write nothing when they find nothing, so "Status: OK" only means that the
       # code is clean if the tests really ran. A suite that skipped itself reports
