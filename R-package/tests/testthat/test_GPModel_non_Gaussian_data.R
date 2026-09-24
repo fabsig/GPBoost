@@ -17,14 +17,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   # See helper-tolerances.R, which defines this and reports it once per test run
   USE_STRICT_TOLERANCES <- gpb_use_strict_tolerances()
   TOLERANCE_NON_CONVEX <- if (USE_STRICT_TOLERANCES) TOLERANCE_MEDIUM else 0.5
-  # Same for tolerances that are defined locally in a test: only ever RELAX them, never tighten them
-  relax_tolerance <- function(tol) if (USE_STRICT_TOLERANCES) tol else max(2 * tol, 0.5)
-  # Separate helper for ABSOLUTE differences of negative log-likelihoods (scale 100-1000 here)
-  relax_tolerance_nll <- function(tol) if (USE_STRICT_TOLERANCES) tol else max(3 * tol, 3)
-  # Separate helper for the very strict tolerances (1e-6). 'relax_tolerance' must not be used for
-  # these, since its lower bound of 0.5 would make such a test meaningless. Deviations of a few 1e-6
-  # occur under valgrind in particular, which does not reproduce floating point arithmetic bit-wise
-  # (it rounds the 80 bit intermediate results of x87 to 64 bit and its libm differs)
+  # Separate helper for the very strict tolerances (1e-6) of comparisons whose expected values cannot be
+  # handed to 'relax_tolerance', so that its lower bound cannot be tied to their magnitude. Deviations of
+  # a few 1e-6 occur under valgrind in particular, which does not reproduce floating point arithmetic
+  # bit-wise (it rounds the 80 bit intermediate results of x87 to 64 bit and its libm differs)
   relax_tolerance_strict <- function(tol) if (USE_STRICT_TOLERANCES) tol else 100 * tol
   # Covariance functions with a general (non-fixed) smoothness need 'std::cyl_bessel_k', which is a C++17
   # feature that is not provided by every standard library (in particular not by libc++, which is used by
@@ -959,7 +955,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$get_num_optim_iter(), nrounds)
     nll_opt_o <- 133702.5947
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_o),TOLERANCE_MEDIUM)
-    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.05))
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.05, expected_mu))
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_LOOSE)
     # # Compare to lme4
     # mod <- glmer(y ~ -1 + (1|group), data=data.frame(y=y_o,group),family=poisson(), offset = offset)
@@ -2089,7 +2085,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         predict_var = TRUE, predict_response = FALSE,
                                         cov_pars = cov_pars_pred_eval, X_pred = X_test), file='NUL')
         expect_lt(sum(abs(pred$mu-mu_less_neig)),tolerance_loc_1)
-        expect_lt(sum(abs(as.vector(pred$var)-var_resp_less_neig)),relax_tolerance(2*tolerance_loc_1))
+        expect_lt(sum(abs(as.vector(pred$var)-var_resp_less_neig)),relax_tolerance(2*tolerance_loc_1, var_resp_less_neig))
       }
 
 
@@ -3273,8 +3269,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              matrix_inversion_method = inv_method), file='NUL')
       cov_pars_exp <- c(0.4609968677, 0.11958972)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),tolerance_loc_2)
-      expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-1.165048377 )),relax_tolerance(tolerance_loc_2))
-      expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-163.2316193)),relax_tolerance(tolerance_loc_2))
+      expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-1.165048377 )),relax_tolerance(tolerance_loc_2, 1.165048377))
+      expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-163.2316193)),relax_tolerance(tolerance_loc_2, 163.2316193))
       # Prediction
       coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
       gp_model$set_prediction_data(nsim_var_pred = 10000)
@@ -3943,7 +3939,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            y = y_multiple, X = X, params = params, likelihood_additional_param=likelihood_additional_param), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_multiple)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coefs_multiple)),TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars_multiple)),relax_tolerance(TOLERANCE_STRICT_LOWER))
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars_multiple)),relax_tolerance(TOLERANCE_STRICT_LOWER, aux_pars_multiple))
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_est_multiple),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), num_it_multiple)
     gp_model$set_optim_params(params = list(init_aux_pars = aux_pars_pred_eval, init_coef = coefs_pred, init_coef_aux_pars_from_iid_model = FALSE))
@@ -6214,7 +6210,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                         predict_var=TRUE, predict_response = FALSE)
         expected_mu <- c(4.671312214, 3.029084877, 7.400864491)
         expected_var <- c(0.01524446, 0.01621295, 0.01564379)
-        expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(tolerance_loc_3))
+        expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(tolerance_loc_3, expected_mu))
         expect_lt(sum(abs(pred$var-expected_var)),tolerance_loc_4)
 
         # X_testd <- X
@@ -6247,7 +6243,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
           gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
           capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                           predict_var=TRUE, predict_response = FALSE) , file='NUL')
-          expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(tolerance_loc_3))
+          expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(tolerance_loc_3, expected_mu))
           expect_lt(sum(abs(pred$var-expected_var)),tolerance_loc_2)
 
           num_neighbors <- 50
@@ -6266,7 +6262,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
           gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
           capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                           predict_var=TRUE, predict_response = FALSE) , file='NUL')
-          expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.05))
+          expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.05, expected_mu))
           expect_lt(sum(abs(pred$var-expected_var)),0.05)
 
           gp_approx <- "fitc"
@@ -6280,7 +6276,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
           capture.output( gp_model <- fitGPModel(gp_coords = coords_lin, likelihood = likelihood,  cov_function = cov_function,
                                                  matrix_inversion_method = matrix_inversion_method, X=X, y = y, params = params,
                                                  gp_approx = gp_approx, num_ind_points = num_ind_points, ind_points_selection = ind_points_selection) , file='NUL')
-          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),relax_tolerance(tolerance_loc_4))
+          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),relax_tolerance(tolerance_loc_4, cov_pars_exp))
           expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),tolerance_loc_4)
           expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),tolerance_loc_4)
           capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
@@ -6320,7 +6316,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                  matrix_inversion_method = matrix_inversion_method, X=X, y = y, params = params,
                                                  gp_approx = gp_approx, num_neighbors = num_neighbors,
                                                  num_ind_points = num_ind_points, ind_points_selection = ind_points_selection) , file='NUL')
-          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),relax_tolerance(tolerance_loc_4))
+          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),relax_tolerance(tolerance_loc_4, cov_pars_exp))
           expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),tolerance_loc_4)
           expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),tolerance_loc_4)
           capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
@@ -6339,12 +6335,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                  matrix_inversion_method = matrix_inversion_method, X=X, y = y, params = params,
                                                  gp_approx = gp_approx, num_neighbors = num_neighbors,
                                                  num_ind_points = num_ind_points, ind_points_selection = ind_points_selection) , file='NUL')
-          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),relax_tolerance(tolerance_loc_4))
-          expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),relax_tolerance(0.02))
+          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),relax_tolerance(tolerance_loc_4, cov_pars_exp))
+          expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),relax_tolerance(0.02, coef_exp))
           expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),relax_tolerance_nll(0.2))
           capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                           predict_var=TRUE, predict_response = FALSE) , file='NUL')
-          expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.05))
+          expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.05, expected_mu))
           expect_lt(sum(abs(pred$var-expected_var)),0.05)
         }
 
@@ -6608,7 +6604,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                     predict_var=TRUE, predict_response = FALSE) , file='NUL')
-    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01))
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01, expected_mu))
     expect_lt(sum(abs(pred$var-expected_var)),0.01)
 
     gp_approx <- "vecchia_correlation"
@@ -6646,7 +6642,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                     predict_var=TRUE, predict_response = FALSE) , file='NUL')
-    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01))
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01, expected_mu))
     expect_lt(sum(abs(pred$var-expected_var)),0.01)
 
     gp_approx <- "fitc"
@@ -6666,7 +6662,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),tol_fitc)
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                     predict_var=TRUE, predict_response = FALSE) , file='NUL')
-    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01))
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01, expected_mu))
     expect_lt(sum(abs(pred$var-expected_var)),0.01)
 
     num_ind_points <- 50
@@ -6684,7 +6680,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),1)
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                     predict_var=TRUE, predict_response = FALSE) , file='NUL')
-    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01))
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01, expected_mu))
     expect_lt(sum(abs(pred$var-expected_var)),0.01)
 
     # VIF approximation
@@ -6727,7 +6723,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),tol_vif)
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                     predict_var=TRUE, predict_response = FALSE) , file='NUL')
-    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01))
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01, expected_mu))
     expect_lt(sum(abs(pred$var-expected_var)),0.01)
 
     ## GPBoost algorithm
@@ -6846,7 +6842,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),tol_fitc)
     # capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
     #                                 predict_var=TRUE, predict_response = FALSE) , file='NUL')
-    # expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01))
+    # expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01, expected_mu))
     # expect_lt(sum(abs(pred$var-expected_var)),0.01)
 
     num_ind_points <- 20
@@ -7043,7 +7039,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),tol_fitc)
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                     predict_var=TRUE, predict_response = FALSE) , file='NUL')
-    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01))
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01, expected_mu))
     expect_lt(sum(abs(pred$var-expected_var)),0.01)
 
     num_ind_points <- 50
@@ -7061,7 +7057,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),1)
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                     predict_var=TRUE, predict_response = FALSE) , file='NUL')
-    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01))
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01, expected_mu))
     expect_lt(sum(abs(pred$var-expected_var)),0.01)
 
     # VIF approximation
@@ -7104,7 +7100,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),tol_vif)
     capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                     predict_var=TRUE, predict_response = FALSE) , file='NUL')
-    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01))
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01, expected_mu))
     expect_lt(sum(abs(pred$var-expected_var)),0.01)
 
   }) # end hurst covariance
@@ -7399,11 +7395,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     #   stops at a different point along that direction on another compiler. The negative log-likelihood
     #   is almost unchanged there, the estimates are not: with gcc the covariance parameter deviates by
     #   0.013 and the regression coefficients by 0.039
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.2682095671)),relax_tolerance(0.01))
-    expect_lt(sum(abs(gp_model$get_aux_pars()-c(22.879799528, 0.168605624))),relax_tolerance(0.6))
-    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.11240688283, 0.88192071991))),relax_tolerance(0.008))
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-0.2682095671)),relax_tolerance(0.01, 0.2682095671))
+    expect_lt(sum(abs(gp_model$get_aux_pars()-c(22.879799528, 0.168605624))),relax_tolerance(0.6, c(22.879799528, 0.168605624)))
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(-0.11240688283, 0.88192071991))),relax_tolerance(0.008, c(-0.11240688283, 0.88192071991)))
     nll <- -44.08117687
-    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-nll))),relax_tolerance_nll(0.002))
+    # Along that flat direction the optimizer also stops slightly differently with another number of
+    # threads: 0.0038 has been measured on the reference platform itself
+    expect_lt(sum(abs((gp_model$get_current_neg_log_likelihood()-nll))),relax_tolerance_nll(0.01))
     expect_gt(gp_model$get_num_optim_iter(), 0)
     # Prediction
     group_test <- c(1,3,3,9999)
@@ -7413,9 +7411,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_mu <- c(0.3900424970, 0.3251828138, 0.3809477867, 0.7292149088)
     expected_var <- c(0.01993931983, 0.01913466436, 0.02000007302, 0.03469011762)
     # see the note on the precision parameter above: 0.006 has been measured on the Linux CI
-    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01))
+    expect_lt(sum(abs(pred$mu-expected_mu)),relax_tolerance(0.01, expected_mu))
     # 0.00081 has been measured with clang + libc++ in the clang-asan container of R-hub
-    expect_lt(sum(abs(pred$var-expected_var)),relax_tolerance(0.0008))
+    expect_lt(sum(abs(pred$var-expected_var)),relax_tolerance(0.0008, expected_var))
 
     ## GPBoost algorithm
     dtrain <- gpb.Dataset(data = X, label = y)
@@ -7430,7 +7428,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                    min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)
     # The predicted values are only compared with the expected values on the reference platform: they react
     #   much more sensitively to the summation order than the estimate itself
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE) - 0.0972135292)), relax_tolerance(0.05))
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE) - 0.0972135292)), relax_tolerance(0.05, 0.0972135292))
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_test,
                     predict_var = TRUE, pred_latent = FALSE)
@@ -8259,9 +8257,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     0.081226357385000, 0.0483181738202239, 0.00771178320850000)
     coef_v <- c(0.962932883927947, 0.110839163937625, 1.10211572960383, 0.0925165508666763)
     nll_v <- 537.536566769249
-    expect_lt(sum(abs(as.vector(gp_model_gauss_v$get_cov_pars(std_err = TRUE))-cov_pars_v)),relax_tolerance(TOLERANCE_STRICT))
-    expect_lt(sum(abs(as.vector(gp_model_gauss_v$get_coef(std_err = TRUE))-coef_v)),relax_tolerance(TOLERANCE_STRICT))
-    expect_lt(abs(gp_model_gauss_v$get_current_neg_log_likelihood()-nll_v),relax_tolerance(TOLERANCE_MEDIUM))
+    expect_lt(sum(abs(as.vector(gp_model_gauss_v$get_cov_pars(std_err = TRUE))-cov_pars_v)),relax_tolerance(TOLERANCE_STRICT, cov_pars_v))
+    expect_lt(sum(abs(as.vector(gp_model_gauss_v$get_coef(std_err = TRUE))-coef_v)),relax_tolerance(TOLERANCE_STRICT, coef_v))
+    expect_lt(abs(gp_model_gauss_v$get_current_neg_log_likelihood()-nll_v),relax_tolerance(TOLERANCE_MEDIUM, nll_v))
     if (USE_STRICT_TOLERANCES) expect_equal(gp_model_gauss_v$get_num_optim_iter(), 14)
 
     # t likelihood with a fixed, large degrees-of-freedom parameter (df = 100), i.e., almost Gaussian noise
@@ -8279,17 +8277,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     cov_pars_t_v_result <- as.vector(gp_model_t_v$get_cov_pars(std_err = TRUE))
     aux_pars_t_v_result <- as.vector(gp_model_t_v$get_aux_pars(std_err = TRUE))
     coef_t_v_result <- as.vector(gp_model_t_v$get_coef(std_err = TRUE))
-    expect_lt(sum(abs(cov_pars_t_v_result[c(1,3)]-cov_pars_t_v[c(1,3)])),relax_tolerance(TOLERANCE_STRICT))# estimates
+    expect_lt(sum(abs(cov_pars_t_v_result[c(1,3)]-cov_pars_t_v[c(1,3)])),relax_tolerance(TOLERANCE_STRICT, cov_pars_t_v[c(1,3)]))# estimates
     # The standard errors of covariance and auxiliary parameters are obtained from a Hessian that is approximated
     #   with finite differences of a gradient which itself relies on an iterative mode finding algorithm (see
     #   'CalcHessianCovParAuxPars'). They are thus not reproducible to the same accuracy as the estimates: differences
     #   of a few 1e-6 have been observed between builds (the standard errors below are of the order of 0.02 - 0.17)
-    expect_lt(sum(abs(cov_pars_t_v_result[c(2,4)]-cov_pars_t_v[c(2,4)])),relax_tolerance(TOLERANCE_MEDIUM))# standard errors
-    expect_lt(sum(abs(aux_pars_t_v_result[1]-aux_pars_t_v[1])),relax_tolerance(TOLERANCE_STRICT))# estimate
-    expect_lt(sum(abs(aux_pars_t_v_result[2:3]-aux_pars_t_v[2:3])),relax_tolerance(TOLERANCE_MEDIUM))# standard error and fixed df
+    expect_lt(sum(abs(cov_pars_t_v_result[c(2,4)]-cov_pars_t_v[c(2,4)])),relax_tolerance(TOLERANCE_MEDIUM, cov_pars_t_v[c(2,4)]))# standard errors
+    expect_lt(sum(abs(aux_pars_t_v_result[1]-aux_pars_t_v[1])),relax_tolerance(TOLERANCE_STRICT, aux_pars_t_v[1]))# estimate
+    expect_lt(sum(abs(aux_pars_t_v_result[2:3]-aux_pars_t_v[2:3])),relax_tolerance(TOLERANCE_MEDIUM, aux_pars_t_v[2:3]))# standard error and fixed df
     expect_true(is.nan(aux_pars_t_v_result[4])) # no standard error for the fixed (not estimated) degrees-of-freedom parameter
-    expect_lt(sum(abs(coef_t_v_result[c(1,3)]-coef_t_v[c(1,3)])),relax_tolerance(TOLERANCE_STRICT))
-    if (coef_se_available(coef_t_v_result)) expect_lt(sum(abs(coef_t_v_result[c(2,4)]-coef_t_v[c(2,4)])),relax_tolerance(TOLERANCE_STRICT))
+    expect_lt(sum(abs(coef_t_v_result[c(1,3)]-coef_t_v[c(1,3)])),relax_tolerance(TOLERANCE_STRICT, coef_t_v[c(1,3)]))
+    if (coef_se_available(coef_t_v_result)) expect_lt(sum(abs(coef_t_v_result[c(2,4)]-coef_t_v[c(2,4)])),relax_tolerance(TOLERANCE_STRICT, coef_t_v[c(2,4)]))
     # This model converges to a clearly different stationary point on other compilers: the negative
     # log-likelihood is about 1.4 higher than the 535.9 below (0.26%), which is also the reason why the
     # approximated Hessian for the coefficient standard errors is not positive definite there (see above)

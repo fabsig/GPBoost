@@ -2,13 +2,10 @@ context("GPModel_ar1_multifidelity")
 
 # Non-convex / stochastic optimization: a different compiler or standard library (e.g. clang + libc++ on
 # Linux, used by the sanitizer containers of R-hub and CRAN) can converge to a different stationary point
-# with practically the same likelihood. Only require the tight tolerances on the reference platform on
-# which the expected values were calculated.
-# See helper-tolerances.R, which defines this and reports it once per test run
-USE_STRICT_TOLERANCES <- gpb_use_strict_tolerances()
-relax_tolerance <- function(tol) if (USE_STRICT_TOLERANCES) tol else max(2 * tol, 0.5)
-# Separate helper for ABSOLUTE differences of negative log-likelihoods (scale 100-1000 here)
-relax_tolerance_nll <- function(tol) if (USE_STRICT_TOLERANCES) tol else max(3 * tol, 3)
+# with practically the same likelihood.
+# The tight tolerances below therefore only hold on the reference platform on which the expected
+# values were calculated. 'relax_tolerance*()' of helper-tolerances.R relaxes them elsewhere and
+# reports once per test run which of the two is in force.
 
 # 'matern_ard_estimate_shape' needs 'std::cyl_bessel_k', which is not provided by every standard
 # library (in particular not by libc++, used by clang on macOS and in the sanitizer containers)

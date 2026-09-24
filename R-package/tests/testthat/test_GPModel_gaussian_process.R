@@ -9,10 +9,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   TOLERANCE_STRICT <- 1E-5
   # Some of the optimization problems below are non-convex, and a different compiler or standard library
   # does not reproduce floating point arithmetic bit-wise. The tight tolerances therefore only hold on the
-  # reference platform on which the expected values were calculated.
-  # See helper-tolerances.R, which defines this and reports it once per test run
-  USE_STRICT_TOLERANCES <- gpb_use_strict_tolerances()
-  relax_tolerance <- function(tol) if (USE_STRICT_TOLERANCES) tol else max(2 * tol, 0.5)
+  # reference platform on which the expected values were calculated. 'relax_tolerance*()' of
+  # helper-tolerances.R relaxes them elsewhere and reports once per test run which of the two is in force.
   # Covariance functions with a general (non-fixed) smoothness need 'std::cyl_bessel_k', which is a C++17
   # feature that is not provided by every standard library (in particular not by libc++, which is used by
   # clang on macOS and in the clang sanitizer containers of R-hub / CRAN)
@@ -2792,7 +2790,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = FALSE))-cov_pars_fix)), TOLERANCE_LOOSE)
         expect_lt(sum(abs(gp_model_fix$get_cov_pars(std_err = FALSE)[c(2,3)]-params_fix$init_cov_pars[c(2,3)])),TOLERANCE_STRICT)
         # 0.051 has been measured with clang + libc++ in the clang-asan container of R-hub
-        expect_lt(sum(abs(gp_model_fix$get_current_neg_log_likelihood()-nll_fix)), relax_tolerance(0.04))
+        expect_lt(sum(abs(gp_model_fix$get_current_neg_log_likelihood()-nll_fix)), relax_tolerance(0.04, nll_fix))
         params_fix$estimate_cov_par_index <- c(1,1,0)
         gp_model_fix <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                    gp_approx = gp_approx, num_ind_points = 50, num_neighbors = 10,
@@ -3195,7 +3193,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       # parameters (up to ~390), so a budget of 1e-3 is a reference-platform tolerance: with gcc on
       # Linux the same stationary point is reached (identical iteration count, and the negative
       # log-likelihood and the coefficients still agree to 1e-5 below) with a sum of ~1.6e-3
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),relax_tolerance(TOLERANCE_MEDIUM))
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),relax_tolerance(TOLERANCE_MEDIUM, cov_pars))
       expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_STRICT)
       expect_equal(gp_model$get_num_optim_iter(), nrounds)
       expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_STRICT)
@@ -3504,7 +3502,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))[c(1,3,5,7,9)+1]-cov_pars_est_shape[c(1,3,5,7,9)+1])),0.5)
       # Absolute sum over the two coefficients and their standard errors of a model whose shape
       # parameter is estimated, so a budget of 1e-5 is a reference-platform tolerance
-      expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_est_shape)),relax_tolerance(TOLERANCE_STRICT))
+      expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_est_shape)),relax_tolerance(TOLERANCE_STRICT, coef_est_shape))
       expect_equal(gp_model$get_num_optim_iter(), nrounds_est_shape)
       expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_est_shape), TOLERANCE_STRICT)
     }

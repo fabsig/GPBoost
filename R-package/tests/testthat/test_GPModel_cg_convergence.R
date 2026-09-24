@@ -2,9 +2,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   context("GPModel_cg_convergence")
 
-  # See helper-tolerances.R
-  USE_STRICT_TOLERANCES <- gpb_use_strict_tolerances()
-  relax_tolerance <- function(tol) if (USE_STRICT_TOLERANCES) tol else max(2 * tol, 0.5)
+  # See helper-tolerances.R for 'relax_tolerance()', which relaxes the tolerances below on a platform
+  # other than the reference one
 
   TOLERANCE_STRICT <- 1E-6
   TOLERANCE_MEDIUM <- 1E-3
@@ -73,7 +72,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     tight_fit <- fit_iterative(list(cg_delta_conv = 1E-4))
     expect_true(all(is.finite(as.vector(loose_fit$get_cov_pars()))))
     expect_lt(sum(abs(as.vector(loose_fit$get_cov_pars()) - as.vector(tight_fit$get_cov_pars()))),
-              relax_tolerance(TOL_VERY_LOOSE))
+              relax_tolerance(TOL_VERY_LOOSE, as.vector(tight_fit$get_cov_pars())))
   })
 
   test_that("The relative CG stopping rule gives the same fit as the absolute one", {
@@ -83,9 +82,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     relative <- fit_iterative(list(cg_convergence_criterion = "relative",
                                    cg_rel_tol = 1E-8, cg_abs_tol = 1E-8))
     expect_lt(sum(abs(as.vector(reference$get_cov_pars()) - as.vector(relative$get_cov_pars()))),
-              relax_tolerance(TOLERANCE_LOOSE))
+              relax_tolerance(TOLERANCE_LOOSE, as.vector(relative$get_cov_pars())))
     expect_lt(abs(reference$get_current_neg_log_likelihood() -
-                    relative$get_current_neg_log_likelihood()), relax_tolerance(1))
+                    relative$get_current_neg_log_likelihood()), relax_tolerance(1, relative$get_current_neg_log_likelihood()))
 
     # A very small 'cg_abs_tol' floor must not make the algorithm fail on small right-hand sides
     small_floor <- fit_iterative(list(cg_convergence_criterion = "relative",
@@ -106,7 +105,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # the defaults are tight enough to reproduce an explicitly tight absolute fit
     reference <- fit_iterative(list(cg_delta_conv = 1E-6))
     expect_lt(sum(abs(as.vector(default_rel$get_cov_pars()) - as.vector(reference$get_cov_pars()))),
-              relax_tolerance(TOLERANCE_LOOSE))
+              relax_tolerance(TOLERANCE_LOOSE, as.vector(reference$get_cov_pars())))
 
     # and passing the documented defaults explicitly changes nothing
     explicit <- fit_iterative(list(cg_convergence_criterion = "relative", cg_rel_tol = 1E-6,
@@ -123,9 +122,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     })
     for (i in 2:3) {
       expect_lt(sum(abs(as.vector(fits[[1]]$get_cov_pars()) - as.vector(fits[[i]]$get_cov_pars()))),
-                relax_tolerance(TOLERANCE_LOOSE))
+                relax_tolerance(TOLERANCE_LOOSE, as.vector(fits[[i]]$get_cov_pars())))
       expect_lt(abs(fits[[1]]$get_current_neg_log_likelihood() -
-                      fits[[i]]$get_current_neg_log_likelihood()), relax_tolerance(1))
+                      fits[[i]]$get_current_neg_log_likelihood()), relax_tolerance(1, fits[[i]]$get_current_neg_log_likelihood()))
     }
 
     # "max" is the strictest rule, so it can never stop before "average" does
@@ -137,7 +136,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     abs_per_rhs <- fit_iterative(list(cg_multi_rhs_convergence = "per_rhs", cg_delta_conv = 1E-4))
     abs_max <- fit_iterative(list(cg_multi_rhs_convergence = "max", cg_delta_conv = 1E-4))
     expect_lt(sum(abs(as.vector(abs_per_rhs$get_cov_pars()) - as.vector(abs_max$get_cov_pars()))),
-              relax_tolerance(TOLERANCE_LOOSE))
+              relax_tolerance(TOLERANCE_LOOSE, as.vector(abs_max$get_cov_pars())))
   })
 
   test_that("Prediction options are inherited independently of one another", {
@@ -165,7 +164,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( preds2 <- predict(gp_model2, group_data_pred = group_data_pred,
                                       predict_var = TRUE) , file='NUL')
     expect_true(all(is.finite(preds2$mu)))
-    expect_lt(sum(abs(preds$mu - preds2$mu)), relax_tolerance(TOL_VERY_LOOSE))
+    expect_lt(sum(abs(preds$mu - preds2$mu)), relax_tolerance(TOL_VERY_LOOSE, preds2$mu))
   })
 
   test_that("A tolerance above the norm of every probe vector still gives a finite fit", {
@@ -257,8 +256,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                         cg_delta_conv_pred = 1E-8)
     capture.output( pred_absolute <- predict(gp_model, group_data_pred = group_data_pred,
                                              predict_var = TRUE) , file='NUL')
-    expect_lt(sum(abs(pred_relative$mu - pred_absolute$mu)), relax_tolerance(TOLERANCE_MEDIUM))
-    expect_lt(sum(abs(pred_relative$var - pred_absolute$var)), relax_tolerance(TOLERANCE_LOOSE))
+    expect_lt(sum(abs(pred_relative$mu - pred_absolute$mu)), relax_tolerance(TOLERANCE_MEDIUM, pred_absolute$mu))
+    expect_lt(sum(abs(pred_relative$var - pred_absolute$var)), relax_tolerance(TOLERANCE_LOOSE, pred_absolute$var))
   })
 
 }
