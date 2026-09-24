@@ -42,8 +42,19 @@
 #   1. it installs all dependencies of the package (including 'Suggests', so that 'testthat' is
 #      available and the tests are actually run - without it, 'R CMD check' silently skips them),
 #   2. it runs 'R CMD check' with the arguments given in the environment variable 'CHECK_ARGS',
-#   3. it searches the check output for sanitizer reports, prints them, and exits with status 1
-#      if it found any. The exit status can thus be trusted, no manual searching is needed.
+#   3. it searches part of the check output for sanitizer reports and prints them.
+#
+# IMPORTANT: the exit status of 'r-check' cannot be used as the verdict, in either direction.
+#   - A run in which everything passed is reported as a FAILURE. The script runs under 'set -e'
+#     and collects the files it has to search with
+#         testfiles=$(ls tests | grep ".Rout.fail$")
+#     A check without a single failing test has no '.Rout.fail', 'grep' then exits with 1, and
+#     'set -e' ends the script with that status, before anything is printed.
+#   - A report of a sanitizer can be MISSED. The script only looks at '<package>-Ex.Rout' and at
+#     the '.Rout.fail' files, so a report that was written while a test that PASSED was running,
+#     which lands in '.Rout', is never seen by it.
+# Judge a run by the contents of 'gpboost.Rcheck' instead, see 'WHERE THE RESULTS ARE' below. The
+# workflow '.github/workflows/memory-and-code-checks.yml' does this and ignores the exit status.
 # 'r-check' checks ALL '*.tar.gz' files in the mounted folder (the wildcard is expanded inside the
 # container, so no file name has to be given on the command line).
 #
@@ -112,8 +123,9 @@
 #   gpboost.Rcheck/gpboost-Ex.Rout     output of running the examples of the help pages
 #
 # The reports of the sanitizers are contained in these '.Rout' / '.Rout.fail' files, at the place
-# where the corresponding code was run. In addition, 'r-check' prints them to the console and exits
-# with status 1 (see above), i.e. it is usually enough to look at the console output.
+# where the corresponding code was run. 'r-check' also prints those of them that it looks at to
+# the console, but only those, so search the files themselves rather than the console output (see
+# the note on the exit status above).
 #
 # ASan and UBSan do NOT appear as separate steps in '00check.log': they are compiled into the
 # library and they only write something if they actually find a problem. "Status: OK" without any
@@ -229,8 +241,8 @@
 #
 # The findings are lines of the form '==<pid>== <message>' followed by a stack trace, e.g.
 # "Conditional jump or move depends on uninitialised value(s)" or "Invalid read of size 8".
-# 'r-check' searches the check output for lines matching '^==<number>==   at' and exits with
-# status 1 if it finds any (see also the description of 'r-check' further above).
+# 'r-check' searches the check output for lines matching '^==<number>==   at', but its exit status
+# must not be relied on here either, for the reasons given further above.
 #
 # Note on 'VALGRIND_OPTS': the default contains '--leak-check=full', and R itself does not free all
 # of its memory. The reported leaks are therefore often not in GPBoost, and because the leak

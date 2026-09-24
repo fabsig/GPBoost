@@ -256,8 +256,16 @@ jobs:
           ls -l gpboost_*.tar.gz
 
       # 'r-check' installs the dependencies of the package (including 'Suggests', so that the tests
-      # are really run), runs 'R CMD check', and exits with status 1 if it finds a report of a
-      # sanitizer or of valgrind in the output, so the exit status can be used directly.
+      # are really run) and runs 'R CMD check'.
+      #
+      # Its exit status is deliberately NOT used as the verdict. The script runs under 'set -e' and
+      # determines the files it has to search with
+      #     testfiles=$(ls tests | grep ".Rout.fail$")
+      # A check in which every test passed has no '.Rout.fail' at all, 'grep' then exits with 1, and
+      # 'set -e' ends the script with that status: a completely clean run is reported as a failure.
+      # The script also searches only '<package>-Ex.Rout' and the '.Rout.fail' files, so a report of
+      # a sanitizer in a test file that passed, which lands in '.Rout', is not seen by it at all.
+      # The verdict is therefore formed in the step below, from the whole check directory.
       # The containers set 'OMP_THREAD_LIMIT=2', as CRAN does; this is deliberately not raised, it
       # makes the reports more reproducible
       - name: Run the check in the ${{ matrix.name }} container
@@ -293,7 +301,9 @@ jobs:
           if [ -n "${CHECK_ARGS}" ]; then
             opts+=(-e CHECK_ARGS="${CHECK_ARGS}")
           fi
-          docker run "${opts[@]}" "${IMAGE}" r-check
+          docker run "${opts[@]}" "${IMAGE}" r-check && status=0 || status=$?
+          echo "r-check exited with ${status}"
+          echo "R_CHECK_STATUS=${status}" >> "${GITHUB_ENV}"
 
       # The sanitizers write nothing when they find nothing, so "Status: OK" only means that the
       # code is clean if the tests really ran. A suite that skipped itself reports
@@ -322,15 +332,17 @@ jobs:
             fi
           fi
 
-      # A failure of this job can mean quite different things: a report of one of the sanitizers, a
-      # test whose expected values do not hold for this build, or a check step that did not finish.
-      # They all look the same in the list of jobs, so the findings are counted by kind here and
-      # written to the summary of the run. This only describes the result, it does not change it:
-      # the verdict stays with 'r-check' and with 'R CMD check'.
+      # This step forms the verdict of the job, because the exit status of 'r-check' cannot carry it
+      # (see the step above). It counts the findings by kind, writes them to the summary of the run,
+      # and fails when a sanitizer or valgrind reported something or when 'R CMD check' did not end
+      # with "Status: OK". A failure of this job can mean quite different things - a report of one of
+      # the sanitizers, a test whose expected values do not hold for this build, or a check step that
+      # did not finish - and they all look the same in the list of jobs, which is what the table is
+      # for.
       # The leak records of valgrind are counted separately on purpose. R does not free all of its
-      # memory, the default 'VALGRIND_OPTS' of the container contain '--leak-check=full', and the
-      # leak reports match the same '==<pid>==   at' pattern that 'r-check' fails on, so a run can
-      # be red without a single access to uninitialized or foreign memory
+      # memory and the default 'VALGRIND_OPTS' of the container contain '--leak-check=full', so a
+      # run can report leaks without a single access to uninitialized or foreign memory. They are
+      # listed but they do not fail the job on their own.
       - name: Summarize what was reported
         if: always()
         env:
@@ -375,6 +387,17 @@ jobs:
           print(report)
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as handle:
               handle.write(report + "\n\n")
+
+          problems = [name for name, n in counts.items()
+                      if n and name != "valgrind, leak record"]
+          if problems:
+              print("::error::" + ", ".join(problems))
+          if not status:
+              print("::error::'R CMD check' produced no Status line, it did not finish")
+          elif status != "Status: OK":
+              print(f"::error::{status}")
+          if problems or status != "Status: OK":
+              raise SystemExit(1)
           PY
 
       - name: Upload the check directory

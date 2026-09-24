@@ -13,6 +13,7 @@
 #include <algorithm> // std::set_difference, std::lower_bound
 #include <iterator> // std::inserter, std::begin, std::end
 #include <numeric> // std::iota
+#include <limits> // std::numeric_limits
 
 #ifdef USE_CUDA_GP
 #include <cuda_runtime.h>
@@ -335,9 +336,12 @@ namespace GPBoost {
 			}
 		}
 		//Tree depth
-		int L = (int)(ceil(log2(max_dist_d / eps)));
-		if (L < 1) {
-			L = 1;
+		// the quotient is not finite when all points coincide, and converting such a value to
+		// an int is undefined behaviour, so the depth is determined before the conversion
+		double tree_depth = std::ceil(std::log2(max_dist_d / eps));
+		int L = 1;
+		if (tree_depth > 1. && tree_depth < (double)std::numeric_limits<int>::max()) {
+			L = (int)tree_depth;
 		}
 		//number of nodes
 		int M_l_minus = 1;

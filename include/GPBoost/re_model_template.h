@@ -321,6 +321,10 @@ namespace GPBoost {
 							Log::REFatal("Method '%s' is not supported for choosing the inducing points ", ind_points_selection_.c_str());
 						}
 					}
+					// the cover tree is also available for this approximation, and its radius is
+					// read in SelectIndPointsFromCoords() independently of the approximation
+					CHECK(cover_tree_radius > 0);
+					cover_tree_radius_ = cover_tree_radius;
 				}//end if gp_approx_ == "vecchia"
 				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 					if (num_ind_points > 0) {
@@ -6742,7 +6746,7 @@ namespace GPBoost {
 		/*! \brief Keys: labels of independent realizations of REs/GPs, values: coordinates of the inducing points of the preconditioner of the corresponding cluster. Used for redetermine inducing points for kmeans++ algo*/
 		std::map<data_size_t, den_mat_t> gp_coords_ip_mat_preconditioner_;
 		/*! \brief Radius (= "spatial resolution") for the cover tree algorithm */
-		double cover_tree_radius_;
+		double cover_tree_radius_ = 1.;
 		/*! \brief Outer key: independent realizations of REs/GPs over "clusters", inner key: set index of REs / GPs  for multiple parameters (e.g. for heteroscedastic GP), values: vectors with inducing points GP components */
 		std::map<int, std::map<int, std::vector<std::shared_ptr<RECompGP<den_mat_t>>>>> re_comps_ip_;
 		std::map<int, std::map<int, std::vector<std::shared_ptr<RECompGP<den_mat_t>>>>> re_comps_ip_preconditioner_;
