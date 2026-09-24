@@ -128,8 +128,9 @@ jobs:
           import datetime, json, os, re, sys
 
           test_dir = "R-package/tests/testthat"
+          scheduled = os.environ["EVENT"] == "schedule"
 
-          if os.environ["EVENT"] == "schedule":
+          if scheduled:
               # a scheduled run carries no inputs, so the defaults of the dispatch form do not apply
               # and the selection is made from the date instead. The cron fires on every Sunday; the
               # first one of a month falls on a day between 1 and 7, the third one between 15 and 21
@@ -202,6 +203,14 @@ jobs:
                       "id": name if num_shards == 1 else f"{name}-{shard}-of-{num_shards}",
                       "image": image,
                       "check_args": args,
+                      # The default 'VALGRIND_OPTS' of the container contain '--leak-check=full',
+                      # which is what CRAN runs, and a manual run keeps it. The monthly run drops
+                      # the leak check instead and concentrates on the reads of uninitialized memory,
+                      # which is what valgrind contributes over ASan: R does not run all of its
+                      # finalizers at the end, so whatever is still alive is reported as lost, and
+                      # those records say nothing about the correctness of the library
+                      "valgrind_opts": "--track-origins=yes --leak-check=no"
+                                       if (name == "valgrind" and scheduled) else "",
                       "all_tests": "true" if all_tests else "false",
                       "test_filter": filter_of(shard, num_shards) if all_tests else "",
                       "timeout": 350,
@@ -277,6 +286,7 @@ jobs:
           CHECK_ARGS: ${{ matrix.check_args }}
           ALL_TESTS: ${{ matrix.all_tests }}
           TEST_FILTER: ${{ matrix.test_filter }}
+          VALGRIND_OPTS: ${{ matrix.valgrind_opts }}
         run: |
           # a 'CHECK_ARGS' for the valgrind container that has lost '--use-valgrind' would run a
           # plain check in which nothing is examined, and 'r-check' would then find no valgrind
@@ -302,6 +312,11 @@ jobs:
           fi
           if [ -n "${CHECK_ARGS}" ]; then
             opts+=(-e CHECK_ARGS="${CHECK_ARGS}")
+          fi
+          # only set for the monthly valgrind run, a manual one keeps the default of the container
+          if [ -n "${VALGRIND_OPTS}" ]; then
+            echo "VALGRIND_OPTS: ${VALGRIND_OPTS}"
+            opts+=(-e VALGRIND_OPTS="${VALGRIND_OPTS}")
           fi
           docker run "${opts[@]}" "${IMAGE}" r-check && status=0 || status=$?
           # 'r-check' installs the dependencies of the package before it runs the check, and that
