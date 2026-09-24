@@ -4236,4 +4236,97 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Inducing points from the cover tree for several clusters of different size ", {
+
+    # The cover tree determines the number of inducing points separately for every cluster. Imposing the
+    # number selected for one cluster on the next one made the construction of the smaller cluster fail,
+    # depending on the order in which the clusters are processed
+    n_small_ct2 <- 12
+    # the small cluster is a tight blob, for which the cover tree selects clearly fewer inducing points
+    #   than for the large cluster, which covers the whole domain
+    coords_ct2 <- rbind(coords[1:(n - n_small_ct2), ], 0.02 * coords[1:n_small_ct2, ])
+    y_ct2 <- eps + xi
+    cov_pars_ct2 <- c(0.05, sigma2_1, rho)
+    cluster_ids_ct2 <- list(large_cluster_first = c(rep(1, n - n_small_ct2), rep(2, n_small_ct2)),
+                            small_cluster_first = c(rep(2, n - n_small_ct2), rep(1, n_small_ct2)))
+    for (gp_approx_ct2 in c("fitc", "full_scale_tapering", "full_scale_vecchia")) {
+      for (cluster_order_ct2 in names(cluster_ids_ct2)) {
+        capture.output( gp_model_ct2 <- GPModel(gp_coords = coords_ct2, cov_function = "exponential",
+                                                gp_approx = gp_approx_ct2,
+                                                cluster_ids = cluster_ids_ct2[[cluster_order_ct2]],
+                                                num_ind_points = 5, cover_tree_radius = 0.2,
+                                                ind_points_selection = "cover_tree",
+                                                num_neighbors = 10, vecchia_ordering = "none",
+                                                cov_fct_taper_range = 0.5, cov_fct_taper_shape = 2,
+                                                matrix_inversion_method = "cholesky"), file = 'NUL')
+        capture.output( nll_ct2 <- gp_model_ct2$neg_log_likelihood(cov_pars = cov_pars_ct2, y = y_ct2),
+                        file = 'NUL')
+        expect_true(is.finite(nll_ct2))
+      }
+    }
+  })
+
+  test_that("Redetermined inducing points of several clusters are those of their own cluster ", {
+
+    # With an ARD covariance function the inducing points are redetermined during the estimation. The
+    # kmeans++ algorithm is started from the inducing points of the last redetermination, which have to
+    # be the ones of the same cluster: an empty cluster keeps its mean, so inducing points that lie
+    # in the region of another cluster are never moved to the data and the approximation degenerates
+    y_rd <- eps + xi
+    cluster_ids_rd <- c(rep(1, n / 2), rep(2, n / 2))
+    # the two clusters are in disjoint regions of the coordinate space
+    coords_rd <- coords
+    coords_rd[(n / 2 + 1):n, ] <- coords_rd[(n / 2 + 1):n, ] + 10
+    capture.output( gp_model_rd <- fitGPModel(gp_coords = coords_rd, cov_function = "matern_ard",
+                                              cov_fct_shape = 1.5, gp_approx = "fitc",
+                                              num_ind_points = 20, ind_points_selection = "kmeans++",
+                                              cluster_ids = cluster_ids_rd, y = y_rd,
+                                              params = OPTIM_PARAMS_BFGS), file = 'NUL')
+    marginal_var_rd <- as.numeric(gp_model_rd$get_cov_pars())[2]
+    capture.output( pred_rd <- predict(gp_model_rd, gp_coords_pred = coords_rd,
+                                       cluster_ids_pred = cluster_ids_rd, predict_var = TRUE,
+                                       predict_response = FALSE), file = 'NUL')
+    for (cluster_rd in c(1, 2)) {
+      ind_rd <- which(cluster_ids_rd == cluster_rd)
+      # the latent process is recovered in both clusters, it is not if the inducing points of a cluster
+      #   lie in the region of the other one (the correlation is then close to 0 and the predictive
+      #   variance close to the marginal variance)
+      expect_gt(cor(pred_rd$mu[ind_rd], y_rd[ind_rd]), 0.8)
+      expect_lt(mean(as.vector(pred_rd$var)[ind_rd]), 0.5 * marginal_var_rd)
+    }
+
+  })
+
+  test_that("Sampling from the prior does not change the state of a full-scale Vecchia model ", {
+
+    # Prior samples of the latent process need Vecchia factors without the nugget effect. They must not
+    # replace the factors of the observed process, which are cached and reused by later calculations
+    y_ps <- eps + xi
+    capture.output( gp_model_ps <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                              gp_approx = "full_scale_vecchia", num_neighbors = 15,
+                                              num_ind_points = 10, ind_points_selection = "random",
+                                              vecchia_ordering = "none", y = y_ps,
+                                              params = OPTIM_PARAMS_BFGS), file = 'NUL')
+    cov_pars_ps <- as.numeric(gp_model_ps$get_cov_pars())
+    pred_ps <- predict(gp_model_ps, gp_coords_pred = coords[1:5, ], predict_var = TRUE,
+                       predict_response = FALSE)
+    num_samples_ps <- 30000
+    latent_ps <- predict(gp_model_ps, gp_coords_pred = coords[1:3, ], sample_prior = TRUE,
+                         num_prior_samples = num_samples_ps,
+                         predict_response = FALSE)$prior_samples
+    expect_equal(dim(latent_ps), c(n, num_samples_ps))
+    expect_lt(abs(mean(latent_ps^2) / cov_pars_ps[2] - 1), TOLERANCE_ITERATIVE)
+    # the predictions must not change after the prior has been sampled
+    pred_after_ps <- predict(gp_model_ps, gp_coords_pred = coords[1:5, ], predict_var = TRUE,
+                             predict_response = FALSE)
+    expect_lt(max(abs(pred_after_ps$mu - pred_ps$mu)), TOLERANCE_STRICT)
+    expect_lt(max(abs(as.vector(pred_after_ps$var) - as.vector(pred_ps$var))), TOLERANCE_STRICT)
+    # prior samples of the observed process drawn afterwards still contain the nugget effect
+    response_ps <- predict(gp_model_ps, gp_coords_pred = coords[1:3, ], sample_prior = TRUE,
+                           num_prior_samples = num_samples_ps,
+                           predict_response = TRUE)$prior_samples
+    expect_lt(abs(mean(response_ps^2) / (cov_pars_ps[1] + cov_pars_ps[2]) - 1), TOLERANCE_ITERATIVE)
+
+  })
+
 }

@@ -406,13 +406,22 @@ namespace GPBoost {
 			re_group_data_iid.push_back('\0');
 		}
 		const double* weights_ptr = (has_weights_ && !weights_.empty()) ? weights_.data() : nullptr;
+		// 'gaussian_heteroscedastic_fixed_and_random' is supported only for a Vecchia approximated GP and can thus not be used
+		//	for the auxiliary model. The corresponding likelihood which relates the log-error variance to fixed effects only has
+		//	the same two fixed effects predictors and gives initial values for both of them
+		string_t likelihood_iid = likelihood_;
+		const string_t likelihood_het_fixed_and_random = "gaussian_heteroscedastic_fixed_and_random";
+		size_t pos_het = likelihood_iid.find(likelihood_het_fixed_and_random);
+		if (pos_het != string_t::npos) {
+			likelihood_iid.replace(pos_het, likelihood_het_fixed_and_random.size(), "gaussian_heteroscedastic");
+		}
 		std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>> re_model_iid =
 			std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>>(new REModelTemplate<den_mat_t, chol_den_mat_t>(
 				num_data_, nullptr, re_group_data_iid.data(), 1, nullptr,
 				nullptr, 0, nullptr,
 				0, nullptr, 0, nullptr, 0, nullptr, 1.5, "none",
 				1., 1., -1, "random", -1, 1., "kmeans++",
-				likelihood_.c_str(), likelihood_additional_param_, "cholesky", seed_, num_parallel_threads_, GPU_use_,
+				likelihood_iid.c_str(), likelihood_additional_param_, "cholesky", seed_, num_parallel_threads_, GPU_use_,
 				weights_ptr != nullptr, weights_ptr, likelihood_learning_rate_));
 		const bool estimate_aux_pars_iid = !init_aux_pars_given_ && re_model->estimate_aux_pars_ && re_model_iid->NumAuxPars() > 0;
 		const bool learn_cov_aux_pars_iid = estimate_aux_pars_iid;

@@ -1285,12 +1285,22 @@ namespace GPBoost {
 				}
 				if (calc_mll) {//calculate determinant term for approx_marginal_ll
 					//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
+					// The rank of the preconditioner can differ from 'fitc_piv_chol_preconditioner_rank_' since the method for
+					//	selecting the inducing points can determine their number itself (cover tree), and it can change when the
+					//	inducing points are redetermined
+					int rank_preconditioner = 0;
+					if (cg_preconditioner_type_ == "fitc") {
+						rank_preconditioner = (int)chol_ip_cross_cov_.rows();
+					}
+					else if (cg_preconditioner_type_ == "pivoted_cholesky") {
+						rank_preconditioner = (int)Sigma_L_k_.cols();
+					}
 					if (!saved_rand_vec_trace_) {
 						//Dependent on the preconditioner: Generate t (= num_rand_vec_trace_) or 2*t random vectors
 						if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response") {
 							rand_vec_trace_I_.resize(dim_mode_, num_rand_vec_trace_);
 							if (cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc") {
-								rand_vec_trace_I2_.resize(fitc_piv_chol_preconditioner_rank_, num_rand_vec_trace_);
+								rand_vec_trace_I2_.resize(rank_preconditioner, num_rand_vec_trace_);
 								GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_trace_I2_);
 							}
 							WI_plus_Sigma_inv_Z_.resize(dim_mode_, num_rand_vec_trace_);
@@ -1307,6 +1317,11 @@ namespace GPBoost {
 							saved_rand_vec_trace_ = true;
 						}
 						rand_vec_trace_P_.resize(dim_mode_, num_rand_vec_trace_);
+					}
+					else if (rank_preconditioner > 0 && (int)rand_vec_trace_I2_.rows() != rank_preconditioner) {
+						// the inducing points of the preconditioner have been redetermined and their number has changed
+						rand_vec_trace_I2_.resize(rank_preconditioner, num_rand_vec_trace_);
+						GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_trace_I2_);
 					}
 					double log_det_Sigma_W_plus_I;
 					CalcLogDetStochVecchia(dim_mode_, cg_max_num_it_tridiag, I_k_plus_Sigma_L_kt_W_Sigma_L_k, SigmaI, SigmaI_plus_W, B[0], has_NA_or_Inf, log_det_Sigma_W_plus_I,

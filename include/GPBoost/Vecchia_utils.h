@@ -443,6 +443,8 @@ namespace GPBoost {
 	* \param Vecchia matrix B
 	* \param D_inv_cluster_i Diagonal matrices D^{-1} for Vecchia approximation
 	* \param Vecchia matrix B^T D^(-1)
+	* \param B_prior_cluster_i Vecchia matrix B of the process whose prior is sampled, used only if 'sample_prior' is true. This differs from 'B_cluster_i' when the prior of the latent process is sampled for a Gaussian likelihood, since 'B_cluster_i' refers to the observed process and thus contains the nugget effect
+	* \param D_inv_prior_cluster_i Diagonal matrix D^{-1} of the process whose prior is sampled, used only if 'sample_prior' is true, see 'B_prior_cluster_i'
 	* \param data_indices_per_cluster_pred Keys: labels of independent clusters, values: vectors with indices for data points that belong to the every cluster
 	* \param gp_coords_mat_obs Coordinates for observed locations
 	* \param gp_coords_mat_pred Coordinates for prediction locations
@@ -486,6 +488,8 @@ namespace GPBoost {
 		const sp_mat_rm_t& B_cluster_i,
 		const sp_mat_rm_t& D_inv_cluster_i,
 		const sp_mat_rm_t& Bt_D_inv_cluster_i,
+		const sp_mat_rm_t& B_prior_cluster_i,
+		const sp_mat_rm_t& D_inv_prior_cluster_i,
 		std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
 		const den_mat_t& gp_coords_mat_obs,
 		const den_mat_t& gp_coords_mat_pred,

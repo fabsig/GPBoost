@@ -1708,6 +1708,8 @@ namespace GPBoost {
 		const sp_mat_rm_t& B_cluster_i,
 		const sp_mat_rm_t& D_inv_cluster_i,
 		const sp_mat_rm_t& Bt_D_inv_cluster_i,
+		const sp_mat_rm_t& B_prior_cluster_i,
+		const sp_mat_rm_t& D_inv_prior_cluster_i,
 		std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
 		const den_mat_t& gp_coords_mat_obs,
 		const den_mat_t& gp_coords_mat_pred,
@@ -2177,10 +2179,10 @@ namespace GPBoost {
 			samples_id_obs.resize(num_re_cli, num_prior_samples);
 			GenRandVecNormalParallel(base_seed, run_id, samples_id_obs);
 			sp_mat_rm_t B_inv_D_sqrt_rm;
-			sp_mat_rm_t D_sqrt = D_inv_cluster_i;
+			sp_mat_rm_t D_sqrt = D_inv_prior_cluster_i;
 			D_sqrt.setIdentity();
-			D_sqrt.diagonal().array() = D_inv_cluster_i.diagonal().array().pow(-0.5);
-			TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(B_cluster_i, D_sqrt, B_inv_D_sqrt_rm, false);
+			D_sqrt.diagonal().array() = D_inv_prior_cluster_i.diagonal().array().pow(-0.5);
+			TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(B_prior_cluster_i, D_sqrt, B_inv_D_sqrt_rm, false);
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < num_prior_samples; ++i) {
 				prior_samples_id.col(i) = B_inv_D_sqrt_rm * samples_id_obs.col(i);

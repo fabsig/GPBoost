@@ -334,6 +334,7 @@ namespace GPBoost {
 							num_ind_points_ = 200;// gp_approx_ == "full_scale_vecchia"
 						}
 					}
+					num_ind_points_requested_ = num_ind_points_;
 					CHECK(cover_tree_radius > 0);
 					cover_tree_radius_ = cover_tree_radius;
 					ind_points_selection_ = std::string(ind_points_selection);
@@ -3311,7 +3312,7 @@ namespace GPBoost {
 								GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_probe_[cluster_i]);
 								// Sample probe vectors from N(0,P)
 								if (cg_preconditioner_type_ == "fitc") {
-									rand_vec_probe_low_rank_[cluster_i].resize(num_ind_points_, num_rand_vec_trace_);
+									rand_vec_probe_low_rank_[cluster_i].resize((int)GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0).rows(), num_rand_vec_trace_);
 									GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_probe_low_rank_[cluster_i]);
 									rand_vec_probe_P_[cluster_i] = rand_vec_probe_[cluster_i];
 								}
@@ -4539,18 +4540,27 @@ namespace GPBoost {
 					int num_gp_pred = predict_var_or_response ? num_sets_re_ : 1;
 					// Calculate predictions
 					if (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") {
+						// Factors of the process whose prior is sampled. They are kept separate from 'B_rm_' and 'D_inv_rm_',
+						//	which are reused by subsequent calculations and must keep describing the observed process
+						sp_mat_rm_t B_rm_prior, D_inv_rm_prior;
+						const sp_mat_rm_t* B_rm_prior_ptr = &(B_rm_[cluster_i][0]);
+						const sp_mat_rm_t* D_inv_rm_prior_ptr = &(D_inv_rm_[cluster_i][0]);
 						if (sample_prior) {
 							if (gauss_likelihood_ && !predict_response) {
 								// B_ and D_inv_ describe the observed process and thus contain the nugget effect,
 								//	the prior of the latent process is obtained from the corresponding factors without it
 								sp_mat_t B_latent, D_inv_latent;
 								CalcCovFactorVecchiaLatent(cluster_i, B_latent, D_inv_latent);
-								B_rm_[cluster_i][0] = sp_mat_rm_t(B_latent);
-								D_inv_rm_[cluster_i][0] = sp_mat_rm_t(D_inv_latent);
+								B_rm_prior = sp_mat_rm_t(B_latent);
+								D_inv_rm_prior = sp_mat_rm_t(D_inv_latent);
+								B_rm_prior_ptr = &B_rm_prior;
+								D_inv_rm_prior_ptr = &D_inv_rm_prior;
 							}
 							else if (gp_approx_ == "vecchia") {
-								B_rm_[cluster_i][0] = sp_mat_rm_t(B_[cluster_i][0]);
-								D_inv_rm_[cluster_i][0] = sp_mat_rm_t(D_inv_[cluster_i][0]);
+								B_rm_prior = sp_mat_rm_t(B_[cluster_i][0]);
+								D_inv_rm_prior = sp_mat_rm_t(D_inv_[cluster_i][0]);
+								B_rm_prior_ptr = &B_rm_prior;
+								D_inv_rm_prior_ptr = &D_inv_rm_prior;
 							}
 						}
 						std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp = re_comps_vecchia_[cluster_i][0][0];
@@ -4580,7 +4590,7 @@ namespace GPBoost {
 								}
 								CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred,
 									re_comps_cross_cov_[cluster_i][0], GetForCluster(chol_fact_sigma_ip_, cluster_i, 0), chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip,
-									B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0], data_indices_per_cluster_pred,
+									B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0], *B_rm_prior_ptr, *D_inv_rm_prior_ptr, data_indices_per_cluster_pred,
 									re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, gp_coords_mat_ip, num_neighbors_pred_, vecchia_neighbor_selection_,
 									re_comps_vecchia_[cluster_i][0], num_gp_rand_coef_, num_gp_total_, y_[cluster_i], weights_vecchia_scale_ptr, gauss_likelihood_, rng_,
 									predict_cov_mat, predict_var, sample_posterior, sample_prior, num_post_samples, num_prior_samples, post_samples_id, prior_samples_id, seed_rng_, cg_generator_counter_,
@@ -4593,7 +4603,7 @@ namespace GPBoost {
 								}
 								CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred,
 									re_comps_cross_cov_[cluster_i][0], GetForCluster(chol_fact_sigma_ip_, cluster_i, 0), chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip,
-									B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0], data_indices_per_cluster_pred,
+									B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0], *B_rm_prior_ptr, *D_inv_rm_prior_ptr, data_indices_per_cluster_pred,
 									re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, gp_coords_mat_ip, num_neighbors_pred_, vecchia_neighbor_selection_,
 									re_comps_vecchia_[cluster_i][0], num_gp_rand_coef_, num_gp_total_, y_[cluster_i], weights_vecchia_scale_ptr, gauss_likelihood_, rng_,
 									predict_cov_mat, predict_var, sample_posterior, sample_prior, num_post_samples, num_prior_samples, post_samples_id, prior_samples_id, seed_rng_, cg_generator_counter_,
@@ -4708,7 +4718,7 @@ namespace GPBoost {
 									if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
 										CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred,
 											re_comps_cross_cov_[cluster_i][0], GetForCluster(chol_fact_sigma_ip_, cluster_i, 0),
-											chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip, B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0],
+											chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip, B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0], *B_rm_prior_ptr, *D_inv_rm_prior_ptr,
 											data_indices_per_cluster_pred, re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, gp_coords_mat_ip, num_neighbors_pred_, vecchia_neighbor_selection_,
 											re_comps_vecchia_[cluster_i][igp], num_gp_rand_coef_, num_gp_total_, y_[cluster_i], has_weights_ ? weights_[cluster_i].data() : nullptr, gauss_likelihood_, rng_,
 											false, false, sample_posterior, sample_prior, num_post_samples, num_prior_samples, post_samples_id, prior_samples_id, seed_rng_, cg_generator_counter_,
@@ -4724,7 +4734,7 @@ namespace GPBoost {
 									else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
 										CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred,
 											re_comps_cross_cov_[cluster_i][0], GetForCluster(chol_fact_sigma_ip_, cluster_i, 0), chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip,
-											B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0],
+											B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0], *B_rm_prior_ptr, *D_inv_rm_prior_ptr,
 											data_indices_per_cluster_pred, re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, gp_coords_mat_ip, num_neighbors_pred_, vecchia_neighbor_selection_,
 											re_comps_vecchia_[cluster_i][igp], num_gp_rand_coef_, num_gp_total_, y_[cluster_i], has_weights_ ? weights_[cluster_i].data() : nullptr, gauss_likelihood_, rng_,
 											false, false, sample_posterior, sample_prior, num_post_samples, num_prior_samples, post_samples_id, prior_samples_id, seed_rng_, cg_generator_counter_,
@@ -4745,7 +4755,7 @@ namespace GPBoost {
 									if (vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only") {
 										CalcPredVecchiaObservedFirstOrder(true, cluster_i, num_data_pred,
 											re_comps_cross_cov_[cluster_i][0], GetForCluster(chol_fact_sigma_ip_, cluster_i, 0), chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip,
-											B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0],
+											B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0], *B_rm_prior_ptr, *D_inv_rm_prior_ptr,
 											data_indices_per_cluster_pred, re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, gp_coords_mat_ip, num_neighbors_pred_, vecchia_neighbor_selection_,
 											re_comps_vecchia_[cluster_i][igp], num_gp_rand_coef_, num_gp_total_, y_[cluster_i], has_weights_ ? weights_[cluster_i].data() : nullptr, gauss_likelihood_, rng_,
 											false, false, sample_posterior, sample_prior, num_post_samples, num_prior_samples, post_samples_id, prior_samples_id, seed_rng_, cg_generator_counter_,
@@ -4754,7 +4764,7 @@ namespace GPBoost {
 									else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
 										CalcPredVecchiaObservedFirstOrder(false, cluster_i, num_data_pred,
 											re_comps_cross_cov_[cluster_i][0], GetForCluster(chol_fact_sigma_ip_, cluster_i, 0), chol_fact_sigma_woodbury_[cluster_i], cross_cov_pred_ip,
-											B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0],
+											B_rm_[cluster_i][0], D_inv_rm_[cluster_i][0], B_t_D_inv_rm_[cluster_i][0], *B_rm_prior_ptr, *D_inv_rm_prior_ptr,
 											data_indices_per_cluster_pred, re_comp_gp->coords_, gp_coords_mat_pred, gp_rand_coef_data_pred, gp_coords_mat_ip, num_neighbors_pred_, vecchia_neighbor_selection_,
 											re_comps_vecchia_[cluster_i][igp], num_gp_rand_coef_, num_gp_total_, y_[cluster_i], has_weights_ ? weights_[cluster_i].data() : nullptr, gauss_likelihood_, rng_,
 											false, false, sample_posterior, sample_prior, num_post_samples, num_prior_samples, post_samples_id, prior_samples_id, seed_rng_, cg_generator_counter_,
@@ -5720,8 +5730,8 @@ namespace GPBoost {
 			// redetermine inducing points
 			if (redetermine_inducing_points_) {				
 				if (gp_approx_ == "full_scale_vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
-					int num_ind_points = num_ind_points_;
 					for (const auto& cluster_i : unique_clusters_) {
+						int num_ind_points = GetNumIndPointsForCluster(cluster_i);
 						std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 						std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 						std::shared_ptr<RECompGP<den_mat_t>> re_comp = std::dynamic_pointer_cast<RECompGP<den_mat_t>>(re_comps_cross_cov_[cluster_i][0][0]);
@@ -5768,14 +5778,14 @@ namespace GPBoost {
 								int max_it_kmeans = 1000;
 								den_mat_t gp_coords_ip_mat_scaled;
 								// Start with inducing points from last redetermination
-								re_comp->ScaleCoordinates(pars, gp_coords_ip_mat_, gp_coords_ip_mat_scaled);
+								re_comp->ScaleCoordinates(pars, gp_coords_ip_mat_[cluster_i], gp_coords_ip_mat_scaled);
 								CHECK((int)gp_coords_ip_mat_scaled.rows() == num_ind_points);
 								CHECK(gp_coords_ip_mat_scaled.cols() == gp_coords_all_unique.cols());
 								kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat_scaled, max_it_kmeans, true);
 								gp_coords_ip_mat = gp_coords_ip_mat_scaled;
 							}
 							else if (ind_points_selection_ == "space_time_kmeans++") {
-								gp_coords_ip_mat = gp_coords_ip_mat_;
+								gp_coords_ip_mat = gp_coords_ip_mat_[cluster_i];
 							}
 							else {
 								Log::REFatal("Method '%s' is not supported for redetrmine inducing points. Use '%s' when using an ARD covariance function ",
@@ -5784,8 +5794,7 @@ namespace GPBoost {
 							den_mat_t coords_ip_rescaled;
 							vec_t pars_inv = pars.cwiseInverse();
 							re_comp->ScaleCoordinates(pars_inv, gp_coords_ip_mat, coords_ip_rescaled);
-							gp_coords_ip_mat_.resize(coords_ip_rescaled.rows(), coords_ip_rescaled.cols());
-							gp_coords_ip_mat_ = coords_ip_rescaled;
+							gp_coords_ip_mat_[cluster_i] = coords_ip_rescaled;
 							gp_coords_all_unique.resize(0, 0);
 							std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
 								coords_ip_rescaled, re_comp->CovFunctionName(), re_comp->CovFunctionShape(), re_comp->CovFunctionTaperRange(), re_comp->CovFunctionTaperShape(), false, false, true, false, false, true));
@@ -5817,7 +5826,7 @@ namespace GPBoost {
 									fitc_piv_chol_preconditioner_rank_ = num_ind_points;
 								}
 							}
-							num_ind_points_ = num_ind_points;
+							SetNumIndPointsForCluster(cluster_i, num_ind_points);
 							if (num_ll_evaluations_ > 0) {
 								Log::REDebug("Inducing points redetermined after iteration number %d ", num_iter_ + 1);
 							}
@@ -5829,7 +5838,6 @@ namespace GPBoost {
 					if (gp_approx_ == "fitc" || ((gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") && (gauss_likelihood_ && !vecchia_latent_approx_gaussian_))) {
 						Log::REFatal("'iterative' methods are not implemented for gp_approx = '%s' and the chosen likelihood ", gp_approx_.c_str());
 					}
-					int num_ind_points = fitc_piv_chol_preconditioner_rank_;
 					if (gp_approx_ == "full_scale_tapering" || (fitc_piv_chol_preconditioner_rank_ == num_ind_points_ && gp_approx_ != "vecchia") || ind_points_selection_ == "space_time_kmeans++") {
 						for (const auto& cluster_i : unique_clusters_) {
 							re_comps_ip_preconditioner_[cluster_i][0] = re_comps_ip_[cluster_i][0];
@@ -5840,7 +5848,10 @@ namespace GPBoost {
 						fitc_piv_chol_preconditioner_rank_ = num_ind_points_;
 					}
 					else {
+						int num_ind_points_max = 0;
 						for (const auto& cluster_i : unique_clusters_) {
+							// Every cluster starts from the rank requested by the user, methods that determine the number of inducing points themselves do so separately for every cluster
+							int num_ind_points = fitc_piv_chol_preconditioner_rank_;
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 							std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_cross_cov_[cluster_i][0][0];
@@ -5888,12 +5899,12 @@ namespace GPBoost {
 								int max_it_kmeans = 1000;
 								den_mat_t gp_coords_ip_mat_scaled;
 								// Start with inducing points from last redetermination
-								if (ind_points_determined_for_preconditioner_) {
+								if (clusters_with_ind_points_for_preconditioner_.find(cluster_i) != clusters_with_ind_points_for_preconditioner_.end()) {
 									if (re_comp->UseScaledCoordinates()) {
-										re_comp->ScaleCoordinates(pars, gp_coords_ip_mat_preconditioner_, gp_coords_ip_mat_scaled);
+										re_comp->ScaleCoordinates(pars, gp_coords_ip_mat_preconditioner_[cluster_i], gp_coords_ip_mat_scaled);
 									}
 									else {
-										gp_coords_ip_mat_scaled = gp_coords_ip_mat_preconditioner_;
+										gp_coords_ip_mat_scaled = gp_coords_ip_mat_preconditioner_[cluster_i];
 									}
 									CHECK((int)gp_coords_ip_mat_scaled.rows() == num_ind_points);
 									CHECK(gp_coords_ip_mat_scaled.cols() == gp_coords_all_unique.cols());
@@ -5905,7 +5916,7 @@ namespace GPBoost {
 									Log::REDebug("Starting kmeans++ algorithm for determining inducing points ");
 									kmeans_plusplus(gp_coords_all_unique, num_ind_points, rng_, gp_coords_ip_mat, max_it_kmeans, false);
 									Log::REDebug("Inducing points have been determined ");
-									ind_points_determined_for_preconditioner_ = true;
+									clusters_with_ind_points_for_preconditioner_.insert(cluster_i);
 								}
 							}
 							else {
@@ -5921,8 +5932,7 @@ namespace GPBoost {
 							else {
 								coords_ip_rescaled = gp_coords_ip_mat;
 							}
-							gp_coords_ip_mat_preconditioner_.resize(coords_ip_rescaled.rows(), coords_ip_rescaled.cols());
-							gp_coords_ip_mat_preconditioner_ = coords_ip_rescaled;
+							gp_coords_ip_mat_preconditioner_[cluster_i] = coords_ip_rescaled;
 							gp_coords_all_unique.resize(0, 0);
 							std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
 								coords_ip_rescaled, re_comp->CovFunctionName(), re_comp->CovFunctionShape(), re_comp->CovFunctionTaperRange(), re_comp->CovFunctionTaperShape(), false, false, true, false, false, true));
@@ -5949,8 +5959,9 @@ namespace GPBoost {
 							//	(*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose(), GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0), false);
 							GPBoost::solve_lower_triangular(GetForCluster(chol_fact_sigma_ip_preconditioner_, cluster_i, 0),
 								(*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose(), GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0), GPU_use_);
+							num_ind_points_max = std::max(num_ind_points_max, num_ind_points);
 						}
-						fitc_piv_chol_preconditioner_rank_ = num_ind_points;
+						fitc_piv_chol_preconditioner_rank_ = num_ind_points_max;
 					}
 					if (num_ll_evaluations_ > 0) {
 						Log::REDebug("Inducing points for preconditioner redetermined after iteration number %d ", num_iter_ + 1);
@@ -6687,10 +6698,14 @@ namespace GPBoost {
 		const std::set<string_t> SUPPORTED_METHOD_INDUCING_POINTS_{ "random", "kmeans++", "cover_tree", "space_time_kmeans++" };
 		/*! \brief Number of inducing points */
 		int num_ind_points_;
-		/*! \brief Coordinates of inducing points. Used for redetermine inducing points for kmeans++ algo*/
-		den_mat_t gp_coords_ip_mat_;
-		/*! \brief Coordinates of inducing points of preconditioner. Used for redetermine inducing points for kmeans++ algo*/
-		den_mat_t gp_coords_ip_mat_preconditioner_;
+		/*! \brief Number of inducing points that has been requested by the user. In contrast to 'num_ind_points_', this is not changed by methods that determine the number of inducing points themselves (e.g., the cover tree algorithm) and it is thus the same for every independent cluster */
+		int num_ind_points_requested_ = 0;
+		/*! \brief Keys: labels of independent realizations of REs/GPs, values: number of inducing points of the corresponding cluster. These can differ among clusters if the method for choosing the inducing points determines their number itself */
+		std::map<data_size_t, int> num_ind_points_per_cluster_;
+		/*! \brief Keys: labels of independent realizations of REs/GPs, values: coordinates of the inducing points of the corresponding cluster. Used for redetermine inducing points for kmeans++ algo*/
+		std::map<data_size_t, den_mat_t> gp_coords_ip_mat_;
+		/*! \brief Keys: labels of independent realizations of REs/GPs, values: coordinates of the inducing points of the preconditioner of the corresponding cluster. Used for redetermine inducing points for kmeans++ algo*/
+		std::map<data_size_t, den_mat_t> gp_coords_ip_mat_preconditioner_;
 		/*! \brief Radius (= "spatial resolution") for the cover tree algorithm */
 		double cover_tree_radius_;
 		/*! \brief Outer key: independent realizations of REs/GPs over "clusters", inner key: set index of REs / GPs  for multiple parameters (e.g. for heteroscedastic GP), values: vectors with inducing points GP components */
@@ -6707,7 +6722,8 @@ namespace GPBoost {
 		/*! \brief Key: labels of independent realizations of REs/GPs, values: Inverse of Cholesky factor of inducing points matrix sigma_ip times cross-covariance */
 		std::map<int, std::map<int, den_mat_t>> chol_ip_cross_cov_;
 		std::map<int, std::map<int, den_mat_t>> chol_ip_cross_cov_preconditioner_;
-		bool ind_points_determined_for_preconditioner_ = false;
+		/*! \brief Labels of the independent realizations of REs/GPs for which the inducing points of the preconditioner have been determined. The inducing points are determined separately for every cluster */
+		std::set<data_size_t> clusters_with_ind_points_for_preconditioner_;
 		std::map<data_size_t, den_mat_t> sigma_inv_sigma_grad_rand_vec_;
 		std::map<data_size_t, den_mat_t> sigma_grad_sigma_inv_rand_vec_;
 
@@ -8432,6 +8448,33 @@ namespace GPBoost {
 		}//end SelectIndPointsAR1Multifidelity
 
 		/*!
+		* \brief Save the number of inducing points that has been selected for a cluster
+		* \param cluster_i Index / label of the independent realization of the GP
+		* \param num_ind_points Number of inducing points of this cluster
+		*/
+		void SetNumIndPointsForCluster(data_size_t cluster_i,
+			int num_ind_points) {
+			num_ind_points_per_cluster_[cluster_i] = num_ind_points;
+			// 'num_ind_points_' is the largest number of inducing points over all clusters and thus does not depend on the order in which the clusters are processed
+			num_ind_points_ = 0;
+			for (const auto& num_ind_points_cluster : num_ind_points_per_cluster_) {
+				num_ind_points_ = std::max(num_ind_points_, num_ind_points_cluster.second);
+			}
+		}//end SetNumIndPointsForCluster
+
+		/*!
+		* \brief Number of inducing points of a cluster
+		* \param cluster_i Index / label of the independent realization of the GP
+		*/
+		int GetNumIndPointsForCluster(data_size_t cluster_i) const {
+			auto it = num_ind_points_per_cluster_.find(cluster_i);
+			if (it == num_ind_points_per_cluster_.end()) {
+				return(num_ind_points_);
+			}
+			return(it->second);
+		}//end GetNumIndPointsForCluster
+
+		/*!
 		* \brief Initialize individual component models and collect them in a containter
 		* \param num_data Number of data points
 		* \param data_indices_per_cluster Keys: Labels of independent realizations of REs/GPs, values: vectors with indices for data points
@@ -8461,14 +8504,16 @@ namespace GPBoost {
 			// Note: 'num_data_per_cluster_' must not be used here since it has no entry for a cluster
 			//		without observed data (i.e., when 'for_prediction_new_cluster' is true)
 			const data_size_t num_data_cluster_i = (data_size_t)data_indices_per_cluster[cluster_i].size();
-			int num_ind_points = num_ind_points_;
+			// Every cluster starts from the number of inducing points requested by the user. Methods that determine this
+			//	number themselves (e.g., the cover tree algorithm) do so separately for every cluster
+			int num_ind_points = num_ind_points_requested_;
 			if (for_prediction_new_cluster) {
 				// The full-scale approximations need strictly less inducing points than data points
 				if (gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
-					num_ind_points = std::min(num_ind_points_, num_data_cluster_i - 1);
+					num_ind_points = std::min(num_ind_points, num_data_cluster_i - 1);
 				}
 				else {
-					num_ind_points = std::min(num_ind_points_, num_data_cluster_i);
+					num_ind_points = std::min(num_ind_points, num_data_cluster_i);
 				}
 			}
 			if (gp_approx_ == "fitc") {
@@ -8518,9 +8563,6 @@ namespace GPBoost {
 				Log::REDebug("Starting the '%s' algorithm separately for every fidelity level for determining inducing points ", ind_points_selection_.c_str());
 				SelectIndPointsAR1Multifidelity(gp_coords_all_unique, cov_fct, num_ind_points, gp_coords_ip_mat);
 				Log::REDebug("Inducing points have been determined ");
-				if (!for_prediction_new_cluster) {
-					num_ind_points_ = num_ind_points;
-				}
 			}
 			else if (ind_points_selection_ == "cover_tree") {
 				Log::REDebug("Starting cover tree algorithm for determining inducing points ");
@@ -8528,9 +8570,6 @@ namespace GPBoost {
 				Log::REDebug("Inducing points have been determined ");
 				// the cover tree determines the number of inducing points itself
 				num_ind_points = (int)gp_coords_ip_mat.rows();
-				if (!for_prediction_new_cluster) {
-					num_ind_points_ = num_ind_points;
-				}
 			}
 			else if (ind_points_selection_ == "random") {
 				if (gp_approx_ == "full_scale_vecchia" && !gauss_likelihood_) {
@@ -8587,10 +8626,6 @@ namespace GPBoost {
 					// Fill the remaining columns with B
 					gp_coords_ip_mat.block(i * num_ind_points_space, 1, num_ind_points_space, c) = gp_coords_ip_mat_space;
 				}
-				if (!for_prediction_new_cluster) {
-					gp_coords_ip_mat_.resize(num_ind_points, gp_coords_all_mat.cols());
-					num_ind_points_ = num_ind_points;
-				}
 				Log::REDebug("Inducing points have been determined ");
 
 			}
@@ -8621,13 +8656,11 @@ namespace GPBoost {
 					gp_coords_ip_mat.resize(gp_coords_ip_mat_interim.rows(), gp_coords_ip_mat_interim.cols());
 					gp_coords_ip_mat = gp_coords_ip_mat_interim;
 					num_ind_points = (int)gp_coords_ip_mat.rows();
-					if (!for_prediction_new_cluster) {
-						num_ind_points_ = num_ind_points;
-					}
 				}
 			}
 			if (!for_prediction_new_cluster) {
-				gp_coords_ip_mat_ = gp_coords_ip_mat;
+				gp_coords_ip_mat_[cluster_i] = gp_coords_ip_mat;
+				SetNumIndPointsForCluster(cluster_i, num_ind_points);
 			}
 			gp_coords_all_unique.resize(0, 0);
 			std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
@@ -10452,7 +10485,7 @@ namespace GPBoost {
 			CHECK(!gauss_likelihood_ && matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "fitc");
 			for (const auto& cluster_i : unique_clusters_) {
 				std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp_clus0 = re_comps_vecchia_[cluster_i][0][0];
-				if (!ind_points_determined_for_preconditioner_) {
+				if (clusters_with_ind_points_for_preconditioner_.find(cluster_i) == clusters_with_ind_points_for_preconditioner_.end()) {
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 					int num_ind_points = fitc_piv_chol_preconditioner_rank_;
@@ -10520,7 +10553,7 @@ namespace GPBoost {
 						false, false, only_one_GP_calculations_on_RE_scale_loc)));
 					re_comps_ip_preconditioner_[cluster_i][0] = re_comps_ip_cluster_i;
 					re_comps_cross_cov_preconditioner_[cluster_i][0] = re_comps_cross_cov_cluster_i;
-					ind_points_determined_for_preconditioner_ = true;
+					clusters_with_ind_points_for_preconditioner_.insert(cluster_i);
 				}
 				vec_t pars = re_comp_gp_clus0->CovPars();
 				for (int j = 0; j < num_comps_total_; ++j) {

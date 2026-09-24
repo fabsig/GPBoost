@@ -1372,6 +1372,67 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
   })
 
+  test_that("FITC preconditioner for several clusters ", {
+
+    # The inducing points of the preconditioner are determined separately for every cluster. Determining
+    # them only for the first cluster left the other clusters without preconditioner components
+    probs_pc <- pnorm(L %*% b_1)
+    y_pc <- as.numeric(sim_rand_unif(n=n, init_c=0.2341) < probs_pc)
+    cov_pars_pc <- c(1, 0.1)
+    params_pc <- list(cg_preconditioner_type = "fitc", fitc_piv_chol_preconditioner_rank = 15,
+                      num_rand_vec_trace = 500, reuse_rand_vec_trace = TRUE, seed_rand_vec_trace = 1,
+                      cg_delta_conv = 1E-6)
+    nll_pc <- function(inv_method, gp_approx_loc, cluster_ids_loc) {
+      capture.output( gp_loc <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                        likelihood = "bernoulli_probit", gp_approx = gp_approx_loc,
+                                        num_neighbors = 20, num_ind_points = 20, vecchia_ordering = "none",
+                                        cluster_ids = cluster_ids_loc,
+                                        matrix_inversion_method = inv_method), file = 'NUL')
+      gp_loc$set_optim_params(params = params_pc)
+      capture.output( nll_loc <- gp_loc$neg_log_likelihood(cov_pars = cov_pars_pc, y = y_pc), file = 'NUL')
+      nll_loc
+    }
+    for (gp_approx_pc in c("vecchia", "full_scale_vecchia")) {
+      nll_chol_pc <- nll_pc("cholesky", gp_approx_pc, cluster_ids)
+      nll_iter_pc <- nll_pc("iterative", gp_approx_pc, cluster_ids)
+      expect_true(is.finite(nll_iter_pc))
+      # the log determinant is estimated stochastically, so the two do not agree exactly
+      expect_lt(abs(nll_iter_pc - nll_chol_pc), 2 * TOLERANCE_ITERATIVE)
+    }
+
+  })
+
+  test_that("FITC preconditioner with inducing points from the cover tree ", {
+
+    # The cover tree determines the number of inducing points of the preconditioner itself, which then
+    # differs from 'fitc_piv_chol_preconditioner_rank'. The random vectors for the stochastic estimate
+    # of the log determinant have to have the rank of the preconditioner that was actually constructed
+    probs_ctp <- pnorm(L %*% b_1)
+    y_ctp <- as.numeric(sim_rand_unif(n=n, init_c=0.2341) < probs_ctp)
+    cov_pars_ctp <- c(1, 0.1)
+    params_ctp <- list(cg_preconditioner_type = "fitc", fitc_piv_chol_preconditioner_rank = 15,
+                       num_rand_vec_trace = 500, reuse_rand_vec_trace = TRUE, seed_rand_vec_trace = 1,
+                       cg_delta_conv = 1E-6)
+    nll_ctp <- function(inv_method, gp_approx_loc) {
+      capture.output( gp_loc <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                        likelihood = "bernoulli_probit", gp_approx = gp_approx_loc,
+                                        num_neighbors = 20, num_ind_points = 20, vecchia_ordering = "none",
+                                        ind_points_selection = "cover_tree", cover_tree_radius = 0.2,
+                                        matrix_inversion_method = inv_method), file = 'NUL')
+      gp_loc$set_optim_params(params = params_ctp)
+      capture.output( nll_loc <- gp_loc$neg_log_likelihood(cov_pars = cov_pars_ctp, y = y_ctp), file = 'NUL')
+      nll_loc
+    }
+    for (gp_approx_ctp in c("vecchia", "full_scale_vecchia")) {
+      nll_chol_ctp <- nll_ctp("cholesky", gp_approx_ctp)
+      nll_iter_ctp <- nll_ctp("iterative", gp_approx_ctp)
+      expect_true(is.finite(nll_iter_ctp))
+      # the log determinant is estimated stochastically, so the two do not agree exactly
+      expect_lt(abs(nll_iter_ctp - nll_chol_ctp), 2 * TOLERANCE_ITERATIVE)
+    }
+
+  })
+
   test_that("Binary classification Gaussian process model with Vecchia approximation", {
     params_vecchia <- c(DEFAULT_OPTIM_PARAMS, cg_delta_conv = sqrt(1e-6),
                         num_rand_vec_trace = 500, cg_preconditioner_type = "pivoted_cholesky",
@@ -4198,6 +4259,38 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }# end loop cg_preconditioner_type in loop_cg_PC
     }# end loop inv_method in c("cholesky", "iterative")
   }) #end gaussian_heteroscedastic_fixed_and_random likelihood
+
+  test_that("Initial coefficients from an iid model for gaussian_heteroscedastic_fixed_and_random ", {
+
+    # 'gaussian_heteroscedastic_fixed_and_random' is supported only for a Vecchia approximated GP, so the
+    # auxiliary iid model cannot use it. 'gaussian_heteroscedastic' has the same two fixed effects
+    # predictors and is used instead
+    likelihood_ii <- "gaussian_heteroscedastic_fixed_and_random"
+    L2_ii <- t(chol(Sigma))
+    b_2_ii <- qnorm(sim_rand_unif(n=n, init_c=0.834))
+    y_ii <- L %*% b_1 + qnorm(sim_rand_unif(n=n, init_c=0.1234)) * exp(0.5 * L2_ii %*% b_2_ii)
+    params_ii <- OPTIM_PARAMS_BFGS
+    params_ii$init_cov_pars <- c(1, mean(dist(coords))/3, 0.1, mean(dist(coords))/3)
+    fit_ii <- function(init_from_iid_model) {
+      params_loc <- params_ii
+      params_loc$init_coef_aux_pars_from_iid_model <- init_from_iid_model
+      capture.output( gp_model_loc <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                 likelihood = likelihood_ii, gp_approx = "vecchia",
+                                                 num_neighbors = 30, vecchia_ordering = "none",
+                                                 matrix_inversion_method = "cholesky",
+                                                 y = y_ii, X = X, params = params_loc), file='NUL')
+      gp_model_loc
+    }
+    gp_model_ii <- fit_ii(TRUE)
+    coefs_ii <- as.vector(gp_model_ii$get_coef(std_err = FALSE))
+    expect_equal(length(coefs_ii), 2 * ncol(X))
+    expect_true(all(is.finite(coefs_ii)))
+    # the optimizer starts from other coefficients but has to reach the same optimum
+    gp_model_no_ii <- fit_ii(FALSE)
+    expect_lt(abs(gp_model_ii$get_current_neg_log_likelihood() -
+                    gp_model_no_ii$get_current_neg_log_likelihood()), 0.2)
+
+  })
 
   test_that("Loading a model saved when 'gaussian_heteroscedastic' had a variance GP works ", {
     # 'gaussian_heteroscedastic' used to denote the likelihood whose variance predictor contains both
