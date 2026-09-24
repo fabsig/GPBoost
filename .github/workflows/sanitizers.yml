@@ -1,8 +1,14 @@
 name: Sanitizers
 
 # The checks of 'helpers/check_R_package_rhub.R' in the R-hub containers. They are far too slow for
-# every commit and they are therefore only started by hand, from the "Actions" tab or with
-# 'gh workflow run sanitizers.yml -f valgrind=16'.
+# every commit and are therefore started by hand, from the "Actions" tab or with
+# 'gh workflow run sanitizers.yml -f valgrind=16', and once a month on their own.
+#
+# The monthly runs are spread over the Sundays of the month so that they never compete for the
+# runners: ASan, UBSan and rchk on the first Sunday, valgrind on the third. The cron below fires on
+# every Sunday and the 'select' job decides which of the two, if either, the date belongs to;
+# combining the two conditions in cron itself is not possible, because a day of the month and a day
+# of the week are combined with OR and not with AND.
 #
 # A job on a GitHub-hosted runner is killed after 6 hours. The instrumented code is roughly 2x
 # slower than a normal build, and under valgrind 20-50x, with all threads serialized onto one core.
@@ -24,10 +30,19 @@ name: Sanitizers
 # package again, which is what limits the gain from going much higher. A run may not ask for more
 # than 20 jobs at once, which is the limit of the plan.
 #
+# valgrind is off by default, and deliberately so: ASan already covers buffer overflows and
+# use-after-free, its own contribution is the reads of uninitialized memory, and even spread over
+# sixteen jobs it occupies most of the twenty runners for hours, which then queues the CI runs of
+# every push. It is meant to be started on its own, for a release or after a change to the memory
+# handling, not next to the ASan checks.
+#
 # Note that every test file of the package is gated on 'GPBOOST_ALL_TESTS'. With 'all_tests' off,
 # not a single test runs and only the examples of the help pages exercise the library, which is what
 # CRAN sees; this is useful as a quick first run, not as a check of the library.
 on:
+  schedule:
+    # every Sunday at 00:00 UTC; only the first and the third Sunday of a month select any check
+    - cron: "0 0 * * 0"
   workflow_dispatch:
     inputs:
       clang_asan:
@@ -45,10 +60,12 @@ on:
         type: choice
         default: "off"
         options: ["off", "1", "2", "4", "8", "12", "16"]
+      # rchk neither runs the tests nor is influenced by the shards, it compiles the package once
+      # and analyzes the bitcode, so it costs a single short job and is on by default
       rchk:
         description: "rchk container (use of the R C API)"
         type: boolean
-        default: false
+        default: true
       clang_warnings:
         description: "compiler warnings with clang"
         type: boolean
@@ -82,6 +99,8 @@ jobs:
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       any: ${{ steps.select.outputs.any }}
+      rchk: ${{ steps.select.outputs.rchk }}
+      clang_warnings: ${{ steps.select.outputs.clang_warnings }}
 
     steps:
       - name: Check out repository
@@ -89,10 +108,12 @@ jobs:
 
       # the three containers below are all driven by the 'r-check' script, only their arguments
       # differ, so they are run by one matrix job that is assembled here, with one entry per
-      # container and shard
+      # container and shard. The two checks that are not driven by it are decided here as well, so
+      # that a scheduled run, which has no inputs, selects them in the same place
       - name: Build the matrix from the selected checks
         id: select
         env:
+          EVENT: ${{ github.event_name }}
           CLANG_ASAN: ${{ inputs.clang_asan }}
           GCC_ASAN: ${{ inputs.gcc_asan }}
           VALGRIND: ${{ inputs.valgrind }}
@@ -102,9 +123,27 @@ jobs:
           TEST_FILTER: ${{ inputs.test_filter }}
         run: |
           python3 - >> "${GITHUB_OUTPUT}" <<'PY'
-          import json, os, re, sys
+          import datetime, json, os, re, sys
 
           test_dir = "R-package/tests/testthat"
+
+          if os.environ["EVENT"] == "schedule":
+              # a scheduled run carries no inputs, so the defaults of the dispatch form do not apply
+              # and the selection is made from the date instead. The cron fires on every Sunday; the
+              # first one of a month falls on a day between 1 and 7, the third one between 15 and 21
+              day = datetime.datetime.now(datetime.timezone.utc).day
+              if 1 <= day <= 7:
+                  settings = {"CLANG_ASAN": "4", "GCC_ASAN": "4", "VALGRIND": "off",
+                              "RCHK": "true", "CLANG_WARNINGS": "false"}
+              elif 15 <= day <= 21:
+                  settings = {"CLANG_ASAN": "off", "GCC_ASAN": "off", "VALGRIND": "16",
+                              "RCHK": "false", "CLANG_WARNINGS": "false"}
+              else:
+                  settings = {"CLANG_ASAN": "off", "GCC_ASAN": "off", "VALGRIND": "off",
+                              "RCHK": "false", "CLANG_WARNINGS": "false"}
+              os.environ.update(settings, ALL_TESTS="true", TEST_FILTER="")
+              print(f"scheduled run on day {day} of the month: {settings}", file=sys.stderr)
+
           all_tests = os.environ["ALL_TESTS"] == "true"
           user_filter = os.environ["TEST_FILTER"]
 
@@ -161,6 +200,7 @@ jobs:
                       "id": name if num_shards == 1 else f"{name}-{shard}-of-{num_shards}",
                       "image": image,
                       "check_args": args,
+                      "all_tests": "true" if all_tests else "false",
                       "test_filter": filter_of(shard, num_shards) if all_tests else "",
                       "timeout": 350,
                   })
@@ -178,6 +218,8 @@ jobs:
           matrix = json.dumps({"include": entries})
           print(f"matrix={matrix}")
           print("any=" + ("true" if entries else "false"))
+          print("rchk=" + os.environ["RCHK"])
+          print("clang_warnings=" + os.environ["CLANG_WARNINGS"])
           print(json.dumps({"include": entries}, indent=2), file=sys.stderr)
           PY
 
@@ -223,7 +265,7 @@ jobs:
           NAME: ${{ matrix.id }}
           IMAGE: ${{ matrix.image }}
           CHECK_ARGS: ${{ matrix.check_args }}
-          ALL_TESTS: ${{ inputs.all_tests }}
+          ALL_TESTS: ${{ matrix.all_tests }}
           TEST_FILTER: ${{ matrix.test_filter }}
         run: |
           # a 'CHECK_ARGS' for the valgrind container that has lost '--use-valgrind' would run a
@@ -271,7 +313,8 @@ jobs:
 
   rchk:
     name: rchk
-    if: inputs.rchk
+    needs: select
+    if: needs.select.outputs.rchk == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -318,7 +361,8 @@ jobs:
 
   clang-warnings:
     name: Compiler warnings (clang)
-    if: inputs.clang_warnings
+    needs: select
+    if: needs.select.outputs.clang_warnings == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
