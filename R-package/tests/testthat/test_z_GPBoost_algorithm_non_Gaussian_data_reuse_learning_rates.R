@@ -125,9 +125,10 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       fit_with <- function(reuse) {
         gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
         set_optim_params(gp_model, params = DEFAULT_OPTIM_PARAMS)
-        bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
-                       nrounds = 2, params = params, verbose = 0,
-                       reuse_learning_rates_gp_model = reuse)
+        capture.output( bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
+                                       nrounds = 2, params = params, verbose = 0,
+                                       reuse_learning_rates_gp_model = reuse),
+                        file='NUL')
         list(nll = gp_model$get_current_neg_log_likelihood(),
              cov_pars = as.vector(gp_model$get_cov_pars()))
       }
