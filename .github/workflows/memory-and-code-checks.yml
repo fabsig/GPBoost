@@ -78,6 +78,13 @@ on:
         description: "regular expression for the test files to run, e.g. '^GPModel_.*' (empty: all)"
         type: string
         default: ""
+      # '--track-origins=yes' roughly doubles the run time of valgrind; it is worth that for a
+      # finding, because it names the place the uninitialized value came from, but not for measuring
+      # how long a test file needs
+      valgrind_opts:
+        description: "VALGRIND_OPTS, e.g. '--leak-check=no' (empty: the default of the container)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -123,12 +130,16 @@ jobs:
           CLANG_WARNINGS: ${{ inputs.clang_warnings }}
           ALL_TESTS: ${{ inputs.all_tests }}
           TEST_FILTER: ${{ inputs.test_filter }}
+          VALGRIND_OPTS_INPUT: ${{ inputs.valgrind_opts }}
         run: |
           python3 - >> "${GITHUB_OUTPUT}" <<'PY'
           import datetime, json, os, re, sys
 
           test_dir = "R-package/tests/testthat"
           scheduled = os.environ["EVENT"] == "schedule"
+          # the monthly run drops the leak check, a manual one is free to choose
+          valgrind_opts = ("--track-origins=yes --leak-check=no" if scheduled
+                           else os.environ["VALGRIND_OPTS_INPUT"])
 
           if scheduled:
               # a scheduled run carries no inputs, so the defaults of the dispatch form do not apply
@@ -209,8 +220,8 @@ jobs:
                       # which is what valgrind contributes over ASan: R does not run all of its
                       # finalizers at the end, so whatever is still alive is reported as lost, and
                       # those records say nothing about the correctness of the library
-                      "valgrind_opts": "--track-origins=yes --leak-check=no"
-                                       if (name == "valgrind" and scheduled) else "",
+                      # A manual run keeps that default unless 'valgrind_opts' is given.
+                      "valgrind_opts": valgrind_opts if name == "valgrind" else "",
                       "all_tests": "true" if all_tests else "false",
                       "test_filter": filter_of(shard, num_shards) if all_tests else "",
                       "timeout": 350,
