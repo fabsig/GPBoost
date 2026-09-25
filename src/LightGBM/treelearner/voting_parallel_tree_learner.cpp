@@ -4,6 +4,8 @@
  */
 #include <LightGBM/utils/common.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <tuple>
 #include <vector>
@@ -65,16 +67,10 @@ void VotingParallelTreeLearner<TREELEARNER_T>::Init(const Dataset* train_data, b
   this->histogram_pool_.ResetConfig(train_data, &local_config_);
 
   // initialize histograms for global
-  // see the note in feature_histogram.hpp on this diagnostic of gcc 15
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Walloc-size-larger-than="
-#endif
-  smaller_leaf_histogram_array_global_.reset(new FeatureHistogram[this->num_features_]);
-  larger_leaf_histogram_array_global_.reset(new FeatureHistogram[this->num_features_]);
-#if defined(__GNUC__) && !defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
+  // see the note in feature_histogram.hpp on the type of the number of elements
+  const uint32_t num_features = static_cast<uint32_t>(std::max(0, this->num_features_));
+  smaller_leaf_histogram_array_global_.reset(new FeatureHistogram[num_features]);
+  larger_leaf_histogram_array_global_.reset(new FeatureHistogram[num_features]);
   std::vector<uint32_t> offsets = this->share_state_->feature_hist_offsets();
   int num_total_bin = this->share_state_->num_hist_total_bin();
   smaller_leaf_histogram_data_.resize(num_total_bin * 2);
