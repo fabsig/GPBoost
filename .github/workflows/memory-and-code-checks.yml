@@ -85,7 +85,7 @@ on:
       # from, but not for measuring how long a test file needs. Leaving it out is therefore the way
       # to trade the origins for speed
       valgrind_opts:
-        description: "replaces VALGRIND_OPTS, e.g. '--leak-check=no' (empty: '--track-origins=yes --leak-check=full')"
+        description: "VALGRIND_OPTS. Empty keeps the container default '--track-origins=yes --leak-check=full'; a value replaces that default, it is not added to it"
         type: string
         default: ""
 
@@ -176,12 +176,26 @@ jobs:
               if not names:
                   raise SystemExit(f"no test file matches '{user_filter}'")
 
-          def filter_of(shard, num_shards):
-              if num_shards == 1:
+          # These files fit a model to 1e4 to 2.5e5 observations. Under valgrind, which emulates a
+          # single CPU, one of them alone exceeds the six hours after which a job is killed, and no
+          # number of shards helps, because a shard cannot be smaller than a file. They are left out
+          # of the valgrind runs: the sizes are there to cover scaling, and the code paths they use
+          # are the same ones that the other files use with less data. The two
+          # 'reuse_learning_rates_gp_model' files cover the one option that is only used here, with
+          # a sample size that valgrind can carry. The ASan runs and a normal test run are not
+          # affected and keep running all of them.
+          WITHOUT_VALGRIND = {
+              "GPModel_non_Gaussian_data_large_data",
+              "z_GPBoost_algorithm_large_data",
+              "z_GPBoost_algorithm_non_Gaussian_data_large_data",
+          }
+
+          def filter_of(chosen_names, shard, num_shards, complete):
+              if num_shards == 1 and complete:
                   return user_filter
               # the files are dealt out one by one over the shards, which spreads the long ones
               # without knowing how long they take, as the CI workflow does
-              chosen = names[shard - 1::num_shards]
+              chosen = chosen_names[shard - 1::num_shards]
               return "^(" + "|".join(n.replace(".", "[.]") for n in chosen) + ")$"
 
           # the number of shards is given per container: valgrind needs many more of them than the
@@ -196,10 +210,17 @@ jobs:
           for name, image, shards in containers:
               if shards == "off":
                   continue
+              chosen_names = [n for n in names
+                              if not (name == "valgrind" and n in WITHOUT_VALGRIND)]
+              if not chosen_names:
+                  raise SystemExit(f"no test file is left for {name}")
+              complete = len(chosen_names) == len(names)
               # without 'GPBOOST_ALL_TESTS' the test files skip themselves and only the examples of
               # the help pages are left, and those are run by every shard in full: sharding would
               # then multiply the work instead of dividing it
               num_shards = int(shards) if all_tests else 1
+              # a shard without a test file would report that nothing ran and fail
+              num_shards = min(num_shards, len(chosen_names))
               for shard in range(1, num_shards + 1):
                   # the valgrind container defines 'CHECK_ARGS' itself, and replacing it without
                   # '--use-valgrind' would run a plain check in which nothing is examined at all,
@@ -226,7 +247,8 @@ jobs:
                       # A manual run keeps that default unless 'valgrind_opts' is given.
                       "valgrind_opts": valgrind_opts if name == "valgrind" else "",
                       "all_tests": "true" if all_tests else "false",
-                      "test_filter": filter_of(shard, num_shards) if all_tests else "",
+                      "test_filter": (filter_of(chosen_names, shard, num_shards, complete)
+                                      if all_tests else ""),
                       "timeout": 350,
                   })
 
