@@ -207,7 +207,8 @@ public:
             }
             // Line search to update x, fx and gradient
             LineSearch<Scalar>::LineSearch(f, m_param, m_xp, m_drt, step_max, step, fx, m_grad, dg, x);
-            f(x, m_grad, false, true); // calculate new gradient
+            if (!LineSearch<Scalar>::calculates_gradient) // ChangedForGPBoost
+                f(x, m_grad, false, true); // calculate new gradient
             m_gnorm = m_grad.norm(); // new gradient norm for convergence tests
 
             // convergence tests

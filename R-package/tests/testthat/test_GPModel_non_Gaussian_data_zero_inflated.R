@@ -825,11 +825,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model_nw <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
                                               y = y, X=X, params = params_nw, matrix_inversion_method = matrix_inversion_method)
                     , file='NUL')
-    expect_lt(sum(abs(gp_model_nw$get_cov_pars(std_err = FALSE)-0.4107693823)),tolerance_loc_1)
-    expect_lt(sum(abs(gp_model_nw$get_aux_pars()-0.2683705872)),tolerance_loc_1)
-    expect_lt(sum(abs(as.vector(gp_model_nw$get_coef(std_err = FALSE))-c(-0.1347096134, 2.0887629560))),tolerance_loc_1)
-    expect_lt(sum(abs((gp_model_nw$get_current_neg_log_likelihood()-116.1152356))),tolerance_loc_1)
-    expect_equal(gp_model_nw$get_num_optim_iter(), 17)
+    expect_lt(sum(abs(gp_model_nw$get_cov_pars(std_err = FALSE)-0.8064792556)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model_nw$get_aux_pars()-0.2679067269)),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model_nw$get_coef(std_err = FALSE))-c(-0.2678415466, 2.0747656120))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model_nw$get_current_neg_log_likelihood()-117.1057618))),tolerance_loc_1)
+    expect_equal(gp_model_nw$get_num_optim_iter(), 13)
     # this line search finds a better optimum than the backtracking one for the data below (nll = 117.1840987)
     expect_lt(gp_model_nw$get_current_neg_log_likelihood(), 117.1840987)
 

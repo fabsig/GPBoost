@@ -902,6 +902,15 @@ namespace GPBoost {
 							saved_rand_vec_trace_ = true;
 						}
 					}
+					else {
+						// the inducing points can have been redetermined and their number can have changed (cover tree)
+						const int rank_low_rank_probes = (cg_preconditioner_type_ == "vifdu") ? num_ip :
+							((cg_preconditioner_type_ == "fitc") ? num_ip_preconditioner : 0);
+						if (rank_low_rank_probes > 0 && (int)rand_vec_trace_P_.rows() != rank_low_rank_probes) {
+							rand_vec_trace_P_.resize(rank_low_rank_probes, num_rand_vec_trace_);
+							GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_trace_P_);
+						}
+					}
 					if (cg_preconditioner_type_ == "vifdu") {
 						if (HasNegativeValueInformationLogLik()) {
 							LogFatalWithPotentialFisherLaplaceHint(__func__, "Negative values found in W (the diagonal Hessian or Fisher "

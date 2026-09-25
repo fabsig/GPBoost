@@ -20,6 +20,12 @@ private:
     using Vector = Eigen::Matrix<Scalar, Eigen::Dynamic, 1>;
 
 public:
+    // ChangedForGPBoost: the gradient at the returned point is not calculated by the line search
+    static constexpr bool calculates_gradient = false;
+
+private:
+
+public:
     ///
     /// Line search by backtracking.
     ///

@@ -3362,6 +3362,12 @@ namespace GPBoost {
 									saved_rand_vec_[cluster_i] = true;
 								}
 							}
+							else if (cg_preconditioner_type_ == "fitc" &&
+								rand_vec_probe_low_rank_[cluster_i].rows() != GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0).rows()) {
+								// the inducing points have been redetermined and their number has changed (cover tree)
+								rand_vec_probe_low_rank_[cluster_i].resize((int)GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0).rows(), num_rand_vec_trace_);
+								GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_probe_low_rank_[cluster_i]);
+							}
 							if (cg_preconditioner_type_ == "fitc") {
 								den_mat_t chol_ip_cross_cov_Z = GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0).transpose() * rand_vec_probe_low_rank_[cluster_i];
 								rand_vec_probe_[cluster_i] = chol_ip_cross_cov_Z + diagonal_approx_preconditioner_[cluster_i].cwiseSqrt().asDiagonal() * rand_vec_probe_P_[cluster_i];

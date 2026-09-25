@@ -24,6 +24,12 @@ class LineSearchNocedalWright
 private:
     using Vector = Eigen::Matrix<Scalar, Eigen::Dynamic, 1>;
 
+public:
+    // ChangedForGPBoost: the gradient at the returned point is calculated by the line search
+    static constexpr bool calculates_gradient = true;
+
+private:
+
     // Use {fx_lo, fx_hi, dg_lo} to make a quadratic interpolation of
     // the function, and the fitted quadratic function is used to
     // estimate the minimum
@@ -144,7 +150,7 @@ public:
         {
             // Evaluate the current step size
             x.noalias() = xp + step * drt;
-            fx = f(x, grad, true, false);
+            fx = f(x, grad, true, true); // ChangedForGPBoost: the curvature condition requires the gradient at the new point
             dg = grad.dot(drt);
 
             // Test the sufficient decrease condition
@@ -222,7 +228,7 @@ public:
 
             // Evaluate the current step size
             x.noalias() = xp + step * drt;
-            fx = f(x, grad, true, false);
+            fx = f(x, grad, true, true); // ChangedForGPBoost: the curvature condition requires the gradient at the new point
             dg = grad.dot(drt);
 
             // Test the sufficient decrease condition
@@ -239,10 +245,7 @@ public:
             {
                 // Test the curvature condition
                 if (std::abs(dg) <= test_curv)
-                {
-                    f(x, grad, false, true);  // calculate gradient
                     return;
-                }
 
                 if (dg * (step_hi - step_lo) >= Scalar(0))
                 {
@@ -279,6 +282,8 @@ public:
                     f.SetLineSearchHasNotBeenSuccessful(); // ChangedForGPBoost
                     f.ResetProfiledOutVariablesToLag1();
                     f.ResetModesToLag1(); // ChangedForGPBoost: the modes need to be reset as well, otherwise they correspond to the last candidate point of the line search and not to 'xp'
+                    f(x, grad, true, true); // ChangedForGPBoost: the model is evaluated at 'xp' such that its state and 'grad' correspond to 'xp' and not to the last candidate point
+                    dg = dg_init;
                     fx = fx_init;
                     step = 0.;
                     Log::REDebug("GPModel lbfgs: the line search routine reached the maximum number of iterations");
@@ -298,6 +303,10 @@ public:
                     // ChangedForGPBoost: the profiled-out variables (error variance, regression coefficients) need to be
                     //  moved back as well, otherwise they correspond to the rejected last candidate point and not to 'x_lo'
                     f.RestoreProfiledOutVariablesLo();
+                    // ChangedForGPBoost: the model is evaluated at 'x_lo' such that its state (e.g., the factorization of
+                    //  the covariance matrix) corresponds to it and not to the rejected last candidate point
+                    fx = f(x, grad, true, true);
+                    dg = grad.dot(drt);
                 }
                 return;
             }
