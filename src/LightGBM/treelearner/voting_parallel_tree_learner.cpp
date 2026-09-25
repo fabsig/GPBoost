@@ -4,6 +4,7 @@
  */
 #include <LightGBM/utils/common.h>
 
+#include <algorithm>
 #include <cstring>
 #include <tuple>
 #include <vector>
@@ -65,8 +66,11 @@ void VotingParallelTreeLearner<TREELEARNER_T>::Init(const Dataset* train_data, b
   this->histogram_pool_.ResetConfig(train_data, &local_config_);
 
   // initialize histograms for global
-  smaller_leaf_histogram_array_global_.reset(new FeatureHistogram[this->num_features_]);
-  larger_leaf_histogram_array_global_.reset(new FeatureHistogram[this->num_features_]);
+  // the count is an int, and gcc warns about an allocation of the size it would have if that
+  // int were negative, which the cast rules out
+  const size_t num_features = static_cast<size_t>(std::max(0, this->num_features_));
+  smaller_leaf_histogram_array_global_.reset(new FeatureHistogram[num_features]);
+  larger_leaf_histogram_array_global_.reset(new FeatureHistogram[num_features]);
   std::vector<uint32_t> offsets = this->share_state_->feature_hist_offsets();
   int num_total_bin = this->share_state_->num_hist_total_bin();
   smaller_leaf_histogram_data_.resize(num_total_bin * 2);

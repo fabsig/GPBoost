@@ -8354,7 +8354,10 @@ namespace GPBoost {
 		static void CreateEntryForCluster(std::map<int, std::map<int, T>>& container,
 			int cluster_i,
 			int ind_set_re) {
-			container[cluster_i].emplace(ind_set_re, T());
+			// the entry is constructed in place: building a temporary and moving it would copy the
+			// members of a default constructed T, and a decomposition of Eigen leaves its
+			// ComputationInfo unset until it has been computed
+			container[cluster_i].try_emplace(ind_set_re);
 		}
 
 		/*! \brief Const version of 'GetForCluster' */
