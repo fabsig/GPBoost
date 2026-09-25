@@ -78,11 +78,14 @@ on:
         description: "regular expression for the test files to run, e.g. '^GPModel_.*' (empty: all)"
         type: string
         default: ""
-      # '--track-origins=yes' roughly doubles the run time of valgrind; it is worth that for a
-      # finding, because it names the place the uninitialized value came from, but not for measuring
-      # how long a test file needs
+      # This REPLACES the 'VALGRIND_OPTS' of the container, it is not added to them, so every option
+      # that is still wanted has to be repeated. The default of the container is
+      # '--track-origins=yes --leak-check=full', and '--track-origins=yes' roughly doubles the run
+      # time: it is worth that for a finding, because it names the place the uninitialized value came
+      # from, but not for measuring how long a test file needs. Leaving it out is therefore the way
+      # to trade the origins for speed
       valgrind_opts:
-        description: "VALGRIND_OPTS, e.g. '--leak-check=no' (empty: the default of the container)"
+        description: "replaces VALGRIND_OPTS, e.g. '--leak-check=no' (empty: '--track-origins=yes --leak-check=full')"
         type: string
         default: ""
 
