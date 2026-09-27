@@ -500,26 +500,40 @@ jobs:
           r-version: "release"
           use-public-rspm: true
 
+      # the image is several GB and the bitcode that wllvm writes is kept next to the objects
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
+          df -h /
+
       - name: Build the CRAN source package
         run: |
           sh build-cran-package.sh
 
-      # rchk does not run the tests, it compiles the package and analyzes the bitcode. 'r-check'
-      # does not turn its findings into a non-zero exit status, so the output is searched here.
+      # rchk does not run the tests, it compiles the package and analyzes the bitcode. Its exit
+      # status is not the verdict: 'r-check' does not turn the findings of rchk into a non-zero
+      # status, and 'bcheck' is killed without a message when it runs out of memory, which looks the
+      # same from the outside. The status is therefore recorded and the output is judged below.
       # A run without findings prints no '[UP]' or '[PB]' line at all; the three "too many states"
       # errors that it does print are in functions of R itself
       - name: Run rchk
         run: |
-          set -o pipefail
           docker run --rm -v "${PWD}:/check" -e MAKEFLAGS=-j4 \
-            ghcr.io/r-hub/containers/rchk r-check 2>&1 | tee rchk.log
+            ghcr.io/r-hub/containers/rchk r-check > rchk.log 2>&1 && status=0 || status=$?
+          tail -n 40 rchk.log
+          echo "rchk exited with ${status}"
+          df -h / | tail -1
           if grep -qE "^\[(UP|PB|PC)\]" rchk.log; then
             echo "::error::rchk reported findings"
             grep -E "^\[(UP|PB|PC)\]" rchk.log
             exit 1
           fi
-          if ! grep -q "rchk bcheck" rchk.log; then
-            echo "::error::rchk did not run, see the log"
+          if ! grep -q "Analyzed .* functions" rchk.log; then
+            echo "::error::bcheck did not finish (exit ${status}), nothing was analyzed - see the log"
+            exit 1
+          fi
+          if [ "${status}" -ne 0 ]; then
+            echo "::error::rchk exited with ${status} although bcheck finished - see the log"
             exit 1
           fi
 

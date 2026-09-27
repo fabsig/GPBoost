@@ -579,5 +579,107 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_true(is.finite(gp_model$get_current_neg_log_likelihood()))
     })
     
+    if (Sys.getenv("GPBOOST_ADDITIONAL_SLOW_TESTS") == "GPBOOST_ADDITIONAL_SLOW_TESTS") {
+      # slow test 
+      test_that("GPBoost algorithm with Gaussian process model and 'gaussian_heteroscedastic_fixed_and_random' likelihood", {
+        
+        ntrain <- ntest <- 500
+        n <- ntrain + ntest
+        # Simulate fixed effects
+        sim_data <- sim_friedman3(n=n, n_irrelevant=5, init_c=0.69)
+        f <- sim_data$f
+        f <- f - mean(f)
+        X <- sim_data$X
+        # Simulate spatial Gaussian process
+        sigma2_1 <- 1 # marginal variance of GP
+        rho <- 0.1 # range parameter
+        d <- 2 # dimension of GP locations
+        coords <- matrix(sim_rand_unif(n=n*d, init_c=0.63), ncol=d)
+        D <- as.matrix(dist(coords))
+        Sigma <- sigma2_1 * exp(-D/rho) + diag(1E-20,n)
+        C <- t(chol(Sigma))
+        b_1 <- qnorm(sim_rand_unif(n=n, init_c=0.987864))
+        eps <- as.vector(C %*% b_1)
+        # Observed data
+        probs <- 1/(1+exp(-(f+eps)))
+        y <- as.numeric(sim_rand_unif(n=n, init_c=0.52574) < probs)
+        # Split into training and test data
+        y_train <- y[1:ntrain]
+        X_train <- X[1:ntrain,]
+        coords_train <- coords[1:ntrain,]
+        dtrain <- gpb.Dataset(data = X_train, label = y_train)
+        y_test <- y[1:ntest+ntrain]
+        X_test <- X[1:ntest+ntrain,]
+        f_test <- f[1:ntest+ntrain]
+        coords_test <- coords[1:ntest+ntrain,]
+        eps_test <- eps[1:ntest+ntrain]
+        
+        init_cov_pars <- c(1,mean(dist(coords_train))/3)
+        
+        # Train model
+        gp_model <- GPModel(gp_coords = coords_train, cov_function = "exponential",
+                            likelihood = "gaussian_heteroscedastic_fixed_and_random", gp_approx = "vecchia",
+                            matrix_inversion_method = "iterative")
+        gp_model$set_optim_params(params=OPTIM_PARAMS_BFGS)
+        bst <- gpb.train(data = dtrain,
+                         gp_model = gp_model,
+                         nrounds = 2,
+                         learning_rate = 0.5,
+                         max_depth = 6,
+                         min_data_in_leaf = 5,
+                         verbose = 0, deterministic = TRUE)
+        # the response is binary while the likelihood is a heteroscedastic Gaussian one, so the model is
+        #	misspecified and the optimum of both range parameters lies at the boundary: the mean process
+        #	becomes uncorrelated with a marginal variance close to the variance of the observations and the
+        #	process of the log-error variance becomes constant. The negative log-likelihood is 361.6 there
+        #	and 723.2 at the values that this test expected before, so the fit is well separated from them
+        cov_pars_est <- c(2.489125e-01, 1.621601e-06, 5.241877e-07, 1.796105e-04)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),relax_tolerance_stoch(0.4))
+
+        # Prediction
+        pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                        predict_var = TRUE, pred_latent = TRUE)
+        npred <- dim(X_test)[1]
+        expect_lt(sum(abs(pred$fixed_effect[1:4]-c(0.5871531, 0.5670663, 0.6189220, 0.5871531))),relax_tolerance_stoch(2))
+        # the mean process is uncorrelated, so its posterior mean at new locations is zero and its
+        #	predictive variance is the marginal variance
+        expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0, 0, 0, 0))),relax_tolerance_stoch(0.4))
+        expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.2489125, 0.2489125, 0.2489125, 0.2489125))),relax_tolerance_stoch(0.4))
+        # Predict response
+        pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
+                        predict_var = TRUE, pred_latent = FALSE)
+        expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.6192911, 0.5871531, 0.5967787, -0.7748928))),relax_tolerance_stoch(1))
+        expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.2489135, 0.2489135, 0.2489135, 0.2489135))),relax_tolerance_stoch(0.3))
+        
+        # Parameter tuning
+        if (!identical(Sys.info()[["sysname"]], "Darwin")) {# these tests fail on Mac OS
+          group_aux <- rep(1,ntrain) # grouping variable
+          nfold <- 2
+          for(i in 1:(ntrain/nfold)) group_aux[(1:nfold)+nfold*(i-1)] <- 1:nfold
+          folds <- list()
+          for(i in 1:nfold) folds[[i]] <- as.integer(which(group_aux==i))
+          
+          params <- list(verbose = 0)
+          metric = "crps_gaussian"
+          param_grid = list("learning_rate" = c(0.5,0.11), "min_data_in_leaf" = c(20),
+                            "max_depth" = c(2), "num_leaves" = 2^17, "max_bin" = c(10,255))
+          opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid, params = params,
+                                                        data = dtrain, gp_model = gp_model, verbose_eval = 1,
+                                                        nrounds = 100, early_stopping_rounds = 5,
+                                                        metric = metric, folds = folds)
+          expect_lt(abs(opt_params$best_score-0.2826264),0.01)
+          # the number of boosting iterations that the tuning selects can differ between builds, so it is
+          # only bracketed here (3 with MSVC and with gcc on Linux)
+          expect_gte(opt_params$best_iter,2)
+          expect_lte(opt_params$best_iter,24)
+          expect_equal(opt_params$best_params$learning_rate,0.11)
+          expect_gte(opt_params$best_params$max_bin,10)
+          expect_lte(opt_params$best_params$max_bin,255)
+          expect_equal(opt_params$best_params$max_depth,2)
+        }
+        
+      })## end gaussian_heteroscedastic_fixed_and_random
+    }
+
   }
 }
