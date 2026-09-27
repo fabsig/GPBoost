@@ -24,11 +24,18 @@ name: Memory and code checks
 #
 # On the number of shards: the CI workflow already needs four of them for the uninstrumented suite
 # on the same runners, so four is the smallest number that gives an ASan run a comfortable margin,
-# and it is the default for the two ASan containers. valgrind is so much slower that it needs 12 or
+# and it is the default for the two ASan containers. valgrind is so much slower that it needs many
 # more, which is why the number is chosen per container: one dispatch can run the ASan checks over
-# four jobs and valgrind over sixteen. Every shard installs the dependencies and compiles the
-# package again, which is what limits the gain from going much higher. A run may not ask for more
-# than the concurrency limit of the plan allows, see 'MAX_JOBS' in the 'select' job.
+# four jobs and valgrind over thirty.
+#
+# What decides whether a valgrind run succeeds is not its total run time but whether every single
+# shard stays under the six hours after which a job is killed, so for that check more shards are
+# always better: they make each shard smaller. The number is capped at the number of test files, so
+# the largest value of the form, 60, means one file per shard. Asking for more jobs than can run at
+# once is fine, the surplus simply waits for a free runner - the monthly run happens at night, where
+# only the result matters. It costs some runner time, because every shard installs the dependencies
+# and compiles the package again, and it delays the CI run of a push that happens at the same time.
+# 'MAX_JOBS' in the 'select' job is therefore a warning and not a limit.
 #
 # valgrind is off by default, and deliberately so: ASan already covers buffer overflows and
 # use-after-free, its own contribution is the reads of uninitialized memory, and even spread over
@@ -49,17 +56,17 @@ on:
         description: "ASan and UBSan with clang ('clang-asan' image): number of jobs, or off"
         type: choice
         default: "4"
-        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40"]
+        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40", "60"]
       gcc_asan_ubsan:
         description: "ASan, UBSan and bounds-strict with gcc ('gcc-asan' image): number of jobs, or off"
         type: choice
         default: "4"
-        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40"]
+        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40", "60"]
       valgrind:
         description: "valgrind (memcheck, very slow): number of jobs, or off"
         type: choice
         default: "off"
-        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40"]
+        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40", "60"]
       # rchk neither runs the tests nor is influenced by the shards, it compiles the package once
       # and analyzes the bitcode, so it costs a single short job and is on by default
       rchk:
@@ -153,7 +160,7 @@ jobs:
                   settings = {"CLANG_ASAN_UBSAN": "4", "GCC_ASAN_UBSAN": "4", "VALGRIND": "off",
                               "RCHK": "true", "CLANG_WARNINGS": "false"}
               elif 15 <= day <= 21:
-                  settings = {"CLANG_ASAN_UBSAN": "off", "GCC_ASAN_UBSAN": "off", "VALGRIND": "20",
+                  settings = {"CLANG_ASAN_UBSAN": "off", "GCC_ASAN_UBSAN": "off", "VALGRIND": "60",
                               "RCHK": "false", "CLANG_WARNINGS": "false"}
               else:
                   settings = {"CLANG_ASAN_UBSAN": "off", "GCC_ASAN_UBSAN": "off", "VALGRIND": "off",
@@ -252,20 +259,17 @@ jobs:
                       "timeout": 350,
                   })
 
-          # Beyond the concurrency limit of the plan the remaining jobs wait for a free runner, and
-          # a check that is spread over more shards than can run at once is slower than a narrower
-          # one, not faster. rchk and the warning check run next to the matrix and take a runner
-          # each, so they are counted here as well.
-          # The limit depends on the plan of the account (GitHub currently allows 20 concurrent jobs
-          # on Free, 40 on Pro, 60 on Team); 27 jobs of this repository have been observed running at
-          # the same time, so it is at least 40. Lower this number if runs start to queue, and note
-          # that the runs of a push compete for the same runners
+          # Beyond the concurrency limit of the account the remaining jobs wait for a free runner.
+          # That is not an error, so this only reports it: the number below is an estimate and the
+          # run is meant to go through either way. The limit depends on the plan (GitHub currently
+          # allows 20 concurrent jobs on Free, 40 on Pro, 60 on Team); 39 shards of this repository
+          # have been observed running at the same time with one queued, so it is around 40. rchk and
+          # the warning check take a runner each, so they are counted as well
           MAX_JOBS = 40
           others = sum(os.environ[v] == "true" for v in ("RCHK", "CLANG_WARNINGS"))
           if len(entries) + others > MAX_JOBS:
-              raise SystemExit(
-                  f"{len(entries) + others} jobs were requested, at most {MAX_JOBS} can run at once"
-              )
+              print(f"::warning::{len(entries) + others} jobs were requested and about {MAX_JOBS} "
+                    f"can run at once, so some of them will wait for a free runner")
 
           matrix = json.dumps({"include": entries})
           print(f"matrix={matrix}")
