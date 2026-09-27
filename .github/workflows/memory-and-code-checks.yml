@@ -28,7 +28,8 @@ name: Memory and code checks
 # more, which is why the number is chosen per container: one dispatch can run the ASan checks over
 # four jobs and valgrind over sixteen. Every shard installs the dependencies and compiles the
 # package again, which is what limits the gain from going much higher. A run may not ask for more
-# than 20 jobs at once, which is the limit of the plan.
+# than 20 jobs at once, which is the limit of the plan, so 20 shards is the widest a run of a
+# single container can be.
 #
 # valgrind is off by default, and deliberately so: ASan already covers buffer overflows and
 # use-after-free, its own contribution is the reads of uninitialized memory, and even spread over
@@ -49,17 +50,17 @@ on:
         description: "ASan and UBSan with clang ('clang-asan' image): number of jobs, or off"
         type: choice
         default: "4"
-        options: ["off", "1", "2", "4", "8", "12", "16"]
+        options: ["off", "1", "2", "4", "8", "12", "16", "20"]
       gcc_asan_ubsan:
         description: "ASan, UBSan and bounds-strict with gcc ('gcc-asan' image): number of jobs, or off"
         type: choice
         default: "4"
-        options: ["off", "1", "2", "4", "8", "12", "16"]
+        options: ["off", "1", "2", "4", "8", "12", "16", "20"]
       valgrind:
         description: "valgrind (memcheck, very slow): number of jobs, or off"
         type: choice
         default: "off"
-        options: ["off", "1", "2", "4", "8", "12", "16"]
+        options: ["off", "1", "2", "4", "8", "12", "16", "20"]
       # rchk neither runs the tests nor is influenced by the shards, it compiles the package once
       # and analyzes the bitcode, so it costs a single short job and is on by default
       rchk:
@@ -153,7 +154,7 @@ jobs:
                   settings = {"CLANG_ASAN_UBSAN": "4", "GCC_ASAN_UBSAN": "4", "VALGRIND": "off",
                               "RCHK": "true", "CLANG_WARNINGS": "false"}
               elif 15 <= day <= 21:
-                  settings = {"CLANG_ASAN_UBSAN": "off", "GCC_ASAN_UBSAN": "off", "VALGRIND": "16",
+                  settings = {"CLANG_ASAN_UBSAN": "off", "GCC_ASAN_UBSAN": "off", "VALGRIND": "20",
                               "RCHK": "false", "CLANG_WARNINGS": "false"}
               else:
                   settings = {"CLANG_ASAN_UBSAN": "off", "GCC_ASAN_UBSAN": "off", "VALGRIND": "off",

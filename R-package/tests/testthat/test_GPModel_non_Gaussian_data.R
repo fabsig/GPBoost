@@ -1040,4 +1040,371 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("Binary classification with linear predictor and grouped random effects model ", {
+
+    probs <- pnorm(Z1 %*% b_gr_1 + X%*%beta)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.542) < probs)
+    init_cov_pars = c(1)
+
+    # Estimation using gradient descent and Nesterov acceleration
+    gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                           y = y, X=X, params = list(optimizer_cov = "gradient_descent",
+                                                     optimizer_coef = "gradient_descent", lr_cov = 0.05, lr_coef = 1,
+                                                     use_nesterov_acc = TRUE, acc_rate_cov = 0.2, acc_rate_coef = 0.1,
+                                                     init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
+    cov_pars <- c(0.4072025)
+    coef <- c(-0.1113238, 1.5178339)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef)),TOLERANCE_MEDIUM)
+    expect_equal(gp_model$get_num_optim_iter(), 43)
+
+    # Estimation using Nelder-Mead
+    gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                           y = y, X=X, params = list(optimizer_cov = "nelder_mead",
+                                                     optimizer_coef = "nelder_mead", delta_rel_conv=1e-12,
+                                                     init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
+    cov_pars <- c(0.399973)
+    coef <- c(-0.1109516, 1.5149596)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef)),TOLERANCE_MEDIUM)
+    # init_cov_pars not given
+    gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                           y = y, X=X, params = list(optimizer_cov = "nelder_mead",
+                                                     optimizer_coef = "nelder_mead", delta_rel_conv=1e-12, init_coef_aux_pars_from_iid_model = FALSE))
+    cov_pars <- c(0.399973)
+    coef <- c(-0.1109516, 1.5149596)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef)),TOLERANCE_MEDIUM)
+
+    # Estimation using lbfgs
+    gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                           y = y, X=X, params = list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", init_coef_aux_pars_from_iid_model = FALSE))
+    cov_pars <- c(0.3996146704)
+    coef <- c(-0.1109363315, 1.5150072519)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 9)
+
+    # Prediction
+    gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                           y = y, X=X, params = list(optimizer_cov = "gradient_descent",
+                                                     optimizer_coef = "gradient_descent",
+                                                     use_nesterov_acc=FALSE, lr_coef=1, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
+    X_test <- cbind(rep(1,4),c(-0.5,0.2,0.4,1))
+    group_test <- c(1,3,3,9999)
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test,
+                    predict_cov_mat = TRUE, predict_response = FALSE)
+    expected_mu <- c(-0.81132150, -0.08574588, 0.21768684, 1.40591430)
+    expected_cov <- c(0.1380238, 0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.1688248, 0.1688248,
+                      0.0000000, 0.0000000, 0.1688248, 0.1688248, 0.0000000, 0.0000000, 0.0000000, 0.0000000, 0.4051185)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
+    # Predict response
+    pred <- predict(gp_model, y=y, group_data_pred = group_test, X_pred = X_test, predict_response = TRUE)
+    expected_mu <- c(0.2234684, 0.4683923, 0.5797886, 0.8821984)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+
+    # Predict training data random effects
+    all_training_data_random_effects <- predict_training_data_random_effects(gp_model, predict_var = TRUE)
+    first_occurences <- match(unique(group), group)
+    training_data_random_effects <- all_training_data_random_effects[first_occurences,]
+    group_unique <- unique(group)
+    X_zero <- cbind(rep(0,length(group_unique)),rep(0,length(group_unique)))
+    preds <- predict(gp_model, group_data_pred = group_unique, X_pred = X_zero,
+                     predict_response = FALSE, predict_var = TRUE)
+    expect_lt(sum(abs(training_data_random_effects[,1] - preds$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(training_data_random_effects[,2] - preds$var)),TOLERANCE_STRICT)
+
+    # Standard deviations
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                                           y = y, X=X, params = list(optimizer_cov = "gradient_descent",
+                                                                     optimizer_coef = "gradient_descent", init_cov_pars=init_cov_pars,
+                                                                     use_nesterov_acc = TRUE, lr_cov = 0.1, lr_coef = 1, init_coef_aux_pars_from_iid_model = FALSE)),
+                    file='NUL')
+    cov_pars <- c(0.4016599868 )
+    coef <- c(-0.1116235586,  0.2568338470 , 1.5161515464,  0.2637361920)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_STRICT)
+
+    # Providing initial covariance parameters and coefficients
+    cov_pars <- c(1)
+    coef <- c(2,5)
+    gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_probit",
+                           y = y, X=X, params = list(maxit=0, init_cov_pars=cov_pars, init_coef=coef,
+                                                     optimizer_cov = "gradient_descent", init_coef_aux_pars_from_iid_model = FALSE))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef)),TOLERANCE_MEDIUM)
+
+    # Large data
+    n_L <- 1e6 # number of samples
+    m_L <- n_L/10 # number of categories / levels for grouping variable
+    group_L <- rep(1,n_L) # grouping variable
+    for(i in 1:m_L) group_L[((i-1)*n_L/m_L+1):(i*n_L/m_L)] <- i
+    keps <- 1E-10
+    b1_L <- qnorm(sim_rand_unif(n=m_L, init_c=0.671)*(1-keps) + keps/2)
+    X_L <- cbind(rep(1,n_L),sim_rand_unif(n=n_L, init_c=0.8671)-0.5) # design matrix / covariate data for fixed effect
+    probs_L <- pnorm(b1_L[group_L] + X_L%*%beta)
+    y_L <- as.numeric(sim_rand_unif(n=n_L, init_c=0.12378)*(1-keps) + keps/2 < probs_L)
+    # Estimation using gradient descent and Nesterov acceleration
+    gp_model <- fitGPModel(group_data = group_L, likelihood = "bernoulli_probit",
+                           y = y_L, X=X_L, params = list(optimizer_cov = "gradient_descent",
+                                                         optimizer_coef = "gradient_descent", lr_cov = 0.05, lr_coef = 0.1,
+                                                         use_nesterov_acc = TRUE, init_cov_pars=init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-0.9757876802)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(0.09848153264, 1.99446139138))),TOLERANCE_MEDIUM)
+
+  })
+
+  test_that("Binary classification with linear predictor and Gaussian process model ", {
+
+    probs <- pnorm(L %*% b_1 + X%*%beta)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.199) < probs)
+    params = DEFAULT_OPTIM_PARAMS
+    params$init_cov_pars <- c(1,mean(dist(coords))/3)
+
+    # Estimation
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                           y = y, X=X, params = params)
+    cov_pars <- c(1.2660987164, 0.2854664658)
+    coefs <- c(0.2041076447, 1.4663366438)
+    nll <- 48.41567975
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coefs)),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll), TOLERANCE_STRICT)
+
+    # Prediction
+    coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
+    X_test <- cbind(rep(1,3),c(-0.5,0.2,1))
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                    predict_var = TRUE, predict_response = FALSE, cov_pars = c(1,0.2))
+    expected_mu <- c(-0.6873889499, 0.3334397127, 2.5116340251)
+    expected_var <- c(0.7205439641, 0.7196871780, 0.4591627357)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_MEDIUM)
+
+    # Estimation using Nelder-Mead
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                           y = y, X=X, params = list(optimizer_cov = "nelder_mead",
+                                                     optimizer_coef = "nelder_mead",
+                                                     maxit=1000, delta_rel_conv=1e-12, init_cov_pars = params$init_cov_pars, init_coef_aux_pars_from_iid_model = FALSE))
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-c(1.2717516, 0.2875537))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(0.1999365, 1.4666199))),TOLERANCE_MEDIUM)
+
+    # Standard deviations
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                                           y = y, X=X, params = params),
+                    file='NUL')
+    coef <- c(0.2041076447, 0.5402831971, 1.4663366438, 0.3028191307)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_MEDIUM)
+
+  })
+
+  test_that("Binary classification with Gaussian process model and logit link function", {
+
+    probs <- 1/(1+exp(- L %*% b_1))
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.2341) < probs)
+    params = DEFAULT_OPTIM_PARAMS
+    params$init_cov_pars <- c(1,mean(dist(coords))/3)
+    params$lr_cov=0.01
+
+    # Estimation
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_logit",
+                                           y = y, params = params)
+                    , file='NUL')
+    cov_pars <- c(1.4300136, 0.1891952)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 85)
+    # Prediction
+    coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE, predict_response = FALSE)
+    expected_mu <- c(-0.7792960, -0.7876208, 0.5476390)
+    expected_cov <- c(1.024266883e+00, 9.215203622e-01, 5.561463409e-05, 9.215203622e-01, 1.022897212e+00, 2.028646043e-05, 5.561463409e-05, 2.028646043e-05, 7.395745025e-01)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
+    # Predict response
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var=TRUE, predict_response = TRUE)
+    expected_mu <- c(0.3442815, 0.3426873, 0.6159933)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-expected_mu*(1-expected_mu))),TOLERANCE_STRICT)
+    # Evaluate approximate negative marginal log-likelihood
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.9,0.2),y=y)
+    expect_lt(abs(nll-66.299571),TOLERANCE_STRICT)
+  })
+
+  test_that("iid model ", {
+
+    params <- OPTIM_PARAMS_BFGS
+    y <- X %*% beta + qnorm(sim_rand_unif(n=n, init_c=0.91468), sd=sqrt(0.01))
+    likelihood <- "gaussian"
+
+    # Estimation
+    capture.output( gp_model <- fitGPModel(likelihood = likelihood, X=X, y = y, params = params) , file='NUL')
+    cov_pars_exp <- c(7.654507e-03, 1.000000e-20)
+    coef_exp <- c(0.094720436, 0.008837829, 1.987728662, 0.012498577)
+    nll_opt_exp <- -101.7291793
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 8)
+    # Prediction
+    X_test <- cbind(rep(1,3),c(-0.5,0.2,1))
+    pred <- predict(gp_model, X_pred = X_test, predict_var=TRUE, predict_response = FALSE)
+    expected_mu <- c(-0.8991438945,  0.4922661688,  2.0824490983)
+    expected_var <- c(1e-20, 1e-20, 1e-20)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
+
+    # mod <- lm(y~X2, data=data.frame(y=y,X))
+    # summary(mod)
+    # predict(mod, newdata=data.frame(X_test))
+
+    likelihood <- "t_fix_df"
+    capture.output( gp_model <- fitGPModel(likelihood = likelihood, X=X, y = y, params = params) , file='NUL')
+    aux_pars_exp <- c(0.0652430469, 2)
+    coef_exp <- c(0.094283734360, 0.009319580548, 1.992402552983, 0.011695985542)
+    nll_opt_exp <- -92.6701562
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-aux_pars_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 21)
+    # Prediction
+    pred <- predict(gp_model, X_pred = X_test, predict_var=TRUE, predict_response = FALSE)
+    expected_mu <- c(-0.9019175421, 0.4927642450, 2.0866862873)
+    expected_var <- c(1e-20, 1e-20, 1e-20)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
+
+    likelihood <- "binary_logit"
+    y_bin <- as.numeric(sim_rand_unif(n=n, init_c=0.468) < 1/(1+exp(-X %*% beta)))
+    capture.output( gp_model <- fitGPModel(likelihood = likelihood, X=X, y = y_bin, params = params) , file='NUL')
+    coef_exp <- c(0.08910433727, 0.22947935529, 1.57411916970, 0.35649689071)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-56.6742427)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 4)
+    # Prediction
+    pred <- predict(gp_model, X_pred = X_test, predict_var=TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-c(-0.6979552476, 0.4039281712, 1.6632235070))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-c(1e-20, 1e-20, 1e-20))),TOLERANCE_STRICT)
+    pred_resp <- predict(gp_model, X_pred = X_test, predict_var=TRUE, predict_response = TRUE)
+    pred_exp <- c(0.3322656738, 0.5996311078, 0.8406703427)
+    expect_lt(sum(abs(pred_resp$mu-pred_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_resp$var-pred_exp*(1-pred_exp))),TOLERANCE_STRICT)
+
+    # mod <- glm(y~X2, data=data.frame(y=y_bin,X), family = binomial(link = "logit"))
+    # summary(mod)
+    # predict(mod, newdata=data.frame(X_test))
+
+    likelihood <- "gamma"
+    capture.output( gp_model <- fitGPModel(likelihood = likelihood, X=X, y = exp(y), params = params) , file='NUL')
+    coef_exp <- c(0.098623234, 0.008821832, 1.986899634, 0.012429806)
+    expect_lt(sum(abs(as.vector(gp_model$get_aux_pars())-131.0965634)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()--72.4258)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 30)
+    # Prediction
+    pred <- predict(gp_model, X_pred = X_test, predict_var=TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-c(-0.8948265830, 0.4960031607, 2.0855228678))),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-c(1e-20, 1e-20, 1e-20))),TOLERANCE_STRICT)
+    pred_resp <- predict(gp_model, X_pred = X_test, predict_var=TRUE, predict_response = TRUE)
+    pred_exp <- c(0.4086784643, 1.6421447481, 8.0487988395)
+    expect_lt(sum(abs(pred_resp$mu-pred_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_resp$var-c(0.001274008127, 0.020569870819, 0.494163699509))),TOLERANCE_STRICT)
+
+    # mod <- glm(y~X2, data=data.frame(y=exp(y),X), family = Gamma(link = "log"))
+    # summary(mod)
+    # predict(mod, newdata=data.frame(X_test), type ="response")
+
+  }) # end iid model
+
+  test_that("saving and loading models with several fixed effects predictors ", {
+    # Likelihoods with more than one fixed effects predictor (e.g., the mean and the log-variance for
+    # 'gaussian_heteroscedastic'). A model is loaded by passing the saved coefficients as 'init_coef'
+    # to a pseudo call to 'fit' (with maxit = 0), which is why both are tested here together
+
+    n_sl <- 100
+    group_sl <- rep(1:10, each = 10)
+    X_sl <- cbind(rep(1, n_sl), sim_rand_unif(n = n_sl, init_c = 0.256))
+    b_gr_sl <- qnorm(sim_rand_unif(n = 10, init_c = 0.741))
+    u_sl <- sim_rand_unif(n = n_sl, init_c = 0.369)
+    mean_sl <- as.vector(X_sl %*% c(0.3, 0.7)) + b_gr_sl[group_sl]
+    # Second fixed effects predictor: log-variance / log-shape
+    log_scale_sl <- as.vector(X_sl %*% c(-0.5, 1.2))
+    y_het_sl <- mean_sl + qnorm(u_sl) * exp(0.5 * log_scale_sl)
+    y_gamma_sl <- qgamma(u_sl, shape = exp(log_scale_sl), rate = exp(log_scale_sl) / exp(mean_sl))
+    y_hurdle_sl <- ifelse(sim_rand_unif(n = n_sl, init_c = 0.271) < 0.3, 0, y_gamma_sl)
+    X_test_sl <- cbind(rep(1, 3), c(0.1, 0.4, 0.8))
+    group_test_sl <- c(1, 3, 11)
+
+    cases_sl <- list(
+      list(likelihood = "gamma", y = y_gamma_sl, num_sets_fe = 1L), # single predictor, as a control
+      list(likelihood = "gaussian_heteroscedastic", y = y_het_sl, num_sets_fe = 2L),
+      list(likelihood = "gamma_varying_shape", y = y_gamma_sl, num_sets_fe = 2L),
+      list(likelihood = "hurdle_regression_gamma_varying_shape", y = y_hurdle_sl, num_sets_fe = 3L)
+    )
+    for (case_sl in cases_sl) {
+      info_sl <- case_sl$likelihood
+      num_coef_sl <- ncol(X_sl) * case_sl$num_sets_fe
+      capture.output(gp_model_sl <- fitGPModel(group_data = group_sl, likelihood = info_sl,
+                                               y = case_sl$y, X = X_sl,
+                                               params = modifyList(OPTIM_PARAMS_BFGS, list(maxit = 20))),
+                     file = "NUL")
+      coef_sl <- gp_model_sl$get_coef(std_err = FALSE)
+      expect_equal(length(coef_sl), num_coef_sl, info = info_sl)
+      expect_true(all(is.finite(coef_sl)), info = info_sl)
+      cov_pars_sl <- as.vector(gp_model_sl$get_cov_pars(std_err = FALSE))
+      aux_pars_sl <- gp_model_sl$get_aux_pars()
+      nll_sl <- gp_model_sl$get_current_neg_log_likelihood()
+      pred_sl <- predict(gp_model_sl, group_data_pred = group_test_sl, X_pred = X_test_sl,
+                         predict_var = TRUE, predict_response = TRUE)
+
+      # Saving and loading must reproduce the model exactly, including the coefficients of all
+      # fixed effects predictor blocks and the predictions
+      filename_sl <- tempfile(fileext = ".json")
+      saveGPModel(gp_model_sl, filename = filename_sl)
+      gp_model_loaded_sl <- loadGPModel(filename = filename_sl)
+      coef_loaded_sl <- gp_model_loaded_sl$get_coef(std_err = FALSE)
+      expect_equal(as.vector(coef_loaded_sl), as.vector(coef_sl), tolerance = TOLERANCE_STRICT, info = info_sl)
+      expect_equal(names(coef_loaded_sl), names(coef_sl), info = info_sl)
+      expect_equal(as.vector(gp_model_loaded_sl$get_cov_pars(std_err = FALSE)), cov_pars_sl,
+                   tolerance = TOLERANCE_STRICT, info = info_sl)
+      expect_equal(as.vector(gp_model_loaded_sl$get_aux_pars()), as.vector(aux_pars_sl),
+                   tolerance = TOLERANCE_STRICT, info = info_sl)
+      expect_equal(gp_model_loaded_sl$get_current_neg_log_likelihood(), nll_sl,
+                   tolerance = TOLERANCE_STRICT, info = info_sl)
+      pred_loaded_sl <- predict(gp_model_loaded_sl, group_data_pred = group_test_sl, X_pred = X_test_sl,
+                                predict_var = TRUE, predict_response = TRUE)
+      expect_equal(pred_loaded_sl$mu, pred_sl$mu, tolerance = TOLERANCE_STRICT, info = info_sl)
+      expect_equal(pred_loaded_sl$var, pred_sl$var, tolerance = TOLERANCE_STRICT, info = info_sl)
+
+      # The same when the model is loaded from a list instead of a file (as done when a
+      # 'gpb.Booster' with a 'GPModel' is loaded)
+      gp_model_list_sl <- gpboost:::gpb.GPModel$new(model_list = gp_model_sl$model_to_list())
+      expect_equal(as.vector(gp_model_list_sl$get_coef(std_err = FALSE)), as.vector(coef_sl),
+                   tolerance = TOLERANCE_STRICT, info = info_sl)
+
+      # 'init_coef' must be used for all fixed effects predictor blocks: with maxit = 0, the
+      # coefficients of the fitted model are exactly the provided initial values
+      init_coef_sl <- rep(c(0.1, -0.2), length.out = num_coef_sl)
+      capture.output(gp_model_init_sl <- fitGPModel(group_data = group_sl, likelihood = info_sl,
+                                                    y = case_sl$y, X = X_sl,
+                                                    params = list(maxit = 0, init_coef = init_coef_sl,
+                                                                  init_coef_aux_pars_from_iid_model = FALSE)),
+                     file = "NUL")
+      expect_equal(as.vector(gp_model_init_sl$get_coef(std_err = FALSE)), init_coef_sl,
+                   tolerance = TOLERANCE_STRICT, info = info_sl)
+    }
+
+    # 'init_coef' can also be provided before the covariate data is known. Its length is then the
+    # total number of coefficients, from which the number of covariates is derived
+    gp_model_pre_sl <- GPModel(group_data = group_sl, likelihood = "gaussian_heteroscedastic")
+    gp_model_pre_sl$set_optim_params(params = list(init_coef = c(0.1, -0.2, 0.3, -0.4)))
+    capture.output(gp_model_pre_sl$fit(y = y_het_sl, X = X_sl, params = list(maxit = 0)), file = "NUL")
+    expect_equal(as.vector(gp_model_pre_sl$get_coef(std_err = FALSE)), c(0.1, -0.2, 0.3, -0.4),
+                 tolerance = TOLERANCE_STRICT)
+    # A length that is not a multiple of the number of fixed effects predictors is an error
+    expect_error(GPModel(group_data = group_sl, likelihood = "gaussian_heteroscedastic")$set_optim_params(
+      params = list(init_coef = c(0.1, -0.2, 0.3))), "init_coef")
+
+  })
+
 }

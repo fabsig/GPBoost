@@ -44,6 +44,8 @@ expect_lt(sum(abs(tail(y)-c(4.594936, 3.500000, 3.500000,
 # Avoid that long tests get executed on CRAN
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   
+  test_that("Grabit with the tobit objective ", {
+  
   # train model and make predictions
   dtrain <- gpb.Dataset(data = X, label = y)
   bst <- gpb.train(data = dtrain, nrounds = 100, objective = "tobit",
@@ -65,15 +67,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   y_pred_no_limits <- predict(bst, data = X_test)
   expect_lt(sum(abs(y_pred_no_limits - y_pred_l2)),TOLERANCE)
   
+  })
 }
 
 context("mean_scale_regression")
 
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
+  test_that("Boosting with the mean_scale_regression objective ", {
   # train model and make predictions
   dtrain <- gpb.Dataset(data = X, label = y)
   bst <- gpb.train(data = dtrain, nrounds = 100, objective = "mean_scale_regression", verbose = 0, deterministic = TRUE)
   y_pred <- predict(bst, data = X_test)
   expect_lt(sum(abs(tail(y_pred$pred_mean, n=4)-c(3.500960, 3.519618, 4.800027, 4.709582))),TOLERANCE)
   expect_lt(sum(abs(tail(y_pred$pred_var, n=4)-c(3.139056e-05, 6.021143e-04, 8.913208e-09, 2.193976e-04))),TOLERANCE)
+  })
 }

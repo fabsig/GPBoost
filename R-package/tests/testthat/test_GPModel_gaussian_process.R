@@ -1188,4 +1188,127 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(cov(t(pred$posterior_samples))-pred$cov)), 0.02)
   })
   
+  test_that("Saving a GPModel and loading from file works ", {
+    
+    y <- eps + xi
+    coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           y = y, X = coords, params = DEFAULT_OPTIM_PARAMS), 
+                    file='NUL')
+    cov_pars_est <- gp_model$get_cov_pars(std_err = TRUE)
+    coef_est <- gp_model$get_coef(std_err = TRUE)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = coord_test, predict_cov_mat = TRUE)
+    # Save model to file
+    filename <- tempfile(fileext = ".json")
+    saveGPModel(gp_model, filename = filename)
+    rm(gp_model)
+    # Load from file and make predictions again
+    capture.output( gp_model_loaded <- loadGPModel(filename = filename), file='NUL')
+    pred_loaded <- predict(gp_model_loaded, gp_coords_pred = coord_test, X_pred = coord_test, predict_cov_mat = TRUE)
+    expect_equal(pred$mu, pred_loaded$mu)
+    expect_equal(pred$cov, pred_loaded$cov)
+    expect_equal(cov_pars_est, gp_model_loaded$get_cov_pars(std_err = TRUE))
+    expect_equal(coef_est, gp_model_loaded$get_coef(std_err = TRUE))
+
+    # Before the internal default-value sentinel was changed to -999, any non-positive value of these
+    #   parameters was a request for the internal default, and a saved model can thus contain -1 (the
+    #   former default), another negative number, or 0
+    json_legacy <- paste(readLines(filename, warn = FALSE), collapse = "\n")
+    legacy_params <- c("delta_rel_conv", "lr_cov", "fitc_piv_chol_preconditioner_rank",
+                       "m_lbfgs", "delta_conv_mode_finding")
+    legacy_values <- c(-1, -2, 0, -1, -2)
+    for (i in seq_along(legacy_params)) {
+      pattern <- paste0('("', legacy_params[i], '"[[:space:]]*:[[:space:]]*)[-+0-9.eE]+')
+      expect_true(grepl(pattern, json_legacy))
+      json_legacy <- sub(pattern, paste0("\\1", legacy_values[i]), json_legacy)
+    }
+    filename_legacy <- tempfile(fileext = ".json")
+    writeLines(json_legacy, filename_legacy)
+    capture.output( gp_model_legacy <- loadGPModel(filename = filename_legacy), file='NUL')
+    pred_legacy <- predict(gp_model_legacy, gp_coords_pred = coord_test, X_pred = coord_test,
+                           predict_cov_mat = TRUE)
+    expect_equal(pred$mu, pred_legacy$mu)
+    expect_equal(pred$cov, pred_legacy$cov)
+    
+    # With Vecchia approximation
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           gp_approx = "vecchia", num_neighbors = 20,
+                                           vecchia_ordering = "none", y = y, params = DEFAULT_OPTIM_PARAMS), 
+                    file='NUL')
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE)
+    # Save model to file
+    filename <- tempfile(fileext = ".json")
+    saveGPModel(gp_model, filename = filename)
+    rm(gp_model)
+    # Load from file and make predictions again
+    capture.output( gp_model_loaded <- loadGPModel(filename = filename), file='NUL')
+    pred_loaded <- predict(gp_model_loaded, gp_coords_pred = coord_test, predict_cov_mat = TRUE)
+    expect_equal(pred$mu, pred_loaded$mu)
+    expect_equal(pred$cov, pred_loaded$cov)
+    
+    # With Vecchia approximation and random ordering
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           gp_approx = "vecchia", num_neighbors = 20,
+                                           vecchia_ordering = "random", y = y, params = DEFAULT_OPTIM_PARAMS), 
+                    file='NUL')
+    gp_model$set_prediction_data(num_neighbors_pred = 50)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE)
+    # Save model to file
+    filename <- tempfile(fileext = ".json")
+    saveGPModel(gp_model, filename = filename)
+    rm(gp_model)
+    # Load from file and make predictions again
+    capture.output( gp_model_loaded <- loadGPModel(filename = filename), file='NUL')
+    gp_model_loaded$set_prediction_data(num_neighbors_pred = 50)
+    pred_loaded <- predict(gp_model_loaded, gp_coords_pred = coord_test, predict_cov_mat = TRUE)
+    expect_equal(pred$mu, pred_loaded$mu)
+    expect_equal(pred$cov, pred_loaded$cov)
+    
+    # With Tapering
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                           gp_approx = "tapering", cov_fct_taper_range = 0.5, cov_fct_taper_shape = 1.,
+                                           y = y, params = DEFAULT_OPTIM_PARAMS), 
+                    file='NUL')
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE)
+    # Save model to file
+    filename <- tempfile(fileext = ".json")
+    saveGPModel(gp_model, filename = filename)
+    rm(gp_model)
+    # Load from file and make predictions again
+    capture.output( gp_model_loaded <- loadGPModel(filename = filename), file='NUL')
+    pred_loaded <- predict(gp_model_loaded, gp_coords_pred = coord_test, predict_cov_mat = TRUE)
+    expect_equal(pred$mu, pred_loaded$mu)
+    expect_equal(pred$cov, pred_loaded$cov)
+  })
+  
+  test_that("Profiled-out parameters belong to the parameters that are returned ", {
+
+    # When the line search of 'lbfgs_linesearch_nocedal_wright' runs out of iterations, it returns the best
+    # point found so far and not the one that has been evaluated last. The profiled-out error variance and
+    # regression coefficients have to be moved back to that point as well, otherwise they are the ones of the
+    # rejected last candidate and do not belong to the covariance parameters that are returned (relative
+    # error 1.2e-08 here, and 1.4e-02 when the line search is forced to stop after two iterations)
+    y_po <- eps + as.vector(X %*% beta) + xi
+    for (optimizer_po in c("lbfgs", "lbfgs_linesearch_nocedal_wright")) {
+      capture.output( gp_model_po <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                y = y_po, X = X,
+                                                params = list(optimizer_cov = optimizer_po, maxit = 1000,
+                                                              init_coef_aux_pars_from_iid_model = FALSE)),
+                      file = 'NUL')
+      cov_pars_po <- as.numeric(gp_model_po$get_cov_pars())
+      coef_po <- as.numeric(gp_model_po$get_coef())
+      # the closed-form expressions that are profiled out, with the error variance factored out of the
+      #   covariance matrix (which is the scale on which the optimizer works)
+      psi_po <- (cov_pars_po[2] / cov_pars_po[1]) * exp(-D / cov_pars_po[3]) + diag(n)
+      resid_po <- as.vector(y_po - X %*% coef_po)
+      sigma2_po <- as.numeric(t(resid_po) %*% solve(psi_po, resid_po)) / n
+      coef_wls_po <- as.vector(solve(t(X) %*% solve(psi_po, X), t(X) %*% solve(psi_po, y_po)))
+      expect_lt(abs(cov_pars_po[1] / sigma2_po - 1), 1E-10,
+                label = paste0("profiled-out error variance (", optimizer_po, ")"))
+      expect_lt(max(abs(coef_po / coef_wls_po - 1)), 1E-10,
+                label = paste0("profiled-out regression coefficients (", optimizer_po, ")"))
+    }
+
+  })
+
 }
