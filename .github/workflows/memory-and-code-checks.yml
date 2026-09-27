@@ -31,7 +31,8 @@ name: Memory and code checks
 # What decides whether a valgrind run succeeds is not its total run time but whether every single
 # shard stays under the six hours after which a job is killed, so for that check more shards are
 # always better: they make each shard smaller. The number is capped at the number of test files, so
-# the largest value of the form, 60, means one file per shard. Asking for more jobs than can run at
+# the largest value of the form, 80, is above their current number and therefore means one file per
+# shard; it keeps meaning that as test files are added, which is why it is deliberately generous. Asking for more jobs than can run at
 # once is fine, the surplus simply waits for a free runner - the monthly run happens at night, where
 # only the result matters. It costs some runner time, because every shard installs the dependencies
 # and compiles the package again, and it delays the CI run of a push that happens at the same time.
@@ -56,17 +57,17 @@ on:
         description: "ASan and UBSan with clang ('clang-asan' image): number of jobs, or off"
         type: choice
         default: "4"
-        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40", "60"]
+        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40", "60", "80"]
       gcc_asan_ubsan:
         description: "ASan, UBSan and bounds-strict with gcc ('gcc-asan' image): number of jobs, or off"
         type: choice
         default: "4"
-        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40", "60"]
+        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40", "60", "80"]
       valgrind:
         description: "valgrind (memcheck, very slow): number of jobs, or off"
         type: choice
         default: "off"
-        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40", "60"]
+        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40", "60", "80"]
       # rchk neither runs the tests nor is influenced by the shards, it compiles the package once
       # and analyzes the bitcode, so it costs a single short job and is on by default
       rchk:
@@ -160,7 +161,7 @@ jobs:
                   settings = {"CLANG_ASAN_UBSAN": "4", "GCC_ASAN_UBSAN": "4", "VALGRIND": "off",
                               "RCHK": "true", "CLANG_WARNINGS": "false"}
               elif 15 <= day <= 21:
-                  settings = {"CLANG_ASAN_UBSAN": "off", "GCC_ASAN_UBSAN": "off", "VALGRIND": "60",
+                  settings = {"CLANG_ASAN_UBSAN": "off", "GCC_ASAN_UBSAN": "off", "VALGRIND": "80",
                               "RCHK": "false", "CLANG_WARNINGS": "false"}
               else:
                   settings = {"CLANG_ASAN_UBSAN": "off", "GCC_ASAN_UBSAN": "off", "VALGRIND": "off",
