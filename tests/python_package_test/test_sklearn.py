@@ -546,7 +546,7 @@ def test_pandas_sparse():
                            "C": SparseArray(np.random.permutation([True, False] * 30))})
     if pd.__version__ >= '0.24.0':
         for dtype in pd.concat([X.dtypes, X_test.dtypes, pd.Series(y.dtypes)]):
-            assert pd.api.types.is_sparse(dtype)
+            assert isinstance(dtype, pd.SparseDtype)
     gbm = gpb.sklearn.GPBoostClassifier(n_estimators=10).fit(X, y)
     pred_sparse = gbm.predict(X_test, raw_score=True)
     if hasattr(X_test, 'sparse'):

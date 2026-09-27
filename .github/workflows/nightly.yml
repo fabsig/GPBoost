@@ -35,9 +35,13 @@ jobs:
         with:
           python-version: "3.13"
 
+      # Chocolatey adds the Graphviz executables to the PATH of new shells only, the later steps need
+      # them in the PATH of the job
       - name: Install system dependencies (Windows)
         if: runner.os == 'Windows'
-        run: choco install graphviz --no-progress -y
+        run: |
+          choco install graphviz --no-progress -y
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:ProgramFiles\Graphviz\bin"
 
       # libomp is needed for the OpenMP support of the library, Apple clang does not ship it
       - name: Install system dependencies (macOS)
