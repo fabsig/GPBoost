@@ -35,13 +35,17 @@ jobs:
         with:
           python-version: "3.13"
 
-      # Chocolatey adds the Graphviz executables to the PATH of new shells only, the later steps need
-      # them in the PATH of the job
+      # the community feed of Chocolatey is occasionally unavailable, and choco then exits successfully
+      # without installing anything, so the installation is retried and checked by running dot
       - name: Install system dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          choco install graphviz --no-progress -y
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:ProgramFiles\Graphviz\bin"
+          for ($i = 1; $i -le 3; $i++) {
+            choco install graphviz --no-progress -y
+            if (Get-Command dot -ErrorAction SilentlyContinue) { break }
+            Start-Sleep -Seconds 60
+          }
+          dot -V
 
       # libomp is needed for the OpenMP support of the library, Apple clang does not ship it
       - name: Install system dependencies (macOS)
