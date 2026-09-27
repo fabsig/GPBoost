@@ -28,8 +28,7 @@ name: Memory and code checks
 # more, which is why the number is chosen per container: one dispatch can run the ASan checks over
 # four jobs and valgrind over sixteen. Every shard installs the dependencies and compiles the
 # package again, which is what limits the gain from going much higher. A run may not ask for more
-# than 20 jobs at once, which is the limit of the plan, so 20 shards is the widest a run of a
-# single container can be.
+# than the concurrency limit of the plan allows, see 'MAX_JOBS' in the 'select' job.
 #
 # valgrind is off by default, and deliberately so: ASan already covers buffer overflows and
 # use-after-free, its own contribution is the reads of uninitialized memory, and even spread over
@@ -50,17 +49,17 @@ on:
         description: "ASan and UBSan with clang ('clang-asan' image): number of jobs, or off"
         type: choice
         default: "4"
-        options: ["off", "1", "2", "4", "8", "12", "16", "20"]
+        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40"]
       gcc_asan_ubsan:
         description: "ASan, UBSan and bounds-strict with gcc ('gcc-asan' image): number of jobs, or off"
         type: choice
         default: "4"
-        options: ["off", "1", "2", "4", "8", "12", "16", "20"]
+        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40"]
       valgrind:
         description: "valgrind (memcheck, very slow): number of jobs, or off"
         type: choice
         default: "off"
-        options: ["off", "1", "2", "4", "8", "12", "16", "20"]
+        options: ["off", "1", "2", "4", "8", "12", "16", "20", "30", "40"]
       # rchk neither runs the tests nor is influenced by the shards, it compiles the package once
       # and analyzes the bitcode, so it costs a single short job and is on by default
       rchk:
@@ -253,14 +252,19 @@ jobs:
                       "timeout": 350,
                   })
 
-          # beyond the concurrency limit of the plan the remaining jobs wait for a free runner, and
+          # Beyond the concurrency limit of the plan the remaining jobs wait for a free runner, and
           # a check that is spread over more shards than can run at once is slower than a narrower
           # one, not faster. rchk and the warning check run next to the matrix and take a runner
-          # each, so they are counted here as well
+          # each, so they are counted here as well.
+          # The limit depends on the plan of the account (GitHub currently allows 20 concurrent jobs
+          # on Free, 40 on Pro, 60 on Team); 27 jobs of this repository have been observed running at
+          # the same time, so it is at least 40. Lower this number if runs start to queue, and note
+          # that the runs of a push compete for the same runners
+          MAX_JOBS = 40
           others = sum(os.environ[v] == "true" for v in ("RCHK", "CLANG_WARNINGS"))
-          if len(entries) + others > 20:
+          if len(entries) + others > MAX_JOBS:
               raise SystemExit(
-                  f"{len(entries) + others} jobs were requested, at most 20 can run at once"
+                  f"{len(entries) + others} jobs were requested, at most {MAX_JOBS} can run at once"
               )
 
           matrix = json.dumps({"include": entries})
