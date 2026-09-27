@@ -268,8 +268,11 @@ jobs:
           MAX_JOBS = 40
           others = sum(os.environ[v] == "true" for v in ("RCHK", "CLANG_WARNINGS"))
           if len(entries) + others > MAX_JOBS:
+              # to stderr: the standard output of this script is the output file of the step,
+              # which takes 'key=value' lines only
               print(f"::warning::{len(entries) + others} jobs were requested and about {MAX_JOBS} "
-                    f"can run at once, so some of them will wait for a free runner")
+                    f"can run at once, so some of them will wait for a free runner",
+                    file=sys.stderr)
 
           matrix = json.dumps({"include": entries})
           print(f"matrix={matrix}")
