@@ -792,6 +792,15 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Report whether an lbfgs optimizer has satisfied its convergence criterion in the first iteration with
+		*		a step that the line search has shortened
+		* \param converged_first_iteration_after_backtracking True if this has happened
+		*/
+		void SetConvergedFirstIterationAfterBacktracking(bool converged_first_iteration_after_backtracking) {
+			converged_first_iteration_after_backtracking_ = converged_first_iteration_after_backtracking;
+		}
+
+		/*!
 		* \brief Report that a line search of an lbfgs optimizer has not been successful
 		* \param line_search_has_not_been_successful True if a line search has not been successful
 		*/
@@ -1585,6 +1594,7 @@ namespace GPBoost {
 				bool convergence_criterion_satisfied = false;
 				line_search_has_not_been_successful_ = false;
 				restarts_have_stopped_without_improvement_ = false;
+				converged_first_iteration_after_backtracking_ = false;
 				convergence_status_ = 0;
 				if ((optimizer_cov_pars_ != "lbfgs" && optimizer_cov_pars_ != "lbfgs_linesearch_nocedal_wright") ||
 					(gauss_likelihood_ && (profile_out_coef || profile_out_error_variance_))) {
@@ -2051,6 +2061,19 @@ namespace GPBoost {
 					//	cases can be distinguished when restarts are done: if a restart does not improve the objective
 					//	function anymore, there is likely nothing more to be gained and the optimizer has thus converged
 					convergence_status_ = 2;
+				}
+				if (converged_first_iteration_after_backtracking_ && convergence_status_ == 0 && max_num_restarts_lbfgs_ == 0 &&
+					!na_or_inf_occurred && !called_in_GPBoost_algorithm) {
+					string_t message = "GPModel: the optimizer '%s' has terminated after its first iteration, in which the line search "
+						"has shortened the step. Since the first step is not based on curvature information, the convergence criterion "
+						"can be satisfied far away from the optimum. Consider restarting the optimizer by setting the parameter "
+						"'max_num_restarts_lbfgs' to a value larger than 0 (see also 'cold_restart_lbfgs') to check this ";
+					if (report_convergence_warnings_) {
+						Log::REWarning(message.c_str(), optimizer_cov_pars_.c_str());
+					}
+					else {
+						Log::REDebug(message.c_str(), optimizer_cov_pars_.c_str());
+					}
 				}
 				if (line_search_has_not_been_successful_ && !called_in_GPBoost_algorithm) {
 					if (convergence_status_ == 2) {
@@ -6541,6 +6564,9 @@ namespace GPBoost {
 		//	did not improve the objective function anymore. There is then likely nothing more to be gained, i.e., the
 		//	optimizer has converged in a practical sense even if its last line search has not been successful
 		bool restarts_have_stopped_without_improvement_ = false;
+		// True if an lbfgs optimizer has satisfied its convergence criterion in the first iteration with a step that
+		//	the line search has shortened (set in 'OptimExternal')
+		bool converged_first_iteration_after_backtracking_ = false;
 		// Convergence status of the last optimization: 0 = converged, 1 = maximal number of iterations reached,
 		//	2 = no convergence since the line search of an lbfgs optimizer has not been successful and it could not
 		//	be verified that nothing more can be gained (i.e., restarts have either not been done or they still

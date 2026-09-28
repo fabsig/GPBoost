@@ -781,12 +781,18 @@ namespace GPBoost {
 					LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchBacktracking> solver(param_LBFGSpp);
 					num_it_restart = solver.minimize(ll_fun, pars_init, neg_log_likelihood, reuse_m_bfgs, re_model_templ->GetMBFGS());
 					convergence_criterion_satisfied = solver.CriterionSatisfied();
+					if (restart == 0) {
+						re_model_templ->SetConvergedFirstIterationAfterBacktracking(solver.ConvergedFirstIterationAfterBacktracking());
+					}
 				}
 				else if (optimizer == "lbfgs_linesearch_nocedal_wright") {
 					param_LBFGSpp.linesearch = 3;//LBFGS_LINESEARCH_BACKTRACKING_STRONG_WOLFE
 					LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchNocedalWright> solver(param_LBFGSpp);
 					num_it_restart = solver.minimize(ll_fun, pars_init, neg_log_likelihood, reuse_m_bfgs, re_model_templ->GetMBFGS());
 					convergence_criterion_satisfied = solver.CriterionSatisfied();
+					if (restart == 0) {
+						re_model_templ->SetConvergedFirstIterationAfterBacktracking(solver.ConvergedFirstIterationAfterBacktracking());
+					}
 				}
 				num_it += num_it_restart;
 				double nll_current = neg_log_likelihood;

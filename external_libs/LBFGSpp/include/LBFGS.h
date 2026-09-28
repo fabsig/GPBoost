@@ -40,6 +40,11 @@ private:
     //	since the maximal number of iterations was reached. The two cannot be distinguished from the returned
     //	number of iterations, which is the same in both cases when convergence occurs in the last iteration
     bool m_criterion_satisfied = false;
+    // ChangedForGPBoost: true if the last run of 'minimize()' has satisfied its convergence criterion in the first
+    //	iteration with a step that the line search has shortened. The length of the first step is not based on
+    //	curvature information, and a strongly shortened first step can then satisfy the relative-change criterion
+    //	far away from the optimum
+    bool m_converged_first_iteration_after_backtracking = false;
 
     // Reset internal variables
     // n: dimension of the vector to be optimized
@@ -104,6 +109,7 @@ public:
         const bool really_reuse_m_bfgs_from_previous_call = reuse_m_bfgs_from_previous_call &&
             (m_bfgs_given.get_m_ncorr() > 0) && (n == m_bfgs_given.get_dim_param());
         reset(n, really_reuse_m_bfgs_from_previous_call);
+        m_converged_first_iteration_after_backtracking = false; // ChangedForGPBoost
 
         // The length of lag for objective function value to test convergence
         const int fpast = m_param.past;
@@ -205,6 +211,7 @@ public:
             {
                 step = max_lr;
             }
+            const Scalar step_before_line_search = step; // ChangedForGPBoost
             // Line search to update x, fx and gradient
             LineSearch<Scalar>::LineSearch(f, m_param, m_xp, m_drt, step_max, step, fx, m_grad, dg, x);
             if (!LineSearch<Scalar>::calculates_gradient) // ChangedForGPBoost
@@ -282,6 +289,9 @@ public:
             if (has_converged)
             {
                 m_criterion_satisfied = criterion_satisfied; // ChangedForGPBoost
+                // ChangedForGPBoost: a step of zero means that the line search has not been successful, this is reported separately
+                m_converged_first_iteration_after_backtracking = criterion_satisfied && k == 1 &&
+                    step > Scalar(0) && step < step_before_line_search;
                 m_bfgs_given = m_bfgs;
                 return k;
             }
@@ -340,6 +350,12 @@ public:
     /// convergence criterion was satisfied and not since the maximal number of iterations was reached.
     ///
     bool CriterionSatisfied() const { return m_criterion_satisfied; }
+
+    ///
+    /// ChangedForGPBoost: Returning whether the last run of `minimize()` has satisfied its convergence criterion
+    /// in the first iteration with a step that the line search has shortened.
+    ///
+    bool ConvergedFirstIterationAfterBacktracking() const { return m_converged_first_iteration_after_backtracking; }
 };
 
 }  // namespace LBFGSpp

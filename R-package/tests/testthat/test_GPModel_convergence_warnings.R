@@ -8,13 +8,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   #           established that nothing more can be gained (convergence status 0)
   #   Warning the final non-convergence of the optimizer: the maximal number of iterations was reached
   #           (convergence status 1) or the line search of an lbfgs optimizer was unsuccessful and it
-  #           could not be established that nothing more can be gained (convergence status 2)
+  #           could not be established that nothing more can be gained (convergence status 2), and
+  #           an lbfgs optimizer without restarts that satisfied its convergence criterion in the first
+  #           iteration with a step that the line search had shortened (convergence status 0)
   #
   # The messages are written to R's output stream by Rprintf() and not by warning(), so they are
   # captured with capture.output() and not with expect_warning()
 
   WARNING_MAX_ITER <- "did not converge after the maximum number of iterations"
   WARNING_LINE_SEARCH <- "has terminated since its line search has not been successful"
+  WARNING_FIRST_ITERATION <- "has terminated after its first iteration"
 
   has_warning <- function(out, pattern) {
     any(grepl("[Warning]", out, fixed = TRUE) & grepl(pattern, out, fixed = TRUE))
@@ -272,6 +275,58 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_opt$get_num_optim_iter(), 0L)
     expect_true(is.finite(gp_opt$get_current_neg_log_likelihood()))
     expect_equal(gp_opt$get_current_neg_log_likelihood(), nll_full, tolerance = 1E-3)
+  })
+
+  test_that("lbfgs warns when it converges in the first iteration after backtracking", {
+    # The first step of lbfgs is not based on curvature information. A large initial step ('lr_cov')
+    # is shortened by the line search, and a loose 'delta_rel_conv' then lets the relative change
+    # satisfy the convergence criterion after this first step. A restart continues with curvature
+    # information, so there is no warning with restarts
+    for (optimizer in c("lbfgs", "lbfgs_linesearch_nocedal_wright")) {
+      for (likelihood in c("gaussian", "bernoulli_probit")) {
+        y_lik <- if (likelihood == "gaussian") y else as.numeric(y > median(y))
+        for (max_num_restarts in c(0, 1)) {
+          out <- capture.output({
+            gp_model <- fitGPModel(group_data = group, y = y_lik, X = X, likelihood = likelihood,
+                                   params = list(optimizer_cov = optimizer, lr_cov = 10,
+                                                 delta_rel_conv = 0.1,
+                                                 max_num_restarts_lbfgs = max_num_restarts))
+          })
+          expect_equal(convergence_status(gp_model), 0L)
+          expect_equal(has_warning(out, WARNING_FIRST_ITERATION), max_num_restarts == 0)
+          if (max_num_restarts == 0) {
+            expect_equal(gp_model$get_num_optim_iter(), 1L)
+            expect_true(any(grepl("max_num_restarts_lbfgs", out, fixed = TRUE)))
+          }
+        }
+      }
+    }
+    # A converged estimation with the default settings does not warn
+    out <- capture.output({
+      gp_model <- fitGPModel(group_data = group, y = y, X = X, likelihood = "gaussian",
+                             params = list(optimizer_cov = "lbfgs"))
+    })
+    expect_false(has_warning(out, WARNING_FIRST_ITERATION))
+  })
+
+  test_that("the GPBoost algorithm does not report a convergence in the first iteration", {
+    # The same settings as above give no message at all in the GPBoost algorithm, neither for the
+    # initial intercept nor for the covariance parameters, also not at the Debug level of 'trace'.
+    # 'trace' sets the log level of the process, it is restored for the tests that follow
+    for (likelihood in c("gaussian", "bernoulli_probit")) {
+      y_lik <- if (likelihood == "gaussian") y else as.numeric(y > median(y))
+      objective <- if (likelihood == "gaussian") "regression_l2" else "binary"
+      gp_model <- GPModel(group_data = group, likelihood = likelihood)
+      on.exit(set_optim_params(gp_model, params = list(trace = FALSE)), add = TRUE)
+      gp_model$set_optim_params(params = list(optimizer_cov = "lbfgs", lr_cov = 10,
+                                              delta_rel_conv = 0.1, trace = TRUE))
+      out <- capture.output({
+        bst <- gpboost(data = X[, 2, drop = FALSE], label = y_lik, gp_model = gp_model,
+                       nrounds = 5, learning_rate = 0.1, max_depth = 2,
+                       objective = objective, verbose = 0)
+      })
+      expect_false(any(grepl(WARNING_FIRST_ITERATION, out, fixed = TRUE)))
+    }
   })
 
   test_that("the GPBoost algorithm does not warn about the internal parameter estimations", {
