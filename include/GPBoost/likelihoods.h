@@ -1436,6 +1436,22 @@ namespace GPBoost {
 			return result;
 		}
 
+		/*!
+		* \brief Log-density of the EGPD for the test negative log-likelihood. A response outside the support has density
+		*		zero, a numerical failure gives NaN, which the adaptive Gauss-Hermite quadrature reports as an evaluation failure
+		*/
+		double EGPDLogDensityForTestLogLik(double y, double eta) const {
+			const auto result = EvaluateEGPD(y, eta);
+			if (result.status == EGPDEvalStatus::kValid) {
+				return result.log_likelihood;
+			}
+			if (result.status == EGPDEvalStatus::kOutsideFiniteEndpoint ||
+				(result.status == EGPDEvalStatus::kInvalidResponse && std::isfinite(y))) {
+				return -std::numeric_limits<double>::infinity();
+			}
+			return std::numeric_limits<double>::quiet_NaN();
+		}
+
 		// The EGPD unit-scale moments depend only on the BASE EGPD auxiliary parameters (those read by
 		// GetEGPDParams(), i.e. the leading NumEGPDBaseAuxPars() entries of aux_pars_), not on the location, the
 		// data, or a hurdle structural-zero parameter p0. They require numerical quadrature, so they are cached.
@@ -3402,8 +3418,10 @@ namespace GPBoost {
 			}
 			else if (IsHurdleRegression()) {
 				if (y <= 0.) return -SoftplusStable(-extra[0]);// log(pi)
-				double ll = HurdleRegressionBaseLogLikLocDep(y, loc_eta) - SoftplusStable(extra[0]);// + log(1 - pi)
 				const string_t& base = HurdleRegressionBaseType();
+				const bool egpd_base = base != "hurdle_gamma" && base != "hurdle_lognormal";
+				double ll = (egpd_base ? EGPDLogDensityForTestLogLik(y, loc_eta) : HurdleRegressionBaseLogLikLocDep(y, loc_eta)) -
+					SoftplusStable(extra[0]);// + log(1 - pi)
 				if (base == "hurdle_gamma") {
 					ll += aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]) + (aux_pars_[0] - 1.) * std::log(y);
 				}
@@ -4198,14 +4216,11 @@ namespace GPBoost {
 				return(0.);
 			}
 			if (IsEGPDLikelihood()) {
-				const auto result = EvaluateEGPD(y_data, location_par);
-				return result.status == EGPDEvalStatus::kValid ? result.log_likelihood : -std::numeric_limits<double>::infinity();
+				return EGPDLogDensityForTestLogLik(y_data, location_par);
 			}
 			if (IsHurdleEGPD()) {
 				if (y_data <= 0.) return std::log(aux_pars_original_[num_aux_pars_ - 1]);// log(p0)
-				const auto result = EvaluateEGPD(y_data, location_par);
-				if (result.status != EGPDEvalStatus::kValid) return -std::numeric_limits<double>::infinity();
-				return result.log_likelihood + std::log1p(-aux_pars_original_[num_aux_pars_ - 1]);// + log(q)
+				return EGPDLogDensityForTestLogLik(y_data, location_par) + std::log1p(-aux_pars_original_[num_aux_pars_ - 1]);// + log(q)
 			}
 			double ll = -1e99;
 			if (!VisitLogLikKernel(&y_data, &y_data_int, &location_par, true,

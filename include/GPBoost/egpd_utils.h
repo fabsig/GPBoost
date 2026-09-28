@@ -237,7 +237,9 @@ inline EGPDEvalStatus CalcEGPDLogLikAndDerivatives(double y, double eta, const E
 	EGPDJet r = EGPDExp(a);
 	EGPDJet u = 1. - r;
 	u.e[0] = -std::expm1(a.e[0]);
-	if (!(u.e[0] > 0. && u.e[0] < 1.)) return out->status = EGPDEvalStatus::kNumericalOverflow;
+	// u = 1 in double precision far in the upper tail and close to a finite endpoint, where r = 1 - u underflows.
+	//	The density is positive there and log(u) = 0 is exact to working precision
+	if (!(u.e[0] > 0. && u.e[0] <= 1.)) return out->status = EGPDEvalStatus::kNumericalOverflow;
 	EGPDJet log_u = EGPDLog(u);
 	log_u.e[0] = std::log(-std::expm1(a.e[0]));
 	EGPDJet log_lik = -eta_j + (1. + xi) * a;

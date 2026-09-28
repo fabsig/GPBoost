@@ -360,4 +360,49 @@ test_that("EGPD carriers reduce to their special cases and match a closed-form G
     }
   })
 
+  test_that("test negative log-likelihood metric of the gpd likelihood with a bounded support ", {
+
+    sim_rand_unif <- sim_rand_unif_egpd
+    # With a negative shape, the support of the GPD ends at exp(eta) / (-shape). The validation points belong to new
+    # groups, and their responses are chosen such that the predictive mean of the latent variable lies beyond this
+    # endpoint for many of them, while a part of the predictive distribution lies inside the support. The density is
+    # then zero at the predictive mean, which is where the adaptive Gauss-Hermite quadrature would otherwise center
+    # its nodes. The shape and the variance are fixed, and the training responses lie well inside the support
+    shape <- -0.2
+    n <- 100
+    group_tr <- rep(1:10, each = 10)
+    group_va <- rep(11:20, each = 10)
+    x_tr <- matrix(sim_rand_unif(n, 0.61), ncol = 1)
+    x_va <- matrix(sim_rand_unif(n, 0.37), ncol = 1)
+    eta_tr <- 0.2 + 0.6 * x_tr[, 1] + 0.1 * qnorm(sim_rand_unif(10, 0.27))[group_tr]
+    y_tr <- exp(eta_tr) / shape * ((1 - 0.8 * sim_rand_unif(n, 0.83))^(-shape) - 1)
+    y_va <- exp(0.2 + 0.6 * x_va[, 1]) / (-shape) * (0.3 + 1.4 * sim_rand_unif(n, 0.44))
+    dtrain <- gpb.Dataset(data = x_tr, label = y_tr)
+    dvalid <- gpb.Dataset.create.valid(dtrain, data = x_va, label = y_va)
+    gp_model <- GPModel(group_data = group_tr, likelihood = "gpd")
+    gp_model$set_optim_params(params = list(init_cov_pars = 0.25, init_aux_pars = shape, estimate_aux_pars = FALSE))
+    gp_model$set_prediction_data(group_data_pred = group_va)
+    nrounds <- 5
+    bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = nrounds, learning_rate = 0.1, max_depth = 2,
+                     min_data_in_leaf = 5, valids = list(valid = dvalid), verbose = 0,
+                     train_gp_model_cov_pars = FALSE, deterministic = TRUE)
+    metric <- unlist(bst$record_evals$valid$test_neg_log_likelihood$eval)
+    expect_true(all(is.finite(metric)))
+    pred <- predict(bst, data = x_va, group_data_pred = group_va, predict_var = TRUE, pred_latent = TRUE,
+                    num_iteration = nrounds)
+    mean_eta <- pred$fixed_effect + pred$random_effect_mean
+    sd_eta <- sqrt(pred$random_effect_cov)
+    outside <- 1 + shape * y_va / exp(mean_eta) <= 0
+    expect_gt(sum(outside), 0)
+    expect_lt(sum(outside), n)
+    log_dens <- function(y, e) ifelse(1 + shape * y / exp(e) > 0,
+                                      -e - (1 / shape + 1) * log(pmax(1 + shape * y / exp(e), 1e-300)), -Inf)
+    reference <- mean(sapply(seq_len(n), function(i) {
+      integrand <- function(e) exp(log_dens(y_va[i], e)) * dnorm(e, mean_eta[i], sd_eta[i])
+      -log(integrate(integrand, mean_eta[i] - 12 * sd_eta[i], mean_eta[i] + 12 * sd_eta[i], rel.tol = 1e-10)$value)
+    }))
+    expect_lt(abs(metric[nrounds] - reference), 1e-4)
+    expect_lt(abs(metric[nrounds] - 7.14640167), 1e-3)
+  })
+
 }

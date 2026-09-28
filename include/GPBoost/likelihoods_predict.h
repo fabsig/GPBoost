@@ -720,26 +720,32 @@ namespace GPBoost {
 		double sqrt_sigma2_inv,
 		bool& evaluation_failure) const {
 		// Summation on the log scale (relative to the largest node value) to avoid under- and overflow. A log-density of -inf
-		//	is a zero density (e.g., outside a bounded support), whereas NaN and +inf are numerical failures
+		//	is a zero density (e.g., outside a bounded support), whereas NaN and +inf are numerical failures.
+		//	The sum is rescaled whenever a larger node value occurs, so that no storage per node is needed
 		evaluation_failure = false;
-		std::vector<double> log_terms(order_GH_);
 		double max_log_term = -std::numeric_limits<double>::infinity();
+		double sum_terms = 0.;// sum of the weighted terms relative to exp(max_log_term)
 		for (int j = 0; j < order_GH_; ++j) {
 			const double x_val = sqrt2_sigma_hat * GH_nodes_[j] + mode;
 			const double z = sqrt_sigma2_inv * (x_val - pred_mean);
-			log_terms[j] = log_dens(x_val) - 0.5 * z * z;
-			if (std::isnan(log_terms[j]) || log_terms[j] == std::numeric_limits<double>::infinity()) {
+			const double log_term = log_dens(x_val) - 0.5 * z * z;
+			if (std::isnan(log_term) || log_term == std::numeric_limits<double>::infinity()) {
 				evaluation_failure = true;
 				return std::numeric_limits<double>::quiet_NaN();
 			}
-			max_log_term = std::max(max_log_term, log_terms[j]);
+			if (log_term == -std::numeric_limits<double>::infinity()) {
+				continue;
+			}
+			if (log_term > max_log_term) {
+				sum_terms = sum_terms * std::exp(max_log_term - log_term) + adaptive_GH_weights_[j];
+				max_log_term = log_term;
+			}
+			else {
+				sum_terms += adaptive_GH_weights_[j] * std::exp(log_term - max_log_term);
+			}
 		}
 		if (max_log_term == -std::numeric_limits<double>::infinity()) {
 			return max_log_term;// the density is zero at all nodes
-		}
-		double sum_terms = 0.;
-		for (int j = 0; j < order_GH_; ++j) {
-			sum_terms += adaptive_GH_weights_[j] * std::exp(log_terms[j] - max_log_term);
 		}
 		return max_log_term + std::log(sum_terms * sqrt2_sigma_hat * sqrt_sigma2_inv) - M_LOGSQRT2PI;
 	}//end LogIntegralAdaptiveGHQuadrature
