@@ -1,7 +1,8 @@
 name: Conclusion probe
 
-# Temporary: finds out which conclusion GitHub gives a run in which one job fails and another one is
-# stopped by 'timeout-minutes'. Delete this file once the result is known.
+# Temporary: finds out which conclusion GitHub gives a run in which one job succeeds and another one
+# is stopped by 'timeout-minutes', and whether that sends a notification. Delete this file once the
+# result is known.
 on:
   workflow_dispatch:
 
@@ -9,11 +10,11 @@ permissions:
   contents: read
 
 jobs:
-  fails:
+  succeeds:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: exit 1
+      - run: exit 0
 
   times-out:
     runs-on: ubuntu-latest
