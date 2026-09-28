@@ -253,16 +253,27 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            y = y, params = params_loc), file='NUL')
     nll_opt_fix <- 123.4853915
-    cov_pars_fix <- c(0.10273152252, 0.08925506562, 1.23337072589, 0.37123039633, 0.17864807736, 0.07351705425)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_fix)),TOLERANCE_STRICT)
+    # Parameters that are not estimated are known constants: they have no standard errors (NaN), and the standard errors of
+    #   the estimated parameters are obtained from the Fisher information of the estimated parameters only
+    cov_pars_fix <- c(0.10273152252, 0.078329359379, 1.23337072589, 0.30102599717, 0.17864807736, NaN)
+    cov_pars_est <- as.vector(gp_model$get_cov_pars(std_err = TRUE))
+    expect_equal(is.nan(cov_pars_est), is.nan(cov_pars_fix))
+    expect_lt(sum(abs(cov_pars_est-cov_pars_fix), na.rm = TRUE),TOLERANCE_STRICT)
     expect_lt(sum(abs(gp_model$get_cov_pars(std_err = TRUE)[1,3]-params_loc$init_cov_pars[3])),TOLERANCE_STRICT)
+    pars <- cov_pars_est[c(1,3,5)]
+    Psi_inv <- solve(pars[1] * diag(n) + pars[2] * exp(-D / pars[3]))
+    dPsi <- list(diag(n), exp(-D / pars[3]))
+    FI <- outer(1:2, 1:2, Vectorize(function(i, j) 0.5 * sum((Psi_inv %*% dPsi[[i]]) * t(Psi_inv %*% dPsi[[j]]))))
+    expect_lt(sum(abs(cov_pars_est[c(2,4)]-sqrt(diag(solve(FI))))),TOLERANCE_STRICT)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_fix), TOLERANCE_STRICT)
     params_loc$estimate_cov_par_index <- c(1,0,0)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            y = y, params = params_loc), file='NUL')
     nll_opt_fix <- 126.5787898
-    cov_pars_fix <- c(0.3386923228, 0.1199551188, 0.5170731356, 0.2048828394, 0.1786480774, 0.1038492119)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_fix)),TOLERANCE_STRICT)
+    cov_pars_fix <- c(0.3386923228, 0.075578657517, 0.5170731356, NaN, 0.1786480774, NaN)
+    cov_pars_est <- as.vector(gp_model$get_cov_pars(std_err = TRUE))
+    expect_equal(is.nan(cov_pars_est), is.nan(cov_pars_fix))
+    expect_lt(sum(abs(cov_pars_est-cov_pars_fix), na.rm = TRUE),TOLERANCE_STRICT)
     expect_lt(sum(abs(gp_model$get_cov_pars(std_err = TRUE)[1,2:3]-params_loc$init_cov_pars[2:3])),TOLERANCE_STRICT)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_fix), TOLERANCE_STRICT)
     params_loc$estimate_cov_par_index <- c(0,0,0)
@@ -270,13 +281,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            y = y, params = params_loc), file='NUL')
     nll_opt_fix <- 128.132446
     expect_lt(sum(abs(gp_model$get_cov_pars(std_err = TRUE)[1,1:3]-params_loc$init_cov_pars[1:3])),TOLERANCE_STRICT)
+    expect_equal(unname(gp_model$get_cov_pars(std_err = TRUE)[2,]), rep(NaN, 3))
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_fix), TOLERANCE_STRICT)
     params_loc$estimate_cov_par_index <- c(0,1,0)
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                            y = y, params = params_loc), file='NUL')
     nll_opt_fix <- 127.9879294
-    cov_pars_fix <- c(0.5170731356, 0.1687492120, 0.6088800134, 0.2602195062, 0.1786480774, 0.1112692786)
-    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_fix)),TOLERANCE_STRICT)
+    cov_pars_fix <- c(0.5170731356, NaN, 0.6088800134, 0.20293735764, 0.1786480774, NaN)
+    cov_pars_est <- as.vector(gp_model$get_cov_pars(std_err = TRUE))
+    expect_equal(is.nan(cov_pars_est), is.nan(cov_pars_fix))
+    expect_lt(sum(abs(cov_pars_est-cov_pars_fix), na.rm = TRUE),TOLERANCE_STRICT)
     expect_lt(sum(abs(gp_model$get_cov_pars(std_err = TRUE)[1,c(1,3)]-params_loc$init_cov_pars[c(1,3)])),TOLERANCE_STRICT)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_fix), TOLERANCE_STRICT)
     

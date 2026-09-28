@@ -12003,7 +12003,9 @@ namespace GPBoost {
 		}//end CalcFisherInformation_Only_Grouped_REs_Woodbury			
 
 		/*!
-		* \brief Calculate the standard deviations for the MLE of the covariance parameters as the diagonal of the inverse Fisher information (on the orignal scale and not the transformed scale used in the optimization, for "gaussian" likelihood only)
+		* \brief Calculate the standard deviations for the MLE of the covariance parameters as the diagonal of the inverse Fisher information (on the orignal scale and not the transformed scale used in the optimization, for "gaussian" likelihood only).
+		*		Parameters that are not estimated ('estimate_cov_par_index') are constants: the Fisher information of the estimated parameters
+		*		is the corresponding submatrix, and the standard deviations of the parameters that are not estimated are NaN
 		* \param cov_pars MLE of covariance parameters
 		* \param[out] std_dev Standard deviations
 		*/
@@ -12022,17 +12024,32 @@ namespace GPBoost {
 			CalcFisherInformation(cov_pars, FI, false, true, false);
 			const double nan_value = std::numeric_limits<double>::quiet_NaN();
 			std_dev = vec_t::Constant(FI.rows(), nan_value);
-			Eigen::LLT<den_mat_t> chol_FI(FI);
-			if (chol_FI.info() == Eigen::Success) {
-				den_mat_t FI_inv = chol_FI.solve(den_mat_t::Identity(FI.rows(), FI.cols()));
-				for (int i = 0; i < (int)FI.rows(); ++i) {
-					if (std::isfinite(FI_inv(i, i)) && FI_inv(i, i) >= 0.) {
-						std_dev[i] = std::sqrt(FI_inv(i, i));
-					}
+			std::vector<int> ind_estimated;
+			for (int i = 0; i < (int)FI.rows(); ++i) {
+				if (i >= (int)estimate_cov_par_index_.size() || estimate_cov_par_index_[i] > 0) {
+					ind_estimated.push_back(i);
 				}
 			}
-			else {
-				Log::REWarning("Cannot calculate standard deviations for covariance parameters since the Fisher information is not positive definite ");
+			if (!ind_estimated.empty()) {
+				const int num_estimated = (int)ind_estimated.size();
+				den_mat_t FI_est(num_estimated, num_estimated);
+				for (int i = 0; i < num_estimated; ++i) {
+					for (int j = 0; j < num_estimated; ++j) {
+						FI_est(i, j) = FI(ind_estimated[i], ind_estimated[j]);
+					}
+				}
+				Eigen::LLT<den_mat_t> chol_FI(FI_est);
+				if (chol_FI.info() == Eigen::Success) {
+					den_mat_t FI_est_inv = chol_FI.solve(den_mat_t::Identity(num_estimated, num_estimated));
+					for (int i = 0; i < num_estimated; ++i) {
+						if (std::isfinite(FI_est_inv(i, i)) && FI_est_inv(i, i) >= 0.) {
+							std_dev[ind_estimated[i]] = std::sqrt(FI_est_inv(i, i));
+						}
+					}
+				}
+				else {
+					Log::REWarning("Cannot calculate standard deviations for covariance parameters since the Fisher information is not positive definite ");
+				}
 			}
 			//The calculations above are done on the original scale. The rest of the code (in particular predictions and
 			//	the sampling from the prior) expects the factorization on the transformed scale with the error variance

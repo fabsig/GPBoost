@@ -368,30 +368,34 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model_fix <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                                gp_approx = "vecchia", num_neighbors = 30,
                                                vecchia_ordering = "none", y = y, params = params_fix), file='NUL')
-    cov_pars_fix <- c(0.3380100131, 0.1193829564, 0.5170731356, 0.2047755947, 0.1786480774, 0.1037257539)
+    # Parameters that are not estimated have no standard errors (NaN)
+    cov_pars_fix <- c(0.3380100131, 0.075534909679, 0.5170731356, NaN, 0.1786480774, NaN)
     nll_fix <- 126.5919052
     expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE)[c(1,3,5)])-cov_pars_fix[c(1,3,5)])), TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE)[c(1,3,5)+1])-cov_pars_fix[c(1,3,5)+1])), TOLERANCE_LOOSE)
+    expect_equal(is.nan(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE))), is.nan(cov_pars_fix))
+    expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE)[c(1,3,5)+1])-cov_pars_fix[c(1,3,5)+1]), na.rm = TRUE), TOLERANCE_LOOSE)
     expect_lt(sum(abs(gp_model_fix$get_cov_pars(std_err = TRUE)[1,c(2,3)]-params_fix$init_cov_pars[c(2,3)])),TOLERANCE_STRICT)
     expect_lt(sum(abs(gp_model_fix$get_current_neg_log_likelihood()-nll_fix)), TOLERANCE_STRICT)
     params_fix$estimate_cov_par_index <- c(1,1,0)
     capture.output( gp_model_fix <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                                gp_approx = "vecchia", num_neighbors = 30,
                                                vecchia_ordering = "none", y = y, params = params_fix), file='NUL')
-    cov_pars_fix <- c(0.10238832994, 0.08839924158, 1.23364920496, 0.37129674965, 0.17864807736, 0.07329261792)
+    cov_pars_fix <- c(0.10238832994, 0.077832557754, 1.23364920496, 0.29982859812, 0.17864807736, NaN)
     nll_fix <- 123.4597106
     expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE)[c(1,3,5)])-cov_pars_fix[c(1,3,5)])), TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE)[c(1,3,5)+1])-cov_pars_fix[c(1,3,5)+1])), TOLERANCE_LOOSE)
+    expect_equal(is.nan(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE))), is.nan(cov_pars_fix))
+    expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE)[c(1,3,5)+1])-cov_pars_fix[c(1,3,5)+1]), na.rm = TRUE), TOLERANCE_LOOSE)
     expect_lt(sum(abs(gp_model_fix$get_cov_pars(std_err = TRUE)[1,c(3)]-params_fix$init_cov_pars[c(3)])),TOLERANCE_STRICT)
     expect_lt(sum(abs(gp_model_fix$get_current_neg_log_likelihood()-nll_fix)), TOLERANCE_STRICT)
     params_fix$estimate_cov_par_index <- c(0,1,0)
     capture.output( gp_model_fix <- fitGPModel(gp_coords = coords, cov_function = "exponential",
                                                gp_approx = "vecchia", num_neighbors = 30,
                                                vecchia_ordering = "none", y = y, params = params_fix), file='NUL')
-    cov_pars_fix <- c(0.5170731356, 0.1659251265, 0.6109062004, 0.2604720524, 0.1786480774, 0.1041249950)
+    cov_pars_fix <- c(0.5170731356, NaN, 0.6109062004, 0.20357521032, 0.1786480774, NaN)
     nll_fix <- 128.005439
     expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE)[c(1,3,5)])-cov_pars_fix[c(1,3,5)])), TOLERANCE_STRICT)
-    expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE)[c(1,3,5)+1])-cov_pars_fix[c(1,3,5)+1])), TOLERANCE_LOOSE)
+    expect_equal(is.nan(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE))), is.nan(cov_pars_fix))
+    expect_lt(sum(abs(as.vector(gp_model_fix$get_cov_pars(std_err = TRUE)[c(1,3,5)+1])-cov_pars_fix[c(1,3,5)+1]), na.rm = TRUE), TOLERANCE_LOOSE)
     expect_lt(sum(abs(gp_model_fix$get_cov_pars(std_err = TRUE)[1,c(1,3)]-params_fix$init_cov_pars[c(1,3)])),TOLERANCE_STRICT)
     expect_lt(sum(abs(gp_model_fix$get_current_neg_log_likelihood()-nll_fix)), TOLERANCE_STRICT)
     

@@ -456,7 +456,7 @@ The following list shows some options for the parameter optimization ``GPModel``
 
    - This allows for disabling the estimation of some (or all) covariance parameters. If estimate_cov_par_index = -1, all covariance parameters are estimated. If estimate_cov_par_index != -1, this should be a vector with length equal to the number of covariance parameters, and estimate_cov_par_index[i] should be of bool type indicating whether parameter number i is estimated or not. For instance, estimate_cov_par_index = [1,1,0] means that the first two covariance parameters are estimated and the last one not.
 
-   - Parameters that are not estimated are kept at their initial values (see ``init_cov_pars``).
+   - Parameters that are not estimated are kept at their initial values (see ``init_cov_pars``). They are treated as known constants when calculating the standard errors of the estimated parameters, and their own standard errors are NaN.
 
 - ``estimate_aux_pars``: bool, (default = True)
 
