@@ -4896,6 +4896,7 @@ class GPModel(object):
                  GPU_use=False,
                  matrix_inversion_method="default",
                  weights=None,
+                 additional_likelihood_data=None,
                  likelihood_learning_rate = 1.,
                  cov_fct_taper_range=1.,
                  cov_fct_taper_shape=1.,
@@ -4940,7 +4941,8 @@ class GPModel(object):
                         "egpd_power_mixture", "egpd_beta", "egpd_power_beta"
                     * - Non-negative continuous / semicontinuous response
                       - ``y in [0, inf)`` with point mass at 0
-                      - "tweedie", "tweedie_fixed_p", "hurdle_gamma", "hurdle_lognormal",
+                      - "tweedie", "tweedie_fixed_p", "tweedie_joint", "tweedie_varying_dispersion",
+                        "tweedie_joint_varying_dispersion" (and their "_fixed_p" variants), "hurdle_gamma", "hurdle_lognormal",
                         hurdle GPD / EGPD likelihoods, "zero_censored_power_transformed_normal",
                         "zero_censored_shifted_gamma"
                     * - Count response
@@ -5040,6 +5042,27 @@ class GPModel(object):
                     - "tweedie_fixed_p":
 
                         The same Tweedie likelihood with p fixed through 'likelihood_additional_param'; only phi is estimated. The fixed power is mandatory and must satisfy 1.01 < p < 1.99.
+
+                    - "tweedie_joint", "tweedie_joint_fixed_p":
+
+                        The same Tweedie model, but the observed number of events (e.g., claims) N, given in the first column of 'additional_likelihood_data',
+                        is used jointly with the aggregate response y. The likelihood is the joint density of (y, N) of the compound Poisson--Gamma representation,
+                        N ~ Poisson(mu**(2-p) / (phi * (2-p))) and y | N = n ~ Gamma(n * (2-p) / (p-1), scale = phi * (p-1) * mu**(p-1)), see Jorgensen and
+                        de Souza (1994, Scandinavian Actuarial Journal).
+                        Given phi and p, the mean model is the same as for "tweedie"; N adds information for
+                        estimating phi and p. N must be a non-negative integer that is 0 if and only if y is 0. Predictions are the same as for "tweedie", and the
+                        "test_neg_log_likelihood" metric uses the marginal density of y since N is not known for new data.
+
+                    - "tweedie_varying_dispersion", "tweedie_varying_dispersion_fixed_p":
+
+                        As "tweedie" and "tweedie_fixed_p", but the dispersion phi varies across observations: log(phi) = F_d(X) is related to fixed effects only
+                        (linear predictor or GPBoost algorithm), while log(mu) = F(X) + Zb is related to both fixed and random effects. The power p is then the
+                        only (auxiliary) parameter. The estimated coefficients of the log-dispersion model are returned alongside the mean-model coefficients
+                        (with the suffix '_dispersion').
+
+                    - "tweedie_joint_varying_dispersion", "tweedie_joint_varying_dispersion_fixed_p":
+
+                        The joint (y, N) likelihood of "tweedie_joint" with the varying dispersion of "tweedie_varying_dispersion".
 
                     - "hurdle_<base>":
 
@@ -5409,6 +5432,11 @@ class GPModel(object):
                 Vecchia-approximated Gaussian process. In these cases, the weights act as for a non-Gaussian
                 likelihood, i.e., the Gaussian log-likelihood contribution of observation ``i`` is multiplied
                 by ``weights[i]`` instead of the error variance being divided by it.
+            additional_likelihood_data : numpy array, pandas DataFrame / Series, 1-D list or None, optional (default=None)
+                Observation-level data that some likelihoods require in addition to the response variable ``y``
+                (one row per data point). Currently, this is only used by the joint Tweedie likelihoods
+                ("tweedie_joint" and its variants), for which its first column contains the observed number of
+                events (e.g., claims) N. N must be a non-negative integer that is 0 if and only if y is 0.
             likelihood_learning_rate : float, optional (default=1.)
                 A learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)
             cov_fct_taper_range : float, optional (default=1.)
@@ -5485,7 +5513,7 @@ class GPModel(object):
 
                     - No default is used for likelihood = "asymmetric_laplace"; a quantile strictly between 0 and 1 is required.
 
-                    - No default is used for 'tweedie_fixed_p'; its power must be supplied explicitly.
+                    - No default is used for the Tweedie likelihoods with a fixed power ('tweedie_fixed_p' and the other '_fixed_p' variants); the power must be supplied explicitly.
 
             free_raw_data : bool, optional (default=False)
                 If True, the data (groups, coordinates, covariate data for random coefficients) is freed in Python
@@ -5568,6 +5596,7 @@ class GPModel(object):
         self.matrix_inversion_method = "default"
         self.has_weights = False
         self.weights = None
+        self.additional_likelihood_data = None
         self.likelihood_learning_rate = 1.
         self.seed = 0
         self.cluster_ids = None
@@ -5684,6 +5713,8 @@ class GPModel(object):
             matrix_inversion_method = model_dict.get("matrix_inversion_method")
             if model_dict.get("weights") is not None:
                 weights = np.array(model_dict.get("weights"))
+            if model_dict.get("additional_likelihood_data") is not None:
+                additional_likelihood_data = np.array(model_dict.get("additional_likelihood_data"))
             likelihood_learning_rate = model_dict.get("likelihood_learning_rate")
             # Set additionally required data
             self.model_has_been_loaded_from_saved_file = True
@@ -5752,6 +5783,10 @@ class GPModel(object):
             # A second fixed-effects-only predictor for log(shape)
             self.num_sets_fe = 2
             self.extra_fe_block_suffixes = ["_shape"]
+        elif likelihood.startswith("tweedie_varying_dispersion") or likelihood.startswith("tweedie_joint_varying_dispersion"):
+            # A second fixed-effects-only predictor for log(dispersion)
+            self.num_sets_fe = 2
+            self.extra_fe_block_suffixes = ["_dispersion"]
         if (self.model_has_been_loaded_from_saved_file and self.has_covariates
                 and len(self.extra_fe_block_suffixes) > 0 and self.coef_names is not None):
             # The coefficient names of a loaded model were set to the base names above, before the likelihood was known
@@ -5777,6 +5812,8 @@ class GPModel(object):
         gp_rand_coef_data_c = None
         cluster_ids_c = None
         weights_c = None
+        additional_likelihood_data_c = None
+        num_additional_likelihood_data = 0
         # Set data for grouped random effects
         if group_data is not None:
             group_data, group_data_names = _format_check_data(data=group_data, get_variable_names=True,
@@ -6027,6 +6064,15 @@ class GPModel(object):
             self.weights = deepcopy(weights)
             self.has_weights = True
             weights_c = self.weights.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        # Set additional likelihood data (one row per data point, passed column-major)
+        if additional_likelihood_data is not None:
+            additional_likelihood_data = _format_check_data(additional_likelihood_data, data_name="additional_likelihood_data",
+                                                            convert_to_type=np.float64)[0]
+            if additional_likelihood_data.shape[0] != self.num_data:
+                raise ValueError("Incorrect number of data points in 'additional_likelihood_data'")
+            self.additional_likelihood_data = np.asfortranarray(deepcopy(additional_likelihood_data))
+            num_additional_likelihood_data = self.additional_likelihood_data.shape[1]
+            additional_likelihood_data_c = self.additional_likelihood_data.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
         self.likelihood_learning_rate = likelihood_learning_rate
 
         self.__determine_num_cov_pars(likelihood=likelihood)
@@ -6075,6 +6121,8 @@ class GPModel(object):
             ctypes.c_bool(self.has_weights),
             weights_c,
             ctypes.c_double(self.likelihood_learning_rate),
+            ctypes.c_int(num_additional_likelihood_data),
+            additional_likelihood_data_c,
             ctypes.byref(self.handle)))
 
         # Should we free raw data?
@@ -8035,6 +8083,7 @@ class GPModel(object):
         model_dict["gp_approx"] = self.gp_approx
         model_dict["matrix_inversion_method"] = self.matrix_inversion_method
         model_dict["weights"] = self.weights
+        model_dict["additional_likelihood_data"] = self.additional_likelihood_data
         model_dict["likelihood_learning_rate"] = self.likelihood_learning_rate
         model_dict["cov_fct_taper_range"] = self.cov_fct_taper_range
         model_dict["cov_fct_taper_shape"] = self.cov_fct_taper_shape

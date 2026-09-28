@@ -843,7 +843,9 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 	SEXP GPU_use,
 	SEXP has_weights,
 	SEXP weights,
-	SEXP likelihood_learning_rate) {
+	SEXP likelihood_learning_rate,
+	SEXP num_additional_likelihood_data,
+	SEXP additional_likelihood_data) {
 	SEXP ret;
 	REModelHandle handle = nullptr;
 	int32_t num_data = static_cast<int32_t>(Rf_asInteger(ndata));
@@ -898,6 +900,8 @@ SEXP GPB_CreateREModel_R(SEXP ndata,
 		Rf_asLogical(has_weights),
 		R_REAL_PTR(weights),
 		Rf_asReal(likelihood_learning_rate),
+		Rf_asInteger(num_additional_likelihood_data),
+		R_REAL_PTR(additional_likelihood_data),
 		&handle));
 	R_API_END();
 	ret = PROTECT(R_MakeExternalPtr(handle, R_NilValue, R_NilValue));
@@ -1512,7 +1516,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterSaveModel_R"          , (DL_FUNC)&LGBM_BoosterSaveModel_R          , 4},
   {"LGBM_BoosterSaveModelToString_R"  , (DL_FUNC)&LGBM_BoosterSaveModelToString_R  , 4},
   {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 3},
-  {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 32},
+  {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 34},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
   {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 37},
   {"GPB_SetUsedInGPBoostAlgorithm_R", (DL_FUNC)&GPB_SetUsedInGPBoostAlgorithm_R, 1},

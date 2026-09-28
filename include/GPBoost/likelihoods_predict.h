@@ -146,15 +146,20 @@ namespace GPBoost {
 				}
 			}
 		}//end gamma varying shape variants
-		else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+		else if (IsTweedie()) {
+			// For the varying-dispersion variants, phi_i = exp(zeta_i) is taken from the second location parameter block
+			//	(deterministic given the fixed effects, so it carries no posterior uncertainty)
 			CHECK(need_pred_latent_var_for_response_mean_);
-			const double phi = aux_pars_[0];
+			const bool varying_dispersion = IsTweedieVaryingDispersion();
+			if (varying_dispersion) CHECK(pred_var_mean.size() == pred_mean.size());
+			const double phi_const = varying_dispersion ? 0. : aux_pars_[0];
 			const double p = GetTweediePower();
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < (int)pred_mean.size(); ++i) {
 				const double m = pred_mean[i];
 				const double v = pred_var[i];
 				const double pm = std::exp(m + 0.5 * v);
+				const double phi = varying_dispersion ? std::exp(pred_var_mean[i]) : phi_const;
 				if (predict_var) pred_var[i] = phi * std::exp(p * m + 0.5 * p * p * v) + std::exp(2. * m + v) * std::expm1(v);
 				pred_mean[i] = pm;
 			}
@@ -684,9 +689,10 @@ namespace GPBoost {
 			double x_val;
 			double likelihood = 0.;
 			double log_normalizer = 0.;
-			if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+			if (IsTweedieConstantDispersion()) {
+				// The marginal density of y also for the joint variants, since the number of events of new data is not known
 				const double p = GetTweediePower();
-				const auto power = likelihood_type_ == "tweedie" ? TransformTweediePowerFromQ(aux_pars_[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_) : TweediePowerTransform{ p, 0., 0. };
+				const auto power = GetTweediePowerTransform();
 				thread_local TweedieSpecialFunctionCache cache;
 				const auto normalizer = EvaluateTweedieLogNormalizer(y_test_d, std::log(aux_pars_[0]), p, power.dp_dtheta, power.d2p_dtheta2, TweedieDerivativeOrder::kValue, false, 1000000, &cache);
 				if (!normalizer.converged) na_inf_flag_11 = true;
@@ -694,7 +700,7 @@ namespace GPBoost {
 			}
 			for (int j = 0; j < order_GH_; ++j) {
 				x_val = sqrt2_sigma_hat * GH_nodes_[j] + mode_integrand;
-				const double node_log_likelihood = likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ? LogLikTweedie(y_test_d, x_val, false) : LogLikelihoodOneSample(y_test_d, y_test_int, x_val);
+				const double node_log_likelihood = IsTweedieConstantDispersion() ? LogLikTweedie(y_test_d, x_val, false) : LogLikelihoodOneSample(y_test_d, y_test_int, x_val);
 				likelihood += adaptive_GH_weights_[j] * std::exp(node_log_likelihood) * GPBoost::normalPDF(sqrt_sigma2_inv * (x_val - pred_mean[i]));
 			}
 			likelihood *= sqrt2_sigma_hat * sqrt_sigma2_inv;
@@ -738,7 +744,7 @@ namespace GPBoost {
 		else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") {
 			return (1. - aux_pars_original_[1]) * std::exp(value);
 		}
-		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "gamma_varying_shape" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
+		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "gamma_varying_shape" || IsTweedie() ||
 			likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 			likelihood_type_ == "lognormal") {
 			return std::exp(value);
@@ -844,7 +850,7 @@ namespace GPBoost {
 		else if (likelihood_type_ == "zero_inflated_negative_binomial" || likelihood_type_ == "zero_inflated_negative_binomial_1") {
 			return (1. - aux_pars_original_[1]) * std::exp(value);
 		}
-		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "gamma_varying_shape" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" ||
+		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "gamma_varying_shape" || IsTweedie() ||
 			likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 			likelihood_type_ == "lognormal") {
 			return std::exp(value);
@@ -861,7 +867,7 @@ namespace GPBoost {
 			likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial") {
 			return GPBoost::sigmoid_stable(-value);
 		}
-		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
+		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || IsTweedie() || IsEGPDLikelihood() ||
 			likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 			likelihood_type_ == "lognormal" || IsHurdlePositive() || IsZeroInflatedCount() || IsGammaVaryingShape()) {
 			return 1.;
@@ -885,7 +891,7 @@ namespace GPBoost {
 			//double exp_x = std::exp(value);
 			//return -exp_x / ((1. + exp_x) * (1. + exp_x));
 		}
-		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
+		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || IsTweedie() || IsEGPDLikelihood() ||
 			likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 			likelihood_type_ == "lognormal" || IsHurdlePositive() || IsZeroInflatedCount()) {
 			return 0.;

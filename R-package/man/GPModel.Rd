@@ -10,6 +10,7 @@ GPModel(likelihood = "gaussian", group_data = NULL,
   gp_rand_coef_data = NULL, cov_function = "matern", cov_fct_shape = 1.5,
   gp_approx = "none", num_parallel_threads = NULL, GPU_use = FALSE,
   matrix_inversion_method = "default", weights = NULL,
+  additional_likelihood_data = NULL,
   likelihood_learning_rate = 1, cov_fct_taper_range = 1,
   cov_fct_taper_shape = 1, num_neighbors = NULL,
   vecchia_ordering = "random", ind_points_selection = "kmeans++",
@@ -27,7 +28,7 @@ The currently supported likelihoods, grouped by response type, are:
 \strong{Response type} \tab \strong{Support} \tab \strong{Likelihoods} \cr
 Continuous \tab y in (-inf, inf) \tab "gaussian", "t", "t_fix_df", "quantile_regression" / "asymmetric_laplace", "gaussian_heteroscedastic", "gaussian_heteroscedastic_fixed_and_random" \cr
 Positive continuous \tab y in (0, inf) \tab "gamma", "gamma_varying_shape", "lognormal", "gpd", "egpd_power", "egpd_power_mixture", "egpd_beta", "egpd_power_beta" \cr
-Non-negative continuous / semicontinuous \tab y in [0, inf) with point mass at 0 \tab "tweedie", "tweedie_fixed_p", "hurdle_gamma", "hurdle_lognormal", hurdle GPD / EGPD likelihoods, "zero_censored_power_transformed_normal", "zero_censored_shifted_gamma" \cr
+Non-negative continuous / semicontinuous \tab y in [0, inf) with point mass at 0 \tab "tweedie", "tweedie_fixed_p", "tweedie_joint", "tweedie_varying_dispersion", "tweedie_joint_varying_dispersion" (and their "_fixed_p" variants), "hurdle_gamma", "hurdle_lognormal", hurdle GPD / EGPD likelihoods, "zero_censored_power_transformed_normal", "zero_censored_shifted_gamma" \cr
 Count \tab y in \{0, 1, 2, ...\} \tab "poisson", "negative_binomial", "negative_binomial_1", zero-inflated count likelihoods \cr
 Binary \tab y in \{0, 1\} \tab "bernoulli_logit", "bernoulli_probit" \cr
 Proportion / fractional / bounded \tab y in [0, 1] \tab "quasi_bernoulli_logit", "quasi_bernoulli_probit", "binomial_logit", "binomial_probit", "beta_binomial", "beta", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma" \cr
@@ -89,6 +90,19 @@ alongside the mean-model coefficients (with the suffix "_shape"). See also the c
 \itemize{
 \item{ "tweedie": Compound Poisson--Gamma Tweedie likelihood with a log link, variance phi * mu^p, and 1.01 < p < 1.99. The dispersion phi and power p are estimated }
 \item{ "tweedie_fixed_p": The same Tweedie likelihood with p fixed through \code{likelihood_additional_param}; only phi is estimated. The fixed power must satisfy 1.01 < p < 1.99 }
+\item{ "tweedie_joint", "tweedie_joint_fixed_p": The same Tweedie model, but the observed number of events (e.g., claims) N, given in the first
+column of \code{additional_likelihood_data}, is used jointly with the aggregate response y. The likelihood is the joint density of (y, N) of the
+compound Poisson--Gamma representation, N ~ Poisson(mu^(2-p) / (phi * (2-p))) and y | N = n ~ Gamma(n * (2-p) / (p-1), scale = phi * (p-1) * mu^(p-1)),
+see Jorgensen and de Souza (1994, Scandinavian Actuarial Journal).
+Given phi and p, the mean model is the same as for "tweedie"; N adds information
+for estimating phi and p. N must be a non-negative integer that is 0 if and only if y is 0. Predictions are the same as for "tweedie", and the
+"test_neg_log_likelihood" metric uses the marginal density of y since N is not known for new data }
+\item{ "tweedie_varying_dispersion", "tweedie_varying_dispersion_fixed_p": As "tweedie" and "tweedie_fixed_p", but the dispersion phi varies across
+observations: log(phi) = F_d(X) is related to fixed effects only (linear predictor or GPBoost algorithm), while log(mu) = F(X) + Zb is related
+to both fixed and random effects. The power p is then the only (auxiliary) parameter. The estimated coefficients of the log-dispersion model are
+returned alongside the mean-model coefficients (with the suffix "_dispersion") }
+\item{ "tweedie_joint_varying_dispersion", "tweedie_joint_varying_dispersion_fixed_p": The joint (y, N) likelihood of "tweedie_joint" with the
+varying dispersion of "tweedie_varying_dispersion" }
 \item{ "hurdle_<base>": Two-part likelihoods for non-negative response variables with an excess probability 'p0' of exact zeros.
 They combine a point mass 'p0' at zero with a base distribution with support 'y > 0' for the remaining mass '1 - p0'. The fixed effects 'F(X)'
 and random effects 'Zb' enter only through the base component: 'exp(F(X) + Zb)' is its mean or scale parameter, not the unconditional response
@@ -336,6 +350,11 @@ Vecchia-approximated Gaussian process. In these cases, the weights act as for a 
 i.e., the Gaussian log-likelihood contribution of observation \code{i} is multiplied by
 \code{weights[i]} instead of the error variance being divided by it.}
 
+\item{additional_likelihood_data}{A \code{vector} or \code{matrix} with observation-level data that some
+likelihoods require in addition to the response variable \code{y} (one row per data point). Currently, this is only
+used by the joint Tweedie likelihoods ("tweedie_joint" and its variants), for which its first column contains
+the observed number of events (e.g., claims) N. N must be a non-negative integer that is 0 if and only if y is 0}
+
 \item{likelihood_learning_rate}{A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)}
 
 \item{cov_fct_taper_range}{A \code{numeric} specifying the range parameter 
@@ -402,7 +421,7 @@ If \code{likelihood_additional_param = NULL}, the following default and mandator
 \itemize{
 \item{ df = 2 for likelihood = "t_fix_df" }
 \item{ No default is used for likelihood = "asymmetric_laplace"; a quantile strictly between 0 and 1 is required }
-\item{ No default is used for likelihood = "tweedie_fixed_p"; a power strictly between 1.01 and 1.99 is required }
+\item{ No default is used for the Tweedie likelihoods with a fixed power ("tweedie_fixed_p" and the other "_fixed_p" variants); a power strictly between 1.01 and 1.99 is required }
 }}
 
 \item{fidelity_specific_mean}{A \code{logical}. For an \code{ar1_mf_<base>} covariance,

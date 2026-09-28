@@ -37,6 +37,16 @@
 *       - mu = exp(location_par), Var(Y | location_par) = phi * mu^p, 1.01 < p < 1.99
 *       - aux_pars_[0] = phi; aux_pars_[1] is a positive transformed power for "tweedie"
 *         and the fixed power on its original scale for "tweedie_fixed_p"
+*   The Tweedie variants below use the same mean model and the same power parameterization:
+*       - "tweedie_joint" (and "tweedie_joint_fixed_p"): the number of events N_i (first column of 'additional_likelihood_data')
+*         is observed in addition to Y_i, and the joint density of (Y_i, N_i) of the compound Poisson--Gamma representation
+*         N_i ~ Poisson(lambda_i), lambda_i = mu_i^(2-p) / (phi_i * (2-p)), Y_i | N_i = n ~ Gamma(n * (2-p) / (p-1), scale = phi_i * (p-1) * mu_i^(p-1))
+*         is used instead of the marginal density of Y_i (Jorgensen and de Souza, 1994, Scandinavian Actuarial Journal).
+*         This density is the n-th term of the series of the Tweedie normalizer times the location-dependent part of the
+*         marginal density, so the derivatives wrt eta are the same as for "tweedie" and N only enters the derivatives wrt phi and p
+*       - "tweedie_varying_dispersion" (and "tweedie_varying_dispersion_fixed_p", "tweedie_joint_varying_dispersion",
+*         "tweedie_joint_varying_dispersion_fixed_p"): phi_i = exp(zeta_i) is modeled by a second, fixed-effects-only location
+*         parameter block (zeta = log(phi)), and the power is the only auxiliary parameter (aux_pars_[0])
 *
 * For a "lognormal" likelihood, the following density is used:
 *   f(y) = 1 / ( y * sqrt(2*pi*sigma2) ) * exp( - ( log(y) - (eta - 0.5*sigma2) )^2 / (2*sigma2) ),  for y > 0
@@ -261,6 +271,9 @@ namespace GPBoost {
 		* \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
 		* \param only_one_grouped_RE True if there are only a single level grouped random effects
 		* \param iid_model True if this is an explicitly requested iid model
+		* \param num_additional_likelihood_data Number of columns of 'additional_likelihood_data' (0 = none)
+		* \param additional_likelihood_data Observation-level data that a likelihood requires in addition to the response variable
+		*		(column-major, num_data x num_additional_likelihood_data), e.g., the number of events N for "tweedie_joint"
 		*/
 		Likelihood(string_t type,
 			data_size_t num_data,
@@ -274,7 +287,9 @@ namespace GPBoost {
 			const double* weights,
 			double likelihood_learning_rate,
 			bool only_one_grouped_RE,
-			bool iid_model) {
+			bool iid_model,
+			int num_additional_likelihood_data = 0,
+			const double* additional_likelihood_data = nullptr) {
 			num_data_ = num_data;
 			string_t likelihood = type;
 			likelihood = ParseLikelihoodAliasKinkClipping(likelihood);
@@ -363,16 +378,29 @@ namespace GPBoost {
 					information_ll_can_be_exact_zero_ = true;
 				}
 			}//end gamma varying shape variants
-			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
-				double p = 1.5;
-				if (likelihood_type_ == "tweedie_fixed_p") {
+			else if (IsTweedie()) {
+				// The power is stored as a positive transformed parameter if it is estimated (1 corresponds to p = 1.5)
+				//	and on its original scale if it is fixed
+				double power_par = 1.;
+				if (IsTweedieFixedPower()) {
 					ValidateFixedTweediePower(additional_param);
-					p = additional_param;
+					power_par = additional_param;
 				}
-				aux_pars_ = { 1., likelihood_type_ == "tweedie" ? 1. : p };
-				names_aux_pars_ = { "dispersion", "power" };
-				num_aux_pars_ = 2;
-				num_aux_pars_estim_ = likelihood_type_ == "tweedie" ? 2 : 1;
+				if (IsTweedieVaryingDispersion()) {
+					// log(phi) is a second location parameter block related to fixed effects only
+					aux_pars_ = { power_par };
+					names_aux_pars_ = { "power" };
+					num_aux_pars_ = 1;
+					num_aux_pars_estim_ = IsTweedieFixedPower() ? 0 : 1;
+					num_sets_re_ = 1;
+					num_sets_fixed_effects_ = 2;
+				}
+				else {
+					aux_pars_ = { 1., power_par };
+					names_aux_pars_ = { "dispersion", "power" };
+					num_aux_pars_ = 2;
+					num_aux_pars_estim_ = IsTweedieFixedPower() ? 1 : 2;
+				}
 				information_ll_can_be_exact_zero_ = true;
 				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
 			}
@@ -765,6 +793,15 @@ namespace GPBoost {
 				}
 				has_weights_ = false;
 			}
+			if (num_additional_likelihood_data > 0) {
+				CHECK(additional_likelihood_data != nullptr);
+				num_additional_likelihood_data_ = num_additional_likelihood_data;
+				additional_likelihood_data_ = additional_likelihood_data;
+			}
+			if (IsTweedieJoint() && num_additional_likelihood_data_ < 1) {
+				Log::REFatal("For likelihood = '%s', the number of events N needs to be provided in the first column of 'additional_likelihood_data' ",
+					likelihood_type_.c_str());
+			}
 			CHECK(likelihood_learning_rate > 0.);
 			likelihood_learning_rate_ = likelihood_learning_rate;
 			if (!TwoNumbersAreEqual<double>(likelihood_learning_rate_, 1.) &&
@@ -807,15 +844,16 @@ namespace GPBoost {
 		}//end constructor
 
 		void ValidateFixedTweediePower(double p) const {
+			const char* lik = likelihood_type_.c_str();
 			if (TwoNumbersAreEqual<double>(p, -999.)) {
-				Log::REFatal("No value was provided for 'likelihood_additional_param'. For likelihood='tweedie_fixed_p', provide a fixed power p with %g < p < %g ", TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_);
+				Log::REFatal("No value was provided for 'likelihood_additional_param'. For likelihood='%s', provide a fixed power p with %g < p < %g ", lik, TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_);
 			}
 			if (!std::isfinite(p)) {
-				Log::REFatal("For likelihood='tweedie_fixed_p', 'likelihood_additional_param' must be a finite power p with %g < p < %g. Found p = %g ", TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_, p);
+				Log::REFatal("For likelihood='%s', 'likelihood_additional_param' must be a finite power p with %g < p < %g. Found p = %g ", lik, TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_, p);
 			}
-			if (p <= 1. || p >= 2.) Log::REFatal("For likelihood='tweedie_fixed_p', only the compound Poisson--Gamma family with 1 < p < 2 is supported. Found p = %g ", p);
-			if (p <= TWEEDIE_POWER_LOWER_) Log::REFatal("For likelihood='tweedie_fixed_p', p = %g is too close to 1 for stable Tweedie density evaluation. Choose p > %g. Use likelihood='poisson' explicitly if appropriate ", p, TWEEDIE_POWER_LOWER_);
-			if (p >= TWEEDIE_POWER_UPPER_) Log::REFatal("For likelihood='tweedie_fixed_p', p = %g is too close to 2 for stable Tweedie density evaluation. Choose p < %g. Use likelihood='gamma' explicitly if appropriate ", p, TWEEDIE_POWER_UPPER_);
+			if (p <= 1. || p >= 2.) Log::REFatal("For likelihood='%s', only the compound Poisson--Gamma family with 1 < p < 2 is supported. Found p = %g ", lik, p);
+			if (p <= TWEEDIE_POWER_LOWER_) Log::REFatal("For likelihood='%s', p = %g is too close to 1 for stable Tweedie density evaluation. Choose p > %g. Use likelihood='poisson' explicitly if appropriate ", lik, p, TWEEDIE_POWER_LOWER_);
+			if (p >= TWEEDIE_POWER_UPPER_) Log::REFatal("For likelihood='%s', p = %g is too close to 2 for stable Tweedie density evaluation. Choose p < %g. Use likelihood='gamma' explicitly if appropriate ", lik, p, TWEEDIE_POWER_UPPER_);
 		}
 
 		void ValidateAsymmetricLaplaceQuantile(double quantile) const {
@@ -830,14 +868,167 @@ namespace GPBoost {
 			}
 		}
 
+		/*! \brief True for all Tweedie likelihoods */
+		bool IsTweedie() const {
+			return is_tweedie_;
+		}
+
+		/*! \brief True for the Tweedie likelihoods that use the joint density of the response and the number of events */
+		bool IsTweedieJoint() const {
+			return is_tweedie_joint_;
+		}
+
+		/*! \brief True for the Tweedie likelihoods whose log-dispersion is a second, fixed-effects-only location parameter block */
+		bool IsTweedieVaryingDispersion() const {
+			return is_tweedie_varying_dispersion_;
+		}
+
+		/*! \brief True for the Tweedie likelihoods with a constant dispersion (an auxiliary parameter) */
+		bool IsTweedieConstantDispersion() const {
+			return is_tweedie_ && !is_tweedie_varying_dispersion_;
+		}
+
+		/*! \brief True for the Tweedie likelihoods with a power that is fixed and not estimated */
+		bool IsTweedieFixedPower() const {
+			return is_tweedie_fixed_p_;
+		}
+
+		/*! \brief True for the Tweedie likelihoods with a power that is estimated */
+		bool IsTweedieEstimatedPower() const {
+			return is_tweedie_ && !is_tweedie_fixed_p_;
+		}
+
+		/*! \brief Index of the power in 'aux_pars_' for the Tweedie likelihoods */
+		int TweediePowerIndex() const {
+			return is_tweedie_varying_dispersion_ ? 0 : 1;
+		}
+
+		/*! \brief Transformation between the power p and the parameter theta on which it is optimized (dp/dtheta = 0 for a fixed power) */
+		TweediePowerTransform GetTweediePowerTransform() const {
+			const double power_par = aux_pars_[TweediePowerIndex()];
+			if (is_tweedie_fixed_p_) return TweediePowerTransform{ power_par, 0., 0. };
+			return TransformTweediePowerFromQ(power_par, TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_);
+		}
+
 		inline double GetTweediePower() const {
-			if (likelihood_type_ == "tweedie_fixed_p") return aux_pars_[1];
-			return TransformTweediePowerFromQ(aux_pars_[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_).p;
+			if (is_tweedie_fixed_p_) return aux_pars_[TweediePowerIndex()];
+			return TransformTweediePowerFromQ(aux_pars_[TweediePowerIndex()], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_).p;
+		}
+
+		/*!
+		* \brief Log-dispersion rho = log(phi) of a Tweedie likelihood at observation i: the second location parameter block
+		*		for the varying-dispersion variants and log(aux_pars_[0]) otherwise
+		*/
+		inline double TweedieLogDispersion(const double* location_par, data_size_t i) const {
+			return is_tweedie_varying_dispersion_ ? location_par[i + num_data_] : std::log(aux_pars_[0]);
+		}
+
+		/*! \brief True if the likelihood uses 'additional_likelihood_data' */
+		bool UsesAdditionalLikelihoodData() const {
+			return IsTweedieJoint();
+		}
+
+		/*!
+		* \brief Log-normalizer (the part of the log-density that does not depend on the location) of one observation of a
+		*		Tweedie likelihood and its derivatives wrt rho = log(phi) and the transformed power: the series of the marginal
+		*		density of Y or, for the joint variants, its term for the observed number of events
+		*/
+		inline TweedieSeriesResult EvaluateTweedieNormalizerOneObs(double y, data_size_t i, double rho, double p,
+			const TweediePowerTransform& transform, TweedieDerivativeOrder order, TweedieSpecialFunctionCache* cache) const {
+			if (is_tweedie_joint_) {
+				return EvaluateTweedieJointLogNormalizer(y, additional_likelihood_data_[i], rho, p, transform.dp_dtheta,
+					order != TweedieDerivativeOrder::kValue && IsTweedieEstimatedPower());
+			}
+			return EvaluateTweedieLogNormalizer(y, rho, p, transform.dp_dtheta, transform.d2p_dtheta2, order,
+				order != TweedieDerivativeOrder::kValue && IsTweedieEstimatedPower(), 1000000, cache);
+		}
+
+		/*!
+		* \brief Check the number of events of the joint Tweedie likelihoods: nonnegative integers that are 0 if and only if y = 0
+		* \param y_data Response variable data of this likelihood (same ordering as 'additional_likelihood_data_')
+		*/
+		void CheckAdditionalLikelihoodData(const double* y_data) const {
+			if (!IsTweedieJoint()) return;
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				const double n = additional_likelihood_data_[i];
+				double intpart;
+				if (!std::isfinite(n) || n < 0. || std::modf(n, &intpart) != 0.) {
+					Log::REFatal("For likelihood = '%s', the number of events (first column of 'additional_likelihood_data') must be a nonnegative integer, found %g ",
+						likelihood_type_.c_str(), n);
+				}
+				if ((n == 0.) != (y_data[i] == 0.)) {
+					Log::REFatal("For likelihood = '%s', the number of events (first column of 'additional_likelihood_data') must be 0 if and only if "
+						"the response variable is 0, found y = %g and N = %g ", likelihood_type_.c_str(), y_data[i], n);
+				}
+			}
+		}
+
+		/*!
+		* \brief Calculate the per-observation log-normalizers of a varying-dispersion Tweedie likelihood (and their derivatives
+		*		wrt rho_i = log(phi_i) and the transformed power) if they are not up to date. They do not depend on the mean block
+		*		and are thus calculated only once for all evaluations of the log-likelihood during mode finding
+		* \param y_data Response variable data
+		* \param location_par Location parameter (both blocks)
+		*/
+		void UpdateTweedieVaryingDispersionNormalizer(const double* y_data,
+			const double* location_par) const {
+			CHECK(IsTweedieVaryingDispersion());
+			const double p = GetTweediePower();
+			const Eigen::Map<const vec_t> rho(location_par + num_data_, num_data_);
+			if (tweedie_vd_cache_valid_ && tweedie_vd_cache_y_ == y_data && tweedie_vd_cache_p_ == p &&
+				tweedie_vd_cache_rho_.size() == num_data_ && tweedie_vd_cache_rho_ == rho) {
+				return;
+			}
+			const TweediePowerTransform transform = GetTweediePowerTransform();
+			tweedie_vd_log_a_.resize(num_data_);
+			tweedie_vd_d_rho_.resize(num_data_);
+			tweedie_vd_d_theta_.resize(num_data_);
+			bool convergence_failure = false;
+			data_size_t fail_index = 0;
+#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				thread_local TweedieSpecialFunctionCache cache;
+				const auto res = EvaluateTweedieNormalizerOneObs(y_data[i], i, rho[i], p, transform, TweedieDerivativeOrder::kFirst, &cache);
+				if (!res.converged || !std::isfinite(res.log_a) || !std::isfinite(res.d_rho) || !std::isfinite(res.d_theta)) {
+#pragma omp critical
+					{
+						convergence_failure = true;
+						fail_index = i;
+					}
+				}
+				tweedie_vd_log_a_[i] = res.log_a;
+				tweedie_vd_d_rho_[i] = res.d_rho;
+				tweedie_vd_d_theta_[i] = res.d_theta;
+			}
+			if (convergence_failure) {
+				Log::REFatal("Tweedie density series did not converge for y=%g, phi=%g, p = %g.", y_data[fail_index], std::exp(rho[fail_index]), p);
+			}
+			tweedie_vd_sum_log_a_ = SumOverSamplesWeighted([&](data_size_t i) { return tweedie_vd_log_a_[i]; });
+			tweedie_vd_cache_rho_ = rho;
+			tweedie_vd_cache_y_ = y_data;
+			tweedie_vd_cache_p_ = p;
+			tweedie_vd_cache_valid_ = true;
+		}
+
+		/*!
+		* \brief zeta-block (= log(phi)) gradient of the negative approximate marginal log-likelihood at one observation of a
+		*		varying-dispersion Tweedie likelihood: the direct score l_zeta = d log(a)/d rho - canonical, the log-determinant
+		*		term through dJ_eta/dzeta = -J_eta, and the implicit term through the mode through l_{eta,zeta} = -l_eta.
+		*		Requires 'UpdateTweedieVaryingDispersionNormalizer' to have been called
+		* \param w Sample weight
+		* \param diag Data-scale diagonal entry of (Sigma^-1 + W)^-1 at this observation
+		* \param inv_d_mll_d_mode Data-scale entry of (Sigma^-1 + W)^-1 * d_mll_d_mode at this observation
+		*/
+		inline double TweedieVaryingDispersionZetaGrad(double y, data_size_t i, double loc_eta, double loc_zeta, double p, double w,
+			double diag, double inv_d_mll_d_mode) const {
+			const auto location = EvaluateTweedieLocation(y, loc_eta, loc_zeta, p);
+			const double dZeta = tweedie_vd_d_rho_[i] - location.canonical;
+			return -w * dZeta - 0.5 * (w * location.information) * diag - (w * location.score) * inv_d_mll_d_mode;
 		}
 
 		void WarnIfTweediePowerAtBoundary() const {
-			if (likelihood_type_ != "tweedie" || tweedie_boundary_warning_issued_) return;
-			const auto power = TransformTweediePowerFromQ(aux_pars_[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_);
+			if (!IsTweedieEstimatedPower() || tweedie_boundary_warning_issued_) return;
+			const auto power = TransformTweediePowerFromQ(aux_pars_[TweediePowerIndex()], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_);
 			if (power.p - TWEEDIE_POWER_LOWER_ < 1e-3 || TWEEDIE_POWER_UPPER_ - power.p < 1e-3) {
 				Log::REWarning("The Tweedie power optimizer saturated near the configured boundary (%g, %g), p = %g and dp/dtheta = %g. The estimate may be boundary-sensitive. Inspect a 'tweedie_fixed_p' likelihood and, if appropriate, use 'poisson' (if p close to 1) or 'gamma' (if p close to 2) likelihoods ", TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_, power.p, power.dp_dtheta);
 				tweedie_boundary_warning_issued_ = true;
@@ -923,7 +1114,7 @@ namespace GPBoost {
 		* \brief Determine cap_change_mode_newton_
 		*/
 		void DetermineWhetherToCapChangeModeNewton() {
-			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || IsEGPDLikelihood() ||
+			if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || IsTweedie() || IsEGPDLikelihood() ||
 				likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 				likelihood_type_ == "lognormal" || IsHurdlePositive() || IsZeroInflatedCount() || IsGammaVaryingShape()) {
 				cap_change_mode_newton_ = true;
@@ -1135,6 +1326,12 @@ namespace GPBoost {
 			else if (t == "egpd_power_mixture") egpd_variant_ = EGPDVariant::kPowerMixture;
 			else if (t == "egpd_beta") egpd_variant_ = EGPDVariant::kBeta;
 			else egpd_variant_ = EGPDVariant::kPowerBeta;
+			is_tweedie_joint_ = likelihood_type_ == "tweedie_joint" || likelihood_type_ == "tweedie_joint_fixed_p" ||
+				likelihood_type_ == "tweedie_joint_varying_dispersion" || likelihood_type_ == "tweedie_joint_varying_dispersion_fixed_p";
+			is_tweedie_varying_dispersion_ = likelihood_type_ == "tweedie_varying_dispersion" || likelihood_type_ == "tweedie_varying_dispersion_fixed_p" ||
+				likelihood_type_ == "tweedie_joint_varying_dispersion" || likelihood_type_ == "tweedie_joint_varying_dispersion_fixed_p";
+			is_tweedie_ = likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p" || is_tweedie_joint_ || is_tweedie_varying_dispersion_;
+			is_tweedie_fixed_p_ = is_tweedie_ && likelihood_type_.size() > 8 && likelihood_type_.compare(likelihood_type_.size() - 8, 8, "_fixed_p") == 0;
 		}
 
 		static string_t StripRegressionInfix(const string_t& name) {
@@ -1293,14 +1490,14 @@ namespace GPBoost {
 		*		at location_par[i + igp * num_data_] for igp >= num_sets_re_): the log-error variance of 'gaussian_heteroscedastic',
 		*		the log(sigma) of 'zero_censored_power_transformed_normal_heteroscedastic', the structural-zero predictor of a
 		*		hurdle / zero-inflated count regression, and the log(shape) of the varying-shape gamma likelihoods (which is a
-		*		THIRD block for 'hurdle_regression_gamma_varying_shape'). The gradient of all of these is calculated by
-		*		'CalcExtraFEBlocksFixedEffectGrad'.
+		*		THIRD block for 'hurdle_regression_gamma_varying_shape'), and the log(dispersion) of the varying-dispersion
+		*		Tweedie likelihoods. The gradient of all of these is calculated by 'CalcExtraFEBlocksFixedEffectGrad'.
 		*		NOTE: this excludes 'gaussian_heteroscedastic_fixed_and_random', whose second block is a genuine second set of
 		*		random effects (num_sets_re_ == 2) and is handled by the loops over 'num_sets_re_'
 		*/
 		bool HasExtraFEBlocks() const {
 			return(likelihood_type_ == "gaussian_heteroscedastic" || IsZeroCensPowNormHetero() || IsRegressionZeroModel() ||
-				HasVaryingShapeBlock());
+				HasVaryingShapeBlock() || IsTweedieVaryingDispersion());
 		}
 
 		/*!
@@ -1314,8 +1511,8 @@ namespace GPBoost {
 			if (iid_model_) {
 				return false;// no random effect / mode at all, so both correction terms vanish
 			}
-			if (HasVaryingShapeBlock()) {
-				return true;// the log(shape) block couples with eta (dJ_eta/dzeta != 0), also for a hurdle regression
+			if (HasVaryingShapeBlock() || IsTweedieVaryingDispersion()) {
+				return true;// the log(shape) / log(dispersion) block couples with eta (dJ_eta/dzeta != 0), also for a hurdle regression
 			}
 			return(!IsRegressionZeroModel() || (!IsHurdleRegression() && include_coupled_zi_terms));
 		}
@@ -1603,7 +1800,7 @@ namespace GPBoost {
 					}
 				}
 			}
-			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+			else if (IsTweedie()) {
 				bool any_positive = false;
 				for (data_size_t i = 0; i < num_data; ++i) {
 					if (!std::isfinite(y_data[i]) || y_data[i] < 0.) Log::REFatal("The response variable ('y') must be finite and nonnegative for likelihood = '%s', found %g.", likelihood_type_.c_str(), y_data[i]);
@@ -3102,7 +3299,7 @@ namespace GPBoost {
 		bool NotImplementedForOneSample() const {
 			return likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 				likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit" ||
-				HasVaryingShapeBlock();// the density depends on a second location parameter block, which the single-sample interface does not provide
+				HasVaryingShapeBlock() || IsTweedieVaryingDispersion();// the density depends on a second location parameter block, which the single-sample interface does not provide
 		}
 
 		/*! \brief Report that the calling single-sample function is not implemented for the current likelihood */
@@ -3239,7 +3436,7 @@ namespace GPBoost {
 				}
 				else if (!IsGaussianLikelihood() && !IsGaussianHeteroscedastic() && !IsEGPDLikelihood() && !IsHurdleEGPD() &&
 					likelihood_type_ != "bernoulli_probit" && likelihood_type_ != "bernoulli_logit" &&
-					likelihood_type_ != "poisson" && likelihood_type_ != "tweedie" && likelihood_type_ != "tweedie_fixed_p" && likelihood_type_ != "t" && likelihood_type_ != "beta" &&
+					likelihood_type_ != "poisson" && !IsTweedie() && likelihood_type_ != "t" && likelihood_type_ != "beta" &&
 					likelihood_type_ != "zero_one_censored_transformed_beta" && likelihood_type_ != "zero_one_censored_shifted_gamma" && !IsZeroCensShiftedGamma() &&
 					likelihood_type_ != "asymmetric_laplace" && likelihood_type_ != "quasi_bernoulli_probit" && likelihood_type_ != "quasi_bernoulli_logit") {
 					NotSupportedForLikelihood(__func__);
@@ -3321,12 +3518,14 @@ namespace GPBoost {
 				else if (likelihood_type_ == "gamma") {
 					log_normalizing_constant_ = LogNormalizingConstantGamma();
 				}
-				else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+				else if (IsTweedieVaryingDispersion()) {
+					log_normalizing_constant_ = 0.;// the normalizer depends on the log(dispersion) block and is added in 'LogLikelihood'
+				}
+				else if (IsTweedieConstantDispersion()) {
 					const double phi = aux_pars_[0];
 					const double p = GetTweediePower();
 					const double log_phi = std::log(phi);
-					const auto transform = likelihood_type_ == "tweedie" ? TransformTweediePowerFromQ(aux_pars_[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_) : TweediePowerTransform{ p, 0., 0. };
-					const bool calc_power_deriv = likelihood_type_ == "tweedie";
+					const auto transform = GetTweediePowerTransform();
 					double sum_a = 0., sum_rho = 0., sum_theta = 0.;
 					// Non-convergence is exceptional; record it and raise the error after the parallel region (Log::REFatal must not throw out of an OpenMP loop).
 					bool convergence_failure = false;
@@ -3336,7 +3535,7 @@ namespace GPBoost {
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						thread_local TweedieSpecialFunctionCache cache;
 						const double w = has_weights_ ? weights_[i] : 1.;
-						const auto res = EvaluateTweedieLogNormalizer(y_data[i], log_phi, p, transform.dp_dtheta, transform.d2p_dtheta2, TweedieDerivativeOrder::kFirst, calc_power_deriv, 1000000, &cache);
+						const auto res = EvaluateTweedieNormalizerOneObs(y_data[i], i, log_phi, p, transform, TweedieDerivativeOrder::kFirst, &cache);
 						if (!res.converged || !std::isfinite(res.log_a) || !std::isfinite(res.d_rho) || !std::isfinite(res.d_theta)) {
 #pragma omp critical
 							{
@@ -3647,7 +3846,8 @@ namespace GPBoost {
 			const auto location = EvaluateTweedieLocation(y, eta, std::log(phi), p);
 			double ll = location.canonical;
 			if (incl_norm_const) {
-				const auto transform = likelihood_type_ == "tweedie" ? TransformTweediePowerFromQ(aux_pars_[1], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_) : TweediePowerTransform{ p, 0., 0. };
+				// The marginal density of y (also for the joint variants, since this is used for new data without the number of events)
+				const auto transform = GetTweediePowerTransform();
 				thread_local TweedieSpecialFunctionCache cache;
 				const auto res = EvaluateTweedieLogNormalizer(y, std::log(phi), p, transform.dp_dtheta, transform.d2p_dtheta2, TweedieDerivativeOrder::kValue, false, 1000000, &cache);
 				if (!res.converged) return std::numeric_limits<double>::quiet_NaN();
@@ -3689,7 +3889,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "bernoulli_logit") visit([&](data_size_t i) { return LogLikBernoulliLogit<int>(y_data_int[i], location_par[i]); });
 			else if (likelihood_type_ == "poisson") visit([&](data_size_t i) { return LogLikPoisson(y_data_int[i], location_par[i], incl_norm_const); });
 			else if (likelihood_type_ == "gamma") visit([&](data_size_t i) { return LogLikGamma(y_data[i], location_par[i], incl_norm_const); });
-			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") visit([&](data_size_t i) { return LogLikTweedie(y_data[i], location_par[i], incl_norm_const); });
+			else if (IsTweedieConstantDispersion()) visit([&](data_size_t i) { return LogLikTweedie(y_data[i], location_par[i], incl_norm_const); });
 			else if (likelihood_type_ == "negative_binomial") visit([&](data_size_t i) { return LogLikNegBin(y_data_int[i], location_par[i], incl_norm_const); });
 			else if (likelihood_type_ == "negative_binomial_1") visit([&](data_size_t i) { return LogLikNegBin1(y_data_int[i], location_par[i], incl_norm_const); });
 			else if (likelihood_type_ == "zero_inflated_poisson") visit([&](data_size_t i) { return LogLikZeroInflatedPoisson(y_data_int[i], location_par[i], incl_norm_const); });
@@ -3771,6 +3971,12 @@ namespace GPBoost {
 			}
 			else if (IsZeroCensShiftedGammaVaryingShape()) {
 				ll += SumOverSamplesWeighted([&](data_size_t i) { return LogLikZeroCensGamma_at(y_data[i], location_par[i], ZeroCensGammaVarShapeShape(location_par[i + num_data_]), aux_pars_[0], true); });
+			}
+			else if (IsTweedieVaryingDispersion()) {
+				UpdateTweedieVaryingDispersionNormalizer(y_data, location_par);
+				const double p = GetTweediePower();
+				ll += SumOverSamplesWeighted([&](data_size_t i) { return EvaluateTweedieLocation(y_data[i], location_par[i], location_par[i + num_data_], p).canonical; });
+				ll += tweedie_vd_sum_log_a_;
 			}
 			else if (!VisitLogLikKernel(y_data, y_data_int, location_par, false,
 				[&](auto kernel) { ll += SumOverSamplesWeighted(kernel); })) {
@@ -4977,7 +5183,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "binomial_logit" || likelihood_type_ == "quasi_bernoulli_logit") visit([&](data_size_t i) { return FirstDerivLogLikBernoulliLogit<double>(y_data[i], location_par[i]); });
 			else if (likelihood_type_ == "poisson") visit([&](data_size_t i) { return FirstDerivLogLikPoisson(y_data_int[i], location_par[i]); });
 			else if (likelihood_type_ == "gamma") visit([&](data_size_t i) { return FirstDerivLogLikGamma(y_data[i], location_par[i]); });
-			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") visit([&](data_size_t i) { return FirstDerivLogLikTweedie(y_data[i], location_par[i]); });
+			else if (IsTweedieConstantDispersion()) visit([&](data_size_t i) { return FirstDerivLogLikTweedie(y_data[i], location_par[i]); });
 			else if (likelihood_type_ == "negative_binomial") visit([&](data_size_t i) { return FirstDerivLogLikNegBin(y_data_int[i], location_par[i]); });
 			else if (likelihood_type_ == "negative_binomial_1") visit([&](data_size_t i) { return FirstDerivLogLikNegBin1(y_data_int[i], location_par[i]); });
 			else if (likelihood_type_ == "zero_inflated_poisson") visit([&](data_size_t i) { return FirstDerivLogLikZeroInflatedPoisson(y_data_int[i], location_par[i]); });
@@ -5048,6 +5254,11 @@ namespace GPBoost {
 			else if (IsZeroCensShiftedGammaVaryingShape()) {
 				// Only eta is a mode / random effect here; log(shape) (location_par[i + num_data_]) is a fixed effect
 				ForEachSampleWeighted(first_deriv_ll, [&](data_size_t i) { return FirstDerivLogLikZeroCensGamma_at(y_data[i], location_par[i], ZeroCensGammaVarShapeShape(location_par[i + num_data_]), aux_pars_[0]); });
+			}
+			else if (IsTweedieVaryingDispersion()) {
+				// Only eta is a mode / random effect here; log(phi) (location_par[i + num_data_]) is a fixed effect
+				const double p = GetTweediePower();
+				ForEachSampleWeighted(first_deriv_ll, [&](data_size_t i) { return EvaluateTweedieLocation(y_data[i], location_par[i], location_par[i + num_data_], p).score; });
 			}
 			else if (IsHurdleRegression()) {
 				// Random effects live on the response predictor eta (block 0); this is the block-0 score used for mode finding.
@@ -5501,7 +5712,7 @@ namespace GPBoost {
 			else if (likelihood_type_ == "bernoulli_logit") visit([&](data_size_t i) { return SecondDerivNegLogLikBernoulliLogit(location_par[i]); });
 			else if (likelihood_type_ == "poisson") visit([&](data_size_t i) { return SecondDerivNegLogLikPoisson(location_par[i]); });
 			else if (likelihood_type_ == "gamma") visit([&](data_size_t i) { return SecondDerivNegLogLikGamma(y_data[i], location_par[i]); });
-			else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") visit([&](data_size_t i) { return InformationLogLikTweedie(y_data[i], location_par[i]); });
+			else if (IsTweedieConstantDispersion()) visit([&](data_size_t i) { return InformationLogLikTweedie(y_data[i], location_par[i]); });
 			else if (likelihood_type_ == "negative_binomial") visit([&](data_size_t i) { return SecondDerivNegLogLikNegBin(y_data_int[i], location_par[i]); });
 			else if (likelihood_type_ == "negative_binomial_1") visit([&](data_size_t i) { return SecondDerivNegLogLikNegBin1(y_data_int[i], location_par[i]); });
 			else if (likelihood_type_ == "zero_inflated_poisson") visit([&](data_size_t i) { return SecondDerivNegLogLikZeroInflatedPoisson(y_data_int[i], location_par[i]); });
@@ -5626,6 +5837,10 @@ namespace GPBoost {
 				}
 				else if (IsZeroCensShiftedGammaVaryingShape()) {
 					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return SecondDerivNegLogLikZeroCensGamma_at(y_data[i], location_par[i], ZeroCensGammaVarShapeShape(location_par[i + num_data_]), aux_pars_[0]); });
+				}
+				else if (IsTweedieVaryingDispersion()) {
+					const double p = GetTweediePower();
+					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return EvaluateTweedieLocation(y_data[i], location_par[i], location_par[i + num_data_], p).information; });
 				}
 				else if (!VisitObservedInformationKernel(y_data, y_data_int, location_par,
 					[&](auto kernel) { ForEachSampleWeighted(information_ll, kernel); })) {
@@ -6282,9 +6497,9 @@ namespace GPBoost {
 				else if (likelihood_type_ == "gamma") {
 					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return -aux_pars_[0] * y_data[i] * std::exp(-location_par[i]); });
 				}
-				else if (likelihood_type_ == "tweedie" || likelihood_type_ == "tweedie_fixed_p") {
+				else if (IsTweedie()) {
 					const double p = GetTweediePower();
-					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return EvaluateTweedieLocation(y_data[i], location_par[i], std::log(aux_pars_[0]), p).deriv_information_eta; });
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return EvaluateTweedieLocation(y_data[i], location_par[i], TweedieLogDispersion(location_par, i), p).deriv_information_eta; });
 				}
 				else if (IsEGPDLikelihood() || IsHurdleEGPD()) {
 					const bool hurdle = IsHurdleEGPD();
@@ -8027,13 +8242,33 @@ namespace GPBoost {
 		double tweedie_cached_phi_ = std::numeric_limits<double>::quiet_NaN();
 		double tweedie_cached_p_ = std::numeric_limits<double>::quiet_NaN();
 		mutable bool tweedie_boundary_warning_issued_ = false;
+		/*! \brief Cached properties of the Tweedie likelihoods (see CacheLikelihoodTypeDerivedQuantities) */
+		bool is_tweedie_ = false;
+		bool is_tweedie_joint_ = false;
+		bool is_tweedie_varying_dispersion_ = false;
+		bool is_tweedie_fixed_p_ = false;
+		/*! \brief Per-observation log-normalizers of a varying-dispersion Tweedie likelihood, their derivatives wrt rho_i = log(phi_i)
+		*		and the transformed power (without weights), the weighted sum of the log-normalizers, and the (rho, y, p) they
+		*		correspond to (see 'UpdateTweedieVaryingDispersionNormalizer') */
+		mutable vec_t tweedie_vd_log_a_;
+		mutable vec_t tweedie_vd_d_rho_;
+		mutable vec_t tweedie_vd_d_theta_;
+		mutable double tweedie_vd_sum_log_a_ = 0.;
+		mutable vec_t tweedie_vd_cache_rho_;
+		mutable const double* tweedie_vd_cache_y_ = nullptr;
+		mutable double tweedie_vd_cache_p_ = std::numeric_limits<double>::quiet_NaN();
+		mutable bool tweedie_vd_cache_valid_ = false;
+		/*! \brief Number of columns of 'additional_likelihood_data_' */
+		int num_additional_likelihood_data_ = 0;
+		/*! \brief Observation-level data required in addition to the response variable (column-major, num_data_ x num_additional_likelihood_data_), e.g. the number of events for the joint Tweedie likelihoods */
+		const double* additional_likelihood_data_ = nullptr;
 		/*! \brief Cache of the EGPD unit-scale moments and the aux-parameter snapshot they correspond to (see GetEGPDMoments) */
 		EGPDMoments egpd_moments_cache_;
 		std::array<double, kMaxEGPDAuxPars> egpd_moments_cache_aux_{};
 		bool egpd_moments_cache_initialized_ = false;
 		/*! \brief List of supported likelihoods */
 		const std::set<string_t> SUPPORTED_LIKELIHOODS_{ "gaussian", "gaussian_latent", "bernoulli_probit", "bernoulli_logit", "binomial_probit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit",
-			"poisson", "gamma", "tweedie", "tweedie_fixed_p", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "gaussian_heteroscedastic_fixed_and_random", "lognormal", "beta_binomial",
+			"poisson", "gamma", "tweedie", "tweedie_fixed_p", "tweedie_joint", "tweedie_joint_fixed_p", "tweedie_varying_dispersion", "tweedie_varying_dispersion_fixed_p", "tweedie_joint_varying_dispersion", "tweedie_joint_varying_dispersion_fixed_p", "negative_binomial", "negative_binomial_1", "beta", "t", "gaussian_heteroscedastic", "gaussian_heteroscedastic_fixed_and_random", "lognormal", "beta_binomial",
 			"hurdle_gamma", "hurdle_lognormal", "zero_censored_power_transformed_normal", "zero_censored_power_transformed_normal_heteroscedastic",
 			"zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
 			"zero_censored_shifted_gamma", "zero_censored_shifted_gamma_varying_shape",
@@ -8046,7 +8281,7 @@ namespace GPBoost {
 			"gamma_varying_shape", "hurdle_gamma_varying_shape", "hurdle_regression_gamma_varying_shape" };
 		/*! \brief List of likelihoods that work only for a standard Laplace approximation */
 		const std::set<string_t> LIKELIHOODS_ONLY_LAPLACE_{ "binomial_probit", "binomial_logit", "binomial_logit", "quasi_bernoulli_probit", "quasi_bernoulli_logit", "gamma", "negative_binomial",
-			"beta", "beta_binomial", "tweedie", "tweedie_fixed_p", "hurdle_gamma", "hurdle_lognormal", "zero_censored_power_transformed_normal",
+			"beta", "beta_binomial", "tweedie", "tweedie_fixed_p", "tweedie_joint", "tweedie_joint_fixed_p", "tweedie_varying_dispersion", "tweedie_varying_dispersion_fixed_p", "tweedie_joint_varying_dispersion", "tweedie_joint_varying_dispersion_fixed_p", "hurdle_gamma", "hurdle_lognormal", "zero_censored_power_transformed_normal",
 			"zero_censored_power_transformed_normal_heteroscedastic", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma",
 			"zero_censored_shifted_gamma", "zero_censored_shifted_gamma_varying_shape",
 			"gpd", "egpd_power", "egpd_power_mixture", "egpd_beta", "egpd_power_beta",

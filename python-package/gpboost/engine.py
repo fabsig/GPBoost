@@ -497,6 +497,7 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
             cluster_ids = None
             cluster_ids_pred = None
             weights = None
+            additional_likelihood_data = None
             if gp_model.group_data is not None:
                 group_data = gp_model.group_data[train_idx]
                 group_data_pred = gp_model.group_data[test_idx]
@@ -514,6 +515,8 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                 cluster_ids_pred = gp_model.cluster_ids[test_idx]
             if gp_model.weights is not None:
                 weights = gp_model.weights[train_idx]
+            if gp_model.additional_likelihood_data is not None:
+                additional_likelihood_data = gp_model.additional_likelihood_data[train_idx]
             gp_model_train = GPModel(likelihood=gp_model._get_likelihood_name(),
                                      group_data=group_data,
                                      group_rand_coef_data=group_rand_coef_data,
@@ -529,6 +532,7 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                      GPU_use=gp_model.GPU_use,
                                      matrix_inversion_method=gp_model.matrix_inversion_method,
                                      weights=weights,
+                                     additional_likelihood_data=additional_likelihood_data,
                                      likelihood_learning_rate=gp_model.likelihood_learning_rate,
                                      cov_fct_taper_range=gp_model.cov_fct_taper_range,
                                      cov_fct_taper_shape=gp_model.cov_fct_taper_shape,

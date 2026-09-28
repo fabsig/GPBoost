@@ -98,6 +98,9 @@ namespace GPBoost {
 		* \param has_weights True, if sample weights should be used
 		* \param weights Sample weights
 		* \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
+		* \param num_additional_likelihood_data Number of columns of 'additional_likelihood_data' (0 = none)
+		* \param additional_likelihood_data Observation-level data required by some likelihoods in addition to the response variable
+		*		(column-major, num_data x num_additional_likelihood_data), e.g., the number of events for "tweedie_joint"
 		*/
 		REModelTemplate(data_size_t num_data,
 			const data_size_t* cluster_ids_data,
@@ -130,7 +133,9 @@ namespace GPBoost {
 			bool GPU_use,
 			bool has_weights,
 			const double* weights,
-			double likelihood_learning_rate) {
+			double likelihood_learning_rate,
+			int num_additional_likelihood_data = 0,
+			const double* additional_likelihood_data = nullptr) {
 			// Check if cuda device is available
 			bool can_use_cuda = false;
 			if (GPU_use) {
@@ -466,6 +471,22 @@ namespace GPBoost {
 			}//end has_weights
 			CHECK(likelihood_learning_rate > 0.);
 			likelihood_learning_rate_ = likelihood_learning_rate;
+			// Additional likelihood data: split into clusters in the same (possibly permuted) order as the response variable
+			num_additional_likelihood_data_ = 0;
+			if (num_additional_likelihood_data > 0) {
+				CHECK(additional_likelihood_data != nullptr);
+				num_additional_likelihood_data_ = num_additional_likelihood_data;
+			}
+			for (const auto& cluster_i : unique_clusters_) {
+				const data_size_t num_data_cluster_i = num_data_per_cluster_[cluster_i];
+				additional_likelihood_data_[cluster_i] = vec_t(num_data_cluster_i * num_additional_likelihood_data_);
+				for (int k = 0; k < num_additional_likelihood_data_; ++k) {
+					for (data_size_t j = 0; j < num_data_cluster_i; ++j) {
+						additional_likelihood_data_[cluster_i][j + k * num_data_cluster_i] =
+							additional_likelihood_data[data_indices_per_cluster_[cluster_i][j] + (data_size_t)k * num_data_];
+					}
+				}
+			}
 			//Create matrices Z and ZtZ if Woodbury identity is used (used only if there are only grouped REs and no GPs)
 			if ((use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) || grouped_RE_and_vecchia_GP_) {
 				InitializeMatricesForUseWoodburyIdentity();
@@ -478,6 +499,9 @@ namespace GPBoost {
 				}
 			}
 			InitializeLikelihoods(likelihood_strg);
+			if (num_additional_likelihood_data_ > 0 && !likelihood_[unique_clusters_[0]]->UsesAdditionalLikelihoodData()) {
+				Log::REWarning("'additional_likelihood_data' is not used for likelihood = '%s' ", likelihood_strg.c_str());
+			}
 			SetDefaultMatrixInversionMethod();//needs to be run after 'InitializeLikelihoods' since defaults can depend on likelihood
 			DetermineCovarianceParameterIndicesNumCovPars();
 			InitializeDefaultSettings();
@@ -6177,6 +6201,10 @@ namespace GPBoost {
 		bool has_weights_ = false;
 		/*! \brief Key: labels of independent realizations of REs/GPs, value: weights */
 		std::map<data_size_t, vec_t> weights_;
+		/*! \brief Number of columns of the additional likelihood data */
+		int num_additional_likelihood_data_ = 0;
+		/*! \brief Additional likelihood data per cluster (column-major, same order as 'y_') */
+		std::map<data_size_t, vec_t> additional_likelihood_data_;
 		/*! \brief A learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods) */
 		double likelihood_learning_rate_ = 1.;
 
@@ -6886,6 +6914,7 @@ namespace GPBoost {
 			}//end gauss_likelihood_
 			else {//not gauss_likelihood_
 				(*likelihood_[unique_clusters_[0]]).template CheckY<double>(y_data, num_data_);
+				CheckAdditionalLikelihoodData(y_data);
 				if (likelihood_[unique_clusters_[0]]->label_type() == "int") {
 					for (const auto& cluster_i : unique_clusters_) {
 						y_int_[cluster_i] = vec_int_t(num_data_per_cluster_[cluster_i]);
@@ -6916,6 +6945,7 @@ namespace GPBoost {
 			}//end gauss_likelihood_
 			else {//not gauss_likelihood_
 				(*likelihood_[unique_clusters_[0]]).template CheckY<float>(y_data, num_data_);
+				CheckAdditionalLikelihoodData(y_data);
 				if (likelihood_[unique_clusters_[0]]->label_type() == "int") {
 					for (const auto& cluster_i : unique_clusters_) {
 						y_int_[cluster_i] = vec_int_t(num_data_per_cluster_[cluster_i]);
@@ -7565,6 +7595,22 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Check the additional likelihood data against the response variable, cluster by cluster
+		* \param y_data Response variable data (original ordering)
+		*/
+		template <typename T>//T can be double or float
+		void CheckAdditionalLikelihoodData(const T* y_data) const {
+			if (!likelihood_.at(unique_clusters_[0])->UsesAdditionalLikelihoodData()) return;
+			for (const auto& cluster_i : unique_clusters_) {
+				vec_t y_cluster_i(num_data_per_cluster_.at(cluster_i));
+				for (data_size_t j = 0; j < num_data_per_cluster_.at(cluster_i); ++j) {
+					y_cluster_i[j] = static_cast<double>(y_data[data_indices_per_cluster_.at(cluster_i)[j]]);
+				}
+				likelihood_.at(cluster_i)->CheckAdditionalLikelihoodData(y_cluster_i.data());
+			}
+		}
+
+		/*!
 		* \brief Initialize likelihoods
 		* \param likelihood Likelihood name
 		*/
@@ -7583,7 +7629,8 @@ namespace GPBoost {
 						GetForCluster(re_comps_vecchia_, cluster_i, 0)[0]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
-						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false, false));
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false, false,
+						num_additional_likelihood_data_, additional_likelihood_data_[cluster_i].data()));
 				}
 				else if (gp_approx_ == "fitc") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -7594,7 +7641,8 @@ namespace GPBoost {
 						GetForCluster(re_comps_cross_cov_, cluster_i, 0)[0]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
-						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false, false));
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false, false,
+						num_additional_likelihood_data_, additional_likelihood_data_[cluster_i].data()));
 				}
 				else if ((use_woodbury_identity_ && !only_one_grouped_RE_calculations_on_RE_scale_) || grouped_RE_and_vecchia_GP_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -7605,7 +7653,8 @@ namespace GPBoost {
 						nullptr,
 						&(Zt_[cluster_i]),
 						likelihood_additional_param_,
-						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false, false));
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false, false,
+						num_additional_likelihood_data_, additional_likelihood_data_[cluster_i].data()));
 				}
 				else if (only_one_grouped_RE_calculations_on_RE_scale_) {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -7616,7 +7665,8 @@ namespace GPBoost {
 						GetForCluster(re_comps_, cluster_i, 0)[0]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
-						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, true, iid_model_));
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, true, iid_model_,
+						num_additional_likelihood_data_, additional_likelihood_data_[cluster_i].data()));
 				}
 				else if (only_one_GP_calculations_on_RE_scale_ && gp_approx_ != "vecchia" && gp_approx_ != "full_scale_vecchia") {
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -7627,7 +7677,8 @@ namespace GPBoost {
 						GetForCluster(re_comps_, cluster_i, 0)[0]->random_effects_indices_of_data_.data(),
 						nullptr,
 						likelihood_additional_param_,
-						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false, false));
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false, false,
+						num_additional_likelihood_data_, additional_likelihood_data_[cluster_i].data()));
 				}
 				else {//!only_one_GP_calculations_on_RE_scale_ && gp_approx_ == "none"
 					likelihood_[cluster_i] = std::unique_ptr<Likelihood<T_mat, T_chol>>(new Likelihood<T_mat, T_chol>(likelihood_parse,
@@ -7638,7 +7689,8 @@ namespace GPBoost {
 						nullptr,
 						nullptr,
 						likelihood_additional_param_,
-						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false, false));
+						has_weights_, weights_[cluster_i].data(), likelihood_learning_rate_, false, false,
+						num_additional_likelihood_data_, additional_likelihood_data_[cluster_i].data()));
 				}
 				if (!gauss_likelihood_) {
 					likelihood_[cluster_i]->InitializeModeAvec();

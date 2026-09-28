@@ -65,6 +65,9 @@ namespace GPBoost {
 		* \param weights Sample weights. For Gaussian likelihoods, the error variance of observation i is divided by weights[i].
 		*                For non-Gaussian likelihoods, the conditional log-likelihood contribution of observation i is multiplied by weights[i].
 		* \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
+		* \param num_additional_likelihood_data Number of columns of 'additional_likelihood_data' (0 = none)
+		* \param additional_likelihood_data Observation-level data required by some likelihoods in addition to the response variable
+		*		(column-major, num_data x num_additional_likelihood_data), e.g., the number of events for "tweedie_joint"
 		*/
 		LIGHTGBM_EXPORT REModel(data_size_t num_data,
 			const data_size_t* cluster_ids_data,
@@ -97,7 +100,9 @@ namespace GPBoost {
 			bool GPU_use,
 			bool has_weights,
 			const double* weights,
-			double likelihood_learning_rate);
+			double likelihood_learning_rate,
+			int num_additional_likelihood_data = 0,
+			const double* additional_likelihood_data = nullptr);
 
 		/*! \brief Destructor */
 		LIGHTGBM_EXPORT ~REModel();
@@ -585,6 +590,10 @@ namespace GPBoost {
 		bool GPU_use_ = false;
 		bool has_weights_ = false;
 		std::vector<double> weights_;
+		/*! \brief Number of columns of 'additional_likelihood_data_' */
+		int num_additional_likelihood_data_ = 0;
+		/*! \brief Additional likelihood data (column-major, original ordering), kept for the auxiliary iid model */
+		std::vector<double> additional_likelihood_data_;
 		double likelihood_learning_rate_ = 1.;
 		bool trace_ = false;
 		int num_it_ = 0; //Number of iterations done for covariance and linear regression parameter estimation

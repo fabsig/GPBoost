@@ -2715,6 +2715,8 @@ int GPB_CreateREModel(int32_t num_data,
 	bool has_weights,
 	const double* weights,
 	double likelihood_learning_rate,
+	int num_additional_likelihood_data,
+	const double* additional_likelihood_data,
 	REModelHandle* out) {
 	API_BEGIN();
 	std::unique_ptr<REModel> ret;
@@ -2749,7 +2751,9 @@ int GPB_CreateREModel(int32_t num_data,
 		GPU_use,
 		has_weights,
 		weights,
-		likelihood_learning_rate));
+		likelihood_learning_rate,
+		num_additional_likelihood_data,
+		additional_likelihood_data));
 	*out = ret.release();
 	API_END();
 }

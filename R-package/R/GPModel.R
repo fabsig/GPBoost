@@ -13,7 +13,7 @@
 #' \strong{Response type} \tab \strong{Support} \tab \strong{Likelihoods} \cr
 #' Continuous \tab y in (-inf, inf) \tab "gaussian", "t", "t_fix_df", "quantile_regression" / "asymmetric_laplace", "gaussian_heteroscedastic", "gaussian_heteroscedastic_fixed_and_random" \cr
 #' Positive continuous \tab y in (0, inf) \tab "gamma", "gamma_varying_shape", "lognormal", "gpd", "egpd_power", "egpd_power_mixture", "egpd_beta", "egpd_power_beta" \cr
-#' Non-negative continuous / semicontinuous \tab y in [0, inf) with point mass at 0 \tab "tweedie", "tweedie_fixed_p", "hurdle_gamma", "hurdle_lognormal", hurdle GPD / EGPD likelihoods, "zero_censored_power_transformed_normal", "zero_censored_shifted_gamma" \cr
+#' Non-negative continuous / semicontinuous \tab y in [0, inf) with point mass at 0 \tab "tweedie", "tweedie_fixed_p", "tweedie_joint", "tweedie_varying_dispersion", "tweedie_joint_varying_dispersion" (and their "_fixed_p" variants), "hurdle_gamma", "hurdle_lognormal", hurdle GPD / EGPD likelihoods, "zero_censored_power_transformed_normal", "zero_censored_shifted_gamma" \cr
 #' Count \tab y in \{0, 1, 2, ...\} \tab "poisson", "negative_binomial", "negative_binomial_1", zero-inflated count likelihoods \cr
 #' Binary \tab y in \{0, 1\} \tab "bernoulli_logit", "bernoulli_probit" \cr
 #' Proportion / fractional / bounded \tab y in [0, 1] \tab "quasi_bernoulli_logit", "quasi_bernoulli_probit", "binomial_logit", "binomial_probit", "beta_binomial", "beta", "zoctn", "zero_one_censored_transformed_beta", "zero_one_censored_shifted_gamma" \cr
@@ -75,6 +75,19 @@
 #' \itemize{
 #' \item{ "tweedie": Compound Poisson--Gamma Tweedie likelihood with a log link, variance phi * mu^p, and 1.01 < p < 1.99. The dispersion phi and power p are estimated }
 #' \item{ "tweedie_fixed_p": The same Tweedie likelihood with p fixed through \code{likelihood_additional_param}; only phi is estimated. The fixed power must satisfy 1.01 < p < 1.99 }
+#' \item{ "tweedie_joint", "tweedie_joint_fixed_p": The same Tweedie model, but the observed number of events (e.g., claims) N, given in the first
+#' column of \code{additional_likelihood_data}, is used jointly with the aggregate response y. The likelihood is the joint density of (y, N) of the
+#' compound Poisson--Gamma representation, N ~ Poisson(mu^(2-p) / (phi * (2-p))) and y | N = n ~ Gamma(n * (2-p) / (p-1), scale = phi * (p-1) * mu^(p-1)),
+#' see Jorgensen and de Souza (1994, Scandinavian Actuarial Journal).
+#' Given phi and p, the mean model is the same as for "tweedie"; N adds information
+#' for estimating phi and p. N must be a non-negative integer that is 0 if and only if y is 0. Predictions are the same as for "tweedie", and the
+#' "test_neg_log_likelihood" metric uses the marginal density of y since N is not known for new data }
+#' \item{ "tweedie_varying_dispersion", "tweedie_varying_dispersion_fixed_p": As "tweedie" and "tweedie_fixed_p", but the dispersion phi varies across
+#' observations: log(phi) = F_d(X) is related to fixed effects only (linear predictor or GPBoost algorithm), while log(mu) = F(X) + Zb is related
+#' to both fixed and random effects. The power p is then the only (auxiliary) parameter. The estimated coefficients of the log-dispersion model are
+#' returned alongside the mean-model coefficients (with the suffix "_dispersion") }
+#' \item{ "tweedie_joint_varying_dispersion", "tweedie_joint_varying_dispersion_fixed_p": The joint (y, N) likelihood of "tweedie_joint" with the
+#' varying dispersion of "tweedie_varying_dispersion" }
 #' \item{ "hurdle_<base>": Two-part likelihoods for non-negative response variables with an excess probability 'p0' of exact zeros.
 #' They combine a point mass 'p0' at zero with a base distribution with support 'y > 0' for the remaining mass '1 - p0'. The fixed effects 'F(X)'
 #' and random effects 'Zb' enter only through the base component: 'exp(F(X) + Zb)' is its mean or scale parameter, not the unconditional response
@@ -180,7 +193,7 @@
 #' \itemize{
 #' \item{ df = 2 for likelihood = "t_fix_df" }
 #' \item{ No default is used for likelihood = "asymmetric_laplace"; a quantile strictly between 0 and 1 is required }
-#' \item{ No default is used for likelihood = "tweedie_fixed_p"; a power strictly between 1.01 and 1.99 is required }
+#' \item{ No default is used for the Tweedie likelihoods with a fixed power ("tweedie_fixed_p" and the other "_fixed_p" variants); a power strictly between 1.01 and 1.99 is required }
 #' }
 #' @param group_data A \code{vector} or \code{matrix} whose columns are categorical grouping variables. 
 #' The elements being group levels defining grouped random effects.
@@ -416,6 +429,10 @@
 #' Vecchia-approximated Gaussian process. In these cases, the weights act as for a non-Gaussian likelihood,
 #' i.e., the Gaussian log-likelihood contribution of observation \code{i} is multiplied by
 #' \code{weights[i]} instead of the error variance being divided by it.
+#' @param additional_likelihood_data A \code{vector} or \code{matrix} with observation-level data that some
+#' likelihoods require in addition to the response variable \code{y} (one row per data point). Currently, this is only
+#' used by the joint Tweedie likelihoods ("tweedie_joint" and its variants), for which its first column contains
+#' the observed number of events (e.g., claims) N. N must be a non-negative integer that is 0 if and only if y is 0
 #' @param likelihood_learning_rate A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)
 #' @param free_raw_data A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 #' is freed in R after initialization
@@ -694,6 +711,7 @@ GPModel_shared_params <- function(likelihood = NULL,
                                   rank_pred_approx_matrix_lanczos = NULL,
                                   cluster_ids = NULL,
                                   weights = NULL,
+                                  additional_likelihood_data = NULL,
                                   likelihood_learning_rate = NULL,
                                   free_raw_data = NULL,
                                   y = NULL,
@@ -743,6 +761,7 @@ gpb.GPModel <- R6::R6Class(
                           GPU_use = FALSE,
                           matrix_inversion_method = "default",
                           weights = NULL,
+                          additional_likelihood_data = NULL,
                           likelihood_learning_rate = 1.,
                           cov_fct_taper_range = 1.,
                           cov_fct_taper_shape = 1.,
@@ -793,7 +812,8 @@ gpb.GPModel <- R6::R6Class(
         MAYBE_CONVERT_TO_MATRIX <- c("cov_pars", "group_data", "group_rand_coef_data", 
                                      "gp_coords", "gp_rand_coef_data", 
                                      "ind_effect_group_rand_coef",
-                                     "cluster_ids", "coefs", "X", "weights", "offset")
+                                     "cluster_ids", "coefs", "X", "weights", "offset",
+                                     "additional_likelihood_data")
         for (feature in MAYBE_CONVERT_TO_MATRIX) {
           if (!is.null(model_list[[feature]])) {
             if (is.list(model_list[[feature]])) {
@@ -820,6 +840,7 @@ gpb.GPModel <- R6::R6Class(
         gp_approx = model_list[["gp_approx"]]
         matrix_inversion_method = model_list[["matrix_inversion_method"]]
         weights = model_list[["weights"]]
+        additional_likelihood_data = model_list[["additional_likelihood_data"]]
         likelihood_learning_rate = model_list[["likelihood_learning_rate"]]
         cov_fct_taper_range = model_list[["cov_fct_taper_range"]]
         cov_fct_taper_shape = model_list[["cov_fct_taper_shape"]]
@@ -930,6 +951,10 @@ gpb.GPModel <- R6::R6Class(
         # A second fixed-effects-only predictor for log(shape)
         private$num_sets_fe = 2
         private$extra_fe_block_suffixes = "_shape"
+      } else if (grepl("^tweedie(_joint)?_varying_dispersion", likelihood)) {
+        # A second fixed-effects-only predictor for log(dispersion)
+        private$num_sets_fe = 2
+        private$extra_fe_block_suffixes = "_dispersion"
       }
       if (private$model_has_been_loaded_from_saved_file && private$has_covariates &&
           length(private$extra_fe_block_suffixes) > 0) {
@@ -1272,6 +1297,27 @@ gpb.GPModel <- R6::R6Class(
           stop("GPModel: Can only use ", sQuote("vector"), " as ", sQuote("weights"))
         }
       }
+      # Set up additional likelihood data (stored column-major as a matrix with one row per data point)
+      num_additional_likelihood_data <- 0L
+      if (!is.null(additional_likelihood_data)) {
+        if (is.data.frame(additional_likelihood_data)) {
+          additional_likelihood_data <- as.matrix(additional_likelihood_data)
+        }
+        if (is.vector(additional_likelihood_data)) {
+          additional_likelihood_data <- matrix(additional_likelihood_data, ncol = 1)
+        }
+        if (!is.matrix(additional_likelihood_data)) {
+          stop("GPModel: Can only use ", sQuote("vector"), " or ", sQuote("matrix"), " as ", sQuote("additional_likelihood_data"))
+        }
+        if (dim(additional_likelihood_data)[1] != private$num_data) {
+          stop("GPModel: Number of rows of ", sQuote("additional_likelihood_data"), " does not match number of data points")
+        }
+        if (storage.mode(additional_likelihood_data) != "double") {
+          storage.mode(additional_likelihood_data) <- "double"
+        }
+        private$additional_likelihood_data <- additional_likelihood_data
+        num_additional_likelihood_data <- as.integer(dim(additional_likelihood_data)[2])
+      }
       private$likelihood_learning_rate <- as.numeric(likelihood_learning_rate)
       private$determine_num_cov_pars(likelihood)
       if (is.null(private$likelihood_additional_param)) {
@@ -1317,6 +1363,8 @@ gpb.GPModel <- R6::R6Class(
         , private$has_weights
         , private$weights
         , private$likelihood_learning_rate
+        , num_additional_likelihood_data
+        , private$additional_likelihood_data
       )
       # Check whether the handle was created properly if it was not stopped earlier by a stop call
       if (gpb.is.null.handle(handle)) {
@@ -2483,6 +2531,10 @@ gpb.GPModel <- R6::R6Class(
       }
       return(private$weights)
     },
+
+    get_additional_likelihood_data = function() {
+      return(private$additional_likelihood_data)
+    },
     
     get_response_data = function() {
       response_data <- numeric(private$num_data)
@@ -2734,6 +2786,7 @@ gpb.GPModel <- R6::R6Class(
       model_list[["gp_approx"]] <- private$gp_approx
       model_list[["matrix_inversion_method"]] <- private$matrix_inversion_method
       model_list[["weights"]] <- private$weights
+      model_list[["additional_likelihood_data"]] <- private$additional_likelihood_data
       model_list[["likelihood_learning_rate"]] <- private$likelihood_learning_rate
       model_list[["cov_fct_taper_range"]] <- private$cov_fct_taper_range
       model_list[["cov_fct_taper_shape"]] <- private$cov_fct_taper_shape
@@ -2768,7 +2821,7 @@ gpb.GPModel <- R6::R6Class(
                                    "ind_effect_group_rand_coef",
                                    "drop_intercept_group_rand_effect",
                                    "cluster_ids", "coefs", "X", "nb_groups", "aux_pars", 
-                                   "weights", "offset")
+                                   "weights", "offset", "additional_likelihood_data")
       for (feature in MAYBE_CONVERT_TO_VECTOR) {
         if (!is.null(model_list[[feature]])) {
           if (is.vector(model_list[[feature]])) {
@@ -2964,6 +3017,7 @@ gpb.GPModel <- R6::R6Class(
     matrix_inversion_method = "default",
     has_weights = FALSE,
     weights = NULL,
+    additional_likelihood_data = NULL,
     likelihood_learning_rate = 1.,
     num_parallel_threads = -1L,
     GPU_use = FALSE,
@@ -3306,6 +3360,7 @@ GPModel <- function(likelihood = "gaussian",
                     GPU_use = FALSE,
                     matrix_inversion_method = "default",
                     weights = NULL,
+                    additional_likelihood_data = NULL,
                     likelihood_learning_rate = 1.,
                     cov_fct_taper_range = 1.,
                     cov_fct_taper_shape = 1.,
@@ -3340,6 +3395,7 @@ GPModel <- function(likelihood = "gaussian",
                             , GPU_use = GPU_use
                             , matrix_inversion_method = matrix_inversion_method
                             , weights = weights
+                            , additional_likelihood_data = additional_likelihood_data
                             , likelihood_learning_rate = likelihood_learning_rate
                             , cov_fct_taper_range = cov_fct_taper_range
                             , cov_fct_taper_shape = cov_fct_taper_shape
@@ -3524,6 +3580,7 @@ fitGPModel <- function(likelihood = "gaussian",
                        GPU_use = FALSE,
                        matrix_inversion_method = "default",
                        weights = NULL,
+                       additional_likelihood_data = NULL,
                        likelihood_learning_rate = 1.,
                        cov_fct_taper_range = 1.,
                        cov_fct_taper_shape = 1.,
@@ -3561,6 +3618,7 @@ fitGPModel <- function(likelihood = "gaussian",
                              , GPU_use = GPU_use
                              , matrix_inversion_method = matrix_inversion_method
                              , weights = weights
+                             , additional_likelihood_data = additional_likelihood_data
                              , likelihood_learning_rate = likelihood_learning_rate
                              , cov_fct_taper_range = cov_fct_taper_range
                              , cov_fct_taper_shape = cov_fct_taper_shape

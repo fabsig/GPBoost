@@ -484,6 +484,11 @@ gpb.cv <- function(params = list()
         if (!is.null(weights)) {
           weights <- weights[train_indexDT$indices]
         }
+
+        additional_likelihood_data <- gp_model$get_additional_likelihood_data()
+        if (!is.null(additional_likelihood_data)) {
+          additional_likelihood_data <- additional_likelihood_data[train_indexDT$indices, , drop = FALSE]
+        }
         
         gp_model_train <- gpb.GPModel$new(likelihood = gp_model$get_likelihood_name()
                                           , group_data = group_data
@@ -500,6 +505,7 @@ gpb.cv <- function(params = list()
                                           , GPU_use = gp_model$.__enclos_env__$private$GPU_use
                                           , matrix_inversion_method = gp_model$.__enclos_env__$private$matrix_inversion_method
                                           , weights = weights
+                                          , additional_likelihood_data = additional_likelihood_data
                                           , likelihood_learning_rate = gp_model$.__enclos_env__$private$likelihood_learning_rate
                                           , cov_fct_taper_range = gp_model$.__enclos_env__$private$cov_fct_taper_range
                                           , cov_fct_taper_shape = gp_model$.__enclos_env__$private$cov_fct_taper_shape

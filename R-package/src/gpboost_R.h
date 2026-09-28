@@ -652,6 +652,8 @@ GPBOOST_C_EXPORT SEXP LGBM_BoosterDumpModel_R(
 * \param has_weights True, if sample weights should be used
 * \param weights Sample weights
 * \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
+* \param num_additional_likelihood_data Number of columns of 'additional_likelihood_data' (0 = none)
+* \param additional_likelihood_data Observation-level data required by some likelihoods in addition to the response variable (column-major)
 * \return REModel handle
 */
 GPBOOST_C_EXPORT SEXP GPB_CreateREModel_R(
@@ -686,7 +688,9 @@ GPBOOST_C_EXPORT SEXP GPB_CreateREModel_R(
 	SEXP GPU_use,
 	SEXP has_weights,
 	SEXP weights,
-	SEXP likelihood_learning_rate
+	SEXP likelihood_learning_rate,
+	SEXP num_additional_likelihood_data,
+	SEXP additional_likelihood_data
 );
 
 /*!

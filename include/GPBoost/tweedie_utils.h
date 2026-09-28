@@ -245,6 +245,38 @@ inline TweedieSeriesResult EvaluateTweedieLogNormalizer(double y, double rho, do
 	return ans;
 }
 
+/*!
+* \brief Joint log-density of (Y, N) of the compound Poisson--Gamma representation, N ~ Poisson(mu^(2-p) / (phi * (2-p))),
+*	Y | N = n ~ Gamma(n * (2-p) / (p-1), scale = phi * (p-1) * mu^(p-1)), without the part that depends on the location.
+*	The location-dependent part equals the one of the marginal Tweedie density ('TweedieLocationResult::canonical'), and
+*	the remaining part is the n-th term of the series of the marginal normalizer, i.e. log(a_n(y, phi, p)) with
+*	a(y, phi, p) = sum_n a_n(y, phi, p). For n = 0, y has to be 0 and the result is 0.
+*	The derivatives are wrt rho = log(phi) and the transformed power theta (dp/dtheta = 'dp_dtheta')
+*/
+inline TweedieSeriesResult EvaluateTweedieJointLogNormalizer(double y, double n, double rho, double p,
+	double dp_dtheta, bool calculate_power_derivatives) {
+	TweedieSeriesResult ans;
+	ans.lower = ans.upper = static_cast<int64_t>(n);
+	if (n == 0.) {
+		ans.converged = (y == 0.);
+		return ans;
+	}
+	if (!(y > 0.) || !std::isfinite(y) || !std::isfinite(rho) || !(p > 1. && p < 2.) || !(n > 0.)) {
+		ans.converged = false;
+		return ans;
+	}
+	const double log_y = std::log(y);
+	const double alpha = (2. - p) / (p - 1.);
+	ans.log_a = TweedieSeriesLogTerm(static_cast<int64_t>(n), log_y, rho, p) - log_y;
+	ans.d_rho = -n / (p - 1.);
+	if (calculate_power_derivatives) {
+		const double alpha_p = -1. / ((p - 1.) * (p - 1.));
+		const double H = log_y - std::log(p - 1.) - rho - GPBoost::digamma(n * alpha);
+		ans.d_theta = dp_dtheta * n * (alpha_p * H - alpha / (p - 1.) + 1. / (2. - p));
+	}
+	return ans;
+}
+
 }  // namespace GPBoost
 
 #endif  // GPB_TWEEDIE_UTILS_

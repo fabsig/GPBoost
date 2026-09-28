@@ -56,7 +56,8 @@ Model specification parameters
              ``egpd_power_mixture``, ``egpd_beta``, ``egpd_power_beta``
          * - Non-negative continuous / semicontinuous response
            - ``y in [0, inf)`` with point mass at 0
-           - ``tweedie``, ``tweedie_fixed_p``, ``hurdle_gamma``, ``hurdle_lognormal``,
+           - ``tweedie``, ``tweedie_fixed_p``, ``tweedie_joint``, ``tweedie_varying_dispersion``,
+             ``tweedie_joint_varying_dispersion`` (and their ``_fixed_p`` variants), ``hurdle_gamma``, ``hurdle_lognormal``,
              hurdle GPD / EGPD likelihoods, ``zero_censored_power_transformed_normal``,
              ``zero_censored_shifted_gamma``
          * - Count response
@@ -121,6 +122,12 @@ Model specification parameters
       -  ``tweedie`` : Compound Poisson--Gamma Tweedie likelihood with a log link, where the latent predictor is 'eta', the mean is 'mu = exp(eta)', and 'Var(y | eta) = phi * mu^p', with '1.01 < p < 1.99'. Both dispersion 'phi' and power 'p' are estimated
 
       -  ``tweedie_fixed_p`` : The same Tweedie likelihood with 'p' fixed through ``likelihood_additional_param`` and only 'phi' estimated. The fixed power is mandatory and must satisfy '1.01 < p < 1.99'. Fits at different fixed powers include the complete density and can therefore be compared by marginal log-likelihood for power profiling
+
+      -  ``tweedie_joint``, ``tweedie_joint_fixed_p`` : The same Tweedie model, but the observed number of events (e.g., claims) 'N', given in the first column of ``additional_likelihood_data``, is used jointly with the aggregate response 'y'. The likelihood is the joint density of '(y, N)' of the compound Poisson--Gamma representation, 'N ~ Poisson(mu^(2-p) / (phi * (2-p)))' and 'y | N = n ~ Gamma(n * (2-p) / (p-1), scale = phi * (p-1) * mu^(p-1))', see Jorgensen and de Souza (1994, Scandinavian Actuarial Journal) "Fitting Tweedie's compound Poisson model to insurance claims data". Given 'phi' and 'p', the mean model is the same as for ``tweedie``; 'N' adds information for estimating 'phi' and 'p'. 'N' must be a non-negative integer that is 0 if and only if 'y' is 0. Predictions are the same as for ``tweedie``, and the ``test_neg_log_likelihood`` metric uses the marginal density of 'y' since 'N' is not known for new data
+
+      -  ``tweedie_varying_dispersion``, ``tweedie_varying_dispersion_fixed_p`` : As ``tweedie`` and ``tweedie_fixed_p``, but the dispersion 'phi' varies across observations: 'log(phi) = F_d(X)' is related to fixed effects only (linear predictor or GPBoost algorithm), while 'log(mu) = F(X) + Zb' is related to both fixed and random effects. The power 'p' is then the only (auxiliary) parameter. The estimated coefficients of the log-dispersion model are returned alongside the mean-model coefficients (with the suffix '_dispersion')
+
+      -  ``tweedie_joint_varying_dispersion``, ``tweedie_joint_varying_dispersion_fixed_p`` : The joint '(y, N)' likelihood of ``tweedie_joint`` with the varying dispersion of ``tweedie_varying_dispersion``
 
       -  ``hurdle_<base>`` : Two-part likelihoods for non-negative response variables with an excess probability 'p0' of exact zeros. They combine a point mass 'p0' at zero with a base distribution with support 'y > 0' for the remaining probability mass '1 - p0'. The fixed effects 'F(X)' and random effects 'Zb' enter only through the base component: 'exp(F(X) + Zb)' is its mean or scale parameter, not the unconditional response mean, which is 'E(y) = (1 - p0) * base_mean'. The structural-zero probability 'p0' is estimated jointly with the base auxiliary parameters. Currently supported bases: ``hurdle_gamma``, ``hurdle_lognormal``, and the extreme-value bases ``hurdle_gpd``, ``hurdle_egpd_power``, ``hurdle_egpd_power_mixture``, ``hurdle_egpd_beta`` and ``hurdle_egpd_power_beta`` (for these 'exp(F(X) + Zb)' is the GPD/EGPD scale parameter and response moments exist only for small enough shape). For all these bases, the prefix ``zero_inflated_`` is accepted as an alias, for example ``zero_inflated_gamma`` maps to ``hurdle_gamma``. See ``zero_inflated_<base>`` under count responses for the corresponding count-data family
 
@@ -291,6 +298,10 @@ Model specification parameters
 -  ``weights`` : one dimensional array (vector) with numeric data or Null, (default = Null)
 
    -  Sample weights. For a Gaussian likelihood, the error variance ("nugget") for observation ``i`` is divided by ``weights[i]``. For non-Gaussian likelihoods, the conditional log-likelihood contribution of observation ``i`` is multiplied by ``weights[i]``. Consequently, weights affect the estimation of both random and fixed effects. Note that a Gaussian likelihood is calculated via the Laplace approximation when ``gp_approx = "vecchia_latent"``, when ``likelihood = "gaussian_latent"``, and when grouped random effects are combined with a Vecchia-approximated Gaussian process. In these cases, the weights act as for a non-Gaussian likelihood, i.e., the Gaussian log-likelihood contribution of observation ``i`` is multiplied by ``weights[i]`` instead of the error variance being divided by it.
+
+-  ``additional_likelihood_data`` : one or two dimensional array (vector or matrix) with numeric data or Null, (default = Null)
+
+   -  Observation-level data that some likelihoods require in addition to the response variable ``y`` (one row per data point). Currently, this is only used by the joint Tweedie likelihoods (``tweedie_joint`` and its variants), for which its first column contains the observed number of events (e.g., claims) 'N'. 'N' must be a non-negative integer that is 0 if and only if 'y' is 0
 
 -  ``cov_fct_taper_range`` : double, (default = 1.)
 

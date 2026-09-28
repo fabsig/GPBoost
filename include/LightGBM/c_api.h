@@ -1353,6 +1353,9 @@ GPBOOST_C_EXPORT int LGBM_NetworkInitWithFunctions(int num_machines,
 * \param weights Sample weights. For Gaussian likelihoods, the error variance of observation i is divided by weights[i].
 *                For non-Gaussian likelihoods, the conditional log-likelihood contribution of observation i is multiplied by weights[i].
 * \param likelihood_learning_rate Likelihood learning rate for generalized Bayesian inference (only non-Gaussian likelihoods)
+* \param num_additional_likelihood_data Number of columns of 'additional_likelihood_data' (0 = none)
+* \param additional_likelihood_data Observation-level data required by some likelihoods in addition to the response variable
+*                (column-major, num_data x num_additional_likelihood_data), e.g., the number of events for "tweedie_joint"
 * \param[out] out Created REModel
 * \return 0 when succeed, -1 when failure happens
 */
@@ -1388,6 +1391,8 @@ GPBOOST_C_EXPORT int GPB_CreateREModel(int32_t num_data,
     bool has_weights,
     const double* weights,
     double likelihood_learning_rate,
+    int num_additional_likelihood_data,
+    const double* additional_likelihood_data,
     REModelHandle* out);
 
 /*!

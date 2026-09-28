@@ -50,7 +50,9 @@ namespace GPBoost {
 		bool GPU_use,
 		bool has_weights,
 		const double* weights,
-		double likelihood_learning_rate) {
+		double likelihood_learning_rate,
+		int num_additional_likelihood_data,
+		const double* additional_likelihood_data) {
 		num_data_ = num_data;
 		likelihood_ = likelihood == nullptr ? "gaussian" : std::string(likelihood);
 		likelihood_additional_param_ = likelihood_additional_param;
@@ -63,6 +65,11 @@ namespace GPBoost {
 			weights_ = std::vector<double>(weights, weights + num_data);
 		}
 		likelihood_learning_rate_ = likelihood_learning_rate;
+		if (num_additional_likelihood_data > 0 && additional_likelihood_data != nullptr) {
+			num_additional_likelihood_data_ = num_additional_likelihood_data;
+			additional_likelihood_data_ = std::vector<double>(additional_likelihood_data,
+				additional_likelihood_data + (size_t)num_data * (size_t)num_additional_likelihood_data);
+		}
 		string_t cov_fct_str = "none";
 		if (cov_fct != nullptr) {
 			cov_fct_str = std::string(cov_fct);
@@ -96,7 +103,8 @@ namespace GPBoost {
 				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, gp_approx,
 				cov_fct_taper_range, cov_fct_taper_shape, num_neighbors, vecchia_ordering, num_ind_points, cover_tree_radius, ind_points_selection,
 				likelihood, likelihood_additional_param, matrix_inversion_method, seed, num_parallel_threads, GPU_use,
-				has_weights, weights, likelihood_learning_rate));
+				has_weights, weights, likelihood_learning_rate, num_additional_likelihood_data_,
+				additional_likelihood_data_.empty() ? nullptr : additional_likelihood_data_.data()));
 			num_cov_pars_ = re_model_sp_->num_cov_par_;
 			num_sets_fixed_effects_ = re_model_sp_->num_sets_fixed_effects_;
 		}
@@ -107,7 +115,8 @@ namespace GPBoost {
 				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, gp_approx,
 				cov_fct_taper_range, cov_fct_taper_shape, num_neighbors, vecchia_ordering, num_ind_points, cover_tree_radius, ind_points_selection,
 				likelihood, likelihood_additional_param, matrix_inversion_method, seed, num_parallel_threads, GPU_use,
-				has_weights, weights, likelihood_learning_rate));
+				has_weights, weights, likelihood_learning_rate, num_additional_likelihood_data_,
+				additional_likelihood_data_.empty() ? nullptr : additional_likelihood_data_.data()));
 			num_cov_pars_ = re_model_sp_rm_->num_cov_par_;
 			num_sets_fixed_effects_ = re_model_sp_rm_->num_sets_fixed_effects_;
 		}
@@ -118,7 +127,8 @@ namespace GPBoost {
 				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, gp_approx,
 				cov_fct_taper_range, cov_fct_taper_shape, num_neighbors, vecchia_ordering, num_ind_points, cover_tree_radius, ind_points_selection,
 				likelihood, likelihood_additional_param, matrix_inversion_method, seed, num_parallel_threads, GPU_use,
-				has_weights, weights, likelihood_learning_rate));
+				has_weights, weights, likelihood_learning_rate, num_additional_likelihood_data_,
+				additional_likelihood_data_.empty() ? nullptr : additional_likelihood_data_.data()));
 			num_cov_pars_ = re_model_den_->num_cov_par_;
 			num_sets_fixed_effects_ = re_model_den_->num_sets_fixed_effects_;
 		}
@@ -422,7 +432,8 @@ namespace GPBoost {
 				0, nullptr, 0, nullptr, 0, nullptr, 1.5, "none",
 				1., 1., -1, "random", -1, 1., "kmeans++",
 				likelihood_iid.c_str(), likelihood_additional_param_, "cholesky", seed_, num_parallel_threads_, GPU_use_,
-				weights_ptr != nullptr, weights_ptr, likelihood_learning_rate_));
+				weights_ptr != nullptr, weights_ptr, likelihood_learning_rate_, num_additional_likelihood_data_,
+				additional_likelihood_data_.empty() ? nullptr : additional_likelihood_data_.data()));
 		const bool estimate_aux_pars_iid = !init_aux_pars_given_ && re_model->estimate_aux_pars_ && re_model_iid->NumAuxPars() > 0;
 		const bool learn_cov_aux_pars_iid = estimate_aux_pars_iid;
 		std::vector<int> estimate_cov_par_index_iid(re_model_iid->num_cov_par_, 0);
