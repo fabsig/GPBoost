@@ -34,6 +34,7 @@ namespace GPBoost {
 		data_size_t num_gp_rand_coef,
 		const char* cov_fct,
 		double cov_fct_shape,
+		int cov_fct_order,
 		const char* gp_approx,
 		double cov_fct_taper_range,
 		double cov_fct_taper_shape,
@@ -100,7 +101,7 @@ namespace GPBoost {
 			re_model_sp_ = std::unique_ptr<REModelTemplate<sp_mat_t, chol_cholmod_sp_mat_t>>(new REModelTemplate<sp_mat_t, chol_cholmod_sp_mat_t>(
 				num_data, cluster_ids_data, re_group_data, num_re_group, re_group_rand_coef_data, 
 				ind_effect_group_rand_coef, num_re_group_rand_coef, drop_intercept_group_rand_effect,
-				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, gp_approx,
+				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, cov_fct_order, gp_approx,
 				cov_fct_taper_range, cov_fct_taper_shape, num_neighbors, vecchia_ordering, num_ind_points, cover_tree_radius, ind_points_selection,
 				likelihood, likelihood_additional_param, matrix_inversion_method, seed, num_parallel_threads, GPU_use,
 				has_weights, weights, likelihood_learning_rate, num_additional_likelihood_data_,
@@ -112,7 +113,7 @@ namespace GPBoost {
 			re_model_sp_rm_ = std::unique_ptr<REModelTemplate<sp_mat_rm_t, chol_cholmod_sp_mat_rm_t>>(new REModelTemplate<sp_mat_rm_t, chol_cholmod_sp_mat_rm_t>(
 				num_data, cluster_ids_data, re_group_data, num_re_group, re_group_rand_coef_data,
 				ind_effect_group_rand_coef, num_re_group_rand_coef, drop_intercept_group_rand_effect,
-				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, gp_approx,
+				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, cov_fct_order, gp_approx,
 				cov_fct_taper_range, cov_fct_taper_shape, num_neighbors, vecchia_ordering, num_ind_points, cover_tree_radius, ind_points_selection,
 				likelihood, likelihood_additional_param, matrix_inversion_method, seed, num_parallel_threads, GPU_use,
 				has_weights, weights, likelihood_learning_rate, num_additional_likelihood_data_,
@@ -124,7 +125,7 @@ namespace GPBoost {
 			re_model_den_ = std::unique_ptr <REModelTemplate< den_mat_t, chol_den_mat_t>>(new REModelTemplate<den_mat_t, chol_den_mat_t>(
 				num_data, cluster_ids_data, re_group_data, num_re_group, re_group_rand_coef_data,
 				ind_effect_group_rand_coef, num_re_group_rand_coef, drop_intercept_group_rand_effect,
-				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, gp_approx,
+				num_gp, gp_coords_data, dim_gp_coords, gp_rand_coef_data, num_gp_rand_coef, cov_fct, cov_fct_shape, cov_fct_order, gp_approx,
 				cov_fct_taper_range, cov_fct_taper_shape, num_neighbors, vecchia_ordering, num_ind_points, cover_tree_radius, ind_points_selection,
 				likelihood, likelihood_additional_param, matrix_inversion_method, seed, num_parallel_threads, GPU_use,
 				has_weights, weights, likelihood_learning_rate, num_additional_likelihood_data_,
@@ -429,7 +430,7 @@ namespace GPBoost {
 			std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>>(new REModelTemplate<den_mat_t, chol_den_mat_t>(
 				num_data_, nullptr, re_group_data_iid.data(), 1, nullptr,
 				nullptr, 0, nullptr,
-				0, nullptr, 0, nullptr, 0, nullptr, 1.5, "none",
+				0, nullptr, 0, nullptr, 0, nullptr, 1.5, 1, "none",
 				1., 1., -1, "random", -1, 1., "kmeans++",
 				likelihood_iid.c_str(), likelihood_additional_param_, "cholesky", seed_, num_parallel_threads_, GPU_use_,
 				weights_ptr != nullptr, weights_ptr, likelihood_learning_rate_, num_additional_likelihood_data_,

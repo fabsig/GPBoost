@@ -1053,4 +1053,326 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   }) # end hurst covariance
 
+  test_that("hurst covariance of order 2 ", {
+
+    # Anchored second-order Hurst covariance (1 < H < 2); 'ranges' are the ARD ranges of the coordinates 2, ..., d
+    hurst2_cov <- function(t, pars, t2 = t, ranges = NULL) {
+      force(t2)
+      if (!is.null(ranges)) {
+        t <- t %*% diag(c(1, 1 / ranges), ncol(t))
+        t2 <- t2 %*% diag(c(1, 1 / ranges), ncol(t2))
+      }
+      H <- pars[2]
+      r <- rowSums(t^2)
+      r2 <- rowSums(t2^2)
+      D2 <- 0
+      for (k in 1:ncol(t)) D2 <- D2 + outer(t[, k], t2[, k], "-")^2
+      pars[1] / (2 * (2 * H - 1)) * (D2^H - outer(r^H, r2^H, "+") + 2 * H * (t %*% t(t2)) * outer(r^(H - 1), r2^(H - 1), "+"))
+    }
+    gauss_nll <- function(y, Sigma) {
+      0.5 * sum(y * solve(Sigma, y)) + 0.5 * as.numeric(determinant(Sigma)$modulus) + 0.5 * length(y) * log(2 * pi)
+    }
+
+    params <- OPTIM_PARAMS_BFGS
+
+    H_true <- 1.5
+    sigma2_true <- 1
+    K <- hurst2_cov(coords, c(sigma2_true, H_true))
+    b <- drop(t(chol(K + 1e-10 * diag(n))) %*% qnorm(sim_rand_unif(n=n, init_c=0.2461)))
+    y <- drop(X %*% beta) + b + qnorm(sim_rand_unif(n=n, init_c=0.3317), sd=0.1)
+
+    coord_test <- matrix(sim_rand_unif(n=3*2, init_c=0.19156), ncol=2)
+    X_test <- cbind(rep(1,3),c(-0.5,0.2,0.4))
+
+    likelihood <- "gaussian"
+    cov_function <- "hurst"
+    cov_fct_order <- 2
+
+    # Evaluate negative log-likelihood
+    cov_pars_eval <- c(0.01, sigma2_true, H_true)
+    capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order) , file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
+    nll_exp <- 8328.797471
+    expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
+    expect_lt(abs(nll-gauss_nll(y, hurst2_cov(coords, cov_pars_eval[-1]) + diag(cov_pars_eval[1], n))),TOLERANCE_STRICT)
+    capture.output( gp_model_int <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = 2L) , file='NUL')
+    expect_equal(gp_model_int$neg_log_likelihood(cov_pars=cov_pars_eval,y=y), nll)
+    # Estimation
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function,
+                                           cov_fct_order = cov_fct_order, X=X, y = y, params = params) , file='NUL')
+    cov_pars_exp <- c(0.01433277887, 0.9375252319, 1.457563386)
+    cov_pars_std_err_exp <- c(0.002306404878, 0.5120739393, 0.2985738105)
+    coef_exp <- c(0.06880575111, 1.990641292)
+    nll_opt_exp <- -51.06899076
+    num_it <- 25
+    cov_pars <- gp_model$get_cov_pars(std_err = TRUE)
+    expect_lt(sum(abs(as.vector(cov_pars[1,])-cov_pars_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(cov_pars[2,])-cov_pars_std_err_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it)
+    # Prediction
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test, predict_var=TRUE, predict_response = FALSE)
+    expected_mu <- c(-1.045440734, 0.1936336084, 0.7465159477)
+    expected_var <- c(0.003768442958, 0.001592648545, 0.001669263371)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
+    # The predictions equal the kriging formulas with the covariance function above
+    Sigma_opt <- hurst2_cov(coords, cov_pars_exp[-1]) + diag(cov_pars_exp[1], n)
+    K_cross <- hurst2_cov(coord_test, cov_pars_exp[-1], coords)
+    mu_R <- drop(X_test %*% coef_exp) + drop(K_cross %*% solve(Sigma_opt, y - drop(X %*% coef_exp)))
+    var_R <- diag(hurst2_cov(coord_test, cov_pars_exp[-1])) - rowSums(K_cross * t(solve(Sigma_opt, t(K_cross))))
+    expect_lt(sum(abs(pred$mu-mu_R)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-var_R)),TOLERANCE_STRICT)
+    # Saving and loading
+    filename <- tempfile(fileext = ".json")
+    on.exit(unlink(filename), add = TRUE)
+    saveGPModel(gp_model, filename = filename)
+    capture.output( gp_model_loaded <- loadGPModel(filename) , file='NUL')
+    pred_loaded <- predict(gp_model_loaded, y=y, gp_coords_pred = coord_test, X_pred = X_test, predict_var=TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred_loaded$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_loaded$var-expected_var)),TOLERANCE_STRICT)
+    # A model saved without 'cov_fct_order' (i.e., with an older version) is loaded with order 1
+    capture.output( gp_model_order1 <- fitGPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function,
+                                                  X=X, y = y, params = params) , file='NUL')
+    model_list <- gp_model_order1$model_to_list()
+    expect_equal(model_list[["cov_fct_order"]], 1L)
+    model_list[["cov_fct_order"]] <- NULL
+    writeLines(RJSONIO::toJSON(model_list, digits = 17), filename)
+    capture.output( gp_model_loaded <- loadGPModel(filename) , file='NUL')
+    pred_order1 <- predict(gp_model_order1, y=y, gp_coords_pred = coord_test, X_pred = X_test, predict_var=TRUE, predict_response = FALSE)
+    pred_loaded <- predict(gp_model_loaded, y=y, gp_coords_pred = coord_test, X_pred = X_test, predict_var=TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred_loaded$mu-pred_order1$mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_loaded$var-pred_order1$var)),TOLERANCE_STRICT)
+    expect_gt(sum(abs(pred_order1$mu-expected_mu)),0.01)
+
+    ## Vecchia approximation
+    gp_approx <- "vecchia"
+    num_neighbors <- n - 1
+    capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
+                                        gp_approx = gp_approx, num_neighbors = num_neighbors, vecchia_ordering = "none") , file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
+    expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
+                                           X=X, y = y, params = params, gp_approx = gp_approx, num_neighbors = num_neighbors,
+                                           vecchia_ordering = "none") , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it)
+    gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
+    capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                                    predict_var=TRUE, predict_response = FALSE) , file='NUL')
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
+
+    num_neighbors <- 20
+    capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
+                                        gp_approx = gp_approx, num_neighbors = num_neighbors, vecchia_ordering = "none") , file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
+    expect_lt(abs(nll-8251.906099),TOLERANCE_STRICT)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
+                                           X=X, y = y, params = params, gp_approx = gp_approx, num_neighbors = num_neighbors,
+                                           vecchia_ordering = "none") , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-c(0.01406317641, 1.106301664, 1.558216601))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(0.07376208843, 1.9898108))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-(-51.53614832))),TOLERANCE_MEDIUM)
+    gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
+    capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                                    predict_var=TRUE, predict_response = FALSE) , file='NUL')
+    expect_lt(sum(abs(pred$mu-c(-1.046957336, 0.1970476608, 0.7471312879))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred$var-c(0.00359821399, 0.001538512908, 0.001584914559))),TOLERANCE_MEDIUM)
+
+    ## FITC and VIF approximations with n - 1 inducing points
+    ind_points_selection <- "random"
+    num_ind_points <- n - 1
+    for (gp_approx in c("fitc", "vif")) {
+      tol_approx <- if (gp_approx == "fitc") 5e-4 else 1e-5
+      capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
+                                          gp_approx = gp_approx, num_ind_points = num_ind_points, ind_points_selection = ind_points_selection,
+                                          num_neighbors = 20) , file='NUL')
+      nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
+      expect_lt(abs(nll-nll_exp),10*tol_approx)
+      capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
+                                             X=X, y = y, params = params, gp_approx = gp_approx, num_ind_points = num_ind_points,
+                                             ind_points_selection = ind_points_selection, num_neighbors = 20) , file='NUL')
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),tol_approx)
+      expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),tol_approx)
+      expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),tol_approx)
+      capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                                      predict_var=TRUE, predict_response = FALSE) , file='NUL')
+      expect_lt(sum(abs(pred$mu-expected_mu)),tol_approx)
+      expect_lt(sum(abs(pred$var-expected_var)),tol_approx)
+    }
+
+    ## GPBoost algorithm
+    dtrain <- gpb.Dataset(data = X, label = y)
+    capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order) , file='NUL')
+    gp_model$set_optim_params(params=OPTIM_PARAMS_BFGS)
+    bst <- gpboost(data = dtrain, gp_model = gp_model, nrounds = 20, learning_rate = 0.1, max_depth = 6, min_data_in_leaf = 5, verbose = 0)
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE)-c(0.08593392492, 0.8276047013, 1.567443162))),TOLERANCE_MEDIUM)
+    pred <- predict(bst, data = X_test, gp_coords_pred = coord_test, predict_var = TRUE, pred_latent = TRUE)
+    expect_lt(sum(abs(pred$fixed_effect-c(-0.4292684618, 0.2094116307, 0.5277758807))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred$random_effect_mean-c(-0.08877789705, -0.2558258985, -0.04872671587))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred$random_effect_cov-c(0.007648948665, 0.00450959984, 0.00355998048))),TOLERANCE_MEDIUM)
+    # Cross-validation (the order has to be passed on to the models of the folds; the order 1 model has best_score = 0.2075509972)
+    capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order) , file='NUL')
+    gp_model$set_optim_params(params=OPTIM_PARAMS_BFGS)
+    capture.output( cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model, nrounds = 20, early_stopping_rounds = 5,
+                                    folds = folds, verbose = 0, eval = "l2") , file='NUL')
+    expect_lt(abs(cvbst$best_score-0.1503614213),TOLERANCE_MEDIUM)
+    expect_equal(cvbst$best_iter, 14)
+
+    ## GP random coefficients: all components use the same order
+    pars_rc <- c(0.01, 1, 1.5, 0.7, 1.2, 0.5, 1.8)
+    capture.output( gp_model <- GPModel(gp_coords = coords, gp_rand_coef_data = Z_SVC, likelihood = likelihood,
+                                        cov_function = cov_function, cov_fct_order = cov_fct_order) , file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=pars_rc,y=y)
+    Sigma_rc <- hurst2_cov(coords, pars_rc[2:3]) + diag(Z_SVC[,1]) %*% hurst2_cov(coords, pars_rc[4:5]) %*% diag(Z_SVC[,1]) +
+      diag(Z_SVC[,2]) %*% hurst2_cov(coords, pars_rc[6:7]) %*% diag(Z_SVC[,2]) + diag(pars_rc[1], n)
+    expect_lt(abs(nll-gauss_nll(y, Sigma_rc)),TOLERANCE_STRICT)
+    expect_lt(abs(nll-7303.702863),TOLERANCE_STRICT)
+
+    ####################
+    ## non-Gaussian likelihood
+    ####################
+    likelihood <- "poisson"
+    y_pois <- qpois(sim_rand_unif(n=n, init_c=0.7713), lambda = exp(2 + sqrt(3) * b))
+    # Evaluate negative log-likelihood
+    cov_pars_eval_pois <- c(3, H_true)
+    capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
+                                        matrix_inversion_method = "cholesky") , file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval_pois,y=y_pois)
+    nll_exp_pois <- 288.1632286
+    expect_lt(abs(nll-nll_exp_pois),TOLERANCE_STRICT)
+    # Laplace approximation calculated directly (Newton's method for the mode, Rasmussen and Williams, 2006, Algorithm 3.1)
+    K_pois <- hurst2_cov(coords, cov_pars_eval_pois)
+    b_mode <- rep(0, n)
+    for (it in 1:100) {
+      mu <- exp(b_mode)
+      L <- t(chol(diag(n) + outer(sqrt(mu), sqrt(mu)) * K_pois))
+      a_vec <- mu * b_mode + (y_pois - mu)
+      b_mode <- drop(K_pois %*% (a_vec - sqrt(mu) * backsolve(t(L), forwardsolve(L, sqrt(mu) * drop(K_pois %*% a_vec)))))
+    }
+    mu <- exp(b_mode)
+    L <- t(chol(diag(n) + outer(sqrt(mu), sqrt(mu)) * K_pois))
+    nll_laplace <- -sum(dpois(y_pois, mu, log = TRUE)) + 0.5 * sum(b_mode * (y_pois - mu)) + sum(log(diag(L)))
+    expect_lt(abs(nll-nll_laplace),TOLERANCE_STRICT)
+    capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
+                                        matrix_inversion_method = "cholesky", gp_approx = "vecchia", num_neighbors = n - 1,
+                                        vecchia_ordering = "none") , file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval_pois,y=y_pois)
+    expect_lt(abs(nll-nll_exp_pois),TOLERANCE_STRICT)
+    # Estimation
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
+                                           matrix_inversion_method = "cholesky", X=X, y = y_pois, params = params) , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-c(2.186339104, 1.347510797))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(1.730161538, -0.01931586557))),TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-251.408017),TOLERANCE_MEDIUM)
+    # Prediction
+    pred <- predict(gp_model, y=y_pois, gp_coords_pred = coord_test, X_pred = X_test, predict_var=TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred$mu-c(1.798566508, 1.466171955, 1.608439515))),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred$var-c(0.02043631575, 0.0136666458, 0.01215659935))),TOLERANCE_MEDIUM)
+
+    ####################
+    ## Hurst ARD
+    ####################
+    likelihood <- "gaussian"
+    cov_function <- "hurst_ard"
+    cov_pars_eval <- c(0.01, sigma2_true, H_true, 1.5)
+    capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order) , file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
+    nll_exp <- 8633.532102
+    expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
+    expect_lt(abs(nll-gauss_nll(y, hurst2_cov(coords, cov_pars_eval[2:3], ranges = cov_pars_eval[4]) + diag(cov_pars_eval[1], n))),TOLERANCE_STRICT)
+    # Estimation
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function,
+                                           cov_fct_order = cov_fct_order, X=X, y = y, params = params) , file='NUL')
+    cov_pars_exp <- c(0.01423901997, 0.8784232162, 1.459892413, 0.9278775066)
+    cov_pars_std_err_exp <- c(0.002296094898, 0.6337320655, 0.2958239064, 0.3048287672)
+    coef_exp <- c(0.06736140402, 1.990622554)
+    nll_opt_exp <- -51.08995827
+    cov_pars <- gp_model$get_cov_pars(std_err = TRUE)
+    expect_lt(sum(abs(as.vector(cov_pars[1,])-cov_pars_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(cov_pars[2,])-cov_pars_std_err_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 33)
+    # Prediction
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test, predict_var=TRUE, predict_response = FALSE)
+    expected_mu <- c(-1.041885666, 0.1968946523, 0.745204728)
+    expected_var <- c(0.003946186509, 0.001622511011, 0.001715037408)
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
+    ## Vecchia approximation
+    capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
+                                        gp_approx = "vecchia", num_neighbors = n - 1, vecchia_ordering = "none") , file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
+    expect_lt(abs(nll-nll_exp),TOLERANCE_STRICT)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
+                                           X=X, y = y, params = params, gp_approx = "vecchia", num_neighbors = n - 1,
+                                           vecchia_ordering = "none") , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),TOLERANCE_STRICT)
+    gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
+    capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
+                                    predict_var=TRUE, predict_response = FALSE) , file='NUL')
+    expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_STRICT)
+
+    ####################
+    ## Continuous-time RW1 and RW2 priors (H fixed to 0.5 and 1.5)
+    ####################
+    cov_function <- "hurst"
+    time_mat <- matrix(time)
+    a_min <- outer(time, time, pmin)
+    a_max <- outer(time, time, pmax)
+    # RW2: integrated Wiener process with covariance q / 6 * min^2 * (3 * max - min) and q = 3 * sigma2
+    capture.output( gp_model <- GPModel(gp_coords = time_mat, likelihood = likelihood, cov_function = cov_function, cov_fct_order = 2) , file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.01, 0.8, 1.5),y=y)
+    expect_lt(abs(nll-gauss_nll(y, 3 * 0.8 / 6 * a_min^2 * (3 * a_max - a_min) + diag(0.01, n))),TOLERANCE_STRICT)
+    expect_lt(abs(nll-9600.29288),TOLERANCE_STRICT)
+    # RW1: Brownian motion with covariance q * min and q = sigma2
+    capture.output( gp_model <- GPModel(gp_coords = time_mat, likelihood = likelihood, cov_function = cov_function, cov_fct_order = 1) , file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars=c(0.01, 0.8, 0.5),y=y)
+    expect_lt(abs(nll-gauss_nll(y, 0.8 * a_min + diag(0.01, n))),TOLERANCE_STRICT)
+    expect_lt(abs(nll-6317.787058),TOLERANCE_STRICT)
+    # Estimation with H fixed, data simulated from an integrated Wiener process (q = 30) and a Brownian motion (q = 5)
+    z_t <- qnorm(sim_rand_unif(n=n, init_c=0.5173))
+    eps_t <- qnorm(sim_rand_unif(n=n, init_c=0.2291), sd=0.1)
+    y_iwp <- 1 + 2 * time + drop(t(chol(30 / 6 * a_min^2 * (3 * a_max - a_min) + diag(1e-10, n))) %*% z_t) + eps_t
+    y_bm <- 1 + drop(t(chol(5 * a_min)) %*% z_t) + eps_t
+    capture.output( gp_model <- fitGPModel(gp_coords = time_mat, likelihood = likelihood, cov_function = cov_function, cov_fct_order = 2,
+                                           X = cbind(1, time), y = y_iwp,
+                                           params = c(params, list(init_cov_pars = c(0.1, 1, 1.5), estimate_cov_par_index = c(1, 1, 0)))) , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-c(0.01100721703, 0.7023021607, 1.5))),TOLERANCE_STRICT)
+    expect_equal(as.numeric(gp_model$get_cov_pars(std_err = FALSE)[3]), 1.5)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-c(0.9706791991, 2.252732195))),TOLERANCE_STRICT)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-(-76.24786882)),TOLERANCE_STRICT)
+    capture.output( gp_model <- fitGPModel(gp_coords = time_mat, likelihood = likelihood, cov_function = cov_function, cov_fct_order = 1,
+                                           X = matrix(1, n), y = y_bm,
+                                           params = c(params, list(init_cov_pars = c(0.1, 1, 0.5), estimate_cov_par_index = c(1, 1, 0)))) , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-c(0.01821958853, 4.424321581, 0.5))),TOLERANCE_STRICT)
+    expect_equal(as.numeric(gp_model$get_cov_pars(std_err = FALSE)[3]), 0.5)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-13.15477627),TOLERANCE_STRICT)
+
+    ####################
+    ## Validation of the order and of H
+    ####################
+    expect_error(capture.output( GPModel(gp_coords = coords, cov_function = "hurst", cov_fct_order = 3) , file='NUL'))
+    expect_error(capture.output( GPModel(gp_coords = coords, cov_function = "hurst", cov_fct_order = 0) , file='NUL'))
+    expect_error(capture.output( GPModel(gp_coords = coords, cov_function = "hurst", cov_fct_order = 1.5) , file='NUL'))
+    expect_error(capture.output( GPModel(gp_coords = coords, cov_function = "hurst", cov_fct_order = c(1, 2)) , file='NUL'))
+    expect_error(capture.output( GPModel(gp_coords = coords, cov_function = "matern", cov_fct_order = 2) , file='NUL'))
+    expect_error(capture.output( GPModel(gp_coords = coords, cov_function = "gaussian_ard", cov_fct_order = 2) , file='NUL'))
+    capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "hurst", cov_fct_order = 2) , file='NUL')
+    expect_error(gp_model$neg_log_likelihood(cov_pars=c(0.01, 1, 0.5),y=y))
+    expect_error(gp_model$neg_log_likelihood(cov_pars=c(0.01, 1, 2),y=y))
+    capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "hurst", cov_fct_order = 1) , file='NUL')
+    expect_error(gp_model$neg_log_likelihood(cov_pars=c(0.01, 1, 1.5),y=y))
+    expect_error(capture.output( fitGPModel(gp_coords = coords, cov_function = "hurst", cov_fct_order = 2, y = y,
+                                            params = list(init_cov_pars = c(0.01, 1, 0.5))) , file='NUL'))
+
+  }) # end hurst covariance of order 2
+
 }

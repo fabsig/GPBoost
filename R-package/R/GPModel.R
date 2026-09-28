@@ -243,12 +243,16 @@
 #' \item{ "linear": linear covariance function. This corresponds to a Bayesian linear 
 #' regression model with a Gaussian prior on the coefficients with a constant variance 
 #' diagonal prior covariance, and the prior variance is estimated using empirical Bayes. }
-#' \item{ "hurst": Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ). 
-#' For H = 0.5, this corresponds to Brownian motion (-> see the 'estimate_cov_par_index' argument) }
+#' \item{ "hurst": Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ), 0 < H < 1.
+#' For H = 0.5, this corresponds to Brownian motion (-> see the 'estimate_cov_par_index' argument).
+#' This is the covariance for \code{cov_fct_order = 1} (default). For \code{cov_fct_order = 2}, the second-order Hurst covariance
+#' cov(s, s') = sigma2 / (2 (2H - 1)) * ( ||s - s'||^(2H) - ||s||^(2H) - ||s'||^(2H) + 2H (s^T s') (||s||^(2H-2) + ||s'||^(2H-2)) ), 1 < H < 2,
+#' is used. For H = 1.5, this corresponds to an integrated Wiener process. See \code{cov_fct_order} for more details }
 #' \item{ "hurst_ard": Hurst covariance function with with Automatic Relevance Determination (ARD), 
 #' i.e., with a different range parameter for every coordinate of ``gp_coords`` except 
 #' for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: 
-#' \eqn{ cov(s, s') = (\sigma^2/2)\left[ \left(s_1^2 + \sum_{k=2}^d (s_k/l_k)^2\right)^H + \left({s'}_1^2 + \sum_{k=2}^d ({s'}_k/l_k)^2\right)^H - \left((s_1-{s'}_1)^2 + \sum_{k=2}^d ((s_k-{s'}_k)/l_k)^2\right)^H \right] } }
+#' \eqn{ cov(s, s') = (\sigma^2/2)\left[ \left(s_1^2 + \sum_{k=2}^d (s_k/l_k)^2\right)^H + \left({s'}_1^2 + \sum_{k=2}^d ({s'}_k/l_k)^2\right)^H - \left((s_1-{s'}_1)^2 + \sum_{k=2}^d ((s_k-{s'}_k)/l_k)^2\right)^H \right] }.
+#' For \code{cov_fct_order = 2}, the second-order Hurst covariance (see "hurst") is applied to the scaled coordinates (s_1, s_2/l_2, ..., s_d/l_d) }
 #' \item{ "ar1_mf_<base>": two-level autoregressive multifidelity covariance defined by
 #' \eqn{f_H(x)=\rho f_L(x)+\delta(x)}, where \eqn{f_L} and \eqn{\delta} are independent Gaussian processes
 #' using the same base covariance type but separate parameter vectors. 
@@ -269,6 +273,28 @@
 #' @param cov_fct_shape A \code{numeric} specifying the shape parameter of the covariance function 
 #' (e.g., smoothness parameter for Matern and Wendland covariance)  
 #' This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
+#' @param cov_fct_order An \code{integer} specifying the order m of the "hurst" and "hurst_ard" covariance functions
+#' (also when used as base covariance in "ar1_mf_hurst" and "ar1_mf_hurst_ard"). Currently, the orders 1 (default) and 2 are supported.
+#' The Hurst exponent H of the order m satisfies m - 1 < H < m, and H = m - 0.5 is used as initial value.
+#' Order 1 is a fractional Brownian motion / field anchored at the origin (b(0) = 0), and order 2 is a second-order Hurst process / field
+#' anchored at the origin such that both the process and its gradient are zero there (b(0) = 0, grad b(0) = 0).
+#' The origin of the coordinates thus is a part of the model, and the coordinates are not centered internally.
+#' The order is not estimated. It can be chosen, e.g., by comparing the marginal likelihoods or by cross-validation.
+#' For all other covariance functions, this must be 1.
+#' \itemize{
+#' \item{ Continuous-time RW1 prior: use \code{cov_function = "hurst"}, \code{cov_fct_order = 1}, and fix H = 0.5.
+#' This is a Brownian motion with b(0) = 0 and b'(t) = sqrt(q) W'(t), where W' denotes white noise and q = sigma2 }
+#' \item{ Continuous-time RW2 prior: use \code{cov_function = "hurst"}, \code{cov_fct_order = 2}, and fix H = 1.5.
+#' This is an integrated Wiener process with b(0) = b'(0) = 0 and b''(t) = sqrt(q) W'(t), where q = 3 * sigma2 }
+#' }
+#' For these priors, use a one-dimensional time coordinate t >= 0 whose origin t = 0 is the desired anchor (shift the time points if necessary).
+#' H can be fixed using the 'init_cov_pars' and 'estimate_cov_par_index' arguments of the \code{params} argument,
+#' see the examples of \code{\link{fitGPModel}}.
+#' If the polynomial null space of the intrinsic model should not be penalized, include an intercept (RW1) or
+#' an intercept and a linear time trend (RW2) as fixed effects.
+#' Note that the order 2 model with H = 1.5 is the continuous-time RW2 prior evaluated at the time points and
+#' not the usual discrete intrinsic RW2 prior on a lattice: for equally spaced time points, adjacent second differences
+#' are correlated (correlation 1/4) whereas they are independent for the discrete RW2
 #' @param gp_approx A \code{string} specifying the large data approximation
 #' for Gaussian processes. Available options: 
 #' \itemize{
@@ -689,6 +715,7 @@ GPModel_shared_params <- function(likelihood = NULL,
                                   cov_function = NULL,
                                   fidelity_specific_mean = NULL,
                                   cov_fct_shape = NULL,
+                                  cov_fct_order = NULL,
                                   gp_approx = NULL,
                                   num_parallel_threads = NULL,
                                   GPU_use = NULL,
@@ -775,6 +802,7 @@ gpb.GPModel <- R6::R6Class(
                           num_data = NULL,
                           likelihood_additional_param = NULL,
                           fidelity_specific_mean = TRUE,
+                          cov_fct_order = 1L,
                           free_raw_data = FALSE,
                           modelfile = NULL,
                           model_list = NULL,
@@ -837,6 +865,7 @@ gpb.GPModel <- R6::R6Class(
         cov_function = model_list[["cov_function"]]
         fidelity_specific_mean <- if (is.null(model_list[["fidelity_specific_mean"]])) FALSE else isTRUE(model_list[["fidelity_specific_mean"]])
         cov_fct_shape = model_list[["cov_fct_shape"]]
+        cov_fct_order <- if (is.null(model_list[["cov_fct_order"]])) 1L else model_list[["cov_fct_order"]]
         gp_approx = model_list[["gp_approx"]]
         matrix_inversion_method = model_list[["matrix_inversion_method"]]
         weights = model_list[["weights"]]
@@ -1115,6 +1144,11 @@ gpb.GPModel <- R6::R6Class(
         gp_coords <- as.vector(matrix(private$gp_coords)) #convert to correct format for sending to C
         private$cov_function <- as.character(cov_function)
         private$cov_fct_shape <- as.numeric(cov_fct_shape)
+        if (!(is.numeric(cov_fct_order) && length(cov_fct_order) == 1L && !is.na(cov_fct_order) &&
+              cov_fct_order == round(cov_fct_order))) {
+          stop("GPModel: ", sQuote("cov_fct_order"), " must be a single integer")
+        }
+        private$cov_fct_order <- as.integer(cov_fct_order)
         private$gp_approx <- as.character(gp_approx)
         private$cov_fct_taper_range <- as.numeric(cov_fct_taper_range)
         private$cov_fct_taper_shape <- as.numeric(cov_fct_taper_shape)
@@ -1346,6 +1380,7 @@ gpb.GPModel <- R6::R6Class(
         , private$num_gp_rand_coef
         , private$cov_function
         , private$cov_fct_shape
+        , private$cov_fct_order
         , private$gp_approx
         , private$cov_fct_taper_range
         , private$cov_fct_taper_shape
@@ -2783,6 +2818,7 @@ gpb.GPModel <- R6::R6Class(
       model_list[["cov_function"]] <- private$cov_function
       model_list[["fidelity_specific_mean"]] <- private$fidelity_specific_mean
       model_list[["cov_fct_shape"]] <- private$cov_fct_shape
+      model_list[["cov_fct_order"]] <- private$cov_fct_order
       model_list[["gp_approx"]] <- private$gp_approx
       model_list[["matrix_inversion_method"]] <- private$matrix_inversion_method
       model_list[["weights"]] <- private$weights
@@ -3013,6 +3049,7 @@ gpb.GPModel <- R6::R6Class(
     is_ar1_multifidelity = FALSE,
     fidelity_specific_mean = FALSE,
     cov_fct_shape = 1.5,
+    cov_fct_order = 1L,
     gp_approx = "none",
     matrix_inversion_method = "default",
     has_weights = FALSE,
@@ -3373,6 +3410,7 @@ GPModel <- function(likelihood = "gaussian",
                     cluster_ids = NULL,
                     likelihood_additional_param = NULL,
                     fidelity_specific_mean = TRUE,
+                    cov_fct_order = 1L,
                     num_data = NULL,
                     free_raw_data = FALSE,
                     vecchia_approx = NULL,
@@ -3390,6 +3428,7 @@ GPModel <- function(likelihood = "gaussian",
                             , cov_function = cov_function
                             , fidelity_specific_mean = fidelity_specific_mean
                             , cov_fct_shape = cov_fct_shape
+                            , cov_fct_order = cov_fct_order
                             , gp_approx = gp_approx
                             , num_parallel_threads = num_parallel_threads
                             , GPU_use = GPU_use
@@ -3561,8 +3600,21 @@ fit.GPModel <- function(gp_model,
 #'                        gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
 #'                        likelihood = "gaussian", y = y, X = X1)
 #' summary(gp_model)
+#'
+#' #--------------------Continuous-time RW2 prior for a time series----------------
+#' # The prior is anchored at time t = 0, i.e., b(0) = b'(0) = 0
+#' time <- seq(0, 1, length.out = 100)
+#' y_time <- sin(2 * pi * time) + rnorm(100, sd = 0.2)
+#' X_time <- cbind(Intercept = 1, trend = time) # unpenalized intercept and linear trend
+#' # The covariance parameters are (error variance, GP variance, H), and H = 1.5 is not estimated
+#' gp_model <- fitGPModel(gp_coords = time, cov_function = "hurst", cov_fct_order = 2,
+#'                        likelihood = "gaussian", y = y_time, X = X_time,
+#'                        params = list(init_cov_pars = c(0.1, 1, 1.5),
+#'                                      estimate_cov_par_index = c(1, 1, 0)))
+#' summary(gp_model)
+#' # Continuous-time RW1 prior: cov_fct_order = 1, H fixed to 0.5, and only an intercept
 #' }
-#' 
+#'
 #' @rdname fitGPModel
 #' @author Fabio Sigrist
 #' @export fitGPModel
@@ -3592,6 +3644,7 @@ fitGPModel <- function(likelihood = "gaussian",
                        seed = 0L,
                        cluster_ids = NULL,
                        fidelity_specific_mean = TRUE,
+                       cov_fct_order = 1L,
                        free_raw_data = FALSE,
                        y,
                        X = NULL,
@@ -3613,6 +3666,7 @@ fitGPModel <- function(likelihood = "gaussian",
                              , cov_function = cov_function
                              , fidelity_specific_mean = fidelity_specific_mean
                              , cov_fct_shape = cov_fct_shape
+                             , cov_fct_order = cov_fct_order
                              , gp_approx = gp_approx
                              , num_parallel_threads = num_parallel_threads
                              , GPU_use = GPU_use

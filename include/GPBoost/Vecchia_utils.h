@@ -289,6 +289,7 @@ namespace GPBoost {
 	* \param gauss_likelihood If true, the response variables have a Gaussian likelihood, otherwise not
 	* \param cov_fct Type of covariance function
 	* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
+	* \param cov_fct_order Order m of the 'hurst' and 'hurst_ard' covariance functions (m - 1 < H < m). This must be 1 for all other covariance functions
 	* \param cov_fct_taper_range Range parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 	* \param cov_fct_taper_shape Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 	* \param apply_tapering If true, tapering is applied to the covariance function (element-wise multiplication with a compactly supported Wendland correlation function)
@@ -324,6 +325,7 @@ namespace GPBoost {
 		bool gauss_likelihood,
 		string_t cov_fct,
 		double cov_fct_shape,
+		int cov_fct_order,
 		double cov_fct_taper_range,
 		double cov_fct_taper_shape,
 		bool apply_tapering,

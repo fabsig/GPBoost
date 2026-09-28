@@ -4910,6 +4910,7 @@ class GPModel(object):
                  num_data=None,
                  likelihood_additional_param=None,
                  fidelity_specific_mean=True,
+                 cov_fct_order=1,
                  free_raw_data=False,
                  model_file=None,
                  model_dict=None,
@@ -5300,15 +5301,19 @@ class GPModel(object):
 
                 - "hurst": 
                 
-                    Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ). 
-                    For H = 0.5, this corresponds to Brownian motion (-> see the 'estimate_cov_par_index' argument)
+                    Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ), 0 < H < 1.
+                    For H = 0.5, this corresponds to Brownian motion (-> see the 'estimate_cov_par_index' argument).
+                    This is the covariance for cov_fct_order = 1 (default). For cov_fct_order = 2, the second-order Hurst covariance
+                    cov(s, s') = sigma2 / (2 (2H - 1)) * ( ||s - s'||^(2H) - ||s||^(2H) - ||s'||^(2H) + 2H (s^T s') (||s||^(2H-2) + ||s'||^(2H-2)) ), 1 < H < 2,
+                    is used. For H = 1.5, this corresponds to an integrated Wiener process. See 'cov_fct_order' for more details
 
                 - "hurst_ard": 
                 
                     Hurst covariance function with with Automatic Relevance Determination (ARD), 
                     i.e., with a different range parameter for every coordinate of ``gp_coords`` except 
                     for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: 
-                    cov(s, s') = (sigma2 / 2) * ( (s_1^2 + sum_{k=2}^d (s_k / l_k)^2)^H + (s'_1^2 + sum_{k=2}^d (s'_k / l_k)^2)^H - ((s_1 - s'_1)^2 + sum_{k=2}^d ((s_k - s'_k) / l_k)^2)^H )
+                    cov(s, s') = (sigma2 / 2) * ( (s_1^2 + sum_{k=2}^d (s_k / l_k)^2)^H + (s'_1^2 + sum_{k=2}^d (s'_k / l_k)^2)^H - ((s_1 - s'_1)^2 + sum_{k=2}^d ((s_k - s'_k) / l_k)^2)^H ).
+                    For cov_fct_order = 2, the second-order Hurst covariance (see "hurst") is applied to the scaled coordinates (s_1, s_2/l_2, ..., s_d/l_d)
 
                 - "ar1_mf_<base>":
 
@@ -5336,6 +5341,30 @@ class GPModel(object):
             cov_fct_shape : float, optional (default=0.)
                 Shape parameter of the covariance function (e.g., smoothness parameter for Matern and Wendland covariance).
                 This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
+            cov_fct_order : integer, optional (default=1)
+                Order m of the "hurst" and "hurst_ard" covariance functions (also when used as base covariance in
+                "ar1_mf_hurst" and "ar1_mf_hurst_ard"). Currently, the orders 1 (default) and 2 are supported.
+                The Hurst exponent H of the order m satisfies m - 1 < H < m, and H = m - 0.5 is used as initial value.
+                Order 1 is a fractional Brownian motion / field anchored at the origin (b(0) = 0), and order 2 is a
+                second-order Hurst process / field anchored at the origin such that both the process and its gradient
+                are zero there (b(0) = 0, grad b(0) = 0). The origin of the coordinates thus is a part of the model,
+                and the coordinates are not centered internally. The order is not estimated. It can be chosen, e.g.,
+                by comparing the marginal likelihoods or by cross-validation. For all other covariance functions, this must be 1.
+
+                    - Continuous-time RW1 prior: use cov_function = "hurst", cov_fct_order = 1, and fix H = 0.5.
+                      This is a Brownian motion with b(0) = 0 and b'(t) = sqrt(q) W'(t), where W' denotes white noise and q = sigma2
+
+                    - Continuous-time RW2 prior: use cov_function = "hurst", cov_fct_order = 2, and fix H = 1.5.
+                      This is an integrated Wiener process with b(0) = b'(0) = 0 and b''(t) = sqrt(q) W'(t), where q = 3 * sigma2
+
+                For these priors, use a one-dimensional time coordinate t >= 0 whose origin t = 0 is the desired anchor
+                (shift the time points if necessary). H can be fixed using the 'init_cov_pars' and 'estimate_cov_par_index'
+                parameters in the 'params' argument of the 'fit' function, see the example below.
+                If the polynomial null space of the intrinsic model should not be penalized, include an intercept (RW1) or
+                an intercept and a linear time trend (RW2) as fixed effects.
+                Note that the order 2 model with H = 1.5 is the continuous-time RW2 prior evaluated at the time points and
+                not the usual discrete intrinsic RW2 prior on a lattice: for equally spaced time points, adjacent second
+                differences are correlated (correlation 1/4) whereas they are independent for the discrete RW2
             gp_approx : string, optional (default="none")
                 Specifies the use of a large data approximation for Gaussian processes. Available options:
 
@@ -5537,6 +5566,15 @@ class GPModel(object):
         >>> gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
         >>> # Gaussian process model
         >>> gp_model = gpb.GPModel(gp_coords=coords, cov_function="matern", cov_fct_shape=1.5, likelihood="gaussian")
+        >>> # Continuous-time RW2 prior for a time series anchored at t = 0, i.e., b(0) = b'(0) = 0
+        >>> time = np.linspace(0, 1, 100)
+        >>> y = np.sin(2 * np.pi * time) + np.random.normal(scale=0.2, size=100)
+        >>> X = np.column_stack((np.ones(100), time))  # unpenalized intercept and linear trend
+        >>> gp_model = gpb.GPModel(gp_coords=time, cov_function="hurst", cov_fct_order=2, likelihood="gaussian")
+        >>> # The covariance parameters are (error variance, GP variance, H), and H = 1.5 is not estimated
+        >>> gp_model.fit(y=y, X=X, params={"init_cov_pars": np.array([0.1, 1., 1.5]),
+        ...                                "estimate_cov_par_index": np.array([1, 1, 0])})
+        >>> gp_model.summary()
         """
 
         if vecchia_approx is not None:
@@ -5575,6 +5613,7 @@ class GPModel(object):
         self.is_ar1_multifidelity = False
         self.fidelity_specific_mean = False
         self.cov_fct_shape = 1.5
+        self.cov_fct_order = 1
         self.gp_approx = "none"
         self.num_parallel_threads = -1
         self.GPU_use=False
@@ -5674,6 +5713,7 @@ class GPModel(object):
             cov_function = model_dict.get("cov_function")
             fidelity_specific_mean = bool(model_dict.get("fidelity_specific_mean", False))
             cov_fct_shape = model_dict.get("cov_fct_shape")
+            cov_fct_order = model_dict.get("cov_fct_order", 1)
             gp_approx = model_dict.get("gp_approx")
             cov_fct_taper_range = model_dict.get("cov_fct_taper_range")
             cov_fct_taper_shape = model_dict.get("cov_fct_taper_shape")
@@ -5921,6 +5961,10 @@ class GPModel(object):
             self.is_ar1_multifidelity = self.cov_function.startswith("ar1_mf_")
             self.fidelity_specific_mean = self.is_ar1_multifidelity and bool(fidelity_specific_mean)
             self.cov_fct_shape = cov_fct_shape
+            if isinstance(cov_fct_order, bool) or not isinstance(cov_fct_order, (int, float, np.integer, np.floating)) or \
+                    not float(cov_fct_order).is_integer():
+                raise ValueError("'cov_fct_order' must be an integer")
+            self.cov_fct_order = int(cov_fct_order)
             self.gp_approx = gp_approx
             self.cov_fct_taper_range = cov_fct_taper_range
             self.cov_fct_taper_shape = cov_fct_taper_shape
@@ -6104,6 +6148,7 @@ class GPModel(object):
             ctypes.c_int(self.num_gp_rand_coef),
             cov_c,
             ctypes.c_double(self.cov_fct_shape),
+            ctypes.c_int(self.cov_fct_order),
             gp_c,
             ctypes.c_double(self.cov_fct_taper_range),
             ctypes.c_double(self.cov_fct_taper_shape),
@@ -8080,6 +8125,7 @@ class GPModel(object):
         model_dict["cov_function"] = self.cov_function
         model_dict["fidelity_specific_mean"] = self.fidelity_specific_mean
         model_dict["cov_fct_shape"] = self.cov_fct_shape
+        model_dict["cov_fct_order"] = self.cov_fct_order
         model_dict["gp_approx"] = self.gp_approx
         model_dict["matrix_inversion_method"] = self.matrix_inversion_method
         model_dict["weights"] = self.weights

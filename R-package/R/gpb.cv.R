@@ -500,6 +500,7 @@ gpb.cv <- function(params = list()
                                           , cov_function = gp_model$.__enclos_env__$private$cov_function
                                           , fidelity_specific_mean = gp_model$has_fidelity_specific_mean()
                                           , cov_fct_shape = gp_model$.__enclos_env__$private$cov_fct_shape
+                                          , cov_fct_order = gp_model$.__enclos_env__$private$cov_fct_order
                                           , gp_approx = gp_model$.__enclos_env__$private$gp_approx
                                           , num_parallel_threads = gp_model$.__enclos_env__$private$num_parallel_threads
                                           , GPU_use = gp_model$.__enclos_env__$private$GPU_use

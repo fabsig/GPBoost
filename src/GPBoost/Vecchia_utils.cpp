@@ -1118,6 +1118,7 @@ namespace GPBoost {
 		bool gauss_likelihood,
 		string_t cov_fct,
 		double cov_fct_shape,
+		int cov_fct_order,
 		double cov_fct_taper_range,
 		double cov_fct_taper_shape,
 		bool apply_tapering,
@@ -1161,7 +1162,7 @@ namespace GPBoost {
 			save_random_effects_indices_of_data_and_no_Z = true;
 		}
 		re_comps_vecchia_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
-			gp_coords_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, apply_tapering,
+			gp_coords_mat, cov_fct, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape, apply_tapering,
 			false, false, use_Z_for_duplicates, save_random_effects_indices_of_data_and_no_Z, save_distances_isotropic_cov_fct)));
 		if (gauss_likelihood) {
 			std::vector<int> uniques, unique_idx_dummy;
@@ -1266,7 +1267,7 @@ namespace GPBoost {
 					rand_coef_data.push_back(gp_rand_coef_data[j * num_data + id]);
 				}
 				re_comps_vecchia_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
-					rand_coef_data, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, re_comp->GetTaperMu(),
+					rand_coef_data, cov_fct, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape, re_comp->GetTaperMu(),
 					apply_tapering, false, dim_gp_coords, save_distances_isotropic_cov_fct)));
 				//save random coefficient data in the form ot outer product matrices
 #pragma omp parallel for schedule(static)

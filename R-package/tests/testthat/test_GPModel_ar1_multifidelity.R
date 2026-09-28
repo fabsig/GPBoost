@@ -508,6 +508,29 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     actual_nll_hurst <- gp_model_hurst$neg_log_likelihood(y = data$y_gaussian, cov_pars = hurst_cov_pars)
     expect_equal(actual_nll_hurst, expected_nll_hurst, tolerance = 1e-8)
     expect_equal(actual_nll_hurst, 34.029297710299844, tolerance = 1e-8)
+
+    # second-order hurst base (cov_fct_order = 2, 1 < H < 2): the order applies to both the low-fidelity and the discrepancy process
+    hurst2_cov_matrix <- function(x, var, H) {
+      sqrd <- x^2
+      var / (2 * (2 * H - 1)) * (abs(outer(x, x, "-"))^(2 * H) - outer(sqrd^H, sqrd^H, "+") +
+                                   2 * H * outer(x, x) * outer(sqrd^(H - 1), sqrd^(H - 1), "+"))
+    }
+    hurst2_cov_pars <- c(error_var = 0.08, low_var = 1.0, low_H = 1.3, discrepancy_var = 0.5, discrepancy_H = 1.6, rho = -0.6)
+    cov_low_hurst2 <- hurst2_cov_matrix(x[, 1], hurst2_cov_pars[["low_var"]], hurst2_cov_pars[["low_H"]])
+    cov_disc_hurst2 <- hurst2_cov_matrix(x[, 1], hurst2_cov_pars[["discrepancy_var"]], hurst2_cov_pars[["discrepancy_H"]])
+    Sigma_hurst2 <- ar1_mf_combine(data$gp_coords, cov_low_hurst2, cov_disc_hurst2, hurst2_cov_pars[["rho"]])
+    expected_nll_hurst2 <- gaussian_nll_from_cov(data$y_gaussian, hurst2_cov_pars[["error_var"]], Sigma_hurst2)
+    gp_model_hurst2 <- GPModel(
+      gp_coords = data$gp_coords, cov_function = "ar1_mf_hurst", cov_fct_order = 2, likelihood = "gaussian",
+      gp_approx = "none", matrix_inversion_method = "cholesky"
+    )
+    actual_nll_hurst2 <- gp_model_hurst2$neg_log_likelihood(y = data$y_gaussian, cov_pars = hurst2_cov_pars)
+    expect_equal(actual_nll_hurst2, expected_nll_hurst2, tolerance = 1e-8)
+    expect_equal(actual_nll_hurst2, 69.600734173917928, tolerance = 1e-8)
+    # H outside (1, 2) and an order other than 1 for other base covariance functions are rejected
+    hurst2_cov_pars[["discrepancy_H"]] <- 0.6
+    expect_error(gp_model_hurst2$neg_log_likelihood(y = data$y_gaussian, cov_pars = hurst2_cov_pars))
+    expect_error(GPModel(gp_coords = data$gp_coords, cov_function = "ar1_mf_matern", cov_fct_order = 2, likelihood = "gaussian"))
   })
   test_that("Training data random effect variances of a non constant prior variance", {
 
@@ -565,6 +588,29 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
       hurst_cov_pars[6]
     )
     check_training_data_random_effects(gp_model_hurst, data$y_gaussian, hurst_cov_pars[1], Sigma_hurst)
+
+    # second-order Hurst covariance, whose prior variance sigma2 * |x|^(2H) also depends on the location
+    hurst2_cov_matrix <- function(x, var, H) {
+      sqrd <- x^2
+      var / (2 * (2 * H - 1)) * (abs(outer(x, x, "-"))^(2 * H) - outer(sqrd^H, sqrd^H, "+") +
+                                   2 * H * outer(x, x) * outer(sqrd^(H - 1), sqrd^(H - 1), "+"))
+    }
+    init_hurst2_cov_pars <- c(error_var = 0.08, low_var = 1.0, low_H = 1.3, discrepancy_var = 0.5, discrepancy_H = 1.6, rho = -0.6)
+    gp_model_hurst2 <- GPModel(
+      gp_coords = data$gp_coords, cov_function = "ar1_mf_hurst", cov_fct_order = 2, likelihood = "gaussian",
+      gp_approx = "none", matrix_inversion_method = "cholesky"
+    )
+    invisible(capture.output(
+      fit(gp_model_hurst2, y = data$y_gaussian, params = list(init_cov_pars = init_hurst2_cov_pars, maxit = 1, trace = FALSE))
+    ))
+    hurst2_cov_pars <- as.numeric(gp_model_hurst2$get_cov_pars())
+    Sigma_hurst2 <- ar1_mf_combine(
+      data$gp_coords,
+      hurst2_cov_matrix(x[, 1], hurst2_cov_pars[2], hurst2_cov_pars[3]),
+      hurst2_cov_matrix(x[, 1], hurst2_cov_pars[4], hurst2_cov_pars[5]),
+      hurst2_cov_pars[6]
+    )
+    check_training_data_random_effects(gp_model_hurst2, data$y_gaussian, hurst2_cov_pars[1], Sigma_hurst2)
 
   })
 

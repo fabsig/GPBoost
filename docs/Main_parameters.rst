@@ -243,9 +243,9 @@ Model specification parameters
 
       - ``linear``: Linear covariance function. This corresponds to a Bayesian linear regression model with a Gaussian prior on the coefficients with a constant variance diagonal prior covariance, and the prior variance is estimated using empirical Bayes.
 
-      - ``hurst``: Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ). For H = 0.5, this corresponds to Brownian motion (-> see the ``estimate_cov_par_index`` argument)
+      - ``hurst``: Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ), 0 < H < 1. For H = 0.5, this corresponds to Brownian motion (-> see the ``estimate_cov_par_index`` argument). This is the covariance for ``cov_fct_order = 1`` (default). For ``cov_fct_order = 2``, the second-order Hurst covariance cov(s, s') = sigma2 / (2 (2H - 1)) * ( ||s - s'||^(2H) - ||s||^(2H) - ||s'||^(2H) + 2H (s^T s') (||s||^(2H-2) + ||s'||^(2H-2)) ), 1 < H < 2, is used. For H = 1.5, this corresponds to an integrated Wiener process. See :ref:`cov_fct_order <cov_fct_order>` for more details
 
-      - ``hurst_ard``: Hurst covariance function with with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate of ``gp_coords`` except for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: cov(s, s') = (sigma2 / 2) * ( (s_1^2 + sum_{k=2}^d (s_k / l_k)^2)^H + (s'_1^2 + sum_{k=2}^d (s'_k / l_k)^2)^H - ((s_1 - s'_1)^2 + sum_{k=2}^d ((s_k - s'_k) / l_k)^2)^H )
+      - ``hurst_ard``: Hurst covariance function with with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate of ``gp_coords`` except for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: cov(s, s') = (sigma2 / 2) * ( (s_1^2 + sum_{k=2}^d (s_k / l_k)^2)^H + (s'_1^2 + sum_{k=2}^d (s'_k / l_k)^2)^H - ((s_1 - s'_1)^2 + sum_{k=2}^d ((s_k - s'_k) / l_k)^2)^H ). For ``cov_fct_order = 2``, the second-order Hurst covariance (see ``hurst``) is applied to the scaled coordinates (s_1, s_2/l_2, ..., s_d/l_d)
 
       - ``ar1_mf_<base>``: Two-level autoregressive multifidelity covariance constructed from a supported base covariance function ``<base>``. For example, use ``ar1_mf_matern``, ``ar1_mf_matern_ard``, or ``ar1_mf_matern_estimate_shape``.
 
@@ -268,6 +268,47 @@ Model specification parameters
 -  ``cov_fct_shape`` : double, (default = 1.5)
 
    -  Shape parameter of the covariance function (e.g., smoothness parameter for Matern and Wendland covariance). This parameter is irrelevant for some covariance functions such as the exponential or Gaussian.
+
+.. _cov_fct_order:
+
+-  ``cov_fct_order`` : integer, (default = 1)
+
+   -  Order m of the ``hurst`` and ``hurst_ard`` covariance functions (also when used as base covariance in ``ar1_mf_hurst`` and ``ar1_mf_hurst_ard``). Currently, the orders 1 and 2 are supported. For all other covariance functions, this must be 1.
+
+   -  The Hurst exponent H of the order m satisfies m - 1 < H < m, and H = m - 0.5 is used as initial value. The covariance parameters are the same for all orders (``sigma2``, ``H``, and, for ``hurst_ard``, the ranges).
+
+   -  Order 1 is a fractional Brownian motion / field, and order 2 is a second-order Hurst process / field (in one dimension, an m-th order fractional Brownian motion, Perrin et al., 2001). Both are anchored at the origin: b(0) = 0 for order 1, and b(0) = 0 and grad b(0) = 0 for order 2. The origin of the coordinates is thus a part of the model, and the coordinates are not centered internally. Shift the coordinates if another anchor is more meaningful.
+
+   -  The order is a structural choice and is not estimated. For every order, H is estimated in (m - 1, m), and different orders can be compared, e.g., using the marginal likelihood or cross-validation.
+
+   -  H determines the behavior of the process at small scales. If the error variance (or, for non-Gaussian likelihoods, the noise of the observations) is large compared to the variation of the process between neighboring points, H is only weakly identified, and its estimate can be close to the boundaries m - 1 or m. Fixing H (e.g., to m - 0.5, see below) can then be preferable.
+
+   -  **Continuous-time RW1 and RW2 priors**: for a one-dimensional time coordinate t >= 0 whose origin t = 0 is the desired anchor (shift the time points if necessary):
+
+      - Continuous-time RW1: ``cov_function = "hurst"``, ``cov_fct_order = 1``, and H fixed to 0.5. This is a Brownian motion with b(0) = 0 and b'(t) = sqrt(q) W'(t), where W' denotes white noise and q = sigma2.
+
+      - Continuous-time RW2: ``cov_function = "hurst"``, ``cov_fct_order = 2``, and H fixed to 1.5. This is an integrated Wiener process with b(0) = b'(0) = 0 and b''(t) = sqrt(q) W'(t), where q = 3 * sigma2.
+
+      - H is fixed using the ``init_cov_pars`` and ``estimate_cov_par_index`` parameters. For instance, for a Gaussian likelihood, the covariance parameters are (error variance, sigma2, H), and the following fits a model with a continuous-time RW2 prior:
+
+        .. code-block:: r
+
+           X <- cbind(1, time) # unpenalized intercept and linear trend
+           gp_model <- fitGPModel(gp_coords = time, cov_function = "hurst", cov_fct_order = 2,
+                                  likelihood = "gaussian", y = y, X = X,
+                                  params = list(init_cov_pars = c(0.1, 1, 1.5),
+                                                estimate_cov_par_index = c(1, 1, 0)))
+
+        .. code-block:: python
+
+           X = np.column_stack((np.ones(len(time)), time)) # unpenalized intercept and linear trend
+           gp_model = gpb.GPModel(gp_coords=time, cov_function="hurst", cov_fct_order=2, likelihood="gaussian")
+           gp_model.fit(y=y, X=X, params={"init_cov_pars": np.array([0.1, 1., 1.5]),
+                                          "estimate_cov_par_index": np.array([1, 1, 0])})
+
+      - The anchored covariance fixes the polynomial null space of the corresponding intrinsic model (constants for RW1, constants and linear functions for RW2) at the origin. If these components should not be penalized, include them as fixed effects: an intercept for RW1, and an intercept and a linear time trend for RW2.
+
+      - The order 2 model with H = 1.5 is the continuous-time RW2 (integrated Wiener) prior evaluated at the time points, and not the conventional discrete intrinsic RW2 prior on a lattice with independent second differences. For equally spaced time points with spacing h, the second differences of the continuous-time RW2 have variance 2/3 q h^3, and adjacent second differences have correlation 1/4, whereas they are independent for the discrete RW2. The two priors have the same dominant cubic generalized covariance but differ at the scale of the lattice. For multidimensional coordinates, the term "higher-order Hurst field" is less ambiguous than RW1 / RW2.
 
 .. _gp_approx:
 

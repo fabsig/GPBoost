@@ -1060,6 +1060,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                  c("Error_var", "GP_var", "H", "GP_range_2",
                    "GP_rand_coef_var1_var", "GP_rand_coef_var1_H", "GP_rand_coef_var1_range_2",
                    "GP_rand_coef_var2_var", "GP_rand_coef_var2_H", "GP_rand_coef_var2_range_2"))
+    # The order of the Hurst covariance functions does not change the covariance parameters
+    expect_equal(model_names("hurst", Z_SVC, cov_fct_order = 2)$cov_par_names, model_names("hurst", Z_SVC)$cov_par_names)
+    expect_equal(model_names("hurst_ard", Z_SVC, cov_fct_order = 2)$cov_par_names, model_names("hurst_ard", Z_SVC)$cov_par_names)
     # Space-time covariance functions
     expect_equal(model_names("matern_space_time", Z_SVC, cov_fct_shape = 1.5)$cov_par_names,
                  c("Error_var", "GP_var", "GP_range_time", "GP_range_space",

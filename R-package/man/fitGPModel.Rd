@@ -15,7 +15,7 @@ fitGPModel(likelihood = "gaussian", group_data = NULL,
   cov_fct_taper_shape = 1, num_neighbors = NULL,
   vecchia_ordering = "random", ind_points_selection = "kmeans++",
   num_ind_points = NULL, cover_tree_radius = 1, seed = 0L,
-  cluster_ids = NULL, fidelity_specific_mean = TRUE,
+  cluster_ids = NULL, fidelity_specific_mean = TRUE, cov_fct_order = 1L,
   free_raw_data = FALSE, y, X = NULL, params = list(),
   vecchia_approx = NULL, vecchia_pred_type = NULL,
   num_neighbors_pred = NULL, offset = NULL, fixed_effects = NULL,
@@ -255,12 +255,16 @@ the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribe
 \item{ "linear": linear covariance function. This corresponds to a Bayesian linear 
 regression model with a Gaussian prior on the coefficients with a constant variance 
 diagonal prior covariance, and the prior variance is estimated using empirical Bayes. }
-\item{ "hurst": Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ). 
-For H = 0.5, this corresponds to Brownian motion (-> see the 'estimate_cov_par_index' argument) }
+\item{ "hurst": Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ), 0 < H < 1.
+For H = 0.5, this corresponds to Brownian motion (-> see the 'estimate_cov_par_index' argument).
+This is the covariance for \code{cov_fct_order = 1} (default). For \code{cov_fct_order = 2}, the second-order Hurst covariance
+cov(s, s') = sigma2 / (2 (2H - 1)) * ( ||s - s'||^(2H) - ||s||^(2H) - ||s'||^(2H) + 2H (s^T s') (||s||^(2H-2) + ||s'||^(2H-2)) ), 1 < H < 2,
+is used. For H = 1.5, this corresponds to an integrated Wiener process. See \code{cov_fct_order} for more details }
 \item{ "hurst_ard": Hurst covariance function with with Automatic Relevance Determination (ARD), 
 i.e., with a different range parameter for every coordinate of ``gp_coords`` except 
 for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: 
-\eqn{ cov(s, s') = (\sigma^2/2)\left[ \left(s_1^2 + \sum_{k=2}^d (s_k/l_k)^2\right)^H + \left({s'}_1^2 + \sum_{k=2}^d ({s'}_k/l_k)^2\right)^H - \left((s_1-{s'}_1)^2 + \sum_{k=2}^d ((s_k-{s'}_k)/l_k)^2\right)^H \right] } }
+\eqn{ cov(s, s') = (\sigma^2/2)\left[ \left(s_1^2 + \sum_{k=2}^d (s_k/l_k)^2\right)^H + \left({s'}_1^2 + \sum_{k=2}^d ({s'}_k/l_k)^2\right)^H - \left((s_1-{s'}_1)^2 + \sum_{k=2}^d ((s_k-{s'}_k)/l_k)^2\right)^H \right] }.
+For \code{cov_fct_order = 2}, the second-order Hurst covariance (see "hurst") is applied to the scaled coordinates (s_1, s_2/l_2, ..., s_d/l_d) }
 \item{ "ar1_mf_<base>": two-level autoregressive multifidelity covariance defined by
 \eqn{f_H(x)=\rho f_L(x)+\delta(x)}, where \eqn{f_L} and \eqn{\delta} are independent Gaussian processes
 using the same base covariance type but separate parameter vectors. 
@@ -418,6 +422,29 @@ whether marginal mean models are fitted independently for low and high fidelity.
 (the default), linear covariates supplied to \code{fit()} are internally expanded into separate
 low- and high-fidelity coefficient blocks, and the fidelity indicator is automatically added as
 a feature when the model is used in the GPBoost algorithm. Ignored for other covariance functions.}
+
+\item{cov_fct_order}{An \code{integer} specifying the order m of the "hurst" and "hurst_ard" covariance functions
+(also when used as base covariance in "ar1_mf_hurst" and "ar1_mf_hurst_ard"). Currently, the orders 1 (default) and 2 are supported.
+The Hurst exponent H of the order m satisfies m - 1 < H < m, and H = m - 0.5 is used as initial value.
+Order 1 is a fractional Brownian motion / field anchored at the origin (b(0) = 0), and order 2 is a second-order Hurst process / field
+anchored at the origin such that both the process and its gradient are zero there (b(0) = 0, grad b(0) = 0).
+The origin of the coordinates thus is a part of the model, and the coordinates are not centered internally.
+The order is not estimated. It can be chosen, e.g., by comparing the marginal likelihoods or by cross-validation.
+For all other covariance functions, this must be 1.
+\itemize{
+\item{ Continuous-time RW1 prior: use \code{cov_function = "hurst"}, \code{cov_fct_order = 1}, and fix H = 0.5.
+This is a Brownian motion with b(0) = 0 and b'(t) = sqrt(q) W'(t), where W' denotes white noise and q = sigma2 }
+\item{ Continuous-time RW2 prior: use \code{cov_function = "hurst"}, \code{cov_fct_order = 2}, and fix H = 1.5.
+This is an integrated Wiener process with b(0) = b'(0) = 0 and b''(t) = sqrt(q) W'(t), where q = 3 * sigma2 }
+}
+For these priors, use a one-dimensional time coordinate t >= 0 whose origin t = 0 is the desired anchor (shift the time points if necessary).
+H can be fixed using the 'init_cov_pars' and 'estimate_cov_par_index' arguments of the \code{params} argument,
+see the examples of \code{\link{fitGPModel}}.
+If the polynomial null space of the intrinsic model should not be penalized, include an intercept (RW1) or
+an intercept and a linear time trend (RW2) as fixed effects.
+Note that the order 2 model with H = 1.5 is the continuous-time RW2 prior evaluated at the time points and
+not the usual discrete intrinsic RW2 prior on a lattice: for equally spaced time points, adjacent second differences
+are correlated (correlation 1/4) whereas they are independent for the discrete RW2}
 
 \item{free_raw_data}{A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
 is freed in R after initialization}
@@ -721,6 +748,19 @@ gp_model <- fitGPModel(group_data = group_data,
                        gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,
                        likelihood = "gaussian", y = y, X = X1)
 summary(gp_model)
+
+#--------------------Continuous-time RW2 prior for a time series----------------
+# The prior is anchored at time t = 0, i.e., b(0) = b'(0) = 0
+time <- seq(0, 1, length.out = 100)
+y_time <- sin(2 * pi * time) + rnorm(100, sd = 0.2)
+X_time <- cbind(Intercept = 1, trend = time) # unpenalized intercept and linear trend
+# The covariance parameters are (error variance, GP variance, H), and H = 1.5 is not estimated
+gp_model <- fitGPModel(gp_coords = time, cov_function = "hurst", cov_fct_order = 2,
+                       likelihood = "gaussian", y = y_time, X = X_time,
+                       params = list(init_cov_pars = c(0.1, 1, 1.5),
+                                     estimate_cov_par_index = c(1, 1, 0)))
+summary(gp_model)
+# Continuous-time RW1 prior: cov_fct_order = 1, H fixed to 0.5, and only an intercept
 }
 
 }

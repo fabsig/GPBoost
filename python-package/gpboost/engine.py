@@ -527,6 +527,7 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                      cov_function=gp_model.cov_function,
                                      fidelity_specific_mean=gp_model.fidelity_specific_mean,
                                      cov_fct_shape=gp_model.cov_fct_shape,
+                                     cov_fct_order=gp_model.cov_fct_order,
                                      gp_approx=gp_model.gp_approx,
                                      num_parallel_threads=gp_model.num_parallel_threads,
                                      GPU_use=gp_model.GPU_use,

@@ -47,6 +47,7 @@ namespace GPBoost {
 		* \param num_gp_rand_coef Number of Gaussian process random coefficients
 		* \param cov_fct Type of covariance function for Gaussian process (GP)
 		* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
+		* \param cov_fct_order Order m of the 'hurst' and 'hurst_ard' covariance functions (m - 1 < H < m). This must be 1 for all other covariance functions
 		* \param gp_approx Type of GP-approximation for handling large data
 		* \param cov_fct_taper_range Range parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param cov_fct_taper_shape Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
@@ -84,6 +85,7 @@ namespace GPBoost {
 			data_size_t num_gp_rand_coef,
 			const char* cov_fct,
 			double cov_fct_shape,
+			int cov_fct_order,
 			const char* gp_approx,
 			double cov_fct_taper_range,
 			double cov_fct_taper_shape,

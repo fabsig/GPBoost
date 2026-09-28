@@ -81,6 +81,7 @@ namespace GPBoost {
 		* \param num_gp_rand_coef Number of Gaussian process random coefficients
 		* \param cov_fct Type of covariance function for Gaussian process (GP)
 		* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
+		* \param cov_fct_order Order m of the 'hurst' and 'hurst_ard' covariance functions (m - 1 < H < m). This must be 1 for all other covariance functions
 		* \param gp_approx Type of GP-approximation for handling large data
 		* \param cov_fct_taper_range Range parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param cov_fct_taper_shape Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
@@ -117,6 +118,7 @@ namespace GPBoost {
 			data_size_t num_gp_rand_coef,
 			const char* cov_fct,
 			double cov_fct_shape,
+			int cov_fct_order,
 			const char* gp_approx,
 			double cov_fct_taper_range,
 			double cov_fct_taper_shape,
@@ -179,6 +181,7 @@ namespace GPBoost {
 				matrix_inversion_method_user_provided_ = std::string(matrix_inversion_method);
 			}
 			std::string cov_fct_strg = (cov_fct != nullptr) ? std::string(cov_fct) : "";
+			cov_fct_order_ = cov_fct_order;
 			//Set up GP approximation
 			if (gp_approx == nullptr) {
 				gp_approx_ = "none";
@@ -370,7 +373,7 @@ namespace GPBoost {
 						}
 					}
 					CreateREComponentsFITC_FSA(num_data_, data_indices_per_cluster_, cluster_i, gp_coords_data,
-						cov_fct_strg, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
+						cov_fct_strg, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape,
 						re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, false);
 					re_comps_ip_[cluster_i][0] = re_comps_ip_cluster_i;
 					re_comps_cross_cov_[cluster_i][0] = re_comps_cross_cov_cluster_i;
@@ -392,7 +395,7 @@ namespace GPBoost {
 						re_comps_cluster_i, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
 						entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, Vecchia_calculations_on_RE_scale_, has_duplicates_coords_,
 						vecchia_ordering_, num_neighbors_, vecchia_neighbor_selection_, true, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
-						cov_fct_strg, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_,
+						cov_fct_strg, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape, gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_,
 						gp_approx_, nearest_neighbors_determined_, GPU_use_, grouped_RE_and_vecchia_GP_);
 					only_one_GP_calculations_on_RE_scale_ = Vecchia_calculations_on_RE_scale_;
 					nearest_neighbors_[cluster_i][0] = nearest_neighbors_cluster_i;
@@ -411,7 +414,7 @@ namespace GPBoost {
 					CreateREComponents(num_data_, data_indices_per_cluster_, cluster_i,
 						re_group_levels, num_data_per_cluster_, re_group_rand_coef_data,
 						gp_coords_data, gp_rand_coef_data, calculateZZt,
-						cov_fct_strg, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, re_comps_cluster_i);
+						cov_fct_strg, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape, re_comps_cluster_i);
 					re_comps_[cluster_i][0] = re_comps_cluster_i;
 					if (grouped_RE_and_vecchia_GP_) num_gp_ = num_gp_temp;
 				}
@@ -510,9 +513,10 @@ namespace GPBoost {
 			string_t cov_fct_name = CovFunctionName();
 			if (cov_fct_name == "hurst" || cov_fct_name == "hurst_ard") {//Info message for Hurst covariance
 				string_t range_msg = cov_fct_name == "hurst" ? "" : " and the range parameter for the first coordinate is 1 (due to identifiability with the marginal variance)";
-				string_t stdz_msg = cov_fct_name == "hurst" ? "" : "and standardize ";
-				string_t msg = "For the '" + cov_fct_name + "' covariance, the GP is anchored at 0 (i.e., b(0) = 0 a.s.)" + range_msg + 
-					". In general, it is thus recommened to mean-center " + stdz_msg + " the coordinates first (in case you have not done this already) ";
+				string_t stdz_msg = cov_fct_name == "hurst" ? "" : ", and to standardize them";
+				string_t msg = "For the '" + cov_fct_name + "' covariance, the GP is anchored at 0 (i.e., " + HurstAnchorConditions() + ")" + range_msg +
+					". The origin of the coordinates is thus a part of the model. It is recommended to shift the coordinates (e.g., to mean-center them) "
+					"if the origin is not a meaningful anchor" + stdz_msg + " ";
 				Log::REInfo(msg.c_str());
 			}
 		}//end REModelTemplate
@@ -585,6 +589,13 @@ namespace GPBoost {
 			}
 			return(cov_fct);
 		}//end CovFunctionName
+
+		/*!
+		* \brief Returns the anchoring conditions of the 'hurst' and 'hurst_ard' covariance functions of the chosen order for messages
+		*/
+		string_t HurstAnchorConditions() const {
+			return((cov_fct_order_ == 1) ? "b(0) = 0 a.s." : "b(0) = 0 and grad b(0) = 0 a.s.");
+		}
 
 		/*!
 		* \brief Returns the number of CG steps when the CG method was last run
@@ -1512,7 +1523,9 @@ namespace GPBoost {
 				CHECK(y_data != nullptr);
 				string_t cov_function_name = CovFunctionName();
 				if (cov_function_name == "hurst" || cov_function_name == "hurst_ard") {
-					Log::REWarning("There is no intercept (= a column of 1's) included in the covariates 'X' or there are no covariates. For the '%s' covariance, it is recommended to include an intercept since the GP is anchored at 0 (i.e., b(0) = 0 a.s.) ", cov_function_name.c_str());
+					const string_t covariates_msg = (cov_fct_order_ == 1) ? "an intercept" : "an intercept and the coordinates as linear covariates";
+					Log::REWarning("There is no intercept (= a column of 1's) included in the covariates 'X' or there are no covariates. For the '%s' covariance, it is recommended to include %s since the GP is anchored at 0 (i.e., %s) ",
+						cov_function_name.c_str(), covariates_msg.c_str(), HurstAnchorConditions().c_str());
 				}
 				else {
 					double tot_var = GetTotalVarComps(cov_aux_pars.segment(0, num_cov_par_), 0);
@@ -3960,7 +3973,7 @@ namespace GPBoost {
 							nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
 							entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_dummy, has_duplicates_coords_,
 							"none", num_neighbors_pred_, vecchia_neighbor_selection_, false, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
-							re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
+							re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionOrder(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
 							gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, nearest_neighbors_determined, GPU_use_, grouped_RE_and_vecchia_GP_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
 						for (int j = 0; j < num_comps_total_; ++j) {
 							const vec_t pars = cov_pars.segment(ind_par_[j] + igp * num_cov_par_per_set_re_, ind_par_[j + 1] - ind_par_[j]);
@@ -4024,7 +4037,7 @@ namespace GPBoost {
 						std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 						std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
 						CreateREComponentsFITC_FSA(num_data_pred, data_indices_per_cluster_pred, cluster_i, gp_coords_data_pred,
-							re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), cov_fct_taper_range, cov_fct_taper_shape,
+							re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionOrder(), cov_fct_taper_range, cov_fct_taper_shape,
 							re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, true);
 						if (only_one_GP_calculations_on_RE_scale_) {
 							// The cross-covariance is calculated on the random effects scale (i.e., on the unique coordinates)
@@ -4090,7 +4103,7 @@ namespace GPBoost {
 							std::shuffle(data_indices_per_cluster_pred[cluster_i].begin(), data_indices_per_cluster_pred[cluster_i].end(), rng_);
 						}
 						CreateREComponentsFITC_FSA(num_data_pred, data_indices_per_cluster_pred, cluster_i, gp_coords_data_pred,
-							re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
+							re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionOrder(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
 							re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, true);
 						for (int j = 0; j < num_comps_total_; ++j) {
 							const vec_t pars = cov_pars.segment(ind_par_[j] + igp * num_cov_par_per_set_re_, ind_par_[j + 1] - ind_par_[j]);
@@ -4133,7 +4146,7 @@ namespace GPBoost {
 							nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
 							entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, only_one_GP_calculations_on_RE_scale_dummy, has_duplicates_coords_,
 							"none", num_neighbors_pred_, vecchia_neighbor_selection_, false, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
-							re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
+							re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionOrder(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
 							gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, nearest_neighbors_determined, GPU_use_, grouped_RE_and_vecchia_GP_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
 						for (int j = 0; j < num_comps_total_; ++j) {
 							const vec_t pars = cov_pars.segment(ind_par_[j] + igp * num_cov_par_per_set_re_, ind_par_[j + 1] - ind_par_[j]);
@@ -4179,10 +4192,12 @@ namespace GPBoost {
 					else if (gp_approx_ == "none") {
 						string_t cov_fct = "";
 						double cov_fct_shape = 0., cov_fct_taper_range = 0., cov_fct_taper_shape = 0.;
+						int cov_fct_order = 1;
 						if (num_gp_ > 0) {
 							std::shared_ptr<RECompGP<T_mat>> re_comp_gp_clus0 = std::dynamic_pointer_cast<RECompGP<T_mat>>(GetForCluster(re_comps_, unique_clusters_[0], 0)[ind_intercept_gp_]);
 							cov_fct = re_comp_gp_clus0->CovFunctionName();
 							cov_fct_shape = re_comp_gp_clus0->CovFunctionShape();
+							cov_fct_order = re_comp_gp_clus0->CovFunctionOrder();
 							cov_fct_taper_range = re_comp_gp_clus0->CovFunctionTaperRange();
 							cov_fct_taper_shape = re_comp_gp_clus0->CovFunctionTaperShape();
 						}
@@ -4195,7 +4210,7 @@ namespace GPBoost {
 						CreateREComponents(num_data_pred, data_indices_per_cluster_pred, cluster_i,
 							re_group_levels_pred_use, num_data_per_cluster_pred, re_group_rand_coef_data_pred,
 							gp_coords_data_pred, gp_rand_coef_data_pred, true,
-							cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
+							cov_fct, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape,
 							re_comps_cluster_i);
 						if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
 							num_REs_pred = re_comps_cluster_i[0]->GetNumUniqueREs();
@@ -5895,7 +5910,7 @@ namespace GPBoost {
 							gp_coords_ip_mat_[cluster_i] = coords_ip_rescaled;
 							gp_coords_all_unique.resize(0, 0);
 							std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
-								coords_ip_rescaled, re_comp->CovFunctionName(), re_comp->CovFunctionShape(), re_comp->CovFunctionTaperRange(), re_comp->CovFunctionTaperShape(), false, false, true, false, false, true));
+								coords_ip_rescaled, re_comp->CovFunctionName(), re_comp->CovFunctionShape(), re_comp->CovFunctionOrder(), re_comp->CovFunctionTaperRange(), re_comp->CovFunctionTaperShape(), false, false, true, false, false, true));
 							if (gp_ip->HasDuplicatedCoords()) {
 								Log::REFatal("Duplicates found in inducing points / low-dimensional knots ");
 							}
@@ -5905,7 +5920,7 @@ namespace GPBoost {
 								has_duplicates_coords_ = only_one_GP_calculations_on_RE_scale_;
 							}
 							re_comps_cross_cov_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
-								coords_all, coords_ip_rescaled, re_comp->CovFunctionName(), re_comp->CovFunctionShape(), re_comp->CovFunctionTaperRange(), re_comp->CovFunctionTaperShape(), false, false, only_one_GP_calculations_on_RE_scale_)));
+								coords_all, coords_ip_rescaled, re_comp->CovFunctionName(), re_comp->CovFunctionShape(), re_comp->CovFunctionOrder(), re_comp->CovFunctionTaperRange(), re_comp->CovFunctionTaperShape(), false, false, only_one_GP_calculations_on_RE_scale_)));
 							re_comps_ip_[cluster_i][0] = re_comps_ip_cluster_i;
 							re_comps_cross_cov_[cluster_i][0] = re_comps_cross_cov_cluster_i;
 							re_comps_ip_cluster_i[0]->SetCovPars(pars);
@@ -6032,7 +6047,7 @@ namespace GPBoost {
 							gp_coords_ip_mat_preconditioner_[cluster_i] = coords_ip_rescaled;
 							gp_coords_all_unique.resize(0, 0);
 							std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
-								coords_ip_rescaled, re_comp->CovFunctionName(), re_comp->CovFunctionShape(), re_comp->CovFunctionTaperRange(), re_comp->CovFunctionTaperShape(), false, false, true, false, false, true));
+								coords_ip_rescaled, re_comp->CovFunctionName(), re_comp->CovFunctionShape(), re_comp->CovFunctionOrder(), re_comp->CovFunctionTaperRange(), re_comp->CovFunctionTaperShape(), false, false, true, false, false, true));
 							if (gp_ip->HasDuplicatedCoords()) {
 								Log::REFatal("Duplicates found in inducing points / low-dimensional knots ");
 							}
@@ -6042,7 +6057,7 @@ namespace GPBoost {
 								has_duplicates_coords_ = only_one_GP_calculations_on_RE_scale_;
 							}
 							re_comps_cross_cov_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
-								coords_all, coords_ip_rescaled, re_comp->CovFunctionName(), re_comp->CovFunctionShape(), re_comp->CovFunctionTaperRange(), re_comp->CovFunctionTaperShape(), false, false, only_one_GP_calculations_on_RE_scale_)));
+								coords_all, coords_ip_rescaled, re_comp->CovFunctionName(), re_comp->CovFunctionShape(), re_comp->CovFunctionOrder(), re_comp->CovFunctionTaperRange(), re_comp->CovFunctionTaperShape(), false, false, only_one_GP_calculations_on_RE_scale_)));
 							re_comps_ip_preconditioner_[cluster_i][0] = re_comps_ip_cluster_i;
 							re_comps_cross_cov_preconditioner_[cluster_i][0] = re_comps_cross_cov_cluster_i;
 							re_comps_ip_cluster_i[0]->SetCovPars(pars);
@@ -6259,6 +6274,8 @@ namespace GPBoost {
 		int ind_intercept_gp_;
 		/*! \brief Dimension of the coordinates (=number of features) for Gaussian process */
 		int dim_gp_coords_ = 2;//required to save since it is needed in the Predict() function when predictions are made for new independent realizations of GPs
+		/*! \brief Order m of the 'hurst' and 'hurst_ard' covariance functions (m - 1 < H < m) */
+		int cov_fct_order_ = 1;
 		/*! \brief If true, there are duplicates in coords among the neighbors (currently only for non-Gaussian likelihoods for some GP approximations) */
 		bool has_duplicates_coords_ = false;
 		/*! \brief Type of GP-approximation for handling large data */
@@ -8365,6 +8382,7 @@ namespace GPBoost {
 		* \param calculateZZt If true, the matrix Z*Z^T is calculated for grouped random effects and saved (usually not needed if Woodbury identity is used)
 		* \param cov_fct Type of covariance function
 		* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
+		* \param cov_fct_order Order m of the 'hurst' and 'hurst_ard' covariance functions (m - 1 < H < m). This must be 1 for all other covariance functions
 		* \param cov_fct_taper_range Range parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param cov_fct_taper_shape Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param[out] re_comps_cluster_i Container that collects the individual component models
@@ -8380,6 +8398,7 @@ namespace GPBoost {
 			bool calculateZZt,
 			string_t cov_fct,
 			double cov_fct_shape,
+			int cov_fct_order,
 			double cov_fct_taper_range,
 			double cov_fct_taper_shape,
 			std::vector<std::shared_ptr<RECompBase<T_mat>>>& re_comps_cluster_i) {
@@ -8429,7 +8448,7 @@ namespace GPBoost {
 				den_mat_t gp_coords_mat = Eigen::Map<den_mat_t>(gp_coords.data(), num_data_per_cluster[cluster_i], dim_gp_coords_);
 				bool use_Z_for_duplicates = (gp_approx_ == "none");
 				re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
-					gp_coords_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
+					gp_coords_mat, cov_fct, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape,
 					gp_approx_ == "tapering", false, true, use_Z_for_duplicates, only_one_GP_calculations_on_RE_scale_, true)));
 				//Random slope GPs
 				if (num_gp_rand_coef_ > 0) {
@@ -8441,7 +8460,7 @@ namespace GPBoost {
 						std::shared_ptr<RECompGP<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGP<T_mat>>(re_comps_cluster_i[ind_intercept_gp_]);
 						re_comps_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 							re_comp->dist_, re_comp->coords_, re_comp->has_Z_, &re_comp->Z_, rand_coef_data,
-							cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
+							cov_fct, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape,
 							re_comp->GetTaperMu(), gp_approx_ == "tapering", false, dim_gp_coords_)));
 					}
 				}
@@ -8699,6 +8718,7 @@ namespace GPBoost {
 		* \param gp_coords_data Coordinates (features) for Gaussian process
 		* \param cov_fct Type of covariance function
 		* \param cov_fct_shape Shape parameter of covariance function (=smoothness parameter for Matern and Wendland covariance. This parameter is irrelevant for some covariance functions such as the exponential or Gaussian
+		* \param cov_fct_order Order m of the 'hurst' and 'hurst_ard' covariance functions (m - 1 < H < m). This must be 1 for all other covariance functions
 		* \param cov_fct_taper_range Range parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param cov_fct_taper_shape Shape parameter of the Wendland covariance function and Wendland correlation taper function. We follow the notation of Bevilacqua et al. (2019, AOS)
 		* \param[out] re_comps_ip_cluster_i Inducing point GP for predictive process
@@ -8712,6 +8732,7 @@ namespace GPBoost {
 			const double* gp_coords_data,
 			string_t cov_fct,
 			double cov_fct_shape,
+			int cov_fct_order,
 			double cov_fct_taper_range,
 			double cov_fct_taper_shape,
 			std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
@@ -8881,7 +8902,7 @@ namespace GPBoost {
 			}
 			gp_coords_all_unique.resize(0, 0);
 			std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
-				gp_coords_ip_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
+				gp_coords_ip_mat, cov_fct, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape,
 				false, false, true, false, false, true));
 			if (gp_ip->HasDuplicatedCoords()) {
 				Log::REFatal("Duplicates found in inducing points / low-dimensional knots ");
@@ -8897,10 +8918,10 @@ namespace GPBoost {
 				}
 			}
 			re_comps_cross_cov_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
-				gp_coords_all_mat, gp_coords_ip_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape, false, false, calc_on_RE_scale)));
+				gp_coords_all_mat, gp_coords_ip_mat, cov_fct, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape, false, false, calc_on_RE_scale)));
 			if (gp_approx_ == "full_scale_tapering") {
 				re_comps_resid_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
-					gp_coords_all_mat, cov_fct, cov_fct_shape, cov_fct_taper_range, cov_fct_taper_shape,
+					gp_coords_all_mat, cov_fct, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape,
 					true, true, true, false, false, true)));
 			}
 			//Random slope GPs
@@ -10758,7 +10779,7 @@ namespace GPBoost {
 					}
 					gp_coords_all_unique.resize(0, 0);
 					std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
-						gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
+						gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionOrder(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
 						false, false, true, false, false, true));
 					if (gp_ip->HasDuplicatedCoords()) {
 						Log::REFatal("Duplicates found in inducing points / low-dimensional knots ");
@@ -10766,7 +10787,7 @@ namespace GPBoost {
 					re_comps_ip_cluster_i.push_back(gp_ip);
 					bool only_one_GP_calculations_on_RE_scale_loc = num_gp_total_ == 1 && num_comps_total_ == 1 && !gauss_likelihood_;
 					re_comps_cross_cov_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
-						gp_coords_all_mat, gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
+						gp_coords_all_mat, gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionOrder(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
 						false, false, only_one_GP_calculations_on_RE_scale_loc)));
 					re_comps_ip_preconditioner_[cluster_i][0] = re_comps_ip_cluster_i;
 					re_comps_cross_cov_preconditioner_[cluster_i][0] = re_comps_cross_cov_cluster_i;
