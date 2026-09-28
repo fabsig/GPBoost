@@ -109,7 +109,8 @@ for estimating phi and p. N must be a non-negative integer that is 0 if and only
 \item{ "tweedie_varying_dispersion", "tweedie_varying_dispersion_fixed_p": As "tweedie" and "tweedie_fixed_p", but the dispersion phi varies across
 observations: log(phi) = F_d(X) is related to fixed effects only (linear predictor or GPBoost algorithm), while log(mu) = F(X) + Zb is related
 to both fixed and random effects. The power p is then the only (auxiliary) parameter. The estimated coefficients of the log-dispersion model are
-returned alongside the mean-model coefficients (with the suffix "_dispersion") }
+returned alongside the mean-model coefficients (with the suffix "_dispersion"). The "test_neg_log_likelihood" metric of the GPBoost
+algorithm is currently not supported for these likelihoods; use another metric (e.g., "mse") for validation data }
 \item{ "tweedie_joint_varying_dispersion", "tweedie_joint_varying_dispersion_fixed_p": The joint (y, N) likelihood of "tweedie_joint" with the
 varying dispersion of "tweedie_varying_dispersion" }
 \item{ "hurdle_<base>": Two-part likelihoods for non-negative response variables with an excess probability 'p0' of exact zeros.

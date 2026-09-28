@@ -436,6 +436,59 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(cvbst$best_score - 1.96781409), TOLERANCE_MEDIUM)
   })
 
+  test_that("Tweedie likelihoods: density evaluation failures, zero weights, and a change of the response variable ", {
+
+    # The series of the Tweedie normalizer cannot be evaluated for a very small dispersion. This is a legitimate parameter
+    # value (e.g., a trial point of an optimizer), so the negative log-likelihood is non-finite and there is no error
+    i_pos <- which(y_gr > 0)[1]
+    zeta_small <- zeta_gr
+    zeta_small[i_pos] <- log(1e-7)
+    nll_vd <- GPModel(group_data = group, likelihood = "tweedie_varying_dispersion")$neg_log_likelihood(
+      cov_pars = 0.3, y = y_gr, fixed_effects = c(eta_gr, zeta_small), aux_pars = 1.5)
+    expect_false(is.finite(nll_vd))
+    nll_const <- GPModel(group_data = group, likelihood = "tweedie")$neg_log_likelihood(cov_pars = 0.3, y = y_gr, fixed_effects = eta_gr, aux_pars = c(1e-7, 1.5))
+    expect_false(is.finite(nll_const))
+    # An optimizer whose trial points pass through this region rejects them and finds the same optimum as lbfgs
+    X_big <- cbind(1, 30 * X[, 2])
+    capture.output(fit_lbfgs <- fitGPModel(group_data = group, likelihood = "tweedie_varying_dispersion", y = y_gr, X = X_big, params = OPTIM_PARAMS), file = "NUL")
+    capture.output(fit_gd <- fitGPModel(group_data = group, likelihood = "tweedie_varying_dispersion", y = y_gr, X = X_big,
+                                        params = list(optimizer_cov = "gradient_descent", optimizer_coef = "gradient_descent", maxit = 2000, lr_coef = 10,
+                                                      lr_cov = 0.1, init_coef_aux_pars_from_iid_model = FALSE)), file = "NUL")
+    expect_lt(abs(fit_lbfgs$get_current_neg_log_likelihood() - 386.882526), TOLERANCE_MEDIUM)
+    expect_lt(abs(fit_gd$get_current_neg_log_likelihood() - 386.883167), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(fit_gd$get_coef()) - c(0.45283, 0.01422, -0.21416, 0.03002))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(fit_gd$get_coef()) - as.vector(fit_lbfgs$get_coef()))), TOLERANCE_LOOSE)
+
+    # An observation with a zero weight does not contribute and is not evaluated (its series could not be evaluated here)
+    y_w <- y_gr
+    y_w[1] <- 1e12
+    weights_w <- c(0, rep(1, n - 1))
+    for (lik in c("tweedie", "tweedie_varying_dispersion")) {
+      vd <- lik == "tweedie_varying_dispersion"
+      aux <- if (vd) 1.5 else c(0.8, 1.5)
+      nll_w <- GPModel(group_data = group, likelihood = lik, weights = weights_w)$neg_log_likelihood(
+        cov_pars = 0.3, y = y_w, fixed_effects = if (vd) c(eta_gr, zeta_gr) else eta_gr, aux_pars = aux)
+      nll_sub <- GPModel(group_data = group[-1], likelihood = lik)$neg_log_likelihood(
+        cov_pars = 0.3, y = y_gr[-1], fixed_effects = if (vd) c(eta_gr[-1], zeta_gr[-1]) else eta_gr[-1], aux_pars = aux)
+      expect_lt(abs(nll_w - nll_sub), TOLERANCE_STRICT)
+    }
+
+    # The cached normalizing constants of the likelihood are recalculated when the response variable of a model changes
+    y_gr2 <- sim_tweedie_yn(exp(eta_gr), exp(zeta_gr), 1.5, 0.12, 0.34)$y
+    for (lik in c("gamma", "tweedie", "tweedie_varying_dispersion")) {
+      y_a <- if (lik == "gamma") y_gr + 0.1 else y_gr
+      y_b <- if (lik == "gamma") y_gr2 + 0.1 else y_gr2
+      fe <- if (lik == "tweedie_varying_dispersion") c(eta_gr, zeta_gr) else eta_gr
+      aux <- if (lik == "tweedie") c(0.8, 1.5) else if (lik == "gamma") 2 else 1.5
+      gp_model <- GPModel(group_data = group, likelihood = lik)
+      gp_model$neg_log_likelihood(cov_pars = 0.3, y = y_a, fixed_effects = fe, aux_pars = aux)
+      nll_same_model <- gp_model$neg_log_likelihood(cov_pars = 0.3, y = y_b, fixed_effects = fe, aux_pars = aux)
+      nll_new_model <- GPModel(group_data = group, likelihood = lik)$neg_log_likelihood(cov_pars = 0.3, y = y_b, fixed_effects = fe, aux_pars = aux)
+      expect_lt(abs(nll_same_model - nll_new_model), TOLERANCE_STRICT)
+    }
+    expect_lt(abs(nll_new_model - 401.8971174358), TOLERANCE_MEDIUM)
+  })
+
   test_that("joint and varying-dispersion Tweedie likelihoods: input validation ", {
     expect_error(GPModel(group_data = group, likelihood = "tweedie_joint"), "additional_likelihood_data")
     expect_error(GPModel(group_data = group, likelihood = "tweedie_joint_varying_dispersion_fixed_p", additional_likelihood_data = N_gr),

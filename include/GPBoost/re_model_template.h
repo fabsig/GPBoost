@@ -6932,6 +6932,9 @@ namespace GPBoost {
 					}
 				}
 			}//end not gauss_likelihood_
+			for (const auto& cluster_i : unique_clusters_) {
+				likelihood_[cluster_i]->InvalidateResponseDependentCaches();
+			}
 			y_has_been_set_ = true;
 		}
 
@@ -6962,6 +6965,9 @@ namespace GPBoost {
 						}
 					}
 				}
+			}
+			for (const auto& cluster_i : unique_clusters_) {
+				likelihood_[cluster_i]->InvalidateResponseDependentCaches();
 			}
 			y_has_been_set_ = true;
 		}//end SetY

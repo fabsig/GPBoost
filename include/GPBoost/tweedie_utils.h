@@ -251,10 +251,11 @@ inline TweedieSeriesResult EvaluateTweedieLogNormalizer(double y, double rho, do
 *	The location-dependent part equals the one of the marginal Tweedie density ('TweedieLocationResult::canonical'), and
 *	the remaining part is the n-th term of the series of the marginal normalizer, i.e. log(a_n(y, phi, p)) with
 *	a(y, phi, p) = sum_n a_n(y, phi, p). For n = 0, y has to be 0 and the result is 0.
-*	The derivatives are wrt rho = log(phi) and the transformed power theta (dp/dtheta = 'dp_dtheta')
+*	The derivatives are wrt rho = log(phi) and the transformed power theta (dp/dtheta = 'dp_dtheta'), with the same
+*	fields and conventions as 'EvaluateTweedieLogNormalizer'. Since log(a_n) is linear in rho, d2_rho = 0
 */
 inline TweedieSeriesResult EvaluateTweedieJointLogNormalizer(double y, double n, double rho, double p,
-	double dp_dtheta, bool calculate_power_derivatives) {
+	double dp_dtheta, double d2p_dtheta2, TweedieDerivativeOrder order, bool calculate_power_derivatives) {
 	TweedieSeriesResult ans;
 	ans.lower = ans.upper = static_cast<int64_t>(n);
 	if (n == 0.) {
@@ -268,11 +269,20 @@ inline TweedieSeriesResult EvaluateTweedieJointLogNormalizer(double y, double n,
 	const double log_y = std::log(y);
 	const double alpha = (2. - p) / (p - 1.);
 	ans.log_a = TweedieSeriesLogTerm(static_cast<int64_t>(n), log_y, rho, p) - log_y;
+	if (order == TweedieDerivativeOrder::kValue) return ans;
 	ans.d_rho = -n / (p - 1.);
 	if (calculate_power_derivatives) {
 		const double alpha_p = -1. / ((p - 1.) * (p - 1.));
 		const double H = log_y - std::log(p - 1.) - rho - GPBoost::digamma(n * alpha);
-		ans.d_theta = dp_dtheta * n * (alpha_p * H - alpha / (p - 1.) + 1. / (2. - p));
+		const double lp = n * (alpha_p * H - alpha / (p - 1.) + 1. / (2. - p));
+		ans.d_theta = dp_dtheta * lp;
+		if (order == TweedieDerivativeOrder::kSecond) {
+			const double alpha_pp = 2. / ((p - 1.) * (p - 1.) * (p - 1.));
+			const double lpp = n * (alpha_pp * H - 2. * alpha_p / (p - 1.) - n * alpha_p * alpha_p * GPBoost::trigamma(n * alpha) +
+				alpha / ((p - 1.) * (p - 1.)) + 1. / ((2. - p) * (2. - p)));
+			ans.d2_rho_theta = dp_dtheta * n / ((p - 1.) * (p - 1.));
+			ans.d2_theta = dp_dtheta * dp_dtheta * lpp + d2p_dtheta2 * lp;
+		}
 	}
 	return ans;
 }

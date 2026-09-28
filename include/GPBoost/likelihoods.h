@@ -936,8 +936,8 @@ namespace GPBoost {
 		inline TweedieSeriesResult EvaluateTweedieNormalizerOneObs(double y, data_size_t i, double rho, double p,
 			const TweediePowerTransform& transform, TweedieDerivativeOrder order, TweedieSpecialFunctionCache* cache) const {
 			if (is_tweedie_joint_) {
-				return EvaluateTweedieJointLogNormalizer(y, additional_likelihood_data_[i], rho, p, transform.dp_dtheta,
-					order != TweedieDerivativeOrder::kValue && IsTweedieEstimatedPower());
+				return EvaluateTweedieJointLogNormalizer(y, additional_likelihood_data_[i], rho, p, transform.dp_dtheta, transform.d2p_dtheta2,
+					order, order != TweedieDerivativeOrder::kValue && IsTweedieEstimatedPower());
 			}
 			return EvaluateTweedieLogNormalizer(y, rho, p, transform.dp_dtheta, transform.d2p_dtheta2, order,
 				order != TweedieDerivativeOrder::kValue && IsTweedieEstimatedPower(), 1000000, cache);
@@ -964,9 +964,22 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Invalidate all cached quantities that depend on the response variable (the normalizing constants of the
+		*		log-likelihood). Needs to be called whenever the response variable changes
+		*/
+		void InvalidateResponseDependentCaches() {
+			normalizing_constant_has_been_calculated_ = false;
+			aux_normalizing_constant_has_been_calculated_ = false;
+			tweedie_vd_cache_valid_ = false;
+		}
+
+		/*!
 		* \brief Calculate the per-observation log-normalizers of a varying-dispersion Tweedie likelihood (and their derivatives
 		*		wrt rho_i = log(phi_i) and the transformed power) if they are not up to date. They do not depend on the mean block
-		*		and are thus calculated only once for all evaluations of the log-likelihood during mode finding
+		*		and are thus calculated only once for all evaluations of the log-likelihood during mode finding.
+		*		If the series cannot be evaluated for an observation (e.g., for a very small dispersion at a trial point of the
+		*		optimizer), the log-likelihood is NaN, which the optimizers treat as an unsuccessful trial point.
+		*		Observations with a zero weight are not evaluated. The cache is invalidated by 'InvalidateResponseDependentCaches'
 		* \param y_data Response variable data
 		* \param location_par Location parameter (both blocks)
 		*/
@@ -983,25 +996,32 @@ namespace GPBoost {
 			tweedie_vd_log_a_.resize(num_data_);
 			tweedie_vd_d_rho_.resize(num_data_);
 			tweedie_vd_d_theta_.resize(num_data_);
-			bool convergence_failure = false;
+			bool evaluation_failure = false;
 			data_size_t fail_index = 0;
 #pragma omp parallel for schedule(static) if (num_data_ >= 128)
 			for (data_size_t i = 0; i < num_data_; ++i) {
+				if (has_weights_ && weights_[i] == 0.) {
+					tweedie_vd_log_a_[i] = tweedie_vd_d_rho_[i] = tweedie_vd_d_theta_[i] = 0.;
+					continue;
+				}
 				thread_local TweedieSpecialFunctionCache cache;
 				const auto res = EvaluateTweedieNormalizerOneObs(y_data[i], i, rho[i], p, transform, TweedieDerivativeOrder::kFirst, &cache);
 				if (!res.converged || !std::isfinite(res.log_a) || !std::isfinite(res.d_rho) || !std::isfinite(res.d_theta)) {
 #pragma omp critical
 					{
-						convergence_failure = true;
+						evaluation_failure = true;
 						fail_index = i;
 					}
+					tweedie_vd_log_a_[i] = tweedie_vd_d_rho_[i] = tweedie_vd_d_theta_[i] = std::numeric_limits<double>::quiet_NaN();
 				}
-				tweedie_vd_log_a_[i] = res.log_a;
-				tweedie_vd_d_rho_[i] = res.d_rho;
-				tweedie_vd_d_theta_[i] = res.d_theta;
+				else {
+					tweedie_vd_log_a_[i] = res.log_a;
+					tweedie_vd_d_rho_[i] = res.d_rho;
+					tweedie_vd_d_theta_[i] = res.d_theta;
+				}
 			}
-			if (convergence_failure) {
-				Log::REFatal("Tweedie density series did not converge for y=%g, phi=%g, p = %g.", y_data[fail_index], std::exp(rho[fail_index]), p);
+			if (evaluation_failure) {
+				Log::REDebug("The Tweedie density could not be evaluated for y = %g, phi = %g, p = %g ", y_data[fail_index], std::exp(rho[fail_index]), p);
 			}
 			tweedie_vd_sum_log_a_ = SumOverSamplesWeighted([&](data_size_t i) { return tweedie_vd_log_a_[i]; });
 			tweedie_vd_cache_rho_ = rho;
@@ -3527,19 +3547,22 @@ namespace GPBoost {
 					const double log_phi = std::log(phi);
 					const auto transform = GetTweediePowerTransform();
 					double sum_a = 0., sum_rho = 0., sum_theta = 0.;
-					// Non-convergence is exceptional; record it and raise the error after the parallel region (Log::REFatal must not throw out of an OpenMP loop).
-					bool convergence_failure = false;
+					// If the series cannot be evaluated for an observation (e.g., for a very small dispersion at a trial point of the
+					//	optimizer), the log-likelihood is NaN, which the optimizers treat as an unsuccessful trial point.
+					//	Observations with a zero weight are not evaluated
+					bool evaluation_failure = false;
 					data_size_t fail_index = 0;
 					// Each thread uses its own persistent special-function cache (thread_local => reused across calls, e.g. when only phi changes).
 #pragma omp parallel for schedule(static) reduction(+:sum_a,sum_rho,sum_theta) if (num_data_ >= 128)
 					for (data_size_t i = 0; i < num_data_; ++i) {
-						thread_local TweedieSpecialFunctionCache cache;
 						const double w = has_weights_ ? weights_[i] : 1.;
+						if (w == 0.) continue;
+						thread_local TweedieSpecialFunctionCache cache;
 						const auto res = EvaluateTweedieNormalizerOneObs(y_data[i], i, log_phi, p, transform, TweedieDerivativeOrder::kFirst, &cache);
 						if (!res.converged || !std::isfinite(res.log_a) || !std::isfinite(res.d_rho) || !std::isfinite(res.d_theta)) {
 #pragma omp critical
 							{
-								convergence_failure = true;
+								evaluation_failure = true;
 								fail_index = i;
 							}
 						}
@@ -3549,8 +3572,9 @@ namespace GPBoost {
 							sum_theta += w * res.d_theta;
 						}
 					}
-					if (convergence_failure) {
-						Log::REFatal("Tweedie density series did not converge for y=%g, phi=%g, p = %g.", y_data[fail_index], phi, p);
+					if (evaluation_failure) {
+						Log::REDebug("The Tweedie density could not be evaluated for y = %g, phi = %g, p = %g ", y_data[fail_index], phi, p);
+						sum_a = sum_rho = sum_theta = std::numeric_limits<double>::quiet_NaN();
 					}
 					tweedie_sum_d_log_a_rho_ = sum_rho;
 					tweedie_sum_d_log_a_theta_ = sum_theta;
