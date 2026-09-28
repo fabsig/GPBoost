@@ -588,3 +588,33 @@ def test_cg_prediction_settings_do_not_change_the_fit(pred_opts, likelihood):
     reference = fit()
     assert np.all(np.isfinite(reference))
     np.testing.assert_allclose(fit(pred_opts), reference, rtol=1e-12)
+
+
+def test_test_neg_log_likelihood_metric_with_a_second_predictor():
+    # The default validation metric of the GPBoost algorithm for a likelihood with a second, fixed-effects-only
+    # predictor: a joint Tweedie likelihood with an observed number of events and a log-dispersion predictor
+    rng = np.random.default_rng(3)
+    n, n_groups, p = 300, 30, 1.5
+    group = np.repeat(np.arange(n_groups), n // n_groups)
+    x = rng.uniform(size=(n, 1))
+    mu = np.exp(0.2 + 0.6 * x[:, 0] + rng.normal(scale=0.4, size=n_groups)[group])
+    phi = np.exp(-0.5 + 1.2 * x[:, 0])
+    num_events = rng.poisson(mu ** (2 - p) / (phi * (2 - p)))
+    y = np.where(num_events > 0, rng.gamma(shape=np.maximum(num_events, 1) * (2 - p) / (p - 1), scale=phi * (p - 1) * mu ** (p - 1)), 0.)
+    params = {"learning_rate": 0.1, "max_depth": 2, "min_data_in_leaf": 5, "verbose": -1}
+    tr, va = np.arange(0, n, 2), np.arange(1, n, 2)
+    gp_model = gpb.GPModel(group_data=group[tr], likelihood="tweedie_joint_varying_dispersion",
+                           additional_likelihood_data=num_events[tr])
+    gp_model.set_prediction_data(group_data_pred=group[va])
+    train_set = gpb.Dataset(x[tr], y[tr])
+    evals_result = {}
+    gpb.train(params=params, train_set=train_set, gp_model=gp_model, num_boost_round=5,
+              valid_sets=gpb.Dataset(x[va], y[va], reference=train_set), evals_result=evals_result)
+    metric = evals_result["valid_0"]["test_neg_log_likelihood"]
+    assert len(metric) == 5
+    assert np.all(np.isfinite(metric))
+    # Cross-validation subsets the number of events together with the other data
+    gp_model = gpb.GPModel(group_data=group, likelihood="tweedie_joint_varying_dispersion", additional_likelihood_data=num_events)
+    cv_result = gpb.cv(params=params, train_set=gpb.Dataset(x, y), gp_model=gp_model, num_boost_round=5,
+                       folds=[(tr, va), (va, tr)])
+    assert np.all(np.isfinite(cv_result["test_neg_log_likelihood-mean"]))

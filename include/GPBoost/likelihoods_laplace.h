@@ -3998,9 +3998,7 @@ namespace GPBoost {
 						SigmaI_plus_W_inv_d_mll_d_mode = information_ll_.cwiseInverse().asDiagonal() * (SigmaI_plus_W_inv_d_mll_d_mode_part - sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov * chol_fact_sigma_woodbury_2.solve((*cross_cov).transpose() * SigmaI_plus_W_inv_d_mll_d_mode_part));
 					}
 				}
-				else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad)) {
-					SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv.diagonal().array() + SigmaI_plus_W_inv_diag.array()).matrix();
-				}
+				// Otherwise, the complete diagonal of (Sigma^-1 + W)^-1 has been calculated together with the gradient wrt the covariance parameters
 			}
 			// Calculate gradient wrt fixed effects
 			if (calc_F_grad) {

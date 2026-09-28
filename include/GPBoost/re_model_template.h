@@ -6895,10 +6895,44 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief True if the response variable data differs from the one that is currently stored in y_ / y_int_ (or if
+		*		none has been set yet) for a non-Gaussian likelihood. Used to invalidate the response-dependent cached
+		*		quantities of the likelihoods only if the response variable has changed
+		* \param y_data Response variable data (original ordering)
+		*/
+		template <typename T>//T can be double or float
+		bool NonGaussResponseDiffersFromStored(const T* y_data) const {
+			if (!y_has_been_set_) {
+				return true;
+			}
+			const bool int_label = likelihood_.at(unique_clusters_[0])->label_type() == "int";
+			for (const auto& cluster_i : unique_clusters_) {
+				const std::vector<data_size_t>& indices = data_indices_per_cluster_.at(cluster_i);
+				const data_size_t num_data_cluster_i = num_data_per_cluster_.at(cluster_i);
+				if (int_label) {
+					const vec_int_t& y_stored = y_int_.at(cluster_i);
+					if ((data_size_t)y_stored.size() != num_data_cluster_i) return true;
+					for (data_size_t j = 0; j < num_data_cluster_i; ++j) {
+						if (y_stored[j] != static_cast<int>(y_data[indices[j]])) return true;
+					}
+				}
+				else {
+					const vec_t& y_stored = y_.at(cluster_i);
+					if ((data_size_t)y_stored.size() != num_data_cluster_i) return true;
+					for (data_size_t j = 0; j < num_data_cluster_i; ++j) {
+						if (y_stored[j] != static_cast<double>(y_data[indices[j]])) return true;
+					}
+				}
+			}
+			return false;
+		}
+
+		/*!
 		* \brief Set response variable data y_ (and calculate Z^T * y if  use_woodbury_identity_ == true)
 		* \param y_data Response variable data
 		*/
 		void SetY(const double* y_data) {
+			const bool response_changed = gauss_likelihood_ || NonGaussResponseDiffersFromStored(y_data);
 			if (gauss_likelihood_) {
 				if (num_clusters_ == 1 && ((gp_approx_ != "vecchia" && gp_approx_ != "full_scale_vecchia") || vecchia_ordering_ == "none")) {
 					y_[unique_clusters_[0]] = Eigen::Map<const vec_t>(y_data, num_data_);
@@ -6935,8 +6969,10 @@ namespace GPBoost {
 					}
 				}
 			}//end not gauss_likelihood_
-			for (const auto& cluster_i : unique_clusters_) {
-				likelihood_[cluster_i]->InvalidateResponseDependentCaches();
+			if (response_changed) {
+				for (const auto& cluster_i : unique_clusters_) {
+					likelihood_[cluster_i]->InvalidateResponseDependentCaches();
+				}
 			}
 			y_has_been_set_ = true;
 		}
@@ -6946,6 +6982,7 @@ namespace GPBoost {
 		* \param y_data Response variable data
 		*/
 		void SetY(const float* y_data) {
+			const bool response_changed = gauss_likelihood_ || NonGaussResponseDiffersFromStored(y_data);
 			if (gauss_likelihood_) {
 				Log::REFatal("SetY is not implemented for Gaussian data and lables of type float (since it is not needed)");
 			}//end gauss_likelihood_
@@ -6969,8 +7006,10 @@ namespace GPBoost {
 					}
 				}
 			}
-			for (const auto& cluster_i : unique_clusters_) {
-				likelihood_[cluster_i]->InvalidateResponseDependentCaches();
+			if (response_changed) {
+				for (const auto& cluster_i : unique_clusters_) {
+					likelihood_[cluster_i]->InvalidateResponseDependentCaches();
+				}
 			}
 			y_has_been_set_ = true;
 		}//end SetY

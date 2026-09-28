@@ -106,6 +106,8 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         gp_model <- GPModel(group_data = group)
         params_loc <- OPTIM_PARAMS_GRAD_DESC
         params_loc$trace <- TRUE
+        # trace sets the log level of the process, restore it for the tests that follow
+        on.exit(set_optim_params(gp_model, params = list(trace = FALSE)), add = TRUE)
         set_optim_params(gp_model, params = params_loc)
         output <- capture.output( bst <- gpboost(data = X_train, label = y, gp_model = gp_model,
                                                  nrounds = 2, params = params, verbose = 0,

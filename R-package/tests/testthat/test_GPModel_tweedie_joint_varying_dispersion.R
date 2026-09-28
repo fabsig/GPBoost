@@ -362,6 +362,29 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_fitc <- c(0.64343015, 0.74334861, -0.26610752, 0.84015935, 1.50613619, 0.18861284, 0.11858142)
     expect_lt(sum(abs(c(fit_fitc$get_coef(), fit_fitc$get_aux_pars(), fit_fitc$get_cov_pars()) - expected_fitc)), TOLERANCE_MEDIUM)
     expect_lt(abs(fit_fitc$get_current_neg_log_likelihood() - 528.47046119), TOLERANCE_MEDIUM)
+    # Full-scale Vecchia approximation. The finite-difference gradient of the approximate marginal likelihood (a new model for
+    # every evaluation) vanishes at the optimum found with the analytical gradients wrt all parameters, including the power
+    fsva_args <- list(gp_coords = coords, cov_function = "exponential", likelihood = lik, additional_likelihood_data = N_gp,
+                      gp_approx = "full_scale_vecchia", num_ind_points = 30, num_neighbors = 10, vecchia_ordering = "none",
+                      matrix_inversion_method = "cholesky")
+    capture.output(fit_fsva <- do.call(fitGPModel, c(fsva_args, list(y = y_gp, X = X_gp, params = c(OPTIM_PARAMS, list(maxit = 2000, delta_rel_conv = 1e-13))))),
+                   file = "NUL")
+    expected_fsva <- c(0.67289978, 0.73604630, -0.26063048, 0.83886550, 1.50859464, 0.17318515, 0.14537083)
+    expect_lt(sum(abs(c(fit_fsva$get_coef(), fit_fsva$get_aux_pars(), fit_fsva$get_cov_pars()) - expected_fsva)), TOLERANCE_VECCHIA_PARS)
+    expect_lt(abs(fit_fsva$get_current_neg_log_likelihood() - 528.41621725), TOLERANCE_MEDIUM)
+    pred <- predict(fit_fsva, gp_coords_pred = coords[1:3, ] + 1e-3, X_pred = X_gp[1:3, ], predict_var = TRUE, predict_response = TRUE)
+    expect_lt(sum(abs(pred$mu - c(2.81761770, 1.95118457, 2.29692570))), TOLERANCE_VECCHIA_PARS)
+    nll_fsva_at <- function(th) {
+      capture.output(gp_model_fsva <- do.call(GPModel, fsva_args), file = "NUL")
+      gp_model_fsva$neg_log_likelihood(cov_pars = exp(th[1:2]), y = y_gp, fixed_effects = c(X_gp %*% th[3:4], X_gp %*% th[5:6]),
+                                       aux_pars = 1.01 + 0.98 * plogis(th[7]))
+    }
+    th_fsva <- c(log(fit_fsva$get_cov_pars()), fit_fsva$get_coef(), qlogis((fit_fsva$get_aux_pars() - 1.01) / 0.98))
+    grad_fd_fsva <- sapply(seq_along(th_fsva), function(j) {
+      tp <- tm <- th_fsva; tp[j] <- tp[j] + 1e-5; tm[j] <- tm[j] - 1e-5
+      (nll_fsva_at(tp) - nll_fsva_at(tm)) / 2e-5
+    })
+    expect_lt(max(abs(grad_fd_fsva)), 1e-2)
     # Vecchia approximation with multiple observations at the same locations
     coords_u <- matrix(sim_rand_unif(2 * 50, 0.19), ncol = 2)
     capture.output(fit_rep <- fitGPModel(gp_coords = coords_u[rep(1:50, length.out = n_gp), ], cov_function = "exponential", likelihood = lik,
@@ -518,14 +541,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
     # The "test_neg_log_likelihood" metric of the GPBoost algorithm on validation data, together with an independent
     # calculation: for every validation point, the integral of a reference density (written with base R functions) over
-    # the latent predictive distribution of the first predictor, given the tree-ensemble values of the other predictors
-    validation_test_nll <- function(likelihood, y, x, group, log_dens, additional_likelihood_data = NULL, nrounds = 5) {
+    # the latent predictive distribution of the first predictor, given the tree-ensemble values of the other predictors.
+    # Further arguments are passed to GPModel()
+    validation_test_nll <- function(likelihood, y, x, group, log_dens, additional_likelihood_data = NULL, nrounds = 5, ...) {
       tr <- seq(1, length(y), by = 2)
       va <- seq(2, length(y), by = 2)
       dtrain <- gpb.Dataset(data = x[tr, , drop = FALSE], label = y[tr])
       dvalid <- gpb.Dataset.create.valid(dtrain, data = x[va, , drop = FALSE], label = y[va])
       gp_model <- GPModel(group_data = group[tr], likelihood = likelihood,
-                          additional_likelihood_data = if (is.null(additional_likelihood_data)) NULL else additional_likelihood_data[tr])
+                          additional_likelihood_data = if (is.null(additional_likelihood_data)) NULL else additional_likelihood_data[tr], ...)
       gp_model$set_optim_params(params = list(optimizer_cov = "lbfgs", maxit = 300, init_coef_aux_pars_from_iid_model = FALSE))
       gp_model$set_prediction_data(group_data_pred = group[va])
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = nrounds, learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 5,
@@ -560,14 +584,40 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         tol_reference = 1e-6),
       tweedie_joint_varying_dispersion = list(y = sim_v$y,
         log_dens = function(y, e, z, a) ll_marg(rep(y, length(e)), e, rep(z[1], length(e)), a[1]),
+        tol_reference = 1e-6),
+      tweedie_varying_dispersion_fixed_p = list(y = sim_v$y,
+        log_dens = function(y, e, z, a) ll_marg(rep(y, length(e)), e, rep(z[1], length(e)), a[1]),
+        tol_reference = 1e-6),
+      tweedie_joint_varying_dispersion_fixed_p = list(y = sim_v$y,
+        log_dens = function(y, e, z, a) ll_marg(rep(y, length(e)), e, rep(z[1], length(e)), a[1]),
         tol_reference = 1e-6))
     expected <- c(tweedie_varying_dispersion = 1.99348900,
-                  tweedie_joint_varying_dispersion = 1.93760366)
+                  tweedie_joint_varying_dispersion = 1.93760366,
+                  tweedie_varying_dispersion_fixed_p = 1.98433390,
+                  tweedie_joint_varying_dispersion_fixed_p = 1.93782048)
     for (lik in names(cases)) {
       res <- validation_test_nll(lik, cases[[lik]]$y, x_v, group_v, cases[[lik]]$log_dens,
-                                 additional_likelihood_data = if (grepl("joint", lik)) sim_v$n else NULL)
+                                 additional_likelihood_data = if (grepl("joint", lik)) sim_v$n else NULL,
+                                 likelihood_additional_param = if (grepl("fixed_p", lik)) 1.45 else NULL)
       expect_lt(abs(res[["metric"]] - res[["reference"]]), cases[[lik]]$tol_reference)
       expect_lt(abs(res[["metric"]] - expected[[lik]]), TOLERANCE_MEDIUM)
+    }
+
+    # A validation point for which the series of the Tweedie density exceeds its computational budget gives a test
+    # negative log-likelihood of +inf (with a warning) instead of stopping the GPBoost algorithm
+    y_huge <- sim_v$y
+    y_huge[2] <- 1e16# a validation point
+    tr <- seq(1, n_v, by = 2)
+    va <- seq(2, n_v, by = 2)
+    for (lik in c("tweedie", "tweedie_varying_dispersion")) {
+      dtrain <- gpb.Dataset(data = x_v[tr, , drop = FALSE], label = y_huge[tr])
+      dvalid <- gpb.Dataset.create.valid(dtrain, data = x_v[va, , drop = FALSE], label = y_huge[va])
+      gp_model <- GPModel(group_data = group_v[tr], likelihood = lik)
+      gp_model$set_optim_params(params = list(optimizer_cov = "lbfgs", maxit = 300, init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_prediction_data(group_data_pred = group_v[va])
+      capture.output(bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 2, learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 5,
+                                      valids = list(valid = dvalid), verbose = 0, deterministic = TRUE), file = "NUL")
+      expect_equal(unlist(bst$record_evals$valid$test_neg_log_likelihood$eval), c(Inf, Inf))
     }
   })
 

@@ -306,19 +306,20 @@ test_that("EGPD carriers reduce to their special cases and match a closed-form G
   expect_equal(nll("gpd", c(0), y_use=y_exp, eta_use=eta0, cov_use=1e-4), analytic, tolerance=5e-3)
 })
 
-  test_that("test negative log-likelihood metric of the GPBoost algorithm for the gpd likelihood with a bounded support ", {
+  test_that("test negative log-likelihood metric of the GPBoost algorithm for the gpd likelihood ", {
 
     sim_rand_unif <- sim_rand_unif_egpd
     # The "test_neg_log_likelihood" metric of the GPBoost algorithm on validation data, together with an independent
     # calculation: for every validation point, the integral of a reference density (written with base R functions) over
-    # the latent predictive distribution of the first predictor, given the tree-ensemble values of the other predictors
-    validation_test_nll <- function(likelihood, y, x, group, log_dens, additional_likelihood_data = NULL, nrounds = 5) {
+    # the latent predictive distribution of the first predictor, given the tree-ensemble values of the other predictors.
+    # Further arguments are passed to GPModel()
+    validation_test_nll <- function(likelihood, y, x, group, log_dens, additional_likelihood_data = NULL, nrounds = 5, ...) {
       tr <- seq(1, length(y), by = 2)
       va <- seq(2, length(y), by = 2)
       dtrain <- gpb.Dataset(data = x[tr, , drop = FALSE], label = y[tr])
       dvalid <- gpb.Dataset.create.valid(dtrain, data = x[va, , drop = FALSE], label = y[va])
       gp_model <- GPModel(group_data = group[tr], likelihood = likelihood,
-                          additional_likelihood_data = if (is.null(additional_likelihood_data)) NULL else additional_likelihood_data[tr])
+                          additional_likelihood_data = if (is.null(additional_likelihood_data)) NULL else additional_likelihood_data[tr], ...)
       gp_model$set_optim_params(params = list(optimizer_cov = "lbfgs", maxit = 300, init_coef_aux_pars_from_iid_model = FALSE))
       gp_model$set_prediction_data(group_data_pred = group[va])
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = nrounds, learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 5,

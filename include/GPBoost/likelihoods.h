@@ -3012,6 +3012,24 @@ namespace GPBoost {
 			double& information_at_mode) const;
 
 		/*!
+		* \brief Logarithm of the integral of p(y | x) * N(x; pred_mean, pred_var) over x using adaptive GH quadrature
+		* \param log_dens Log-density log p(y | x) as a function of x
+		* \param mode Mode of the integrand (center of the nodes)
+		* \param sqrt2_sigma_hat sqrt(2) times the standard deviation of the Gaussian approximation of the integrand at the mode
+		* \param pred_mean Predictive mean
+		* \param sqrt_sigma2_inv 1 / sqrt(pred_var)
+		* \param[out] evaluation_failure True if the log-density is NaN or +inf at a node (a numerical failure)
+		* \return Logarithm of the integral (-inf if the density is zero at all nodes, NaN if evaluation_failure)
+		*/
+		template <typename LogDens>
+		inline double LogIntegralAdaptiveGHQuadrature(LogDens log_dens,
+			double mode,
+			double sqrt2_sigma_hat,
+			double pred_mean,
+			double sqrt_sigma2_inv,
+			bool& evaluation_failure) const;
+
+		/*!
 		* \brief Calculate the test negative log-likelihood using adaptive GH quadrature for likelihoods with additional
 		*		fixed-effects-only location parameter blocks, see 'TestNegLogLikelihoodAdaptiveGHQuadrature'
 		*/

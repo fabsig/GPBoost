@@ -712,6 +712,39 @@ namespace GPBoost {
 	}//end FindModeIntegrandAdaptiveGHQuadrature
 
 	template <typename T_mat, typename T_chol>
+	template <typename LogDens>
+	inline double Likelihood<T_mat, T_chol>::LogIntegralAdaptiveGHQuadrature(LogDens log_dens,
+		double mode,
+		double sqrt2_sigma_hat,
+		double pred_mean,
+		double sqrt_sigma2_inv,
+		bool& evaluation_failure) const {
+		// Summation on the log scale (relative to the largest node value) to avoid under- and overflow. A log-density of -inf
+		//	is a zero density (e.g., outside a bounded support), whereas NaN and +inf are numerical failures
+		evaluation_failure = false;
+		std::vector<double> log_terms(order_GH_);
+		double max_log_term = -std::numeric_limits<double>::infinity();
+		for (int j = 0; j < order_GH_; ++j) {
+			const double x_val = sqrt2_sigma_hat * GH_nodes_[j] + mode;
+			const double z = sqrt_sigma2_inv * (x_val - pred_mean);
+			log_terms[j] = log_dens(x_val) - 0.5 * z * z;
+			if (std::isnan(log_terms[j]) || log_terms[j] == std::numeric_limits<double>::infinity()) {
+				evaluation_failure = true;
+				return std::numeric_limits<double>::quiet_NaN();
+			}
+			max_log_term = std::max(max_log_term, log_terms[j]);
+		}
+		if (max_log_term == -std::numeric_limits<double>::infinity()) {
+			return max_log_term;// the density is zero at all nodes
+		}
+		double sum_terms = 0.;
+		for (int j = 0; j < order_GH_; ++j) {
+			sum_terms += adaptive_GH_weights_[j] * std::exp(log_terms[j] - max_log_term);
+		}
+		return max_log_term + std::log(sum_terms * sqrt2_sigma_hat * sqrt_sigma2_inv) - M_LOGSQRT2PI;
+	}//end LogIntegralAdaptiveGHQuadrature
+
+	template <typename T_mat, typename T_chol>
 	inline double Likelihood<T_mat, T_chol>::TestNegLogLikelihoodAdaptiveGHQuadrature(const label_t* y_test,
 		const double* pred_mean,
 		const double* pred_var,
@@ -760,8 +793,8 @@ namespace GPBoost {
 					pred_mean[i], pred_var[i], information_at_mode);
 				sqrt2_sigma_hat = M_SQRT2 / std::sqrt(information_at_mode + sigma2_inv);
 			}
-			double x_val;
-			double likelihood = 0.;
+			// Numerical evaluation failures set the test negative log-likelihood to +inf, i.e., the worst possible value,
+			//	instead of using a wrong finite value
 			double log_normalizer = 0.;
 			if (IsTweedieConstantDispersion()) {
 				// The marginal density of y also for the joint variants, since the number of events of new data is not known
@@ -769,18 +802,27 @@ namespace GPBoost {
 				const auto power = GetTweediePowerTransform();
 				thread_local TweedieSpecialFunctionCache cache;
 				const auto normalizer = EvaluateTweedieLogNormalizer(y_test_d, std::log(aux_pars_[0]), p, power.dp_dtheta, power.d2p_dtheta2, TweedieDerivativeOrder::kValue, false, 1000000, &cache);
-				if (!normalizer.converged) na_inf_flag_11 = true;
+				if (!normalizer.converged) {
+					na_inf_flag_11 = true;
+					ll += -std::numeric_limits<double>::infinity();
+					continue;
+				}
 				log_normalizer = normalizer.log_a;
 			}
-			for (int j = 0; j < order_GH_; ++j) {
-				x_val = sqrt2_sigma_hat * GH_nodes_[j] + mode_integrand;
-				const double node_log_likelihood = IsTweedieConstantDispersion() ? LogLikTweedie(y_test_d, x_val, false) : LogLikelihoodOneSample(y_test_d, y_test_int, x_val);
-				likelihood += adaptive_GH_weights_[j] * std::exp(node_log_likelihood) * GPBoost::normalPDF(sqrt_sigma2_inv * (x_val - pred_mean[i]));
+			bool node_failure;
+			const double log_integral = LogIntegralAdaptiveGHQuadrature(
+				[&](double x) { return IsTweedieConstantDispersion() ? LogLikTweedie(y_test_d, x, false) : LogLikelihoodOneSample(y_test_d, y_test_int, x); },
+				mode_integrand, sqrt2_sigma_hat, pred_mean[i], sqrt_sigma2_inv, node_failure);
+			if (node_failure) {
+				na_inf_flag_11 = true;
+				ll += -std::numeric_limits<double>::infinity();
+				continue;
 			}
-			likelihood *= sqrt2_sigma_hat * sqrt_sigma2_inv;
-			ll += std::log(likelihood) + log_normalizer;
+			ll += log_integral + log_normalizer;
 		}
-		if (na_inf_flag_11) { Log::REFatal("Tweedie density series did not converge for at least one test point (phi=%g, p = %g).", aux_pars_[0], GetTweediePower()); }
+		if (na_inf_flag_11) {
+			Log::REWarning("The density could not be evaluated numerically for at least one test point, the test negative log-likelihood is set to +inf ");
+		}
 		return -ll;
 	}//end TestNegLogLikelihoodAdaptiveGHQuadrature
 
@@ -796,8 +838,8 @@ namespace GPBoost {
 		const double p_tweedie = tweedie ? GetTweediePower() : 0.;
 		const bool int_label = label_type() == "int";
 		double ll = 0.;
-		bool tweedie_failure = false;
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll) reduction(||:tweedie_failure)
+		bool evaluation_failure = false;
+#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll) reduction(||:evaluation_failure)
 		for (data_size_t i = 0; i < num_data; ++i) {
 			const double y = static_cast<double>(y_test[i]);
 			const int y_int = int_label ? static_cast<int>(y_test[i]) : 1;
@@ -822,31 +864,28 @@ namespace GPBoost {
 			if (tweedie) {
 				thread_local TweedieSpecialFunctionCache cache;
 				const auto normalizer = EvaluateTweedieLogNormalizer(y, extra[0], p_tweedie, 0., 0., TweedieDerivativeOrder::kValue, false, 1000000, &cache);
-				if (!normalizer.converged) tweedie_failure = true;
+				if (!normalizer.converged) {
+					evaluation_failure = true;
+					ll += -std::numeric_limits<double>::infinity();
+					continue;
+				}
 				log_normalizer = normalizer.log_a;
 			}
-			// Adaptive GH quadrature on the log scale (relative to the largest node value) to avoid under- and overflow
-			std::vector<double> log_terms(order_GH_);
-			double max_log_term = -std::numeric_limits<double>::infinity();
-			for (int j = 0; j < order_GH_; ++j) {
-				const double x_val = sqrt2_sigma_hat * GH_nodes_[j] + mode_integrand;
-				const double z = sqrt_sigma2_inv * (x_val - pred_mean[i]);
-				log_terms[j] = LogLikOneSampleExtraBlocks(y, y_int, x_val, extra, !tweedie) - 0.5 * z * z;
-				if (std::isnan(log_terms[j])) log_terms[j] = -std::numeric_limits<double>::infinity();
-				max_log_term = std::max(max_log_term, log_terms[j]);
-			}
-			if (!std::isfinite(max_log_term)) {
-				ll += max_log_term;// the density is zero (-inf) or not available (NaN) at all nodes
+			// Numerical evaluation failures set the test negative log-likelihood to +inf, i.e., the worst possible value,
+			//	instead of using a wrong finite value
+			bool node_failure;
+			const double log_integral = LogIntegralAdaptiveGHQuadrature(
+				[&](double x) { return LogLikOneSampleExtraBlocks(y, y_int, x, extra, !tweedie); },
+				mode_integrand, sqrt2_sigma_hat, pred_mean[i], sqrt_sigma2_inv, node_failure);
+			if (node_failure) {
+				evaluation_failure = true;
+				ll += -std::numeric_limits<double>::infinity();
 				continue;
 			}
-			double sum_terms = 0.;
-			for (int j = 0; j < order_GH_; ++j) {
-				sum_terms += adaptive_GH_weights_[j] * std::exp(log_terms[j] - max_log_term);
-			}
-			ll += max_log_term + std::log(sum_terms * sqrt2_sigma_hat * sqrt_sigma2_inv) - M_LOGSQRT2PI + log_normalizer;
+			ll += log_integral + log_normalizer;
 		}
-		if (tweedie_failure) {
-			Log::REFatal("The Tweedie density could not be evaluated for at least one test point (p = %g) ", p_tweedie);
+		if (evaluation_failure) {
+			Log::REWarning("The density could not be evaluated numerically for at least one test point, the test negative log-likelihood is set to +inf ");
 		}
 		return -ll;
 	}//end TestNegLogLikelihoodAdaptiveGHQuadratureExtraBlocks
