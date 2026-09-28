@@ -746,12 +746,15 @@ namespace GPBoost {
 		* \param pred_mean Predictive mean of latent random effects
 		* \param pred_var Predictive variances of latent random effects
 		* \param num_data Number of data points
+		* \param extra_location_par Values of the additional fixed-effects-only location parameter blocks at the test points
+		*		(num_data x (number of sets of fixed effects - 1), column-major; nullptr if there are none)
 		*/
 		double TestNegLogLikelihoodAdaptiveGHQuadrature(const label_t* y_test,
 			const double* pred_mean,
 			const double* pred_var,
-			const data_size_t num_data) {
-			return(likelihood_[unique_clusters_[0]]->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data));
+			const data_size_t num_data,
+			const double* extra_location_par = nullptr) {
+			return(likelihood_[unique_clusters_[0]]->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data, extra_location_par));
 		}
 
 		LBFGSpp::BFGSMat<double>& GetMBFGS() {

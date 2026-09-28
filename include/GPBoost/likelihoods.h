@@ -2983,11 +2983,43 @@ namespace GPBoost {
 		* \param pred_mean Predictive mean of latent random effects
 		* \param pred_var Predictive variances of latent random effects
 		* \param num_data Number of data points
+		* \param extra_location_par Values of the additional fixed-effects-only location parameter blocks at the test points
+		*		(num_data x (num_sets_fixed_effects_ - 1), column-major; only for likelihoods with such blocks, see 'SupportsTestLogLikExtraBlocks')
 		*/
 		inline double TestNegLogLikelihoodAdaptiveGHQuadrature(const label_t* y_test,
 			const double* pred_mean,
 			const double* pred_var,
-			const data_size_t num_data) const;
+			const data_size_t num_data,
+			const double* extra_location_par = nullptr) const;
+
+		/*!
+		* \brief Find the mode of the integrand p(y | x) * N(x; pred_mean, pred_var) of the adaptive GH quadrature, starting from the
+		*		best point of a grid around pred_mean and using Newton steps that are halved if they leave the support of the density
+		* \param log_dens Log-density log p(y | x) as a function of x
+		* \param first_deriv Its first derivative wrt x
+		* \param information Its negative second derivative wrt x
+		* \param pred_mean Predictive mean
+		* \param pred_var Predictive variance
+		* \param[out] information_at_mode Non-negative information at the mode (0 if it is not finite)
+		* \return Mode
+		*/
+		template <typename LogDens, typename FirstDeriv, typename Information>
+		inline double FindModeIntegrandAdaptiveGHQuadrature(LogDens log_dens,
+			FirstDeriv first_deriv,
+			Information information,
+			double pred_mean,
+			double pred_var,
+			double& information_at_mode) const;
+
+		/*!
+		* \brief Calculate the test negative log-likelihood using adaptive GH quadrature for likelihoods with additional
+		*		fixed-effects-only location parameter blocks, see 'TestNegLogLikelihoodAdaptiveGHQuadrature'
+		*/
+		inline double TestNegLogLikelihoodAdaptiveGHQuadratureExtraBlocks(const label_t* y_test,
+			const double* pred_mean,
+			const double* pred_var,
+			const data_size_t num_data,
+			const double* extra_location_par) const;
 
 		static string_t ParseLikelihoodAlias(const string_t& likelihood) {
 			if (likelihood == string_t("binary_probit")) {
@@ -3320,6 +3352,128 @@ namespace GPBoost {
 			return likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 				likelihood_type_ == "beta_binomial" || likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit" ||
 				HasVaryingShapeBlock() || IsTweedieVaryingDispersion();// the density depends on a second location parameter block, which the single-sample interface does not provide
+		}
+
+		/*!
+		* \brief True for the likelihoods with additional location parameter blocks that are related to fixed effects only
+		*		(num_sets_re_ = 1), for which the single-sample functions '*OneSampleExtraBlocks' are implemented
+		*/
+		bool SupportsTestLogLikExtraBlocks() const {
+			return num_sets_re_ == 1 && num_sets_fixed_effects_ > 1 && (likelihood_type_ == "gaussian_heteroscedastic" || IsZeroCensPowNormHetero() ||
+				IsHurdleRegression() || IsZeroInflatedCountRegression() || IsGammaVaryingShape() || IsZeroCensShiftedGammaVaryingShape() ||
+				IsTweedieVaryingDispersion());
+		}
+
+		/*!
+		* \brief Complete log-density of one observation of a likelihood with additional fixed-effects-only location parameter
+		*		blocks (see 'SupportsTestLogLikExtraBlocks'), i.e., including the parts that 'LogLikelihood' keeps in
+		*		'log_normalizing_constant_'. For the varying-dispersion Tweedie likelihoods, the normalizer of the marginal
+		*		density of y is included only if 'incl_norm_const' is true (the joint variants use the marginal density here)
+		* \param y Response variable
+		* \param y_int Response variable if it is integer-valued
+		* \param loc_eta Location parameter of the first block (random plus fixed effects)
+		* \param extra Values of the additional location parameter blocks (block 1 in extra[0], block 2 in extra[1])
+		* \param incl_norm_const Only relevant for the Tweedie likelihoods, see above
+		*/
+		inline double LogLikOneSampleExtraBlocks(double y, int y_int, double loc_eta, const double* extra, bool incl_norm_const) const {
+			if (likelihood_type_ == "gaussian_heteroscedastic") {
+				return LogLikGaussianHeteroscedastic(y, loc_eta, extra[0], true);
+			}
+			else if (IsZeroCensPowNormHetero()) {
+				return LogLikZeroCensPowNormHetero(y, loc_eta, extra[0], true);
+			}
+			else if (IsHurdleRegression()) {
+				if (y <= 0.) return -SoftplusStable(-extra[0]);// log(pi)
+				double ll = HurdleRegressionBaseLogLikLocDep(y, loc_eta) - SoftplusStable(extra[0]);// + log(1 - pi)
+				const string_t& base = HurdleRegressionBaseType();
+				if (base == "hurdle_gamma") {
+					ll += aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0]) + (aux_pars_[0] - 1.) * std::log(y);
+				}
+				else if (base == "hurdle_lognormal") {
+					ll += -M_LOGSQRT2PI - 0.5 * std::log(aux_pars_[0]) - std::log(y);
+				}
+				return ll;// the EGPD bases return the complete density
+			}
+			else if (IsZeroInflatedCountRegression()) {
+				double ll = LogLikZICountRegression(y_int, loc_eta, extra[0]);
+				if (y_int > 0) {
+					const string_t& base = ZICountRegressionBaseType();
+					if (base == "zero_inflated_negative_binomial") {
+						const double kappa = aux_pars_[0];
+						ll += std::lgamma((double)y_int + kappa) - std::lgamma((double)y_int + 1.) + kappa * std::log(kappa) - std::lgamma(kappa);
+					}
+					else if (base == "zero_inflated_negative_binomial_1") {
+						ll += LogNormalizingConstantNegBin1OneSample(y_int);
+					}
+					else {
+						ll -= std::lgamma((double)y_int + 1.);
+					}
+				}
+				return ll;
+			}
+			else if (IsGammaVaryingShape()) {
+				if (likelihood_type_ == "hurdle_regression_gamma_varying_shape") {// extra[0] = structural-zero logit, extra[1] = log(shape)
+					if (y <= 0.) return -SoftplusStable(-extra[0]);
+					return LogLikGammaVarShape(y, loc_eta, extra[1]) - SoftplusStable(extra[0]);
+				}
+				if (likelihood_type_ == "hurdle_gamma_varying_shape") {
+					const double p0 = aux_pars_original_[0];
+					if (y <= 0.) return std::log(p0);
+					return LogLikGammaVarShape(y, loc_eta, extra[0]) + std::log1p(-p0);
+				}
+				return LogLikGammaVarShape(y, loc_eta, extra[0]);
+			}
+			else if (IsZeroCensShiftedGammaVaryingShape()) {
+				return LogLikZeroCensGamma_at(y, loc_eta, ZeroCensGammaVarShapeShape(extra[0]), aux_pars_[0], true);
+			}
+			else if (IsTweedieVaryingDispersion()) {
+				const double p = GetTweediePower();
+				double ll = EvaluateTweedieLocation(y, loc_eta, extra[0], p).canonical;
+				if (incl_norm_const) {
+					thread_local TweedieSpecialFunctionCache cache;
+					const auto res = EvaluateTweedieLogNormalizer(y, extra[0], p, 0., 0., TweedieDerivativeOrder::kValue, false, 1000000, &cache);
+					ll = res.converged ? ll + res.log_a : std::numeric_limits<double>::quiet_NaN();
+				}
+				return ll;
+			}
+			NotSupportedForLikelihood(__func__);
+			return 0.;
+		}
+
+		/*! \brief First derivative wrt the first location parameter block of 'LogLikOneSampleExtraBlocks' */
+		inline double FirstDerivLogLikOneSampleExtraBlocks(double y, int y_int, double loc_eta, const double* extra) const {
+			if (likelihood_type_ == "gaussian_heteroscedastic") return FirstDerivLogLikGaussianHeteroscedasticMean(y, loc_eta, extra[0]);
+			if (IsZeroCensPowNormHetero()) return FirstDerivLogLikZeroCensPowNormHetero(y, loc_eta, extra[0]);
+			if (IsHurdleRegression()) return HurdleRegression_dEta(y, loc_eta);
+			if (IsZeroInflatedCountRegression()) {
+				ZICountRegQuant o; ZICountRegressionQuantities(y_int, loc_eta, extra[0], o);
+				return o.dEta;
+			}
+			if (IsGammaVaryingShape()) {
+				return FirstDerivLogLikGammaVarShape(y, loc_eta, likelihood_type_ == "hurdle_regression_gamma_varying_shape" ? extra[1] : extra[0]);
+			}
+			if (IsZeroCensShiftedGammaVaryingShape()) return FirstDerivLogLikZeroCensGamma_at(y, loc_eta, ZeroCensGammaVarShapeShape(extra[0]), aux_pars_[0]);
+			if (IsTweedieVaryingDispersion()) return EvaluateTweedieLocation(y, loc_eta, extra[0], GetTweediePower()).score;
+			NotSupportedForLikelihood(__func__);
+			return 0.;
+		}
+
+		/*! \brief Negative second derivative wrt the first location parameter block of 'LogLikOneSampleExtraBlocks' */
+		inline double InformationLogLikOneSampleExtraBlocks(double y, int y_int, double loc_eta, const double* extra) const {
+			if (likelihood_type_ == "gaussian_heteroscedastic") return std::exp(-extra[0]);
+			if (IsZeroCensPowNormHetero()) return SecondDerivNegLogLikZeroCensPowNormHetero(y, loc_eta, extra[0]);
+			if (IsHurdleRegression()) return HurdleRegression_Jeta(y, loc_eta);
+			if (IsZeroInflatedCountRegression()) {
+				ZICountRegQuant o; ZICountRegressionQuantities(y_int, loc_eta, extra[0], o);
+				return o.Jeta;
+			}
+			if (IsGammaVaryingShape()) {
+				return SecondDerivNegLogLikGammaVarShape(y, loc_eta, likelihood_type_ == "hurdle_regression_gamma_varying_shape" ? extra[1] : extra[0]);
+			}
+			if (IsZeroCensShiftedGammaVaryingShape()) return SecondDerivNegLogLikZeroCensGamma_at(y, loc_eta, ZeroCensGammaVarShapeShape(extra[0]), aux_pars_[0]);
+			if (IsTweedieVaryingDispersion()) return EvaluateTweedieLocation(y, loc_eta, extra[0], GetTweediePower()).information;
+			NotSupportedForLikelihood(__func__);
+			return 0.;
 		}
 
 		/*! \brief Report that the calling single-sample function is not implemented for the current likelihood */

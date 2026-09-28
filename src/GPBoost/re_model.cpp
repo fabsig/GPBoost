@@ -1364,6 +1364,18 @@ namespace GPBoost {
 		return(num_sets_fixed_effects_);
 	}
 
+	int REModel::GetNumSetsRE() {
+		if (matrix_format_ == "sp_mat_t") {
+			return(re_model_sp_->GetNumSetsRE());
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			return(re_model_sp_rm_->GetNumSetsRE());
+		}
+		else {
+			return(re_model_den_->GetNumSetsRE());
+		}
+	}
+
 	int REModel::GetNumData() const {
 		if (matrix_format_ == "sp_mat_t") {
 			return(re_model_sp_->num_data_);
@@ -1526,20 +1538,21 @@ namespace GPBoost {
 	double REModel::TestNegLogLikelihoodAdaptiveGHQuadrature(const label_t* y_test,
 		const double* pred_mean,
 		const double* pred_var,
-		const data_size_t num_data) {
+		const data_size_t num_data,
+		const double* extra_location_par) {
 		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		if (GetLikelihood() == "gaussian") {
 			double aux_par = 1. / (std::sqrt(cov_pars_[0]));
 			SetAuxPars(&aux_par);
 		}
 		if (matrix_format_ == "sp_mat_t") {
-			return(re_model_sp_->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data));
+			return(re_model_sp_->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data, extra_location_par));
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
-			return(re_model_sp_rm_->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data));
+			return(re_model_sp_rm_->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data, extra_location_par));
 		}
 		else {
-			return(re_model_den_->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data));
+			return(re_model_den_->TestNegLogLikelihoodAdaptiveGHQuadrature(y_test, pred_mean, pred_var, num_data, extra_location_par));
 		}
 	}
 

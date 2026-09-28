@@ -656,10 +656,74 @@ namespace GPBoost {
 	}//end RespMeanAdaptiveGHQuadrature
 
 	template <typename T_mat, typename T_chol>
+	template <typename LogDens, typename FirstDeriv, typename Information>
+	inline double Likelihood<T_mat, T_chol>::FindModeIntegrandAdaptiveGHQuadrature(LogDens log_dens,
+		FirstDeriv first_deriv,
+		Information information,
+		double pred_mean,
+		double pred_var,
+		double& information_at_mode) const {
+		const double sd = std::sqrt(pred_var);
+		auto log_integrand = [&](double x) { return log_dens(x) - 0.5 * (x - pred_mean) * (x - pred_mean) / pred_var; };
+		// Starting point: the point with the largest log integrand on a grid around the predictive mean. This is needed for
+		//	likelihoods with a bounded support, e.g., a generalized Pareto likelihood with a negative shape, for which the
+		//	density can be zero at the predictive mean
+		double mode = pred_mean;
+		double f_mode = -std::numeric_limits<double>::infinity();
+		for (int k = -8; k <= 8; ++k) {
+			const double x = pred_mean + k * sd;
+			const double f = log_integrand(x);
+			if (std::isfinite(f) && f > f_mode) {
+				mode = x;
+				f_mode = f;
+			}
+		}
+		information_at_mode = 0.;
+		if (!std::isfinite(f_mode)) {
+			return pred_mean;
+		}
+		// Newton steps with a curvature that is bounded from below by the prior precision, halved until the log integrand does not decrease
+		for (int it = 0; it < 100; ++it) {
+			const double grad = first_deriv(mode) - (mode - pred_mean) / pred_var;
+			const double info = information(mode);
+			const double step = grad / ((std::isfinite(info) ? std::max(info, 0.) : 0.) + 1. / pred_var);
+			if (!std::isfinite(step)) {
+				break;
+			}
+			double t = 1.;
+			bool accepted = false;
+			for (int ls = 0; ls < 30; ++ls) {
+				const double f_new = log_integrand(mode + t * step);
+				if (std::isfinite(f_new) && f_new >= f_mode - 1e-12 * std::max(std::abs(f_mode), 1.)) {
+					mode += t * step;
+					f_mode = f_new;
+					accepted = true;
+					break;
+				}
+				t *= 0.5;
+			}
+			if (!accepted || std::abs(t * step) < delta_conv_mode_finding_ * std::max(std::abs(mode), 1.)) {
+				break;
+			}
+		}
+		const double info = information(mode);
+		information_at_mode = std::isfinite(info) ? std::max(info, 0.) : 0.;
+		return mode;
+	}//end FindModeIntegrandAdaptiveGHQuadrature
+
+	template <typename T_mat, typename T_chol>
 	inline double Likelihood<T_mat, T_chol>::TestNegLogLikelihoodAdaptiveGHQuadrature(const label_t* y_test,
 		const double* pred_mean,
 		const double* pred_var,
-		const data_size_t num_data) const {
+		const data_size_t num_data,
+		const double* extra_location_par) const {
+		if (num_sets_fixed_effects_ > 1) {
+			if (!SupportsTestLogLikExtraBlocks()) {
+				Log::REFatal("The test negative log-likelihood is currently not implemented for likelihood = '%s' ", likelihood_type_.c_str());
+			}
+			CHECK(extra_location_par != nullptr);
+			return TestNegLogLikelihoodAdaptiveGHQuadratureExtraBlocks(y_test, pred_mean, pred_var, num_data, extra_location_par);
+		}
 		double ll = 0.;
 		bool na_inf_flag_11 = false;
 #pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll) reduction(||:na_inf_flag_11)
@@ -686,6 +750,16 @@ namespace GPBoost {
 			}
 			// Adaptive GH quadrature
 			double sqrt2_sigma_hat = M_SQRT2 / std::sqrt(CalcDiagInformationLogLikOneSample(y_test_d, y_test_int, mode_integrand) + sigma2_inv);
+			if (!std::isfinite(mode_integrand) || !std::isfinite(sqrt2_sigma_hat)) {
+				// E.g., for a likelihood with a bounded support whose density is zero at the starting point
+				double information_at_mode;
+				mode_integrand = FindModeIntegrandAdaptiveGHQuadrature(
+					[&](double x) { return IsTweedieConstantDispersion() ? LogLikTweedie(y_test_d, x, false) : LogLikelihoodOneSample(y_test_d, y_test_int, x); },
+					[&](double x) { return CalcFirstDerivLogLikOneSample(y_test_d, y_test_int, x); },
+					[&](double x) { return CalcDiagInformationLogLikOneSample(y_test_d, y_test_int, x); },
+					pred_mean[i], pred_var[i], information_at_mode);
+				sqrt2_sigma_hat = M_SQRT2 / std::sqrt(information_at_mode + sigma2_inv);
+			}
 			double x_val;
 			double likelihood = 0.;
 			double log_normalizer = 0.;
@@ -709,6 +783,73 @@ namespace GPBoost {
 		if (na_inf_flag_11) { Log::REFatal("Tweedie density series did not converge for at least one test point (phi=%g, p = %g).", aux_pars_[0], GetTweediePower()); }
 		return -ll;
 	}//end TestNegLogLikelihoodAdaptiveGHQuadrature
+
+	template <typename T_mat, typename T_chol>
+	inline double Likelihood<T_mat, T_chol>::TestNegLogLikelihoodAdaptiveGHQuadratureExtraBlocks(const label_t* y_test,
+		const double* pred_mean,
+		const double* pred_var,
+		const data_size_t num_data,
+		const double* extra_location_par) const {
+		const int num_extra = num_sets_fixed_effects_ - 1;
+		CHECK(num_extra >= 1 && num_extra <= 2);
+		const bool tweedie = IsTweedieVaryingDispersion();
+		const double p_tweedie = tweedie ? GetTweediePower() : 0.;
+		const bool int_label = label_type() == "int";
+		double ll = 0.;
+		bool tweedie_failure = false;
+#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll) reduction(||:tweedie_failure)
+		for (data_size_t i = 0; i < num_data; ++i) {
+			const double y = static_cast<double>(y_test[i]);
+			const int y_int = int_label ? static_cast<int>(y_test[i]) : 1;
+			double extra[2] = { 0., 0. };
+			for (int k = 0; k < num_extra; ++k) {
+				extra[k] = extra_location_par[i + (data_size_t)k * num_data];
+			}
+			// Mode of the integrand p(y | eta, extra) * N(eta; pred_mean, pred_var) and the curvature there, which determine the
+			//	placement of the nodes. A negative observed information (e.g., for zero-inflated counts at zero) is replaced by 0
+			const double sigma2_inv = 1. / pred_var[i];
+			const double sqrt_sigma2_inv = std::sqrt(sigma2_inv);
+			double information_at_mode;
+			const double mode_integrand = FindModeIntegrandAdaptiveGHQuadrature(
+				[&](double x) { return LogLikOneSampleExtraBlocks(y, y_int, x, extra, !tweedie); },
+				[&](double x) { return FirstDerivLogLikOneSampleExtraBlocks(y, y_int, x, extra); },
+				[&](double x) { return InformationLogLikOneSampleExtraBlocks(y, y_int, x, extra); },
+				pred_mean[i], pred_var[i], information_at_mode);
+			const double sqrt2_sigma_hat = M_SQRT2 / std::sqrt(information_at_mode + sigma2_inv);
+			// The part of the Tweedie density that does not depend on eta is evaluated once. It is the marginal density of y
+			//	also for the joint variants, since the number of events of new data is not known
+			double log_normalizer = 0.;
+			if (tweedie) {
+				thread_local TweedieSpecialFunctionCache cache;
+				const auto normalizer = EvaluateTweedieLogNormalizer(y, extra[0], p_tweedie, 0., 0., TweedieDerivativeOrder::kValue, false, 1000000, &cache);
+				if (!normalizer.converged) tweedie_failure = true;
+				log_normalizer = normalizer.log_a;
+			}
+			// Adaptive GH quadrature on the log scale (relative to the largest node value) to avoid under- and overflow
+			std::vector<double> log_terms(order_GH_);
+			double max_log_term = -std::numeric_limits<double>::infinity();
+			for (int j = 0; j < order_GH_; ++j) {
+				const double x_val = sqrt2_sigma_hat * GH_nodes_[j] + mode_integrand;
+				const double z = sqrt_sigma2_inv * (x_val - pred_mean[i]);
+				log_terms[j] = LogLikOneSampleExtraBlocks(y, y_int, x_val, extra, !tweedie) - 0.5 * z * z;
+				if (std::isnan(log_terms[j])) log_terms[j] = -std::numeric_limits<double>::infinity();
+				max_log_term = std::max(max_log_term, log_terms[j]);
+			}
+			if (!std::isfinite(max_log_term)) {
+				ll += max_log_term;// the density is zero (-inf) or not available (NaN) at all nodes
+				continue;
+			}
+			double sum_terms = 0.;
+			for (int j = 0; j < order_GH_; ++j) {
+				sum_terms += adaptive_GH_weights_[j] * std::exp(log_terms[j] - max_log_term);
+			}
+			ll += max_log_term + std::log(sum_terms * sqrt2_sigma_hat * sqrt_sigma2_inv) - M_LOGSQRT2PI + log_normalizer;
+		}
+		if (tweedie_failure) {
+			Log::REFatal("The Tweedie density could not be evaluated for at least one test point (p = %g) ", p_tweedie);
+		}
+		return -ll;
+	}//end TestNegLogLikelihoodAdaptiveGHQuadratureExtraBlocks
 
 	template <typename T_mat, typename T_chol>
 	double Likelihood<T_mat, T_chol>::TransformToResponseScale(const double value) const {

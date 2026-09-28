@@ -1407,4 +1407,55 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("test negative log-likelihood metric of the GPBoost algorithm for the gaussian_heteroscedastic likelihood ", {
+
+    # The "test_neg_log_likelihood" metric of the GPBoost algorithm on validation data, together with an independent
+    # calculation: for every validation point, the integral of a reference density (written with base R functions) over
+    # the latent predictive distribution of the first predictor, given the tree-ensemble values of the other predictors
+    validation_test_nll <- function(likelihood, y, x, group, log_dens, additional_likelihood_data = NULL, nrounds = 5) {
+      tr <- seq(1, length(y), by = 2)
+      va <- seq(2, length(y), by = 2)
+      dtrain <- gpb.Dataset(data = x[tr, , drop = FALSE], label = y[tr])
+      dvalid <- gpb.Dataset.create.valid(dtrain, data = x[va, , drop = FALSE], label = y[va])
+      gp_model <- GPModel(group_data = group[tr], likelihood = likelihood,
+                          additional_likelihood_data = if (is.null(additional_likelihood_data)) NULL else additional_likelihood_data[tr])
+      gp_model$set_optim_params(params = list(optimizer_cov = "lbfgs", maxit = 300, init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_prediction_data(group_data_pred = group[va])
+      bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = nrounds, learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 5,
+                       valids = list(valid = dvalid), verbose = 0, deterministic = TRUE)
+      metric <- unlist(bst$record_evals$valid$test_neg_log_likelihood$eval)[nrounds]
+      pred <- predict(bst, data = x[va, , drop = FALSE], group_data_pred = group[va], predict_var = TRUE, pred_latent = TRUE, num_iteration = nrounds)
+      raw <- predict(bst, data = x[va, , drop = FALSE], ignore_gp_model = TRUE, pred_latent = TRUE, num_iteration = nrounds)
+      num_blocks <- length(raw) / length(va)
+      extra <- if (num_blocks > 1) matrix(sapply(2:num_blocks, function(k) raw[(seq_along(va) - 1) * num_blocks + k]), nrow = length(va)) else matrix(0, length(va), 1)
+      mean_eta <- pred$fixed_effect + pred$random_effect_mean
+      sd_eta <- sqrt(pred$random_effect_cov)
+      aux <- gp_model$get_aux_pars()
+      reference <- mean(sapply(seq_along(va), function(i) {
+        integrand <- function(e) exp(log_dens(y[va][i], e, extra[i, ], aux)) * dnorm(e, mean_eta[i], sd_eta[i])
+        -log(integrate(integrand, mean_eta[i] - 12 * sd_eta[i], mean_eta[i] + 12 * sd_eta[i], rel.tol = 1e-10)$value)
+      }))
+      c(metric = unname(metric), reference = reference)
+    }
+    n_v <- 200
+    group_v <- rep(1:20, each = 10)
+    x_v <- matrix(sim_rand_unif(n_v, 0.61), ncol = 1)
+    eta_v <- 0.2 + 0.6 * x_v[, 1] + 0.4 * qnorm(sim_rand_unif(20, 0.27))[group_v]
+    u1_v <- sim_rand_unif(n_v, 0.44)
+    u2_v <- sim_rand_unif(n_v, 0.83)
+    zeta_v <- -0.5 + 1.2 * x_v[, 1]
+    zeta2_v <- 0.3 + 0.8 * x_v[, 1]
+    # Reference log-densities, vectorized in the first predictor e (z: values of the other predictors, a: auxiliary parameters)
+    cases <- list(
+      gaussian_heteroscedastic = list(y = qnorm(u2_v, eta_v, exp(zeta_v / 2)),
+        log_dens = function(y, e, z, a) dnorm(y, e, exp(z[1] / 2), log = TRUE),
+        tol_reference = 1e-6))
+    expected <- c(gaussian_heteroscedastic = 1.71305334)
+    for (lik in names(cases)) {
+      res <- validation_test_nll(lik, cases[[lik]]$y, x_v, group_v, cases[[lik]]$log_dens)
+      expect_lt(abs(res[["metric"]] - res[["reference"]]), cases[[lik]]$tol_reference)
+      expect_lt(abs(res[["metric"]] - expected[[lik]]), TOLERANCE_MEDIUM)
+    }
+  })
+
 }
