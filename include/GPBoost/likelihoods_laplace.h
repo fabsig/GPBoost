@@ -129,7 +129,7 @@ namespace GPBoost {
 			bool chol_fact_ssn_pattern_analyzed = false;
 			vec_t W_ssn_prev, Wsqrt_ssn;
 			// (Sigma^-1 + W)^-1 = Sigma - Sigma W^0.5 (I + W^0.5 Sigma W^0.5)^-1 W^0.5 Sigma, which is zero-safe in W
-			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
+			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs_H, vec_t& sol) -> bool {
 				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
 				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
 				//	happens as soon as the active set has settled (usually after a few steps)
@@ -140,7 +140,7 @@ namespace GPBoost {
 					CalcChol<T_mat>(chol_fact_ssn, Id_plus_Wsqrt_Sigma_Wsqrt_ssn, chol_fact_ssn_pattern_analyzed);
 					W_ssn_prev = W_ssn;
 				}
-				const vec_t Sigma_rhs = (*Sigma) * rhs;
+				const vec_t Sigma_rhs = (*Sigma) * rhs_H;
 				const vec_t Wsqrt_aux = Wsqrt_ssn.cwiseProduct(chol_fact_ssn.solve(Wsqrt_ssn.cwiseProduct(Sigma_rhs)));
 				sol = Sigma_rhs - (*Sigma) * Wsqrt_aux;
 				return sol.allFinite();
@@ -307,7 +307,7 @@ namespace GPBoost {
 			vec_t W_ssn_prev;
 			// The SSN system 'Sigma^-1 + Z^T (rho A) Z' has the same structure as the Newton system of the mode finding
 			//	loop, but it must use its own factorization / operator so that the Laplace approximation is not corrupted
-			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
+			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs_H, vec_t& sol) -> bool {
 				if (matrix_inversion_method_ == "iterative") {
 					vec_t diag_H = (*SigmaI_ptr).diagonal();
 					for (int j = 0; j < (int)(*Zt_).outerSize(); ++j) {
@@ -322,7 +322,7 @@ namespace GPBoost {
 					};
 					const vec_t P_inv = diag_H.cwiseInverse();
 					auto apply_P_inv = [&](const vec_t& v_in, vec_t& v_out) { v_out = P_inv.cwiseProduct(v_in); };
-					return SolveSSNALMCG(apply_H, apply_P_inv, rhs, sol);
+					return SolveSSNALMCG(apply_H, apply_P_inv, rhs_H, sol);
 				}
 				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
 				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
@@ -340,7 +340,7 @@ namespace GPBoost {
 					}
 					W_ssn_prev = W_ssn;
 				}
-				sol = chol_fact_ssn.solve(rhs);
+				sol = chol_fact_ssn.solve(rhs_H);
 				return sol.allFinite();
 			};
 			auto apply_Q = [&](const vec_t& x, vec_t& out) { out = (*SigmaI_ptr) * x; };
@@ -540,8 +540,8 @@ namespace GPBoost {
 			vec_t Qmode = mode_ / sigma2;
 			// Z^T A Z is diagonal for a single grouped random effect, so the SSN system is solved in O(n) without any
 			//	factorization: d_j = -g_j / (1 / sigma2 + rho * sum_{i: g(i) = j} A_i)
-			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
-				sol = (rhs.array() / (W_ssn.array() + 1. / sigma2)).matrix();
+			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs_H, vec_t& sol) -> bool {
+				sol = (rhs_H.array() / (W_ssn.array() + 1. / sigma2)).matrix();
 				return sol.allFinite();
 			};
 			auto apply_Q = [&](const vec_t& x, vec_t& out) { out = x / sigma2; };
@@ -817,7 +817,7 @@ namespace GPBoost {
 			chol_den_mat_t chol_fact_sigma_woodbury_ssn;
 			bool chol_fact_ssn_pattern_analyzed = false;
 			vec_t W_ssn_prev;
-			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
+			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs_H, vec_t& sol) -> bool {
 				if (matrix_inversion_method_ == "iterative") {
 					auto apply_H = [&](const vec_t& x, vec_t& out) {
 						apply_Q(x, out);
@@ -832,7 +832,7 @@ namespace GPBoost {
 						const vec_t Bt_inv_v = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(v_in);
 						v_out = D_inv_plus_W_B_rm.template triangularView<Eigen::UpLoType::Lower>().solve(Bt_inv_v);
 					};
-					return SolveSSNALMCG(apply_H, apply_P_inv, rhs, sol);
+					return SolveSSNALMCG(apply_H, apply_P_inv, rhs_H, sol);
 				}
 				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
 				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
@@ -857,7 +857,7 @@ namespace GPBoost {
 					}
 					W_ssn_prev = W_ssn;
 				}
-				const vec_t aux = chol_fact_ssn.solve(rhs);
+				const vec_t aux = chol_fact_ssn.solve(rhs_H);
 				sol = aux + chol_fact_ssn.solve(Bt_D_inv_B_cross_cov *
 					chol_fact_sigma_woodbury_ssn.solve(Bt_D_inv_B_cross_cov.transpose() * aux));
 				return sol.allFinite();
@@ -1217,7 +1217,7 @@ namespace GPBoost {
 			chol_cholmod_sp_mat_t chol_fact_ssn;
 			bool chol_fact_ssn_pattern_analyzed = false;
 			vec_t W_ssn_prev;
-			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
+			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs_H, vec_t& sol) -> bool {
 				if (matrix_inversion_method_ == "iterative") {
 					auto apply_H = [&](const vec_t& x, vec_t& out) {
 						apply_Q(x, out);
@@ -1252,7 +1252,7 @@ namespace GPBoost {
 						const vec_t Bt_inv_v = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(v_in);
 						v_out = D_inv_plus_W_B_rm.template triangularView<Eigen::UpLoType::Lower>().solve(Bt_inv_v);
 					};
-					return SolveSSNALMCG(apply_H, apply_P_inv, rhs, sol);
+					return SolveSSNALMCG(apply_H, apply_P_inv, rhs_H, sol);
 				}
 				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
 				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
@@ -1271,7 +1271,7 @@ namespace GPBoost {
 					}
 					W_ssn_prev = W_ssn;
 				}
-				sol = chol_fact_ssn.solve(rhs);
+				sol = chol_fact_ssn.solve(rhs_H);
 				return sol.allFinite();
 			};
 			RefineModeAsymLaplaceSSNALM(y_data, y_data_int, fixed_effects, solve_H, apply_Q, Qmode, location_par, &location_par_ptr, approx_marginal_ll);
@@ -1511,7 +1511,7 @@ namespace GPBoost {
 			// The Woodbury form used below is zero-safe in W: an inactive observation simply has 1 + D_i W_i = 1
 			chol_den_mat_t chol_fact_ssn;
 			vec_t W_ssn_prev, W_times_DW_plus_I_inv_ssn;
-			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs, vec_t& sol) -> bool {
+			auto solve_H = [&](const vec_t& W_ssn, const vec_t& rhs_H, vec_t& sol) -> bool {
 				// The generalized Hessian only changes when the active set or the penalty 'rho' change. Its factorization
 				//	is the dominant cost of a semismooth Newton step and is reused whenever 'W_ssn' is unchanged, which
 				//	happens as soon as the active set has settled (usually after a few steps)
@@ -1527,9 +1527,9 @@ namespace GPBoost {
 					}
 					W_ssn_prev = W_ssn;
 				}
-				const vec_t Sigma_rhs = ((*cross_cov) * chol_fact_sigma_ip.solve((*cross_cov).transpose() * rhs)) + (fitc_resid_diag.asDiagonal() * rhs);
-				const vec_t vaux = chol_fact_ssn.solve((*cross_cov).transpose() * (W_times_DW_plus_I_inv_ssn.asDiagonal() * Sigma_rhs));
-				const vec_t SigmaI_sol = rhs - W_times_DW_plus_I_inv_ssn.cwiseProduct(Sigma_rhs - (*cross_cov) * vaux);
+				const vec_t Sigma_rhs = ((*cross_cov) * chol_fact_sigma_ip.solve((*cross_cov).transpose() * rhs_H)) + (fitc_resid_diag.asDiagonal() * rhs_H);
+				const vec_t vaux_H = chol_fact_ssn.solve((*cross_cov).transpose() * (W_times_DW_plus_I_inv_ssn.asDiagonal() * Sigma_rhs));
+				const vec_t SigmaI_sol = rhs_H - W_times_DW_plus_I_inv_ssn.cwiseProduct(Sigma_rhs - (*cross_cov) * vaux_H);
 				sol = ((*cross_cov) * chol_fact_sigma_ip.solve((*cross_cov).transpose() * SigmaI_sol)) + (fitc_resid_diag.asDiagonal() * SigmaI_sol);
 				return sol.allFinite();
 			};

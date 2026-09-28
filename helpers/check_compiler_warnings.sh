@@ -82,12 +82,23 @@ fi
 # ---------------------------------------------------------------------------------------------
 # Include directories
 # ---------------------------------------------------------------------------------------------
+# the bundled CHOLMOD, which Eigen/CholmodSupport needs; the same four directories that
+# CMakeLists.txt and the 'Makevars' of the R package pass
+SUITESPARSE="${REPO_ROOT}/external_libs/SuiteSparse"
 INCLUDES="-I${REPO_ROOT}/include \
  -I${REPO_ROOT}/external_libs/eigen \
  -I${REPO_ROOT}/external_libs/CSparse/Include \
  -I${REPO_ROOT}/external_libs/LBFGSpp/include \
  -I${REPO_ROOT}/external_libs/OptimLib \
- -I${REPO_ROOT}/external_libs/fmt/include"
+ -I${REPO_ROOT}/external_libs/fmt/include \
+ -I${SUITESPARSE}/SuiteSparse_config \
+ -I${SUITESPARSE}/AMD/Include \
+ -I${SUITESPARSE}/COLAMD/Include \
+ -I${SUITESPARSE}/CHOLMOD/Include"
+
+# CHOLMOD is built without the Partition and CAMD modules and without printing, as in
+# CMakeLists.txt; its headers look at these
+SUITESPARSE_DEFINES="-DNPARTITION -DNCAMD -DNMATRIXOPS -DNMODIFY -DNPRINT"
 
 # 'LightGBM/utils/log.h' includes <R_ext/Error.h> when LGB_R_BUILD is defined
 R_INCLUDE=$(R CMD config --cppflags 2>/dev/null | sed 's/^-I//' | tr -d '\r' || true)
@@ -100,9 +111,11 @@ fi
 if [ -n "${R_INCLUDE}" ] && [ -d "${R_INCLUDE}" ]; then
   INCLUDES="${INCLUDES} -I${R_INCLUDE}"
   DEFINES="-DEIGEN_MPL2_ONLY -DMM_PREFETCH=1 -DMM_MALLOC=1 -DUSE_SOCKET -DLGB_R_BUILD"
+  DEFINES="${DEFINES} ${SUITESPARSE_DEFINES}"
 else
   echo "Note: no R include directory found, compiling without -DLGB_R_BUILD"
   DEFINES="-DEIGEN_MPL2_ONLY -DMM_PREFETCH=1 -DMM_MALLOC=1 -DUSE_SOCKET"
+  DEFINES="${DEFINES} ${SUITESPARSE_DEFINES}"
 fi
 
 # ---------------------------------------------------------------------------------------------
