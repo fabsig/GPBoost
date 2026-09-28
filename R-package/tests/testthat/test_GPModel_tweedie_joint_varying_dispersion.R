@@ -11,6 +11,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   USE_STRICT_TOLERANCES <- gpb_use_strict_tolerances()
   TOLERANCE_NON_CONVEX <- if (USE_STRICT_TOLERANCES) TOLERANCE_MEDIUM else 0.5
   relax_tolerance_strict <- function(tol) if (USE_STRICT_TOLERANCES) tol else 100 * tol
+  # The covariance parameter likelihood of Vecchia-approximated GPs is very flat, so the fitted parameters differ noticeably
+  # across compilers although the negative log-likelihood agrees (see test_GPModel_tweedie.R). The negative log-likelihood
+  # is checked with the tighter tolerance
+  TOLERANCE_VECCHIA_PARS <- 0.1
   OPTIM_PARAMS <- list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", maxit = 300, init_coef_aux_pars_from_iid_model = FALSE)
 
   # Function that simulates uniform random variables (as in test_GPModel_tweedie.R)
@@ -341,7 +345,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none", matrix_inversion_method = "cholesky",
                                              y = y_gp, X = X_gp, params = OPTIM_PARAMS), file = "NUL")
     expected_vecchia <- c(0.67917691, 0.73691878, -0.26052167, 0.83883048, 1.50859022, 0.17220641, 0.14764583)
-    expect_lt(sum(abs(c(fit_vecchia$get_coef(), fit_vecchia$get_aux_pars(), fit_vecchia$get_cov_pars()) - expected_vecchia)), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(c(fit_vecchia$get_coef(), fit_vecchia$get_aux_pars(), fit_vecchia$get_cov_pars()) - expected_vecchia)), TOLERANCE_VECCHIA_PARS)
     expect_lt(abs(fit_vecchia$get_current_neg_log_likelihood() - 528.41017749), TOLERANCE_MEDIUM)
     pred <- predict(fit_vecchia, gp_coords_pred = coords[1:3, ] + 1e-3, X_pred = X_gp[1:3, ], predict_var = TRUE, predict_response = TRUE)
     expect_lt(sum(abs(pred$mu - c(2.81348623, 1.94954497, 2.31200778))), TOLERANCE_MEDIUM)
@@ -364,14 +368,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                          additional_likelihood_data = N_gp, gp_approx = "vecchia", num_neighbors = 15, vecchia_ordering = "none",
                                          matrix_inversion_method = "cholesky", y = y_gp, X = X_gp, params = OPTIM_PARAMS), file = "NUL")
     expected_rep <- c(0.57351078, 0.71176669, -0.26808144, 0.85188058, 1.50805793, 0.17816592, 0.04713350)
-    expect_lt(sum(abs(c(fit_rep$get_coef(), fit_rep$get_aux_pars(), fit_rep$get_cov_pars()) - expected_rep)), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(c(fit_rep$get_coef(), fit_rep$get_aux_pars(), fit_rep$get_cov_pars()) - expected_rep)), TOLERANCE_VECCHIA_PARS)
     expect_lt(abs(fit_rep$get_current_neg_log_likelihood() - 527.62095755), TOLERANCE_MEDIUM)
     # Y-only varying-dispersion model with a Vecchia approximation
     capture.output(fit_vd <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "tweedie_varying_dispersion", gp_approx = "vecchia",
                                         num_neighbors = 20, vecchia_ordering = "none", matrix_inversion_method = "cholesky", y = y_gp, X = X_gp,
                                         params = OPTIM_PARAMS), file = "NUL")
     expected_vd <- c(0.69171207, 0.75176155, 0.02543444, 0.64574750, 1.49029146, 0.09198423, 0.19362058)
-    expect_lt(sum(abs(c(fit_vd$get_coef(), fit_vd$get_aux_pars(), fit_vd$get_cov_pars()) - expected_vd)), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(c(fit_vd$get_coef(), fit_vd$get_aux_pars(), fit_vd$get_cov_pars()) - expected_vd)), TOLERANCE_VECCHIA_PARS)
     expect_lt(abs(fit_vd$get_current_neg_log_likelihood() - 336.85729907), TOLERANCE_MEDIUM)
 
     # Crossed grouped random effects, Cholesky and iterative
@@ -407,7 +411,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     params_boost <- list(learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)
     gp_model <- GPModel(group_data = group, likelihood = "tweedie_joint_varying_dispersion", additional_likelihood_data = N_gr)
     gp_model$set_optim_params(params = OPTIM_PARAMS)
-    bst <- gpb.train(data = gpb.Dataset(data = X[, 2, drop = FALSE], label = y_gr), gp_model = gp_model, nrounds = 20, params = params_boost)
+    capture.output(bst <- gpb.train(data = gpb.Dataset(data = X[, 2, drop = FALSE], label = y_gr), gp_model = gp_model, nrounds = 20,
+                                    params = params_boost), file = "NUL")
     pred <- predict(bst, data = X[1:3, 2, drop = FALSE], group_data_pred = c(1, 5, 25), predict_var = TRUE, pred_latent = FALSE)
     expect_lt(abs(gp_model$get_cov_pars() - 0.11598325), TOLERANCE_MEDIUM)
     expect_lt(abs(gp_model$get_aux_pars() - 1.53670563), TOLERANCE_MEDIUM)
@@ -425,19 +430,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     folds <- list(seq(1, n, by = 2), seq(2, n, by = 2))
     gp_model <- GPModel(group_data = group, likelihood = "tweedie_joint_varying_dispersion", additional_likelihood_data = N_gr)
     gp_model$set_optim_params(params = OPTIM_PARAMS)
-    cvbst <- gpb.cv(data = gpb.Dataset(data = X[, 2, drop = FALSE], label = y_gr), gp_model = gp_model, nrounds = 10, params = params_boost,
-                    folds = folds, metric = "mse")
+    capture.output(cvbst <- gpb.cv(data = gpb.Dataset(data = X[, 2, drop = FALSE], label = y_gr), gp_model = gp_model, nrounds = 10,
+                                   params = params_boost, folds = folds, metric = "mse"), file = "NUL")
     expect_equal(cvbst$best_iter, 3)
     expect_lt(abs(cvbst$best_score - 5.03521930), TOLERANCE_MEDIUM)
     # The default metric, the test negative log-likelihood (with the marginal density of y and the log-dispersion predictor of the trees)
     gp_model <- GPModel(group_data = group, likelihood = "tweedie_joint_varying_dispersion", additional_likelihood_data = N_gr)
     gp_model$set_optim_params(params = OPTIM_PARAMS)
-    cvbst <- gpb.cv(data = gpb.Dataset(data = X[, 2, drop = FALSE], label = y_gr), gp_model = gp_model, nrounds = 10, params = params_boost, folds = folds)
+    capture.output(cvbst <- gpb.cv(data = gpb.Dataset(data = X[, 2, drop = FALSE], label = y_gr), gp_model = gp_model, nrounds = 10,
+                                   params = params_boost, folds = folds), file = "NUL")
     expect_equal(cvbst$best_iter, 1)
     expect_lt(abs(cvbst$best_score - 1.96254936), TOLERANCE_MEDIUM)
     gp_model <- GPModel(group_data = group, likelihood = "tweedie_joint", additional_likelihood_data = N_gr)
     gp_model$set_optim_params(params = OPTIM_PARAMS)
-    cvbst <- gpb.cv(data = gpb.Dataset(data = X[, 2, drop = FALSE], label = y_gr), gp_model = gp_model, nrounds = 10, params = params_boost, folds = folds)
+    capture.output(cvbst <- gpb.cv(data = gpb.Dataset(data = X[, 2, drop = FALSE], label = y_gr), gp_model = gp_model, nrounds = 10,
+                                   params = params_boost, folds = folds), file = "NUL")
     expect_equal(cvbst$best_iter, 1)
     expect_lt(abs(cvbst$best_score - 1.96781409), TOLERANCE_MEDIUM)
   })
@@ -472,8 +479,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     for (lik in c("tweedie", "tweedie_varying_dispersion")) {
       vd <- lik == "tweedie_varying_dispersion"
       aux <- if (vd) 1.5 else c(0.8, 1.5)
-      nll_w <- GPModel(group_data = group, likelihood = lik, weights = weights_w)$neg_log_likelihood(
-        cov_pars = 0.3, y = y_w, fixed_effects = if (vd) c(eta_gr, zeta_gr) else eta_gr, aux_pars = aux)
+      capture.output(gp_model_w <- GPModel(group_data = group, likelihood = lik, weights = weights_w), file = "NUL")
+      nll_w <- gp_model_w$neg_log_likelihood(cov_pars = 0.3, y = y_w, fixed_effects = if (vd) c(eta_gr, zeta_gr) else eta_gr, aux_pars = aux)
       nll_sub <- GPModel(group_data = group[-1], likelihood = lik)$neg_log_likelihood(
         cov_pars = 0.3, y = y_gr[-1], fixed_effects = if (vd) c(eta_gr[-1], zeta_gr[-1]) else eta_gr[-1], aux_pars = aux)
       expect_lt(abs(nll_w - nll_sub), TOLERANCE_STRICT)
