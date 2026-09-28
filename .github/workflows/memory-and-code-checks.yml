@@ -184,15 +184,19 @@ jobs:
               if not names:
                   raise SystemExit(f"no test file matches '{user_filter}'")
 
-          # These files fit a model to 1e4 to 2.5e5 observations. Under valgrind, which emulates a
-          # single CPU, one of them alone exceeds the six hours after which a job is killed, and no
-          # number of shards helps, because a shard cannot be smaller than a file. They are left out
-          # of the valgrind runs: the sizes are there to cover scaling, and the code paths they use
-          # are the same ones that the other files use with less data. The two
-          # 'reuse_learning_rates_gp_model' files cover the one option that is only used here, with
-          # a sample size that valgrind can carry. The ASan runs and a normal test run are not
-          # affected and keep running all of them.
+          # Files that a valgrind job cannot finish in the six hours after which it is killed. No
+          # number of shards helps, because a shard cannot be smaller than a file.
+          # The '_large_data' ones fit a model to 1e4 to 2.5e5 observations; the sizes are there to
+          # cover scaling, and the code paths they use are the same ones the other files use with
+          # less data. The two 'reuse_learning_rates_gp_model' files cover the one option that is
+          # only used there, with a sample size that valgrind can carry.
+          # 'GPModel_gaussian_process_full_scale_tapering' is a single 'test_that' and took 351
+          # minutes on 2026-09-27, so it can only be divided by splitting that test itself. The same
+          # approximation is exercised by 'z_GPBoost_algorithm_full_scale_tapering', which valgrind
+          # does run.
+          # The ASan runs and a normal test run are not affected and keep running all of them.
           WITHOUT_VALGRIND = {
+              "GPModel_gaussian_process_full_scale_tapering",
               "GPModel_non_Gaussian_data_large_data",
               "z_GPBoost_algorithm_large_data",
               "z_GPBoost_algorithm_non_Gaussian_data_large_data",
