@@ -1434,6 +1434,46 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                           gp_approx = "vecchia", num_neighbors = 10) , file='NUL')
       expect_error(gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:3],y=y_pois_0), "conditional variance of zero")
     }
+    # Estimation with FITC, which is exact here, exercises the gradients at the anchor. Note: for order 1, the exact fit stops
+    #   prematurely for these data (unsuccessful line search) and cannot serve as a reference
+    capture.output( gp_model <- fitGPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = 2, likelihood = "poisson", y = y_pois_0,
+                                           matrix_inversion_method = "cholesky") , file='NUL')
+    capture.output( gp_model_fitc <- fitGPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = 2, likelihood = "poisson", y = y_pois_0,
+                                                matrix_inversion_method = "cholesky", gp_approx = "fitc", num_ind_points = n - 1,
+                                                ind_points_selection = "random") , file='NUL')
+    expect_lt(sum(abs(gp_model_fitc$get_cov_pars()-gp_model$get_cov_pars())),TOLERANCE_MEDIUM)
+    expect_lt(abs(gp_model_fitc$get_current_neg_log_likelihood()-gp_model$get_current_neg_log_likelihood()),TOLERANCE_MEDIUM)
+
+    # Methods that use centroids ('kmeans++', 'cover_tree', 'space_time_kmeans++') can place an inducing point at the origin also if no
+    #   location is there. Such an inducing point is replaced by the closest location, which is -1 and (-1, -1), respectively, in the
+    #   following examples with a single inducing point
+    fitc_nll <- function(y, coords, z, cov_pars, order) {
+      num_data <- nrow(coords)
+      C <- hurst_cov(rbind(coords, z), cov_pars[2:3], order)
+      k <- C[1:num_data, num_data + 1, drop = FALSE]
+      Q <- k %*% t(k) / C[num_data + 1, num_data + 1]
+      gauss_nll(y, Q + diag(diag(C)[1:num_data] - diag(Q)) + diag(cov_pars[1], num_data))
+    }
+    coords_1d <- matrix(c(-2, -1, 3))
+    y_1d <- c(0.3, -0.2, 1.1)
+    coords_2d <- as.matrix(expand.grid(c(-2, -1, 3), c(-2, -1, 3)))
+    y_2d <- sin(1:9)
+    for (order in 1:2) {
+      cov_pars_eval <- c(0.1, 1, order - 0.5)
+      for (ind_points_selection in c("kmeans++", "cover_tree")) {
+        capture.output( gp_model <- GPModel(gp_coords = coords_1d, cov_function = "hurst", cov_fct_order = order, gp_approx = "fitc",
+                                            num_ind_points = 1, ind_points_selection = ind_points_selection, cover_tree_radius = 100) , file='NUL')
+        nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y_1d)
+        expect_lt(abs(nll-fitc_nll(y_1d, coords_1d, -1, cov_pars_eval, order)),1e-4)
+      }
+      capture.output( gp_model <- GPModel(gp_coords = coords_2d, cov_function = "hurst", cov_fct_order = order, gp_approx = "fitc",
+                                          num_ind_points = 1, ind_points_selection = "space_time_kmeans++") , file='NUL')
+      nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y_2d)
+      expect_lt(abs(nll-fitc_nll(y_2d, coords_2d, c(-1, -1), cov_pars_eval, order)),1e-4)
+    }
+    # No inducing points can be chosen if all locations are at the origin
+    expect_error(capture.output( GPModel(gp_coords = matrix(0, 10, 1), cov_function = "hurst", gp_approx = "fitc", num_ind_points = 1,
+                                         ind_points_selection = "cover_tree") , file='NUL'), "all locations are at the origin")
 
     ## Standard errors: inverse Fisher information of the estimated parameters, with points close to the origin
     # Note: the points close to the origin check the derivatives wrt the ARD ranges for tiny squared norms (below 1e-10),

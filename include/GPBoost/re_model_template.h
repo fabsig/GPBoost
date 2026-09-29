@@ -5905,6 +5905,8 @@ namespace GPBoost {
 								Log::REFatal("Method '%s' is not supported for redetrmine inducing points. Use '%s' when using an ARD covariance function ",
 									ind_points_selection_.c_str(), "kmeans++");
 							}
+							ReplaceZeroVarianceIndPoints(re_comp->CovFunctionName(), gp_coords_all_unique, gp_coords_ip_mat, num_ind_points);
+							SetNumIndPointsForCluster(cluster_i, num_ind_points);
 							den_mat_t coords_ip_rescaled;
 							vec_t pars_inv = pars.cwiseInverse();
 							re_comp->ScaleCoordinates(pars_inv, gp_coords_ip_mat, coords_ip_rescaled);
@@ -6037,6 +6039,7 @@ namespace GPBoost {
 								Log::REFatal("Method '%s' is not supported for redetrmine inducing points. Use '%s' when using an ARD covariance function ",
 									ind_points_selection_.c_str(), "kmeans++");
 							}
+							ReplaceZeroVarianceIndPoints(re_comp->CovFunctionName(), gp_coords_all_unique, gp_coords_ip_mat, num_ind_points);
 							den_mat_t coords_ip_rescaled;
 							// Start with inducing points from last redetermination
 							if (re_comp->UseScaledCoordinates()) {
@@ -8553,6 +8556,10 @@ namespace GPBoost {
 				}
 			}
 			if ((int)ind_keep.size() < (int)coords_unique.rows()) {
+				if (ind_keep.empty()) {
+					Log::REFatal("No inducing points can be chosen since all locations are at the origin, where the Gaussian process of the "
+						"'%s' covariance function is zero ", cov_fct.c_str());
+				}
 				den_mat_t coords_keep = coords_unique(ind_keep, Eigen::all);
 				coords_unique = coords_keep;
 				if (num_ind_points > (int)coords_unique.rows()) {
@@ -8561,6 +8568,64 @@ namespace GPBoost {
 				Log::REDebug("Locations at the origin, where the Gaussian process is zero, are not used as inducing points ");
 			}
 		}//end RemoveZeroVarianceCandidatesIndPoints
+
+		/*!
+		* \brief Replace inducing points at the origin when the Gaussian process is zero there (see 'RemoveZeroVarianceCandidatesIndPoints').
+		*		Methods that use centroids, such as 'kmeans++' and 'cover_tree', can place an inducing point at the origin also if no
+		*		candidate location is there. Such an inducing point is replaced by the closest candidate location that is not already an
+		*		inducing point (with the same fidelity level for 'ar1_mf_' covariance functions), and it is removed if there is none
+		* \param cov_fct Type of covariance function
+		* \param coords_unique Candidate locations for the inducing points (without the locations at the origin)
+		* \param[out] gp_coords_ip_mat Inducing points
+		* \param[out] num_ind_points Number of inducing points
+		*/
+		void ReplaceZeroVarianceIndPoints(const string_t& cov_fct,
+			const den_mat_t& coords_unique,
+			den_mat_t& gp_coords_ip_mat,
+			int& num_ind_points) const {
+			if (!CovFunction<den_mat_t>::HasZeroVarianceAtOrigin(cov_fct)) {
+				return;
+			}
+			const bool is_ar1_mf = cov_fct.rfind("ar1_mf_", 0) == 0;
+			const int num_cols = (int)gp_coords_ip_mat.cols();
+			const int dim_coords = is_ar1_mf ? num_cols - 1 : num_cols;
+			auto is_ind_point = [&gp_coords_ip_mat](const den_mat_t& coords, int i) {
+				for (int j = 0; j < (int)gp_coords_ip_mat.rows(); ++j) {
+					if ((gp_coords_ip_mat.row(j).array() == coords.row(i).array()).all()) {
+						return(true);
+					}
+				}
+				return(false);
+			};
+			std::vector<int> ind_keep;
+			for (int j = 0; j < (int)gp_coords_ip_mat.rows(); ++j) {
+				if (gp_coords_ip_mat.row(j).head(dim_coords).squaredNorm() > 0.) {
+					ind_keep.push_back(j);
+					continue;
+				}
+				int ind_closest = -1;
+				double dist_closest = std::numeric_limits<double>::infinity();
+				for (int i = 0; i < (int)coords_unique.rows(); ++i) {
+					if (is_ar1_mf && coords_unique(i, num_cols - 1) != gp_coords_ip_mat(j, num_cols - 1)) {
+						continue;
+					}
+					const double dist = (coords_unique.row(i) - gp_coords_ip_mat.row(j)).squaredNorm();
+					if (dist < dist_closest && !is_ind_point(coords_unique, i)) {
+						ind_closest = i;
+						dist_closest = dist;
+					}
+				}
+				if (ind_closest >= 0) {
+					gp_coords_ip_mat.row(j) = coords_unique.row(ind_closest);
+					ind_keep.push_back(j);
+				}
+			}
+			if ((int)ind_keep.size() < (int)gp_coords_ip_mat.rows()) {
+				den_mat_t gp_coords_ip_mat_keep = gp_coords_ip_mat(ind_keep, Eigen::all);
+				gp_coords_ip_mat = gp_coords_ip_mat_keep;
+				num_ind_points = (int)gp_coords_ip_mat.rows();
+			}
+		}//end ReplaceZeroVarianceIndPoints
 
 		/*!
 		* \brief Select inducing points from a set of unique coordinates with the method given by 'ind_points_selection_'
@@ -8902,6 +8967,7 @@ namespace GPBoost {
 			else {
 				Log::REFatal("Method '%s' is not supported for finding inducing points ", ind_points_selection_.c_str());
 			}
+			ReplaceZeroVarianceIndPoints(cov_fct, gp_coords_all_unique, gp_coords_ip_mat, num_ind_points);
 			if (gp_approx_ == "full_scale_vecchia" && !gauss_likelihood_) {
 				int count = 0;
 				den_mat_t gp_coords_ip_mat_interim;
@@ -10813,6 +10879,7 @@ namespace GPBoost {
 					else {
 						Log::REFatal("Method '%s' is not supported for finding inducing points ", ind_points_selection_.c_str());
 					}
+					ReplaceZeroVarianceIndPoints(re_comp_gp_clus0->CovFunctionName(), gp_coords_all_unique, gp_coords_ip_mat, num_ind_points);
 					gp_coords_all_unique.resize(0, 0);
 					std::shared_ptr<RECompGP<den_mat_t>> gp_ip(new RECompGP<den_mat_t>(
 						gp_coords_ip_mat, re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionOrder(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
