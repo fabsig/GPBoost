@@ -12,8 +12,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   TOLERANCE_NON_CONVEX <- if (USE_STRICT_TOLERANCES) TOLERANCE_MEDIUM else 0.5
   relax_tolerance_strict <- function(tol) if (USE_STRICT_TOLERANCES) tol else 100 * tol
   # The covariance parameter likelihood of Vecchia-approximated GPs is very flat, so the fitted parameters differ noticeably
-  # across compilers although the negative log-likelihood agrees (see test_GPModel_tweedie.R). The negative log-likelihood
-  # is checked with the tighter tolerance
+  # across compilers although the negative log-likelihood agrees (see test_GPModel_tweedie.R), and so do the predictions,
+  # which depend on the parameters. The negative log-likelihood is checked with the tighter tolerance
   TOLERANCE_VECCHIA_PARS <- 0.1
   OPTIM_PARAMS <- list(optimizer_cov = "lbfgs", optimizer_coef = "lbfgs", maxit = 300, init_coef_aux_pars_from_iid_model = FALSE)
 
@@ -348,8 +348,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(c(fit_vecchia$get_coef(), fit_vecchia$get_aux_pars(), fit_vecchia$get_cov_pars()) - expected_vecchia)), TOLERANCE_VECCHIA_PARS)
     expect_lt(abs(fit_vecchia$get_current_neg_log_likelihood() - 528.41017749), TOLERANCE_MEDIUM)
     pred <- predict(fit_vecchia, gp_coords_pred = coords[1:3, ] + 1e-3, X_pred = X_gp[1:3, ], predict_var = TRUE, predict_response = TRUE)
-    expect_lt(sum(abs(pred$mu - c(2.81348623, 1.94954497, 2.31200778))), TOLERANCE_MEDIUM)
-    expect_lt(sum(abs(pred$var - c(5.27313990, 2.71690034, 4.46470334))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred$mu - c(2.81348623, 1.94954497, 2.31200778))), TOLERANCE_VECCHIA_PARS)
+    expect_lt(sum(abs(pred$var - c(5.27313990, 2.71690034, 4.46470334))), TOLERANCE_VECCHIA_PARS)
     capture.output(fit_vecchia_it <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = lik, additional_likelihood_data = N_gp,
                                                 gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none", matrix_inversion_method = "iterative",
                                                 y = y_gp, X = X_gp, params = params_iter), file = "NUL")
