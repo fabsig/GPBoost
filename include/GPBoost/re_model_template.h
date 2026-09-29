@@ -5906,7 +5906,6 @@ namespace GPBoost {
 									ind_points_selection_.c_str(), "kmeans++");
 							}
 							ReplaceZeroVarianceIndPoints(re_comp->CovFunctionName(), gp_coords_all_unique, gp_coords_ip_mat, num_ind_points);
-							SetNumIndPointsForCluster(cluster_i, num_ind_points);
 							den_mat_t coords_ip_rescaled;
 							vec_t pars_inv = pars.cwiseInverse();
 							re_comp->ScaleCoordinates(pars_inv, gp_coords_ip_mat, coords_ip_rescaled);

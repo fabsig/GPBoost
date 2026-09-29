@@ -1459,10 +1459,6 @@ namespace GPBoost {
 			}
 		}
 		bool var_on_diag = re_comps_vecchia_cluster_i[0]->VarianceOnDiagonal();
-		vec_t D_cluster_i;// conditional variances before the inversion, for checking them
-		if (calc_cov_factor) {
-			D_cluster_i = vec_t(num_re_cluster_i);
-		}
 #pragma omp parallel for schedule(static)
 		for (data_size_t i = 0; i < num_re_cluster_i; ++i) {
 			if (gp_approx == "full_scale_vecchia" && calc_cov_factor) {
@@ -1683,13 +1679,10 @@ namespace GPBoost {
 					}
 				}
 			}
-			if (calc_cov_factor) {
-				D_cluster_i[i] = D_inv_cluster_i.coeffRef(i, i);
-				D_inv_cluster_i.coeffRef(i, i) = 1. / D_cluster_i[i];
-			}
 		}//end loop over data i
 		if (calc_cov_factor) {
-			const bool has_zero_D = (D_cluster_i.array() == 0.).any();
+			// 'D_inv_cluster_i' still contains D here, it is inverted below after checking it
+			const bool has_zero_D = (D_inv_cluster_i.diagonal().array() == 0.).any();
 			if (has_zero_D) {
 				const char* zero_D_msg = "The matrix D in the Vecchia approximation contains zero values, i.e., the Gaussian process has a "
 					"conditional variance of zero at some locations. This happens, e.g., for observations located exactly at the origin "
@@ -1705,7 +1698,7 @@ namespace GPBoost {
 			}
 			// Note: NaN and infinite values are not checked here. They can occur temporarily during the optimization, whose line
 			//	search recovers from a NaN or infinite negative log-likelihood
-			else if ((D_cluster_i.array() < 0.).any()) {
+			else if ((D_inv_cluster_i.diagonal().array() < 0.).any()) {
 				const char* min_D_inv_below_zero_msg = "The matrix D in the Vecchia approximation contains negative values. "
 					"This likely results from numerical instabilities ";
 				if (gauss_likelihood) {
@@ -1714,6 +1707,10 @@ namespace GPBoost {
 				else {
 					Log::REFatal(min_D_inv_below_zero_msg);
 				}
+			}
+#pragma omp parallel for schedule(static)
+			for (data_size_t i = 0; i < num_re_cluster_i; ++i) {
+				D_inv_cluster_i.coeffRef(i, i) = 1. / D_inv_cluster_i.coeffRef(i, i);
 			}
 		}
 	}//end CalcCovFactorGradientVecchia
