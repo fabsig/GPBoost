@@ -243,7 +243,7 @@ Model specification parameters
 
       - ``linear``: Linear covariance function. This corresponds to a Bayesian linear regression model with a Gaussian prior on the coefficients with a constant variance diagonal prior covariance, and the prior variance is estimated using empirical Bayes.
 
-      - ``hurst``: Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ), 0 < H < 1. For H = 0.5, this corresponds to Brownian motion (-> see the ``estimate_cov_par_index`` argument). This is the covariance for ``cov_fct_order = 1`` (default). For ``cov_fct_order = 2``, the second-order Hurst covariance cov(s, s') = sigma2 / (2 (2H - 1)) * ( ||s - s'||^(2H) - ||s||^(2H) - ||s'||^(2H) + 2H (s^T s') (||s||^(2H-2) + ||s'||^(2H-2)) ), 1 < H < 2, is used. For H = 1.5, this corresponds to an integrated Wiener process. See :ref:`cov_fct_order <cov_fct_order>` for more details
+      - ``hurst``: Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ), 0 < H < 1. For H = 0.5, this corresponds to Brownian motion in one dimension (-> see the ``estimate_cov_par_index`` argument). This is the covariance for ``cov_fct_order = 1`` (default). For ``cov_fct_order = 2``, the second-order Hurst covariance cov(s, s') = sigma2 / (2 (2H - 1)) * ( ||s - s'||^(2H) - ||s||^(2H) - ||s'||^(2H) + 2H (s^T s') (||s||^(2H-2) + ||s'||^(2H-2)) ), 1 < H < 2, is used. In one dimension and for s, s' >= 0, H = 1.5 corresponds to an integrated Wiener process. See `cov_fct_order <cov_fct_order_>`__ for more details
 
       - ``hurst_ard``: Hurst covariance function with with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate of ``gp_coords`` except for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: cov(s, s') = (sigma2 / 2) * ( (s_1^2 + sum_{k=2}^d (s_k / l_k)^2)^H + (s'_1^2 + sum_{k=2}^d (s'_k / l_k)^2)^H - ((s_1 - s'_1)^2 + sum_{k=2}^d ((s_k - s'_k) / l_k)^2)^H ). For ``cov_fct_order = 2``, the second-order Hurst covariance (see ``hurst``) is applied to the scaled coordinates (s_1, s_2/l_2, ..., s_d/l_d)
 
@@ -273,9 +273,9 @@ Model specification parameters
 
 -  ``cov_fct_order`` : integer, (default = 1)
 
-   -  Order m of the ``hurst`` and ``hurst_ard`` covariance functions (also when used as base covariance in ``ar1_mf_hurst`` and ``ar1_mf_hurst_ard``). Currently, the orders 1 and 2 are supported. For all other covariance functions, this must be 1.
+   -  Order m of the ``hurst`` and ``hurst_ard`` covariance functions (also when used as base covariance in ``ar1_mf_hurst`` and ``ar1_mf_hurst_ard``). Currently, the orders 1 and 2 are supported.
 
-   -  The Hurst exponent H of the order m satisfies m - 1 < H < m, and H = m - 0.5 is used as initial value. The covariance parameters are the same for all orders (``sigma2``, ``H``, and, for ``hurst_ard``, the ranges).
+   -  The Hurst exponent H of the order m satisfies m - 1 < H < m, and H = m - 0.5 is used as initial value.
 
    -  Order 1 is a fractional Brownian motion / field, and order 2 is a second-order Hurst process / field (in one dimension, an m-th order fractional Brownian motion, Perrin et al., 2001). Both are anchored at the origin: b(0) = 0 for order 1, and b(0) = 0 and grad b(0) = 0 for order 2. The origin of the coordinates is thus a part of the model, and the coordinates are not centered internally. Shift the coordinates if another anchor is more meaningful.
 
@@ -324,13 +324,13 @@ Model specification parameters
 
          - For ``space_time_gneiting`` and ``ar1_mf_<base>``, neighbors are also selected according to the largest absolute correlations by default. Use gp_approx = ``vecchia_euclidean`` for Euclidean-distance selection.
 
-      - ``full_scale_vecchia`` : Vecchia-inducing points full-scale (VIF) approximation; see Gyger, Furrer, and Sigrist (2025) for more details 
+      - ``full_scale_vecchia`` : Vecchia-inducing points full-scale (VIF) approximation; see Gyger, Furrer, and Sigrist (2026, JMLR) for more details 
 
       - ``tapering`` : The covariance function is multiplied by a compactly supported Wendland correlation function
 
-      - ``fitc``: Fully Independent Training Conditional approximation aka modified predictive process approximation; see Gyger, Furrer, and Sigrist (2024) for more details
+      - ``fitc``: Fully Independent Training Conditional approximation aka modified predictive process approximation
 
-      - ``full_scale_tapering``: Full-scale approximation combining an inducing point / predictive process approximation with tapering on the residual process; see Gyger, Furrer, and Sigrist (2024) for more details
+      - ``full_scale_tapering``: Full-scale approximation combining an inducing point / predictive process approximation with tapering on the residual process; see Gyger, Furrer, and Sigrist (2026, JUQ) for more details
 
 -  ``cluster_ids`` : one dimensional array (vector) with integer data or Null, (default = Null)
 

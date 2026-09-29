@@ -5868,6 +5868,7 @@ namespace GPBoost {
 									Log::REFatal("Cannot have more inducing points than unique coordinates for '%s' approximation ", gp_approx_.c_str());
 								}
 							}
+							RemoveZeroVarianceCandidatesIndPoints(re_comp->CovFunctionName(), gp_coords_all_unique, num_ind_points);
 							std::vector<int> indices;
 							den_mat_t gp_coords_ip_mat;
 							if (ind_points_selection_ == "cover_tree") {
@@ -5991,6 +5992,7 @@ namespace GPBoost {
 									Log::REFatal("Cannot have more inducing points than unique coordinates for '%s' approximation ", gp_approx_.c_str());
 								}
 							}
+							RemoveZeroVarianceCandidatesIndPoints(re_comp->CovFunctionName(), gp_coords_all_unique, num_ind_points);
 							std::vector<int> indices;
 							den_mat_t gp_coords_ip_mat;
 							if (ind_points_selection_ == "cover_tree") {
@@ -8529,6 +8531,38 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Remove the locations at which the Gaussian process is zero (the origin for, e.g., the 'hurst' covariance function,
+		*		see 'CovFunction::HasZeroVarianceAtOrigin') from the candidates for inducing points. The covariances of such a point with
+		*		all other points are zero, so that it carries no information as an inducing point, and it would make the covariance
+		*		matrix of the inducing points singular
+		* \param cov_fct Type of covariance function
+		* \param[out] coords_unique Unique coordinates from which the inducing points are selected
+		* \param[out] num_ind_points Number of inducing points, which is reduced if there are fewer candidates than inducing points
+		*/
+		void RemoveZeroVarianceCandidatesIndPoints(const string_t& cov_fct,
+			den_mat_t& coords_unique,
+			int& num_ind_points) const {
+			if (!CovFunction<den_mat_t>::HasZeroVarianceAtOrigin(cov_fct)) {
+				return;
+			}
+			const int dim_coords = (cov_fct.rfind("ar1_mf_", 0) == 0) ? (int)coords_unique.cols() - 1 : (int)coords_unique.cols();
+			std::vector<int> ind_keep;
+			for (int i = 0; i < (int)coords_unique.rows(); ++i) {
+				if (coords_unique.row(i).head(dim_coords).squaredNorm() > 0.) {
+					ind_keep.push_back(i);
+				}
+			}
+			if ((int)ind_keep.size() < (int)coords_unique.rows()) {
+				den_mat_t coords_keep = coords_unique(ind_keep, Eigen::all);
+				coords_unique = coords_keep;
+				if (num_ind_points > (int)coords_unique.rows()) {
+					num_ind_points = (int)coords_unique.rows();
+				}
+				Log::REDebug("Locations at the origin, where the Gaussian process is zero, are not used as inducing points ");
+			}
+		}//end RemoveZeroVarianceCandidatesIndPoints
+
+		/*!
 		* \brief Select inducing points from a set of unique coordinates with the method given by 'ind_points_selection_'
 		*		('space_time_kmeans++' is not handled here since it constructs an irregular grid from two separate selections)
 		* \param coords_unique Unique coordinates from which the inducing points are selected
@@ -8792,6 +8826,7 @@ namespace GPBoost {
 						num_ind_points, (int)gp_coords_all_unique.rows(), gp_approx_.c_str());
 				}
 			}
+			RemoveZeroVarianceCandidatesIndPoints(cov_fct, gp_coords_all_unique, num_ind_points);
 			std::vector<int> indices;
 			den_mat_t gp_coords_ip_mat;
 			if (cov_fct.rfind("ar1_mf_", 0) == 0) {
@@ -10752,6 +10787,7 @@ namespace GPBoost {
 							Log::REFatal("Cannot have more inducing points than unique coordinates for cg_preconditioner_type = '%s' ", cg_preconditioner_type_.c_str());
 						}
 					}
+					RemoveZeroVarianceCandidatesIndPoints(re_comp_gp_clus0->CovFunctionName(), gp_coords_all_unique, num_ind_points);
 					std::vector<int> indices;
 					den_mat_t gp_coords_ip_mat;
 					if (ind_points_selection_ == "cover_tree") {

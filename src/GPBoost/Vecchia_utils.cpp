@@ -1684,9 +1684,24 @@ namespace GPBoost {
 			}
 		}//end loop over data i
 		if (calc_cov_factor) {
+			// A zero entry of D, i.e., a zero conditional variance, results in an infinite entry of D^-1
+			const bool has_zero_D = (D_inv_cluster_i.diagonal().array() == std::numeric_limits<double>::infinity()).any();
 			Eigen::Index minRow, minCol;
 			double min_D_inv = D_inv_cluster_i.diagonal().minCoeff(&minRow, &minCol);
-			if (min_D_inv <= 0.) {
+			if (has_zero_D) {
+				const char* zero_D_msg = "The matrix D in the Vecchia approximation contains zero values, i.e., the Gaussian process has a "
+					"conditional variance of zero at some locations. This happens, e.g., for observations located exactly at the origin "
+					"for the 'hurst' and 'linear' covariance functions, whose Gaussian process is zero at the origin. Such observations "
+					"are currently not supported by a Vecchia approximation of a latent Gaussian process (non-Gaussian likelihoods or "
+					"gp_approx = 'vecchia_latent'). Use, e.g., gp_approx = 'none' ";
+				if (gauss_likelihood) {
+					Log::REWarning(zero_D_msg);
+				}
+				else {
+					Log::REFatal(zero_D_msg);
+				}
+			}
+			else if (min_D_inv <= 0.) {
 				const char* min_D_inv_below_zero_msg = "The matrix D in the Vecchia approximation contains negative or zero values. "
 					"This likely results from numerical instabilities ";
 				if (gauss_likelihood) {

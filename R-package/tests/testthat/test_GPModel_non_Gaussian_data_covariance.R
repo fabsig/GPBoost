@@ -1183,24 +1183,25 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-c(-1.046957336, 0.1970476608, 0.7471312879))),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(pred$var-c(0.00359821399, 0.001538512908, 0.001584914559))),TOLERANCE_MEDIUM)
 
-    ## FITC and VIF approximations with n - 1 inducing points
-    # Note: the approximation depends on which point is not an inducing point. This point is chosen randomly, and the random
-    #   numbers differ between standard libraries (e.g., MSVC and libstdc++). Over 30 different choices (seeds), the maximal
-    #   absolute differences to the exact values below were 5.8e-2 (FITC) and 3.6e-3 (VIF) for the negative log-likelihood at
-    #   'cov_pars_eval', and 1.2e-3 (FITC) and 3.1e-4 (VIF) for the estimates and predictions. The tolerances cover this
+    ## FITC and VIF approximations with n - 1 inducing points (and n - 1 neighbors for VIF, which makes it exact)
+    # Note: FITC depends on which point is not an inducing point. This point is chosen randomly, and the random numbers differ
+    #   between standard libraries (e.g., MSVC and libstdc++). Over 30 different choices (seeds), the maximal absolute differences
+    #   to the exact values below were 5.8e-2 (FITC) and 4.3e-6 (VIF) for the negative log-likelihood at 'cov_pars_eval', and
+    #   1.2e-3 (FITC) and 2.5e-4 (VIF) for the estimates and predictions. For VIF, the latter is due to the optimizer stopping at
+    #   slightly different points of a flat likelihood (the negative log-likelihoods at the optimum differed by at most 1.2e-6)
     ind_points_selection <- "random"
     num_ind_points <- n - 1
     for (gp_approx in c("fitc", "vif")) {
       tol_approx <- if (gp_approx == "fitc") 3e-3 else 1e-3
-      tol_nll_eval <- if (gp_approx == "fitc") 0.1 else 1e-2
+      tol_nll_eval <- if (gp_approx == "fitc") 0.1 else 1e-4
       capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
                                           gp_approx = gp_approx, num_ind_points = num_ind_points, ind_points_selection = ind_points_selection,
-                                          num_neighbors = 20) , file='NUL')
+                                          num_neighbors = n - 1, vecchia_ordering = "none") , file='NUL')
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
       expect_lt(abs(nll-nll_exp),tol_nll_eval)
       capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
                                              X=X, y = y, params = params, gp_approx = gp_approx, num_ind_points = num_ind_points,
-                                             ind_points_selection = ind_points_selection, num_neighbors = 20) , file='NUL')
+                                             ind_points_selection = ind_points_selection, num_neighbors = n - 1, vecchia_ordering = "none") , file='NUL')
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),tol_approx)
       expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),tol_approx)
       expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),tol_approx)
@@ -1379,5 +1380,99 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                             params = list(init_cov_pars = c(0.01, 1, 0.5))) , file='NUL'))
 
   }) # end hurst covariance of order 2
+
+  test_that("hurst covariance: observations at the anchor and standard errors ", {
+
+    # Anchored Hurst covariance of order 1 or 2; 'ranges' are the ARD ranges of the coordinates 2, ..., d
+    hurst_cov <- function(t, pars, order, ranges = NULL) {
+      if (!is.null(ranges)) t <- t %*% diag(c(1, 1 / ranges), ncol(t))
+      H <- pars[2]
+      r <- rowSums(t^2)
+      D2 <- 0
+      for (k in 1:ncol(t)) D2 <- D2 + outer(t[, k], t[, k], "-")^2
+      if (order == 1) return(pars[1] / 2 * (outer(r^H, r^H, "+") - D2^H))
+      pars[1] / (2 * (2 * H - 1)) * (D2^H - outer(r^H, r^H, "+") + 2 * H * (t %*% t(t)) * outer(r^(H - 1), r^(H - 1), "+"))
+    }
+    gauss_nll <- function(y, Sigma) {
+      0.5 * sum(y * solve(Sigma, y)) + 0.5 * as.numeric(determinant(Sigma)$modulus) + 0.5 * length(y) * log(2 * pi)
+    }
+
+    ## Observations exactly at the anchor (the origin), where the Gaussian process is zero
+    time_0 <- matrix(c(0, time[-n]))
+    a_min <- outer(time_0[, 1], time_0[, 1], pmin)
+    a_max <- outer(time_0[, 1], time_0[, 1], pmax)
+    b_0 <- drop(t(chol(30 / 6 * a_min^2 * (3 * a_max - a_min) + diag(1e-10, n))) %*% qnorm(sim_rand_unif(n=n, init_c=0.5173)))
+    y_0 <- 1 + b_0 + qnorm(sim_rand_unif(n=n, init_c=0.2291), sd=0.1)
+    y_pois_0 <- qpois(sim_rand_unif(n=n, init_c=0.7713), lambda = exp(1 + b_0))
+    for (order in 1:2) {
+      cov_pars_eval <- c(0.01, 0.8, order - 0.5)
+      capture.output( gp_model <- GPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = order) , file='NUL')
+      nll_exact <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y_0)
+      expect_lt(abs(nll_exact-gauss_nll(y_0, hurst_cov(time_0, cov_pars_eval[2:3], order) + diag(cov_pars_eval[1], n))),TOLERANCE_STRICT)
+      # The predictive distribution at the anchor is a point mass at zero
+      pred <- predict(gp_model, y=y_0, gp_coords_pred = matrix(c(0, 0.5)), cov_pars = cov_pars_eval, predict_var = TRUE, predict_response = FALSE)
+      expect_equal(pred$mu[1], 0)
+      expect_equal(pred$var[1], 0)
+      # The anchor is not used as an inducing point, since it would make the covariance matrix of the inducing points singular.
+      #   All other n - 1 points are inducing points, and the approximations are exact
+      for (gp_approx in c("fitc", "vif")) {
+        capture.output( gp_model <- GPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = order, gp_approx = gp_approx,
+                                            num_ind_points = n - 1, ind_points_selection = "random", num_neighbors = n - 1,
+                                            vecchia_ordering = "none") , file='NUL')
+        expect_lt(abs(gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y_0)-nll_exact),TOLERANCE_MEDIUM)
+      }
+      # Poisson likelihood
+      capture.output( gp_model <- GPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = order, likelihood = "poisson",
+                                          matrix_inversion_method = "cholesky") , file='NUL')
+      nll_exact <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:3],y=y_pois_0)
+      capture.output( gp_model <- GPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = order, likelihood = "poisson",
+                                          matrix_inversion_method = "cholesky", gp_approx = "fitc", num_ind_points = n - 1,
+                                          ind_points_selection = "random") , file='NUL')
+      expect_lt(abs(gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:3],y=y_pois_0)-nll_exact),TOLERANCE_MEDIUM)
+      # A Vecchia approximation of the latent process cannot handle the zero conditional variance at the anchor
+      capture.output( gp_model <- GPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = order, likelihood = "poisson",
+                                          gp_approx = "vecchia", num_neighbors = 10) , file='NUL')
+      expect_error(gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:3],y=y_pois_0), "conditional variance of zero")
+    }
+
+    ## Standard errors: inverse Fisher information of the estimated parameters, with points close to the origin
+    # Note: the points close to the origin check the derivatives wrt the ARD ranges for tiny squared norms (below 1e-10),
+    #   which were set to zero for order 1 instead of their small but, for small H, not negligible values
+    # Standard errors from the Fisher information 0.5 * tr(Sigma^-1 dSigma_a Sigma^-1 dSigma_b), where the derivatives of
+    #   the covariance matrix are obtained by central finite differences
+    se_fisher <- function(cov_pars, coords, order, estimated) {
+      Sigma_fct <- function(p) hurst_cov(coords, p[2:3], order, ranges = p[-(1:3)]) + diag(p[1], nrow(coords))
+      Sigma_inv <- solve(Sigma_fct(cov_pars))
+      Sigma_inv_dSigma <- lapply(which(estimated), function(i) {
+        h <- 1e-6 * cov_pars[i]
+        p_up <- p_down <- cov_pars
+        p_up[i] <- cov_pars[i] + h
+        p_down[i] <- cov_pars[i] - h
+        Sigma_inv %*% (Sigma_fct(p_up) - Sigma_fct(p_down)) / (2 * h)
+      })
+      ind <- seq_along(Sigma_inv_dSigma)
+      FI <- outer(ind, ind, Vectorize(function(a, b) 0.5 * sum(Sigma_inv_dSigma[[a]] * t(Sigma_inv_dSigma[[b]]))))
+      se <- rep(NaN, length(cov_pars))
+      se[estimated] <- sqrt(diag(solve(FI)))
+      se
+    }
+    coords_near <- coords
+    coords_near[1:5, ] <- coords[1:5, ] * 1e-6
+    for (order in 1:2) {
+      H_true <- if (order == 1) 0.1 else 1.5
+      K <- hurst_cov(coords_near, c(1, H_true), order, ranges = 0.5)
+      y_near <- drop(t(chol(K + diag(1e-8, n))) %*% qnorm(sim_rand_unif(n=n, init_c=0.2461))) + qnorm(sim_rand_unif(n=n, init_c=0.3317), sd=0.1)
+      for (fix_H in c(FALSE, TRUE)) {
+        # all parameters estimated, and H fixed, which has no standard error then
+        estimated <- c(TRUE, TRUE, !fix_H, TRUE)
+        init_cov_pars <- c(0.5, 1, if (fix_H) H_true else order - 0.7, 1)
+        capture.output( gp_model <- fitGPModel(gp_coords = coords_near, cov_function = "hurst_ard", cov_fct_order = order, y = y_near,
+                                               params = list(init_cov_pars = init_cov_pars, estimate_cov_par_index = as.integer(estimated))) , file='NUL')
+        cov_pars <- gp_model$get_cov_pars(std_err = TRUE)
+        expect_equal(unname(cov_pars[2, ]), se_fisher(cov_pars[1, ], coords_near, order, estimated), tolerance = 1e-5)
+      }
+    }
+
+  }) # end hurst covariance: observations at the anchor and standard errors
 
 }

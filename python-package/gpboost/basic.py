@@ -5302,10 +5302,10 @@ class GPModel(object):
                 - "hurst": 
                 
                     Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ), 0 < H < 1.
-                    For H = 0.5, this corresponds to Brownian motion (-> see the 'estimate_cov_par_index' argument).
+                    For H = 0.5, this corresponds to Brownian motion in one dimension (-> see the 'estimate_cov_par_index' argument).
                     This is the covariance for cov_fct_order = 1 (default). For cov_fct_order = 2, the second-order Hurst covariance
                     cov(s, s') = sigma2 / (2 (2H - 1)) * ( ||s - s'||^(2H) - ||s||^(2H) - ||s'||^(2H) + 2H (s^T s') (||s||^(2H-2) + ||s'||^(2H-2)) ), 1 < H < 2,
-                    is used. For H = 1.5, this corresponds to an integrated Wiener process. See 'cov_fct_order' for more details
+                    is used. In one dimension and for s, s' >= 0, H = 1.5 corresponds to an integrated Wiener process. See 'cov_fct_order' for more details
 
                 - "hurst_ard": 
                 
@@ -5349,7 +5349,7 @@ class GPModel(object):
                 second-order Hurst process / field anchored at the origin such that both the process and its gradient
                 are zero there (b(0) = 0, grad b(0) = 0). The origin of the coordinates thus is a part of the model,
                 and the coordinates are not centered internally. The order is not estimated. It can be chosen, e.g.,
-                by comparing the marginal likelihoods or by cross-validation. For all other covariance functions, this must be 1.
+                by comparing the marginal likelihoods or by cross-validation.
 
                     - Continuous-time RW1 prior: use cov_function = "hurst", cov_fct_order = 1, and fix H = 0.5.
                       This is a Brownian motion with b(0) = 0 and b'(t) = sqrt(q) W'(t), where W' denotes white noise and q = sigma2
@@ -5384,7 +5384,7 @@ class GPModel(object):
 
                     - "full_scale_vecchia": 
                     
-                        Vecchia-inducing points full-scale (VIF) approximation; see Gyger, Furrer, and Sigrist (2025) for more details 
+                        Vecchia-inducing points full-scale (VIF) approximation; see Gyger, Furrer, and Sigrist (2026, JMLR) for more details 
                     
                     - "tapering":
 
@@ -5393,12 +5393,12 @@ class GPModel(object):
                     - "fitc":
 
                         Fully Independent Training Conditional approximation aka modified predictive process
-                        approximation; see Gyger, Furrer, and Sigrist (2024) for more details
+                        approximation
 
                     - "full_scale_tapering":
 
                         Full-scale approximation combining an inducing point / predictive process approximation with
-                        tapering on the residual process; see Gyger, Furrer, and Sigrist (2024) for more details
+                        tapering on the residual process; see Gyger, Furrer, and Sigrist (2026, JUQ) for more details
 
                     - "vecchia_latent":
 

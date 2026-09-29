@@ -258,6 +258,21 @@ namespace GPBoost {
 			return(order_);
 		}
 
+		/*!
+		* \brief Returns true if the variance of the covariance function is zero at the origin of the coordinates (without the
+		*		fidelity indicator for 'ar1_mf_' covariance functions), whatever the covariance parameters are. The Gaussian process
+		*		of such a covariance function is zero at the origin, and so are its covariances with all other points
+		* \param cov_fct_type Type of covariance function
+		*/
+		static bool HasZeroVarianceAtOrigin(string_t cov_fct_type) {
+			const string_t ar1_mf_prefix = "ar1_mf_";
+			if (cov_fct_type.rfind(ar1_mf_prefix, 0) == 0) {
+				cov_fct_type = cov_fct_type.substr(ar1_mf_prefix.size());
+			}
+			return(cov_fct_type == "hurst" || cov_fct_type == "hurst_ard" || cov_fct_type == "Hurst" || cov_fct_type == "Hurst_ard" ||
+				cov_fct_type == "linear");
+		}
+
 		double CovFunctionTaperRange() const {
 			return(taper_range_);
 		}
@@ -3159,7 +3174,7 @@ namespace GPBoost {
 				return (u > 0.) ? ((a / u) * std::pow(u, H - 1.)) : 0.;
 			};
 			const double H = HurstExponent(pars[1]);
-			const double l_k = std::max(pars[k + 1], 1e-12);
+			const double l_k = pars[k + 1];
 			const double x_k = coords_vec[k];
 			const double y_k = coords_pred_vec[k];
 			const double a_x = x_k * x_k;
@@ -3280,17 +3295,17 @@ namespace GPBoost {
 			}
 			else {// ----- gradient w.r.t. ARD range parameter l_k -----				
 				const int k = ind_par;   // coordinate index (1 ... num_range)
-				const double l_k = std::max(pars[ind_par + 1], 1e-12);// The range l_k is stored in pars[ind_par + 1]
-				auto safe_pow_Hm1 = [&](double x) {// avoids pow(0, negative) and inf*0 -> NaN					
-					return (x > EPSILON_NUMBERS) ? std::pow(x, H - 1.0) : 0.0;
+				const double l_k = pars[ind_par + 1];// The range l_k is stored in pars[ind_par + 1]
+				// u^(H-1) * a for 0 <= a <= u, which tends to 0 for u -> 0 although u^(H-1) diverges for H < 1.
+				//	It is calculated as (a / u) * u^H to avoid the product of a diverging and a vanishing factor
+				auto pow_Hm1_times = [H](double u, double a) {
+					return (u > 0.) ? ((a / u) * std::pow(u, H)) : 0.;
 				};
-				const double r_x_Hm1 = safe_pow_Hm1(sqrd_norm_x);
-				const double r_y_Hm1 = safe_pow_Hm1(sqrd_norm_y);
-				const double r_xy_Hm1 = safe_pow_Hm1(sqrd_norm_x_min_y);
 				const double x_k = coords_vec[k];
 				const double y_k = coords_pred_vec[k];
 				const double diff_k = x_k - y_k;
-				const double dC_dl_k = -pars[0] * H / l_k * (r_x_Hm1 * x_k * x_k + r_y_Hm1 * y_k * y_k - r_xy_Hm1 * diff_k * diff_k);
+				const double dC_dl_k = -pars[0] * H / l_k * (pow_Hm1_times(sqrd_norm_x, x_k * x_k) + pow_Hm1_times(sqrd_norm_y, y_k * y_k) -
+					pow_Hm1_times(sqrd_norm_x_min_y, diff_k * diff_k));
 				const double cm = transf_scale ? l_k : nugget_var;// multiplicative constant to get gradient on log-scale or backtransform with nugget variance
 				grad = cm * dC_dl_k;
 			}

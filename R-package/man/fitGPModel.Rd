@@ -256,10 +256,10 @@ the \code{cov_fct_shape} parameter (using the parametrization of Diggle and Ribe
 regression model with a Gaussian prior on the coefficients with a constant variance 
 diagonal prior covariance, and the prior variance is estimated using empirical Bayes. }
 \item{ "hurst": Hurst covariance function cov(s, s') = (sigma2 / 2) * ( ||s||^(2H) + ||s'||^(2H) - ||s - s'||^(2H) ), 0 < H < 1.
-For H = 0.5, this corresponds to Brownian motion (-> see the 'estimate_cov_par_index' argument).
+For H = 0.5, this corresponds to Brownian motion in one dimension (-> see the 'estimate_cov_par_index' argument).
 This is the covariance for \code{cov_fct_order = 1} (default). For \code{cov_fct_order = 2}, the second-order Hurst covariance
 cov(s, s') = sigma2 / (2 (2H - 1)) * ( ||s - s'||^(2H) - ||s||^(2H) - ||s'||^(2H) + 2H (s^T s') (||s||^(2H-2) + ||s'||^(2H-2)) ), 1 < H < 2,
-is used. For H = 1.5, this corresponds to an integrated Wiener process. See \code{cov_fct_order} for more details }
+is used. In one dimension and for s, s' >= 0, H = 1.5 corresponds to an integrated Wiener process. See \code{cov_fct_order} for more details }
 \item{ "hurst_ard": Hurst covariance function with with Automatic Relevance Determination (ARD), 
 i.e., with a different range parameter for every coordinate of ``gp_coords`` except 
 for the first coordinate which has a range parameter of 1 due to identifiability with the marginal variance: 
@@ -293,14 +293,14 @@ coordinates scaled by the range parameters, and they are redetermined during par
 For "space_time_gneiting" and "ar1_mf_<base>", neighbors are also selected by absolute correlation by default.
 Use gp_approx = "vecchia_euclidean" for Euclidean-distance selection. }
 \item{"full_scale_vecchia": Vecchia-inducing points full-scale (VIF) approximation; 
-see Gyger, Furrer, and Sigrist (2025) for more details }
+see Gyger, Furrer, and Sigrist (2026, JMLR) for more details }
 \item{"tapering": The covariance function is multiplied by 
 a compactly supported Wendland correlation function }
 \item{"fitc": Fully Independent Training Conditional approximation aka 
-modified predictive process approximation; see Gyger, Furrer, and Sigrist (2024) for more details }
+modified predictive process approximation }
 \item{"full_scale_tapering": Full-scale approximation combining an 
 inducing point / predictive process approximation with tapering on the residual process; 
-see Gyger, Furrer, and Sigrist (2024) for more details }
+see Gyger, Furrer, and Sigrist (2026, JUQ) for more details }
 \item{"vecchia_latent": similar as "vecchia" but a Vecchia approximation is applied to the latent Gaussian process 
 for likelihood == "gaussian". For likelihood != "gaussian", "vecchia" and "vecchia_latent" are equivalent }
 }}
@@ -430,7 +430,6 @@ Order 1 is a fractional Brownian motion / field anchored at the origin (b(0) = 0
 anchored at the origin such that both the process and its gradient are zero there (b(0) = 0, grad b(0) = 0).
 The origin of the coordinates thus is a part of the model, and the coordinates are not centered internally.
 The order is not estimated. It can be chosen, e.g., by comparing the marginal likelihoods or by cross-validation.
-For all other covariance functions, this must be 1.
 \itemize{
 \item{ Continuous-time RW1 prior: use \code{cov_function = "hurst"}, \code{cov_fct_order = 1}, and fix H = 0.5.
 This is a Brownian motion with b(0) = 0 and b'(t) = sqrt(q) W'(t), where W' denotes white noise and q = sigma2 }
