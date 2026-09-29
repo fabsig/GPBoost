@@ -2298,10 +2298,11 @@ namespace GPBoost {
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					const double w = has_weights_ ? weights_[i] : 1.;
 					const double eta = location_par[i];
-					const auto location = EvaluateTweedieLocation(y_data[i], eta, location_par[i + num_data_], p);
+					const double log_scaled_a = TweedieLogScaledA(eta, location_par[i + num_data_], p);
+					const double log_scaled_b = TweedieLogScaledB(y_data[i], eta, location_par[i + num_data_], p);
 					const double coefficient_a = eta / (2. - p) - 1. / ((2. - p) * (2. - p));
 					const double coefficient_b = eta / (p - 1.) + 1. / ((p - 1.) * (p - 1.));
-					power_sum += w * dp * TweedieSignedLogSum(coefficient_a, location.log_scaled_a, coefficient_b, location.log_scaled_b);
+					power_sum += w * dp * TweedieSignedLogSum(coefficient_a, log_scaled_a, coefficient_b, log_scaled_b);
 					sum_d_theta += w * tweedie_vd_d_theta_[i];
 				}
 				grad[0] = -sum_d_theta - power_sum;
@@ -2318,17 +2319,19 @@ namespace GPBoost {
 			CHECK(normalizing_constant_has_been_calculated_);
 			CHECK(TwoNumbersAreEqual<double>(tweedie_cached_phi_, phi));
 			CHECK(TwoNumbersAreEqual<double>(tweedie_cached_p_, p));
+			const double log_phi = std::log(phi);
 			double canonical_sum = 0., power_sum = 0.;
 #pragma omp parallel for schedule(static) reduction(+:canonical_sum,power_sum)
 			for (data_size_t i = 0; i < num_data_; ++i) {
 				const double w = has_weights_ ? weights_[i] : 1.;
 				const double eta = location_par[i];
-				const auto location = EvaluateTweedieLocation(y_data[i], eta, std::log(phi), p);
-				canonical_sum += w * location.canonical;
+				const double log_scaled_a = TweedieLogScaledA(eta, log_phi, p);
+				const double log_scaled_b = TweedieLogScaledB(y_data[i], eta, log_phi, p);
+				canonical_sum += w * TweedieLocationQuantityFromLogScaled(TweedieLocationQuantity::kCanonical, log_scaled_a, log_scaled_b, p);
 				if (IsTweedieEstimatedPower()) {
 					const double coefficient_a = eta / (2. - p) - 1. / ((2. - p) * (2. - p));
 					const double coefficient_b = eta / (p - 1.) + 1. / ((p - 1.) * (p - 1.));
-					power_sum += w * dp * TweedieSignedLogSum(coefficient_a, location.log_scaled_a, coefficient_b, location.log_scaled_b);
+					power_sum += w * dp * TweedieSignedLogSum(coefficient_a, log_scaled_a, coefficient_b, log_scaled_b);
 				}
 			}
 			grad[0] = -tweedie_sum_d_log_a_rho_ + canonical_sum;
@@ -2403,9 +2406,11 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					const double w = has_weights_ ? weights_[i] : 1.;
-					const auto location = EvaluateTweedieLocation(y_data[i], location_par[i], TweedieLogDispersion(location_par, i), p);
-					const double s = location.score;
-					const double information = location.information;
+					const double rho = TweedieLogDispersion(location_par, i);
+					const double log_scaled_a = TweedieLogScaledA(location_par[i], rho, p);
+					const double log_scaled_b = TweedieLogScaledB(y_data[i], location_par[i], rho, p);
+					const double s = TweedieLocationQuantityFromLogScaled(TweedieLocationQuantity::kScore, log_scaled_a, log_scaled_b, p);
+					const double information = TweedieLocationQuantityFromLogScaled(TweedieLocationQuantity::kInformation, log_scaled_a, log_scaled_b, p);
 					if (!wrt_power) {
 						second_deriv_loc_aux_par[i] = -w * s;
 						deriv_information_aux_par[i] = -w * information;

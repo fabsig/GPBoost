@@ -1041,9 +1041,13 @@ namespace GPBoost {
 		*/
 		inline double TweedieVaryingDispersionZetaGrad(double y, data_size_t i, double loc_eta, double loc_zeta, double p, double w,
 			double diag, double inv_d_mll_d_mode) const {
-			const auto location = EvaluateTweedieLocation(y, loc_eta, loc_zeta, p);
-			const double dZeta = tweedie_vd_d_rho_[i] - location.canonical;
-			return -w * dZeta - 0.5 * (w * location.information) * diag - (w * location.score) * inv_d_mll_d_mode;
+			const double log_scaled_a = TweedieLogScaledA(loc_eta, loc_zeta, p);
+			const double log_scaled_b = TweedieLogScaledB(y, loc_eta, loc_zeta, p);
+			const double canonical = TweedieLocationQuantityFromLogScaled(TweedieLocationQuantity::kCanonical, log_scaled_a, log_scaled_b, p);
+			const double score = TweedieLocationQuantityFromLogScaled(TweedieLocationQuantity::kScore, log_scaled_a, log_scaled_b, p);
+			const double information = TweedieLocationQuantityFromLogScaled(TweedieLocationQuantity::kInformation, log_scaled_a, log_scaled_b, p);
+			const double dZeta = tweedie_vd_d_rho_[i] - canonical;
+			return -w * dZeta - 0.5 * (w * information) * diag - (w * score) * inv_d_mll_d_mode;
 		}
 
 		void WarnIfTweediePowerAtBoundary() const {
@@ -3464,7 +3468,7 @@ namespace GPBoost {
 			}
 			else if (IsTweedieVaryingDispersion()) {
 				const double p = GetTweediePower();
-				double ll = EvaluateTweedieLocation(y, loc_eta, extra[0], p).canonical;
+				double ll = EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kCanonical, y, loc_eta, extra[0], p);
 				if (incl_norm_const) {
 					thread_local TweedieSpecialFunctionCache cache;
 					const auto res = EvaluateTweedieLogNormalizer(y, extra[0], p, 0., 0., TweedieDerivativeOrder::kValue, false, 1000000, &cache);
@@ -3489,7 +3493,7 @@ namespace GPBoost {
 				return FirstDerivLogLikGammaVarShape(y, loc_eta, likelihood_type_ == "hurdle_regression_gamma_varying_shape" ? extra[1] : extra[0]);
 			}
 			if (IsZeroCensShiftedGammaVaryingShape()) return FirstDerivLogLikZeroCensGamma_at(y, loc_eta, ZeroCensGammaVarShapeShape(extra[0]), aux_pars_[0]);
-			if (IsTweedieVaryingDispersion()) return EvaluateTweedieLocation(y, loc_eta, extra[0], GetTweediePower()).score;
+			if (IsTweedieVaryingDispersion()) return EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kScore, y, loc_eta, extra[0], GetTweediePower());
 			NotSupportedForLikelihood(__func__);
 			return 0.;
 		}
@@ -3507,7 +3511,7 @@ namespace GPBoost {
 				return SecondDerivNegLogLikGammaVarShape(y, loc_eta, likelihood_type_ == "hurdle_regression_gamma_varying_shape" ? extra[1] : extra[0]);
 			}
 			if (IsZeroCensShiftedGammaVaryingShape()) return SecondDerivNegLogLikZeroCensGamma_at(y, loc_eta, ZeroCensGammaVarShapeShape(extra[0]), aux_pars_[0]);
-			if (IsTweedieVaryingDispersion()) return EvaluateTweedieLocation(y, loc_eta, extra[0], GetTweediePower()).information;
+			if (IsTweedieVaryingDispersion()) return EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kInformation, y, loc_eta, extra[0], GetTweediePower());
 			NotSupportedForLikelihood(__func__);
 			return 0.;
 		}
@@ -4057,8 +4061,7 @@ namespace GPBoost {
 		inline double LogLikTweedie(double y, double eta, bool incl_norm_const) const {
 			const double phi = aux_pars_[0];
 			const double p = GetTweediePower();
-			const auto location = EvaluateTweedieLocation(y, eta, std::log(phi), p);
-			double ll = location.canonical;
+			double ll = EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kCanonical, y, eta, std::log(phi), p);
 			if (incl_norm_const) {
 				// The marginal density of y (also for the joint variants, since this is used for new data without the number of events)
 				const auto transform = GetTweediePowerTransform();
@@ -4072,12 +4075,12 @@ namespace GPBoost {
 
 		inline double FirstDerivLogLikTweedie(double y, double eta) const {
 			const double p = GetTweediePower();
-			return EvaluateTweedieLocation(y, eta, std::log(aux_pars_[0]), p).score;
+			return EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kScore, y, eta, std::log(aux_pars_[0]), p);
 		}
 
 		inline double InformationLogLikTweedie(double y, double eta) const {
 			const double p = GetTweediePower();
-			return EvaluateTweedieLocation(y, eta, std::log(aux_pars_[0]), p).information;
+			return EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kInformation, y, eta, std::log(aux_pars_[0]), p);
 		}
 
 		/*!
@@ -4189,7 +4192,7 @@ namespace GPBoost {
 			else if (IsTweedieVaryingDispersion()) {
 				UpdateTweedieVaryingDispersionNormalizer(y_data, location_par);
 				const double p = GetTweediePower();
-				ll += SumOverSamplesWeighted([&](data_size_t i) { return EvaluateTweedieLocation(y_data[i], location_par[i], location_par[i + num_data_], p).canonical; });
+				ll += SumOverSamplesWeighted([&](data_size_t i) { return EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kCanonical, y_data[i], location_par[i], location_par[i + num_data_], p); });
 				ll += tweedie_vd_sum_log_a_;
 			}
 			else if (!VisitLogLikKernel(y_data, y_data_int, location_par, false,
@@ -5469,7 +5472,7 @@ namespace GPBoost {
 			else if (IsTweedieVaryingDispersion()) {
 				// Only eta is a mode / random effect here; log(phi) (location_par[i + num_data_]) is a fixed effect
 				const double p = GetTweediePower();
-				ForEachSampleWeighted(first_deriv_ll, [&](data_size_t i) { return EvaluateTweedieLocation(y_data[i], location_par[i], location_par[i + num_data_], p).score; });
+				ForEachSampleWeighted(first_deriv_ll, [&](data_size_t i) { return EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kScore, y_data[i], location_par[i], location_par[i + num_data_], p); });
 			}
 			else if (IsHurdleRegression()) {
 				// Random effects live on the response predictor eta (block 0); this is the block-0 score used for mode finding.
@@ -6051,7 +6054,7 @@ namespace GPBoost {
 				}
 				else if (IsTweedieVaryingDispersion()) {
 					const double p = GetTweediePower();
-					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return EvaluateTweedieLocation(y_data[i], location_par[i], location_par[i + num_data_], p).information; });
+					ForEachSampleWeighted(information_ll, [&](data_size_t i) { return EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kInformation, y_data[i], location_par[i], location_par[i + num_data_], p); });
 				}
 				else if (!VisitObservedInformationKernel(y_data, y_data_int, location_par,
 					[&](auto kernel) { ForEachSampleWeighted(information_ll, kernel); })) {
@@ -6710,7 +6713,7 @@ namespace GPBoost {
 				}
 				else if (IsTweedie()) {
 					const double p = GetTweediePower();
-					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return EvaluateTweedieLocation(y_data[i], location_par[i], TweedieLogDispersion(location_par, i), p).deriv_information_eta; });
+					ForEachSampleWeighted(deriv_information_diag_loc_par, [&](data_size_t i) { return EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kDerivInformationEta, y_data[i], location_par[i], TweedieLogDispersion(location_par, i), p); });
 				}
 				else if (IsEGPDLikelihood() || IsHurdleEGPD()) {
 					const bool hurdle = IsHurdleEGPD();

@@ -3076,12 +3076,11 @@ namespace GPBoost {
 			const den_mat_t* coords,
 			const den_mat_t* coords_pred,
 			const vec_t& pars) const {
-			vec_t coords_vec = (*coords).row(j);
-			vec_t coords_pred_vec = (*coords_pred).row(i);
-			return HurstCovariance_vec(coords_vec, coords_pred_vec, pars);
+			return HurstCovariance_vec((*coords).row(j), (*coords_pred).row(i), pars);
 		}// end SpaceTimeGneitingCovariance
-		inline double HurstCovariance_vec(const vec_t& coords_vec,
-			const vec_t& coords_pred_vec,
+		template <typename T_x, typename T_y>//T_x and T_y can be vec_t or rows of a den_mat_t (which avoids copying them)
+		inline double HurstCovariance_vec(const Eigen::MatrixBase<T_x>& coords_vec,
+			const Eigen::MatrixBase<T_y>& coords_pred_vec,
 			const vec_t& pars) const {
 			const double sqrd_norm_x = coords_vec.squaredNorm();
 			const double sqrd_norm_y = coords_pred_vec.squaredNorm();
@@ -3111,7 +3110,9 @@ namespace GPBoost {
 			double c,
 			double sigma2,
 			double H) const {
-			const double B = std::pow(u_xy, H) - std::pow(u_x, H) - std::pow(u_y, H) + 2. * H * c * (std::pow(u_x, H - 1.) + std::pow(u_y, H - 1.));
+			const double u_x_Hm1 = std::pow(u_x, H - 1.);
+			const double u_y_Hm1 = std::pow(u_y, H - 1.);
+			const double B = std::pow(u_xy, H) - u_x * u_x_Hm1 - u_y * u_y_Hm1 + 2. * H * c * (u_x_Hm1 + u_y_Hm1);
 			return sigma2 * B / (2. * (2. * H - 1.));
 		}
 
@@ -3130,16 +3131,22 @@ namespace GPBoost {
 			const vec_t& pars,
 			bool transf_scale,
 			double nugget_var) const {
-			auto pow_times_log = [](double u, double a) {// u^a * log(u), which tends to 0 for u -> 0 since a > 0
-				return (u > 0.) ? (std::pow(u, a) * std::log(u)) : 0.;
+			// log(u) is only multiplied with u^a for a > 0 here, and u^a * log(u) tends to 0 for u -> 0
+			auto log_or_zero = [](double u) {
+				return (u > 0.) ? std::log(u) : 0.;
 			};
 			const double H_min_m_plus_1 = std::exp(-pars[1]);// H - (m - 1)
 			const double H = HurstExponent(pars[1]);
 			const double u_x_Hm1 = std::pow(u_x, H - 1.);
 			const double u_y_Hm1 = std::pow(u_y, H - 1.);
-			const double B = std::pow(u_xy, H) - std::pow(u_x, H) - std::pow(u_y, H) + 2. * H * c * (u_x_Hm1 + u_y_Hm1);
-			const double dB_dH = pow_times_log(u_xy, H) - pow_times_log(u_x, H) - pow_times_log(u_y, H) +
-				2. * c * (u_x_Hm1 + u_y_Hm1) + 2. * H * c * (pow_times_log(u_x, H - 1.) + pow_times_log(u_y, H - 1.));
+			const double u_x_H = u_x * u_x_Hm1;
+			const double u_y_H = u_y * u_y_Hm1;
+			const double u_xy_H = std::pow(u_xy, H);
+			const double log_u_x = log_or_zero(u_x);
+			const double log_u_y = log_or_zero(u_y);
+			const double B = u_xy_H - u_x_H - u_y_H + 2. * H * c * (u_x_Hm1 + u_y_Hm1);
+			const double dB_dH = u_xy_H * log_or_zero(u_xy) - u_x_H * log_u_x - u_y_H * log_u_y +
+				2. * c * (u_x_Hm1 + u_y_Hm1) + 2. * H * c * (u_x_Hm1 * log_u_x + u_y_Hm1 * log_u_y);
 			const double two_H_m1 = 2. * H - 1.;
 			const double cm = transf_scale ? -pars[1] * H_min_m_plus_1 : nugget_var;// dH / dlog(p_H) = -p_H * (H - (m - 1))
 			return cm * pars[0] * (dB_dH / (2. * two_H_m1) - B / (two_H_m1 * two_H_m1));
@@ -3158,8 +3165,9 @@ namespace GPBoost {
 		* \param transf_scale If true, the derivative is taken with respect to log(l_k), otherwise with respect to l_k (and multiplied with nugget_var)
 		* \param nugget_var Nugget variance
 		*/
-		inline double GradientHurstCovarianceOrder2WrtRange(const vec_t& coords_vec,
-			const vec_t& coords_pred_vec,
+		template <typename T_x, typename T_y>//T_x and T_y can be vec_t or rows of a den_mat_t
+		inline double GradientHurstCovarianceOrder2WrtRange(const Eigen::MatrixBase<T_x>& coords_vec,
+			const Eigen::MatrixBase<T_y>& coords_pred_vec,
 			double u_x,
 			double u_y,
 			double u_xy,
@@ -3170,8 +3178,8 @@ namespace GPBoost {
 			double nugget_var) const {
 			// u^(H-2) * a for 0 <= a <= u, which tends to 0 for u -> 0 when multiplied with c since |c| <= sqrt(u * u_other) and H > 1.
 			//	It is calculated as (a / u) * u^(H-1) to avoid an overflow of u^(H-2) for tiny u
-			auto pow_Hm2_times = [](double u, double a, double H) {
-				return (u > 0.) ? ((a / u) * std::pow(u, H - 1.)) : 0.;
+			auto ratio_or_zero = [](double a, double u) {
+				return (u > 0.) ? (a / u) : 0.;
 			};
 			const double H = HurstExponent(pars[1]);
 			const double l_k = pars[k + 1];
@@ -3184,7 +3192,7 @@ namespace GPBoost {
 			const double u_x_Hm1 = std::pow(u_x, H - 1.);
 			const double u_y_Hm1 = std::pow(u_y, H - 1.);
 			const double bracket = std::pow(u_xy, H - 1.) * a_xy - u_x_Hm1 * a_x - u_y_Hm1 * a_y + 2. * a_c * (u_x_Hm1 + u_y_Hm1) +
-				2. * (H - 1.) * c * (pow_Hm2_times(u_x, a_x, H) + pow_Hm2_times(u_y, a_y, H));
+				2. * (H - 1.) * c * (ratio_or_zero(a_x, u_x) * u_x_Hm1 + ratio_or_zero(a_y, u_y) * u_y_Hm1);
 			const double dK_dl_k = -pars[0] * H / (l_k * (2. * H - 1.)) * bracket;
 			const double cm = transf_scale ? l_k : nugget_var;// multiplicative constant to get gradient on log-scale or backtransform with nugget variance
 			return cm * dK_dl_k;
@@ -3211,12 +3219,11 @@ namespace GPBoost {
 			const vec_t& pars,
 			bool transf_scale,
 			double nugget_var) const {
-			vec_t coords_vec = (*coords).row(j);
-			vec_t coords_pred_vec = (*coords_pred).row(i);
-			return GradientHurstCovariance_vec(coords_vec, coords_pred_vec, pars, transf_scale, nugget_var);
+			return GradientHurstCovariance_vec((*coords).row(j), (*coords_pred).row(i), pars, transf_scale, nugget_var);
 		}
-		inline double GradientHurstCovariance_vec(const vec_t& coords_vec,
-			const vec_t& coords_pred_vec,
+		template <typename T_x, typename T_y>//T_x and T_y can be vec_t or rows of a den_mat_t (which avoids copying them)
+		inline double GradientHurstCovariance_vec(const Eigen::MatrixBase<T_x>& coords_vec,
+			const Eigen::MatrixBase<T_y>& coords_pred_vec,
 			const vec_t& pars,
 			bool transf_scale,
 			double nugget_var) const {
@@ -3260,12 +3267,11 @@ namespace GPBoost {
 			const int ind_par,
 			bool transf_scale,
 			double nugget_var) const {
-			vec_t coords_vec = (*coords).row(j);
-			vec_t coords_pred_vec = (*coords_pred).row(i);
-			return GradientHurstCovarianceARD_vec(coords_vec, coords_pred_vec, pars, ind_par, transf_scale, nugget_var);
+			return GradientHurstCovarianceARD_vec((*coords).row(j), (*coords_pred).row(i), pars, ind_par, transf_scale, nugget_var);
 		}
-		inline double GradientHurstCovarianceARD_vec(const vec_t& coords_vec,
-			const vec_t& coords_pred_vec,
+		template <typename T_x, typename T_y>//T_x and T_y can be vec_t or rows of a den_mat_t (which avoids copying them)
+		inline double GradientHurstCovarianceARD_vec(const Eigen::MatrixBase<T_x>& coords_vec,
+			const Eigen::MatrixBase<T_y>& coords_pred_vec,
 			const vec_t& pars,
 			const int ind_par,
 			bool transf_scale,
