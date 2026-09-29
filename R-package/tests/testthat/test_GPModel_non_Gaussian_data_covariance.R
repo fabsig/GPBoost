@@ -1184,15 +1184,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$var-c(0.00359821399, 0.001538512908, 0.001584914559))),TOLERANCE_MEDIUM)
 
     ## FITC and VIF approximations with n - 1 inducing points
+    # Note: the approximation depends on which point is not an inducing point. This point is chosen randomly, and the random
+    #   numbers differ between standard libraries (e.g., MSVC and libstdc++). Over 30 different choices (seeds), the maximal
+    #   absolute differences to the exact values below were 5.8e-2 (FITC) and 3.6e-3 (VIF) for the negative log-likelihood at
+    #   'cov_pars_eval', and 1.2e-3 (FITC) and 3.1e-4 (VIF) for the estimates and predictions. The tolerances cover this
     ind_points_selection <- "random"
     num_ind_points <- n - 1
     for (gp_approx in c("fitc", "vif")) {
-      tol_approx <- if (gp_approx == "fitc") 5e-4 else 1e-5
+      tol_approx <- if (gp_approx == "fitc") 3e-3 else 1e-3
+      tol_nll_eval <- if (gp_approx == "fitc") 0.1 else 1e-2
       capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
                                           gp_approx = gp_approx, num_ind_points = num_ind_points, ind_points_selection = ind_points_selection,
                                           num_neighbors = 20) , file='NUL')
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_eval,y=y)
-      expect_lt(abs(nll-nll_exp),10*tol_approx)
+      expect_lt(abs(nll-nll_exp),tol_nll_eval)
       capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
                                              X=X, y = y, params = params, gp_approx = gp_approx, num_ind_points = num_ind_points,
                                              ind_points_selection = ind_points_selection, num_neighbors = 20) , file='NUL')
