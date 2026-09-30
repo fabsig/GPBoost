@@ -334,8 +334,9 @@ def test_load_heteroscedastic_model_saved_with_the_former_likelihood_name(tmp_pa
     cov_pars = np.array([0.6, 0.25, 2.0, 0.35])
     gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential", gp_approx="vecchia",
                            num_neighbors=20, likelihood="gaussian_heteroscedastic_fixed_and_random")
-    gp_model.fit(y=y, params={"init_cov_pars": cov_pars, "optimizer_cov": "gradient_descent",
-                              "lr_cov": 1e-8, "maxit": 1, "use_nesterov_acc": False,
+    # maxit = 0 keeps the covariance parameters at 'cov_pars'. A gradient descent step with a small learning rate
+    # does not: whether it is accepted depends on the accuracy of the objective and thus on the platform
+    gp_model.fit(y=y, params={"init_cov_pars": cov_pars, "maxit": 0,
                               "init_coef_aux_pars_from_iid_model": False, "trace": False})
     fname = str(tmp_path / "gp_model.json")
     gp_model.save_model(fname)

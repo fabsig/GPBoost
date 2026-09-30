@@ -518,8 +518,43 @@ namespace GPBoost {
 		* \brief If cov_pars_ is is not defined, define them as init_cov_pars_ or if init_cov_pars_ is not given, find "reasonable" default values for the intial values of the covariance parameters
 		* \param y_data Response variable data used for finding intial values if cov_pars_ is not defined
 		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset)
+		* \param covariate_data Covariate data (column-major), used by 'InitFromHomoscedasticModel()' if given
+		* \param num_covariates Number of covariates
 		*/
 		void InitializeCovParsIfNotDefined(const double* y_data,
+			const double* fixed_effects,
+			const double* covariate_data = nullptr,
+			int num_covariates = 0);
+
+		/*!
+		* \brief Initial covariance parameters for likelihood = 'gaussian_heteroscedastic_fixed_and_random' from a homoscedastic
+		*		Gaussian process model with the same Gaussian process: the GP of the mean gets its parameters, the GP of the
+		*		log-error variance its ranges and a small variance. The estimates of this model are also kept for
+		*		'InitCoefFromHomoscedasticModel()'. Otherwise, the default initial values explain all variation by the error
+		*		variance, and the optimization can end at a local optimum at which the GP of the log-error variance explains
+		*		part of the variation of the mean
+		* \param y_data Response variable data
+		* \param covariate_data Covariate data (column-major), can be nullptr
+		* \param num_covariates Number of covariates
+		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset), can be nullptr
+		* \return True if cov_pars_ has been set, false if this is not applicable (other likelihood or no Gaussian process arguments kept)
+		*/
+		bool InitCovParsFromHomoscedasticModel(const double* y_data,
+			const double* covariate_data,
+			int num_covariates,
+			const double* fixed_effects);
+
+		/*!
+		* \brief Initial linear regression coefficients for likelihood = 'gaussian_heteroscedastic_fixed_and_random' from the
+		*		homoscedastic model of 'InitCovParsFromHomoscedasticModel()': its coefficients for the mean and the logarithm
+		*		of its error variance for the intercept of the log-error variance
+		* \param covariate_data Covariate data (column-major)
+		* \param num_covariates Number of covariates
+		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset), can be nullptr
+		* \return True if coef_ has been set, false if this is not possible (e.g., no intercept or no such model with these covariates)
+		*/
+		bool InitCoefFromHomoscedasticModel(const double* covariate_data,
+			int num_covariates,
 			const double* fixed_effects);
 
 		/*!
@@ -634,6 +669,33 @@ namespace GPBoost {
 		bool init_coef_aux_pars_from_iid_model_ = false;
 		bool model_has_been_estimated_ = false;
 		std::vector<double> init_score_boosting_;
+		/*! \brief Arguments of the Gaussian process, kept for the auxiliary homoscedastic model of 'InitCovParsFromHomoscedasticModel()' */
+		struct GPArgsAuxModel {
+			std::vector<data_size_t> cluster_ids;
+			std::vector<double> gp_coords;
+			int dim_gp_coords = 0;
+			string_t cov_fct;
+			double cov_fct_shape = 0.;
+			int cov_fct_order = 1;
+			string_t gp_approx;
+			double cov_fct_taper_range = 1.;
+			double cov_fct_taper_shape = 1.;
+			int num_neighbors = -1;
+			string_t vecchia_ordering;
+			int num_ind_points = -1;
+			double cover_tree_radius = 1.;
+			string_t ind_points_selection;
+		};
+		/*! \brief Only set for likelihood = 'gaussian_heteroscedastic_fixed_and_random' */
+		std::unique_ptr<GPArgsAuxModel> gp_args_aux_model_;
+		/*! \brief Linear regression coefficients of the homoscedastic model of 'InitCovParsFromHomoscedasticModel()' (empty if it has no covariates) */
+		vec_t coef_homoscedastic_model_;
+		/*! \brief Intercept column of the covariates of the homoscedastic model (-1 if there is none) */
+		int intercept_col_homoscedastic_model_ = -1;
+		/*! \brief Error variance of the homoscedastic model (<= 0 if it has not been fitted) */
+		double error_var_homoscedastic_model_ = -1.;
+		/*! \brief Initial variance of the GP of the log-error variance when the initial values are obtained from the homoscedastic model */
+		const double INIT_VAR_LOG_ERROR_VAR_GP_ = 0.01;
 	};
 
 }  // namespace GPBoost

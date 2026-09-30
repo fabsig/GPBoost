@@ -16,6 +16,23 @@ using LightGBM::label_t;
 
 namespace GPBoost {
 
+	namespace {
+		/*! \brief Suppresses the trace of an auxiliary model that provides initial values, if the trace of the model is active */
+		struct LogLevelREGuard {
+			explicit LogLevelREGuard(bool active) : active_(active) {
+				if (active_) {
+					Log::ResetLogLevelRE(LogLevelRE::Info);
+				}
+			}
+			~LogLevelREGuard() {
+				if (active_) {
+					Log::ResetLogLevelRE(LogLevelRE::Debug);
+				}
+			}
+			bool active_;
+		};
+	}
+
 	REModel::REModel() {
 	}
 
@@ -132,6 +149,25 @@ namespace GPBoost {
 				additional_likelihood_data_.empty() ? nullptr : additional_likelihood_data_.data()));
 			num_cov_pars_ = re_model_den_->num_cov_par_;
 			num_sets_fixed_effects_ = re_model_den_->num_sets_fixed_effects_;
+		}
+		if (GetLikelihood() == "gaussian_heteroscedastic_fixed_and_random" && gp_coords_data != nullptr) {
+			gp_args_aux_model_ = std::unique_ptr<GPArgsAuxModel>(new GPArgsAuxModel());
+			if (cluster_ids_data != nullptr) {
+				gp_args_aux_model_->cluster_ids = std::vector<data_size_t>(cluster_ids_data, cluster_ids_data + num_data);
+			}
+			gp_args_aux_model_->gp_coords = std::vector<double>(gp_coords_data, gp_coords_data + (size_t)num_data * (size_t)dim_gp_coords);
+			gp_args_aux_model_->dim_gp_coords = dim_gp_coords;
+			gp_args_aux_model_->cov_fct = cov_fct_str;
+			gp_args_aux_model_->cov_fct_shape = cov_fct_shape;
+			gp_args_aux_model_->cov_fct_order = cov_fct_order;
+			gp_args_aux_model_->gp_approx = gp_approx_str;
+			gp_args_aux_model_->cov_fct_taper_range = cov_fct_taper_range;
+			gp_args_aux_model_->cov_fct_taper_shape = cov_fct_taper_shape;
+			gp_args_aux_model_->num_neighbors = num_neighbors;
+			gp_args_aux_model_->vecchia_ordering = vecchia_ordering == nullptr ? "" : std::string(vecchia_ordering);
+			gp_args_aux_model_->num_ind_points = num_ind_points;
+			gp_args_aux_model_->cover_tree_radius = cover_tree_radius;
+			gp_args_aux_model_->ind_points_selection = ind_points_selection == nullptr ? "" : std::string(ind_points_selection);
 		}
 	}
 
@@ -441,19 +477,7 @@ namespace GPBoost {
 		string_t optimizer_cov_iid = (!re_model->gauss_likelihood_ || estimate_aux_pars_iid) ? "lbfgs" : "gradient_descent";
 		string_t optimizer_coef_iid = re_model->gauss_likelihood_ ? "wls" : "lbfgs";
 		const int max_iter_iid = std::max(re_model->max_iter_, 1000);
-		struct LogLevelREGuard {
-			explicit LogLevelREGuard(bool active) : active_(active) {
-				if (active_) {
-					Log::ResetLogLevelRE(LogLevelRE::Info);
-				}
-			}
-			~LogLevelREGuard() {
-				if (active_) {
-					Log::ResetLogLevelRE(LogLevelRE::Debug);
-				}
-			}
-			bool active_;
-		} log_level_re_guard(trace_);
+		LogLevelREGuard log_level_re_guard(trace_);
 		re_model_iid->SetOptimConfig(re_model->lr_cov_init_,
 			re_model->acc_rate_cov_,
 			max_iter_iid,
@@ -588,14 +612,15 @@ namespace GPBoost {
 		int num_covariates,
 		const double* fixed_effects) {
 		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
-		InitializeCovParsIfNotDefined(y_data, fixed_effects);
+		InitializeCovParsIfNotDefined(y_data, fixed_effects, covariate_data, num_covariates);
 		double* init_coef_ptr;
 		num_covariates_ = num_covariates;
 		num_coef_ = num_covariates * num_sets_fixed_effects_;
 		if (init_coef_aux_pars_from_iid_model_ && !init_coef_given_ &&
 			((matrix_format_ == "sp_mat_t" && !re_model_sp_->IsIidModel()) ||
 			 (matrix_format_ == "sp_mat_rm_t" && !re_model_sp_rm_->IsIidModel()) ||
-			 (matrix_format_ == "den_mat_t" && !re_model_den_->IsIidModel()))) {
+			 (matrix_format_ == "den_mat_t" && !re_model_den_->IsIidModel())) &&
+			!InitCoefFromHomoscedasticModel(covariate_data, num_covariates, fixed_effects)) {
 			if (matrix_format_ == "sp_mat_t") {
 				InitCoefAuxParsFromIidModel(re_model_sp_.get(), y_data, covariate_data, num_covariates, fixed_effects);
 			}
@@ -1405,27 +1430,128 @@ namespace GPBoost {
 	}
 
 	void REModel::InitializeCovParsIfNotDefined(const double* y_data,
-		const double* fixed_effects) {
+		const double* fixed_effects,
+		const double* covariate_data,
+		int num_covariates) {
 		if (!cov_pars_initialized_) {
 			if (init_cov_pars_provided_) {
 				cov_pars_ = init_cov_pars_;
 			}
 			else {
 				cov_pars_ = vec_t(num_cov_pars_);
-				if (matrix_format_ == "sp_mat_t") {
-					re_model_sp_->FindInitCovPar(y_data, fixed_effects, cov_pars_.data());
-				}
-				else if (matrix_format_ == "sp_mat_rm_t") {
-					re_model_sp_rm_->FindInitCovPar(y_data, fixed_effects, cov_pars_.data());
-				}
-				else {
-					re_model_den_->FindInitCovPar(y_data, fixed_effects, cov_pars_.data());
+				if (!InitCovParsFromHomoscedasticModel(y_data, covariate_data, num_covariates, fixed_effects)) {
+					if (matrix_format_ == "sp_mat_t") {
+						re_model_sp_->FindInitCovPar(y_data, fixed_effects, cov_pars_.data());
+					}
+					else if (matrix_format_ == "sp_mat_rm_t") {
+						re_model_sp_rm_->FindInitCovPar(y_data, fixed_effects, cov_pars_.data());
+					}
+					else {
+						re_model_den_->FindInitCovPar(y_data, fixed_effects, cov_pars_.data());
+					}
 				}
 				covariance_matrix_has_been_factorized_ = false;
 				init_cov_pars_ = cov_pars_;
 			}
 			cov_pars_initialized_ = true;
 		}
+	}
+
+	bool REModel::InitCovParsFromHomoscedasticModel(const double* y_data,
+		const double* covariate_data,
+		int num_covariates,
+		const double* fixed_effects) {
+		if (!gp_args_aux_model_ || y_data == nullptr) {
+			return false;
+		}
+		const GPArgsAuxModel& gp_args = *gp_args_aux_model_;
+		const double* weights_ptr = (has_weights_ && !weights_.empty()) ? weights_.data() : nullptr;
+		std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>> re_model_hom =
+			std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>>(new REModelTemplate<den_mat_t, chol_den_mat_t>(
+				num_data_, gp_args.cluster_ids.empty() ? nullptr : gp_args.cluster_ids.data(), nullptr, 0, nullptr,
+				nullptr, 0, nullptr,
+				1, gp_args.gp_coords.data(), gp_args.dim_gp_coords, nullptr, 0, gp_args.cov_fct.c_str(), gp_args.cov_fct_shape,
+				gp_args.cov_fct_order, gp_args.gp_approx.c_str(), gp_args.cov_fct_taper_range, gp_args.cov_fct_taper_shape,
+				gp_args.num_neighbors, gp_args.vecchia_ordering.empty() ? nullptr : gp_args.vecchia_ordering.c_str(),
+				gp_args.num_ind_points, gp_args.cover_tree_radius,
+				gp_args.ind_points_selection.empty() ? nullptr : gp_args.ind_points_selection.c_str(),
+				"gaussian", likelihood_additional_param_, "cholesky", seed_, num_parallel_threads_, GPU_use_,
+				weights_ptr != nullptr, weights_ptr, likelihood_learning_rate_, 0, nullptr));
+		// The convergence status of this auxiliary model says nothing about the model of the user
+		re_model_hom->SetReportConvergenceWarnings(false);
+		LogLevelREGuard log_level_re_guard(trace_);
+		const int num_cov_par_hom = re_model_hom->num_cov_par_;// error variance and the parameters of the GP
+		CHECK(num_cov_pars_ == 2 * (num_cov_par_hom - 1));
+		vec_t init_cov_pars_hom(num_cov_par_hom), cov_pars_hom(num_cov_par_hom);
+		re_model_hom->FindInitCovPar(y_data, fixed_effects, init_cov_pars_hom.data());// only the first block of 'fixed_effects' (the mean) is used
+		vec_t coef_hom(std::max(num_covariates, 0));
+		int num_it_hom = 0;
+		re_model_hom->OptimLinRegrCoefCovPar(y_data,
+			covariate_data,
+			num_covariates,
+			cov_pars_hom.data(),
+			covariate_data == nullptr ? nullptr : coef_hom.data(),
+			num_it_hom,
+			init_cov_pars_hom.data(),
+			nullptr,
+			fixed_effects,
+			/*learn_covariance_parameters = */ true,
+			/*called_in_GPBoost_algorithm = */ false,
+			/*reuse_learning_rates_from_previous_call = */ false,
+			/*only_intercept_for_GPBoost_algo = */ false,
+			/*find_learning_rate_for_GPBoost_algo = */ false);
+		// The parameters are combined on the original scale: on the transformed scale of a Gaussian likelihood, the
+		//	variances are relative to the error variance
+		vec_t cov_pars_hom_orig, cov_pars_orig(num_cov_pars_);
+		re_model_hom->TransformBackCovPars(cov_pars_hom, cov_pars_hom_orig);
+		const int num_par_per_set = num_cov_par_hom - 1;
+		for (int ip = 0; ip < num_par_per_set; ++ip) {
+			cov_pars_orig[ip] = cov_pars_hom_orig[ip + 1];
+			cov_pars_orig[num_par_per_set + ip] = cov_pars_hom_orig[ip + 1];
+		}
+		cov_pars_orig[num_par_per_set] = INIT_VAR_LOG_ERROR_VAR_GP_;
+		if (matrix_format_ == "sp_mat_t") {
+			re_model_sp_->TransformCovPars(cov_pars_orig, cov_pars_);
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			re_model_sp_rm_->TransformCovPars(cov_pars_orig, cov_pars_);
+		}
+		else {
+			re_model_den_->TransformCovPars(cov_pars_orig, cov_pars_);
+		}
+		error_var_homoscedastic_model_ = cov_pars_hom_orig[0];
+		if (covariate_data != nullptr) {
+			coef_homoscedastic_model_ = coef_hom;
+			intercept_col_homoscedastic_model_ = re_model_hom->has_intercept_ ? re_model_hom->intercept_col_ : -1;
+		}
+		else {
+			coef_homoscedastic_model_.resize(0);
+			intercept_col_homoscedastic_model_ = -1;
+		}
+		return true;
+	}
+
+	bool REModel::InitCoefFromHomoscedasticModel(const double* covariate_data,
+		int num_covariates,
+		const double* fixed_effects) {
+		if (!gp_args_aux_model_ || covariate_data == nullptr || error_var_homoscedastic_model_ <= 0. ||
+			(int)coef_homoscedastic_model_.size() != num_covariates || intercept_col_homoscedastic_model_ < 0) {
+			return false;
+		}
+		CHECK(num_sets_fixed_effects_ == 2);
+		coef_ = vec_t::Zero(num_sets_fixed_effects_ * num_covariates);
+		coef_.segment(0, num_covariates) = coef_homoscedastic_model_;
+		double mean_fixed_effects_log_var = 0.;
+		if (fixed_effects != nullptr) {
+			for (data_size_t i = 0; i < num_data_; ++i) {
+				mean_fixed_effects_log_var += fixed_effects[i + num_data_];
+			}
+			mean_fixed_effects_log_var /= num_data_;
+		}
+		const double intercept_value = covariate_data[(size_t)intercept_col_homoscedastic_model_ * (size_t)num_data_];// the column is constant
+		coef_[num_covariates + intercept_col_homoscedastic_model_] =
+			(std::log(error_var_homoscedastic_model_) - mean_fixed_effects_log_var) / intercept_value;
+		return true;
 	}
 
 	bool REModel::AuxParsHaveBeenSetOrEstimated() const {

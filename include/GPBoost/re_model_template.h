@@ -8278,6 +8278,9 @@ namespace GPBoost {
 				if (likelihood_[unique_clusters_[0]]->GetLikelihood() == "asymmetric_laplace" && likelihood_[unique_clusters_[0]]->UseFisherForModeFinding()) {
 					use_iter = false;// note: iterative methods are slower than Cholesky since mode finding often requires many iterations and the Fisher information is constant and the Cholesky decompostion has to be calculated only once
 				}
+				else if (likelihood_[unique_clusters_[0]]->GetLikelihood() == "gaussian_heteroscedastic_fixed_and_random") {
+					use_iter = false;// note: 'vadu', the only preconditioner implemented for this likelihood, is poor when the error variance is small compared to the conditional variances of a smooth Gaussian process, and the conjugate gradient algorithm then needs very many iterations
+				}
 			}
 			if (use_iter) {
 				CHECK(CanUseIterative());

@@ -150,16 +150,30 @@ public:
         {
             // Evaluate the current step size
             x.noalias() = xp + step * drt;
-            fx = f(x, grad, true, true); // ChangedForGPBoost: the curvature condition requires the gradient at the new point
+            // ChangedForGPBoost: the curvature condition requires the gradient at the new point. It is only calculated if the
+            //  objective is finite since it requires a valid mode (the candidate is rejected otherwise, see below)
+            fx = f(x, grad, true, false);
+            if (std::isfinite(fx))
+            {
+                f(x, grad, false, true);
+            }
             dg = grad.dot(drt);
 
             // Test the sufficient decrease condition
-            if (fx - fx_init > step * test_decr || (Scalar(0) < step_lo && fx >= fx_lo))
+            // ChangedForGPBoost: NA / Inf are rejected as well (all comparisons with NaN are false)
+            if (fx - fx_init > step * test_decr || (Scalar(0) < step_lo && fx >= fx_lo) || !std::isfinite(fx))
             {
                 // Case (1) and (2)
                 step_hi = step;
                 fx_hi = fx;
                 // dg_hi = dg;
+                // ChangedForGPBoost: the mode finding of a candidate starts at the modes of the previous candidate. After NA / Inf,
+                //  these modes are often the cause, and the mode finding can then fail at every further candidate -> start it at
+                //  the modes of 'x_lo'
+                if (!std::isfinite(fx))
+                {
+                    f.RestoreModesLo();
+                }
                 break;
             }
             // If reaching here, then the sufficient decrease condition is satisfied
@@ -228,11 +242,18 @@ public:
 
             // Evaluate the current step size
             x.noalias() = xp + step * drt;
-            fx = f(x, grad, true, true); // ChangedForGPBoost: the curvature condition requires the gradient at the new point
+            // ChangedForGPBoost: the curvature condition requires the gradient at the new point. It is only calculated if the
+            //  objective is finite since it requires a valid mode (the candidate is rejected otherwise, see below)
+            fx = f(x, grad, true, false);
+            if (std::isfinite(fx))
+            {
+                f(x, grad, false, true);
+            }
             dg = grad.dot(drt);
 
             // Test the sufficient decrease condition
-            if (fx - fx_init > step * test_decr || fx >= fx_lo)
+            // ChangedForGPBoost: NA / Inf are rejected as well (all comparisons with NaN are false)
+            if (fx - fx_init > step * test_decr || fx >= fx_lo || !std::isfinite(fx))
             {
                 if (step == step_hi)
                     Log::Debug("GPModel lbfgs: the line search routine failed, possibly due to insufficient numeric precision");
@@ -240,6 +261,11 @@ public:
                 step_hi = step;
                 fx_hi = fx;
                 // dg_hi = dg;
+                // ChangedForGPBoost: start the mode finding of the next candidate at the modes of 'x_lo', see the bracketing phase
+                if (!std::isfinite(fx))
+                {
+                    f.RestoreModesLo();
+                }
             }
             else
             {
