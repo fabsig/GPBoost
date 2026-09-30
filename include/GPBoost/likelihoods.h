@@ -7643,19 +7643,23 @@ namespace GPBoost {
 		*		the varying-dispersion Tweedie likelihoods for which the derivative wrt the mode is zero where mu = y (p-1)^2 / (2-p)^2.
 		*		Quantities derived from the estimate have to be rescaled with 'RescaleToDerivInformation'
 		* \param deriv_information_diag_loc_par Derivative of the diagonal of the information wrt the mode
-		* \param[out] deriv_for_stoch_trace 'deriv_information_diag_loc_par' with its zero entries replaced by one
+		* \param[out] storage Copy of 'deriv_information_diag_loc_par' with its zero entries replaced by one (only if it has such entries)
+		* \return 'storage' if 'deriv_information_diag_loc_par' has zero entries, otherwise 'deriv_information_diag_loc_par'
 		*/
-		void DerivInformationForStochTrace(const vec_t& deriv_information_diag_loc_par,
-			vec_t& deriv_for_stoch_trace) const {
-			deriv_for_stoch_trace = deriv_information_diag_loc_par;
-			if (grad_information_wrt_mode_can_be_zero_for_some_points_) {
+		const vec_t& DerivInformationForStochTrace(const vec_t& deriv_information_diag_loc_par,
+			vec_t& storage) const {
+			if (!grad_information_wrt_mode_can_be_zero_for_some_points_ ||
+				!GPBoost::HasZero<double>(deriv_information_diag_loc_par.data(), (data_size_t)deriv_information_diag_loc_par.size())) {
+				return deriv_information_diag_loc_par;
+			}
+			storage = deriv_information_diag_loc_par;
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < (int)deriv_for_stoch_trace.size(); ++i) {
-					if (GPBoost::IsZero<double>(deriv_for_stoch_trace[i])) {
-						deriv_for_stoch_trace[i] = 1.;
-					}
+			for (int i = 0; i < (int)storage.size(); ++i) {
+				if (GPBoost::IsZero<double>(storage[i])) {
+					storage[i] = 1.;
 				}
 			}
+			return storage;
 		}//end DerivInformationForStochTrace
 
 		/*!

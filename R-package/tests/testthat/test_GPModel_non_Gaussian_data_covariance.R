@@ -1406,6 +1406,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y_pois_0 <- qpois(sim_rand_unif(n=n, init_c=0.7713), lambda = exp(1 + b_0))
     y_bin_0 <- as.numeric(sim_rand_unif(n=n, init_c=0.4127) < plogis(b_0))
     y_beta_0 <- plogis(b_0 + qnorm(sim_rand_unif(n=n, init_c=0.3319), sd=0.3))
+    # Conditional mean and variance of the zero-one-censored transformed beta likelihood, Y = min(max((1 + 2 u) Z - u, 0), 1)
+    #   with Z ~ Beta(mu phi, (1 - mu) phi)
+    cens_beta_moments <- function(mu, phi, u) {
+      g <- function(z) pmin(pmax((1 + 2 * u) * z - u, 0), 1)
+      m1 <- integrate(function(z) g(z) * dbeta(z, mu * phi, (1 - mu) * phi), 0, 1, rel.tol = 1e-12)$value
+      m2 <- integrate(function(z) g(z)^2 * dbeta(z, mu * phi, (1 - mu) * phi), 0, 1, rel.tol = 1e-12)$value
+      c(m1, m2 - m1^2)
+    }
+    expect_lt(sum(abs(cens_beta_moments(0.5, 4, 0.5) - c(0.5, 0.13125))), TOLERANCE_STRICT)
     for (order in 1:2) {
       cov_pars_eval <- c(0.01, 0.8, order - 0.5)
       capture.output( gp_model <- GPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = order) , file='NUL')
@@ -1416,13 +1425,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_identical(pred$mu[1], 0)
       expect_identical(pred$var[1], 0)
       # The predictive distribution of the response at the anchor is the conditional distribution given a latent value of zero
-      for (likelihood in c("bernoulli_logit", "beta")) {
+      for (likelihood in c("bernoulli_logit", "beta", "zero_one_censored_transformed_beta")) {
         capture.output( gp_model <- GPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = order, likelihood = likelihood) , file='NUL')
-        pred <- predict(gp_model, y = if (likelihood == "beta") y_beta_0 else y_bin_0, gp_coords_pred = matrix(c(0, 0.5)),
+        pred <- predict(gp_model, y = if (likelihood == "bernoulli_logit") y_bin_0 else y_beta_0, gp_coords_pred = matrix(c(0, 0.5)),
                         cov_pars = cov_pars_eval[2:3], predict_var = TRUE, predict_response = TRUE)
         expect_true(all(is.finite(c(pred$mu, pred$var))))
         expect_lt(abs(pred$mu[1] - 0.5), TOLERANCE_STRICT)
-        var_expected <- if (likelihood == "beta") 0.25 / (1 + gp_model$get_aux_pars()[1]) else 0.25
+        aux <- as.numeric(gp_model$get_aux_pars())
+        var_expected <- switch(likelihood, bernoulli_logit = 0.25, beta = 0.25 / (1 + aux[1]),
+                               zero_one_censored_transformed_beta = cens_beta_moments(0.5, aux[1], aux[2])[2])
         expect_lt(abs(pred$var[1] - var_expected), TOLERANCE_STRICT)
       }
       # The anchor is not used as an inducing point, since it would make the covariance matrix of the inducing points singular.

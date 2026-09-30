@@ -3030,9 +3030,9 @@ namespace GPBoost {
 			vec_t tr_SigmaI_plus_W_inv_W_deriv, tr_PI_P_deriv_vec(dim_mode_), c_opt_vec;
 			den_mat_t Z_SigmaI_plus_W_inv_W_deriv_PI_Z, PI_Z(dim_mode_, num_rand_vec_trace_),
 				Z_PI_P_deriv_PI_Z;
-			vec_t deriv_for_stoch_trace;// see 'DerivInformationForStochTrace'
+			vec_t deriv_information_replaced;
+			const vec_t& deriv_for_stoch_trace = DerivInformationForStochTrace(deriv_information_diag_loc_par, deriv_information_replaced);
 			if (grad_information_wrt_mode_non_zero_) {
-				DerivInformationForStochTrace(deriv_information_diag_loc_par, deriv_for_stoch_trace);
 				W_deriv_rep = deriv_for_stoch_trace.replicate(1, num_rand_vec_trace_);
 			}
 			vec_t diag_WI = information_ll_.cwiseInverse();
@@ -4113,7 +4113,8 @@ namespace GPBoost {
 					"The stochastic gradient calculation with the '%s' preconditioner requires W to be nonnegative ", cg_preconditioner_type_.c_str());
 			}
 			vec_t d_log_det_Sigma_W_plus_I_d_mode;
-			vec_t deriv_for_stoch_trace;// see 'DerivInformationForStochTrace'
+			vec_t deriv_information_replaced;
+			const vec_t& deriv_for_stoch_trace = DerivInformationForStochTrace(deriv_information_diag_loc_par, deriv_information_replaced);
 			//Declarations for preconditioner "piv_chol_on_Sigma"
 			vec_t diag_WI;
 			den_mat_t WI_PI_Z, WI_WI_plus_Sigma_inv_Z;
@@ -4132,9 +4133,6 @@ namespace GPBoost {
 					d_log_det_Sigma_W_plus_I_d_mode_temp.segment(0, dim_mode_per_set_re_);
 			}
 			else {
-				if (grad_information_wrt_mode_non_zero_) {
-					DerivInformationForStochTrace(deriv_information_diag_loc_par, deriv_for_stoch_trace);
-				}
 				CalcLogDetStochDerivModeVecchia(deriv_for_stoch_trace, dim_mode_, d_log_det_Sigma_W_plus_I_d_mode, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z,
 					WI_WI_plus_Sigma_inv_Z, re_comps_cross_cov_cluster_i, GPU_use);
 			}

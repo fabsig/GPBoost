@@ -491,24 +491,33 @@ namespace GPBoost {
 			const double inv_sqrt_pi = 1.0 / std::sqrt(3.14159265358979323846);
 			for (int i = 0; i < (int)pred_mean.size(); ++i) {
 				CHECK(std::isfinite(pred_mean[i]));
-				CHECK(std::isfinite(pred_var[i]) && pred_var[i] > 0.0);
+				CHECK(std::isfinite(pred_var[i]) && pred_var[i] >= 0.0);
 			}
 			const size_t K = GH_nodes_.size();
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < (int)pred_mean.size(); ++i) {
 				const double m = pred_mean[i];
 				const double v = pred_var[i];
-				const double sc = std::sqrt(2.0 * v);
 				double Ey = 0.0, Ey2 = 0.0;
-				for (size_t k = 0; k < K; ++k) {
-					const double wk = GH_weights_[k] * inv_sqrt_pi;
-					const double eta_k = m + sc * GH_nodes_[k];
-					const double mu_k = GPBoost::sigmoid_stable(eta_k);
-					const double m1_k = XB_FirstMoment_(mu_k, phi, u);
-					Ey += wk * m1_k;
+				if (LatentVarIsZero(v)) {
+					const double mu = GPBoost::sigmoid_stable(m);
+					Ey = XB_FirstMoment_(mu, phi, u);
 					if (predict_var) {
-						const double m2_k = XB_SecondMoment_(mu_k, phi, u);
-						Ey2 += wk * m2_k;
+						Ey2 = XB_SecondMoment_(mu, phi, u);
+					}
+				}
+				else {
+					const double sc = std::sqrt(2.0 * v);
+					for (size_t k = 0; k < K; ++k) {
+						const double wk = GH_weights_[k] * inv_sqrt_pi;
+						const double eta_k = m + sc * GH_nodes_[k];
+						const double mu_k = GPBoost::sigmoid_stable(eta_k);
+						const double m1_k = XB_FirstMoment_(mu_k, phi, u);
+						Ey += wk * m1_k;
+						if (predict_var) {
+							const double m2_k = XB_SecondMoment_(mu_k, phi, u);
+							Ey2 += wk * m2_k;
+						}
 					}
 				}
 				pred_mean[i] = Ey;
