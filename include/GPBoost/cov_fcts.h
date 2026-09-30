@@ -3110,6 +3110,9 @@ namespace GPBoost {
 			double c,
 			double sigma2,
 			double H) const {
+			if (u_x == 0. || u_y == 0.) {
+				return 0.;// the process is zero at the anchor, for all parameters
+			}
 			const double u_x_Hm1 = std::pow(u_x, H - 1.);
 			const double u_y_Hm1 = std::pow(u_y, H - 1.);
 			const double B = std::pow(u_xy, H) - u_x * u_x_Hm1 - u_y * u_y_Hm1 + 2. * H * c * (u_x_Hm1 + u_y_Hm1);
@@ -3131,6 +3134,9 @@ namespace GPBoost {
 			const vec_t& pars,
 			bool transf_scale,
 			double nugget_var) const {
+			if (u_x == 0. || u_y == 0.) {
+				return 0.;// the process is zero at the anchor, for all parameters
+			}
 			// log(u) is only multiplied with u^a for a > 0 here, and u^a * log(u) tends to 0 for u -> 0
 			auto log_or_zero = [](double u) {
 				return (u > 0.) ? std::log(u) : 0.;
@@ -3176,6 +3182,9 @@ namespace GPBoost {
 			int k,
 			bool transf_scale,
 			double nugget_var) const {
+			if (u_x == 0. || u_y == 0.) {
+				return 0.;// the process is zero at the anchor, for all parameters
+			}
 			// u^(H-2) * a for 0 <= a <= u, which tends to 0 for u -> 0 when multiplied with c since |c| <= sqrt(u * u_other) and H > 1.
 			//	It is calculated as (a / u) * u^(H-1) to avoid an overflow of u^(H-2) for tiny u
 			auto ratio_or_zero = [](double a, double u) {

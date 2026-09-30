@@ -429,6 +429,83 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(nll_cl_perm - nll_cl), TOLERANCE_STRICT)
   })
 
+  test_that("varying-dispersion Tweedie likelihoods: gradients with iterative methods and fixed powers with the full-scale Vecchia approximation ", {
+
+    # Gradient wrt the coefficients from one step of gradient descent with a fixed learning rate, without acceleration, and
+    # with fixed covariance parameters: coefficients after the step = 'init_coef' - lr * gradient
+    grad_coef <- function(y, X, coords, likelihood, init_coef, init_cov_pars, args, params_cg = list(), lr = 1e-3, ...) {
+      params <- c(list(optimizer_cov = "gradient_descent", optimizer_coef = "gradient_descent", maxit = 1, lr_coef = lr,
+                       use_nesterov_acc = FALSE, init_coef = init_coef, init_cov_pars = init_cov_pars,
+                       estimate_cov_par_index = rep(0, length(init_cov_pars)), init_coef_aux_pars_from_iid_model = FALSE,
+                       seed_rand_vec_trace = 1), params_cg)
+      capture.output(gp_model <- do.call(fitGPModel, c(list(gp_coords = coords, cov_function = "exponential", likelihood = likelihood,
+                                                            y = y, X = X, params = params, ...), args)), file = "NUL")
+      (init_coef - as.vector(gp_model$get_coef(std_err = FALSE))) / lr
+    }
+    vecchia_it <- list(gp_approx = "vecchia", num_neighbors = 5, vecchia_ordering = "none", matrix_inversion_method = "iterative")
+    fsva <- list(gp_approx = "full_scale_vecchia", num_ind_points = 10, num_neighbors = 5, vecchia_ordering = "none")
+    fsva_it <- c(fsva, list(matrix_inversion_method = "iterative"))
+
+    ## At mu = y = N = 1 and p = 1.5, the derivative of the information wrt the mode vanishes at every observation, whereas the
+    ## one wrt the log-dispersion does not (it is -W = -1 / phi). With effectively independent locations, the gradient wrt the
+    ## log-dispersion intercept at phi = 1 is n * (-2 - 0.5 * sigma2 / (1 + sigma2)): -2 is the derivative of the negative
+    ## joint log-density 4 / phi + 2 * log(phi / 2) and the second term the one of 0.5 * log(1 + sigma2 / phi)
+    n_z <- 32
+    coords_z <- matrix(sim_rand_unif(2 * n_z, 0.3), ncol = 2)
+    grad_expected <- c(0, n_z * (-2 - 0.5 * 0.7 / 1.7))
+    # The preconditioner "vadu" is exact for independent locations, and so is the stochastic estimate
+    cases <- list(list(args = list(matrix_inversion_method = "cholesky"), tol = TOLERANCE_STRICT),
+                  list(args = vecchia_it, params_cg = list(cg_preconditioner_type = "vadu"), tol = TOLERANCE_STRICT),
+                  list(args = vecchia_it, params_cg = list(cg_preconditioner_type = "incomplete_cholesky"), tol = 1),
+                  list(args = vecchia_it, params_cg = list(cg_preconditioner_type = "pivoted_cholesky", fitc_piv_chol_preconditioner_rank = 10), tol = 1),
+                  list(args = fsva_it, params_cg = list(cg_preconditioner_type = "fitc", fitc_piv_chol_preconditioner_rank = 10), tol = 1),
+                  list(args = fsva_it, params_cg = list(cg_preconditioner_type = "vifdu"), tol = 1),
+                  list(args = fsva_it, params_cg = list(cg_preconditioner_type = "none"), tol = 1))
+    for (case in cases) {
+      grad <- grad_coef(y = rep(1, n_z), X = matrix(1, n_z, 1), coords = coords_z, likelihood = "tweedie_joint_varying_dispersion_fixed_p",
+                        init_coef = c(0, 0), init_cov_pars = c(0.7, 1e-6), args = case$args, params_cg = case$params_cg,
+                        likelihood_additional_param = 1.5, additional_likelihood_data = rep(1, n_z))
+      expect_lt(sum(abs(grad - grad_expected)), case$tol)
+    }
+
+    ## Data for the fits with the full-scale Vecchia approximation
+    n_f <- 200
+    coords_f <- matrix(sim_rand_unif(2 * n_f, 0.31), ncol = 2)
+    sim_f <- sim_tweedie_yn(exp(0.3 + 0.5 * sin(6 * coords_f[, 1])), 1, 1.5, 0.51, 0.77)
+    X_f <- matrix(1, n_f, 1)
+
+    ## The iterative methods with the full-scale Vecchia approximation give the same gradient as the Cholesky decomposition,
+    ## also for the mean block, whose gradient contains the derivative of the log-determinant wrt the mode
+    grad_chol <- grad_coef(y = sim_f$y, X = X_f, coords = coords_f, likelihood = "tweedie_varying_dispersion_fixed_p", init_coef = c(0.2, -0.3),
+                           init_cov_pars = c(0.5, 0.2), args = c(fsva, list(matrix_inversion_method = "cholesky")), lr = 1e-4,
+                           likelihood_additional_param = 1.5)
+    expect_lt(sum(abs(grad_chol - c(-0.94057569, -22.47233286))), TOLERANCE_MEDIUM)
+    for (pc in c("fitc", "vifdu", "none")) {
+      grad <- grad_coef(y = sim_f$y, X = X_f, coords = coords_f, likelihood = "tweedie_varying_dispersion_fixed_p", init_coef = c(0.2, -0.3),
+                        init_cov_pars = c(0.5, 0.2), args = fsva_it, lr = 1e-4, likelihood_additional_param = 1.5,
+                        params_cg = list(cg_preconditioner_type = pc, fitc_piv_chol_preconditioner_rank = 10, num_rand_vec_trace = 1000))
+      expect_lt(sum(abs(grad - grad_chol)), 0.3)
+    }
+
+    ## A fixed power is not estimated and has no gradient also with the iterative methods of the full-scale Vecchia approximation
+    for (lik in c("tweedie_fixed_p", "tweedie_joint_fixed_p", "tweedie_varying_dispersion_fixed_p", "tweedie_joint_varying_dispersion_fixed_p")) {
+      fit_f <- function(method, params = list()) {
+        capture.output(fit <- do.call(fitGPModel, c(list(gp_coords = coords_f, cov_function = "exponential", likelihood = lik, likelihood_additional_param = 1.5,
+                                                         additional_likelihood_data = if (grepl("joint", lik)) sim_f$n else NULL, y = sim_f$y, X = X_f,
+                                                         matrix_inversion_method = method, params = params), modifyList(fsva, list(num_ind_points = 20, num_neighbors = 10)))),
+                       file = "NUL")
+        fit
+      }
+      fit_chol <- fit_f("cholesky")
+      for (pc in c("fitc", "vifdu")) {
+        fit_it <- fit_f("iterative", list(cg_preconditioner_type = pc, fitc_piv_chol_preconditioner_rank = 20, num_rand_vec_trace = 100))
+        expect_lt(sum(abs(c(fit_it$get_coef(), fit_it$get_cov_pars(), fit_it$get_aux_pars()) -
+                            c(fit_chol$get_coef(), fit_chol$get_cov_pars(), fit_chol$get_aux_pars()))), 0.1)
+        expect_lt(abs(fit_it$get_current_neg_log_likelihood() - fit_chol$get_current_neg_log_likelihood()), 1)
+      }
+    }
+  })
+
   test_that("joint and varying-dispersion Tweedie likelihoods for the GPBoost algorithm and cross-validation ", {
 
     params_boost <- list(learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)

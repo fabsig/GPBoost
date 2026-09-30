@@ -1404,6 +1404,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     b_0 <- drop(t(chol(30 / 6 * a_min^2 * (3 * a_max - a_min) + diag(1e-10, n))) %*% qnorm(sim_rand_unif(n=n, init_c=0.5173)))
     y_0 <- 1 + b_0 + qnorm(sim_rand_unif(n=n, init_c=0.2291), sd=0.1)
     y_pois_0 <- qpois(sim_rand_unif(n=n, init_c=0.7713), lambda = exp(1 + b_0))
+    y_bin_0 <- as.numeric(sim_rand_unif(n=n, init_c=0.4127) < plogis(b_0))
+    y_beta_0 <- plogis(b_0 + qnorm(sim_rand_unif(n=n, init_c=0.3319), sd=0.3))
     for (order in 1:2) {
       cov_pars_eval <- c(0.01, 0.8, order - 0.5)
       capture.output( gp_model <- GPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = order) , file='NUL')
@@ -1411,8 +1413,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(abs(nll_exact-gauss_nll(y_0, hurst_cov(time_0, cov_pars_eval[2:3], order) + diag(cov_pars_eval[1], n))),TOLERANCE_STRICT)
       # The predictive distribution at the anchor is a point mass at zero
       pred <- predict(gp_model, y=y_0, gp_coords_pred = matrix(c(0, 0.5)), cov_pars = cov_pars_eval, predict_var = TRUE, predict_response = FALSE)
-      expect_equal(pred$mu[1], 0)
-      expect_equal(pred$var[1], 0)
+      expect_identical(pred$mu[1], 0)
+      expect_identical(pred$var[1], 0)
+      # The predictive distribution of the response at the anchor is the conditional distribution given a latent value of zero
+      for (likelihood in c("bernoulli_logit", "beta")) {
+        capture.output( gp_model <- GPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = order, likelihood = likelihood) , file='NUL')
+        pred <- predict(gp_model, y = if (likelihood == "beta") y_beta_0 else y_bin_0, gp_coords_pred = matrix(c(0, 0.5)),
+                        cov_pars = cov_pars_eval[2:3], predict_var = TRUE, predict_response = TRUE)
+        expect_true(all(is.finite(c(pred$mu, pred$var))))
+        expect_lt(abs(pred$mu[1] - 0.5), TOLERANCE_STRICT)
+        var_expected <- if (likelihood == "beta") 0.25 / (1 + gp_model$get_aux_pars()[1]) else 0.25
+        expect_lt(abs(pred$var[1] - var_expected), TOLERANCE_STRICT)
+      }
       # The anchor is not used as an inducing point, since it would make the covariance matrix of the inducing points singular.
       #   All other n - 1 points are inducing points, and the approximations are exact
       for (gp_approx in c("fitc", "vif")) {
@@ -1433,6 +1445,40 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       capture.output( gp_model <- GPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = order, likelihood = "poisson",
                                           gp_approx = "vecchia", num_neighbors = 10) , file='NUL')
       expect_error(gp_model$neg_log_likelihood(cov_pars=cov_pars_eval[2:3],y=y_pois_0), "conditional variance of zero")
+    }
+    # The "test_neg_log_likelihood" metric of the GPBoost algorithm with a validation point at the anchor, where the latent
+    #   predictive variance is zero and the density is the conditional density at the predictive mean, and a second one
+    #   elsewhere, where the latent variable is integrated out. A likelihood without and one with an additional predictor
+    x_0 <- matrix(sim_rand_unif(n=n, init_c=0.4411), ncol = 1)
+    y_metric <- list(poisson = qpois(sim_rand_unif(n=n, init_c=0.6917), lambda = exp(0.5 + x_0[, 1] + b_0)),
+                     gaussian_heteroscedastic = 0.5 + x_0[, 1] + b_0 + qnorm(sim_rand_unif(n=n, init_c=0.6029)) * exp(0.5 * (-1 + x_0[, 1])))
+    log_dens <- list(poisson = function(y, e, z) dpois(y, exp(e), log = TRUE),
+                     gaussian_heteroscedastic = function(y, e, z) dnorm(y, e, exp(0.5 * z), log = TRUE))
+    va <- c(1, n %/% 2)
+    tr <- setdiff(1:n, va)
+    for (likelihood in names(y_metric)) {
+      y_m <- y_metric[[likelihood]]
+      dtrain <- gpb.Dataset(data = x_0[tr, , drop = FALSE], label = y_m[tr])
+      dvalid <- gpb.Dataset.create.valid(dtrain, data = x_0[va, , drop = FALSE], label = y_m[va])
+      capture.output( gp_model <- GPModel(gp_coords = time_0[tr, , drop = FALSE], cov_function = "hurst", cov_fct_order = 2, likelihood = likelihood) , file='NUL')
+      gp_model$set_optim_params(params = list(optimizer_cov = "lbfgs", maxit = 300, init_coef_aux_pars_from_iid_model = FALSE))
+      gp_model$set_prediction_data(gp_coords_pred = time_0[va, , drop = FALSE])
+      capture.output( bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 2, learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 5,
+                                       valids = list(valid = dvalid), verbose = 0, deterministic = TRUE) , file='NUL')
+      metric <- unlist(bst$record_evals$valid$test_neg_log_likelihood$eval)[2]
+      pred <- predict(bst, data = x_0[va, , drop = FALSE], gp_coords_pred = time_0[va, , drop = FALSE], predict_var = TRUE, pred_latent = TRUE, num_iteration = 2)
+      raw <- predict(bst, data = x_0[va, , drop = FALSE], ignore_gp_model = TRUE, pred_latent = TRUE, num_iteration = 2)
+      z <- if (likelihood == "poisson") c(0, 0) else raw[c(2, 4)]# the tree values of the second predictor are interleaved per observation
+      mean_eta <- pred$fixed_effect + pred$random_effect_mean
+      expect_identical(pred$random_effect_cov[1], 0)
+      reference <- mean(sapply(1:2, function(i) {
+        if (i == 1) return(-log_dens[[likelihood]](y_m[va][i], mean_eta[i], z[i]))
+        sd_eta <- sqrt(pred$random_effect_cov[i])
+        integrand <- function(e) exp(log_dens[[likelihood]](y_m[va][i], e, z[i])) * dnorm(e, mean_eta[i], sd_eta)
+        -log(integrate(integrand, mean_eta[i] - 12 * sd_eta, mean_eta[i] + 12 * sd_eta, rel.tol = 1e-10)$value)
+      }))
+      expect_true(is.finite(metric))
+      expect_lt(abs(metric - reference), 1e-6)
     }
     # Estimation with FITC, which is exact here, exercises the gradients at the anchor. Note: for order 1, the exact fit stops
     #   prematurely for these data (unsuccessful line search) and cannot serve as a reference

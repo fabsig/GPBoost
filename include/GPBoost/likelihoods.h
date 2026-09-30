@@ -677,8 +677,7 @@ namespace GPBoost {
 				}
 				SetCountApproximationTypeFlags();
 				// The (Fisher/observed) information's derivative wrt the mode can vanish at isolated eta values (local extrema of
-				// the information as a function of eta); enable the zero-guard used by the iterative ratio-trick diagonal
-				// SigmaI_plus_W_inv_diag = d_log_det / deriv_information_diag_loc_par (0/0 -> set to 0 instead of NaN).
+				// the information as a function of eta), see 'DerivInformationForStochTrace'
 				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
 			}//end zero-inflated count regression variants
 			else if (likelihood_type_ == "zero_censored_power_transformed_normal") {
@@ -993,15 +992,14 @@ namespace GPBoost {
 				return;
 			}
 			const TweediePowerTransform transform = GetTweediePowerTransform();
-			tweedie_vd_log_a_.resize(num_data_);
 			tweedie_vd_d_rho_.resize(num_data_);
-			tweedie_vd_d_theta_.resize(num_data_);
 			bool evaluation_failure = false;
 			data_size_t fail_index = 0;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128)
+			double sum_log_a = 0., sum_d_theta = 0.;
+#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:sum_log_a, sum_d_theta)
 			for (data_size_t i = 0; i < num_data_; ++i) {
 				if (has_weights_ && weights_[i] == 0.) {
-					tweedie_vd_log_a_[i] = tweedie_vd_d_rho_[i] = tweedie_vd_d_theta_[i] = 0.;
+					tweedie_vd_d_rho_[i] = 0.;
 					continue;
 				}
 				thread_local TweedieSpecialFunctionCache cache;
@@ -1012,18 +1010,21 @@ namespace GPBoost {
 						evaluation_failure = true;
 						fail_index = i;
 					}
-					tweedie_vd_log_a_[i] = tweedie_vd_d_rho_[i] = tweedie_vd_d_theta_[i] = std::numeric_limits<double>::quiet_NaN();
+					tweedie_vd_d_rho_[i] = std::numeric_limits<double>::quiet_NaN();
 				}
 				else {
-					tweedie_vd_log_a_[i] = res.log_a;
+					const double w = has_weights_ ? weights_[i] : 1.;
 					tweedie_vd_d_rho_[i] = res.d_rho;
-					tweedie_vd_d_theta_[i] = res.d_theta;
+					sum_log_a += w * res.log_a;
+					sum_d_theta += w * res.d_theta;
 				}
 			}
 			if (evaluation_failure) {
 				Log::REDebug("The Tweedie density could not be evaluated for y = %g, phi = %g, p = %g ", y_data[fail_index], std::exp(rho[fail_index]), p);
+				sum_log_a = sum_d_theta = std::numeric_limits<double>::quiet_NaN();
 			}
-			tweedie_vd_sum_log_a_ = SumOverSamplesWeighted([&](data_size_t i) { return tweedie_vd_log_a_[i]; });
+			tweedie_vd_sum_log_a_ = sum_log_a;
+			tweedie_vd_sum_d_theta_ = sum_d_theta;
 			tweedie_vd_cache_rho_ = rho;
 			tweedie_vd_cache_y_ = y_data;
 			tweedie_vd_cache_p_ = p;
@@ -2980,6 +2981,15 @@ namespace GPBoost {
 			const vec_t& pred_third_block_mean = vec_t());
 
 		/*!
+		* \brief True if the predictive variance of a latent variable is zero (up to the precision of its inverse), e.g., for a Hurst
+		*		process at its anchor. The predictive distribution is then a point mass at the predictive mean, and an integral over it
+		*		is the value of the integrand at the predictive mean
+		*/
+		static bool LatentVarIsZero(double latent_var) {
+			return latent_var >= 0. && std::isinf(1. / latent_var);
+		}
+
+		/*!
 		* \brief Adaptive GH quadrature to calculate predictive mean of response variable
 		* \param latent_mean Predictive mean of latent random effects
 		* \param latent_var Predictive variances of latent random effects
@@ -4458,8 +4468,7 @@ namespace GPBoost {
 				information_ll_can_be_negative_ = false;// Fisher (expected) information is nonnegative
 				grad_information_wrt_mode_non_zero_ = true;// Fisher depends on mu
 				// The Fisher information's derivative wrt the mode can vanish at isolated eta values (local extrema of the
-				// information as a function of eta); enable the zero-guard used by the iterative ratio-trick diagonal
-				// SigmaI_plus_W_inv_diag = d_log_det / deriv_information_diag_loc_par (0/0 -> set to 0 instead of NaN).
+				// information as a function of eta), see 'DerivInformationForStochTrace'
 				grad_information_wrt_mode_can_be_zero_for_some_points_ = true;
 				information_changes_during_mode_finding_ = true;
 				information_changes_after_mode_finding_ = false;
@@ -7626,6 +7635,48 @@ namespace GPBoost {
 			REModelTemplate<T_mat, T_chol>* re_model);
 
 		/*!
+		* \brief Derivative of the information wrt the mode with which the stochastic estimate of dlog|Sigma W + I|/db_i is calculated.
+		*		This estimate is linear in the derivative row by row (the weight of the variance reduction does not change if a row is
+		*		scaled), so dividing it by the derivative gives an estimate of the diagonal of (Sigma^-1 + W)^-1. Entries at which the
+		*		derivative is zero are replaced by one, so that the diagonal is also obtained there. It is needed there by the extra
+		*		fixed-effects blocks whose derivative of the information does not vanish at these points, e.g., the log-dispersion of
+		*		the varying-dispersion Tweedie likelihoods for which the derivative wrt the mode is zero where mu = y (p-1)^2 / (2-p)^2.
+		*		Quantities derived from the estimate have to be rescaled with 'RescaleToDerivInformation'
+		* \param deriv_information_diag_loc_par Derivative of the diagonal of the information wrt the mode
+		* \param[out] deriv_for_stoch_trace 'deriv_information_diag_loc_par' with its zero entries replaced by one
+		*/
+		void DerivInformationForStochTrace(const vec_t& deriv_information_diag_loc_par,
+			vec_t& deriv_for_stoch_trace) const {
+			deriv_for_stoch_trace = deriv_information_diag_loc_par;
+			if (grad_information_wrt_mode_can_be_zero_for_some_points_) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < (int)deriv_for_stoch_trace.size(); ++i) {
+					if (GPBoost::IsZero<double>(deriv_for_stoch_trace[i])) {
+						deriv_for_stoch_trace[i] = 1.;
+					}
+				}
+			}
+		}//end DerivInformationForStochTrace
+
+		/*!
+		* \brief Rescale a vector that is proportional, row by row, to the stochastic estimate of dlog|Sigma W + I|/db_i calculated
+		*		with the derivative returned by 'DerivInformationForStochTrace' to the actual derivative of the information
+		* \param deriv_information_diag_loc_par Derivative of the diagonal of the information wrt the mode
+		* \param[out] v Vector that is rescaled
+		*/
+		void RescaleToDerivInformation(const vec_t& deriv_information_diag_loc_par,
+			vec_t& v) const {
+			if (grad_information_wrt_mode_can_be_zero_for_some_points_) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < (int)v.size(); ++i) {
+					if (GPBoost::IsZero<double>(deriv_information_diag_loc_par[i])) {
+						v[i] *= deriv_information_diag_loc_par[i];
+					}
+				}
+			}
+		}//end RescaleToDerivInformation
+
+		/*!
 		* \brief Calculate dlog|Sigma W + I|/db_i for all i in 1, ..., n using stochastic trace estimation and variance reduction.
 		* \param deriv_information_diag_loc_par Derivative of the diagonal of the Fisher information of the likelihood (= usually negative third derivative of the log-likelihood with respect to the mode)
 		* \param num_data Number of data points
@@ -8461,13 +8512,12 @@ namespace GPBoost {
 		bool is_tweedie_joint_ = false;
 		bool is_tweedie_varying_dispersion_ = false;
 		bool is_tweedie_fixed_p_ = false;
-		/*! \brief Per-observation log-normalizers of a varying-dispersion Tweedie likelihood, their derivatives wrt rho_i = log(phi_i)
-		*		and the transformed power (without weights), the weighted sum of the log-normalizers, and the (rho, y, p) they
-		*		correspond to (see 'UpdateTweedieVaryingDispersionNormalizer') */
-		mutable vec_t tweedie_vd_log_a_;
+		/*! \brief Per-observation derivatives of the log-normalizers of a varying-dispersion Tweedie likelihood wrt rho_i = log(phi_i)
+		*		(without weights), the weighted sums of the log-normalizers and of their derivatives wrt the transformed power, and
+		*		the (rho, y, p) they correspond to (see 'UpdateTweedieVaryingDispersionNormalizer') */
 		mutable vec_t tweedie_vd_d_rho_;
-		mutable vec_t tweedie_vd_d_theta_;
 		mutable double tweedie_vd_sum_log_a_ = 0.;
+		mutable double tweedie_vd_sum_d_theta_ = 0.;
 		mutable vec_t tweedie_vd_cache_rho_;
 		mutable const double* tweedie_vd_cache_y_ = nullptr;
 		mutable double tweedie_vd_cache_p_ = std::numeric_limits<double>::quiet_NaN();

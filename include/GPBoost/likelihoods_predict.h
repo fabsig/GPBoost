@@ -595,6 +595,10 @@ namespace GPBoost {
 	double Likelihood<T_mat, T_chol>::RespMeanAdaptiveGHQuadrature(const double latent_mean,
 		const double latent_var,
 		bool second_moment) {
+		if (LatentVarIsZero(latent_var)) {
+			const double cond_mean = CondMeanLikelihood(latent_mean);
+			return second_moment ? cond_mean * cond_mean : cond_mean;
+		}
 		// Find mode of integrand
 		double mode_integrand_last, update;
 		double mode_integrand = 0.;
@@ -629,6 +633,9 @@ namespace GPBoost {
 	template <typename T_mat, typename T_chol>
 	double Likelihood<T_mat, T_chol>::ExpectedValueCondRespVarAdaptiveGHQuadrature(const double latent_mean,
 		const double latent_var) {
+		if (LatentVarIsZero(latent_var)) {
+			return CondVarLikelihood(latent_mean);
+		}
 		// Find mode of integrand
 		double mode_integrand_last, update;
 		double mode_integrand = 0.;
@@ -773,32 +780,7 @@ namespace GPBoost {
 			if (label_type() == "int") {
 				y_test_int = static_cast<int>(y_test[i]);
 			}
-			// Find mode of integrand
-			double mode_integrand_last, update;
-			double mode_integrand = 0.;
-			double sigma2_inv = 1. / pred_var[i];
-			double sqrt_sigma2_inv = std::sqrt(sigma2_inv);
-			for (int it = 0; it < 100; ++it) {
-				mode_integrand_last = mode_integrand;
-				update = (CalcFirstDerivLogLikOneSample(y_test_d, y_test_int, mode_integrand) - sigma2_inv * (mode_integrand - pred_mean[i]))
-					/ (-CalcDiagInformationLogLikOneSample(y_test_d, y_test_int, mode_integrand) - sigma2_inv);
-				mode_integrand -= update;
-				if (std::abs(update) / std::abs(mode_integrand_last) < delta_conv_mode_finding_) {
-					break;
-				}
-			}
-			// Adaptive GH quadrature
-			double sqrt2_sigma_hat = M_SQRT2 / std::sqrt(CalcDiagInformationLogLikOneSample(y_test_d, y_test_int, mode_integrand) + sigma2_inv);
-			if (!std::isfinite(mode_integrand) || !std::isfinite(sqrt2_sigma_hat)) {
-				// E.g., for a likelihood with a bounded support whose density is zero at the starting point
-				double information_at_mode;
-				mode_integrand = FindModeIntegrandAdaptiveGHQuadrature(
-					[&](double x) { return IsTweedieConstantDispersion() ? LogLikTweedie(y_test_d, x, false) : LogLikelihoodOneSample(y_test_d, y_test_int, x); },
-					[&](double x) { return CalcFirstDerivLogLikOneSample(y_test_d, y_test_int, x); },
-					[&](double x) { return CalcDiagInformationLogLikOneSample(y_test_d, y_test_int, x); },
-					pred_mean[i], pred_var[i], information_at_mode);
-				sqrt2_sigma_hat = M_SQRT2 / std::sqrt(information_at_mode + sigma2_inv);
-			}
+			auto log_dens = [&](double x) { return IsTweedieConstantDispersion() ? LogLikTweedie(y_test_d, x, false) : LogLikelihoodOneSample(y_test_d, y_test_int, x); };
 			// Numerical evaluation failures set the test negative log-likelihood to +inf, i.e., the worst possible value,
 			//	instead of using a wrong finite value
 			double log_normalizer = 0.;
@@ -816,9 +798,39 @@ namespace GPBoost {
 				log_normalizer = normalizer.log_a;
 			}
 			bool node_failure;
-			const double log_integral = LogIntegralAdaptiveGHQuadrature(
-				[&](double x) { return IsTweedieConstantDispersion() ? LogLikTweedie(y_test_d, x, false) : LogLikelihoodOneSample(y_test_d, y_test_int, x); },
-				mode_integrand, sqrt2_sigma_hat, pred_mean[i], sqrt_sigma2_inv, node_failure);
+			double log_integral;
+			if (LatentVarIsZero(pred_var[i])) {
+				log_integral = log_dens(pred_mean[i]);
+				node_failure = std::isnan(log_integral) || log_integral == std::numeric_limits<double>::infinity();
+			}
+			else {
+				// Find mode of integrand
+				double mode_integrand_last, update;
+				double mode_integrand = 0.;
+				double sigma2_inv = 1. / pred_var[i];
+				double sqrt_sigma2_inv = std::sqrt(sigma2_inv);
+				for (int it = 0; it < 100; ++it) {
+					mode_integrand_last = mode_integrand;
+					update = (CalcFirstDerivLogLikOneSample(y_test_d, y_test_int, mode_integrand) - sigma2_inv * (mode_integrand - pred_mean[i]))
+						/ (-CalcDiagInformationLogLikOneSample(y_test_d, y_test_int, mode_integrand) - sigma2_inv);
+					mode_integrand -= update;
+					if (std::abs(update) / std::abs(mode_integrand_last) < delta_conv_mode_finding_) {
+						break;
+					}
+				}
+				// Adaptive GH quadrature
+				double sqrt2_sigma_hat = M_SQRT2 / std::sqrt(CalcDiagInformationLogLikOneSample(y_test_d, y_test_int, mode_integrand) + sigma2_inv);
+				if (!std::isfinite(mode_integrand) || !std::isfinite(sqrt2_sigma_hat)) {
+					// E.g., for a likelihood with a bounded support whose density is zero at the starting point
+					double information_at_mode;
+					mode_integrand = FindModeIntegrandAdaptiveGHQuadrature(log_dens,
+						[&](double x) { return CalcFirstDerivLogLikOneSample(y_test_d, y_test_int, x); },
+						[&](double x) { return CalcDiagInformationLogLikOneSample(y_test_d, y_test_int, x); },
+						pred_mean[i], pred_var[i], information_at_mode);
+					sqrt2_sigma_hat = M_SQRT2 / std::sqrt(information_at_mode + sigma2_inv);
+				}
+				log_integral = LogIntegralAdaptiveGHQuadrature(log_dens, mode_integrand, sqrt2_sigma_hat, pred_mean[i], sqrt_sigma2_inv, node_failure);
+			}
 			if (node_failure) {
 				na_inf_flag_11 = true;
 				ll += -std::numeric_limits<double>::infinity();
@@ -853,17 +865,7 @@ namespace GPBoost {
 			for (int k = 0; k < num_extra; ++k) {
 				extra[k] = extra_location_par[i + (data_size_t)k * num_data];
 			}
-			// Mode of the integrand p(y | eta, extra) * N(eta; pred_mean, pred_var) and the curvature there, which determine the
-			//	placement of the nodes. A negative observed information (e.g., for zero-inflated counts at zero) is replaced by 0
-			const double sigma2_inv = 1. / pred_var[i];
-			const double sqrt_sigma2_inv = std::sqrt(sigma2_inv);
-			double information_at_mode;
-			const double mode_integrand = FindModeIntegrandAdaptiveGHQuadrature(
-				[&](double x) { return LogLikOneSampleExtraBlocks(y, y_int, x, extra, !tweedie); },
-				[&](double x) { return FirstDerivLogLikOneSampleExtraBlocks(y, y_int, x, extra); },
-				[&](double x) { return InformationLogLikOneSampleExtraBlocks(y, y_int, x, extra); },
-				pred_mean[i], pred_var[i], information_at_mode);
-			const double sqrt2_sigma_hat = M_SQRT2 / std::sqrt(information_at_mode + sigma2_inv);
+			auto log_dens = [&](double x) { return LogLikOneSampleExtraBlocks(y, y_int, x, extra, !tweedie); };
 			// The part of the Tweedie density that does not depend on eta is evaluated once. It is the marginal density of y
 			//	also for the joint variants, since the number of events of new data is not known
 			double log_normalizer = 0.;
@@ -880,9 +882,24 @@ namespace GPBoost {
 			// Numerical evaluation failures set the test negative log-likelihood to +inf, i.e., the worst possible value,
 			//	instead of using a wrong finite value
 			bool node_failure;
-			const double log_integral = LogIntegralAdaptiveGHQuadrature(
-				[&](double x) { return LogLikOneSampleExtraBlocks(y, y_int, x, extra, !tweedie); },
-				mode_integrand, sqrt2_sigma_hat, pred_mean[i], sqrt_sigma2_inv, node_failure);
+			double log_integral;
+			if (LatentVarIsZero(pred_var[i])) {
+				log_integral = log_dens(pred_mean[i]);
+				node_failure = std::isnan(log_integral) || log_integral == std::numeric_limits<double>::infinity();
+			}
+			else {
+				// Mode of the integrand p(y | eta, extra) * N(eta; pred_mean, pred_var) and the curvature there, which determine the
+				//	placement of the nodes. A negative observed information (e.g., for zero-inflated counts at zero) is replaced by 0
+				const double sigma2_inv = 1. / pred_var[i];
+				const double sqrt_sigma2_inv = std::sqrt(sigma2_inv);
+				double information_at_mode;
+				const double mode_integrand = FindModeIntegrandAdaptiveGHQuadrature(log_dens,
+					[&](double x) { return FirstDerivLogLikOneSampleExtraBlocks(y, y_int, x, extra); },
+					[&](double x) { return InformationLogLikOneSampleExtraBlocks(y, y_int, x, extra); },
+					pred_mean[i], pred_var[i], information_at_mode);
+				const double sqrt2_sigma_hat = M_SQRT2 / std::sqrt(information_at_mode + sigma2_inv);
+				log_integral = LogIntegralAdaptiveGHQuadrature(log_dens, mode_integrand, sqrt2_sigma_hat, pred_mean[i], sqrt_sigma2_inv, node_failure);
+			}
 			if (node_failure) {
 				evaluation_failure = true;
 				ll += -std::numeric_limits<double>::infinity();

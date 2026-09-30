@@ -2293,8 +2293,8 @@ namespace GPBoost {
 				UpdateTweedieVaryingDispersionNormalizer(y_data, location_par);
 				const double p = GetTweediePower();
 				const double dp = GetTweediePowerTransform().dp_dtheta;
-				double power_sum = 0., sum_d_theta = 0.;
-#pragma omp parallel for schedule(static) reduction(+:power_sum,sum_d_theta)
+				double power_sum = 0.;
+#pragma omp parallel for schedule(static) reduction(+:power_sum)
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					const double w = has_weights_ ? weights_[i] : 1.;
 					const double eta = location_par[i];
@@ -2303,9 +2303,8 @@ namespace GPBoost {
 					const double coefficient_a = eta / (2. - p) - 1. / ((2. - p) * (2. - p));
 					const double coefficient_b = eta / (p - 1.) + 1. / ((p - 1.) * (p - 1.));
 					power_sum += w * dp * TweedieSignedLogSum(coefficient_a, log_scaled_a, coefficient_b, log_scaled_b);
-					sum_d_theta += w * tweedie_vd_d_theta_[i];
 				}
-				grad[0] = -sum_d_theta - power_sum;
+				grad[0] = -tweedie_vd_sum_d_theta_ - power_sum;
 			}
 		}
 		else if (IsTweedieConstantDispersion()) {

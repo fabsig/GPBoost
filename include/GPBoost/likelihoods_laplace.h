@@ -3030,8 +3030,10 @@ namespace GPBoost {
 			vec_t tr_SigmaI_plus_W_inv_W_deriv, tr_PI_P_deriv_vec(dim_mode_), c_opt_vec;
 			den_mat_t Z_SigmaI_plus_W_inv_W_deriv_PI_Z, PI_Z(dim_mode_, num_rand_vec_trace_),
 				Z_PI_P_deriv_PI_Z;
+			vec_t deriv_for_stoch_trace;// see 'DerivInformationForStochTrace'
 			if (grad_information_wrt_mode_non_zero_) {
-				W_deriv_rep = deriv_information_diag_loc_par.replicate(1, num_rand_vec_trace_);
+				DerivInformationForStochTrace(deriv_information_diag_loc_par, deriv_for_stoch_trace);
+				W_deriv_rep = deriv_for_stoch_trace.replicate(1, num_rand_vec_trace_);
 			}
 			vec_t diag_WI = information_ll_.cwiseInverse();
 			bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
@@ -3047,7 +3049,7 @@ namespace GPBoost {
 					Z_SigmaI_plus_W_inv_W_deriv_PI_Z = -1 * (WI_SigmaI_plus_W_inv_Z.array() * W_deriv_rep.array() * WI_PI_Z.array()).matrix();
 					tr_SigmaI_plus_W_inv_W_deriv = Z_SigmaI_plus_W_inv_W_deriv_PI_Z.rowwise().mean();
 
-					vec_t tr_WI_W_deriv = diag_WI.cwiseProduct(deriv_information_diag_loc_par);
+					vec_t tr_WI_W_deriv = diag_WI.cwiseProduct(deriv_for_stoch_trace);
 					d_log_det_Sigma_W_plus_I_d_mode = tr_SigmaI_plus_W_inv_W_deriv + tr_WI_W_deriv;
 					//variance reduction
 					//-tr(W^-1P^-1W^(-1) dW/db_i)
@@ -3072,6 +3074,7 @@ namespace GPBoost {
 				bool has_NA_or_Inf = false;
 				if (grad_information_wrt_mode_non_zero_) {
 					d_mll_d_mode = 0.5 * d_log_det_Sigma_W_plus_I_d_mode;
+					RescaleToDerivInformation(deriv_information_diag_loc_par, d_mll_d_mode);
 					vec_t Sigma_d_mll_d_mode = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve((B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(d_mll_d_mode)) +
 						(*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * d_mll_d_mode));
 					vec_t W_SigmaI_plus_W_inv_d_mll_d_mode(dim_mode_);
@@ -3212,21 +3215,12 @@ namespace GPBoost {
 				if (grad_information_wrt_mode_non_zero_ && (((use_random_effects_indices_of_data_ || ExtraFEBlocksNeedEtaBlockDiag(false)) && calc_F_grad) || calc_aux_par_grad)) {
 					//Stochastic Trace: Calculate diagonal of SigmaI_plus_W_inv for gradient of approx. marginal likelihood wrt. F
 					SigmaI_plus_W_inv_diag = d_log_det_Sigma_W_plus_I_d_mode;
-					SigmaI_plus_W_inv_diag.array() /= deriv_information_diag_loc_par.array();
-					if (grad_information_wrt_mode_can_be_zero_for_some_points_) {
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < (int)SigmaI_plus_W_inv_diag.size(); ++i) {
-							if (GPBoost::IsZero<double>(deriv_information_diag_loc_par[i])) {
-								SigmaI_plus_W_inv_diag[i] = 0.;//set to 0 for safety, but this is actually not needed
-							}
-						}
-					}//end grad_information_wrt_mode_can_be_zero_for_some_points_
+					SigmaI_plus_W_inv_diag.array() /= deriv_for_stoch_trace.array();
 				}
 				if (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad) {
 					// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1), needed for the second, fixed-effects-only
-					// block's gradient below. The ratio trick used just above is not applicable here: for
-					// 'gaussian_heteroscedastic' deriv_information_diag_loc_par is identically zero, and for
-					// 'zero_censored_power_transformed_normal_heteroscedastic' it vanishes at every positive observation.
+					// block's gradient below. The ratio used just above is not available for 'gaussian_heteroscedastic', whose
+					// information does not depend on the mode (deriv_information_diag_loc_par is identically zero).
 					// Note: rand_vec_trace_I_ is Cov = P (the 'fitc' preconditioner) here, not Cov = I (see
 					// FindModePostRandEffCalcMLLFSVA); the raw (Cov = I) vectors are rand_vec_trace_I2_. Solve
 					// (Sigma^-1+W) x_k = r_k for each column r_k via the push-through identity
@@ -3309,7 +3303,7 @@ namespace GPBoost {
 							tr_PI_P_deriv_vec[i] += Preconditioner_PP_inv.col(i).array().square().sum() * W_deriv_rep.col(0)[i];
 						}
 					}
-					for (int ind_ap = 0; ind_ap < num_aux_pars_; ++ind_ap) {
+					for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
 						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 						double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 						if (grad_information_wrt_mode_non_zero_) {
@@ -3448,7 +3442,7 @@ namespace GPBoost {
 						vec_t tr_PI_inv_W_deriv = Z_PI_P_deriv_PI_Z.rowwise().mean();
 						d_log_det_Sigma_W_plus_I_d_mode = tr_SigmaI_plus_W_inv_W_deriv;
 						//tr_PI_P_deriv_vec = -1. * W_D_inv_inv.cwiseProduct(deriv_information_diag_loc_par);
-						tr_PI_P_deriv_vec = W_D_inv_inv.cwiseProduct(deriv_information_diag_loc_par);
+						tr_PI_P_deriv_vec = W_D_inv_inv.cwiseProduct(deriv_for_stoch_trace);
 						den_mat_t chol_fact_sigma_woodbury_woodbury_D_inv_B_cross_cov;
 						//TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_woodbury_,
 						//	D_inv_B_cross_cov.transpose() * W_D_inv_inv.asDiagonal(), chol_fact_sigma_woodbury_woodbury_D_inv_B_cross_cov, false);
@@ -3456,22 +3450,24 @@ namespace GPBoost {
 							D_inv_B_cross_cov.transpose() * W_D_inv_inv.asDiagonal(), chol_fact_sigma_woodbury_woodbury_D_inv_B_cross_cov, GPU_use);
 #pragma omp parallel for schedule(static)   
 						for (int i = 0; i < dim_mode_; ++i) {
-							tr_PI_P_deriv_vec[i] += chol_fact_sigma_woodbury_woodbury_D_inv_B_cross_cov.col(i).array().square().sum() * deriv_information_diag_loc_par[i];
+							tr_PI_P_deriv_vec[i] += chol_fact_sigma_woodbury_woodbury_D_inv_B_cross_cov.col(i).array().square().sum() * deriv_for_stoch_trace[i];
 						}
 						CalcOptimalCVectorized(Z_SigmaI_plus_W_inv_W_deriv_PI_Z, Z_PI_P_deriv_PI_Z, tr_SigmaI_plus_W_inv_W_deriv, tr_PI_P_deriv_vec, c_opt_vec);
 						d_log_det_Sigma_W_plus_I_d_mode += c_opt_vec.cwiseProduct(tr_PI_P_deriv_vec - tr_PI_inv_W_deriv);
 					}
 				}
 				else {
+					PI_Z = rand_vec_trace_I_;// no preconditioner, P = I
 					if (grad_information_wrt_mode_non_zero_) {
 						Z_SigmaI_plus_W_inv_W_deriv_PI_Z = SigmaI_plus_W_inv_Z_.cwiseProduct(rand_vec_trace_I_);
-						d_log_det_Sigma_W_plus_I_d_mode = -1. * Z_SigmaI_plus_W_inv_W_deriv_PI_Z.rowwise().mean().cwiseProduct(deriv_information_diag_loc_par);
+						d_log_det_Sigma_W_plus_I_d_mode = Z_SigmaI_plus_W_inv_W_deriv_PI_Z.rowwise().mean().cwiseProduct(deriv_for_stoch_trace);
 					}
 				}
 				//For implicit derivatives: calculate (Sigma^(-1) + W)^(-1) d_mll_d_mode
 				bool has_NA_or_Inf = false;
 				if (grad_information_wrt_mode_non_zero_) {
 					d_mll_d_mode = 0.5 * d_log_det_Sigma_W_plus_I_d_mode;
+					RescaleToDerivInformation(deriv_information_diag_loc_par, d_mll_d_mode);
 					//For implicit derivatives: calculate (Sigma^(-1) + W)^(-1) d_mll_d_mode
 					CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov,
 						W_D_inv_inv, chol_fact_sigma_woodbury_woodbury_, d_mll_d_mode, SigmaI_plus_W_inv_d_mll_d_mode, has_NA_or_Inf,
@@ -3647,15 +3643,7 @@ namespace GPBoost {
 				if (grad_information_wrt_mode_non_zero_ && (((use_random_effects_indices_of_data_ || ExtraFEBlocksNeedEtaBlockDiag(false)) && calc_F_grad) || calc_aux_par_grad)) {
 					//Stochastic Trace: Calculate diagonal of SigmaI_plus_W_inv for gradient of approx. marginal likelihood wrt. F
 					SigmaI_plus_W_inv_diag = d_log_det_Sigma_W_plus_I_d_mode;
-					SigmaI_plus_W_inv_diag.array() *= -1. / deriv_information_diag_loc_par.array();
-					if (grad_information_wrt_mode_can_be_zero_for_some_points_) {
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < (int)SigmaI_plus_W_inv_diag.size(); ++i) {
-							if (GPBoost::IsZero<double>(deriv_information_diag_loc_par[i])) {
-								SigmaI_plus_W_inv_diag[i] = 0.;//set to 0 for safety, but this is actually not needed
-							}
-						}
-					} //end grad_information_wrt_mode_can_be_zero_for_some_points_
+					SigmaI_plus_W_inv_diag.array() /= deriv_for_stoch_trace.array();
 				}
 				if (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad) {
 					// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1) for the second, fixed-effects-only block, using the raw (Cov = I) random vectors
@@ -3720,12 +3708,12 @@ namespace GPBoost {
 				}
 				//Calculate gradient wrt additional likelihood parameters
 				if (calc_aux_par_grad) {
-					vec_t neg_likelihood_deriv(num_aux_pars_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
+					vec_t neg_likelihood_deriv(num_aux_pars_estim_);//derivative of the negative log-likelihood wrt additional parameters of the likelihood
 					vec_t second_deriv_loc_aux_par(num_data_);//second derivative of the log-likelihood with respect to (i) the location parameter and (ii) an additional parameter of the likelihood
 					vec_t deriv_information_aux_par(num_data_);//negative third derivative of the log-likelihood with respect to (i) two times the location parameter and (ii) an additional parameter of the likelihood
 					vec_t d_mode_d_aux_par;
 					CalcGradNegLogLikAuxPars(y_data, y_data_int, location_par_ptr, neg_likelihood_deriv.data());
-					for (int ind_ap = 0; ind_ap < num_aux_pars_; ++ind_ap) {
+					for (int ind_ap = 0; ind_ap < num_aux_pars_estim_; ++ind_ap) {
 						CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par_ptr, ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 						double d_detmll_d_aux_par = 0., implicit_derivative = 0.;
 						if (grad_information_wrt_mode_non_zero_) {
@@ -4125,6 +4113,7 @@ namespace GPBoost {
 					"The stochastic gradient calculation with the '%s' preconditioner requires W to be nonnegative ", cg_preconditioner_type_.c_str());
 			}
 			vec_t d_log_det_Sigma_W_plus_I_d_mode;
+			vec_t deriv_for_stoch_trace;// see 'DerivInformationForStochTrace'
 			//Declarations for preconditioner "piv_chol_on_Sigma"
 			vec_t diag_WI;
 			den_mat_t WI_PI_Z, WI_WI_plus_Sigma_inv_Z;
@@ -4143,12 +4132,18 @@ namespace GPBoost {
 					d_log_det_Sigma_W_plus_I_d_mode_temp.segment(0, dim_mode_per_set_re_);
 			}
 			else {
-				CalcLogDetStochDerivModeVecchia(deriv_information_diag_loc_par, dim_mode_, d_log_det_Sigma_W_plus_I_d_mode, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z,
+				if (grad_information_wrt_mode_non_zero_) {
+					DerivInformationForStochTrace(deriv_information_diag_loc_par, deriv_for_stoch_trace);
+				}
+				CalcLogDetStochDerivModeVecchia(deriv_for_stoch_trace, dim_mode_, d_log_det_Sigma_W_plus_I_d_mode, D_inv_plus_W_inv_diag, diag_WI, PI_Z, WI_PI_Z,
 					WI_WI_plus_Sigma_inv_Z, re_comps_cross_cov_cluster_i, GPU_use);
 			}
 			//For implicit derivatives: calculate (Sigma^(-1) + W)^(-1) d_mll_d_mode
 			if (grad_information_wrt_mode_non_zero_) {
 				d_mll_d_mode = 0.5 * d_log_det_Sigma_W_plus_I_d_mode;
+				if (likelihood_type_ != "gaussian_heteroscedastic_fixed_and_random") {
+					RescaleToDerivInformation(deriv_information_diag_loc_par, d_mll_d_mode);
+				}
 				SigmaI_plus_W_inv_d_mll_d_mode = vec_t(dim_mode_);
 				if (use_observed_hessian_for_mode_jacobian) {
 					// Solve with the Jacobian of the score whose root is the mode, see above. The conjugate gradient
@@ -4287,24 +4282,15 @@ namespace GPBoost {
 					CHECK(num_sets_re_ == 1);
 					//Stochastic Trace: Calculate diagonal of SigmaI_plus_W_inv for gradient of approx. marginal likelihood wrt. F
 					SigmaI_plus_W_inv_diag = d_log_det_Sigma_W_plus_I_d_mode;
-					SigmaI_plus_W_inv_diag.array() /= deriv_information_diag_loc_par.array();
-					if (grad_information_wrt_mode_can_be_zero_for_some_points_) {
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < (int)SigmaI_plus_W_inv_diag.size(); ++i) {
-							if (GPBoost::IsZero<double>(deriv_information_diag_loc_par[i])) {
-								SigmaI_plus_W_inv_diag[i] = 0.;//set to 0 for safety, but this is actually not needed
-							}
-						}
-					}//end grad_information_wrt_mode_can_be_zero_for_some_points_
+					SigmaI_plus_W_inv_diag.array() /= deriv_for_stoch_trace.array();
 				}
 			}
 			if (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad) {
 				// Stochastic (Hutchinson) estimate of diag((Sigma^-1+W)^-1) (RE/mode-scale, dimension dim_mode_), needed for the
-				// second, fixed-effects-only block's gradient below. The ratio trick used just above
-				// (d_log_det_Sigma_W_plus_I_d_mode / deriv_information_diag_loc_par) is not applicable here: for
-				// 'gaussian_heteroscedastic' deriv_information_diag_loc_par is identically zero (the mean's Fisher information
-				// exp(-log-error-variance) does not depend on the mode), and for
-				// 'zero_censored_power_transformed_normal_heteroscedastic' it vanishes at every positive observation. Instead, solve
+				// second, fixed-effects-only block's gradient below. The ratio used just above
+				// (d_log_det_Sigma_W_plus_I_d_mode / deriv_for_stoch_trace) is not available for 'gaussian_heteroscedastic', whose
+				// deriv_information_diag_loc_par is identically zero (the mean's Fisher information exp(-log-error-variance) does
+				// not depend on the mode). Instead, solve
 				// (Sigma^-1+W) x_k = r_k for each column r_k of the raw (Cov = I) random vectors rand_vec_trace_I_ (already
 				// generated above for the log-determinant's stochastic trace estimation) using the existing,
 				// preconditioner-agnostic single-vector solver (it internally performs the required push-through for
