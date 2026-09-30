@@ -1629,6 +1629,33 @@ namespace GPBoost {
 								" (counting starts at 1) since this feature is constant " + add_error_str).c_str());
 						}
 					}// end loop over features
+					// The median distances per coordinate are multiplied by the median distance in the coordinates scaled by them.
+					//	Otherwise, the distances in the scaled coordinates grow with the number of coordinates, and the initial
+					//	correlations are almost zero in higher dimensions. For coordinates with equal median distances, this gives
+					//	the initial range of the isotropic covariance function
+					const int dim_coords = (int)coords.cols();
+					vec_t med_dist_per_coord_inv(dim_coords);
+					for (int ic = 0; ic < dim_coords; ++ic) {
+						med_dist_per_coord_inv[ic] = 1. / med_dist_per_coord[ic];
+					}
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < (num_data_find_init - 1); ++i) {
+						const int ii = use_subsamples ? sample_ind[i] : i;
+						for (int j = i + 1; j < num_data_find_init; ++j) {
+							const int jj = use_subsamples ? sample_ind[j] : j;
+							distances[i * (2 * num_data_find_init - i - 1) / 2 + j - (i + 1)] =
+								(coords.row(ii) - coords.row(jj)).cwiseProduct(med_dist_per_coord_inv.transpose()).norm();
+						}
+					}
+					double med_dist_scaled = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(distances);
+					if (med_dist_scaled < EPSILON_NUMBERS) {
+						med_dist_scaled = GPBoost::CalculateMean<std::vector<double>>(distances);
+					}
+					if (med_dist_scaled >= EPSILON_NUMBERS) {
+						for (int ic = 0; ic < dim_coords; ++ic) {
+							med_dist_per_coord[ic] *= med_dist_scaled;
+						}
+					}
 				}//end cov_fct_type_ == "matern_ard" && cov_fct_type_ == "gaussian_ard" || cov_fct_type_ == "matern_ard_estimate_shape"
 				if (cov_fct_type_ == "matern") {
 					if (shape_ <= 1.) {

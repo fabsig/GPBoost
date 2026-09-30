@@ -1172,5 +1172,45 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-exp_mu_mult)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$var)-exp_cov_mult[c(1,5,9)])),TOLERANCE_STRICT)
   })## end ARD Gaussian process model with linear regression term
- 
+
+  test_that("Default initial values of ARD covariance functions for many input dimensions ", {
+
+    # The initial range of a coordinate is its median distance times the median distance in the coordinates
+    #   scaled by these. For coordinates with the same values, all initial ranges thus equal the initial range
+    #   of the isotropic covariance function. When the median distance of a coordinate was used alone, the
+    #   distances in the scaled coordinates grew with the number of coordinates
+    n <- 300
+    u <- sim_rand_unif(n = n, init_c = 0.4271)
+    coords_eq <- sapply(c(1, 7, 11, 13, 17), function(p) u[((0:(n - 1)) * p) %% n + 1])# permutations of u
+    y_eq <- sim_rand_unif(n = n, init_c = 0.912) - 0.5
+    params_init <- list(maxit = 0, init_coef_aux_pars_from_iid_model = FALSE)# returns the initial values
+    for (cov_fct in c("matern", "gaussian")) {
+      capture.output( gp_model_iso <- fitGPModel(gp_coords = coords_eq, cov_function = cov_fct, cov_fct_shape = 1.5,
+                                                 y = y_eq, params = params_init), file='NUL')
+      capture.output( gp_model_ard <- fitGPModel(gp_coords = coords_eq, cov_function = paste0(cov_fct, "_ard"), cov_fct_shape = 1.5,
+                                                 y = y_eq, params = params_init), file='NUL')
+      init_range_iso <- as.vector(gp_model_iso$get_cov_pars())[3]
+      init_ranges_ard <- as.vector(gp_model_ard$get_cov_pars())[-c(1, 2)]
+      expect_length(init_ranges_ard, dim(coords_eq)[2])
+      expect_lt(max(abs(init_ranges_ard / init_range_iso - 1)), TOLERANCE_STRICT)
+    }
+    # With 20 coordinates, the initial correlations were close to zero, the likelihood was flat there, and
+    #   the optimizer stopped after one iteration at a negative log-likelihood of 457.7, while it is 303.2
+    #   at the true parameters
+    d <- 20
+    coords_hd <- matrix(sim_rand_unif(n = n * d, init_c = 0.6391), ncol = d)
+    rhos_hd <- (1:d) / 4
+    coords_hd_scaled <- sweep(coords_hd, 2, rhos_hd, "/")
+    D_hd <- as.matrix(dist(coords_hd_scaled))
+    Sigma_hd <- (1 + sqrt(3) * D_hd) * exp(-sqrt(3) * D_hd) + diag(1E-10, n)
+    eps_hd <- as.vector(t(chol(Sigma_hd)) %*% qnorm(sim_rand_unif(n = n, init_c = 0.3872)))
+    y_hd <- eps_hd + sqrt(0.05) * qnorm(sim_rand_unif(n = n, init_c = 0.1579))
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_hd, cov_function = "matern_ard", cov_fct_shape = 1.5,
+                                           y = y_hd, params = OPTIM_PARAMS_BFGS), file='NUL')
+    gp_model_true <- GPModel(gp_coords = coords_hd, cov_function = "matern_ard", cov_fct_shape = 1.5)
+    nll_true <- gp_model_true$neg_log_likelihood(cov_pars = c(0.05, 1, rhos_hd), y = y_hd)
+    expect_gt(gp_model$get_num_optim_iter(), 1)
+    expect_lt(gp_model$get_current_neg_log_likelihood(), nll_true)
+  })
+
 }

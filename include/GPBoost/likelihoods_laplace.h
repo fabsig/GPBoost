@@ -4147,21 +4147,25 @@ namespace GPBoost {
 					// Solve with the Jacobian of the score whose root is the mode, see above. The conjugate gradient
 					//	algorithm requires a positive definite matrix, which Sigma^-1 + observed Hessian is only at a
 					//	local maximum of the approximated posterior -> the solution is verified through its residual
-					//	and "W" is used instead if the solve did not succeed
+					//	and "W" is used instead if the solve did not succeed. The preconditioner is the "vadu"
+					//	preconditioner B^T (D^-1 + diag(observed Hessian)) B, a diagonal preconditioner does not
+					//	cope with the conditioning of Sigma^-1 for smooth covariance functions
 					sp_mat_rm_t mode_jacobian_rm = sp_mat_rm_t(mode_jacobian);
-					vec_t mode_jacobian_diag = mode_jacobian.diagonal();
-					vec_t mode_jacobian_inv_diag = mode_jacobian_diag.cwiseInverse();
-					sp_mat_rm_t not_used_rm;
+					vec_t observed_hessian_diag = observed_hessian_ll_mat_.diagonal();
+					sp_mat_rm_t observed_hessian_off_diag_rm = sp_mat_rm_t(observed_hessian_ll_mat_);
+					observed_hessian_off_diag_rm.prune([](const Eigen::Index& row, const Eigen::Index& col, const double&) { return row != col; });
+					vec_t D_inv_plus_observed_hessian_diag = D_inv_rm_.diagonal() + observed_hessian_diag.cwiseMax(0.);
 					vec_t mode_jacobian_inv_d_mll_d_mode(dim_mode_);
 					bool has_NA_or_Inf_mode_jacobian = false;
-					int num_cg_steps_mode_jacobian;
-					if ((mode_jacobian_diag.array() <= 0.).any() || !mode_jacobian_inv_diag.allFinite()) {
+					if ((D_inv_plus_observed_hessian_diag.array() <= 0.).any() || !D_inv_plus_observed_hessian_diag.allFinite()) {
 						has_NA_or_Inf_mode_jacobian = true;
 					}
 					else {
-						CGRandomEffectsVec(mode_jacobian_rm, d_mll_d_mode, mode_jacobian_inv_d_mll_d_mode, has_NA_or_Inf_mode_jacobian,
-							cg_max_num_it_, cg_delta_conv_, true, ZERO_RHS_CG_THRESHOLD, true, "diagonal", not_used_rm, not_used_rm,
-							mode_jacobian_inv_diag, num_cg_steps_mode_jacobian, cg_convergence_params_);
+						sp_mat_rm_t D_inv_plus_observed_hessian_diag_B_rm = D_inv_plus_observed_hessian_diag.asDiagonal() * B_rm_;
+						sp_mat_rm_t not_used_rm;
+						CGVecchiaLaplaceVec(observed_hessian_diag, B_rm_, B_t_D_inv_rm_, d_mll_d_mode, mode_jacobian_inv_d_mll_d_mode,
+							has_NA_or_Inf_mode_jacobian, cg_max_num_it_, true, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, "vadu",
+							D_inv_plus_observed_hessian_diag_B_rm, not_used_rm, true, cg_convergence_params_, &observed_hessian_off_diag_rm);
 					}
 					const double rhs_norm = d_mll_d_mode.norm();
 					const double residual_norm = has_NA_or_Inf_mode_jacobian ? std::numeric_limits<double>::infinity() :

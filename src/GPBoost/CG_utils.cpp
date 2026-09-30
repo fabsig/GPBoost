@@ -34,12 +34,21 @@ namespace GPBoost {
 		const sp_mat_rm_t& D_inv_plus_W_B_rm,
 		const sp_mat_rm_t& L_SigmaI_plus_W_rm,
 		bool run_in_parallel_do_not_report_non_convergence,
-		const CGConvergenceParams& convergence_params) {
+		const CGConvergenceParams& convergence_params,
+		const sp_mat_rm_t* off_diag_W_rm) {
 
 		p = std::min(p, (int)B_rm.cols());
 		vec_t r, r_old;
 		vec_t z, z_old;
 		vec_t h, v, B_invt_r, L_invt_r;
+		//Parentheses are necessery for performance, otherwise EIGEN does the operation wrongly from left to right
+		auto apply_A = [&](const vec_t& x) {
+			vec_t Ax = (B_t_D_inv_rm * (B_rm * x)) + diag_W.cwiseProduct(x);
+			if (off_diag_W_rm != nullptr) {
+				Ax += (*off_diag_W_rm) * x;
+			}
+			return Ax;
+		};
 		double a, b, r_norm;
 		//'delta_conv' is chosen by the caller (e.g. estimation vs. prediction) and thus takes precedence over the configured default
 		CGConvergenceParams conv_params(convergence_params);
@@ -75,7 +84,7 @@ namespace GPBoost {
 		}
 		else {
 			//r = rhs - A * u
-			r = rhs - ((B_t_D_inv_rm * (B_rm * u)) + diag_W.cwiseProduct(u));
+			r = rhs - apply_A(u);
 		}
 		//a warm start can already satisfy the tolerance, and one that solves the system exactly would
 		//	make the first step size a = (r^T z) / (h^T A h) a 0/0. Being unable to continue is not the
@@ -105,8 +114,7 @@ namespace GPBoost {
 		}
 		h = z;
 		for (int j = 0; j < p; ++j) {
-			//Parentheses are necessery for performance, otherwise EIGEN does the operation wrongly from left to right
-			v = (B_t_D_inv_rm * (B_rm * h)) + diag_W.cwiseProduct(h);
+			v = apply_A(h);
 			a = r.transpose() * z;
 			a /= h.transpose() * v;
 			u += a * h;

@@ -378,7 +378,8 @@ namespace GPBoost {
 	/*!
 	* \brief Preconditioned conjugate gradient descent to solve A u = rhs when rhs is a vector
 	*		 A = (Sigma^-1 + W) is a symmetric matrix of dimension nxn, a Vecchia approximation for Sigma^-1,
-	*		 Sigma^-1 = B^T D^-1 B, is given, and W is a diagonal matrix.
+	*		 Sigma^-1 = B^T D^-1 B, is given, and W is a diagonal matrix, optionally plus a sparse matrix without diagonal
+	*		 ('off_diag_W_rm'). The preconditioners only use the diagonal of W.
 	*		 "Sigma_inv_plus_BtWB" (P = B^T (D^-1 + W) B)  or "zero_infill_incomplete_cholesky" (P = L^T L) is used as preconditioner.
 	* \param diag_W Diagonal of matrix W
 	* \param B_rm Row-major matrix B in Vecchia approximation Sigma^-1 = B^T D^(-1) B ("=" Cholesky factor)
@@ -395,6 +396,7 @@ namespace GPBoost {
 	* \param L_SigmaI_plus_W_rm Row-major matrix that contains sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W used for the preconditioner "zero_infill_incomplete_cholesky".
 	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
 	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
+	* \param off_diag_W_rm Off-diagonal part of W as a symmetric row-major matrix with a zero diagonal, or nullptr if W is diagonal
 	*/
 	void CGVecchiaLaplaceVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -410,7 +412,8 @@ namespace GPBoost {
 		const sp_mat_rm_t& D_inv_plus_W_B_rm,
 		const sp_mat_rm_t& L_SigmaI_plus_W_rm,
 		bool run_in_parallel_do_not_report_non_convergence,
-		const CGConvergenceParams& convergence_params = CGConvergenceParams());
+		const CGConvergenceParams& convergence_params = CGConvergenceParams(),
+		const sp_mat_rm_t* off_diag_W_rm = nullptr);
 
 	/*!
 	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.

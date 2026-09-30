@@ -993,6 +993,45 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }# end loop inv_method in c("cholesky", "iterative")
   }) #end gaussian_heteroscedastic_fixed_and_random likelihood
 
+  test_that("gaussian_heteroscedastic_fixed_and_random likelihood with a smooth covariance function and iterative methods ", {
+
+    # The iterative methods solve with Sigma^-1 + observed Hessian for the derivatives through the mode. With
+    #   a diagonal preconditioner, the conjugate gradient algorithm did not solve this system for a smooth
+    #   covariance function, the gradient was then calculated with the matrix "W" of the approximation and had
+    #   the wrong sign. The optimizer stopped after 5 iterations at a negative log-likelihood of 476.9, while
+    #   it is 377.4 at the optimum. The data is homoscedastic, so the variance of the GP of the log-error
+    #   variance is close to zero at the optimum
+    likelihood <- "gaussian_heteroscedastic_fixed_and_random"
+    n_het <- 500
+    coords_het <- cbind(sim_rand_unif(n = n_het, init_c = 0.63), sim_rand_unif(n = n_het, init_c = 0.17))
+    D_het <- as.matrix(dist(coords_het))
+    rho_het <- 0.2 / 4.74
+    Sigma_het <- (1 + D_het / rho_het) * exp(-D_het / rho_het) + diag(1E-10, n_het)
+    eps_het <- as.vector(t(chol(Sigma_het)) %*% qnorm(sim_rand_unif(n = n_het, init_c = 0.4321)))
+    y_het <- eps_het + sqrt(0.05) * qnorm(sim_rand_unif(n = n_het, init_c = 0.8765))
+    X_het <- matrix(1, nrow = n_het, ncol = 1)
+    # A new GPModel is used for every evaluation so that the mode is calculated from scratch
+    nll_chol_het <- function(cov_pars_loc, coefs_loc) {
+      gp_nll <- GPModel(gp_coords = coords_het, cov_function = "matern", cov_fct_shape = 1.5, likelihood = likelihood,
+                        gp_approx = "vecchia", num_neighbors = 10, vecchia_ordering = "random", seed = 1,
+                        matrix_inversion_method = "cholesky")
+      capture.output( nll_loc <- gp_nll$neg_log_likelihood(cov_pars = cov_pars_loc, y = y_het,
+                                                           fixed_effects = c(X_het %*% coefs_loc[1], X_het %*% coefs_loc[2])), file='NUL')
+      nll_loc
+    }
+    # The default settings are used, in particular the initial coefficients from an iid model
+    nll_opt_het <- list()
+    for (inv_method in c("cholesky", "iterative")) {
+      capture.output( gp_model <- fitGPModel(gp_coords = coords_het, cov_function = "matern", cov_fct_shape = 1.5,
+                                             likelihood = likelihood, gp_approx = "vecchia", num_neighbors = 10,
+                                             vecchia_ordering = "random", seed = 1, matrix_inversion_method = inv_method,
+                                             y = y_het, X = X_het), file='NUL')
+      nll_opt_het[[inv_method]] <- nll_chol_het(as.vector(gp_model$get_cov_pars()), as.vector(gp_model$get_coef()))
+      expect_lt(as.vector(gp_model$get_cov_pars())[3], 0.01)
+    }
+    expect_lt(abs(nll_opt_het[["iterative"]] - nll_opt_het[["cholesky"]]), 1)
+  })
+
   test_that("Initial coefficients from an iid model for gaussian_heteroscedastic_fixed_and_random ", {
 
     # 'gaussian_heteroscedastic_fixed_and_random' is supported only for a Vecchia approximated GP, so the
