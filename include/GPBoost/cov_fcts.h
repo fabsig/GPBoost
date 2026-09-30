@@ -1597,7 +1597,10 @@ namespace GPBoost {
 							feature_is_constant = true;
 						}
 						else if (num_unique_values <= 10) {
-							med_dist_per_coord[ic] = (num_unique_values * num_unique_values - 1) / 3. / num_unique_values; // use average distance among two random points on {1,...,num_unique_values}
+							// average distance among two random points on {1,...,num_unique_values} times the average spacing of the values,
+							//	so that the scale does not depend on how the feature is coded
+							med_dist_per_coord[ic] = (num_unique_values * num_unique_values - 1) / 3. / num_unique_values *
+								(col_i.maxCoeff() - col_i.minCoeff()) / (num_unique_values - 1);
 						}
 						else {// num_unique_values > 10
 							double med_dist_coord_i = 0.;

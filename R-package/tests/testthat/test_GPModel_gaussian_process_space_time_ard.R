@@ -1173,7 +1173,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$var)-exp_cov_mult[c(1,5,9)])),TOLERANCE_STRICT)
   })## end ARD Gaussian process model with linear regression term
 
-  test_that("Default initial values of ARD covariance functions for many input dimensions ", {
+  test_that("Default initial values of ARD covariance functions ", {
 
     # The initial range of a coordinate is its median distance times the median distance in the coordinates
     #   scaled by these. For coordinates with the same values, all initial ranges thus equal the initial range
@@ -1211,6 +1211,32 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll_true <- gp_model_true$neg_log_likelihood(cov_pars = c(0.05, 1, rhos_hd), y = y_hd)
     expect_gt(gp_model$get_num_optim_iter(), 1)
     expect_lt(gp_model$get_current_neg_log_likelihood(), nll_true)
+    # Rescaling a coordinate rescales only its own initial range, also for a feature with few distinct values.
+    #   The scale of such a feature did not depend on its values, so a binary feature coded as 0 and 10000
+    #   multiplied all initial ranges by about 10000 and the fit collapsed to almost pure noise
+    n_bin <- 200
+    x_cont <- sim_rand_unif(n = n_bin, init_c = 0.2718)
+    x_bin <- as.numeric(sim_rand_unif(n = n_bin, init_c = 0.5772) < 0.5)
+    D_bin <- as.matrix(dist(cbind(x_cont / 0.2, x_bin)))
+    Sigma_bin <- (1 + sqrt(3) * D_bin) * exp(-sqrt(3) * D_bin) + diag(1E-10, n_bin)
+    y_bin <- as.vector(t(chol(Sigma_bin)) %*% qnorm(sim_rand_unif(n = n_bin, init_c = 0.1414))) +
+      sqrt(0.05) * qnorm(sim_rand_unif(n = n_bin, init_c = 0.7071))
+    scale_bin <- 10000
+    for (cov_fct in c("matern_ard", "gaussian_ard")) {
+      init_ranges <- nll_opt <- list()
+      for (coding in c("01", "rescaled")) {
+        coords_bin <- cbind(x_cont, if (coding == "01") x_bin else scale_bin * x_bin)
+        capture.output( gp_model <- fitGPModel(gp_coords = coords_bin, cov_function = cov_fct, cov_fct_shape = 1.5,
+                                               y = y_bin, params = params_init), file='NUL')
+        init_ranges[[coding]] <- as.vector(gp_model$get_cov_pars())[-c(1, 2)]
+        capture.output( gp_model <- fitGPModel(gp_coords = coords_bin, cov_function = cov_fct, cov_fct_shape = 1.5,
+                                               y = y_bin, params = OPTIM_PARAMS_BFGS), file='NUL')
+        nll_opt[[coding]] <- gp_model$get_current_neg_log_likelihood()
+      }
+      expect_lt(max(abs(init_ranges[["rescaled"]] / (init_ranges[["01"]] * c(1, scale_bin)) - 1)), TOLERANCE_STRICT)
+      expect_lt(abs(nll_opt[["rescaled"]] - nll_opt[["01"]]), TOLERANCE_LOOSE)
+      expect_lt(nll_opt[["rescaled"]], 50)# 160.9 when the fit collapsed
+    }
   })
 
 }
