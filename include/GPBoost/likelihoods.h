@@ -1076,7 +1076,8 @@ namespace GPBoost {
 		void BackTransformAuxPars(const double* aux_pars_trans,
 			double* aux_pars_orig);
 
-		/*! \brief Set properties (matrix inversion properties, choices for iterative methods, etc.). This function is calle from re_model_template.h which also holds these variables */
+		/*! \brief Set properties (matrix inversion properties, choices for iterative methods, etc.). This function is calle from re_model_template.h which also holds these variables.
+		*		'delta_conv_mode_finding_has_been_set' is true if the user has set 'delta_conv_mode_finding'; otherwise, a likelihood can use its own default */
 		void SetPropertiesLikelihood(const string_t& matrix_inversion_method,
 			int cg_max_num_it,
 			int cg_max_num_it_tridiag,
@@ -1090,6 +1091,7 @@ namespace GPBoost {
 			int rank_pred_approx_matrix_lanczos,
 			int nsim_var_pred,
 			double delta_conv_mode_finding,
+			bool delta_conv_mode_finding_has_been_set,
 			const CGConvergenceParams& cg_convergence_params,
 			const CGConvergenceParams& cg_convergence_params_pred) {
 			matrix_inversion_method_ = matrix_inversion_method;
@@ -1113,6 +1115,13 @@ namespace GPBoost {
 			nsim_var_pred_ = nsim_var_pred;
 			CHECK(delta_conv_mode_finding > 0.);
 			delta_conv_mode_finding_ = delta_conv_mode_finding;
+			if (!delta_conv_mode_finding_has_been_set && likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
+				// Fisher scoring converges only linearly for this likelihood since the Fisher information of the log-error variance
+				//	can differ strongly from the curvature of the log-likelihood. The relative change of the objective per iteration
+				//	then falls below the general default long before the mode is reached, and the approximate marginal likelihood
+				//	jumps between nearby parameters
+				delta_conv_mode_finding_ = DELTA_CONV_MODE_FINDING_HETEROSCEDASTIC_;
+			}
 			num_rand_vec_sim_post_ = nsim_var_pred;
 			reuse_rand_vec_I_sim_post_ = reuse_rand_vec_trace;
 		}//end SetPropertiesLikelihood
@@ -8352,6 +8361,8 @@ namespace GPBoost {
 		*		requires a positive definite matrix, and is deliberately not stricter than the convergence criterion of
 		*		the algorithm itself */
 		const double MODE_JACOBIAN_CG_RESIDUAL_TOL_ = 0.1;
+		/*! \brief Default of 'delta_conv_mode_finding_' for 'gaussian_heteroscedastic_fixed_and_random', see 'SetPropertiesLikelihood()' */
+		const double DELTA_CONV_MODE_FINDING_HETEROSCEDASTIC_ = 1e-10;
 		/*! \brief If true, the mode has been initialized to 0 */
 		bool mode_initialized_ = false;
 		/*! \brief If true, the mode has been determined */

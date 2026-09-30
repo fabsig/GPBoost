@@ -1147,6 +1147,7 @@ namespace GPBoost {
 			}
 			if (delta_conv_mode_finding > 0.) {
 				delta_conv_mode_finding_ = delta_conv_mode_finding;
+				delta_conv_mode_finding_has_been_set_ = true;
 			}
 			else if (!TwoNumbersAreEqual<double>(delta_conv_mode_finding, -999.)) {
 				Log::REFatal("delta_conv_mode_finding is not > 0, found = %g ", delta_conv_mode_finding);
@@ -6214,6 +6215,8 @@ namespace GPBoost {
 		double likelihood_additional_param_;
 		/*! \brief Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods (terminate if relative change in Laplace approx. is below this value) */
 		double delta_conv_mode_finding_ = 1e-8;
+		/*! \brief True if 'delta_conv_mode_finding' has been set by the user. Otherwise, a likelihood can use a different default, see 'SetPropertiesLikelihood()' in likelihoods.h */
+		bool delta_conv_mode_finding_has_been_set_ = false;
 		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian likelihoods */
 		double neg_log_likelihood_;
 		/*! \brief Value of negative log-likelihood or approximate marginal negative log-likelihood for non-Gaussian likelihoods of previous iteration in optimization used for convergence checking */
@@ -8359,7 +8362,7 @@ namespace GPBoost {
 						cg_max_num_it_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_delta_conv_pred_,
 						num_rand_vec_trace_, reuse_rand_vec_trace_, seed_rand_vec_trace_,
 						cg_preconditioner_type_, fitc_piv_chol_preconditioner_rank_, rank_pred_approx_matrix_lanczos_, nsim_var_pred_,
-						delta_conv_mode_finding_, cg_convergence_params_, cg_convergence_params_pred_);
+						delta_conv_mode_finding_, delta_conv_mode_finding_has_been_set_, cg_convergence_params_, cg_convergence_params_pred_);
 					likelihood_[cluster_i]->SetFirstCovParScalesCovMat(FirstCovParScalesCovMat());
 				}
 			}

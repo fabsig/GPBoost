@@ -92,6 +92,12 @@ public:
                 {
                     width = dec;
                 }
+                // ChangedForGPBoost: the mode finding of a candidate starts at the modes of the previous candidate. After NA / Inf, these
+                //  modes are often the cause, and the mode finding can then fail at every further candidate -> start it at the modes of 'xp'
+                if (!std::isfinite(fx))
+                {
+                    f.ResetModesToLag1();
+                }
             }
             else
             {

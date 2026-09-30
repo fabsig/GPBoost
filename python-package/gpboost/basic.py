@@ -6564,6 +6564,7 @@ class GPModel(object):
                     If max_num_restarts_lbfgs = -999, internal default values are used.
                 - delta_conv_mode_finding : double, optional (default = 1e-8)
                     Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods.
+                    The default is 1e-10 for the likelihood "gaussian_heteroscedastic_fixed_and_random".
                     If delta_conv_mode_finding = -999, internal default values are used.
 
         offset : numpy 1-D array or None, optional (default=None)
@@ -6937,6 +6938,7 @@ class GPModel(object):
                     If max_num_restarts_lbfgs = -999, internal default values are used.
                 - delta_conv_mode_finding : double, optional (default = 1e-8)
                     Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods.
+                    The default is 1e-10 for the likelihood "gaussian_heteroscedastic_fixed_and_random".
                     If delta_conv_mode_finding = -999, internal default values are used.
 
         Example

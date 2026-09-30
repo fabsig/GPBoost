@@ -816,7 +816,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_nll <- 199.6831947
     cov_pars <- c(0.29001518290, 0.15063562850, 0.20539174870, 0.01285131220)
     coefs <- c(0.2562339067, -0.1161880773, 0.6373796861, 0.3056600825)
-    num_it <- 37
+    num_it <- 38
     nll_est <- 191.2145084
     expected_mu <- c(0.06126291, 0.07337373, 0.30807230)
     expected_var <- c(0.5994207, 0.6014515, 0.3936357)
@@ -1030,6 +1030,51 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(as.vector(gp_model$get_cov_pars())[3], 0.01)
     }
     expect_lt(abs(nll_opt_het[["iterative"]] - nll_opt_het[["cholesky"]]), 1)
+  })
+
+  test_that("gaussian_heteroscedastic_fixed_and_random likelihood on an almost noise-free heteroscedastic field ", {
+
+    # In the line search of lbfgs, the mode finding of a candidate point starts at the modes of the previous
+    #   candidate. After a first candidate far off the optimum, these modes were unusable, the mode finding
+    #   of every further candidate ended with NA or Inf, and the optimizer stopped after 8 iterations at a
+    #   negative log-likelihood of 702.3, while the heteroscedastic model reaches 362.3 and the homoscedastic
+    #   one 362.4. The field is simulated sequentially: in a random order, an observation given its 10
+    #   nearest predecessors is normal with the kriging mean mu and the kriging standard deviation times
+    #   exp(tanh(mu)), without a nugget
+    likelihood <- "gaussian_heteroscedastic_fixed_and_random"
+    n_seq <- 800
+    coords_seq <- cbind(sim_rand_unif(n = n_seq, init_c = 0.18), sim_rand_unif(n = n_seq, init_c = 0.17))
+    rho_seq <- 0.25 / 4.74
+    cov_seq <- function(d) (1 + d / rho_seq) * exp(-d / rho_seq)
+    order_seq <- order(sim_rand_unif(n = n_seq, init_c = 0.5143))
+    z_seq <- qnorm(sim_rand_unif(n = n_seq, init_c = 0.8765))
+    y_seq <- rep(0, n_seq)
+    for (k in seq_len(n_seq)) {
+      i <- order_seq[k]
+      mu <- 0
+      s <- 1
+      if (k > 1) {
+        prev <- order_seq[1:(k - 1)]
+        d_prev <- sqrt((coords_seq[prev, 1] - coords_seq[i, 1])^2 + (coords_seq[prev, 2] - coords_seq[i, 2])^2)
+        nb <- prev[order(d_prev)[1:min(10, k - 1)]]
+        c_i <- cov_seq(sqrt((coords_seq[nb, 1] - coords_seq[i, 1])^2 + (coords_seq[nb, 2] - coords_seq[i, 2])^2))
+        w <- solve(cov_seq(as.matrix(dist(coords_seq[nb, , drop = FALSE]))), c_i)
+        mu <- sum(w * y_seq[nb])
+        s <- sqrt(max(1 - sum(w * c_i), 0))
+      }
+      y_seq[i] <- mu + s * exp(tanh(mu)) * z_seq[k]
+    }
+    X_seq <- matrix(1, nrow = n_seq, ncol = 1)
+    capture.output( gp_model_hom <- fitGPModel(gp_coords = coords_seq, cov_function = "matern", cov_fct_shape = 1.5,
+                                               gp_approx = "vecchia", num_neighbors = 10, vecchia_ordering = "none",
+                                               y = y_seq, X = X_seq), file='NUL')
+    # The default settings are used, in particular the initial coefficients from an iid model
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_seq, cov_function = "matern", cov_fct_shape = 1.5,
+                                           likelihood = likelihood, gp_approx = "vecchia", num_neighbors = 10,
+                                           vecchia_ordering = "none", matrix_inversion_method = "cholesky",
+                                           y = y_seq, X = X_seq), file='NUL')
+    # the heteroscedastic model contains the homoscedastic one (the variance of the GP of the log-error variance is then zero)
+    expect_lt(gp_model$get_current_neg_log_likelihood(), gp_model_hom$get_current_neg_log_likelihood() + 1)
   })
 
   test_that("Initial coefficients from an iid model for gaussian_heteroscedastic_fixed_and_random ", {
