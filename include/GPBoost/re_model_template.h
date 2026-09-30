@@ -601,10 +601,10 @@ namespace GPBoost {
 		* \brief Returns the number of CG steps when the CG method was last run
 		*/
 		int GetNumCGSteps() {
-			bool cg_steps_recorded = ((num_re_group_total_ > 1 && num_re_group_total_ == num_comps_total_) || grouped_RE_and_vecchia_GP_)
-				&& matrix_inversion_method_ == "iterative";
+			bool cg_steps_recorded = ((num_re_group_total_ > 1 && num_re_group_total_ == num_comps_total_) || grouped_RE_and_vecchia_GP_ ||
+				(gp_approx_ == "vecchia" && !gauss_likelihood_)) && matrix_inversion_method_ == "iterative";
 			if (!cg_steps_recorded) {
-				Log::REWarning("GetNumCGSteps: this function is currently only implemented when having multiple grouped random effects and iterative methods are used ");
+				Log::REWarning("GetNumCGSteps: this function is currently only implemented when iterative methods are used for multiple grouped random effects or for a Vecchia approximation with a non-Gaussian likelihood ");
 			}
 			if (num_clusters_ > 1) {
 				Log::REWarning("GetNumCGSteps: this function is not properly implemented when having multiple 'clusters' ('cluster_ids'). A value is returned for only one cluster ");
@@ -621,10 +621,10 @@ namespace GPBoost {
 		* \brief Returns the number of CG steps when the CG method was last run for the SLQ method
 		*/
 		int GetNumCGStepsTridiag() {
-			bool cg_steps_recorded = ((num_re_group_total_ > 1 && num_re_group_total_ == num_comps_total_) || grouped_RE_and_vecchia_GP_)
-				&& matrix_inversion_method_ == "iterative";
+			bool cg_steps_recorded = ((num_re_group_total_ > 1 && num_re_group_total_ == num_comps_total_) || grouped_RE_and_vecchia_GP_ ||
+				(gp_approx_ == "vecchia" && !gauss_likelihood_)) && matrix_inversion_method_ == "iterative";
 			if (!cg_steps_recorded) {
-				Log::REWarning("GetNumCGStepsTridiag: this function is currently only implemented when having multiple grouped random effects and iterative methods are used ");
+				Log::REWarning("GetNumCGStepsTridiag: this function is currently only implemented when iterative methods are used for multiple grouped random effects or for a Vecchia approximation with a non-Gaussian likelihood ");
 			}
 			if (num_clusters_ > 1) {
 				Log::REWarning("GetNumCGStepsTridiag: this function is not properly implemented when having multiple 'clusters' ('cluster_ids'). A value is returned for only one cluster ");
@@ -1326,6 +1326,11 @@ namespace GPBoost {
 			num_ll_evaluations_ = 0;
 			num_iter_ = 0;
 			num_it = max_iter_;
+			if (!gauss_likelihood_) {
+				for (const auto& cluster_i : unique_clusters_) {
+					likelihood_[cluster_i]->ResetCGStatistics();// for 'SlowIterativeMethodsWarning()'
+				}
+			}
 			has_intercept_ = false; //If true, the covariates contain an intercept column (only relevant if there are covariates)
 			intercept_col_ = -1;
 			// Check whether one of the columns contains only 1's (-> has_intercept_)
@@ -2121,6 +2126,7 @@ namespace GPBoost {
 					Log::REDebug("Approximate negative marginal log-likelihood: %g", neg_log_likelihood_);
 				}
 				CovarianceParameterRangeWarning(cov_aux_pars.segment(0, num_cov_par_));
+				SlowIterativeMethodsWarning(called_in_GPBoost_algorithm);
 				vec_t cov_pars_var_const_maybe;
 				MaybeKeepVarianceConstant(cov_aux_pars.segment(0, num_cov_par_), cov_pars_var_const_maybe);
 				for (int i = 0; i < num_cov_par_; ++i) {
@@ -6599,6 +6605,12 @@ namespace GPBoost {
 		// If true, a warning is written when the parameter estimation has not converged ('convergence_status_' != 0).
 		//	Set to false for auxiliary models that are estimated internally to obtain initial values
 		bool report_convergence_warnings_ = true;
+		/*! \brief True if the warning of 'SlowIterativeMethodsWarning()' has been given */
+		bool slow_iterative_methods_warning_given_ = false;
+		/*! \brief 'SlowIterativeMethodsWarning()' warns if at least this fraction of the runs of the conjugate gradient algorithm has reached the maximal number of iterations */
+		const double SLOW_CG_FRACTION_RUNS_MAX_IT_ = 0.05;
+		/*! \brief 'SlowIterativeMethodsWarning()' also warns if the runs needed at least this fraction of the maximal number of iterations on average */
+		const double SLOW_CG_FRACTION_MEAN_STEPS_ = 0.3;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
@@ -9337,6 +9349,51 @@ namespace GPBoost {
 				}
 			}
 		}//end TransformBackCovPars
+
+		/*!
+		* \brief Report the number of iterations of the conjugate gradient algorithm of the iterative methods for a Vecchia-Laplace
+		*		approximation during the parameter estimation and warn if they are large, since the estimation can then be much faster
+		*		with Cholesky factorizations or another preconditioner
+		* \param called_in_GPBoost_algorithm If true, the warning is given at most once for this model
+		*/
+		void SlowIterativeMethodsWarning(bool called_in_GPBoost_algorithm) {
+			if (gauss_likelihood_ || matrix_inversion_method_ != "iterative" || gp_approx_ != "vecchia" || grouped_RE_and_vecchia_GP_) {
+				return;
+			}
+			CGStatistics stats, stats_tridiag;
+			for (const auto& cluster_i : unique_clusters_) {
+				stats.Add(likelihood_[cluster_i]->GetCGStatistics());
+				stats_tridiag.Add(likelihood_[cluster_i]->GetCGStatisticsTridiag());
+			}
+			const int num_runs = stats.num_runs + stats_tridiag.num_runs;
+			const int num_runs_max_it = stats.num_runs_max_it + stats_tridiag.num_runs_max_it;
+			Log::REDebug("GPModel: conjugate gradient algorithm during the estimation: %d runs with one right-hand side (%d reached "
+				"'cg_max_num_it', %g iterations on average), %d runs for the log-determinant (%d reached 'cg_max_num_it_tridiag', "
+				"%g iterations on average) ", stats.num_runs, stats.num_runs_max_it, stats.MeanSteps(),
+				stats_tridiag.num_runs, stats_tridiag.num_runs_max_it, stats_tridiag.MeanSteps());
+			const bool many_runs_max_it = num_runs_max_it >= std::max(2., SLOW_CG_FRACTION_RUNS_MAX_IT_ * num_runs);
+			const bool many_steps = stats.MeanSteps() >= SLOW_CG_FRACTION_MEAN_STEPS_ * cg_max_num_it_ ||
+				stats_tridiag.MeanSteps() >= SLOW_CG_FRACTION_MEAN_STEPS_ * cg_max_num_it_tridiag_;
+			if (num_runs == 0 || !(many_runs_max_it || many_steps) || !report_convergence_warnings_ ||
+				(called_in_GPBoost_algorithm && slow_iterative_methods_warning_given_)) {
+				return;
+			}
+			slow_iterative_methods_warning_given_ = true;
+			string_t alternatives = "matrix_inversion_method = 'cholesky' if the sample size is not very large";
+			if (cg_preconditioner_type_ != "fitc" && likelihood_[unique_clusters_[0]]->FITCPreconditionerIsSupported()) {
+				alternatives += ", or with cg_preconditioner_type = 'fitc'";
+			}
+			string_t reason = "";
+			if (cg_preconditioner_type_ == "vadu") {
+				reason = " The 'vadu' preconditioner is inefficient when the information of the likelihood (e.g., the inverse of a small "
+					"error variance) is large compared to the inverse conditional variances of the Vecchia approximation (e.g., for a "
+					"smooth covariance function with a large range).";
+			}
+			Log::REWarning(("GPModel: the conjugate gradient algorithm of the iterative methods (cg_preconditioner_type = '%s') has needed "
+				"many iterations during the estimation: %d of %d runs reached the maximal number of iterations, and a run needed %g "
+				"iterations on average. The estimation could be faster with " + alternatives + "." + reason + " ").c_str(),
+				cg_preconditioner_type_.c_str(), num_runs_max_it, num_runs, (stats.num_steps + stats_tridiag.num_steps) / num_runs);
+		}//end SlowIterativeMethodsWarning
 
 		/*!
 		* \brief Make a warning of some parameters are e.g. too large

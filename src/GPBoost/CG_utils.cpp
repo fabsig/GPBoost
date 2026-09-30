@@ -20,6 +20,21 @@ using LightGBM::Log;
 
 namespace GPBoost {
 
+	namespace {
+		/*! \brief Writes the number of conjugate gradient steps that have been carried out to 'num_cg_steps' (if not nullptr) when the function returns */
+		struct CGStepsReporter {
+			explicit CGStepsReporter(int* num_cg_steps) : num_cg_steps_(num_cg_steps) {}
+			~CGStepsReporter() {
+				if (num_cg_steps_ != nullptr) {
+					*num_cg_steps_ = num_steps;
+				}
+			}
+			int num_steps = 0;
+		private:
+			int* num_cg_steps_;
+		};
+	}
+
 	void CGVecchiaLaplaceVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
 		const sp_mat_rm_t& B_t_D_inv_rm,
@@ -35,7 +50,9 @@ namespace GPBoost {
 		const sp_mat_rm_t& L_SigmaI_plus_W_rm,
 		bool run_in_parallel_do_not_report_non_convergence,
 		const CGConvergenceParams& convergence_params,
-		const sp_mat_rm_t* off_diag_W_rm) {
+		const sp_mat_rm_t* off_diag_W_rm,
+		int* num_cg_steps) {
+		CGStepsReporter cg_steps_reporter(num_cg_steps);
 
 		p = std::min(p, (int)B_rm.cols());
 		vec_t r, r_old;
@@ -114,6 +131,7 @@ namespace GPBoost {
 		}
 		h = z;
 		for (int j = 0; j < p; ++j) {
+			cg_steps_reporter.num_steps = j + 1;
 			v = apply_A(h);
 			a = r.transpose() * z;
 			a /= h.transpose() * v;
@@ -166,7 +184,9 @@ namespace GPBoost {
 		const string_t cg_preconditioner_type,
 		const sp_mat_rm_t& D_inv_plus_W_B_rm,
 		const sp_mat_rm_t& L_SigmaI_plus_W_rm,
-		const CGConvergenceParams& convergence_params) {
+		const CGConvergenceParams& convergence_params,
+		int* num_cg_steps) {
+		CGStepsReporter cg_steps_reporter(num_cg_steps);
 
 		p = std::min(p, (int)num_data);
 		den_mat_t R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t), L_kt_W_inv_R, B_k_W_inv_R, W_inv_R;
@@ -211,6 +231,7 @@ namespace GPBoost {
 		}
 		H = Z;
 		for (int j = 0; j < p; ++j) {
+			cg_steps_reporter.num_steps = j + 1;
 			//V = (Sigma^(-1) + W) H
 #pragma omp parallel for schedule(static)   
 			for (int i = 0; i < t; ++i) {
@@ -339,7 +360,9 @@ namespace GPBoost {
 		const sp_mat_rm_t& B_vecchia_pc,
 		const sp_mat_t& D_inv_vecchia_pc,
 		bool run_in_parallel_do_not_report_non_convergence,
-		const CGConvergenceParams& convergence_params) {
+		const CGConvergenceParams& convergence_params,
+		int* num_cg_steps) {
+		CGStepsReporter cg_steps_reporter(num_cg_steps);
 		p = std::min(p, (int)B_rm.cols());
 		if (cg_preconditioner_type == "pivoted_cholesky") {
 			CHECK(Sigma_L_k.rows() == B_rm.cols());
@@ -438,6 +461,7 @@ namespace GPBoost {
 		}
 		h = z;
 		for (int j = 0; j < p; ++j) {
+			cg_steps_reporter.num_steps = j + 1;
 			//(W^(-1) + Sigma) * h
 			B_invt_h = B_rm.transpose().triangularView<Eigen::UpLoType::UnitUpper>().solve(h);
 			v = D_inv_B_rm.triangularView<Eigen::UpLoType::Lower>().solve(B_invt_h) + diag_W_inv.cwiseProduct(h);
@@ -507,7 +531,9 @@ namespace GPBoost {
 		const vec_t& diagonal_approx_inv_preconditioner,
 		const sp_mat_rm_t& B_vecchia_pc,
 		const sp_mat_t& D_inv_vecchia_pc,
-		const CGConvergenceParams& convergence_params) {
+		const CGConvergenceParams& convergence_params,
+		int* num_cg_steps) {
+		CGStepsReporter cg_steps_reporter(num_cg_steps);
 
 		p = std::min(p, (int)num_data);
 		den_mat_t Sigma_Lkt_W_R, W_R, R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t);
@@ -565,6 +591,7 @@ namespace GPBoost {
 		apply_preconditioner(R, Z);
 		H = Z;
 		for (int j = 0; j < p; ++j) {
+			cg_steps_reporter.num_steps = j + 1;
 			//V = (W^(-1) + Sigma) * H - expensive part of the loop
 #pragma omp parallel for schedule(static)   
 			for (int i = 0; i < t; ++i) {

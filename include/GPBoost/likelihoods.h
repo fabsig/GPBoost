@@ -1775,6 +1775,50 @@ namespace GPBoost {
 			return(num_cg_steps_tridiag_last_);
 		}
 
+		/*!
+		* \brief Record a run of a conjugate gradient algorithm of the iterative methods for a Vecchia-Laplace approximation
+		* \param num_steps Number of iterations of the run
+		* \param max_steps Maximal number of iterations ('cg_max_num_it' or 'cg_max_num_it_tridiag')
+		* \param tridiag If true, the run solves for several right-hand sides at once (stochastic Lanczos quadrature)
+		*/
+		void RecordCGRun(int num_steps,
+			int max_steps,
+			bool tridiag) {
+			max_steps = std::min(max_steps, (int)dim_mode_);// the algorithms stop after at most as many iterations as the dimension of the system
+#pragma omp critical(record_cg_run)// the runs for the simulation-based predictive variances are carried out in parallel
+			{
+				if (tridiag) {
+					num_cg_steps_tridiag_last_ = num_steps;
+					cg_statistics_tridiag_.Add(num_steps, max_steps);
+				}
+				else {
+					num_cg_steps_last_ = num_steps;
+					cg_statistics_.Add(num_steps, max_steps);
+				}
+			}
+		}
+
+		/*! \brief Reset the statistics of 'RecordCGRun()' */
+		void ResetCGStatistics() {
+			cg_statistics_ = CGStatistics();
+			cg_statistics_tridiag_ = CGStatistics();
+		}
+
+		/*! \brief Statistics of the runs with one right-hand side since the last call to 'ResetCGStatistics()' */
+		const CGStatistics& GetCGStatistics() const {
+			return(cg_statistics_);
+		}
+
+		/*! \brief Statistics of the runs with several right-hand sides since the last call to 'ResetCGStatistics()' */
+		const CGStatistics& GetCGStatisticsTridiag() const {
+			return(cg_statistics_tridiag_);
+		}
+
+		/*! \brief True if the "fitc" preconditioner can be used for the Vecchia-Laplace approximation of this likelihood */
+		bool FITCPreconditionerIsSupported() const {
+			return(num_sets_re_ == 1 && !information_ll_can_be_negative_);
+		}
+
 		int GetNumModeFindingSteps() const {
 			return(num_it_mode_finding_);
 		}
@@ -8727,6 +8771,10 @@ namespace GPBoost {
 		int num_cg_steps_last_ = 0;
 		/*! \brief Number of CG steps when the CG method was last run for SLQ */
 		int num_cg_steps_tridiag_last_ = 0;
+		/*! \brief Statistics of the runs of the conjugate gradient algorithm with one right-hand side, see 'RecordCGRun()' */
+		CGStatistics cg_statistics_;
+		/*! \brief Statistics of the runs of the conjugate gradient algorithm with several right-hand sides, see 'RecordCGRun()' */
+		CGStatistics cg_statistics_tridiag_;
 
 		//ITERATIVE MATRIX INVERSION + VECCIA APPROXIMATION
 		//A) ROW-MAJOR MATRICES OF VECCIA APPROXIMATION

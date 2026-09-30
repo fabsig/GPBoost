@@ -260,4 +260,43 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred_relative$var - pred_absolute$var)), relax_tolerance(TOLERANCE_LOOSE, pred_absolute$var))
   })
 
+  test_that("Warning when the conjugate gradient algorithm of a Vecchia-Laplace approximation needs many iterations", {
+
+    # The iterative methods of a Vecchia-Laplace approximation can be much slower than Cholesky factorizations,
+    #   e.g., for the 'vadu' preconditioner with small error variances and smooth covariance functions. Here, a
+    #   small maximal number of iterations makes the conjugate gradient algorithm reach it in every run
+    WARNING_SLOW_CG <- "conjugate gradient algorithm of the iterative methods"
+    n_v <- 300
+    coords_v <- cbind(sim_rand_unif(n = n_v, init_c = 0.35), sim_rand_unif(n = n_v, init_c = 0.62))
+    D_v <- as.matrix(dist(coords_v))
+    Sigma_v <- exp(-D_v / 0.1) + diag(1E-10, n_v)
+    f_v <- as.vector(t(chol(Sigma_v)) %*% qnorm(sim_rand_unif(n = n_v, init_c = 0.77)))
+    y_v <- as.numeric(sim_rand_unif(n = n_v, init_c = 0.21) < 1 / (1 + exp(-f_v)))
+    fit_vecchia <- function(params, matrix_inversion_method = "iterative") {
+      gp_model <- NULL
+      out <- capture.output(gp_model <- fitGPModel(gp_coords = coords_v, cov_function = "exponential",
+                                                   likelihood = "bernoulli_logit", gp_approx = "vecchia",
+                                                   matrix_inversion_method = matrix_inversion_method,
+                                                   y = y_v, params = params))
+      list(out = out, gp_model = gp_model)
+    }
+    res <- fit_vecchia(list(cg_max_num_it = 3, cg_max_num_it_tridiag = 3))
+    expect_true(any(grepl(WARNING_SLOW_CG, res$out)))
+    expect_true(any(grepl("matrix_inversion_method = 'cholesky'", res$out)))
+    expect_true(any(grepl("or with cg_preconditioner_type = 'fitc'", res$out)))
+    # The number of iterations of the last runs of the conjugate gradient algorithm is also available
+    expect_true(res$gp_model$get_num_cg_steps() %in% 1:3)
+    expect_true(res$gp_model$get_num_cg_steps_tridiag() %in% 1:3)
+    # No warning with the default settings, with Cholesky factorizations, or when 'fitc' is already used
+    res <- fit_vecchia(list())
+    expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
+    expect_gt(res$gp_model$get_num_cg_steps(), 0)
+    expect_lt(res$gp_model$get_num_cg_steps(), 1000)
+    res <- fit_vecchia(list(cg_max_num_it = 3, cg_max_num_it_tridiag = 3), matrix_inversion_method = "cholesky")
+    expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
+    res <- fit_vecchia(list(cg_max_num_it = 3, cg_max_num_it_tridiag = 3, cg_preconditioner_type = "fitc"))
+    expect_true(any(grepl(WARNING_SLOW_CG, res$out)))
+    expect_false(any(grepl("or with cg_preconditioner_type = 'fitc'", res$out)))
+  })
+
 }
