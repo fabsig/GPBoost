@@ -582,4 +582,77 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("Vecchia approximation with duplicate locations, correlation-based neighbors, and multiple clusters ", {
+    # For non-Gaussian likelihoods, duplicate locations are collapsed to unique latent locations, among which the
+    # neighbors are selected. With all previous unique locations as neighbors, the Vecchia approximation is exact,
+    # and the results are thus compared to the ones without an approximation
+    eps_multiple <- as.vector(L_multiple %*% b_multiple)
+    y_multiple <- as.numeric(sim_rand_unif(n=n, init_c=0.2818) < pnorm(eps_multiple))
+    num_unique <- n / 4
+    coords_ST_multiple <- cbind(rep((1:num_unique) / num_unique, 4), coords_multiple)
+    cov_pars_gneiting <- c(1, 10, 10, 0.5, 1.5, 0.5, 1)# a smoothness of 1.5 does not require the Bessel function
+    cov_pars_exp <- c(1, 0.1)
+    nll_model <- function(y, cov_pars, ...) {
+      capture.output( gp_model <- GPModel(likelihood = "bernoulli_probit", ...), file='NUL')
+      capture.output( nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y), file='NUL')
+      nll
+    }
+    # 'space_time_gneiting', for which the neighbors are selected based on correlations by default
+    nll_exact <- nll_model(y_multiple, cov_pars_gneiting, gp_coords = coords_ST_multiple, cov_function = "space_time_gneiting")
+    for (approx in c("vecchia", "vecchia_euclidean")) {
+      nll <- nll_model(y_multiple, cov_pars_gneiting, gp_coords = coords_ST_multiple, cov_function = "space_time_gneiting",
+                       gp_approx = approx, num_neighbors = num_unique - 1, vecchia_ordering = "none",
+                       matrix_inversion_method = "cholesky")
+      expect_lt(abs(nll - nll_exact), TOLERANCE_STRICT_LOWER)
+    }
+    # Correlation-based neighbors for an isotropic covariance function
+    nll_exact <- nll_model(y_multiple, cov_pars_exp, gp_coords = coords_multiple, cov_function = "exponential")
+    nll <- nll_model(y_multiple, cov_pars_exp, gp_coords = coords_multiple, cov_function = "exponential",
+                     gp_approx = "vecchia_correlation_based", num_neighbors = num_unique - 1, vecchia_ordering = "none",
+                     matrix_inversion_method = "cholesky")
+    expect_lt(abs(nll - nll_exact), TOLERANCE_STRICT_LOWER)
+    # Multiple clusters, only the first of which has duplicate locations
+    coords_clus <- rbind(coords_multiple[1:50, ], coords[51:100, ])
+    coords_ST_clus <- cbind(time, coords_clus)
+    cluster_ids_dup <- c(rep(1, 50), rep(2, 50))
+    nll_exact <- nll_model(y_multiple, cov_pars_exp, gp_coords = coords_clus, cov_function = "exponential",
+                           cluster_ids = cluster_ids_dup)
+    for (approx in c("vecchia", "vecchia_correlation_based")) {
+      nll <- nll_model(y_multiple, cov_pars_exp, gp_coords = coords_clus, cov_function = "exponential",
+                       cluster_ids = cluster_ids_dup, gp_approx = approx, num_neighbors = 49, vecchia_ordering = "none",
+                       matrix_inversion_method = "cholesky")
+      expect_lt(abs(nll - nll_exact), TOLERANCE_STRICT_LOWER)
+    }
+    nll_exact <- nll_model(y_multiple, cov_pars_gneiting, gp_coords = coords_ST_clus, cov_function = "space_time_gneiting",
+                           cluster_ids = cluster_ids_dup)
+    nll <- nll_model(y_multiple, cov_pars_gneiting, gp_coords = coords_ST_clus, cov_function = "space_time_gneiting",
+                     cluster_ids = cluster_ids_dup, gp_approx = "vecchia", num_neighbors = 49, vecchia_ordering = "none",
+                     matrix_inversion_method = "cholesky")
+    expect_lt(abs(nll - nll_exact), TOLERANCE_STRICT_LOWER)
+    # Predictions for a new cluster with duplicate locations
+    coords_pred <- rbind(coords[1:10, ], coords[1:5, ])
+    capture.output( gp_model_exact <- GPModel(gp_coords = coords_multiple[1:50, ], cov_function = "exponential",
+                                              likelihood = "bernoulli_probit"), file='NUL')
+    capture.output( pred_exact <- gp_model_exact$predict(y = y_multiple[1:50], gp_coords_pred = coords_pred, cluster_ids_pred = rep(2, 15),
+                                                         cov_pars = cov_pars_exp, predict_cov_mat = TRUE, predict_response = FALSE), file='NUL')
+    for (approx in c("vecchia", "vecchia_correlation_based")) {
+      capture.output( gp_model <- GPModel(gp_coords = coords_multiple[1:50, ], cov_function = "exponential",
+                                          likelihood = "bernoulli_probit", gp_approx = approx, num_neighbors = num_unique - 1,
+                                          vecchia_ordering = "none", matrix_inversion_method = "cholesky"), file='NUL')
+      capture.output( pred <- gp_model$predict(y = y_multiple[1:50], gp_coords_pred = coords_pred, cluster_ids_pred = rep(2, 15),
+                                               cov_pars = cov_pars_exp, predict_cov_mat = TRUE, predict_response = FALSE), file='NUL')
+      expect_lt(sum(abs(pred$mu - pred_exact$mu)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_exact$cov))), TOLERANCE_STRICT)
+      capture.output( pred <- gp_model$predict(y = y_multiple[1:50], gp_coords_pred = coords_pred, cluster_ids_pred = rep(2, 15),
+                                               cov_pars = cov_pars_exp, predict_var = TRUE, predict_response = FALSE), file='NUL')
+      expect_lt(sum(abs(pred$var - diag(pred_exact$cov))), TOLERANCE_STRICT)
+    }
+    # Duplicate locations are not supported for 'full_scale_vecchia' and non-Gaussian likelihoods, also not for a new cluster
+    capture.output( gp_model <- GPModel(gp_coords = coords[1:50, ], cov_function = "exponential", likelihood = "bernoulli_probit",
+                                        gp_approx = "full_scale_vecchia", num_ind_points = 5, num_neighbors = 10), file='NUL')
+    expect_error(capture.output( gp_model$predict(y = y_multiple[1:50], gp_coords_pred = coords_pred, cluster_ids_pred = rep(2, 15),
+                                                  cov_pars = cov_pars_exp, predict_var = TRUE, predict_response = FALSE), file='NUL'),
+                 "Duplicates found in the prediction coordinates")
+  })
+
 }

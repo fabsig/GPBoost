@@ -1092,6 +1092,29 @@ namespace GPBoost {
 		}//end while (up || down)
 	}//end find_nearest_neighbors_fast_internal
 
+	void CalcZOuterZObsNeighbors(const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
+		const std::vector<std::vector<int>>& nearest_neighbors_cluster_i,
+		std::vector<std::vector<den_mat_t>>& z_outer_z_obs_neighbors_cluster_i) {
+		const int num_gp_rand_coef = (int)re_comps_vecchia_cluster_i.size() - 1;
+		CHECK(num_gp_rand_coef > 0);
+		const int num_re = (int)nearest_neighbors_cluster_i.size();
+		z_outer_z_obs_neighbors_cluster_i = std::vector<std::vector<den_mat_t>>(num_re);
+#pragma omp parallel for schedule(static)
+		for (int i = 0; i < num_re; ++i) {
+			z_outer_z_obs_neighbors_cluster_i[i] = std::vector<den_mat_t>(num_gp_rand_coef);
+			const int dim_z = (int)nearest_neighbors_cluster_i[i].size() + 1;
+			for (int j = 0; j < num_gp_rand_coef; ++j) {
+				const std::vector<double>& rand_coef_data = re_comps_vecchia_cluster_i[j + 1]->RandCoefData();
+				vec_t coef_vec(dim_z);
+				coef_vec(0) = rand_coef_data[i];
+				for (int ii = 1; ii < dim_z; ++ii) {
+					coef_vec(ii) = rand_coef_data[nearest_neighbors_cluster_i[i][ii - 1]];
+				}
+				z_outer_z_obs_neighbors_cluster_i[i][j] = coef_vec * coef_vec.transpose();
+			}
+		}
+	}//end CalcZOuterZObsNeighbors
+
 	void CreateREComponentsVecchia(data_size_t num_data,
 		int dim_gp_coords,
 		std::map<data_size_t, std::vector<int>>& data_indices_per_cluster,
@@ -1182,7 +1205,10 @@ namespace GPBoost {
 		nearest_neighbors_cluster_i = std::vector<std::vector<int>>(re_comp->GetNumUniqueREs());
 		dist_obs_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
 		dist_between_neighbors_cluster_i = std::vector<den_mat_t>(re_comp->GetNumUniqueREs());
-		if (!(re_comp->RedetermineVecchiaNeighborsInTransformedSpace()) && vecchia_neighbor_selection != "residual_correlation" && vecchia_neighbor_selection != "correlation") {
+		// Correlation-based neighbors are determined later in 'UpdateNearestNeighbors'
+		const bool find_neighbors_here = !(re_comp->RedetermineVecchiaNeighborsInTransformedSpace()) &&
+			vecchia_neighbor_selection != "residual_correlation" && vecchia_neighbor_selection != "correlation";
+		if (find_neighbors_here) {
 			Log::REDebug("Starting nearest neighbor search for Vecchia approximation");
 			den_mat_t coords_neighbor_search;
 			re_comp->GetCoordsForEuclideanNeighborSearch(coords_neighbor_search);
@@ -1225,8 +1251,8 @@ namespace GPBoost {
 		if (vecchia_neighbor_selection == "residual_correlation" || vecchia_neighbor_selection == "correlation" || GPU_use) {
 			has_duplicates = false;
 			den_mat_t coords = re_comp->GetCoords();
-			//Intialize neighbor vectors
-			for (int i = 0; i < num_data; ++i) {
+			//Intialize neighbor vectors (for the unique locations of this cluster)
+			for (int i = 0; i < re_comp->GetNumUniqueREs(); ++i) {
 				if (i > 0 && i <= num_neighbors) {
 					nearest_neighbors_cluster_i[i].resize(i);
 					if (save_distances_isotropic_cov_fct) {
@@ -1260,7 +1286,6 @@ namespace GPBoost {
 				Log::REFatal("Random coefficient processes are not supported for covariance functions "
 					"for which the neighbors are dynamically determined based on correlations ");
 			}
-			z_outer_z_obs_neighbors_cluster_i = std::vector<std::vector<den_mat_t>>(re_comp->GetNumUniqueREs());
 			for (int j = 0; j < num_gp_rand_coef; ++j) {
 				std::vector<double> rand_coef_data;
 				for (const auto& id : data_indices_per_cluster[cluster_i]) {
@@ -1269,22 +1294,10 @@ namespace GPBoost {
 				re_comps_vecchia_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
 					rand_coef_data, cov_fct, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape, re_comp->GetTaperMu(),
 					apply_tapering, false, dim_gp_coords, save_distances_isotropic_cov_fct)));
-				//save random coefficient data in the form ot outer product matrices
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_data_per_cluster[cluster_i]; ++i) {
-					if (j == 0) {
-						z_outer_z_obs_neighbors_cluster_i[i] = std::vector<den_mat_t>(num_gp_rand_coef);
-					}
-					int dim_z = (i == 0) ? 1 : ((int)nearest_neighbors_cluster_i[i].size() + 1);
-					vec_t coef_vec(dim_z);
-					coef_vec(0) = rand_coef_data[i];
-					if (i > 0) {
-						for (int ii = 1; ii < dim_z; ++ii) {
-							coef_vec(ii) = rand_coef_data[nearest_neighbors_cluster_i[i][ii - 1]];
-						}
-					}
-					z_outer_z_obs_neighbors_cluster_i[i][j] = coef_vec * coef_vec.transpose();
-				}
+			}
+			//save random coefficient data in the form ot outer product matrices (this depends on the neighbors)
+			if (find_neighbors_here) {
+				CalcZOuterZObsNeighbors(re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i, z_outer_z_obs_neighbors_cluster_i);
 			}
 		}// end random coefficients
 	}//end CreateREComponentsVecchia
@@ -1302,6 +1315,7 @@ namespace GPBoost {
 		const den_mat_t& chol_ip_cross_cov,
 		std::vector<den_mat_t>& dist_obs_neighbors_cluster_i,
 		std::vector<den_mat_t>& dist_between_neighbors_cluster_i,
+		std::vector<std::vector<den_mat_t>>& z_outer_z_obs_neighbors_cluster_i,
 		bool save_distances_isotropic_cov_fct,
 		bool GPU_use) {
 		std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_vecchia_cluster_i[0];
@@ -1362,6 +1376,9 @@ namespace GPBoost {
 					entries_init_B_cluster_i[ctr + (i - num_neighbors) * (num_neighbors + 1) + num_neighbors] = Triplet_t(i, i, 1.);//Put 1's on the diagonal since B = I - A
 				}
 			}
+		}
+		if (re_comps_vecchia_cluster_i.size() > 1) {//random coefficients
+			CalcZOuterZObsNeighbors(re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i, z_outer_z_obs_neighbors_cluster_i);
 		}
 	}//end UpdateNearestNeighbors
 

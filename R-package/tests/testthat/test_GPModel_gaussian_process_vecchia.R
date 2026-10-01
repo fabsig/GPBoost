@@ -821,5 +821,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll <- gp_model$neg_log_likelihood(cov_pars=c(0.1,1,0.1,0.8,0.15,1.1,0.08),y=y)
     expect_lt(abs(nll-149.4840466), TOLERANCE_STRICT)
   })
+
+  test_that("Vecchia approximation with correlation-based neighbors and random coefficients ", {
+    # The neighbors are selected based on the correlations of the first GP. For an isotropic covariance function, these
+    # are the nearest neighbors, and the likelihood thus equals the one with the default neighbor selection
+    y <- eps_svc + xi
+    cov_pars <- c(0.1,1,0.1,0.8,0.15,1.1,0.08)
+    capture.output( gp_model <- GPModel(gp_coords = coords, gp_rand_coef_data = Z_SVC, cov_function = "exponential",
+                                        gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none"), file='NUL')
+    nll_nearest <- gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y)
+    capture.output( gp_model <- GPModel(gp_coords = coords, gp_rand_coef_data = Z_SVC, cov_function = "exponential",
+                                        gp_approx = "vecchia_correlation_based", num_neighbors = 20, vecchia_ordering = "none"), file='NUL')
+    nll_correlation <- gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y)
+    expect_lt(abs(nll_correlation - nll_nearest), TOLERANCE_STRICT)
+  })
   
 }

@@ -123,5 +123,23 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$var) - pred_var_without_GPU)),TOLERANCE_STRICT)
     
   })
+
+  test_that("CUDA GPU with Vecchia approximation, duplicate locations, and multiple clusters ", {
+    # For non-Gaussian likelihoods, duplicate locations are collapsed to unique latent locations. Only the first
+    # cluster has duplicate locations
+    coords_ST_dup <- cbind(c(rep((1:25)/25, 2), (51:100)/100), rbind(coords_multiple[1:50,], coords[51:100,]))
+    cluster_ids_dup <- c(rep(1,50), rep(2,50))
+    y_bin <- as.numeric(eps_multiple > 0)
+    cov_pars <- c(1, 10, 10, 0.5, 1.5, 0.5, 1)
+    nll <- rep(NA, 2)
+    for (i in 1:2) {
+      capture.output( gp_model <- GPModel(gp_coords = coords_ST_dup, cov_function = "space_time_gneiting",
+                                          cluster_ids = cluster_ids_dup, likelihood = "bernoulli_probit",
+                                          gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none",
+                                          matrix_inversion_method = "cholesky", GPU_use = (i == 2)), file='NUL')
+      nll[i] <- gp_model$neg_log_likelihood(cov_pars = cov_pars, y = y_bin)
+    }
+    expect_lt(abs(nll[2] - nll[1]), TOLERANCE_STRICT)
+  })
    
 }

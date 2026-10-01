@@ -262,6 +262,16 @@ namespace GPBoost {
 		std::vector<double>& nn_square_dist);
 
 	/*!
+	* \brief Calculate the outer products of the random coefficient covariates of every location and its neighbors
+	* \param re_comps_vecchia_cluster_i Container that collects the individual component models (the GP followed by the random coefficient GPs)
+	* \param nearest_neighbors_cluster_i Indices of nearest neighbors
+	* \param[out] z_outer_z_obs_neighbors_cluster_i Outer product of covariate vector at observations and neighbors with itself for random coefficients. First index = data point i, second index = GP number j
+	*/
+	void CalcZOuterZObsNeighbors(const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
+		const std::vector<std::vector<int>>& nearest_neighbors_cluster_i,
+		std::vector<std::vector<den_mat_t>>& z_outer_z_obs_neighbors_cluster_i);
+
+	/*!
 	* \brief Initialize individual component models and collect them in a containter when the Vecchia approximation is used
 	* \param num_data Number of data points
 	* \param dim_gp_coords Dimension of the coordinates (=number of features) for Gaussian process
@@ -350,6 +360,7 @@ namespace GPBoost {
 	* \param chol_ip_cross_cov inverse of Cholesky factor of inducing point matrix times cross covariance : Sigma_ip ^ -1 / 2 Sigma_cross_cov
 	* \param[out] dist_obs_neighbors Distances needed for the Vecchia approximation : distances between locations and their neighbors(length = num_data - start_at)
 	* \param[out] dist_between_neighbors Distances needed for the Vecchia approximation : distances between all neighbors(length = num_data - start_at)
+	* \param[out] z_outer_z_obs_neighbors_cluster_i Outer product of covariate vector at observations and neighbors with itself for random coefficients (only changed if there are random coefficient GPs)
 	* \param save_distances_isotropic_cov_fct If true, distances among points and neighbors are saved for Vecchia approximations for isotropic covariance functions
 	* \param GPU_use If true, try to leverage GPU
 	*/
@@ -366,6 +377,7 @@ namespace GPBoost {
 		const den_mat_t& chol_ip_cross_cov,
 		std::vector<den_mat_t>& dist_obs_neighbors_cluster_i,
 		std::vector<den_mat_t>& dist_between_neighbors_cluster_i,
+		std::vector<std::vector<den_mat_t>>& z_outer_z_obs_neighbors_cluster_i,
 		bool save_distances_isotropic_cov_fct,
 		bool GPU_use);
 

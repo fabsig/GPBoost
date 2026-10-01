@@ -197,6 +197,12 @@ namespace GPBoost {
 		*/
 		virtual void CovarianceParameterRangeWarning(const vec_t& pars) = 0;
 
+		/*!
+		* \brief Cap the covariance parameters to the range that is used when they are set (see 'SetCovPars')
+		* \param[out] pars Covariance parameters (on transformed scale)
+		*/
+		virtual void CapCovPars(vec_t& pars) const = 0;
+
 	protected:
 		/*! \brief Number of data points */
 		data_size_t num_data_;
@@ -715,6 +721,8 @@ namespace GPBoost {
 		}
 
 		void CovarianceParameterRangeWarning(const vec_t& ) override { }
+
+		void CapCovPars(vec_t& ) const override { }
 
 	private:
 		/*! \brief Number of groups */
@@ -1797,6 +1805,10 @@ namespace GPBoost {
 
 		void CovarianceParameterRangeWarning(const vec_t& pars) override { 
 			cov_function_->CovarianceParameterRangeWarning(pars);
+		}
+
+		void CapCovPars(vec_t& pars) const override {
+			cov_function_->CapPars(pars);
 		}
 
 	private:

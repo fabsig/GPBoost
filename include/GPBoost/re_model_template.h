@@ -390,13 +390,16 @@ namespace GPBoost {
 						Log::REInfo("Because many high-dimensional GP coordinates are used, we recommend setting gp_approx = 'vecchia_correlation_based'."
 							"This option exploits a cover-tree algorithm to accelerate the Vecchia neighbor search.");
 					}
+					bool Vecchia_calculations_on_RE_scale_cluster_i = false;
 					CreateREComponentsVecchia(num_data_, dim_gp_coords_, data_indices_per_cluster_, cluster_i,
 						num_data_per_cluster_, gp_coords_data, gp_rand_coef_data,
 						re_comps_cluster_i, nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
-						entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, Vecchia_calculations_on_RE_scale_, has_duplicates_coords_,
+						entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i, Vecchia_calculations_on_RE_scale_cluster_i, has_duplicates_coords_,
 						vecchia_ordering_, num_neighbors_, vecchia_neighbor_selection_, true, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
 						cov_fct_strg, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape, gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_,
 						gp_approx_, nearest_neighbors_determined_, GPU_use_, grouped_RE_and_vecchia_GP_);
+					// The calculations are done on the random effects scale for all clusters if any cluster has duplicate coordinates
+					Vecchia_calculations_on_RE_scale_ = Vecchia_calculations_on_RE_scale_ || Vecchia_calculations_on_RE_scale_cluster_i;
 					only_one_GP_calculations_on_RE_scale_ = Vecchia_calculations_on_RE_scale_;
 					nearest_neighbors_[cluster_i][0] = nearest_neighbors_cluster_i;
 					dist_obs_neighbors_[cluster_i][0] = dist_obs_neighbors_cluster_i;
@@ -2118,6 +2121,9 @@ namespace GPBoost {
 							"did not improve the objective function anymore. The optimizer has thus likely converged ", optimizer_cov_pars_.c_str());
 					}
 				}
+				vec_t cov_pars_capped = cov_aux_pars.segment(0, num_cov_par_);
+				CapCovPars(cov_pars_capped);
+				cov_aux_pars.segment(0, num_cov_par_) = cov_pars_capped;
 				PrintTraceParameters(cov_aux_pars.segment(0, num_cov_par_), beta_, cov_aux_pars.data() + num_cov_par_, learn_covariance_parameters);
 				if (gauss_likelihood_) {
 					Log::REDebug("Negative log-likelihood: %g", neg_log_likelihood_);
@@ -3982,6 +3988,12 @@ namespace GPBoost {
 							"none", num_neighbors_pred_, vecchia_neighbor_selection_, false, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
 							re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionOrder(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
 							gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, nearest_neighbors_determined, GPU_use_, grouped_RE_and_vecchia_GP_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
+						// Duplicate coordinates are collapsed to unique locations for non-Gaussian likelihoods
+						num_REs_pred = re_comps_vecchia_cluster_i[0]->GetNumUniqueREs();
+						if (num_REs_pred != num_data_per_cluster_pred[cluster_i]) {
+							random_effects_indices_of_data_pred = re_comps_vecchia_cluster_i[0]->random_effects_indices_of_data_;
+							CHECK((int)random_effects_indices_of_data_pred.size() == num_data_per_cluster_pred[cluster_i]);
+						}
 						for (int j = 0; j < num_comps_total_; ++j) {
 							const vec_t pars = cov_pars.segment(ind_par_[j] + igp * num_cov_par_per_set_re_, ind_par_[j + 1] - ind_par_[j]);
 							re_comps_vecchia_cluster_i[j]->SetCovPars(pars);
@@ -3997,14 +4009,15 @@ namespace GPBoost {
 							UpdateNearestNeighbors(re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i,
 								entries_init_B_cluster_i, num_neighbors_, vecchia_neighbor_selection_, rng_,
 								has_duplicates_coords_, false, gauss_likelihood_, gp_approx_, chol_ip_cross_cov_unused,
-								dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, save_distances_isotropic_cov_fct_Vecchia_, GPU_use_);
+								dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, z_outer_z_obs_neighbors_cluster_i,
+								save_distances_isotropic_cov_fct_Vecchia_, GPU_use_);
 							nearest_neighbors_determined = true;
 						}
 						// Calculate a Cholesky factor
 						sp_mat_t B_cluster_i;
 						sp_mat_t D_inv_cluster_i;
 						std::vector<sp_mat_t> B_grad_cluster_i, D_grad_cluster_i;//not used, but needs to be passed to function
-						CalcCovFactorGradientVecchia(num_data_per_cluster_pred[cluster_i], true, false, re_comps_vecchia_cluster_i,
+						CalcCovFactorGradientVecchia(num_REs_pred, true, false, re_comps_vecchia_cluster_i,
 							re_comps_ip_cross_cov_unused, re_comps_ip_cross_cov_unused, chol_fact_sigma_ip_unused, chol_ip_cross_cov_unused,
 							nearest_neighbors_cluster_i, dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i,
 							entries_init_B_cluster_i, z_outer_z_obs_neighbors_cluster_i,
@@ -4013,7 +4026,7 @@ namespace GPBoost {
 							true, 1., false, num_gp_total_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
 							nullptr, estimate_cov_par_index_, nearest_neighbors_determined, false);
 						//Calculate Psi
-						sp_mat_t D_sqrt(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
+						sp_mat_t D_sqrt(num_REs_pred, num_REs_pred);
 						D_sqrt.setIdentity();
 						D_sqrt.diagonal().array() = D_inv_cluster_i.diagonal().array().pow(-0.5);
 						sp_mat_t B_inv_D_sqrt;
@@ -4155,6 +4168,10 @@ namespace GPBoost {
 							"none", num_neighbors_pred_, vecchia_neighbor_selection_, false, rng_, num_gp_rand_coef_, num_gp_total_, num_comps_total_, gauss_likelihood_,
 							re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionOrder(), re_comp_gp_clus0->CovFunctionTaperRange(), re_comp_gp_clus0->CovFunctionTaperShape(),
 							gp_approx_ == "tapering", save_distances_isotropic_cov_fct_Vecchia_, gp_approx_, nearest_neighbors_determined, GPU_use_, grouped_RE_and_vecchia_GP_);//TODO: maybe also use ordering for making predictions? (need to check that there are not errors)
+						if (re_comps_vecchia_cluster_i[0]->GetNumUniqueREs() != num_data_per_cluster_pred[cluster_i]) {
+							Log::REFatal("Duplicates found in the prediction coordinates for the Gaussian process. This is currently not supported "
+								"for the '%s' approximation for non-Gaussian likelihoods ", gp_approx_.c_str());
+						}
 						for (int j = 0; j < num_comps_total_; ++j) {
 							const vec_t pars = cov_pars.segment(ind_par_[j] + igp * num_cov_par_per_set_re_, ind_par_[j + 1] - ind_par_[j]);
 							re_comps_vecchia_cluster_i[j]->SetCovPars(pars);
@@ -4163,7 +4180,8 @@ namespace GPBoost {
 							UpdateNearestNeighbors(re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i,
 								entries_init_B_cluster_i, num_neighbors_, vecchia_neighbor_selection_, rng_,
 								has_duplicates_coords_, false, gauss_likelihood_, gp_approx_, chol_ip_cross_cov_pred,
-								dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, save_distances_isotropic_cov_fct_Vecchia_, GPU_use_);
+								dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, z_outer_z_obs_neighbors_cluster_i,
+								save_distances_isotropic_cov_fct_Vecchia_, GPU_use_);
 							nearest_neighbors_determined = true;
 						}
 						// Calculate a Cholesky factor
@@ -6106,7 +6124,8 @@ namespace GPBoost {
 							UpdateNearestNeighbors(re_comps_vecchia_[cluster_i][igp], nearest_neighbors_[cluster_i][igp],
 								entries_init_B_[cluster_i][igp], num_neighbors_, vecchia_neighbor_selection_, rng_,
 								has_duplicates_coords_, true, gauss_likelihood_, gp_approx_, GetForCluster(chol_ip_cross_cov_, cluster_i, 0),
-								dist_obs_neighbors_[cluster_i][0], dist_between_neighbors_[cluster_i][0], save_distances_isotropic_cov_fct_Vecchia_, GPU_use_);
+								dist_obs_neighbors_[cluster_i][0], dist_between_neighbors_[cluster_i][0], z_outer_z_obs_neighbors_[cluster_i][igp],
+								save_distances_isotropic_cov_fct_Vecchia_, GPU_use_);
 							nearest_neighbors_determined_ = true;
 							if (!gauss_likelihood_) {
 								likelihood_[cluster_i]->SetCholFactPatternAnalyzedFalse();
@@ -9631,6 +9650,36 @@ namespace GPBoost {
 				}
 			}
 		}//end CovarianceParameterRangeWarning
+
+		/*!
+		* \brief Cap the covariance parameters to the range that the components use when the parameters are set. The optimizers
+		*		do not know such bounds (e.g., alpha and beta <= 1 for 'space_time_gneiting'), and the returned estimates
+		*		should be the values that have been used
+		* \param[out] cov_pars Covariance parameters (on transformed scale)
+		*/
+		void CapCovPars(vec_t& cov_pars) {
+			CHECK(cov_pars.size() == num_cov_par_);
+			for (int igp = 0; igp < num_sets_re_; ++igp) {
+				for (int j = 0; j < num_comps_total_; ++j) {
+					const int ind_first_par = ind_par_[j] + igp * num_cov_par_per_set_re_;
+					const int num_par_comp = ind_par_[j + 1] - ind_par_[j];
+					vec_t pars = cov_pars.segment(ind_first_par, num_par_comp);
+					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
+						GetForCluster(re_comps_ip_, unique_clusters_[0], igp)[j]->CapCovPars(pars);
+					}
+					else if (gp_approx_ == "vecchia" && !grouped_RE_and_vecchia_GP_) {
+						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[j]->CapCovPars(pars);
+					}
+					else if (grouped_RE_and_vecchia_GP_ && j == (num_comps_total_ - 1)) {
+						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[0]->CapCovPars(pars);
+					}
+					else {
+						GetForCluster(re_comps_, unique_clusters_[0], igp)[j]->CapCovPars(pars);
+					}
+					cov_pars.segment(ind_first_par, num_par_comp) = pars;
+				}
+			}
+		}//end CapCovPars
 
 		/*!
 		* \brief Transform the linear regression coefficients to the scale on which the optimization is done
