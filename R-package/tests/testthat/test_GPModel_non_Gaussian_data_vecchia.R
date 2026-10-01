@@ -655,4 +655,40 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                  "Duplicates found in the prediction coordinates")
   })
 
+  test_that("Vecchia approximation: predictions for a new cluster use 'num_neighbors_pred' ", {
+    # With all previous prediction points as neighbors, the approximation of the prior of a new cluster is exact. The
+    # models use fewer neighbors for estimation, and the neighbors are determined in different ways: Euclidean
+    # distances, correlations, scaled coordinates ('matern_space_time'), and residual correlations ('vif')
+    y_bin <- as.numeric(sim_rand_unif(n=n, init_c=0.2978341) < pnorm(L %*% b_1))
+    num_pred <- 50
+    coords_pred <- matrix(sim_rand_unif(n=num_pred*d, init_c=0.27), ncol=d)
+    coords_ST <- cbind(time, coords)
+    coords_ST_pred <- cbind(sim_rand_unif(n=num_pred, init_c=0.63), coords_pred)
+    cases <- list(
+      list(model = list(gp_coords = coords, cov_function = "exponential"), approx = list(gp_approx = "vecchia"),
+           gp_coords_pred = coords_pred, cov_pars = c(1,0.1)),
+      list(model = list(gp_coords = coords, cov_function = "exponential"), approx = list(gp_approx = "vecchia_correlation_based"),
+           gp_coords_pred = coords_pred, cov_pars = c(1,0.1)),
+      list(model = list(gp_coords = coords_ST, cov_function = "matern_space_time", cov_fct_shape = 1.5), approx = list(gp_approx = "vecchia"),
+           gp_coords_pred = coords_ST_pred, cov_pars = c(1,0.2,0.1)),
+      list(model = list(gp_coords = coords_ST, cov_function = "space_time_gneiting"), approx = list(gp_approx = "vecchia"),
+           gp_coords_pred = coords_ST_pred, cov_pars = c(1,10,10,0.5,1.5,0.5,1)),
+      list(model = list(gp_coords = coords, cov_function = "exponential"),
+           approx = list(gp_approx = "vif_correlation_based", num_ind_points = 10),
+           gp_coords_pred = coords_pred, cov_pars = c(1,0.1))
+    )
+    for (cs in cases) {
+      capture.output( gp_model <- do.call(GPModel, c(cs$model, list(likelihood = "bernoulli_probit"))), file='NUL')
+      capture.output( pred_exact <- gp_model$predict(y = y_bin, gp_coords_pred = cs$gp_coords_pred, cluster_ids_pred = rep(2, num_pred),
+                                                     cov_pars = cs$cov_pars, predict_cov_mat = TRUE, predict_response = FALSE), file='NUL')
+      capture.output( gp_model <- do.call(GPModel, c(cs$model, cs$approx, list(likelihood = "bernoulli_probit", num_neighbors = 5,
+                                                                                vecchia_ordering = "none", matrix_inversion_method = "cholesky"))), file='NUL')
+      gp_model$set_prediction_data(num_neighbors_pred = num_pred - 1)
+      capture.output( pred <- gp_model$predict(y = y_bin, gp_coords_pred = cs$gp_coords_pred, cluster_ids_pred = rep(2, num_pred),
+                                               cov_pars = cs$cov_pars, predict_cov_mat = TRUE, predict_response = FALSE), file='NUL')
+      expect_lt(sum(abs(pred$mu - pred_exact$mu)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_exact$cov))), TOLERANCE_STRICT)
+    }
+  })
+
 }

@@ -4007,7 +4007,7 @@ namespace GPBoost {
 						std::vector<den_mat_t> sigma_ip_grad_sigma_ip_inv_cross_cov_T_unused;
 						if (re_comp_gp_clus0->RedetermineVecchiaNeighborsInTransformedSpace() || vecchia_neighbor_selection_ == "correlation") {//determine nearest neighbors when using correlation-based approach
 							UpdateNearestNeighbors(re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i,
-								entries_init_B_cluster_i, num_neighbors_, vecchia_neighbor_selection_, rng_,
+								entries_init_B_cluster_i, num_neighbors_pred_, vecchia_neighbor_selection_, rng_,
 								has_duplicates_coords_, false, gauss_likelihood_, gp_approx_, chol_ip_cross_cov_unused,
 								dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, z_outer_z_obs_neighbors_cluster_i,
 								save_distances_isotropic_cov_fct_Vecchia_, GPU_use_);
@@ -4178,7 +4178,7 @@ namespace GPBoost {
 						}
 						if (re_comp_gp_clus0->RedetermineVecchiaNeighborsInTransformedSpace() || vecchia_neighbor_selection_ == "residual_correlation") {//determine nearest neighbors when using correlation-based approach
 							UpdateNearestNeighbors(re_comps_vecchia_cluster_i, nearest_neighbors_cluster_i,
-								entries_init_B_cluster_i, num_neighbors_, vecchia_neighbor_selection_, rng_,
+								entries_init_B_cluster_i, num_neighbors_pred_, vecchia_neighbor_selection_, rng_,
 								has_duplicates_coords_, false, gauss_likelihood_, gp_approx_, chol_ip_cross_cov_pred,
 								dist_obs_neighbors_cluster_i, dist_between_neighbors_cluster_i, z_outer_z_obs_neighbors_cluster_i,
 								save_distances_isotropic_cov_fct_Vecchia_, GPU_use_);
