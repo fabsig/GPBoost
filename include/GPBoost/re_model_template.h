@@ -6618,10 +6618,12 @@ namespace GPBoost {
 		string_t matrix_inversion_method_user_provided_ = "";
 		/*! \brief Supported matrix inversion methods */
 		const std::set<string_t> SUPPORTED_MATRIX_INVERSION_METHODS_{ "cholesky", "iterative" };
+		/*! \brief Default of 'cg_max_num_it_' and 'cg_max_num_it_tridiag_' */
+		const int CG_MAX_NUM_IT_DEFAULT_ = 1000;
 		/*! \brief Maximal number of iterations for conjugate gradient algorithm */
-		int cg_max_num_it_ = 1000;
+		int cg_max_num_it_ = CG_MAX_NUM_IT_DEFAULT_;
 		/*! \brief Maximal number of iterations for conjugate gradient algorithm when being run as Lanczos algorithm for tridiagonalization */
-		int cg_max_num_it_tridiag_ = 1000;
+		int cg_max_num_it_tridiag_ = CG_MAX_NUM_IT_DEFAULT_;
 		/*! \brief Tolerance level for L2 norm of residuals for checking convergence in conjugate gradient algorithm when being used for parameter estimation */
 		double cg_delta_conv_ = 1e-2;
 		/*! \brief Stopping rule and tolerances of the conjugate gradient algorithm when being used for parameter estimation */
@@ -9375,12 +9377,20 @@ namespace GPBoost {
 				stats.Add(likelihood_[cluster_i]->GetCGStatistics());
 				stats_tridiag.Add(likelihood_[cluster_i]->GetCGStatisticsTridiag());
 			}
-			const int num_runs = stats.num_runs + stats_tridiag.num_runs;
-			const int num_runs_max_it = stats.num_runs_max_it + stats_tridiag.num_runs_max_it;
 			Log::REDebug("GPModel: conjugate gradient algorithm during the estimation: %d runs with one right-hand side (%d reached "
 				"'cg_max_num_it', %g iterations on average), %d runs for the log-determinant (%d reached 'cg_max_num_it_tridiag', "
 				"%g iterations on average) ", stats.num_runs, stats.num_runs_max_it, stats.MeanSteps(),
 				stats_tridiag.num_runs, stats_tridiag.num_runs_max_it, stats_tridiag.MeanSteps());
+			// A maximal number of iterations other than the default has been chosen deliberately (e.g., a small one to save time),
+			//	so reaching it is no reason to warn. The runs with such a limit are therefore ignored
+			if (cg_max_num_it_ != CG_MAX_NUM_IT_DEFAULT_) {
+				stats = CGStatistics();
+			}
+			if (cg_max_num_it_tridiag_ != CG_MAX_NUM_IT_DEFAULT_) {
+				stats_tridiag = CGStatistics();
+			}
+			const int num_runs = stats.num_runs + stats_tridiag.num_runs;
+			const int num_runs_max_it = stats.num_runs_max_it + stats_tridiag.num_runs_max_it;
 			const bool many_runs_max_it = num_runs_max_it >= std::max(2., SLOW_CG_FRACTION_RUNS_MAX_IT_ * num_runs);
 			const bool many_steps = stats.MeanSteps() >= SLOW_CG_FRACTION_MEAN_STEPS_ * cg_max_num_it_ ||
 				stats_tridiag.MeanSteps() >= SLOW_CG_FRACTION_MEAN_STEPS_ * cg_max_num_it_tridiag_;
