@@ -685,7 +685,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       # parameter is estimated, so a budget of 1e-5 is a reference-platform tolerance
       expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_est_shape)),relax_tolerance(TOLERANCE_STRICT, coef_est_shape))
       expect_equal(gp_model$get_num_optim_iter(), nrounds_est_shape)
-      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_est_shape), TOLERANCE_STRICT)
+      # The estimated shape is large and the likelihood flat in it, so the optimum depends on the number of
+      # OpenMP threads: on the Linux CI, it deviates by less than 1e-5 with two threads and by 1.2e-5 with one
+      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_est_shape), TOLERANCE_MEDIUM)
     }
     
     ## Less neighbors 
