@@ -7816,7 +7816,8 @@ namespace GPBoost {
 			// further downstream (in likelihoods.h) where it is actually used
 			if (num_sets_re_ > 1) {
 				if (!(gp_approx_ == "vecchia" && num_gp_ == 1 && num_comps_total_ == 1)) {
-					Log::REFatal("likelihood = '%s' is currently only supported for GPs with a 'vecchia' approximation ", (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
+					Log::REFatal("likelihood = '%s' is currently only supported for a single GP with a 'vecchia' approximation "
+						"(without random coefficients and other random effects) ", (likelihood_[unique_clusters_[0]]->GetLikelihood()).c_str());
 				}
 				CHECK(num_sets_re_ == 2);
 				for (const auto& cluster_i : unique_clusters_) {
@@ -9120,6 +9121,15 @@ namespace GPBoost {
 			if (estimate_cov_par_index_[0] <= 0 || estimate_cov_par_index_[par_index] > 0) {
 				return(false);
 			}
+			return(IsMarginalVarianceParameter(par_index));
+		}//end IsMarginalVarianceKeptConstant
+
+		/*!
+		* \brief True if the covariance parameter 'par_index' is a marginal variance of a random effect or GP component. An
+		*		'ar1_mf_' covariance function has two of them: the variances of the low-fidelity and of the discrepancy GP
+		* \param par_index Index of a covariance parameter, the nugget effect variance of a Gaussian likelihood having the index 0
+		*/
+		bool IsMarginalVarianceParameter(int par_index) const {
 			for (int igp = 0; igp < num_sets_re_; ++igp) {
 				for (int j = 0; j < num_comps_total_; ++j) {
 					if (par_index == ind_par_[j] + igp * num_cov_par_per_set_re_) {
@@ -9135,7 +9145,7 @@ namespace GPBoost {
 				}
 			}
 			return(false);
-		}//end IsMarginalVarianceKeptConstant
+		}//end IsMarginalVarianceParameter
 
 		/*! \brief True if 'MaybeKeepVarianceConstant' holds any marginal variance parameter constant, see 'IsMarginalVarianceKeptConstant' */
 		bool AnyMarginalVarianceKeptConstant() const {

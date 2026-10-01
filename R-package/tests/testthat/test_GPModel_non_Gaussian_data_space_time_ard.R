@@ -1138,6 +1138,63 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(max(abs(as.vector(gp_model$get_cov_pars()) - init_cov_pars_user)), TOLERANCE_STRICT)
   })
 
+  test_that("Initial values of gaussian_heteroscedastic_fixed_and_random in special cases ", {
+
+    likelihood <- "gaussian_heteroscedastic_fixed_and_random"
+    n_seq <- 300
+    data_seq <- sim_seq_hetero_field(n_seq = n_seq, init_c_coords = 0.63)
+    x_seq <- sim_rand_unif(n = n_seq, init_c = 0.3141)
+    x_seq[1] <- 0
+    y_seq <- data_seq$y + 0.5 * x_seq
+    fit_het <- function(gp_approx = "vecchia", params = list(), ...) {
+      capture.output( gp_model <- fitGPModel(gp_coords = data_seq$coords, cov_function = "matern", cov_fct_shape = 1.5,
+                                             likelihood = likelihood, gp_approx = gp_approx, num_neighbors = 10,
+                                             vecchia_ordering = "none", y = y_seq, X = cbind(1, x_seq),
+                                             params = params, ...), file='NUL')
+      gp_model
+    }
+    # For this likelihood, 'vecchia_latent' is the same approximation as 'vecchia'. The homoscedastic model has to
+    #   use 'vecchia', with which its error variance is a covariance parameter
+    expect_equal(as.vector(fit_het("vecchia_latent", list(maxit = 0))$get_cov_pars()),
+                 as.vector(fit_het("vecchia", list(maxit = 0))$get_cov_pars()))
+    # A Gaussian likelihood does not allow weights that are zero: the default initial values are used instead
+    weights_seq <- rep(1, n_seq)
+    weights_seq[1:5] <- 0
+    gp_model <- fit_het(weights = weights_seq)
+    expect_true(is.finite(gp_model$get_current_neg_log_likelihood()))
+    # A second estimation with other covariates does not use the homoscedastic model of the first one, in which the
+    #   intercept is the first column (the first entry of the other column is zero)
+    gp_model <- GPModel(gp_coords = data_seq$coords, cov_function = "matern", cov_fct_shape = 1.5,
+                        likelihood = likelihood, gp_approx = "vecchia", num_neighbors = 10, vecchia_ordering = "none")
+    capture.output( gp_model$fit(y = y_seq, X = cbind(1, x_seq)), file='NUL')
+    nll_first_fit <- gp_model$get_current_neg_log_likelihood()
+    capture.output( gp_model$fit(y = y_seq, X = cbind(x_seq, 1)), file='NUL')
+    expect_true(all(is.finite(as.vector(gp_model$get_coef()))))
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_first_fit), 0.5)
+    # Another likelihood that is set before the estimation
+    gp_model <- GPModel(gp_coords = data_seq$coords, cov_function = "matern", cov_fct_shape = 1.5,
+                        likelihood = likelihood, gp_approx = "vecchia", num_neighbors = 10, vecchia_ordering = "none")
+    gp_model$set_likelihood("gaussian")
+    capture.output( gp_model$fit(y = y_seq, X = cbind(1, x_seq)), file='NUL')
+    capture.output( gp_model_gauss <- fitGPModel(gp_coords = data_seq$coords, cov_function = "matern", cov_fct_shape = 1.5,
+                                                 likelihood = "gaussian", gp_approx = "vecchia", num_neighbors = 10,
+                                                 vecchia_ordering = "none", y = y_seq, X = cbind(1, x_seq)), file='NUL')
+    expect_equal(gp_model$get_current_neg_log_likelihood(), gp_model_gauss$get_current_neg_log_likelihood())
+    # An 'ar1_mf_' covariance function has two marginal variances, both are small for the GP of the log-error variance
+    coords_mf <- cbind(data_seq$coords, as.numeric(sim_rand_unif(n = n_seq, init_c = 0.77) < 0.5))
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_mf, cov_function = "ar1_mf_exponential",
+                                           likelihood = likelihood, gp_approx = "vecchia", num_neighbors = 10,
+                                           vecchia_ordering = "none", y = y_seq, X = cbind(1, x_seq),
+                                           params = list(maxit = 0)), file='NUL')
+    cov_pars_init <- as.vector(gp_model$get_cov_pars())# low-fidelity variance and range, discrepancy variance and range, rho
+    expect_equal(cov_pars_init[c(6, 8)], c(0.01, 0.01))
+    expect_equal(cov_pars_init[c(7, 9, 10)], cov_pars_init[c(2, 4, 5)])
+    # Random coefficients are not supported for this likelihood
+    expect_error(GPModel(gp_coords = data_seq$coords, gp_rand_coef_data = x_seq, cov_function = "exponential",
+                         likelihood = likelihood, gp_approx = "vecchia", num_neighbors = 10, vecchia_ordering = "none"),
+                 "without random coefficients")
+  })
+
   test_that("Default estimation of gaussian_heteroscedastic_fixed_and_random with a local optimum ", {
 
     # With the former default initial values, which explain all variation by the error variance, the estimation

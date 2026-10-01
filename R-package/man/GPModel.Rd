@@ -63,10 +63,10 @@ Appending "_admm_ssn_alm" instead warm starts the refinement with an ADMM phase,
 \item{ "gaussian_heteroscedastic": Gaussian likelihood where the mean is related to fixed and random effects and
 the log-error variance is related to fixed effects only (linear predictor or GPBoost algorithm). The estimated coefficients of the
 log-variance model are returned alongside the mean-model coefficients (with the suffix "_scale").
-Fisher-Laplace is the default and currently the only implemented approximation. By default, Cholesky factorizations are used, and the initial values are obtained from a homoscedastic Gaussian process model. }
+Fisher-Laplace is the default and currently the only implemented approximation. }
 \item{ "gaussian_heteroscedastic_fixed_and_random": Gaussian likelihood where both the mean and the variance
 are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation.
-Fisher-Laplace is the default and currently the only implemented approximation. By default, Cholesky factorizations are used, and the initial values are obtained from a homoscedastic Gaussian process model. }
+Fisher-Laplace is the default and currently the only implemented approximation. By default, Cholesky factorizations are used. If init_cov_pars is not given, the initial values for the estimation of a GPModel (but not for the GPBoost algorithm) are obtained from a homoscedastic Gaussian process model. }
 }
 
 \strong{Positive continuous response: y in (0, inf)}

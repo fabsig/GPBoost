@@ -160,7 +160,8 @@ namespace GPBoost {
 			gp_args_aux_model_->cov_fct = cov_fct_str;
 			gp_args_aux_model_->cov_fct_shape = cov_fct_shape;
 			gp_args_aux_model_->cov_fct_order = cov_fct_order;
-			gp_args_aux_model_->gp_approx = gp_approx_str;
+			// With 'vecchia_latent', the error variance of the Gaussian model would be an auxiliary parameter and not a covariance parameter
+			gp_args_aux_model_->gp_approx = gp_approx_str == "vecchia_latent" ? "vecchia" : gp_approx_str;
 			gp_args_aux_model_->cov_fct_taper_range = cov_fct_taper_range;
 			gp_args_aux_model_->cov_fct_taper_shape = cov_fct_taper_shape;
 			gp_args_aux_model_->num_neighbors = num_neighbors;
@@ -631,6 +632,10 @@ namespace GPBoost {
 				InitCoefAuxParsFromIidModel(re_model_den_.get(), y_data, covariate_data, num_covariates, fixed_effects);
 			}
 		}
+		// The estimates of the homoscedastic model belong to the covariates of this call
+		coef_homoscedastic_model_.resize(0);
+		intercept_col_homoscedastic_model_ = -1;
+		error_var_homoscedastic_model_ = -1.;
 		if ((int)coef_.size() == num_coef_) {
 			init_coef_ptr = coef_.data();
 		}
@@ -1461,11 +1466,14 @@ namespace GPBoost {
 		const double* covariate_data,
 		int num_covariates,
 		const double* fixed_effects) {
-		if (!gp_args_aux_model_ || y_data == nullptr) {
+		if (!gp_args_aux_model_ || y_data == nullptr || GetLikelihood() != "gaussian_heteroscedastic_fixed_and_random") {
 			return false;
 		}
 		const GPArgsAuxModel& gp_args = *gp_args_aux_model_;
 		const double* weights_ptr = (has_weights_ && !weights_.empty()) ? weights_.data() : nullptr;
+		if (weights_ptr != nullptr && HasZero<double>(weights_ptr, num_data_)) {
+			return false;// a Gaussian likelihood requires positive weights
+		}
 		std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>> re_model_hom =
 			std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>>(new REModelTemplate<den_mat_t, chol_den_mat_t>(
 				num_data_, gp_args.cluster_ids.empty() ? nullptr : gp_args.cluster_ids.data(), nullptr, 0, nullptr,
@@ -1507,9 +1515,8 @@ namespace GPBoost {
 		const int num_par_per_set = num_cov_par_hom - 1;
 		for (int ip = 0; ip < num_par_per_set; ++ip) {
 			cov_pars_orig[ip] = cov_pars_hom_orig[ip + 1];
-			cov_pars_orig[num_par_per_set + ip] = cov_pars_hom_orig[ip + 1];
+			cov_pars_orig[num_par_per_set + ip] = re_model_hom->IsMarginalVarianceParameter(ip + 1) ? INIT_VAR_LOG_ERROR_VAR_GP_ : cov_pars_hom_orig[ip + 1];
 		}
-		cov_pars_orig[num_par_per_set] = INIT_VAR_LOG_ERROR_VAR_GP_;
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->TransformCovPars(cov_pars_orig, cov_pars_);
 		}
@@ -1539,6 +1546,10 @@ namespace GPBoost {
 			return false;
 		}
 		CHECK(num_sets_fixed_effects_ == 2);
+		const double intercept_value = covariate_data[(size_t)intercept_col_homoscedastic_model_ * (size_t)num_data_];// the column is constant
+		if (intercept_value == 0.) {
+			return false;
+		}
 		coef_ = vec_t::Zero(num_sets_fixed_effects_ * num_covariates);
 		coef_.segment(0, num_covariates) = coef_homoscedastic_model_;
 		double mean_fixed_effects_log_var = 0.;
@@ -1548,7 +1559,6 @@ namespace GPBoost {
 			}
 			mean_fixed_effects_log_var /= num_data_;
 		}
-		const double intercept_value = covariate_data[(size_t)intercept_col_homoscedastic_model_ * (size_t)num_data_];// the column is constant
 		coef_[num_covariates + intercept_col_homoscedastic_model_] =
 			(std::log(error_var_homoscedastic_model_) - mean_fixed_effects_log_var) / intercept_value;
 		return true;

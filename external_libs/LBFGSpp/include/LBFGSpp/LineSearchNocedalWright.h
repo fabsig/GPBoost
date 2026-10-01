@@ -158,10 +158,12 @@ public:
                 f(x, grad, false, true);
             }
             dg = grad.dot(drt);
+            // ChangedForGPBoost: NA / Inf in the objective or in the gradient
+            const bool has_NA_or_Inf = !std::isfinite(fx) || !grad.allFinite() || !std::isfinite(dg);
 
             // Test the sufficient decrease condition
             // ChangedForGPBoost: NA / Inf are rejected as well (all comparisons with NaN are false)
-            if (fx - fx_init > step * test_decr || (Scalar(0) < step_lo && fx >= fx_lo) || !std::isfinite(fx))
+            if (fx - fx_init > step * test_decr || (Scalar(0) < step_lo && fx >= fx_lo) || has_NA_or_Inf)
             {
                 // Case (1) and (2)
                 step_hi = step;
@@ -170,7 +172,7 @@ public:
                 // ChangedForGPBoost: the mode finding of a candidate starts at the modes of the previous candidate. After NA / Inf,
                 //  these modes are often the cause, and the mode finding can then fail at every further candidate -> start it at
                 //  the modes of 'x_lo'
-                if (!std::isfinite(fx))
+                if (has_NA_or_Inf)
                 {
                     f.RestoreModesLo();
                 }
@@ -250,10 +252,12 @@ public:
                 f(x, grad, false, true);
             }
             dg = grad.dot(drt);
+            // ChangedForGPBoost: NA / Inf in the objective or in the gradient
+            const bool has_NA_or_Inf = !std::isfinite(fx) || !grad.allFinite() || !std::isfinite(dg);
 
             // Test the sufficient decrease condition
             // ChangedForGPBoost: NA / Inf are rejected as well (all comparisons with NaN are false)
-            if (fx - fx_init > step * test_decr || fx >= fx_lo || !std::isfinite(fx))
+            if (fx - fx_init > step * test_decr || fx >= fx_lo || has_NA_or_Inf)
             {
                 if (step == step_hi)
                     Log::Debug("GPModel lbfgs: the line search routine failed, possibly due to insufficient numeric precision");
@@ -262,7 +266,7 @@ public:
                 fx_hi = fx;
                 // dg_hi = dg;
                 // ChangedForGPBoost: start the mode finding of the next candidate at the modes of 'x_lo', see the bracketing phase
-                if (!std::isfinite(fx))
+                if (has_NA_or_Inf)
                 {
                     f.RestoreModesLo();
                 }

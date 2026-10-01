@@ -64,10 +64,10 @@ Appending "_admm_ssn_alm" instead warm starts the refinement with an ADMM phase,
 \item{ "gaussian_heteroscedastic": Gaussian likelihood where the mean is related to fixed and random effects and
 the log-error variance is related to fixed effects only (linear predictor or GPBoost algorithm). The estimated coefficients of the
 log-variance model are returned alongside the mean-model coefficients (with the suffix "_scale").
-Fisher-Laplace is the default and currently the only implemented approximation. By default, Cholesky factorizations are used, and the initial values are obtained from a homoscedastic Gaussian process model. }
+Fisher-Laplace is the default and currently the only implemented approximation. }
 \item{ "gaussian_heteroscedastic_fixed_and_random": Gaussian likelihood where both the mean and the variance
 are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation.
-Fisher-Laplace is the default and currently the only implemented approximation. By default, Cholesky factorizations are used, and the initial values are obtained from a homoscedastic Gaussian process model. }
+Fisher-Laplace is the default and currently the only implemented approximation. By default, Cholesky factorizations are used. If init_cov_pars is not given, the initial values for the estimation of a GPModel (but not for the GPBoost algorithm) are obtained from a homoscedastic Gaussian process model. }
 }
 
 \strong{Positive continuous response: y in (0, inf)}
@@ -477,7 +477,7 @@ fixed effects linear regression term (if there is one)}
     (e.g., shape parameter of a gamma or negative_binomial likelihood) }
     \item{init_coef_aux_pars_from_iid_model: \code{boolean} (default = TRUE).
     If TRUE, regression coefficients and auxiliary parameters are initialized from an iid model (only for models with a linear regression term).
-    This option is ignored if init_coef is provided. If init_aux_pars is provided but init_coef is not, only regression coefficients are initialized from an iid model. For likelihood = "gaussian_heteroscedastic_fixed_and_random", they are initialized from a homoscedastic Gaussian process model instead: the coefficients of the mean from its coefficients and the intercept of the log-error variance from the logarithm of its error variance. This model also provides the initial covariance parameters if init_cov_pars is not provided. }
+    This option is ignored if init_coef is provided. If init_aux_pars is provided but init_coef is not, only regression coefficients are initialized from an iid model. For likelihood = "gaussian_heteroscedastic_fixed_and_random", if init_cov_pars is not provided, the initial covariance parameters are obtained from a homoscedastic Gaussian process model, and the regression coefficients are then initialized from this model instead: the coefficients of the mean from its coefficients and the intercept of the log-error variance from the logarithm of its error variance. }
     \item{estimate_cov_par_index: \code{vector} with \code{integer} (default = -1). 
     This allows for disabling the estimation of some (or all) covariance parameters. 
     If 'estimate_cov_par_index' = -1, all covariance parameters are estimated. 

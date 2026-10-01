@@ -529,7 +529,7 @@ namespace GPBoost {
 		/*!
 		* \brief Initial covariance parameters for likelihood = 'gaussian_heteroscedastic_fixed_and_random' from a homoscedastic
 		*		Gaussian process model with the same Gaussian process: the GP of the mean gets its parameters, the GP of the
-		*		log-error variance its ranges and a small variance. The estimates of this model are also kept for
+		*		log-error variance its ranges and small marginal variances. The estimates of this model are also kept for
 		*		'InitCoefFromHomoscedasticModel()'. Otherwise, the default initial values explain all variation by the error
 		*		variance, and the optimization can end at a local optimum at which the GP of the log-error variance explains
 		*		part of the variation of the mean
@@ -537,7 +537,8 @@ namespace GPBoost {
 		* \param covariate_data Covariate data (column-major), can be nullptr
 		* \param num_covariates Number of covariates
 		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset), can be nullptr
-		* \return True if cov_pars_ has been set, false if this is not applicable (other likelihood or no Gaussian process arguments kept)
+		* \return True if cov_pars_ has been set, false if this is not applicable (other likelihood, no Gaussian process arguments
+		*		kept, or weights that are zero)
 		*/
 		bool InitCovParsFromHomoscedasticModel(const double* y_data,
 			const double* covariate_data,
@@ -688,7 +689,8 @@ namespace GPBoost {
 		};
 		/*! \brief Only set for likelihood = 'gaussian_heteroscedastic_fixed_and_random' */
 		std::unique_ptr<GPArgsAuxModel> gp_args_aux_model_;
-		/*! \brief Linear regression coefficients of the homoscedastic model of 'InitCovParsFromHomoscedasticModel()' (empty if it has no covariates) */
+		/*! \brief Linear regression coefficients of the homoscedastic model of 'InitCovParsFromHomoscedasticModel()' (empty if it has no
+		*		covariates). This and the following two members are only set within the call of 'OptimLinRegrCoefCovPar()' that has estimated this model */
 		vec_t coef_homoscedastic_model_;
 		/*! \brief Intercept column of the covariates of the homoscedastic model (-1 if there is none) */
 		int intercept_col_homoscedastic_model_ = -1;
