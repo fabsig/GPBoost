@@ -824,6 +824,10 @@ namespace GPBoost {
 				}
 				if (!any_positive_weight) Log::REFatal("For likelihood='%s', at least one effective weight must be strictly positive ", likelihood_type_.c_str());
 			}
+			// A zero weight makes the information of the log-likelihood exactly zero for any likelihood
+			if (has_weights_ && !information_ll_can_be_exact_zero_) {
+				information_ll_can_be_exact_zero_ = std::any_of(weights_, weights_ + num_data_, [](double w) { return w == 0.; });
+			}
 			has_int_label_ = label_type() == "int";
 			if (iid_model_) {
 				maxit_mode_newton_ = 0;
@@ -1778,22 +1782,24 @@ namespace GPBoost {
 		/*!
 		* \brief Record a run of a conjugate gradient algorithm of the iterative methods for a Vecchia-Laplace approximation
 		* \param num_steps Number of iterations of the run
-		* \param max_steps Maximal number of iterations ('cg_max_num_it' or 'cg_max_num_it_tridiag')
 		* \param tridiag If true, the run solves for several right-hand sides at once (stochastic Lanczos quadrature)
 		*/
 		void RecordCGRun(int num_steps,
-			int max_steps,
 			bool tridiag) {
-			max_steps = std::min(max_steps, (int)dim_mode_);// the algorithms stop after at most as many iterations as the dimension of the system
+			// The maximum is the configured one, also for the runs of the first optimization step, which use a reduced one
+			//	internally. The algorithms stop at the latest at the dimension of the system, and reaching a small maximum
+			//	does not indicate an expensive run
+			const int max_steps = std::min(tridiag ? cg_max_num_it_tridiag_ : cg_max_num_it_, (int)dim_mode_);
+			const bool reached_max_steps = num_steps >= max_steps && max_steps >= MIN_CG_MAX_NUM_IT_RECORDED_;
 #pragma omp critical(record_cg_run)// the runs for the simulation-based predictive variances are carried out in parallel
 			{
 				if (tridiag) {
 					num_cg_steps_tridiag_last_ = num_steps;
-					cg_statistics_tridiag_.Add(num_steps, max_steps);
+					cg_statistics_tridiag_.Add(num_steps, reached_max_steps);
 				}
 				else {
 					num_cg_steps_last_ = num_steps;
-					cg_statistics_.Add(num_steps, max_steps);
+					cg_statistics_.Add(num_steps, reached_max_steps);
 				}
 			}
 		}
@@ -8775,6 +8781,8 @@ namespace GPBoost {
 		CGStatistics cg_statistics_;
 		/*! \brief Statistics of the runs of the conjugate gradient algorithm with several right-hand sides, see 'RecordCGRun()' */
 		CGStatistics cg_statistics_tridiag_;
+		/*! \brief 'RecordCGRun()' counts a run as having reached the maximal number of iterations only if that maximum is at least this large */
+		const int MIN_CG_MAX_NUM_IT_RECORDED_ = 100;
 
 		//ITERATIVE MATRIX INVERSION + VECCIA APPROXIMATION
 		//A) ROW-MAJOR MATRICES OF VECCIA APPROXIMATION

@@ -80,12 +80,12 @@ namespace GPBoost {
 		/*!
 		* \brief Add a run
 		* \param steps Number of iterations of the run
-		* \param max_steps Maximal number of iterations of the run
+		* \param reached_max_steps True if the run has reached the maximal number of iterations
 		*/
-		void Add(int steps, int max_steps) {
+		void Add(int steps, bool reached_max_steps) {
 			++num_runs;
 			num_steps += steps;
-			if (steps >= max_steps) {
+			if (reached_max_steps) {
 				++num_runs_max_it;
 			}
 		}

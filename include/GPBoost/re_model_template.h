@@ -6607,10 +6607,10 @@ namespace GPBoost {
 		bool report_convergence_warnings_ = true;
 		/*! \brief True if the warning of 'SlowIterativeMethodsWarning()' has been given */
 		bool slow_iterative_methods_warning_given_ = false;
-		/*! \brief 'SlowIterativeMethodsWarning()' warns if at least this fraction of the runs of the conjugate gradient algorithm has reached the maximal number of iterations */
+		/*! \brief 'SlowIterativeMethodsWarning()' warns if at least this fraction of the runs of the conjugate gradient algorithm of one kind (one right-hand side or log-determinant) has reached the maximal number of iterations */
 		const double SLOW_CG_FRACTION_RUNS_MAX_IT_ = 0.05;
-		/*! \brief 'SlowIterativeMethodsWarning()' also warns if the runs needed at least this fraction of the maximal number of iterations on average */
-		const double SLOW_CG_FRACTION_MEAN_STEPS_ = 0.3;
+		/*! \brief 'SlowIterativeMethodsWarning()' also warns if the runs of one kind needed at least this many iterations on average */
+		const double SLOW_CG_MEAN_STEPS_ = 300.;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
@@ -9381,38 +9381,45 @@ namespace GPBoost {
 				"'cg_max_num_it', %g iterations on average), %d runs for the log-determinant (%d reached 'cg_max_num_it_tridiag', "
 				"%g iterations on average) ", stats.num_runs, stats.num_runs_max_it, stats.MeanSteps(),
 				stats_tridiag.num_runs, stats_tridiag.num_runs_max_it, stats_tridiag.MeanSteps());
-			// A maximal number of iterations other than the default has been chosen deliberately (e.g., a small one to save time),
+			auto is_slow = [this](const CGStatistics& s) {
+				return s.num_runs > 0 && (s.num_runs_max_it >= std::max(2., SLOW_CG_FRACTION_RUNS_MAX_IT_ * s.num_runs) ||
+					s.MeanSteps() >= SLOW_CG_MEAN_STEPS_);
+			};
+			// A maximal number of iterations below the default has been chosen deliberately (e.g., a small one to save time),
 			//	so reaching it is no reason to warn. The runs with such a limit are therefore ignored
-			if (cg_max_num_it_ != CG_MAX_NUM_IT_DEFAULT_) {
-				stats = CGStatistics();
-			}
-			if (cg_max_num_it_tridiag_ != CG_MAX_NUM_IT_DEFAULT_) {
-				stats_tridiag = CGStatistics();
-			}
-			const int num_runs = stats.num_runs + stats_tridiag.num_runs;
-			const int num_runs_max_it = stats.num_runs_max_it + stats_tridiag.num_runs_max_it;
-			const bool many_runs_max_it = num_runs_max_it >= std::max(2., SLOW_CG_FRACTION_RUNS_MAX_IT_ * num_runs);
-			const bool many_steps = stats.MeanSteps() >= SLOW_CG_FRACTION_MEAN_STEPS_ * cg_max_num_it_ ||
-				stats_tridiag.MeanSteps() >= SLOW_CG_FRACTION_MEAN_STEPS_ * cg_max_num_it_tridiag_;
-			if (num_runs == 0 || !(many_runs_max_it || many_steps) || !report_convergence_warnings_ ||
+			const bool slow = cg_max_num_it_ >= CG_MAX_NUM_IT_DEFAULT_ && is_slow(stats);
+			const bool slow_tridiag = cg_max_num_it_tridiag_ >= CG_MAX_NUM_IT_DEFAULT_ && is_slow(stats_tridiag);
+			if (!(slow || slow_tridiag) || !report_convergence_warnings_ ||
 				(called_in_GPBoost_algorithm && slow_iterative_methods_warning_given_)) {
 				return;
 			}
 			slow_iterative_methods_warning_given_ = true;
+			auto describe = [](const char* runs, const CGStatistics& s) {
+				char buffer[256];
+				snprintf(buffer, sizeof(buffer), "%s: %d of %d reached the maximal number of iterations, %g iterations on average",
+					runs, s.num_runs_max_it, s.num_runs, s.MeanSteps());
+				return string_t(buffer);
+			};
+			string_t details = "";
+			if (slow) {
+				details = describe("runs with one right-hand side", stats);
+			}
+			if (slow_tridiag) {
+				details += (slow ? "; " : "") + describe("runs for the log-determinant", stats_tridiag);
+			}
 			string_t alternatives = "matrix_inversion_method = 'cholesky' if the sample size is not very large";
 			if (cg_preconditioner_type_ != "fitc" && likelihood_[unique_clusters_[0]]->FITCPreconditionerIsSupported()) {
 				alternatives += ", or with cg_preconditioner_type = 'fitc'";
 			}
 			string_t reason = "";
 			if (cg_preconditioner_type_ == "vadu") {
-				reason = " The 'vadu' preconditioner is inefficient when the information of the likelihood (e.g., the inverse of a small "
-					"error variance) is large compared to the inverse conditional variances of the Vecchia approximation (e.g., for a "
-					"smooth covariance function with a large range).";
+				reason = " The 'vadu' preconditioner can be ineffective when the information of the likelihood (e.g., the inverse of a "
+					"small error variance) is large and the Gaussian process is strongly correlated (e.g., for a smooth covariance function "
+					"with a large range).";
 			}
 			Log::REWarning(("GPModel: the conjugate gradient algorithm of the iterative methods (cg_preconditioner_type = '%s') has needed "
-				"many iterations during the estimation: %d of %d runs reached the maximal number of iterations, and a run needed %g "
-				"iterations on average. The estimation could be faster with " + alternatives + "." + reason + " ").c_str(),
-				cg_preconditioner_type_.c_str(), num_runs_max_it, num_runs, (stats.num_steps + stats_tridiag.num_steps) / num_runs);
+				"many iterations during the estimation (%s). The estimation could be faster with " + alternatives + "." + reason + " ").c_str(),
+				cg_preconditioner_type_.c_str(), details.c_str());
 		}//end SlowIterativeMethodsWarning
 
 		/*!

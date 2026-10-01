@@ -263,10 +263,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   test_that("Warning when the conjugate gradient algorithm of a Vecchia-Laplace approximation needs many iterations", {
 
     # The iterative methods of a Vecchia-Laplace approximation can be much slower than Cholesky factorizations,
-    #   e.g., for the 'vadu' preconditioner when the information of the likelihood is much larger than the inverse
-    #   conditional variances of the Vecchia approximation. Here, these are Poisson counts with a large mean and a
-    #   smooth covariance function: 8 runs of the conjugate gradient algorithm reach the default maximal number of
-    #   iterations (capped by the dimension n_v), which is 9 to 13% of the runs for 1 to 16 threads
+    #   e.g., for the 'vadu' preconditioner when the information of the likelihood is large and the Gaussian process
+    #   is strongly correlated. Here, these are Poisson counts with a large mean and a smooth covariance function:
+    #   7 runs with one right-hand side reach the default maximal number of iterations (capped by the dimension n_v),
+    #   which is 10 to 14% of these runs for 1 to 16 threads
     WARNING_SLOW_CG <- "conjugate gradient algorithm of the iterative methods"
     n_v <- 300
     coords_v <- cbind(sim_rand_unif(n = n_v, init_c = 0.35), sim_rand_unif(n = n_v, init_c = 0.62))
@@ -292,6 +292,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_true(any(grepl(WARNING_SLOW_CG, res$out)))
     expect_true(any(grepl("matrix_inversion_method = 'cholesky'", res$out)))
     expect_true(any(grepl("or with cg_preconditioner_type = 'fitc'", res$out)))
+    expect_true(any(grepl("runs with one right-hand side: [0-9]+ of [0-9]+ reached", res$out)))
+    # A raised maximal number of iterations does not suppress the warning
+    res <- fit_vecchia_slow(list(cg_max_num_it = 2000, cg_max_num_it_tridiag = 2000))
+    expect_true(any(grepl(WARNING_SLOW_CG, res$out)))
     # No warning when the maximal numbers of iterations are lowered deliberately, even though every run reaches them
     res <- fit_vecchia(list(cg_max_num_it = 3, cg_max_num_it_tridiag = 3))
     expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
