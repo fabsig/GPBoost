@@ -4569,6 +4569,7 @@ namespace GPBoost {
 					fixed_effects_ptr = fixed_effects_.data();
 				}
 				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false, sample_prior);
+				cg_statistics_mode_prediction_ = SumCGStatisticsLikelihoods();// see 'NonConvergedCGPredictionWarning()'
 			}
 			bool predict_var_or_response = predict_var || (!gauss_likelihood_ && predict_response && likelihood_[unique_clusters_[0]]->NeedPredLatentVarForResponseMean()); //variance needs to be available for response prediction for most non-Gaussian likelihoods
 			// Loop over different clusters to calculate predictions
@@ -6609,6 +6610,12 @@ namespace GPBoost {
 		bool slow_iterative_methods_warning_given_ = false;
 		/*! \brief 'SlowIterativeMethodsWarning()' warns if the runs of the conjugate gradient algorithm of one kind (one right-hand side or log-determinant) needed at least this many iterations on average */
 		const double SLOW_CG_MEAN_STEPS_ = 300.;
+		/*! \brief True if the warning of 'NonConvergedCGPredictionWarning()' has been given */
+		bool non_converged_cg_prediction_warning_given_ = false;
+		/*! \brief Statistics of the runs of the conjugate gradient algorithm of a prediction until the mode of the Laplace approximation has been calculated, see 'NonConvergedCGPredictionWarning()' */
+		CGStatistics cg_statistics_mode_prediction_;
+		/*! \brief 'NonConvergedCGPredictionWarning()' warns if at least this fraction of the runs of the conjugate gradient algorithm during a prediction (and at least one) has reached the maximal number of iterations */
+		const double NON_CONVERGED_CG_FRACTION_RUNS_PRED_ = 0.05;
 
 		// MATRIX INVERSION PROPERTIES
 		/*! \brief Matrix inversion method */
@@ -9420,6 +9427,58 @@ namespace GPBoost {
 				"many iterations during the estimation (%s). The estimation could be faster with " + alternatives + "." + reason + " ").c_str(),
 				cg_preconditioner_type_.c_str(), details.c_str());
 		}//end SlowIterativeMethodsWarning
+
+		/*! \brief Resets the statistics of the runs of the conjugate gradient algorithm of the likelihoods, see 'NonConvergedCGPredictionWarning()' */
+		void ResetCGStatisticsLikelihoods() {
+			if (!gauss_likelihood_) {
+				for (const auto& cluster_i : unique_clusters_) {
+					likelihood_[cluster_i]->ResetCGStatistics();
+				}
+			}
+			cg_statistics_mode_prediction_ = CGStatistics();
+		}
+
+		/*! \brief Statistics of the runs with one right-hand side of the conjugate gradient algorithm of all likelihoods since 'ResetCGStatisticsLikelihoods()' */
+		CGStatistics SumCGStatisticsLikelihoods() const {
+			CGStatistics stats;
+			if (!gauss_likelihood_) {
+				for (const auto& cluster_i : unique_clusters_) {
+					stats.Add(likelihood_.at(cluster_i)->GetCGStatistics());
+				}
+			}
+			return(stats);
+		}
+
+		/*!
+		* \brief Warns if the conjugate gradient algorithm of the iterative methods for a Vecchia-Laplace approximation has reached the
+		*		maximal number of iterations in many runs during a prediction (since 'ResetCGStatisticsLikelihoods()'). The predictions
+		*		might then be inaccurate, but they need not be. The warning is given at most once for a model
+		*/
+		void NonConvergedCGPredictionWarning() {
+			// A maximal number of iterations below the default has been chosen deliberately, see 'SlowIterativeMethodsWarning()'
+			if (gauss_likelihood_ || matrix_inversion_method_ != "iterative" || gp_approx_ != "vecchia" || grouped_RE_and_vecchia_GP_ ||
+				non_converged_cg_prediction_warning_given_ || cg_max_num_it_ < CG_MAX_NUM_IT_DEFAULT_) {
+				return;
+			}
+			const CGStatistics stats = SumCGStatisticsLikelihoods();
+			if (stats.num_runs == 0) {
+				return;
+			}
+			Log::REDebug("GPModel: conjugate gradient algorithm during the prediction: %d runs (%d reached 'cg_max_num_it', %g iterations "
+				"on average) ", stats.num_runs, stats.num_runs_max_it, stats.MeanSteps());
+			if (stats.num_runs_max_it < std::max(1., NON_CONVERGED_CG_FRACTION_RUNS_PRED_ * stats.num_runs)) {
+				return;
+			}
+			non_converged_cg_prediction_warning_given_ = true;
+			// The predictive means depend on the conjugate gradient algorithm only if the mode has been calculated in the prediction,
+			//	the other runs are the ones for the simulation-based predictive variances
+			const char* affected = cg_statistics_mode_prediction_.num_runs_max_it > 0 ? "means and variances" : "variances";
+			Log::REWarning("GPModel: the conjugate gradient algorithm of the iterative methods has reached the maximal number of "
+				"iterations in %d of %d runs during the prediction. The predictive %s might therefore be inaccurate. This can be "
+				"checked with matrix_inversion_method = 'cholesky' if the sample size is not very large, or with a larger "
+				"cg_max_num_it (= %d) if it is smaller than the number of random effects, which also limits the number of iterations ",
+				stats.num_runs_max_it, stats.num_runs, affected, cg_max_num_it_);
+		}//end NonConvergedCGPredictionWarning
 
 		/*!
 		* \brief Make a warning of some parameters are e.g. too large

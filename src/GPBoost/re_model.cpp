@@ -1237,6 +1237,7 @@ namespace GPBoost {
 			calc_cov_factor = false;
 		}
 		if (matrix_format_ == "sp_mat_t") {
+			re_model_sp_->ResetCGStatisticsLikelihoods();
 			re_model_sp_->Predict(cov_pars_pred_trans.data(),
 				y_obs,
 				num_data_pred,
@@ -1259,8 +1260,10 @@ namespace GPBoost {
 				use_saved_data,
 				fixed_effects,
 				fixed_effects_pred);
+			re_model_sp_->NonConvergedCGPredictionWarning();
 		}
 		else if (matrix_format_ == "sp_mat_rm_t") {
+			re_model_sp_rm_->ResetCGStatisticsLikelihoods();
 			re_model_sp_rm_->Predict(cov_pars_pred_trans.data(),
 				y_obs,
 				num_data_pred,
@@ -1283,8 +1286,10 @@ namespace GPBoost {
 				use_saved_data,
 				fixed_effects,
 				fixed_effects_pred);
+			re_model_sp_rm_->NonConvergedCGPredictionWarning();
 		}
 		else {
+			re_model_den_->ResetCGStatisticsLikelihoods();
 			re_model_den_->Predict(cov_pars_pred_trans.data(),
 				y_obs,
 				num_data_pred,
@@ -1307,6 +1312,7 @@ namespace GPBoost {
 				use_saved_data,
 				fixed_effects,
 				fixed_effects_pred);
+			re_model_den_->NonConvergedCGPredictionWarning();
 		}
 	}//end Predict
 

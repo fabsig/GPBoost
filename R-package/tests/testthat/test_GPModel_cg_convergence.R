@@ -299,6 +299,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_true(any(grepl("runs for the log-determinant: [0-9]+ of [0-9]+ reached", res$out)))
     expect_true(any(grepl("matrix_inversion_method = 'cholesky'", res$out)))
     expect_true(any(grepl("or with cg_preconditioner_type = 'fitc'", res$out)))
+    # The runs of the prediction reach the maximal number of iterations as well, which the prediction reports once
+    WARNING_PRED_CG <- "maximal number of iterations in [0-9]+ of [0-9]+ runs during the prediction"
+    predict_s <- function(gp_model) {
+      capture.output(predict(gp_model, gp_coords_pred = coords_s[1:20, ] + 0.001, X_pred = matrix(1, 20), predict_var = TRUE))
+    }
+    expect_true(any(grepl(WARNING_PRED_CG, predict_s(res$gp_model))))
+    expect_false(any(grepl(WARNING_PRED_CG, predict_s(res$gp_model))))
+    # A maximal number of iterations below the default has been chosen deliberately, no warning is given then
+    res_small_max <- fit_vecchia_slow(list(cg_max_num_it = 100))
+    expect_false(any(grepl(WARNING_PRED_CG, predict_s(res_small_max$gp_model))))
     # A raised maximal number of iterations does not suppress the warning. The 'fitc' preconditioner requires the
     #   inverse of the information of the likelihood and is therefore not suggested when a weight is zero
     weights_s <- rep(1, n_s)

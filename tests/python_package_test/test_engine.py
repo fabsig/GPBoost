@@ -543,7 +543,9 @@ def test_auc_mu():
     gpb_X_weighted = gpb.Dataset(X, label=y, weight=np.abs(np.random.normal(size=y.shape)))
     results_unweighted = {}
     results_weighted = {}
-    params = dict(params, num_classes=10, num_leaves=5)
+    # equal weights only give the same model as no weights if the training is deterministic: otherwise, the order of
+    #   the multithreaded summation can decide between splits with almost equal gains
+    params = dict(params, num_classes=10, num_leaves=5, deterministic=True, force_col_wise=True)
     gpb.train(params, gpb_X, num_boost_round=10, valid_sets=[gpb_X], evals_result=results_unweighted)
     gpb.train(params, gpb_X_weighted, num_boost_round=10, valid_sets=[gpb_X_weighted],
               evals_result=results_weighted)
