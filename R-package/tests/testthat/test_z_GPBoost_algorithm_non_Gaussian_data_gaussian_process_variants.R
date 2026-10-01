@@ -194,6 +194,30 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_true(is.finite(gp_model$get_current_neg_log_likelihood()))
     })
     
+    test_that("GPBoost algorithm with 'gaussian_heteroscedastic_fixed_and_random': initial values from a homoscedastic model", {
+      
+      # The covariance parameters are not estimated and keep their initial values: those of a homoscedastic
+      #   Gaussian process model with an intercept for the Gaussian process of the mean, and its range and a
+      #   variance of 0.01 for the Gaussian process of the log-error variance
+      ntrain <- 200
+      sim_data <- sim_friedman3(n=ntrain, n_irrelevant=5, init_c=0.69)
+      X <- sim_data$X
+      coords <- matrix(sim_rand_unif(n=ntrain*2, init_c=0.63), ncol=2)
+      C <- t(chol(exp(-as.matrix(dist(coords))/0.1) + diag(1E-20,ntrain)))
+      y <- sim_data$f + as.vector(C %*% qnorm(sim_rand_unif(n=ntrain, init_c=0.987864))) +
+        0.1 * qnorm(sim_rand_unif(n=ntrain, init_c=0.52574))
+      capture.output( gp_model_hom <- fitGPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "vecchia",
+                                                 num_neighbors = 10, vecchia_ordering = "none",
+                                                 y = y, X = matrix(1, nrow = ntrain, ncol = 1)), file='NUL')
+      cov_pars_hom <- as.vector(gp_model_hom$get_cov_pars())
+      gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                          likelihood = "gaussian_heteroscedastic_fixed_and_random", gp_approx = "vecchia",
+                          num_neighbors = 10, vecchia_ordering = "none")
+      capture.output( bst <- gpb.train(data = gpb.Dataset(data = X, label = y), gp_model = gp_model, nrounds = 1,
+                                       train_gp_model_cov_pars = FALSE, verbose = 0), file='NUL')
+      expect_lt(max(abs(as.vector(gp_model$get_cov_pars()) / c(cov_pars_hom[2:3], 0.01, cov_pars_hom[3]) - 1)), TOLERANCE)
+    })
+    
     if (Sys.getenv("GPBOOST_ADDITIONAL_SLOW_TESTS") == "GPBOOST_ADDITIONAL_SLOW_TESTS") {
       # slow test 
       test_that("GPBoost algorithm with Gaussian process model and 'gaussian_heteroscedastic_fixed_and_random' likelihood", {
@@ -244,27 +268,27 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                          min_data_in_leaf = 5,
                          verbose = 0, deterministic = TRUE)
         # the response is binary while the likelihood is a heteroscedastic Gaussian one, so the model is
-        #	misspecified and the optimum of both range parameters lies at the boundary: the mean process
-        #	becomes uncorrelated with a marginal variance close to the variance of the observations and the
-        #	process of the log-error variance becomes constant. The negative log-likelihood is 361.6 there
-        #	and 723.2 at the values that this test expected before, so the fit is well separated from them
-        cov_pars_est <- c(2.489125e-01, 1.621601e-06, 5.241877e-07, 1.796105e-04)
-        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),relax_tolerance_stoch(0.4))
+        #	misspecified. From the initial values of a homoscedastic Gaussian process, the fit ends at a
+        #	spatially correlated mean process (negative log-likelihood 369.4). Another local optimum lies at the
+        #	boundary, where the mean process is uncorrelated and the process of the log-error variance constant
+        #	(361.8); its predictions are worse (test NLPD 1.155 instead of 1.009), and the tolerances of the
+        #	covariance parameters and of the predicted random effects below separate the two
+        cov_pars_est <- c(1.021396e-01, 1.046500e-02, 1.599117e-05, 7.435874e-03)
+        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_est)),relax_tolerance_stoch(0.05))
 
         # Prediction
         pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                         predict_var = TRUE, pred_latent = TRUE)
         npred <- dim(X_test)[1]
-        expect_lt(sum(abs(pred$fixed_effect[1:4]-c(0.5871531, 0.5670663, 0.6189220, 0.5871531))),relax_tolerance_stoch(2))
-        # the mean process is uncorrelated, so its posterior mean at new locations is zero and its
-        #	predictive variance is the marginal variance
-        expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(0, 0, 0, 0))),relax_tolerance_stoch(0.4))
-        expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.2489125, 0.2489125, 0.2489125, 0.2489125))),relax_tolerance_stoch(0.4))
+        expect_lt(sum(abs(pred$fixed_effect[1:4]-c(0.6035652, 0.4646622, 0.4646622, 0.6035652))),relax_tolerance_stoch(2))
+        expect_lt(sum(abs(tail(pred$random_effect_mean, n=4)-c(-0.001173176, -0.086163283, 0.054093018, 0.018289771))),relax_tolerance_stoch(0.05))
+        # the predictive variances are simulation-based and vary with the number of threads by about 0.001
+        expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.10213093, 0.09556879, 0.09591550, 0.10173293))),relax_tolerance_stoch(0.05))
         # Predict response
         pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                         predict_var = TRUE, pred_latent = FALSE)
-        expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.6192911, 0.5871531, 0.5967787, -0.7748928))),relax_tolerance_stoch(1))
-        expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.2489135, 0.2489135, 0.2489135, 0.2489135))),relax_tolerance_stoch(0.3))
+        expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.9276366, 0.5174019, 0.7283017, 0.6616905))),relax_tolerance_stoch(1))
+        expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.2857612, 0.2487550, 0.3031877, 0.2444298))),relax_tolerance_stoch(0.3))
         
         # Parameter tuning
         if (!identical(Sys.info()[["sysname"]], "Darwin")) {# these tests fail on Mac OS

@@ -1466,13 +1466,28 @@ namespace GPBoost {
 		const double* covariate_data,
 		int num_covariates,
 		const double* fixed_effects) {
-		if (!gp_args_aux_model_ || y_data == nullptr || GetLikelihood() != "gaussian_heteroscedastic_fixed_and_random") {
+		if (!gp_args_aux_model_ || GetLikelihood() != "gaussian_heteroscedastic_fixed_and_random") {
 			return false;
 		}
 		const GPArgsAuxModel& gp_args = *gp_args_aux_model_;
 		const double* weights_ptr = (has_weights_ && !weights_.empty()) ? weights_.data() : nullptr;
 		if (weights_ptr != nullptr && HasZero<double>(weights_ptr, num_data_)) {
 			return false;// a Gaussian likelihood requires positive weights
+		}
+		// In the GPBoost algorithm, the response variable has been set before, and the tree ensemble starts at a constant
+		//	initial score: the homoscedastic model then has an intercept
+		vec_t y_set, intercept;
+		const double* covariate_data_hom = covariate_data;
+		int num_covariates_hom = num_covariates;
+		if (y_data == nullptr) {
+			y_set = vec_t(num_data_);
+			GetY(y_set.data());
+			y_data = y_set.data();
+			if (covariate_data == nullptr) {
+				intercept = vec_t::Ones(num_data_);
+				covariate_data_hom = intercept.data();
+				num_covariates_hom = 1;
+			}
 		}
 		std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>> re_model_hom =
 			std::unique_ptr<REModelTemplate<den_mat_t, chol_den_mat_t>>(new REModelTemplate<den_mat_t, chol_den_mat_t>(
@@ -1492,13 +1507,13 @@ namespace GPBoost {
 		CHECK(num_cov_pars_ == 2 * (num_cov_par_hom - 1));
 		vec_t init_cov_pars_hom(num_cov_par_hom), cov_pars_hom(num_cov_par_hom);
 		re_model_hom->FindInitCovPar(y_data, fixed_effects, init_cov_pars_hom.data());// only the first block of 'fixed_effects' (the mean) is used
-		vec_t coef_hom(std::max(num_covariates, 0));
+		vec_t coef_hom(std::max(num_covariates_hom, 0));
 		int num_it_hom = 0;
 		re_model_hom->OptimLinRegrCoefCovPar(y_data,
-			covariate_data,
-			num_covariates,
+			covariate_data_hom,
+			num_covariates_hom,
 			cov_pars_hom.data(),
-			covariate_data == nullptr ? nullptr : coef_hom.data(),
+			covariate_data_hom == nullptr ? nullptr : coef_hom.data(),
 			num_it_hom,
 			init_cov_pars_hom.data(),
 			nullptr,

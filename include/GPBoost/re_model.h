@@ -533,7 +533,8 @@ namespace GPBoost {
 		*		'InitCoefFromHomoscedasticModel()'. Otherwise, the default initial values explain all variation by the error
 		*		variance, and the optimization can end at a local optimum at which the GP of the log-error variance explains
 		*		part of the variation of the mean
-		* \param y_data Response variable data
+		* \param y_data Response variable data. If nullptr (GPBoost algorithm), the response variable that has been set
+		*		before is used, and the homoscedastic model has an intercept if there are no covariates
 		* \param covariate_data Covariate data (column-major), can be nullptr
 		* \param num_covariates Number of covariates
 		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset), can be nullptr
