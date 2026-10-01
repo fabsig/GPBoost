@@ -264,10 +264,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
     # The iterative methods of a Vecchia-Laplace approximation can be much slower than Cholesky factorizations,
     #   e.g., for the 'vadu' preconditioner when the information of the likelihood is large and the Gaussian process
-    #   is strongly correlated. Here, these are Poisson counts with a large mean and a smooth covariance function:
-    #   7 runs with one right-hand side reach the default maximal number of iterations (capped by the dimension n_v),
-    #   which is 10 to 14% of these runs for 1 to 16 threads
+    #   is strongly correlated. Here, these are Poisson counts with a large mean and a smooth Gaussian process with a
+    #   large range. Already in the first iteration, every run for the log-determinant needs the maximal number of
+    #   iterations, which the dimension n_s caps, for 1 to 16 threads
     WARNING_SLOW_CG <- "conjugate gradient algorithm of the iterative methods"
+    n_s <- 400
+    coords_s <- cbind(sim_rand_unif(n = n_s, init_c = 0.35), sim_rand_unif(n = n_s, init_c = 0.62))
+    D_s <- as.matrix(dist(coords_s)) * sqrt(5) / 0.2
+    Sigma_s <- (1 + D_s + D_s^2 / 3) * exp(-D_s) + diag(1E-10, n_s)
+    f_s <- as.vector(t(chol(Sigma_s)) %*% qnorm(sim_rand_unif(n = n_s, init_c = 0.77)))
+    y_s <- qpois(sim_rand_unif(n = n_s, init_c = 0.21), lambda = exp(12 + f_s))
     n_v <- 300
     coords_v <- cbind(sim_rand_unif(n = n_v, init_c = 0.35), sim_rand_unif(n = n_v, init_c = 0.62))
     D_v <- as.matrix(dist(coords_v))
@@ -275,41 +281,54 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     f_v <- as.vector(t(chol(Sigma_v)) %*% qnorm(sim_rand_unif(n = n_v, init_c = 0.77)))
     y_v <- as.numeric(sim_rand_unif(n = n_v, init_c = 0.21) < 1 / (1 + exp(-f_v)))
     y_v_pois <- qpois(sim_rand_unif(n = n_v, init_c = 0.21), lambda = exp(12 + f_v))
-    fit_vecchia <- function(params, matrix_inversion_method = "iterative", cov_function = "exponential",
+    fit_vecchia <- function(params, matrix_inversion_method = "iterative", coords = coords_v, cov_function = "exponential",
                             likelihood = "bernoulli_logit", y = y_v, ...) {
       gp_model <- NULL
-      out <- capture.output(gp_model <- fitGPModel(gp_coords = coords_v, cov_function = cov_function,
+      out <- capture.output(gp_model <- fitGPModel(gp_coords = coords, cov_function = cov_function,
                                                    likelihood = likelihood, gp_approx = "vecchia",
                                                    matrix_inversion_method = matrix_inversion_method,
                                                    y = y, params = params, ...))
       list(out = out, gp_model = gp_model)
     }
     fit_vecchia_slow <- function(params, ...) {
-      fit_vecchia(params, cov_function = "matern", cov_fct_shape = 2.5, likelihood = "poisson", y = y_v_pois,
-                  X = matrix(1, n_v), ...)
+      fit_vecchia(c(list(maxit = 1), params), coords = coords_s, cov_function = "matern", cov_fct_shape = 2.5,
+                  likelihood = "poisson", y = y_s, X = matrix(1, n_s), ...)
     }
     res <- fit_vecchia_slow(list())
     expect_true(any(grepl(WARNING_SLOW_CG, res$out)))
+    expect_true(any(grepl("runs for the log-determinant: [0-9]+ of [0-9]+ reached", res$out)))
     expect_true(any(grepl("matrix_inversion_method = 'cholesky'", res$out)))
     expect_true(any(grepl("or with cg_preconditioner_type = 'fitc'", res$out)))
-    expect_true(any(grepl("runs with one right-hand side: [0-9]+ of [0-9]+ reached", res$out)))
-    # A raised maximal number of iterations does not suppress the warning
-    res <- fit_vecchia_slow(list(cg_max_num_it = 2000, cg_max_num_it_tridiag = 2000))
+    # A raised maximal number of iterations does not suppress the warning. The 'fitc' preconditioner requires the
+    #   inverse of the information of the likelihood and is therefore not suggested when a weight is zero
+    weights_s <- rep(1, n_s)
+    weights_s[1] <- 0
+    res <- fit_vecchia_slow(list(cg_max_num_it = 2000, cg_max_num_it_tridiag = 2000), weights = weights_s)
     expect_true(any(grepl(WARNING_SLOW_CG, res$out)))
-    # No warning when the maximal numbers of iterations are lowered deliberately, even though every run reaches them
+    expect_false(any(grepl("cg_preconditioner_type = 'fitc'", res$out)))
+    # No warning when the maximal numbers of iterations are lowered deliberately. Here, a limit of 999 does not change
+    #   the runs, which stop at the dimension n_s
+    res <- fit_vecchia_slow(list(cg_max_num_it = 999, cg_max_num_it_tridiag = 999))
+    expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
     res <- fit_vecchia(list(cg_max_num_it = 3, cg_max_num_it_tridiag = 3))
     expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
     # The number of iterations of the last runs of the conjugate gradient algorithm is also available
     expect_true(res$gp_model$get_num_cg_steps() %in% 1:3)
     expect_true(res$gp_model$get_num_cg_steps_tridiag() %in% 1:3)
-    # No warning with the default settings, with Cholesky factorizations, or with the suggested 'fitc' preconditioner
+    # No warning with Cholesky factorizations or with the suggested 'fitc' preconditioner
+    res <- fit_vecchia_slow(list(), matrix_inversion_method = "cholesky")
+    expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
+    res <- fit_vecchia_slow(list(cg_preconditioner_type = "fitc"))
+    expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
+    # No warning with the default settings, and none when only a few hard systems at the start of the estimation
+    #   reach the maximal number of iterations: for these Poisson counts, the initial range is much larger than the
+    #   estimated one, at which the runs need few iterations
     res <- fit_vecchia(list())
     expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
     expect_gt(res$gp_model$get_num_cg_steps(), 0)
     expect_lt(res$gp_model$get_num_cg_steps(), 1000)
-    res <- fit_vecchia_slow(list(), matrix_inversion_method = "cholesky")
-    expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
-    res <- fit_vecchia_slow(list(cg_preconditioner_type = "fitc"))
+    res <- fit_vecchia(list(), cov_function = "matern", cov_fct_shape = 2.5, likelihood = "poisson", y = y_v_pois,
+                       X = matrix(1, n_v))
     expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
   })
 

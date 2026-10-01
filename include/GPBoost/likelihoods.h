@@ -825,8 +825,9 @@ namespace GPBoost {
 				if (!any_positive_weight) Log::REFatal("For likelihood='%s', at least one effective weight must be strictly positive ", likelihood_type_.c_str());
 			}
 			// A zero weight makes the information of the log-likelihood exactly zero for any likelihood
-			if (has_weights_ && !information_ll_can_be_exact_zero_) {
-				information_ll_can_be_exact_zero_ = std::any_of(weights_, weights_ + num_data_, [](double w) { return w == 0.; });
+			if (has_weights_) {
+				has_zero_weights_ = std::any_of(weights_, weights_ + num_data_, [](double w) { return w == 0.; });
+				information_ll_can_be_exact_zero_ = information_ll_can_be_exact_zero_ || has_zero_weights_;
 			}
 			has_int_label_ = label_type() == "int";
 			if (iid_model_) {
@@ -1787,10 +1788,9 @@ namespace GPBoost {
 		void RecordCGRun(int num_steps,
 			bool tridiag) {
 			// The maximum is the configured one, also for the runs of the first optimization step, which use a reduced one
-			//	internally. The algorithms stop at the latest at the dimension of the system, and reaching a small maximum
-			//	does not indicate an expensive run
+			//	internally. The algorithms stop at the latest at the dimension of the system
 			const int max_steps = std::min(tridiag ? cg_max_num_it_tridiag_ : cg_max_num_it_, (int)dim_mode_);
-			const bool reached_max_steps = num_steps >= max_steps && max_steps >= MIN_CG_MAX_NUM_IT_RECORDED_;
+			const bool reached_max_steps = num_steps >= max_steps;
 #pragma omp critical(record_cg_run)// the runs for the simulation-based predictive variances are carried out in parallel
 			{
 				if (tridiag) {
@@ -1820,9 +1820,9 @@ namespace GPBoost {
 			return(cg_statistics_tridiag_);
 		}
 
-		/*! \brief True if the "fitc" preconditioner can be used for the Vecchia-Laplace approximation of this likelihood */
+		/*! \brief True if the "fitc" preconditioner can be used for the Vecchia-Laplace approximation of this likelihood. It requires W^(-1), which zero weights rule out */
 		bool FITCPreconditionerIsSupported() const {
-			return(num_sets_re_ == 1 && !information_ll_can_be_negative_);
+			return(num_sets_re_ == 1 && !information_ll_can_be_negative_ && !has_zero_weights_);
 		}
 
 		int GetNumModeFindingSteps() const {
@@ -8646,6 +8646,8 @@ namespace GPBoost {
 		bool information_ll_can_be_negative_ = false;
 		/*! \brief If true, 'information_ll_' could contain exact zeros */
 		bool information_ll_can_be_exact_zero_ = false;
+		/*! \brief True if a sample weight is zero, 'information_ll_' then contains exact zeros */
+		bool has_zero_weights_ = false;
 		/*! \brief If true, the (observed or expected) Fisher information ('information_ll_') changes in the mode finding algorithm (usually Newton's method) for the Laplace approximation */
 		bool information_changes_during_mode_finding_ = true;
 		/*! \brief If true, the (observed or expected) Fisher information ('information_ll_') changes after the mode finding algorithm (e.g., if Fisher-Laplace is used for mode finding but Laplace for the final likelihood calculation) */
@@ -8781,8 +8783,6 @@ namespace GPBoost {
 		CGStatistics cg_statistics_;
 		/*! \brief Statistics of the runs of the conjugate gradient algorithm with several right-hand sides, see 'RecordCGRun()' */
 		CGStatistics cg_statistics_tridiag_;
-		/*! \brief 'RecordCGRun()' counts a run as having reached the maximal number of iterations only if that maximum is at least this large */
-		const int MIN_CG_MAX_NUM_IT_RECORDED_ = 100;
 
 		//ITERATIVE MATRIX INVERSION + VECCIA APPROXIMATION
 		//A) ROW-MAJOR MATRICES OF VECCIA APPROXIMATION

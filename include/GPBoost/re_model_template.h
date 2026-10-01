@@ -6607,9 +6607,7 @@ namespace GPBoost {
 		bool report_convergence_warnings_ = true;
 		/*! \brief True if the warning of 'SlowIterativeMethodsWarning()' has been given */
 		bool slow_iterative_methods_warning_given_ = false;
-		/*! \brief 'SlowIterativeMethodsWarning()' warns if at least this fraction of the runs of the conjugate gradient algorithm of one kind (one right-hand side or log-determinant) has reached the maximal number of iterations */
-		const double SLOW_CG_FRACTION_RUNS_MAX_IT_ = 0.05;
-		/*! \brief 'SlowIterativeMethodsWarning()' also warns if the runs of one kind needed at least this many iterations on average */
+		/*! \brief 'SlowIterativeMethodsWarning()' warns if the runs of the conjugate gradient algorithm of one kind (one right-hand side or log-determinant) needed at least this many iterations on average */
 		const double SLOW_CG_MEAN_STEPS_ = 300.;
 
 		// MATRIX INVERSION PROPERTIES
@@ -9381,12 +9379,13 @@ namespace GPBoost {
 				"'cg_max_num_it', %g iterations on average), %d runs for the log-determinant (%d reached 'cg_max_num_it_tridiag', "
 				"%g iterations on average) ", stats.num_runs, stats.num_runs_max_it, stats.MeanSteps(),
 				stats_tridiag.num_runs, stats_tridiag.num_runs_max_it, stats_tridiag.MeanSteps());
+			// Only the average number of iterations decides, since it measures the cost. Runs that reach the maximal number of
+			//	iterations can be a few hard systems at the start of the estimation, after which the iterative methods are fast
 			auto is_slow = [this](const CGStatistics& s) {
-				return s.num_runs > 0 && (s.num_runs_max_it >= std::max(2., SLOW_CG_FRACTION_RUNS_MAX_IT_ * s.num_runs) ||
-					s.MeanSteps() >= SLOW_CG_MEAN_STEPS_);
+				return s.num_runs > 0 && s.MeanSteps() >= SLOW_CG_MEAN_STEPS_;
 			};
 			// A maximal number of iterations below the default has been chosen deliberately (e.g., a small one to save time),
-			//	so reaching it is no reason to warn. The runs with such a limit are therefore ignored
+			//	the runs with such a limit are therefore ignored
 			const bool slow = cg_max_num_it_ >= CG_MAX_NUM_IT_DEFAULT_ && is_slow(stats);
 			const bool slow_tridiag = cg_max_num_it_tridiag_ >= CG_MAX_NUM_IT_DEFAULT_ && is_slow(stats_tridiag);
 			if (!(slow || slow_tridiag) || !report_convergence_warnings_ ||
