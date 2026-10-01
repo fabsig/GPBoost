@@ -4569,7 +4569,6 @@ namespace GPBoost {
 					fixed_effects_ptr = fixed_effects_.data();
 				}
 				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false, sample_prior);
-				cg_statistics_mode_prediction_ = SumCGStatisticsLikelihoods();// see 'NonConvergedCGPredictionWarning()'
 			}
 			bool predict_var_or_response = predict_var || (!gauss_likelihood_ && predict_response && likelihood_[unique_clusters_[0]]->NeedPredLatentVarForResponseMean()); //variance needs to be available for response prediction for most non-Gaussian likelihoods
 			// Loop over different clusters to calculate predictions
@@ -6610,7 +6609,7 @@ namespace GPBoost {
 		bool slow_iterative_methods_warning_given_ = false;
 		/*! \brief 'SlowIterativeMethodsWarning()' warns if the runs of the conjugate gradient algorithm of one kind (one right-hand side or log-determinant) needed at least this many iterations on average */
 		const double SLOW_CG_MEAN_STEPS_ = 300.;
-		/*! \brief 'SlowIterativeMethodsWarning()' also warns if the conjugate gradient algorithm has done at least this many times the floating-point operations of Cholesky factorizations, see 'CGWorkRelativeToCholesky()'. In a calibration, iterative methods that were faster than Cholesky factorizations had ratios up to 4, ones that were 2.4 to 8 times slower ratios of 15 to 43 */
+		/*! \brief 'SlowIterativeMethodsWarning()' also warns if the conjugate gradient algorithm has done at least this many times the floating-point operations of Cholesky factorizations, see 'CGWorkRelativeToCholesky()'. In a calibration, iterative methods that were faster than Cholesky factorizations had ratios up to 7.7, ones that were 2.4 to 8.3 times slower ratios of 13 to 84 */
 		const double SLOW_CG_WORK_REL_CHOLESKY_ = 10.;
 		/*! \brief The rule of 'SLOW_CG_WORK_REL_CHOLESKY_' applies only to at least this many data points */
 		const data_size_t MIN_NUM_DATA_SLOW_CG_WORK_ = 1000;
@@ -6618,8 +6617,6 @@ namespace GPBoost {
 		bool mode_finding_inexact_cg_warning_given_ = false;
 		/*! \brief True if the warning of 'NonConvergedCGPredictionWarning()' has been given */
 		bool non_converged_cg_prediction_warning_given_ = false;
-		/*! \brief Statistics of the runs of the conjugate gradient algorithm of a prediction until the mode of the Laplace approximation has been calculated, see 'NonConvergedCGPredictionWarning()' */
-		CGStatistics cg_statistics_mode_prediction_;
 		/*! \brief 'NonConvergedCGPredictionWarning()' warns if at least this fraction of the runs of the conjugate gradient algorithm for the predictive uncertainty (and at least one) has not converged */
 		const double NON_CONVERGED_CG_FRACTION_RUNS_PRED_ = 0.05;
 
@@ -9375,27 +9372,29 @@ namespace GPBoost {
 
 		/*!
 		* \brief Floating-point operations of the conjugate gradient algorithm since the last reset of its statistics, divided by the
-		*		ones of Cholesky factorizations for the same mode findings: one for every Newton iteration and one more for every mode
-		*		finding. This overestimates the factorizations if the inexact solutions of the conjugate gradient algorithm have
-		*		required additional Newton iterations. A factorization is estimated from a symbolic analysis of the sparsity pattern,
-		*		which is skipped if the ratio is below 'SLOW_CG_WORK_REL_CHOLESKY_' already for a lower bound of the work of a
-		*		factorization. Only for the 'vadu' preconditioner, for which the work of an iteration is known
+		*		ones of the direct method: the Cholesky factorizations for the same mode findings, and a solve with the factor for every
+		*		run with one right-hand side. This overestimates the work of the direct method if the inexact solutions of the conjugate
+		*		gradient algorithm have required additional Newton iterations. A factorization and a solve are estimated from a symbolic
+		*		analysis of the sparsity pattern, which is skipped if the ratio is below 'SLOW_CG_WORK_REL_CHOLESKY_' already for a lower
+		*		bound of the work of the direct method. Only for the 'vadu'
+		*		preconditioner, for which the work of an iteration is known, and not for cg_multi_rhs_convergence = 'per_rhs', for which
+		*		the columns of the log-determinant runs stop at different iterations
 		* \param[out] is_upper_bound True if the analysis has been skipped and the return value is an upper bound of the ratio
 		* \return The ratio, or 0 if it is not available
 		*/
 		double CGWorkRelativeToCholesky(bool& is_upper_bound) {
 			is_upper_bound = false;
 			if (gauss_likelihood_ || matrix_inversion_method_ != "iterative" || gp_approx_ != "vecchia" || grouped_RE_and_vecchia_GP_ ||
-				cg_preconditioner_type_ != "vadu") {
+				cg_preconditioner_type_ != "vadu" || cg_convergence_params_.IsPerRHS()) {
 				return 0.;
 			}
 			double flops_cg = 0., flops_cholesky_lower_bound = 0.;
 			for (const auto& cluster_i : unique_clusters_) {
 				const CGStatistics& stats = likelihood_[cluster_i]->GetCGStatistics();
 				const CGStatistics& stats_tridiag = likelihood_[cluster_i]->GetCGStatisticsTridiag();
-				const CGStatistics& stats_mode = likelihood_[cluster_i]->GetModeFindingStatistics();
 				flops_cg += likelihood_[cluster_i]->FlopsCGIterationVecchia() * (stats.num_steps + stats_tridiag.num_steps * num_rand_vec_trace_);
-				flops_cholesky_lower_bound += likelihood_[cluster_i]->FlopsFactorizationLowerBoundVecchia() * (stats_mode.num_steps + stats_mode.num_runs);
+				flops_cholesky_lower_bound += likelihood_[cluster_i]->FlopsFactorizationLowerBoundVecchia() *
+					likelihood_[cluster_i]->NumFactorizationsCholeskyEquivalent() + likelihood_[cluster_i]->FlopsSolveLowerBoundVecchia() * stats.num_runs;
 			}
 			if (flops_cg <= 0. || flops_cholesky_lower_bound <= 0.) {
 				return 0.;
@@ -9410,8 +9409,8 @@ namespace GPBoost {
 				if (flops_factorization <= 0.) {
 					return 0.;
 				}
-				const CGStatistics& stats_mode = likelihood_[cluster_i]->GetModeFindingStatistics();
-				flops_cholesky += flops_factorization * (stats_mode.num_steps + stats_mode.num_runs);
+				flops_cholesky += flops_factorization * likelihood_[cluster_i]->NumFactorizationsCholeskyEquivalent() +
+					likelihood_[cluster_i]->FlopsSolveVecchia() * likelihood_[cluster_i]->GetCGStatistics().num_runs;
 			}
 			return(flops_cg / flops_cholesky);
 		}//end CGWorkRelativeToCholesky
@@ -9444,17 +9443,24 @@ namespace GPBoost {
 			if (!report_convergence_warnings_) {
 				return;
 			}
-			// The mode finding is an inexact Newton method. If most of its linear systems are not solved within cg_max_num_it
-			//	iterations, it can need many more iterations or not converge
-			if (stats_mode.num_runs_not_converged > 0 && stats.num_runs > 0 && stats.num_runs_not_converged >= 0.5 * stats.num_runs &&
+			// The mode finding is an inexact Newton method. If most of the linear systems of its Newton steps are not solved within
+			//	cg_max_num_it iterations, it can need many more iterations or not converge
+			CGStatistics stats_newton;
+			for (const auto& cluster_i : unique_clusters_) {
+				stats_newton.Add(likelihood_[cluster_i]->GetCGStatisticsNewton());
+			}
+			if (stats_mode.num_runs_not_converged > 0 && stats_newton.num_runs > 0 &&
+				stats_newton.num_runs_not_converged >= 0.5 * stats_newton.num_runs &&
 				!(called_in_GPBoost_algorithm && mode_finding_inexact_cg_warning_given_)) {
 				mode_finding_inexact_cg_warning_given_ = true;
-				Log::REWarning("GPModel: the mode finding of the Laplace approximation has not converged within the maximal number of "
-					"iterations (%d) in %d of %d cases during the estimation, and the conjugate gradient algorithm has not converged within "
-					"cg_max_num_it = %d iterations in %d of %d runs. Such inexact solutions can slow down or prevent the convergence of the "
-					"mode finding, a larger cg_max_num_it or matrix_inversion_method = 'cholesky' (if the sample size is not very large) "
-					"might therefore be faster ", maxit_mode_newton, stats_mode.num_runs_not_converged, stats_mode.num_runs, cg_max_num_it_,
-					stats.num_runs_not_converged, stats.num_runs);
+				// The number of iterations is limited by the dimension of the system as well
+				const string_t larger_cg_max_num_it = cg_max_num_it_ < MaxDimModeLikelihoods() ? "a larger cg_max_num_it or " : "";
+				Log::REWarning(("GPModel: the mode finding of the Laplace approximation has not converged within the maximal number of "
+					"iterations (%d) in %d of %d cases during the estimation, and the conjugate gradient algorithm has not converged in %d "
+					"of the %d runs for its Newton steps (cg_max_num_it = %d). Such inexact solutions can slow down or prevent the "
+					"convergence of the mode finding, " + larger_cg_max_num_it + "matrix_inversion_method = 'cholesky' (if the sample size "
+					"is not very large) might therefore be faster ").c_str(), maxit_mode_newton, stats_mode.num_runs_not_converged,
+					stats_mode.num_runs, stats_newton.num_runs_not_converged, stats_newton.num_runs, cg_max_num_it_);
 			}
 			// The average number of iterations measures the cost. Runs that do not converge can be a few hard systems at the start of
 			//	the estimation, after which the iterative methods are fast
@@ -9513,7 +9519,15 @@ namespace GPBoost {
 					likelihood_[cluster_i]->ResetCGStatistics();
 				}
 			}
-			cg_statistics_mode_prediction_ = CGStatistics();
+		}
+
+		/*! \brief Largest dimension of the systems of the conjugate gradient algorithm, which limits its number of iterations */
+		data_size_t MaxDimModeLikelihoods() const {
+			data_size_t dim = 0;
+			for (const auto& cluster_i : unique_clusters_) {
+				dim = std::max(dim, likelihood_.at(cluster_i)->DimMode());
+			}
+			return(dim);
 		}
 
 		/*! \brief Statistics of the runs with one right-hand side of the conjugate gradient algorithm of all likelihoods since 'ResetCGStatisticsLikelihoods()' */
@@ -9539,19 +9553,21 @@ namespace GPBoost {
 				return;
 			}
 			const CGStatistics stats = SumCGStatisticsLikelihoods();
-			CGStatistics stats_mode;
+			CGStatistics stats_mode, stats_newton;
 			for (const auto& cluster_i : unique_clusters_) {
 				stats_mode.Add(likelihood_.at(cluster_i)->GetModeFindingStatistics());
+				stats_newton.Add(likelihood_.at(cluster_i)->GetCGStatisticsNewton());
 			}
-			// The runs after the mode has been calculated are the ones for the simulation-based predictive uncertainty
+			// The other runs are the ones for the simulation-based predictive uncertainty
 			CGStatistics stats_uncertainty = stats;
-			stats_uncertainty.Subtract(cg_statistics_mode_prediction_);
+			stats_uncertainty.Subtract(stats_newton);
 			if (stats.num_runs == 0 && stats_mode.num_runs == 0) {
 				return;
 			}
-			Log::REDebug("GPModel: prediction: %d mode findings (%d have not converged), conjugate gradient algorithm for the predictive "
-				"uncertainty: %d runs (%d have not converged, %g iterations on average), NA or Inf in %d runs ", stats_mode.num_runs,
-				stats_mode.num_runs_not_converged, stats_uncertainty.num_runs, stats_uncertainty.num_runs_not_converged,
+			Log::REDebug("GPModel: prediction: %d mode findings (%d have not converged, %d of %d runs of the conjugate gradient algorithm "
+				"for their Newton steps have not converged), conjugate gradient algorithm for the predictive uncertainty: %d runs (%d have "
+				"not converged, %g iterations on average), NA or Inf in %d runs ", stats_mode.num_runs, stats_mode.num_runs_not_converged,
+				stats_newton.num_runs_not_converged, stats_newton.num_runs, stats_uncertainty.num_runs, stats_uncertainty.num_runs_not_converged,
 				stats_uncertainty.MeanSteps(), stats.num_runs_NA_or_Inf);
 			// The mode finding is an inexact Newton method: its own convergence decides, not the one of its single linear systems
 			const bool mode_not_converged = stats_mode.num_runs_not_converged > 0;
@@ -9574,13 +9590,21 @@ namespace GPBoost {
 				details += (details.empty() ? "" : "; ") + string_t(buffer);
 			}
 			if (uncertainty_not_converged) {
-				snprintf(buffer, sizeof(buffer), "the conjugate gradient algorithm has not converged within cg_max_num_it = %d iterations in %d "
-					"of %d runs for the simulation-based predictive uncertainty (variances, covariances, or posterior samples), which might "
-					"therefore be inaccurate", cg_max_num_it_, stats_uncertainty.num_runs_not_converged, stats_uncertainty.num_runs);
+				snprintf(buffer, sizeof(buffer), "the conjugate gradient algorithm has not converged in %d of %d runs for the simulation-based "
+					"predictive uncertainty (variances, covariances, or posterior samples), which might therefore be inaccurate",
+					stats_uncertainty.num_runs_not_converged, stats_uncertainty.num_runs);
 				details += (details.empty() ? "" : "; ") + string_t(buffer);
 			}
+			// A larger cg_max_num_it can only help if runs of the conjugate gradient algorithm have not converged, and if it is smaller
+			//	than the dimension of the system, which limits the number of iterations as well
+			string_t larger_cg_max_num_it = "";
+			if ((uncertainty_not_converged || (mode_not_converged && stats_newton.num_runs_not_converged > 0)) &&
+				cg_max_num_it_ < MaxDimModeLikelihoods()) {
+				snprintf(buffer, sizeof(buffer), ", or with a larger cg_max_num_it (= %d)", cg_max_num_it_);
+				larger_cg_max_num_it = buffer;
+			}
 			Log::REWarning(("GPModel: " + details + ". This can be checked with matrix_inversion_method = 'cholesky' if the sample size is "
-				"not very large, or with a larger cg_max_num_it ").c_str());
+				"not very large" + larger_cg_max_num_it + " ").c_str());
 		}//end NonConvergedCGPredictionWarning
 
 		/*!

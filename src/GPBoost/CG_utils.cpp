@@ -491,7 +491,7 @@ namespace GPBoost {
 				cg_steps_reporter.converged = conv_params.HasConverged(r_norm, rhs_norm);
 				//u = W^(-1) u
 				u = diag_W_inv.cwiseProduct(u);
-				if ((j + 1) == p) {
+				if ((j + 1) == p && !cg_steps_reporter.converged) {
 					if (!run_in_parallel_do_not_report_non_convergence) {
 						Log::REDebug("CGVecchiaLaplace_Version_SigmaPlusWinvVec: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 							"This could happen if the initial learning rate is too large in a line search phase. Otherwise you might increase 'cg_max_num_it' ", p);

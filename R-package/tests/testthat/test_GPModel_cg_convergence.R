@@ -300,15 +300,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_true(any(grepl("matrix_inversion_method = 'cholesky'", res$out)))
     expect_true(any(grepl("or with cg_preconditioner_type = 'fitc'", res$out)))
     # The runs of the prediction do not converge either, which the prediction reports once
-    WARNING_PRED_CG <- "not converged within cg_max_num_it = [0-9]+ iterations in [0-9]+ of [0-9]+ runs for the simulation-based"
+    WARNING_PRED_CG <- "has not converged in [0-9]+ of [0-9]+ runs for the simulation-based predictive uncertainty"
     predict_s <- function(gp_model) {
       capture.output(predict(gp_model, gp_coords_pred = coords_s[1:20, ] + 0.001, X_pred = matrix(1, 20), predict_var = TRUE))
     }
-    expect_true(any(grepl(WARNING_PRED_CG, predict_s(res$gp_model))))
+    out <- predict_s(res$gp_model)
+    expect_true(any(grepl(WARNING_PRED_CG, out)))
+    # A larger cg_max_num_it does not help: the runs stop at the dimension n_s, which is smaller than the default of 1000
+    expect_false(any(grepl("larger cg_max_num_it", out)))
     expect_false(any(grepl(WARNING_PRED_CG, predict_s(res$gp_model))))
     # The accuracy of the predictions does not depend on whether the maximal number of iterations has been chosen deliberately
     res_small_max <- fit_vecchia_slow(list(cg_max_num_it = 100))
-    expect_true(any(grepl(WARNING_PRED_CG, predict_s(res_small_max$gp_model))))
+    out <- predict_s(res_small_max$gp_model)
+    expect_true(any(grepl(WARNING_PRED_CG, out)))
+    expect_true(any(grepl("larger cg_max_num_it", out)))
     # With a very small cg_max_num_it, the inexact solutions keep the mode finding from converging
     res <- fit_vecchia_slow(list(cg_max_num_it = 2, cg_max_num_it_tridiag = 2))
     expect_true(any(grepl("mode finding of the Laplace approximation has not converged within the maximal number", res$out)))
@@ -366,13 +371,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       f_c <- as.vector(t(chol((1 + D_c) * exp(-D_c) + diag(1E-10, n_c))) %*% qnorm(sim_rand_unif(n = n_c, init_c = 0.41)))
       list(coords = coords_c, y = f_c + 0.1 * qnorm(sim_rand_unif(n = n_c, init_c = 0.93)))
     }
-    fit_latent <- function(d) {
+    fit_latent <- function(d, params = list(maxit = 5)) {
       capture.output(gp_model <- fitGPModel(gp_coords = d$coords, cov_function = "matern", cov_fct_shape = 1.5,
                                             likelihood = "gaussian", gp_approx = "vecchia_latent",
-                                            matrix_inversion_method = "iterative", y = d$y, params = list(maxit = 5)))
+                                            matrix_inversion_method = "iterative", y = d$y, params = params))
     }
-    out <- fit_latent(sim_latent(1000))
+    d_latent <- sim_latent(1000)
+    out <- fit_latent(d_latent)
     expect_true(any(grepl("times the floating-point operations of Cholesky factorizations", out)))
+    # With cg_multi_rhs_convergence = 'per_rhs', the columns of the runs for the log-determinant stop at different iterations,
+    #   and their work is not compared
+    out <- fit_latent(d_latent, params = list(maxit = 5, cg_multi_rhs_convergence = "per_rhs"))
+    expect_false(any(grepl("times the floating-point operations of Cholesky factorizations", out)))
     # For a small sample, the estimation is fast with both methods
     out <- fit_latent(sim_latent(500))
     expect_false(any(grepl("conjugate gradient algorithm of the iterative methods", out)))

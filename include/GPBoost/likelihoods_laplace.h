@@ -1128,8 +1128,10 @@ namespace GPBoost {
 			}
 			if (matrix_inversion_method_ == "iterative") {
 				bool calculate_preconditioners = it == 0 || information_changes_during_mode_finding_;
+				cg_runs_for_newton_step_ = true;// see 'RecordCGRun()'
 				Inv_SigmaI_plus_ZtWZ_Vecchia_iterative(cg_max_num_it, I_k_plus_Sigma_L_kt_W_Sigma_L_k, SigmaI, SigmaI_plus_W, B[0], has_NA_or_Inf,
 					re_comps_cross_cov_cluster_i, cluster_i, re_model, rhs, mode_update, it == 0, calculate_preconditioners);
+				cg_runs_for_newton_step_ = false;
 				if (has_NA_or_Inf) {
 					approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
 					Log::REDebug(NA_OR_INF_WARNING_);

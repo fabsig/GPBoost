@@ -1801,6 +1801,9 @@ namespace GPBoost {
 				else {
 					num_cg_steps_last_ = num_steps;
 					cg_statistics_.Add(num_steps, !converged || has_NA_or_Inf, has_NA_or_Inf);
+			if (cg_runs_for_newton_step_) {
+				cg_statistics_newton_.Add(num_steps, !converged || has_NA_or_Inf, has_NA_or_Inf);
+			}
 				}
 			}
 		}
@@ -1810,6 +1813,8 @@ namespace GPBoost {
 			cg_statistics_ = CGStatistics();
 			cg_statistics_tridiag_ = CGStatistics();
 			mode_finding_statistics_ = CGStatistics();
+			cg_statistics_newton_ = CGStatistics();
+			num_factorizations_cholesky_equivalent_ = 0.;
 		}
 
 		/*! \brief Statistics of the runs with one right-hand side since the last call to 'ResetCGStatistics()' */
@@ -1846,17 +1851,30 @@ namespace GPBoost {
 		* \brief Floating-point operations of a Cholesky factorization of Sigma^-1 + W for a Vecchia approximation, from a symbolic
 		*		analysis of the sparsity pattern of B^T B, without a numeric factorization and without forming B^T B. The cost of the
 		*		analysis grows with the number of nonzeros of B but not with the fill-in. The flops hardly depend on which neighbors
-		*		are chosen, the analysis is therefore done once for a number of nonzeros of B
+		*		are chosen, but the analysis is repeated when the sparsity pattern changes
 		* \return The floating-point operations, or 0 if the matrices of the iterative methods are not available
 		*/
 		double FlopsFactorizationVecchia() {
-			const double nnz_B = (double)B_rm_.nonZeros();
-			if (B_rm_.rows() == 0 || nnz_B == 0.) {
+			if (B_rm_.rows() == 0 || B_rm_.nonZeros() == 0) {
 				return 0.;
 			}
-			if (nnz_B != nnz_B_flops_factorization_vecchia_) {
-				nnz_B_flops_factorization_vecchia_ = nnz_B;
+			// The neighbors can be redetermined during the estimation, which changes the sparsity pattern but not the number of nonzeros
+			uint64_t pattern_hash = 1469598103934665603ULL;
+			auto add_to_hash = [&pattern_hash](uint64_t value) {
+				pattern_hash ^= value;
+				pattern_hash *= 1099511628211ULL;
+			};
+			for (Eigen::Index i = 0; i <= B_rm_.outerSize(); ++i) {
+				add_to_hash((uint64_t)B_rm_.outerIndexPtr()[i]);
+			}
+			for (Eigen::Index k = 0; k < B_rm_.nonZeros(); ++k) {
+				add_to_hash((uint64_t)B_rm_.innerIndexPtr()[k]);
+			}
+			if (!flops_factorization_vecchia_determined_ || pattern_hash != pattern_hash_flops_factorization_vecchia_) {
+				flops_factorization_vecchia_determined_ = true;
+				pattern_hash_flops_factorization_vecchia_ = pattern_hash;
 				flops_factorization_vecchia_ = 0.;
+				nnz_factor_vecchia_ = 0.;
 				// The arrays of the row-major B are the ones of B^T in column-major format. For a matrix that is not symmetric, CHOLMOD
 				//	analyzes the matrix times its transpose, here B^T B. COLAMD orders it without forming it (AMD would form its pattern)
 				cholmod_sparse Bt = Eigen::viewAsCholmod(static_cast<const sp_mat_rm_t&>(B_rm_));
@@ -1867,6 +1885,7 @@ namespace GPBoost {
 				cholmod_factor* factor = Eigen::internal::cm_analyze<int>(Bt, common);
 				if (factor != nullptr) {
 					flops_factorization_vecchia_ = common.fl;
+					nnz_factor_vecchia_ = common.lnz;
 					Eigen::internal::cm_free_factor<int>(factor, common);
 				}
 				Eigen::internal::cm_finish<int>(common);
@@ -1877,6 +1896,36 @@ namespace GPBoost {
 		/*! \brief Number of mode findings, how many of them have not converged within 'maxit_mode_newton_' iterations, and their total number of iterations since 'ResetCGStatistics()' */
 		const CGStatistics& GetModeFindingStatistics() const {
 			return(mode_finding_statistics_);
+		}
+
+		/*!
+		* \brief Floating-point operations of a solve with a Cholesky factor of Sigma^-1 + W for a Vecchia approximation (two
+		*		triangular solves), from the number of nonzeros of the factor of the analysis of 'FlopsFactorizationVecchia()'
+		* \return The floating-point operations, or 0 if they are not available
+		*/
+		double FlopsSolveVecchia() {
+			FlopsFactorizationVecchia();
+			return(4. * nnz_factor_vecchia_);
+		}
+
+		/*! \brief Lower bound of 'FlopsSolveVecchia()': a factor has at least the nonzeros of B */
+		double FlopsSolveLowerBoundVecchia() const {
+			return(4. * (double)B_rm_.nonZeros());
+		}
+
+		/*! \brief Statistics of the runs of the conjugate gradient algorithm for the Newton steps of the mode finding since 'ResetCGStatistics()' */
+		const CGStatistics& GetCGStatisticsNewton() const {
+			return(cg_statistics_newton_);
+		}
+
+		/*! \brief Number of Cholesky factorizations that the direct method needs for the mode findings since 'ResetCGStatistics()' */
+		double NumFactorizationsCholeskyEquivalent() const {
+			return(num_factorizations_cholesky_equivalent_);
+		}
+
+		/*! \brief Dimension of the mode, which limits the number of iterations of the conjugate gradient algorithm */
+		data_size_t DimMode() const {
+			return(dim_mode_);
 		}
 
 		/*! \brief Maximal number of iterations of the mode finding */
@@ -7676,8 +7725,18 @@ namespace GPBoost {
 		void FinalizeModeFinding(int num_it) {
 			mode_is_zero_ = false;
 			num_it_mode_finding_ = num_it;
-			// A maximum of one iteration is not a convergence failure (e.g., a likelihood whose mode is found in one step)
-			mode_finding_statistics_.Add(num_it, maxit_mode_newton_ > 1 && num_it >= maxit_mode_newton_, false);// see 'GetModeFindingStatistics()'
+			// The loops of the mode finding end with the index of the last iteration after convergence and with 'maxit_mode_newton_'
+			//	if the maximal number of iterations has been reached
+			const int num_newton_it = num_it < maxit_mode_newton_ ? num_it + 1 : num_it;
+			// A maximum of one iteration is not a convergence failure (e.g., a likelihood whose mode is found in one step), and an
+			//	exact refinement certifies the mode also after the maximal number of iterations
+			const bool not_converged = maxit_mode_newton_ > 1 && num_it >= maxit_mode_newton_ &&
+				!(UseSSNALMRefinement() && ssn_alm_exact_subgradient_valid_);
+			mode_finding_statistics_.Add(num_newton_it, not_converged, false);// see 'GetModeFindingStatistics()'
+			// Cholesky factorizations of the direct method for this mode finding: one for every Newton iteration (only one if the
+			//	information does not change), and one more at the mode if the information changes after the mode finding
+			num_factorizations_cholesky_equivalent_ += (information_changes_during_mode_finding_ ? std::max(num_newton_it, 1) : 1) +
+				(information_changes_after_mode_finding_ ? 1 : 0);
 		}//end FinalizeModeFinding
 
 		/*!
@@ -8849,12 +8908,22 @@ namespace GPBoost {
 		CGStatistics cg_statistics_;
 		/*! \brief Statistics of the runs of the conjugate gradient algorithm with several right-hand sides, see 'RecordCGRun()' */
 		CGStatistics cg_statistics_tridiag_;
-		/*! \brief Number of nonzeros of B for which 'flops_factorization_vecchia_' has been determined, see 'FlopsFactorizationVecchia()' */
-		double nnz_B_flops_factorization_vecchia_ = -1.;
+		/*! \brief Number of nonzeros of the Cholesky factor of Sigma^-1 + W, see 'FlopsFactorizationVecchia()' */
+		double nnz_factor_vecchia_ = 0.;
+		/*! \brief True if 'flops_factorization_vecchia_' has been determined, see 'FlopsFactorizationVecchia()' */
+		bool flops_factorization_vecchia_determined_ = false;
+		/*! \brief Hash of the sparsity pattern of B for which 'flops_factorization_vecchia_' has been determined */
+		uint64_t pattern_hash_flops_factorization_vecchia_ = 0;
 		/*! \brief Floating-point operations of a Cholesky factorization of Sigma^-1 + W (0 if not determined), see 'FlopsFactorizationVecchia()' */
 		double flops_factorization_vecchia_ = 0.;
 		/*! \brief Statistics of the mode findings, see 'GetModeFindingStatistics()' */
 		CGStatistics mode_finding_statistics_;
+		/*! \brief Statistics of the runs of the conjugate gradient algorithm for the Newton steps of the mode finding, see 'GetCGStatisticsNewton()' */
+		CGStatistics cg_statistics_newton_;
+		/*! \brief True while the conjugate gradient algorithm solves the system of a Newton step of the mode finding, see 'RecordCGRun()' */
+		bool cg_runs_for_newton_step_ = false;
+		/*! \brief See 'NumFactorizationsCholeskyEquivalent()' */
+		double num_factorizations_cholesky_equivalent_ = 0.;
 
 		//ITERATIVE MATRIX INVERSION + VECCIA APPROXIMATION
 		//A) ROW-MAJOR MATRICES OF VECCIA APPROXIMATION
