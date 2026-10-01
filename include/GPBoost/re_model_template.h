@@ -9472,8 +9472,7 @@ namespace GPBoost {
 				stats_newton.num_runs_not_converged >= 0.5 * stats_newton.num_runs &&
 				!(called_in_GPBoost_algorithm && mode_finding_inexact_cg_warning_given_)) {
 				mode_finding_inexact_cg_warning_given_ = true;
-				// The number of iterations is limited by the dimension of the system as well
-				const string_t larger_cg_max_num_it = cg_max_num_it_ < MaxDimModeLikelihoods() ? "a larger cg_max_num_it or " : "";
+				const string_t larger_cg_max_num_it = LargerCGMaxNumItCanHelp(true, false) ? "a larger cg_max_num_it or " : "";
 				Log::REWarning(("GPModel: the mode finding of the Laplace approximation has not converged within the maximal number of "
 					"iterations (%d) in %d of %d cases during the estimation, and the conjugate gradient algorithm has not converged in %d "
 					"of the %d runs for its Newton steps (cg_max_num_it = %d). Such inexact solutions can slow down or prevent the "
@@ -9540,13 +9539,26 @@ namespace GPBoost {
 			}
 		}
 
-		/*! \brief Largest dimension of the systems of the conjugate gradient algorithm, which limits its number of iterations */
-		data_size_t MaxDimModeLikelihoods() const {
-			data_size_t dim = 0;
+		/*!
+		* \brief True if a larger cg_max_num_it can help: in a cluster, runs of the conjugate gradient algorithm have not converged,
+		*		and cg_max_num_it is smaller than the dimension of its systems, which limits the number of iterations as well
+		* \param newton_runs If true, the runs for the Newton steps of the mode finding are considered
+		* \param other_runs If true, the other runs with one right-hand side are considered (e.g., for the predictive uncertainty)
+		*/
+		bool LargerCGMaxNumItCanHelp(bool newton_runs,
+			bool other_runs) const {
 			for (const auto& cluster_i : unique_clusters_) {
-				dim = std::max(dim, likelihood_.at(cluster_i)->DimMode());
+				if (cg_max_num_it_ >= likelihood_.at(cluster_i)->DimMode()) {
+					continue;
+				}
+				const CGStatistics& stats_newton = likelihood_.at(cluster_i)->GetCGStatisticsNewton();
+				CGStatistics stats_other = likelihood_.at(cluster_i)->GetCGStatistics();
+				stats_other.Subtract(stats_newton);
+				if ((newton_runs && stats_newton.num_runs_not_converged > 0) || (other_runs && stats_other.num_runs_not_converged > 0)) {
+					return true;
+				}
 			}
-			return(dim);
+			return false;
 		}
 
 		/*! \brief Statistics of the runs with one right-hand side of the conjugate gradient algorithm of all likelihoods since 'ResetCGStatisticsLikelihoods()' */
@@ -9614,11 +9626,8 @@ namespace GPBoost {
 					stats_uncertainty.num_runs_not_converged, stats_uncertainty.num_runs);
 				details += (details.empty() ? "" : "; ") + string_t(buffer);
 			}
-			// A larger cg_max_num_it can only help if runs of the conjugate gradient algorithm have not converged, and if it is smaller
-			//	than the dimension of the system, which limits the number of iterations as well
 			string_t larger_cg_max_num_it = "";
-			if ((uncertainty_not_converged || (mode_not_converged && stats_newton.num_runs_not_converged > 0)) &&
-				cg_max_num_it_ < MaxDimModeLikelihoods()) {
+			if (LargerCGMaxNumItCanHelp(mode_not_converged, uncertainty_not_converged)) {
 				snprintf(buffer, sizeof(buffer), ", or with a larger cg_max_num_it (= %d)", cg_max_num_it_);
 				larger_cg_max_num_it = buffer;
 			}

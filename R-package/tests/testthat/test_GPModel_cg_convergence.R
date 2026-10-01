@@ -314,6 +314,23 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     out <- predict_s(res_small_max$gp_model)
     expect_true(any(grepl(WARNING_PRED_CG, out)))
     expect_true(any(grepl("larger cg_max_num_it", out)))
+    # With clusters of different sizes, a larger cg_max_num_it is only suggested if it can help in a cluster whose runs have
+    #   not converged. Here, these are the runs of the first cluster, which stop at its dimension n_s < cg_max_num_it = 500,
+    #   while the runs of the second cluster, whose dimension is larger, converge
+    n_b <- 600
+    coords_b <- cbind(sim_rand_unif(n = n_b, init_c = 0.27), sim_rand_unif(n = n_b, init_c = 0.81))
+    D_b <- as.matrix(dist(coords_b)) * sqrt(5) / 0.2
+    f_b <- as.vector(t(chol((1 + D_b + D_b^2 / 3) * exp(-D_b) + diag(1E-6, n_b))) %*% qnorm(sim_rand_unif(n = n_b, init_c = 0.55)))
+    y_b <- qpois(sim_rand_unif(n = n_b, init_c = 0.66), lambda = exp(f_b))
+    capture.output( gp_model_cl <- fitGPModel(gp_coords = rbind(coords_s, coords_b), cluster_ids = rep(1:2, c(n_s, n_b)),
+                                              cov_function = "matern", cov_fct_shape = 2.5, likelihood = "poisson",
+                                              gp_approx = "vecchia", matrix_inversion_method = "iterative", y = c(y_s, y_b),
+                                              X = cbind(1, rep(1:0, c(n_s, n_b))), params = list(maxit = 1, cg_max_num_it = 500)), file='NUL')
+    gp_model_cl$set_prediction_data(nsim_var_pred = 100)
+    out <- capture.output(predict(gp_model_cl, gp_coords_pred = rbind(coords_s[1:20, ], coords_b[1:20, ]) + 0.001,
+                                  cluster_ids_pred = rep(1:2, each = 20), X_pred = cbind(1, rep(1:0, each = 20)), predict_var = TRUE))
+    expect_true(any(grepl(WARNING_PRED_CG, out)))
+    expect_false(any(grepl("larger cg_max_num_it", out)))
     # With a very small cg_max_num_it, the inexact solutions keep the mode finding from converging
     res <- fit_vecchia_slow(list(cg_max_num_it = 2, cg_max_num_it_tridiag = 2))
     expect_true(any(grepl("mode finding of the Laplace approximation has not converged within the maximal number", res$out)))
