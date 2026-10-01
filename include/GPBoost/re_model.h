@@ -697,6 +697,8 @@ namespace GPBoost {
 		int intercept_col_homoscedastic_model_ = -1;
 		/*! \brief Error variance of the homoscedastic model (<= 0 if it has not been fitted) */
 		double error_var_homoscedastic_model_ = -1.;
+		/*! \brief True if the initial covariance parameters have been obtained from the homoscedastic model in the GPBoost algorithm, before an offset is known, see 'FindInitialValueBoosting()' */
+		bool cov_pars_from_homoscedastic_model_without_offset_ = false;
 		/*! \brief Initial variance of the GP of the log-error variance when the initial values are obtained from the homoscedastic model */
 		const double INIT_VAR_LOG_ERROR_VAR_GP_ = 0.01;
 	};

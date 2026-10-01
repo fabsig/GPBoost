@@ -1783,23 +1783,24 @@ namespace GPBoost {
 		/*!
 		* \brief Record a run of a conjugate gradient algorithm of the iterative methods for a Vecchia-Laplace approximation
 		* \param num_steps Number of iterations of the run
+		* \param converged False if the run has reached the maximal number of iterations without convergence
+		* \param has_NA_or_Inf True if NA or Inf has occurred (the run has then not converged either)
 		* \param tridiag If true, the run solves for several right-hand sides at once (stochastic Lanczos quadrature)
 		*/
 		void RecordCGRun(int num_steps,
+			bool converged,
+			bool has_NA_or_Inf,
 			bool tridiag) {
-			// The maximum is the configured one, also for the runs of the first optimization step, which use a reduced one
-			//	internally. The algorithms stop at the latest at the dimension of the system
-			const int max_steps = std::min(tridiag ? cg_max_num_it_tridiag_ : cg_max_num_it_, (int)dim_mode_);
-			const bool reached_max_steps = num_steps >= max_steps;
 #pragma omp critical(record_cg_run)// the runs for the simulation-based predictive variances are carried out in parallel
 			{
 				if (tridiag) {
 					num_cg_steps_tridiag_last_ = num_steps;
-					cg_statistics_tridiag_.Add(num_steps, reached_max_steps);
+					// for several right-hand sides, a tolerance that has not been met is also reported as NA or Inf
+					cg_statistics_tridiag_.Add(num_steps, !converged || has_NA_or_Inf, false);
 				}
 				else {
 					num_cg_steps_last_ = num_steps;
-					cg_statistics_.Add(num_steps, reached_max_steps);
+					cg_statistics_.Add(num_steps, !converged || has_NA_or_Inf, has_NA_or_Inf);
 				}
 			}
 		}
@@ -1808,6 +1809,7 @@ namespace GPBoost {
 		void ResetCGStatistics() {
 			cg_statistics_ = CGStatistics();
 			cg_statistics_tridiag_ = CGStatistics();
+			mode_finding_statistics_ = CGStatistics();
 		}
 
 		/*! \brief Statistics of the runs with one right-hand side since the last call to 'ResetCGStatistics()' */
@@ -1818,6 +1820,68 @@ namespace GPBoost {
 		/*! \brief Statistics of the runs with several right-hand sides since the last call to 'ResetCGStatistics()' */
 		const CGStatistics& GetCGStatisticsTridiag() const {
 			return(cg_statistics_tridiag_);
+		}
+
+		/*!
+		* \brief Floating-point operations of an iteration of the conjugate gradient algorithm with one right-hand side and the 'vadu'
+		*		preconditioner for a Vecchia approximation: a product with B^T D^-1 B + W and two triangular solves with B
+		* \return The floating-point operations, or 0 if the matrices of the iterative methods are not available
+		*/
+		double FlopsCGIterationVecchia() const {
+			return(8. * (double)B_rm_.nonZeros() + 10. * (double)B_rm_.rows());
+		}
+
+		/*!
+		* \brief Lower bound of the floating-point operations of a Cholesky factorization of Sigma^-1 + W for a Vecchia approximation:
+		*		the sparsity pattern of B^T B contains the one of B, so the factor has at least the column counts of B, and the sum
+		*		of their squares is at least nnz(B)^2 / n
+		* \return The lower bound, or 0 if the matrices of the iterative methods are not available
+		*/
+		double FlopsFactorizationLowerBoundVecchia() const {
+			const double nnz_B = (double)B_rm_.nonZeros();
+			return(B_rm_.rows() > 0 ? nnz_B * nnz_B / (double)B_rm_.rows() : 0.);
+		}
+
+		/*!
+		* \brief Floating-point operations of a Cholesky factorization of Sigma^-1 + W for a Vecchia approximation, from a symbolic
+		*		analysis of the sparsity pattern of B^T B, without a numeric factorization and without forming B^T B. The cost of the
+		*		analysis grows with the number of nonzeros of B but not with the fill-in. The flops hardly depend on which neighbors
+		*		are chosen, the analysis is therefore done once for a number of nonzeros of B
+		* \return The floating-point operations, or 0 if the matrices of the iterative methods are not available
+		*/
+		double FlopsFactorizationVecchia() {
+			const double nnz_B = (double)B_rm_.nonZeros();
+			if (B_rm_.rows() == 0 || nnz_B == 0.) {
+				return 0.;
+			}
+			if (nnz_B != nnz_B_flops_factorization_vecchia_) {
+				nnz_B_flops_factorization_vecchia_ = nnz_B;
+				flops_factorization_vecchia_ = 0.;
+				// The arrays of the row-major B are the ones of B^T in column-major format. For a matrix that is not symmetric, CHOLMOD
+				//	analyzes the matrix times its transpose, here B^T B. COLAMD orders it without forming it (AMD would form its pattern)
+				cholmod_sparse Bt = Eigen::viewAsCholmod(static_cast<const sp_mat_rm_t&>(B_rm_));
+				cholmod_common common;
+				Eigen::internal::cm_start<int>(common);
+				common.nmethods = 1;
+				common.method[0].ordering = CHOLMOD_COLAMD;
+				cholmod_factor* factor = Eigen::internal::cm_analyze<int>(Bt, common);
+				if (factor != nullptr) {
+					flops_factorization_vecchia_ = common.fl;
+					Eigen::internal::cm_free_factor<int>(factor, common);
+				}
+				Eigen::internal::cm_finish<int>(common);
+			}
+			return(flops_factorization_vecchia_);
+		}
+
+		/*! \brief Number of mode findings, how many of them have not converged within 'maxit_mode_newton_' iterations, and their total number of iterations since 'ResetCGStatistics()' */
+		const CGStatistics& GetModeFindingStatistics() const {
+			return(mode_finding_statistics_);
+		}
+
+		/*! \brief Maximal number of iterations of the mode finding */
+		int MaxItModeNewton() const {
+			return(maxit_mode_newton_);
 		}
 
 		/*! \brief True if the "fitc" preconditioner can be used for the Vecchia-Laplace approximation of this likelihood. It requires W^(-1), which zero weights rule out */
@@ -7612,6 +7676,8 @@ namespace GPBoost {
 		void FinalizeModeFinding(int num_it) {
 			mode_is_zero_ = false;
 			num_it_mode_finding_ = num_it;
+			// A maximum of one iteration is not a convergence failure (e.g., a likelihood whose mode is found in one step)
+			mode_finding_statistics_.Add(num_it, maxit_mode_newton_ > 1 && num_it >= maxit_mode_newton_, false);// see 'GetModeFindingStatistics()'
 		}//end FinalizeModeFinding
 
 		/*!
@@ -8783,6 +8849,12 @@ namespace GPBoost {
 		CGStatistics cg_statistics_;
 		/*! \brief Statistics of the runs of the conjugate gradient algorithm with several right-hand sides, see 'RecordCGRun()' */
 		CGStatistics cg_statistics_tridiag_;
+		/*! \brief Number of nonzeros of B for which 'flops_factorization_vecchia_' has been determined, see 'FlopsFactorizationVecchia()' */
+		double nnz_B_flops_factorization_vecchia_ = -1.;
+		/*! \brief Floating-point operations of a Cholesky factorization of Sigma^-1 + W (0 if not determined), see 'FlopsFactorizationVecchia()' */
+		double flops_factorization_vecchia_ = 0.;
+		/*! \brief Statistics of the mode findings, see 'GetModeFindingStatistics()' */
+		CGStatistics mode_finding_statistics_;
 
 		//ITERATIVE MATRIX INVERSION + VECCIA APPROXIMATION
 		//A) ROW-MAJOR MATRICES OF VECCIA APPROXIMATION

@@ -51,7 +51,7 @@
 #' Fisher-Laplace is the default and currently the only implemented approximation. }
 #' \item{ "gaussian_heteroscedastic_fixed_and_random": Gaussian likelihood where both the mean and the variance
 #' are related to fixed and random effects. This is currently only implemented for GPs with a 'vecchia' approximation.
-#' Fisher-Laplace is the default and currently the only implemented approximation. By default, Cholesky factorizations are used. If init_cov_pars is not given, the initial values are obtained from a homoscedastic Gaussian process model. }
+#' Fisher-Laplace is the default and currently the only implemented approximation. By default, Cholesky factorizations are used. If init_cov_pars is not given, the initial values are obtained from a homoscedastic Gaussian process model (unless some weights are zero). }
 #' }
 #'
 #' \strong{Positive continuous response: y in (0, inf)}

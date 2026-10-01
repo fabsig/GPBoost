@@ -21,17 +21,23 @@ using LightGBM::Log;
 namespace GPBoost {
 
 	namespace {
-		/*! \brief Writes the number of conjugate gradient steps that have been carried out to 'num_cg_steps' (if not nullptr) when the function returns */
+		/*! \brief Writes the number of conjugate gradient steps that have been carried out and whether the algorithm has converged to 'num_cg_steps' and 'cg_converged' (if not nullptr) when the function returns */
 		struct CGStepsReporter {
-			explicit CGStepsReporter(int* num_cg_steps) : num_cg_steps_(num_cg_steps) {}
+			CGStepsReporter(int* num_cg_steps, bool* cg_converged) : num_cg_steps_(num_cg_steps), cg_converged_(cg_converged) {}
 			~CGStepsReporter() {
 				if (num_cg_steps_ != nullptr) {
 					*num_cg_steps_ = num_steps;
 				}
+				if (cg_converged_ != nullptr) {
+					*cg_converged_ = converged;
+				}
 			}
 			int num_steps = 0;
+			// false if the maximal number of iterations has been reached without convergence. NA or Inf is reported separately
+			bool converged = true;
 		private:
 			int* num_cg_steps_;
+			bool* cg_converged_;
 		};
 	}
 
@@ -51,8 +57,9 @@ namespace GPBoost {
 		bool run_in_parallel_do_not_report_non_convergence,
 		const CGConvergenceParams& convergence_params,
 		const sp_mat_rm_t* off_diag_W_rm,
-		int* num_cg_steps) {
-		CGStepsReporter cg_steps_reporter(num_cg_steps);
+		int* num_cg_steps,
+		bool* cg_converged) {
+		CGStepsReporter cg_steps_reporter(num_cg_steps, cg_converged);
 
 		p = std::min(p, (int)B_rm.cols());
 		vec_t r, r_old;
@@ -163,6 +170,7 @@ namespace GPBoost {
 			b /= r_old.transpose() * z_old;
 			h = z + b * h;
 		}
+		cg_steps_reporter.converged = false;
 		if (!run_in_parallel_do_not_report_non_convergence) {
 			Log::REDebug("CGVecchiaLaplaceVec: Conjugate gradient algorithm has not converged after the maximal number of iterations (%i). "
 				"This could happen if the initial learning rate is too large in a line search phase. Otherwise you might increase 'cg_max_num_it' ", p);
@@ -185,8 +193,9 @@ namespace GPBoost {
 		const sp_mat_rm_t& D_inv_plus_W_B_rm,
 		const sp_mat_rm_t& L_SigmaI_plus_W_rm,
 		const CGConvergenceParams& convergence_params,
-		int* num_cg_steps) {
-		CGStepsReporter cg_steps_reporter(num_cg_steps);
+		int* num_cg_steps,
+		bool* cg_converged) {
+		CGStepsReporter cg_steps_reporter(num_cg_steps, cg_converged);
 
 		p = std::min(p, (int)num_data);
 		den_mat_t R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t), L_kt_W_inv_R, B_k_W_inv_R, W_inv_R;
@@ -324,6 +333,7 @@ namespace GPBoost {
 			if (early_stop_alg) {
 				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
 				conv.LogDiagnostics("CGTridiagVecchiaLaplace");
+				cg_steps_reporter.converged = !conv.HasUnmetTolerance();
 				if (conv.HasUnmetTolerance()) {
 					NA_or_Inf_found = true;
 				}
@@ -334,6 +344,7 @@ namespace GPBoost {
 		//	so shrink to the iterations that were actually carried out
 		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
 		conv.LogDiagnostics("CGTridiagVecchiaLaplace");
+		cg_steps_reporter.converged = !conv.HasUnmetTolerance();
 		if (conv.HasUnmetTolerance()) {
 			NA_or_Inf_found = true;
 		}
@@ -361,8 +372,9 @@ namespace GPBoost {
 		const sp_mat_t& D_inv_vecchia_pc,
 		bool run_in_parallel_do_not_report_non_convergence,
 		const CGConvergenceParams& convergence_params,
-		int* num_cg_steps) {
-		CGStepsReporter cg_steps_reporter(num_cg_steps);
+		int* num_cg_steps,
+		bool* cg_converged) {
+		CGStepsReporter cg_steps_reporter(num_cg_steps, cg_converged);
 		p = std::min(p, (int)B_rm.cols());
 		if (cg_preconditioner_type == "pivoted_cholesky") {
 			CHECK(Sigma_L_k.rows() == B_rm.cols());
@@ -476,6 +488,7 @@ namespace GPBoost {
 				return;
 			}
 			if (conv_params.HasConverged(r_norm, rhs_norm) || (j + 1) == p) {
+				cg_steps_reporter.converged = conv_params.HasConverged(r_norm, rhs_norm);
 				//u = W^(-1) u
 				u = diag_W_inv.cwiseProduct(u);
 				if ((j + 1) == p) {
@@ -532,8 +545,9 @@ namespace GPBoost {
 		const sp_mat_rm_t& B_vecchia_pc,
 		const sp_mat_t& D_inv_vecchia_pc,
 		const CGConvergenceParams& convergence_params,
-		int* num_cg_steps) {
-		CGStepsReporter cg_steps_reporter(num_cg_steps);
+		int* num_cg_steps,
+		bool* cg_converged) {
+		CGStepsReporter cg_steps_reporter(num_cg_steps, cg_converged);
 
 		p = std::min(p, (int)num_data);
 		den_mat_t Sigma_Lkt_W_R, W_R, R(num_data, t), R_old, Z(num_data, t), Z_old, H, V(num_data, t);
@@ -676,6 +690,7 @@ namespace GPBoost {
 			if (early_stop_alg) {
 				conv.ShrinkTridiagonals(Tdiags, Tsubdiags, j + 1);
 				conv.LogDiagnostics("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv");
+				cg_steps_reporter.converged = !conv.HasUnmetTolerance();
 				if (conv.HasUnmetTolerance()) {
 					NA_or_Inf_found = true;
 				}
@@ -686,6 +701,7 @@ namespace GPBoost {
 		//	so shrink to the iterations that were actually carried out
 		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
 		conv.LogDiagnostics("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv");
+		cg_steps_reporter.converged = !conv.HasUnmetTolerance();
 		if (conv.HasUnmetTolerance()) {
 			NA_or_Inf_found = true;
 		}

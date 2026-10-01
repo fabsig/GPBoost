@@ -4164,10 +4164,11 @@ namespace GPBoost {
 						sp_mat_rm_t D_inv_plus_observed_hessian_diag_B_rm = D_inv_plus_observed_hessian_diag.asDiagonal() * B_rm_;
 						sp_mat_rm_t not_used_rm;
 						int num_cg_steps_mode_jacobian = 0;
+						bool cg_converged_mode_jacobian = true;
 						CGVecchiaLaplaceVec(observed_hessian_diag, B_rm_, B_t_D_inv_rm_, d_mll_d_mode, mode_jacobian_inv_d_mll_d_mode,
 							has_NA_or_Inf_mode_jacobian, cg_max_num_it_, true, cg_delta_conv_, ZERO_RHS_CG_THRESHOLD, "vadu",
-							D_inv_plus_observed_hessian_diag_B_rm, not_used_rm, true, cg_convergence_params_, &observed_hessian_off_diag_rm, &num_cg_steps_mode_jacobian);
-						RecordCGRun(num_cg_steps_mode_jacobian, false);
+							D_inv_plus_observed_hessian_diag_B_rm, not_used_rm, true, cg_convergence_params_, &observed_hessian_off_diag_rm, &num_cg_steps_mode_jacobian, &cg_converged_mode_jacobian);
+						RecordCGRun(num_cg_steps_mode_jacobian, cg_converged_mode_jacobian, has_NA_or_Inf_mode_jacobian, false);
 					}
 					const double rhs_norm = d_mll_d_mode.norm();
 					const double residual_norm = has_NA_or_Inf_mode_jacobian ? std::numeric_limits<double>::infinity() :
@@ -6985,11 +6986,12 @@ namespace GPBoost {
 					}
 				}//end calculate_preconditioners
 				int num_cg_steps = 0;
+				bool cg_converged = true;
 				CGVecchiaLaplace_Version_SigmaPlusWinvVec(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rhs, SigmaI_plus_ZtWZ_inv_rhs, has_NA_or_Inf,
 					cg_max_num_it, initialize_to_zero, delta_conv, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_,
 					chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_, false,
-					conv_params, &num_cg_steps);
-				RecordCGRun(num_cg_steps, false);
+					conv_params, &num_cg_steps, &cg_converged);
+				RecordCGRun(num_cg_steps, cg_converged, has_NA_or_Inf, false);
 			}
 		}//end cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc"
 		else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
@@ -7004,10 +7006,11 @@ namespace GPBoost {
 				}
 			}//end calculate_preconditioners
 			int num_cg_steps = 0;
+			bool cg_converged = true;
 			CGVecchiaLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, rhs, SigmaI_plus_ZtWZ_inv_rhs, has_NA_or_Inf,
 				cg_max_num_it, initialize_to_zero, delta_conv, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_, false,
-				conv_params, nullptr, &num_cg_steps);
-			RecordCGRun(num_cg_steps, false);
+				conv_params, nullptr, &num_cg_steps, &cg_converged);
+			RecordCGRun(num_cg_steps, cg_converged, has_NA_or_Inf, false);
 		}
 		else {
 			Log::REFatal("Inv_SigmaI_plus_ZtWZ_Vecchia_iterative: Preconditioner type '%s' is not supported ", cg_preconditioner_type_.c_str());
@@ -7109,11 +7112,12 @@ namespace GPBoost {
 				}
 			}
 			int num_cg_steps = 0;
+			bool cg_converged = true;
 			CGTridiagVecchiaLaplace_Version_SigmaPlusWinv(information_ll_, B_rm_, B_t_D_inv_rm_.transpose(), rand_vec_trace_P_, Tdiags_PI_WI_plus_Sigma, Tsubdiags_PI_WI_plus_Sigma,
 				WI_plus_Sigma_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_,
 				chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_, Sigma_L_k_, chol_fact_woodbury_preconditioner_, cross_cov, diagonal_approx_inv_preconditioner_, B_vecchia_pc_rm_, D_inv_vecchia_pc_,
-				cg_convergence_params_, &num_cg_steps);
-			RecordCGRun(num_cg_steps, true);
+				cg_convergence_params_, &num_cg_steps, &cg_converged);
+			RecordCGRun(num_cg_steps, cg_converged, has_NA_or_Inf, true);
 			if (!has_NA_or_Inf) {
 				double ldet_PI_WI_plus_Sigma;
 				LogDetStochTridiag(Tdiags_PI_WI_plus_Sigma, Tsubdiags_PI_WI_plus_Sigma, ldet_PI_WI_plus_Sigma, num_data, num_rand_vec_trace_);
@@ -7164,10 +7168,11 @@ namespace GPBoost {
 				}
 			}
 			int num_cg_steps = 0;
+			bool cg_converged = true;
 			CGTridiagVecchiaLaplace(information_ll_, B_rm_, B_t_D_inv_rm_, rand_vec_trace_P_, Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W,
 				SigmaI_plus_W_inv_Z_, has_NA_or_Inf, num_data, num_rand_vec_trace_, cg_max_num_it_tridiag, cg_delta_conv_, cg_preconditioner_type_, D_inv_plus_W_B_rm_, L_SigmaI_plus_W_rm_,
-				cg_convergence_params_, &num_cg_steps);
-			RecordCGRun(num_cg_steps, true);
+				cg_convergence_params_, &num_cg_steps, &cg_converged);
+			RecordCGRun(num_cg_steps, cg_converged, has_NA_or_Inf, true);
 			if (!has_NA_or_Inf) {
 				double ldet_PI_SigmaI_plus_W;
 				LogDetStochTridiag(Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W, ldet_PI_SigmaI_plus_W, num_data, num_rand_vec_trace_);

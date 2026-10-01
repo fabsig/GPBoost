@@ -75,24 +75,36 @@ namespace GPBoost {
 	/*! \brief Number of runs of a conjugate gradient algorithm, how many of them reached the maximal number of iterations, and their total number of iterations */
 	struct CGStatistics {
 		int num_runs = 0;
-		int num_runs_max_it = 0;
+		int num_runs_not_converged = 0;
+		int num_runs_NA_or_Inf = 0;
 		double num_steps = 0.;
 		/*!
 		* \brief Add a run
 		* \param steps Number of iterations of the run
-		* \param reached_max_steps True if the run has reached the maximal number of iterations
+		* \param not_converged True if the run has not converged
+		* \param NA_or_Inf True if NA or Inf has occurred in the run
 		*/
-		void Add(int steps, bool reached_max_steps) {
+		void Add(int steps, bool not_converged, bool NA_or_Inf) {
 			++num_runs;
 			num_steps += steps;
-			if (reached_max_steps) {
-				++num_runs_max_it;
+			if (not_converged) {
+				++num_runs_not_converged;
+			}
+			if (NA_or_Inf) {
+				++num_runs_NA_or_Inf;
 			}
 		}
 		void Add(const CGStatistics& other) {
 			num_runs += other.num_runs;
-			num_runs_max_it += other.num_runs_max_it;
+			num_runs_not_converged += other.num_runs_not_converged;
+			num_runs_NA_or_Inf += other.num_runs_NA_or_Inf;
 			num_steps += other.num_steps;
+		}
+		void Subtract(const CGStatistics& other) {
+			num_runs -= other.num_runs;
+			num_runs_not_converged -= other.num_runs_not_converged;
+			num_runs_NA_or_Inf -= other.num_runs_NA_or_Inf;
+			num_steps -= other.num_steps;
 		}
 		double MeanSteps() const {
 			return num_runs > 0 ? num_steps / num_runs : 0.;
@@ -425,6 +437,7 @@ namespace GPBoost {
 	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	* \param off_diag_W_rm Off-diagonal part of W as a symmetric row-major matrix with a zero diagonal, or nullptr if W is diagonal
 	* \param[out] num_cg_steps If not nullptr, the number of conjugate gradient steps that have been carried out
+	* \param[out] cg_converged If not nullptr, false if the maximal number of iterations has been reached without convergence (NA or Inf is reported in 'NA_or_Inf_found')
 	*/
 	void CGVecchiaLaplaceVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -442,7 +455,8 @@ namespace GPBoost {
 		bool run_in_parallel_do_not_report_non_convergence,
 		const CGConvergenceParams& convergence_params = CGConvergenceParams(),
 		const sp_mat_rm_t* off_diag_W_rm = nullptr,
-		int* num_cg_steps = nullptr);
+		int* num_cg_steps = nullptr,
+		bool* cg_converged = nullptr);
 
 	/*!
 	* \brief Preconditioned conjugate gradient descent in combination with the Lanczos algorithm.
@@ -469,6 +483,7 @@ namespace GPBoost {
 	* \param L_SigmaI_plus_W_rm Row-major matrix that contains sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W used for the preconditioner "zero_infill_incomplete_cholesky".
 	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	* \param[out] num_cg_steps If not nullptr, the number of conjugate gradient steps that have been carried out
+	* \param[out] cg_converged If not nullptr, false if the maximal number of iterations has been reached without convergence (NA or Inf is reported in 'NA_or_Inf_found')
 	*/
 	void CGTridiagVecchiaLaplace(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -486,7 +501,8 @@ namespace GPBoost {
 		const sp_mat_rm_t& D_inv_plus_W_B_rm,
 		const sp_mat_rm_t& L_SigmaI_plus_W_rm,
 		const CGConvergenceParams& convergence_params = CGConvergenceParams(),
-		int* num_cg_steps = nullptr);
+		int* num_cg_steps = nullptr,
+		bool* cg_converged = nullptr);
 
 	/*!
 	* \brief Version of CGVecchiaLaplaceVec() that solves (Sigma^-1 + W) u = rhs by u = W^(-1) (W^(-1) + Sigma)^(-1) Sigma rhs where the preconditioned conjugate
@@ -514,6 +530,7 @@ namespace GPBoost {
 	* \param run_in_parallel_do_not_report_non_convergence If true, potential non-convergence is not reported since running this in parallel can lead to crashes
 	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	* \param[out] num_cg_steps If not nullptr, the number of conjugate gradient steps that have been carried out
+	* \param[out] cg_converged If not nullptr, false if the maximal number of iterations has been reached without convergence (NA or Inf is reported in 'NA_or_Inf_found')
 	*/
 	void CGVecchiaLaplace_Version_SigmaPlusWinvVec(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -535,7 +552,8 @@ namespace GPBoost {
 		const sp_mat_t& D_inv_vecchia_pc,
 		bool run_in_parallel_do_not_report_non_convergence,
 		const CGConvergenceParams& convergence_params = CGConvergenceParams(),
-		int* num_cg_steps = nullptr);
+		int* num_cg_steps = nullptr,
+		bool* cg_converged = nullptr);
 
 	/*!
 	* \brief Version of CGTridiagVecchiaLaplace() where A = (W^(-1) + Sigma).
@@ -563,6 +581,7 @@ namespace GPBoost {
 	* \param D_inv_vecchia_pc D^(-1) for the Vecchia preconditioner
 	* \param convergence_params Stopping rule and tolerances. The default reproduces the historic absolute-residual rule based on 'delta_conv'
 	* \param[out] num_cg_steps If not nullptr, the number of conjugate gradient steps that have been carried out
+	* \param[out] cg_converged If not nullptr, false if the maximal number of iterations has been reached without convergence (NA or Inf is reported in 'NA_or_Inf_found')
 	*/
 	void CGTridiagVecchiaLaplace_Version_SigmaPlusWinv(const vec_t& diag_W,
 		const sp_mat_rm_t& B_rm,
@@ -585,7 +604,8 @@ namespace GPBoost {
 		const sp_mat_rm_t& B_vecchia_pc,
 		const sp_mat_t& D_inv_vecchia_pc,
 		const CGConvergenceParams& convergence_params = CGConvergenceParams(),
-		int* num_cg_steps = nullptr);
+		int* num_cg_steps = nullptr,
+		bool* cg_converged = nullptr);
 
 	/*!
 	* \brief Preconditioned conjugate gradient descent to solve A u = rhs when rhs is a vector

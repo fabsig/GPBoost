@@ -296,19 +296,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
     res <- fit_vecchia_slow(list())
     expect_true(any(grepl(WARNING_SLOW_CG, res$out)))
-    expect_true(any(grepl("runs for the log-determinant: [0-9]+ of [0-9]+ reached", res$out)))
+    expect_true(any(grepl("runs for the log-determinant: [0-9.e+]+ iterations on average", res$out)))
     expect_true(any(grepl("matrix_inversion_method = 'cholesky'", res$out)))
     expect_true(any(grepl("or with cg_preconditioner_type = 'fitc'", res$out)))
-    # The runs of the prediction reach the maximal number of iterations as well, which the prediction reports once
-    WARNING_PRED_CG <- "maximal number of iterations in [0-9]+ of [0-9]+ runs during the prediction"
+    # The runs of the prediction do not converge either, which the prediction reports once
+    WARNING_PRED_CG <- "not converged within cg_max_num_it = [0-9]+ iterations in [0-9]+ of [0-9]+ runs for the simulation-based"
     predict_s <- function(gp_model) {
       capture.output(predict(gp_model, gp_coords_pred = coords_s[1:20, ] + 0.001, X_pred = matrix(1, 20), predict_var = TRUE))
     }
     expect_true(any(grepl(WARNING_PRED_CG, predict_s(res$gp_model))))
     expect_false(any(grepl(WARNING_PRED_CG, predict_s(res$gp_model))))
-    # A maximal number of iterations below the default has been chosen deliberately, no warning is given then
+    # The accuracy of the predictions does not depend on whether the maximal number of iterations has been chosen deliberately
     res_small_max <- fit_vecchia_slow(list(cg_max_num_it = 100))
-    expect_false(any(grepl(WARNING_PRED_CG, predict_s(res_small_max$gp_model))))
+    expect_true(any(grepl(WARNING_PRED_CG, predict_s(res_small_max$gp_model))))
+    # With a very small cg_max_num_it, the inexact solutions keep the mode finding from converging
+    res <- fit_vecchia_slow(list(cg_max_num_it = 2, cg_max_num_it_tridiag = 2))
+    expect_true(any(grepl("mode finding of the Laplace approximation has not converged within the maximal number", res$out)))
     # A raised maximal number of iterations does not suppress the warning. The 'fitc' preconditioner requires the
     #   inverse of the information of the likelihood and is therefore not suggested when a weight is zero
     weights_s <- rep(1, n_s)
@@ -316,10 +319,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     res <- fit_vecchia_slow(list(cg_max_num_it = 2000, cg_max_num_it_tridiag = 2000), weights = weights_s)
     expect_true(any(grepl(WARNING_SLOW_CG, res$out)))
     expect_false(any(grepl("cg_preconditioner_type = 'fitc'", res$out)))
-    # No warning when the maximal numbers of iterations are lowered deliberately. Here, a limit of 999 does not change
-    #   the runs, which stop at the dimension n_s
+    # The warning does not depend on the configured maximal number of iterations: a limit of 999 does not change the
+    #   runs, which stop at the dimension n_s
     res <- fit_vecchia_slow(list(cg_max_num_it = 999, cg_max_num_it_tridiag = 999))
-    expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
+    expect_true(any(grepl(WARNING_SLOW_CG, res$out)))
     res <- fit_vecchia(list(cg_max_num_it = 3, cg_max_num_it_tridiag = 3))
     expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
     # The number of iterations of the last runs of the conjugate gradient algorithm is also available
@@ -340,6 +343,39 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     res <- fit_vecchia(list(), cov_function = "matern", cov_fct_shape = 2.5, likelihood = "poisson", y = y_v_pois,
                        X = matrix(1, n_v))
     expect_false(any(grepl(WARNING_SLOW_CG, res$out)))
+  })
+
+  test_that("Warnings about the iterative methods of a Vecchia-Laplace approximation for converged and moderately slow runs", {
+
+    # A tiny system is solved exactly in at most as many iterations as its dimension. A prediction for it does not warn
+    #   about inaccurate predictions, also when the last possible iteration is needed
+    for (n_t in 1:3) {
+      coords_t <- matrix(c(0.1, 0.5, 0.9, 0.3, 0.7, 0.2)[1:(2 * n_t)], ncol = 2)
+      capture.output( gp_model <- fitGPModel(gp_coords = coords_t, cov_function = "exponential", likelihood = "bernoulli_logit",
+                                             gp_approx = "vecchia", matrix_inversion_method = "iterative", y = c(1, 0, 1)[1:n_t],
+                                             params = list(maxit = 0, init_cov_pars = c(1, 0.3))), file='NUL')
+      out <- capture.output(pred <- predict(gp_model, gp_coords_pred = matrix(c(0.4, 0.4), ncol = 2), predict_var = TRUE))
+      expect_false(any(grepl("inaccurate", out)))
+    }
+    # A Gaussian likelihood with a latent Vecchia approximation, a small error variance, and a smooth covariance function:
+    #   the runs of the conjugate gradient algorithm need a moderate number of iterations each, but in total many more
+    #   floating-point operations than Cholesky factorizations
+    sim_latent <- function(n_c) {
+      coords_c <- cbind(sim_rand_unif(n = n_c, init_c = 0.13), sim_rand_unif(n = n_c, init_c = 0.58))
+      D_c <- as.matrix(dist(coords_c)) * sqrt(3) / 0.1
+      f_c <- as.vector(t(chol((1 + D_c) * exp(-D_c) + diag(1E-10, n_c))) %*% qnorm(sim_rand_unif(n = n_c, init_c = 0.41)))
+      list(coords = coords_c, y = f_c + 0.1 * qnorm(sim_rand_unif(n = n_c, init_c = 0.93)))
+    }
+    fit_latent <- function(d) {
+      capture.output(gp_model <- fitGPModel(gp_coords = d$coords, cov_function = "matern", cov_fct_shape = 1.5,
+                                            likelihood = "gaussian", gp_approx = "vecchia_latent",
+                                            matrix_inversion_method = "iterative", y = d$y, params = list(maxit = 5)))
+    }
+    out <- fit_latent(sim_latent(1000))
+    expect_true(any(grepl("times the floating-point operations of Cholesky factorizations", out)))
+    # For a small sample, the estimation is fast with both methods
+    out <- fit_latent(sim_latent(500))
+    expect_false(any(grepl("conjugate gradient algorithm of the iterative methods", out)))
   })
 
 }

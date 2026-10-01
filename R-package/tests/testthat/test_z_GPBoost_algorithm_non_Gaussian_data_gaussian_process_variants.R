@@ -216,6 +216,18 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       capture.output( bst <- gpb.train(data = gpb.Dataset(data = X, label = y), gp_model = gp_model, nrounds = 1,
                                        train_gp_model_cov_pars = FALSE, verbose = 0), file='NUL')
       expect_lt(max(abs(as.vector(gp_model$get_cov_pars()) / c(cov_pars_hom[2:3], 0.01, cov_pars_hom[3]) - 1)), TOLERANCE)
+      # An offset (initial score) of the mean is accounted for
+      offset <- 3 * coords[, 1]
+      capture.output( gp_model_hom <- fitGPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "vecchia",
+                                                 num_neighbors = 10, vecchia_ordering = "none", y = y + offset,
+                                                 X = matrix(1, nrow = ntrain, ncol = 1), offset = offset), file='NUL')
+      cov_pars_hom <- as.vector(gp_model_hom$get_cov_pars())
+      gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                          likelihood = "gaussian_heteroscedastic_fixed_and_random", gp_approx = "vecchia",
+                          num_neighbors = 10, vecchia_ordering = "none")
+      capture.output( bst <- gpb.train(data = gpb.Dataset(data = X, label = y + offset, init_score = c(offset, rep(0, ntrain))),
+                                       gp_model = gp_model, nrounds = 1, train_gp_model_cov_pars = FALSE, verbose = 0), file='NUL')
+      expect_lt(max(abs(as.vector(gp_model$get_cov_pars()) / c(cov_pars_hom[2:3], 0.01, cov_pars_hom[3]) - 1)), TOLERANCE)
     })
     
     if (Sys.getenv("GPBOOST_ADDITIONAL_SLOW_TESTS") == "GPBOOST_ADDITIONAL_SLOW_TESTS") {
