@@ -52,6 +52,58 @@ namespace GPBoost {
 		}
 	}
 
+	void CalcDiagLInvDLInvT(const sp_mat_t& L, const vec_t& d, vec_t& diag) {
+		CHECK(L.isCompressed());
+		CHECK(L.rows() == L.cols());
+		CHECK(L.cols() == d.size());
+		const int n = (int)L.cols();
+		const double* val = L.valuePtr();
+		const int* row_idx = L.innerIndexPtr();
+		const int* col_ptr = L.outerIndexPtr();
+		int num_threads;
+#ifdef _OPENMP
+		num_threads = omp_get_max_threads();
+#else
+		num_threads = 1;
+#endif
+		// The partial sums of every thread are added in a fixed order such that the result does not depend on the scheduling
+		std::vector<vec_t> diag_private(num_threads);
+#pragma omp parallel
+		{
+			int thread_nb;
+#ifdef _OPENMP
+			thread_nb = omp_get_thread_num();
+#else
+			thread_nb = 0;
+#endif
+			vec_t& diag_local = diag_private[thread_nb];
+			diag_local = vec_t::Zero(n);
+			// Column j of L^(-1). It is zero above row j, and every entry is set back to zero once it has been used
+			vec_t x = vec_t::Zero(n);
+			// The cost of column j is proportional to n - j, cyclic scheduling balances the load
+#pragma omp for schedule(static, 1)
+			for (int j = 0; j < n; ++j) {
+				x[j] = 1.;
+				for (int k = j; k < n; ++k) {
+					if (x[k] != 0.) {
+						const double x_k = x[k] / val[col_ptr[k]];
+						for (int i = col_ptr[k] + 1; i < col_ptr[k + 1]; ++i) {
+							x[row_idx[i]] -= val[i] * x_k;
+						}
+						diag_local[k] += d[j] * x_k * x_k;
+						x[k] = 0.;
+					}
+				}
+			}
+		}
+		diag = vec_t::Zero(n);
+		for (const vec_t& diag_local : diag_private) {
+			if (diag_local.size() == n) {
+				diag += diag_local;
+			}
+		}
+	}//end CalcDiagLInvDLInvT
+
 	void sp_Lower_sp_RHS_cs_solve(cs* A, const cs* B, sp_mat_t& A_inv_B, bool lower) {
 		if (A->m != A->n || B->n < 1 || A->n < 1 || A->n != B->m) {
 			Log::REFatal("Dimensions of system to be solved are inconsistent");

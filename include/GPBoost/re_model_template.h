@@ -3962,6 +3962,9 @@ namespace GPBoost {
 			}
 			for (int igp = 0; igp < num_sets_re_; ++igp) {
 				T_mat psi;
+				// Used instead of 'psi' if only its diagonal is calculated
+				vec_t psi_diag;
+				bool only_diag_of_psi = false;
 				std::vector<std::shared_ptr<RECompBase<T_mat>>> re_comps_cluster_i;
 				// Non-empty if the covariance matrix is calculated on the random effects scale (unique coordinates)
 				// instead of the "data scale", in which case the predictions need to be mapped to the data scale below
@@ -4025,20 +4028,32 @@ namespace GPBoost {
 							sigma_ip_grad_sigma_ip_inv_cross_cov_T_unused,
 							true, 1., false, num_gp_total_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
 							nullptr, estimate_cov_par_index_, nearest_neighbors_determined, false);
-						//Calculate Psi
-						sp_mat_t D_sqrt(num_REs_pred, num_REs_pred);
-						D_sqrt.setIdentity();
-						D_sqrt.diagonal().array() = D_inv_cluster_i.diagonal().array().pow(-0.5);
-						sp_mat_t B_inv_D_sqrt;
-						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B_cluster_i, D_sqrt, B_inv_D_sqrt, false);
-						psi = B_inv_D_sqrt * B_inv_D_sqrt.transpose();
+						//Calculate Psi = B^-1 D B^-T, or only its diagonal if the predictive covariance matrix is not needed
+						if (predict_cov_mat) {
+							sp_mat_t D_sqrt(num_REs_pred, num_REs_pred);
+							D_sqrt.setIdentity();
+							D_sqrt.diagonal().array() = D_inv_cluster_i.diagonal().array().pow(-0.5);
+							sp_mat_t B_inv_D_sqrt;
+							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B_cluster_i, D_sqrt, B_inv_D_sqrt, false);
+							psi = B_inv_D_sqrt * B_inv_D_sqrt.transpose();
+						}
+						else {
+							const vec_t D = D_inv_cluster_i.diagonal().cwiseInverse();
+							CalcDiagLInvDLInvT(B_cluster_i, D, psi_diag);
+							only_diag_of_psi = true;
+						}
 						// The Vecchia approximation is applied to the observed process for a Gaussian likelihood, i.e. 'psi'
 						//	already contains the nugget effect, which is subtracted again when the latent process is predicted
 						//	(the same is done for the clusters with observed data in 'Predict')
 						if (gauss_likelihood_ && !predict_response) {
+							if (only_diag_of_psi) {
+								psi_diag.array() -= 1.;
+							}
+							else {
 #pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_REs_pred; ++i) {
-								psi.coeffRef(i, i) -= 1.;
+								for (int i = 0; i < num_REs_pred; ++i) {
+									psi.coeffRef(i, i) -= 1.;
+								}
 							}
 						}
 					}//end gp_approx_ == "vecchia"
@@ -4260,7 +4275,12 @@ namespace GPBoost {
 
 					}//end gp_approx_ == "none"
 					if (gauss_likelihood_) {
-						psi *= cov_pars[0];//back-transform
+						if (only_diag_of_psi) {
+							psi_diag *= cov_pars[0];//back-transform
+						}
+						else {
+							psi *= cov_pars[0];//back-transform
+						}
 					}
 				}//end calculation of covariance matrix
 				// Add external fixed_effects
@@ -4279,7 +4299,12 @@ namespace GPBoost {
 					}
 				}
 				if (predict_var_or_response) {
-					var_pred_id[igp] = psi.diagonal();
+					if (only_diag_of_psi) {
+						var_pred_id[igp] = psi_diag;
+					}
+					else {
+						var_pred_id[igp] = psi.diagonal();
+					}
 				}
 				// Map from predictions from random effects scale b to "data scale" Zb
 				if (!random_effects_indices_of_data_pred.empty()) {

@@ -264,4 +264,34 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }# end loop cg_preconditioner_type in loop_cg_PC
   })
 
+  test_that("VIF approximation with iterative methods and neighbors among the prediction points ", {
+    # With 'latent_order_obs_first_cond_all', the predictive (co-)variances contain the part Bp^-1 Dp Bp^-T of the
+    # Vecchia approximation among the prediction points. The iterative methods calculate it deterministically, and it
+    # was not set, which crashed predict(). The part is about 0.27 for the two close points here (it is the difference
+    # of their covariance to the one with 'latent_order_obs_first_cond_obs_only'), while the stochastic estimates of the
+    # remainder deviate by less than 0.005 from the Cholesky-based (co-)variances with nsim_var_pred = 10000
+    probs <- pnorm(L %*% b_1)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.19341) < probs)
+    coord_test <- cbind(c(0.1,0.11,0.7),c(0.9,0.91,0.55))
+    cov_pars_pred_eval <- c(1,0.2)
+    pred_var <- pred_cov <- list()
+    for (inv_method in c("cholesky", "iterative")) {
+      capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential",
+                                          likelihood = "bernoulli_probit", gp_approx = "full_scale_vecchia",
+                                          num_neighbors = 10, num_ind_points = 20, vecchia_ordering = "none",
+                                          matrix_inversion_method = inv_method), file='NUL')
+      if (inv_method == "iterative") {
+        gp_model$set_optim_params(params = list(cg_preconditioner_type = "vifdu"))
+      }
+      gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all", nsim_var_pred = 10000)
+      capture.output( pred_var[[inv_method]] <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_var = TRUE,
+                                                        predict_response = FALSE, cov_pars = cov_pars_pred_eval), file='NUL')
+      capture.output( pred_cov[[inv_method]] <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE,
+                                                        predict_response = FALSE, cov_pars = cov_pars_pred_eval), file='NUL')
+    }
+    expect_lt(max(abs(pred_var$iterative$mu - pred_var$cholesky$mu)), TOLERANCE_MEDIUM)
+    expect_lt(max(abs(pred_var$iterative$var - pred_var$cholesky$var)), 4*TOLERANCE_LOOSE)
+    expect_lt(max(abs(pred_cov$iterative$cov - pred_cov$cholesky$cov)), 4*TOLERANCE_LOOSE)
+  })
+
 }

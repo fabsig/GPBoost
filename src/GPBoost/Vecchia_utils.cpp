@@ -1795,7 +1795,7 @@ namespace GPBoost {
 			re_comp->ScaleCoordinates(pars, coords_all, coords_scaled);
 		}
 		// Components for full scale vecchia
-		den_mat_t chol_ip_cross_cov_pred, chol_ip_cross_cov_obs, chol_ip_cross_cov_obs_pred, sigma_ip_inv_sigma_cross_cov, sigma_ip_inv_sigma_cross_cov_pred;
+		den_mat_t chol_ip_cross_cov_pred, chol_ip_cross_cov_obs, chol_ip_cross_cov_obs_pred, sigma_ip_inv_sigma_cross_cov_pred;
 		// Cross-covariance between predictions and inducing points C_pm
 		den_mat_t cov_mat_pred_id, cross_dist;
 		std::shared_ptr<RECompGP<den_mat_t>> re_comp_cross_cov_cluster_i_pred_ip;
@@ -1809,7 +1809,6 @@ namespace GPBoost {
 				(*sigma_cross_cov).transpose(), chol_ip_cross_cov_obs, false);
 			TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_cluster_i,
 				cross_cov_pred_ip.transpose(), chol_ip_cross_cov_pred, false);
-			sigma_ip_inv_sigma_cross_cov = chol_fact_sigma_ip_cluster_i.solve((*sigma_cross_cov).transpose());
 			sigma_ip_inv_sigma_cross_cov_pred = chol_fact_sigma_ip_cluster_i.solve(cross_cov_pred_ip.transpose());
 			if (vecchia_neighbor_selection == "residual_correlation") {
 				chol_ip_cross_cov_obs_pred.resize(chol_ip_cross_cov_obs.rows(), chol_ip_cross_cov_obs.cols() + chol_ip_cross_cov_pred.cols());
@@ -2039,8 +2038,6 @@ namespace GPBoost {
 						B_po_cross_cov.col(i) = Bpo_rm * (*sigma_cross_cov).col(i);
 					}
 					den_mat_t cross_cov_PP_Vecchia_woodbury = chol_fact_sigma_woodbury_cluster_i.solve(cross_cov_PP_Vecchia.transpose());
-					sp_mat_t Bp_inv_Dp;
-					sp_mat_t Bp_inv(num_re_pred_cli, num_re_pred_cli);
 					if (CondObsOnly) {
 						if (calc_pred_cov) {
 							pred_cov = Dp.asDiagonal();
@@ -2052,18 +2049,15 @@ namespace GPBoost {
 					}
 					else {
 						TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(Bp, B_po_cross_cov, cross_cov_pred_obs_pred_inv, false);
-						Bp_inv.setIdentity();
-						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
-						Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 						if (calc_pred_cov) {
+							sp_mat_t Bp_inv(num_re_pred_cli, num_re_pred_cli);
+							Bp_inv.setIdentity();
+							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
+							sp_mat_t Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 							pred_cov = den_mat_t(Bp_inv_Dp * Bp_inv.transpose());
 						}
 						if (calc_pred_var) {
-							pred_var.resize(num_re_pred_cli);
-#pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_re_pred_cli; ++i) {
-								pred_var[i] = (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i));
-							}
+							CalcDiagLInvDLInvT(Bp, Dp, pred_var);
 						}
 					}
 					den_mat_t cross_cov_pred_obs_pred_inv_woodbury = chol_fact_sigma_woodbury_cluster_i.solve(cross_cov_pred_obs_pred_inv.transpose());
@@ -2111,42 +2105,28 @@ namespace GPBoost {
 						}
 					}
 					else {
-						sp_mat_t Bp_inv(num_re_pred_cli, num_re_pred_cli);
-						Bp_inv.setIdentity();
-						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
-						sp_mat_t Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 						if (calc_pred_cov) {
+							sp_mat_t Bp_inv(num_re_pred_cli, num_re_pred_cli);
+							Bp_inv.setIdentity();
+							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
+							sp_mat_t Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 							pred_cov = den_mat_t(Bp_inv_Dp * Bp_inv.transpose());
 						}
 						if (calc_pred_var) {
-#pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_re_pred_cli; ++i) {
-								pred_var[i] = (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i));
-							}
+							CalcDiagLInvDLInvT(Bp, Dp, pred_var);
 						}
 					}
 				}//end calc_pred_cov || calc_pred_var
 			}// end Vecchia
 		}//end if gauss_likelihood
-		den_mat_t samples_id_Vecchia, samples_id_IP, samples_id_obs;
+		den_mat_t samples_id_IP;
+		// Samples B^-1 D^(1/2) z are obtained by triangular solves with B, since B^-1 is not sparse
 		if (sample_posterior) {
-			post_samples_id = den_mat_t(num_re_pred_cli, num_post_samples);
-			samples_id_Vecchia.resize(num_re_pred_cli, num_post_samples);
-			GenRandVecNormalParallel(base_seed, run_id, samples_id_Vecchia);
-			sp_mat_t Bp_inv;
-			if (CondObsOnly) {
-				post_samples_id = Dp.cwiseSqrt().asDiagonal() * samples_id_Vecchia;
-			}
-			else {
-				Bp_inv.resize(num_re_pred_cli, num_re_pred_cli);
-				Bp_inv.setIdentity();
-				TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
-				sp_mat_t Bp_inv_Dp_sqrt = Bp_inv * Dp.cwiseSqrt().asDiagonal();
-				sp_mat_rm_t Bp_inv_Dp_sqrt_rm = sp_mat_rm_t(Bp_inv_Dp_sqrt);
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_post_samples; ++i) {
-					post_samples_id.col(i) = Bp_inv_Dp_sqrt_rm * samples_id_Vecchia.col(i);
-				}
+			post_samples_id.resize(num_re_pred_cli, num_post_samples);
+			GenRandVecNormalParallel(base_seed, run_id, post_samples_id);
+			post_samples_id = Dp.cwiseSqrt().asDiagonal() * post_samples_id;
+			if (!CondObsOnly) {
+				TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(Bp, post_samples_id, post_samples_id, false);
 			}
 			if (gp_approx == "full_scale_vecchia") {
 				//// Matheron approach
@@ -2157,34 +2137,21 @@ namespace GPBoost {
 				den_mat_t joint_samples_id_IP_pred = chol_ip_cross_cov_pred.transpose() * samples_id_IP;
 				den_mat_t joint_samples_id_IP_obs = chol_ip_cross_cov_obs.transpose() * samples_id_IP;
 				// Vecchia-Part
-				samples_id_obs.resize((int)chol_ip_cross_cov_obs.cols(), num_post_samples);
-				GenRandVecNormalParallel(base_seed, run_id, samples_id_obs);
-				sp_mat_rm_t B_inv_D_sqrt_rm;
-				sp_mat_rm_t D_sqrt = D_inv_cluster_i;
-				D_sqrt.setIdentity();
-				D_sqrt.diagonal().array() = D_inv_cluster_i.diagonal().array().pow(-0.5);
-				TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(B_cluster_i, D_sqrt, B_inv_D_sqrt_rm, false);
 				den_mat_t joint_samples_id_Vecchia_obs((int)chol_ip_cross_cov_obs.cols(), num_post_samples);
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_post_samples; ++i) {
-					joint_samples_id_Vecchia_obs.col(i) = B_inv_D_sqrt_rm * samples_id_obs.col(i);
-				}
+				GenRandVecNormalParallel(base_seed, run_id, joint_samples_id_Vecchia_obs);
+				const vec_t D_sqrt = D_inv_cluster_i.diagonal().cwiseInverse().cwiseSqrt();
+				joint_samples_id_Vecchia_obs = D_sqrt.asDiagonal() * joint_samples_id_Vecchia_obs;
+				TriangularSolve<sp_mat_rm_t, den_mat_t, den_mat_t>(B_cluster_i, joint_samples_id_Vecchia_obs, joint_samples_id_Vecchia_obs, false);
 				den_mat_t joint_samples_id_Vecchia_pred = post_samples_id;
 				den_mat_t B_po_joint_samples_id_Vecchia_obs(num_re_pred_cli, num_post_samples);
-#pragma omp parallel for schedule(static)   
+#pragma omp parallel for schedule(static)
 				for (int i = 0; i < num_post_samples; ++i) {
 					B_po_joint_samples_id_Vecchia_obs.col(i) = Bpo_rm * joint_samples_id_Vecchia_obs.col(i);
 				}
-				if (CondObsOnly) {
-					joint_samples_id_Vecchia_pred -= B_po_joint_samples_id_Vecchia_obs;
+				if (!CondObsOnly) {
+					TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(Bp, B_po_joint_samples_id_Vecchia_obs, B_po_joint_samples_id_Vecchia_obs, false);
 				}
-				else {
-					sp_mat_rm_t Bp_inv_rm = sp_mat_rm_t(Bp_inv);
-#pragma omp parallel for schedule(static)
-					for (int i = 0; i < num_post_samples; ++i) {
-						joint_samples_id_Vecchia_pred.col(i) -= Bp_inv_rm * B_po_joint_samples_id_Vecchia_obs.col(i);
-					}
-				}
+				joint_samples_id_Vecchia_pred -= B_po_joint_samples_id_Vecchia_obs;
 				// Combined
 				den_mat_t joint_samples_id_obs = joint_samples_id_IP_obs + joint_samples_id_Vecchia_obs;
 				den_mat_t joint_samples_id_pred = joint_samples_id_IP_pred + joint_samples_id_Vecchia_pred;
@@ -2208,24 +2175,16 @@ namespace GPBoost {
 			}
 		}//end sample_posterior
 		if (sample_prior) {
-			prior_samples_id = den_mat_t(num_re_cli, num_prior_samples);
-			prior_samples_id.setZero();
-			samples_id_obs.resize(num_re_cli, num_prior_samples);
-			GenRandVecNormalParallel(base_seed, run_id, samples_id_obs);
-			sp_mat_rm_t B_inv_D_sqrt_rm;
-			sp_mat_rm_t D_sqrt = D_inv_prior_cluster_i;
-			D_sqrt.setIdentity();
-			D_sqrt.diagonal().array() = D_inv_prior_cluster_i.diagonal().array().pow(-0.5);
-			TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(B_prior_cluster_i, D_sqrt, B_inv_D_sqrt_rm, false);
-#pragma omp parallel for schedule(static)
-			for (int i = 0; i < num_prior_samples; ++i) {
-				prior_samples_id.col(i) = B_inv_D_sqrt_rm * samples_id_obs.col(i);
-			}
+			prior_samples_id.resize(num_re_cli, num_prior_samples);
+			GenRandVecNormalParallel(base_seed, run_id, prior_samples_id);
+			const vec_t D_sqrt = D_inv_prior_cluster_i.diagonal().cwiseInverse().cwiseSqrt();
+			prior_samples_id = D_sqrt.asDiagonal() * prior_samples_id;
+			TriangularSolve<sp_mat_rm_t, den_mat_t, den_mat_t>(B_prior_cluster_i, prior_samples_id, prior_samples_id, false);
 			if (gp_approx == "full_scale_vecchia") {
 				// IP-Part
 				samples_id_IP.resize((int)chol_ip_cross_cov_obs.rows(), num_prior_samples);
 				GenRandVecNormalParallel(base_seed, run_id, samples_id_IP);
-				prior_samples_id += chol_ip_cross_cov_obs.transpose() * samples_id_IP;
+				prior_samples_id.noalias() += chol_ip_cross_cov_obs.transpose() * samples_id_IP;
 			}
 		}//end sample_prior
 		if (gauss_likelihood) {
@@ -2650,17 +2609,17 @@ namespace GPBoost {
 				D[i] -= (A_i * cov_mat_obs_neighbors)(0, 0);
 			}
 		}//end loop over data i
-		//Calculate D_inv and B_inv in order to calcualte Sigma and Sigma^-1
 		vec_t D_inv = D.cwiseInverse();
-		sp_mat_t B_inv(num_coord_unique, num_coord_unique);
-		B_inv.setIdentity();
-		TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B, B_inv, B_inv, false);
 		//Calculate inverse of covariance matrix for observed data using the Woodbury identity
 		sp_mat_t Z_o_T_R_inv = Z_o.transpose() * R_inv_obs;
 		sp_mat_t M_aux_Woodbury = B.transpose() * D_inv.asDiagonal() * B + Z_o_T_R_inv * Z_o;
 		chol_cholmod_sp_mat_t CholFac_M_aux_Woodbury;
 		CholFac_M_aux_Woodbury.compute(M_aux_Woodbury);
 		if (calc_pred_cov || calc_pred_var) {
+			//B^-1 is not sparse, it is only formed for the predictive (co-)variances
+			sp_mat_t B_inv(num_coord_unique, num_coord_unique);
+			B_inv.setIdentity();
+			TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(B, B_inv, B_inv, false);
 			sp_mat_t MInvSqrtX_Z_o_T;
 			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(CholFac_M_aux_Woodbury, Z_o_T_R_inv, MInvSqrtX_Z_o_T, false);
 			sp_mat_t ZoSigmaZoT_plusR_Inv = -MInvSqrtX_Z_o_T.transpose() * MInvSqrtX_Z_o_T + R_inv_obs;
@@ -2699,7 +2658,11 @@ namespace GPBoost {
 			vec_t resp_aux = Z_o_T_R_inv * y_cluster_i;
 			vec_t resp_aux2 = CholFac_M_aux_Woodbury.solve(resp_aux);
 			resp_aux = R_inv_obs * (y_cluster_i - Z_o * resp_aux2);
-			pred_mean = Z_p * (B_inv * (D.asDiagonal() * (B_inv.transpose() * (Z_o.transpose() * resp_aux))));
+			vec_t Sigma_resp_aux = Z_o.transpose() * resp_aux;
+			TriangularSolve<sp_mat_t, vec_t, vec_t>(B, Sigma_resp_aux, Sigma_resp_aux, true);
+			Sigma_resp_aux.array() *= D.array();
+			TriangularSolve<sp_mat_t, vec_t, vec_t>(B, Sigma_resp_aux, Sigma_resp_aux, false);
+			pred_mean = Z_p * Sigma_resp_aux;
 		}
 	}//end CalcPredVecchiaLatentObservedFirstOrder
 

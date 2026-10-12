@@ -5412,16 +5412,15 @@ namespace GPBoost {
 					B_po_cross_cov.col(i) = Bpo_rm * (*cross_cov).col(i);
 				}
 				den_mat_t cross_cov_PP_Vecchia_woodbury = chol_fact_sigma_woodbury.solve(cross_cov_PP_Vecchia.transpose());
-				sp_mat_rm_t Bp_inv_Dp_rm, Bp_inv_rm, Bp_rm, Bp_inv_Bpo_rm;//Bp^(-1) * Bpo 
-				if (CondObsOnly) {
-					Bp_inv_Bpo_rm = Bpo_rm; //Bp = Id
-				}
-				else {
-					Bp_rm = sp_mat_rm_t(Bp);
+				sp_mat_rm_t Bp_inv_Dp_rm, Bp_inv_rm;
+				// Bp^-1 is not sparse. It is only formed for the part Bp^-1 Dp Bp^-T of the predictive covariance matrix,
+				//	and products with Bp^-1 are calculated with triangular solves
+				if (!CondObsOnly && calc_pred_cov) {
+					sp_mat_rm_t Bp_rm = sp_mat_rm_t(Bp);
 					Bp_inv_rm = sp_mat_rm_t(Bp_rm.rows(), Bp_rm.cols());
 					Bp_inv_rm.setIdentity();
 					TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(Bp_rm, Bp_inv_rm, Bp_inv_rm, false);
-					Bp_inv_Bpo_rm = Bp_inv_rm * Bpo_rm;
+					Bp_inv_Dp_rm = Bp_inv_rm * Dp.asDiagonal();
 				}
 				if (calc_pred_cov) {
 					pred_cov = den_mat_t::Zero(num_pred, num_pred);
@@ -5630,7 +5629,10 @@ namespace GPBoost {
 						vec_t sigma_woodbury_vec = (*cross_cov) * chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * rand_vec_pred_SigmaI_plus_W_inv);
 						//z_i ~ N(0, (Sigma_pm Sigma_ip^-1 Sigma_mn - B_p^-1 B_po (B_o^T D_o^-1 B_o)^-1) Sigma^{-1} (Sigma^{-1} + W)^{-1} Sigma^{-1} (Sigma_nm Sigma_ip^-1 Sigma_mp - (B_o^T D_o^-1 B_o)^-1 B_po^T B_p^-1 ))
 						vec_t sigma_pred_sigma_inv_vec = cross_cov_pred_ip * chol_fact_sigma_ip.solve(Bt_D_inv_B_cross_cov.transpose() * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec));
-						vec_t sigmSigmaI_modechiSigmaI_mode = Bp_inv_Bpo_rm * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec);
+						vec_t sigmSigmaI_modechiSigmaI_mode = Bpo_rm * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec);
+						if (!CondObsOnly) {
+							TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, sigmSigmaI_modechiSigmaI_mode, sigmSigmaI_modechiSigmaI_mode, false);
+						}
 						vec_t rand_vec_pred = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
 						if (calc_pred_cov) {
 							if (i < nsim_var_pred_) {
@@ -5771,7 +5773,9 @@ namespace GPBoost {
 						pred_var += Dp;
 					}
 					else {
-						pred_var += Bp_inv_Dp_rm.cwiseProduct(Bp_inv_rm) * vec_t::Ones(num_pred);
+						vec_t diag_Bp_inv_Dp_Bp_inv_t;
+						CalcDiagLInvDLInvT(Bp, Dp, diag_Bp_inv_Dp_Bp_inv_t);
+						pred_var += diag_Bp_inv_Dp_Bp_inv_t;
 					}
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_pred; ++i) {
@@ -5809,7 +5813,6 @@ namespace GPBoost {
 					TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
 					//Bp.triangularView<Eigen::UpLoType::UnitLower>().solveInPlace(Bp_inv);//much slower
 					Maux = Bpo.transpose() * Bp_inv.transpose();
-					Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 					M_aux_3 = Maux.transpose() * sigma_resid_plus_W_inv_cross_cov;
 				}
 				den_mat_t M_aux_4 = chol_fact_sigma_woodbury_2.solve(M_aux_3.transpose());
@@ -5820,6 +5823,7 @@ namespace GPBoost {
 						pred_cov.diagonal().array() += Dp.array();
 					}
 					else {
+						Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 						pred_cov = Bp_inv_Dp * Bp_inv.transpose() + Maux.transpose() * Maux;
 					}
 					T_mat PP_Part, PP_Part1, PP_Part2, PP_Part3, PP_Part3_t, PP_Part4, PP_Part4_t, PP_Part5;
@@ -5844,10 +5848,7 @@ namespace GPBoost {
 						}
 					}
 					else {
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_pred; ++i) {
-							pred_var[i] = (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i));
-						}
+						pred_var = Bp_inv.cwiseAbs2() * Dp;
 					}
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_pred; ++i) {
@@ -5937,17 +5938,13 @@ namespace GPBoost {
 				}
 				sp_mat_rm_t Bp_inv_Dp_rm, Bp_inv_rm;
 				sp_mat_rm_t Bpo_rm = sp_mat_rm_t(Bpo);
-				sp_mat_rm_t Bp_rm;
-				sp_mat_rm_t Bp_inv_Bpo_rm; //Bp^(-1) * Bpo 
-				if (CondObsOnly) {
-					Bp_inv_Bpo_rm = Bpo_rm; //Bp = Id
-				}
-				else {
-					Bp_rm = sp_mat_rm_t(Bp);
+				// Bp^-1 is not sparse. It is only formed for the part Bp^-1 Dp Bp^-T of the predictive covariance matrix,
+				//	and products with Bp^-1 are calculated with triangular solves
+				if (!CondObsOnly && calc_pred_cov) {
+					sp_mat_rm_t Bp_rm = sp_mat_rm_t(Bp);
 					Bp_inv_rm = sp_mat_rm_t(Bp_rm.rows(), Bp_rm.cols());
 					Bp_inv_rm.setIdentity();
 					TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(Bp_rm, Bp_inv_rm, Bp_inv_rm, false);
-					Bp_inv_Bpo_rm = Bp_inv_rm * Bpo_rm;
 					Bp_inv_Dp_rm = Bp_inv_rm * Dp.asDiagonal();
 				}
 				if (calc_pred_cov) {
@@ -6014,7 +6011,10 @@ namespace GPBoost {
 							rand_vec_pred_SigmaI_plus_W_inv = rand_vec_pred_SigmaI_plus_W_inv.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_).eval();// this could be done much more efficiently avoiding double calculations...
 						}
 						//z_i ~ N(0, Bp^{-1} Bpo (Sigma^{-1} + W)^{-1} Bpo^T Bp^{-1})
-						vec_t rand_vec_pred = Bp_inv_Bpo_rm * rand_vec_pred_SigmaI_plus_W_inv;
+						vec_t rand_vec_pred = Bpo_rm * rand_vec_pred_SigmaI_plus_W_inv;
+						if (!CondObsOnly) {
+							TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, rand_vec_pred, rand_vec_pred, false);
+						}
 						if (calc_pred_cov) {
 							if (i < nsim_var_pred_) {
 								pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
@@ -6057,7 +6057,9 @@ namespace GPBoost {
 						pred_var += Dp;
 					}
 					else {
-						pred_var += Bp_inv_Dp_rm.cwiseProduct(Bp_inv_rm) * vec_t::Ones(num_pred);
+						vec_t diag_Bp_inv_Dp_Bp_inv_t;
+						CalcDiagLInvDLInvT(Bp, Dp, diag_Bp_inv_Dp_Bp_inv_t);
+						pred_var += diag_Bp_inv_Dp_Bp_inv_t;
 					}
 				}
 			} //end iterative methods using simulation
@@ -6075,7 +6077,6 @@ namespace GPBoost {
 					TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
 					//Bp.triangularView<Eigen::UpLoType::UnitLower>().solveInPlace(Bp_inv);//much slower
 					Maux = Bpo.transpose() * Bp_inv.transpose();
-					Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 				}
 				if (num_sets_re_ == 1) {
 					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux, Maux, false);
@@ -6105,6 +6106,7 @@ namespace GPBoost {
 						pred_cov.diagonal().array() += Dp.array();
 					}
 					else {
+						Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
 						pred_cov = Bp_inv_Dp * Bp_inv.transpose() + Maux.transpose() * Maux;
 					}
 				}
@@ -6118,9 +6120,10 @@ namespace GPBoost {
 						}
 					}
 					else {
+						const vec_t diag_Bp_inv_Dp_Bp_inv_t = Bp_inv.cwiseAbs2() * Dp;
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_pred; ++i) {
-							pred_var[i] = (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i)) + Maux.col(i).sum();
+							pred_var[i] = diag_Bp_inv_Dp_Bp_inv_t[i] + Maux.col(i).sum();
 						}
 					}
 				}

@@ -59,6 +59,15 @@ namespace GPBoost {
 	void sp_L_t_solve(const double* val, const int* row_idx, const int* col_ptr, const int ncol, double* x);
 
 	/*!
+	* \brief Calculate the diagonal of L^(-1) diag(d) L^(-T) for a sparse lower triangular matrix L without storing L^(-1),
+	*		which is usually not sparse. The columns of L^(-1) are calculated one after another, which requires O(n^2) operations
+	* \param L Sparse lower triangular matrix (compressed, column-major format, with the diagonal as first entry of every column)
+	* \param d Vector d
+	* \param[out] diag Diagonal of L^(-1) diag(d) L^(-T)
+	*/
+	void CalcDiagLInvDLInvT(const sp_mat_t& L, const vec_t& d, vec_t& diag);
+
+	/*!
 	* \brief Solve equation system with a sparse triangular left-hand side and a sparse right-hand side (Ax=B) using CSparse function cs_spsolve
 	* \param A left-hand side
 	* \param B right-hand side
