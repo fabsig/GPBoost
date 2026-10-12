@@ -3945,6 +3945,16 @@ namespace GPBoost {
 			double* out_predict) {
 			// A local copy, so that making predictions does not change the state of the fitted model
 			bool nearest_neighbors_determined = nearest_neighbors_determined_;
+			// The random number generator (used, e.g., for selecting inducing points and for the ordering and the neighbors of
+			//	a Vecchia approximation) is seeded for every call, such that the predictions for a new cluster do not depend on
+			//	previous calls, and its previous state is restored afterwards
+			struct RestoreRNG {
+				RNG_t& rng;
+				const RNG_t state;
+				~RestoreRNG() { rng = state; }
+			} restore_rng{ rng_, rng_ };
+			std::seed_seq seed_seq_new_cluster{ (uint32_t)seed_rng_, (uint32_t)cluster_i };
+			rng_ = RNG_t(seed_seq_new_cluster);
 			if (grouped_RE_and_vecchia_GP_) {
 				Log::REFatal("Predict function is not implemented for new clusters (in 'cluster_ids_pred') for grouped random effects and a Vecchia-approximated GP ");
 			}

@@ -1367,4 +1367,27 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Predictions for a new cluster do not depend on previous calls ", {
+    # The inducing points of a new cluster are selected at random, and they used to be selected anew in every call
+    # with the random number generator of the model. Two calls then gave different predictive covariance matrices
+    # (by up to 0.6 for 'fitc'), and every call changed the state of the random number generator
+    y <- eps + xi
+    num_pred <- 30
+    coords_pred <- matrix(sim_rand_unif(n=num_pred*d, init_c=0.27), ncol=d)
+    approxs <- list(list(gp_approx = "fitc", num_ind_points = 20),
+                    list(gp_approx = "full_scale_vecchia", num_ind_points = 20, num_neighbors = 10),
+                    list(gp_approx = "full_scale_tapering", num_ind_points = 20, cov_fct_taper_range = 0.3, cov_fct_taper_shape = 1))
+    for (approx in approxs) {
+      capture.output( gp_model <- do.call(GPModel, c(list(gp_coords = coords, cov_function = "exponential",
+                                                            cluster_ids = rep(1, n)), approx)), file='NUL')
+      preds <- list()
+      for (i in 1:2) {
+        capture.output( preds[[i]] <- predict(gp_model, y = y, gp_coords_pred = coords_pred, cluster_ids_pred = rep(2, num_pred),
+                                              cov_pars = c(0.1, 1, 0.1), predict_cov_mat = TRUE), file='NUL')
+      }
+      expect_lt(max(abs(preds[[1]]$mu - preds[[2]]$mu)), TOLERANCE_STRICT)
+      expect_lt(max(abs(preds[[1]]$cov - preds[[2]]$cov)), TOLERANCE_STRICT)
+    }
+  })
+
 }

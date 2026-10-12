@@ -144,6 +144,59 @@ namespace GPBoost {
 		}
 	}//end CalcColSquaredNormsLInvR
 
+	void CalcColSquaredNormsCholFactorInvR(const sp_mat_t& L, const sp_mat_t& R, vec_t& norms) {
+		CHECK(L.isCompressed());
+		CHECK(L.rows() == L.cols());
+		CHECK(L.cols() == R.rows());
+		const int n = (int)L.cols();
+		const int num_cols = (int)R.cols();
+		const double* val = L.valuePtr();
+		const int* row_idx = L.innerIndexPtr();
+		const int* col_ptr = L.outerIndexPtr();
+		// Elimination tree: the parent of node j is the first row below the diagonal in column j
+		std::vector<int> parent(n, -1);
+#pragma omp parallel for schedule(static)
+		for (int j = 0; j < n; ++j) {
+			for (int p = col_ptr[j] + 1; p < col_ptr[j + 1]; ++p) {
+				if (parent[j] < 0 || row_idx[p] < parent[j]) {
+					parent[j] = row_idx[p];
+				}
+			}
+		}
+		norms = vec_t::Zero(num_cols);
+#pragma omp parallel
+		{
+			// Column of L^(-1) R, every entry is set back to zero once it has been used
+			vec_t x = vec_t::Zero(n);
+			std::vector<char> on_path(n, 0);
+			std::vector<int> path;
+#pragma omp for schedule(dynamic, 16)
+			for (int j = 0; j < num_cols; ++j) {
+				path.clear();
+				for (sp_mat_t::InnerIterator it(R, j); it; ++it) {
+					x[it.row()] = it.value();
+					for (int k = (int)it.row(); k >= 0 && !on_path[k]; k = parent[k]) {
+						on_path[k] = 1;
+						path.push_back(k);
+					}
+				}
+				// a node is larger than its descendants in the elimination tree, i.e. this is a topological order
+				std::sort(path.begin(), path.end());
+				double norm = 0.;
+				for (const int k : path) {
+					const double x_k = x[k] / val[col_ptr[k]];
+					for (int i = col_ptr[k] + 1; i < col_ptr[k + 1]; ++i) {
+						x[row_idx[i]] -= val[i] * x_k;
+					}
+					norm += x_k * x_k;
+					x[k] = 0.;
+					on_path[k] = 0;
+				}
+				norms[j] = norm;
+			}
+		}
+	}//end CalcColSquaredNormsCholFactorInvR
+
 	/*!
 	* \brief First position in the sorted range [first, last) whose value is not smaller than 'value'. The search starts at
 	*		'first' with exponentially increasing steps, which is fast if the position is close to 'first'
@@ -258,6 +311,9 @@ namespace GPBoost {
 				}
 				continue;
 			}
+			// Parallel computations only pay off for large supernodes, for the many small ones the overhead of starting
+			//	the threads dominates
+			const bool large_supernode = (double)t * ((double)r * r + (double)r * t + (double)t * t) > 1e7;
 			// Z[S, S]: column b is in column S[b] of Z
 			Z_SS.resize(r, r);
 			auto gather_column = [&](int b) -> bool {
@@ -278,7 +334,7 @@ namespace GPBoost {
 				}
 				return found_all;
 			};
-			if (r > 256) {
+			if (r > 2048) {
 #pragma omp parallel for schedule(dynamic, 8) reduction(||:pattern_not_closed)
 				for (int b = 0; b < r; ++b) {
 					if (!gather_column(b)) {
@@ -306,11 +362,24 @@ namespace GPBoost {
 				}
 			}
 			L_JJ_inv = L_JJ.triangularView<Eigen::Lower>().solve(den_mat_t::Identity(t, t));
-			Z_JJ.noalias() = L_JJ_inv.transpose() * L_JJ_inv;
+			if (large_supernode) {
+				Z_JJ.noalias() = L_JJ_inv.transpose() * L_JJ_inv;
+				if (r > 0) {
+					Y.noalias() = L_SJ * L_JJ_inv;
+					Z_SJ.noalias() = Z_SS * Y;
+					Z_JJ.noalias() += Y.transpose() * Z_SJ;
+				}
+			}
+			else {
+				// lazy products are not parallelized
+				Z_JJ.noalias() = L_JJ_inv.transpose().lazyProduct(L_JJ_inv);
+				if (r > 0) {
+					Y.noalias() = L_SJ.lazyProduct(L_JJ_inv);
+					Z_SJ.noalias() = Z_SS.lazyProduct(Y);
+					Z_JJ.noalias() += Y.transpose().lazyProduct(Z_SJ);
+				}
+			}
 			if (r > 0) {
-				Y.noalias() = L_SJ * L_JJ_inv;
-				Z_SJ.noalias() = Z_SS * Y;
-				Z_JJ.noalias() += Y.transpose() * Z_SJ;
 				Z_SJ *= -1.;
 			}
 			for (int p = 0; p < t; ++p) {

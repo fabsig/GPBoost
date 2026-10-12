@@ -20,6 +20,54 @@
 #endif
 namespace GPBoost {
 
+	/*!
+	* \brief Read-only view of the columns of a matrix that consists of two blocks of columns, without copying them into one
+	*		matrix: the first columns are those of the first block, the remaining ones those of the second block. A view can
+	*		also start at a column offset of another view. It is used for 'chol_ip_cross_cov' (the inverse of the Cholesky
+	*		factor of the inducing point matrix times the cross covariance) at the observed and the prediction locations
+	*/
+	class ColumnBlocksView {
+	public:
+		/*! \brief View of the columns of a single matrix */
+		ColumnBlocksView(const den_mat_t& first) : first_(&first), second_(nullptr), offset_(0), num_cols_(first.cols()) {}
+		/*! \brief View of the columns of two matrices with the same number of rows */
+		ColumnBlocksView(const den_mat_t& first, const den_mat_t& second) : first_(&first), second_(&second), offset_(0),
+			num_cols_(first.cols() + second.cols()) {
+			CHECK(first.rows() == second.rows() || first.cols() == 0 || second.cols() == 0);
+		}
+		/*! \brief View of 'num_cols' columns of this view starting at column 'offset' */
+		ColumnBlocksView MiddleCols(Eigen::Index offset, Eigen::Index num_cols) const {
+			CHECK(offset >= 0 && num_cols >= 0 && offset + num_cols <= num_cols_);
+			ColumnBlocksView view(*this);
+			view.offset_ += offset;
+			view.num_cols_ = num_cols;
+			return view;
+		}
+		Eigen::Index rows() const {
+			return (first_->cols() > 0 || second_ == nullptr) ? first_->rows() : second_->rows();
+		}
+		Eigen::Index cols() const {
+			return num_cols_;
+		}
+		den_mat_t::ConstColXpr col(Eigen::Index i) const {
+			const Eigen::Index j = offset_ + i;
+			return (j < first_->cols()) ? first_->col(j) : second_->col(j - first_->cols());
+		}
+		/*! \brief Copy of the columns of this view */
+		den_mat_t ToMatrix() const {
+			den_mat_t M(rows(), num_cols_);
+			for (Eigen::Index i = 0; i < num_cols_; ++i) {
+				M.col(i) = col(i);
+			}
+			return M;
+		}
+	private:
+		const den_mat_t* first_;
+		const den_mat_t* second_;
+		Eigen::Index offset_;
+		Eigen::Index num_cols_;
+	};
+
 #ifdef USE_CUDA_GP
 
 	/*!
@@ -113,7 +161,7 @@ namespace GPBoost {
 		const std::vector<int>& coords_ind_j,
 		const den_mat_t& coords,
 		const vec_t& corr_diag,
-		const den_mat_t& chol_ip_cross_cov,
+		const ColumnBlocksView& chol_ip_cross_cov,
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
 		vec_t& distances,
 		string_t dist_function,
@@ -132,7 +180,7 @@ namespace GPBoost {
 	* \param dist_function distance function
 	*/
 	void CoverTree_kNN(const den_mat_t& coords_mat,
-		const den_mat_t& chol_ip_cross_cov,
+		const ColumnBlocksView& chol_ip_cross_cov,
 		const vec_t& corr_diag,
 		const int start,
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
@@ -161,7 +209,7 @@ namespace GPBoost {
 		const int levels,
 		const bool distances_saved,
 		const den_mat_t& coords,
-		const den_mat_t& chol_ip_cross_cov,
+		const ColumnBlocksView& chol_ip_cross_cov,
 		const vec_t& corr_diag,
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
 		std::vector<int>& neighbors_i,
@@ -192,7 +240,7 @@ namespace GPBoost {
 	void find_nearest_neighbors_Vecchia_FSA_fast(const den_mat_t& coords,
 		int num_data,
 		int num_neighbors,
-		const den_mat_t& chol_ip_cross_cov,
+		const ColumnBlocksView& chol_ip_cross_cov,
 		const string_t& vecchia_neighbor_selection,
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
 		std::vector<std::vector<int>>& neighbors,

@@ -32,7 +32,7 @@ namespace GPBoost {
 		const std::vector<int>& coords_ind_j,
 		const den_mat_t& coords,
 		const vec_t& corr_diag,
-		const den_mat_t& chol_ip_cross_cov,
+		const ColumnBlocksView& chol_ip_cross_cov,
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
 		vec_t& distances,
 		string_t dist_function,
@@ -96,7 +96,7 @@ namespace GPBoost {
 	}
 
 	void CoverTree_kNN(const den_mat_t& coords_mat,
-		const den_mat_t& chol_ip_cross_cov,
+		const ColumnBlocksView& chol_ip_cross_cov,
 		const vec_t& corr_diag,
 		const int start,
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
@@ -175,7 +175,7 @@ namespace GPBoost {
 		const int levels,
 		const bool distances_saved,
 		const den_mat_t& coords,
-		const den_mat_t& chol_ip_cross_cov,
+		const ColumnBlocksView& chol_ip_cross_cov,
 		const vec_t& corr_diag,
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
 		std::vector<int>& neighbors_i,
@@ -313,7 +313,7 @@ namespace GPBoost {
 	void find_nearest_neighbors_Vecchia_FSA_fast(const den_mat_t& coords,
 		int num_data,
 		int num_neighbors,
-		const den_mat_t& chol_ip_cross_cov,
+		const ColumnBlocksView& chol_ip_cross_cov,
 		const string_t& vecchia_neighbor_selection,
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
 		std::vector<std::vector<int>>& neighbors,
@@ -490,7 +490,7 @@ namespace GPBoost {
 					int cov_fct_shape_int = (int)(cov_fct_shape * 10);// faster to compare int than double on GPU
 					double range_param = (covfct == "matern_ard") ? 1. : pars[1];
 					success = find_nearest_neighbors_bruteforce_GPU(coords_unique_scaled, num_data, num_neighbors, pars,
-						start_at, brute_force_threshold, end_search_at, (int)coords.cols(), corr_diag, chol_ip_cross_cov,
+						start_at, brute_force_threshold, end_search_at, (int)coords.cols(), corr_diag, chol_ip_cross_cov.ToMatrix(),
 						cov_fct_shape_int, range_param, EPSILON_NUMBERS, dist_funct, neighbors, start_dim);
 #endif 
 				}
@@ -551,10 +551,8 @@ namespace GPBoost {
 							if (i == num_threads - 1 && overhead) {
 								segment_length[i] += last_segment;
 							}
-							den_mat_t chol_ip_cross_cov_sub;
-							if (dist_function == "residual_correlation_FSA") {
-								chol_ip_cross_cov_sub = chol_ip_cross_cov.middleCols(segment_start[i], segment_length[i]);
-							}
+							const ColumnBlocksView chol_ip_cross_cov_sub = (dist_function == "residual_correlation_FSA") ?
+								chol_ip_cross_cov.MiddleCols(segment_start[i], segment_length[i]) : chol_ip_cross_cov.MiddleCols(0, 0);
 							CoverTree_kNN(coords_ct.middleRows(segment_start[i], segment_length[i]), chol_ip_cross_cov_sub,
 								corr_diag.segment(segment_start[i], segment_length[i]), segment_start[i], re_comps_vecchia_cluster_i, cover_trees[i],
 								levels_threads[i], save_distances, dist_function);
@@ -1818,7 +1816,7 @@ namespace GPBoost {
 			re_comp->ScaleCoordinates(pars, coords_all, coords_scaled);
 		}
 		// Components for full scale vecchia
-		den_mat_t chol_ip_cross_cov_pred, chol_ip_cross_cov_obs_own, chol_ip_cross_cov_obs_pred, sigma_ip_inv_sigma_cross_cov_pred;
+		den_mat_t chol_ip_cross_cov_pred, chol_ip_cross_cov_obs_own, sigma_ip_inv_sigma_cross_cov_pred;
 		// L^-1 * Sigma_mn^T for the observations: the one of the model is used if it matches, it is an m x n matrix
 		const den_mat_t* chol_ip_cross_cov_obs_ptr = &chol_ip_cross_cov_obs_own;
 		// Cross-covariance between predictions and inducing points C_pm
@@ -1840,13 +1838,12 @@ namespace GPBoost {
 			TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_cluster_i,
 				cross_cov_pred_ip.transpose(), chol_ip_cross_cov_pred, false);
 			sigma_ip_inv_sigma_cross_cov_pred = chol_fact_sigma_ip_cluster_i.solve(cross_cov_pred_ip.transpose());
-			if (vecchia_neighbor_selection == "residual_correlation") {
-				chol_ip_cross_cov_obs_pred.resize(chol_ip_cross_cov_obs_ptr->rows(), chol_ip_cross_cov_obs_ptr->cols() + chol_ip_cross_cov_pred.cols());
-				chol_ip_cross_cov_obs_pred.leftCols(chol_ip_cross_cov_obs_ptr->cols()) = *chol_ip_cross_cov_obs_ptr;
-				chol_ip_cross_cov_obs_pred.rightCols(chol_ip_cross_cov_pred.cols()) = chol_ip_cross_cov_pred;
-			}
 		}
 		const den_mat_t& chol_ip_cross_cov_obs = *chol_ip_cross_cov_obs_ptr;
+		// L^-1 * Sigma_mn^T at the observed and the prediction locations for the neighbor search with residual correlations
+		const den_mat_t empty_mat;
+		const ColumnBlocksView chol_ip_cross_cov_obs_pred = (gp_approx == "full_scale_vecchia" && vecchia_neighbor_selection == "residual_correlation") ?
+			ColumnBlocksView(chol_ip_cross_cov_obs, chol_ip_cross_cov_pred) : ColumnBlocksView(empty_mat);
 		if (CondObsOnly) {
 			if ((gp_approx == "full_scale_vecchia" && vecchia_neighbor_selection == "residual_correlation") || vecchia_neighbor_selection == "correlation") {
 				find_nearest_neighbors_Vecchia_FSA_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred, chol_ip_cross_cov_obs_pred, vecchia_neighbor_selection,

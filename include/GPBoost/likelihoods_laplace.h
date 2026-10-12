@@ -2234,20 +2234,37 @@ namespace GPBoost {
 			Log::REFatal("CalcGradNegMargLikelihoodLaplaceApproxStable: Negative values found in W (the diagonal Hessian or Fisher information of the negative log-likelihood). "
 				"This gradient calculation requires the square root of W ");
 		}
-		T_mat L_inv_Wsqrt(dim_mode_, dim_mode_);//L_inv_Wsqrt = L\ZtWZsqrt if use_random_effects_indices_of_data_ or L\Wsqrt if !use_random_effects_indices_of_data_ where L is a Cholesky factor of Id_plus_Wsqrt_Sigma_Wsqrt
-		L_inv_Wsqrt.setIdentity();
-		L_inv_Wsqrt.diagonal().array() = information_ll_.array().sqrt();
-		TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt, L_inv_Wsqrt, false);//L_inv_Wsqrt = L\Wsqrt
+		// W refers to ZtWZ if use_random_effects_indices_of_data_. L is the Cholesky factor of B = Id + Wsqrt * Sigma * Wsqrt.
+		//	For a dense L, L^-1 * Wsqrt is calculated once and used in matrix products, which is faster than triangular solves.
+		//	For a sparse L, it is not formed since it is not sparse: solves with L and entries of B^-1 on sparsity patterns are used instead
+		const vec_t Wsqrt = information_ll_.cwiseSqrt();
+		const bool dense_chol = std::is_same<T_chol, chol_den_mat_t>::value;
+		T_mat L_inv_Wsqrt;
+		if (dense_chol) {
+			L_inv_Wsqrt = T_mat(dim_mode_, dim_mode_);
+			L_inv_Wsqrt.setIdentity();
+			L_inv_Wsqrt.diagonal().array() = Wsqrt.array();
+			TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, L_inv_Wsqrt, L_inv_Wsqrt, false);//L_inv_Wsqrt = L\Wsqrt
+		}
+		// (Sigma^-1 + W)^-1 * v = Sigma * v - Sigma * Wsqrt * B^-1 * Wsqrt * Sigma * v
+		auto SigmaI_plus_W_inv_times = [&](const vec_t& v) -> vec_t {
+			const vec_t Sigma_v = (*Sigma) * v;
+			const vec_t B_inv_Wsqrt_Sigma_v = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(Wsqrt.cwiseProduct(Sigma_v));
+			return Sigma_v - (*Sigma) * Wsqrt.cwiseProduct(B_inv_Wsqrt_Sigma_v);
+		};
 		vec_t SigmaI_plus_W_inv_diag, d_mll_d_mode;
-		T_mat L_inv_Wsqrt_Sigma;
 		if (grad_information_wrt_mode_non_zero_ || calc_aux_par_grad || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad)) {
-			L_inv_Wsqrt_Sigma = L_inv_Wsqrt * (*Sigma);
-			//Log::REInfo("CalcGradNegMargLikelihoodLaplaceApproxStable: L_inv_ZtWZsqrt: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt));//Only for debugging
-			//Log::REInfo("CalcGradNegMargLikelihoodLaplaceApproxStable: L_inv_ZtWZsqrt_Sigma: number non zeros = %d", GetNumberNonZeros<T_mat>(L_inv_ZtWZsqrt_Sigma));//Only for debugging
 			// Calculate gradient of approx. marginal log-likelihood wrt the mode
-			//      Note: use (i) (Sigma^-1 + W)^-1 = Sigma - Sigma*(W^-1 + Sigma)^-1*Sigma = Sigma - L_inv_Wsqrt_Sigma^T * L_inv_Wsqrt_Sigma and (ii) "Z=Id"
-			T_mat L_inv_Wsqrt_Sigma_sqr = L_inv_Wsqrt_Sigma.cwiseProduct(L_inv_Wsqrt_Sigma);
-			SigmaI_plus_W_inv_diag = (*Sigma).diagonal() - L_inv_Wsqrt_Sigma_sqr.transpose() * vec_t::Ones(L_inv_Wsqrt_Sigma_sqr.rows());// diagonal of (Sigma^-1 + ZtWZ) ^ -1 if use_random_effects_indices_of_data_ or of (ZSigmaZt^-1 + W)^-1 if !use_random_effects_indices_of_data_
+			//      Note: use (i) (Sigma^-1 + W)^-1 = Sigma - Sigma*(W^-1 + Sigma)^-1*Sigma = Sigma - (L^-1 * Wsqrt * Sigma)^T * (L^-1 * Wsqrt * Sigma) and (ii) "Z=Id"
+			vec_t L_inv_Wsqrt_Sigma_col_squaredNorm;
+			if (dense_chol) {
+				T_mat L_inv_Wsqrt_Sigma = L_inv_Wsqrt * (*Sigma);
+				L_inv_Wsqrt_Sigma_col_squaredNorm = L_inv_Wsqrt_Sigma.cwiseProduct(L_inv_Wsqrt_Sigma).transpose() * vec_t::Ones(dim_mode_);
+			}
+			else {
+				CalcColSquaredNormsCholFactorInvPR<T_chol, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, (T_mat)(Wsqrt.asDiagonal() * (*Sigma)), L_inv_Wsqrt_Sigma_col_squaredNorm);
+			}
+			SigmaI_plus_W_inv_diag = (*Sigma).diagonal() - L_inv_Wsqrt_Sigma_col_squaredNorm;// diagonal of (Sigma^-1 + ZtWZ) ^ -1 if use_random_effects_indices_of_data_ or of (ZSigmaZt^-1 + W)^-1 if !use_random_effects_indices_of_data_
 		}
 		if (grad_information_wrt_mode_non_zero_) {
 			CHECK(first_deriv_information_loc_par_caluclated_);
@@ -2266,8 +2283,15 @@ namespace GPBoost {
 						SigmaDeriv = re_comps_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 1.);
 					}
 					if (ipar == 0) {
+						// (W^-1 + Sigma)^-1 = Wsqrt * B^-1 * Wsqrt on the sparsity pattern of SigmaDeriv
 						WI_plus_Sigma_inv = *SigmaDeriv;
-						CalcLtLGivenSparsityPattern<T_mat>(L_inv_Wsqrt, WI_plus_Sigma_inv, true);
+						if (dense_chol) {
+							CalcLtLGivenSparsityPattern<T_mat>(L_inv_Wsqrt, WI_plus_Sigma_inv, true);
+						}
+						else {
+							CalcInverseOnSparsityPattern<T_chol, T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, WI_plus_Sigma_inv);
+							WI_plus_Sigma_inv = Wsqrt.asDiagonal() * WI_plus_Sigma_inv * Wsqrt.asDiagonal();
+						}
 						//TODO (low-prio): calculate WI_plus_Sigma_inv only once for all relevant non-zero entries as in Gaussian case (see 'CalcPsiInv')
 						//                  This is only relevant for multiple random effects and/or GPs
 					}
@@ -2280,7 +2304,7 @@ namespace GPBoost {
 							// Calculate implicit derivative (through mode) of approx. mariginal log-likelihood
 							SigmaDeriv_first_deriv_ll = (*SigmaDeriv) * first_deriv_ll_;
 							d_mode_d_par = SigmaDeriv_first_deriv_ll;//derivative of mode wrt to a covariance parameter
-							d_mode_d_par -= ((*Sigma) * (L_inv_Wsqrt.transpose() * (L_inv_Wsqrt * SigmaDeriv_first_deriv_ll)));
+							d_mode_d_par -= (*Sigma) * Wsqrt.cwiseProduct(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(Wsqrt.cwiseProduct(SigmaDeriv_first_deriv_ll)));
 							cov_grad[par_count] += d_mll_d_mode.dot(d_mode_d_par);
 						}
 					}
@@ -2291,8 +2315,7 @@ namespace GPBoost {
 		// calculate gradient wrt fixed effects
 		vec_t SigmaI_plus_W_inv_d_mll_d_mode;// for implicit derivative
 		if (grad_information_wrt_mode_non_zero_ && (calc_F_grad || calc_aux_par_grad)) {
-			vec_t L_inv_Wsqrt_Sigma_d_mll_d_mode = L_inv_Wsqrt_Sigma * d_mll_d_mode;// for implicit derivative
-			SigmaI_plus_W_inv_d_mll_d_mode = (*Sigma) * d_mll_d_mode - L_inv_Wsqrt_Sigma.transpose() * L_inv_Wsqrt_Sigma_d_mll_d_mode;
+			SigmaI_plus_W_inv_d_mll_d_mode = SigmaI_plus_W_inv_times(d_mll_d_mode);
 		}
 		if (calc_F_grad) {
 			if (use_random_effects_indices_of_data_) {

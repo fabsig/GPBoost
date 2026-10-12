@@ -77,6 +77,17 @@ namespace GPBoost {
 	void CalcColSquaredNormsLInvR(const sp_mat_t& L, const sp_mat_t& R, vec_t& norms);
 
 	/*!
+	* \brief Calculate the squared norms of the columns of L^(-1) R for a sparse Cholesky factor L and a sparse matrix R without
+	*		storing L^(-1) R. The non-zeros of L^(-1) r are on the paths from the non-zeros of r to the root of the elimination
+	*		tree of L, and only these entries are calculated. This requires that the sparsity pattern of L contains the fill-in,
+	*		as it is the case for a Cholesky factor (but not, e.g., for an incomplete Cholesky factor)
+	* \param L Sparse Cholesky factor (compressed, column-major format, with the diagonal as first entry of every column)
+	* \param R Sparse right-hand side
+	* \param[out] norms Squared norms of the columns of L^(-1) R
+	*/
+	void CalcColSquaredNormsCholFactorInvR(const sp_mat_t& L, const sp_mat_t& R, vec_t& norms);
+
+	/*!
 	* \brief Selected inversion with the Takahashi equations: calculate the entries of (L L^T)^(-1) on the sparsity pattern of a
 	*		lower triangular Cholesky factor L. The pattern of a Cholesky factor contains the fill-in of the factorization,
 	*		and the recursion therefore only needs entries on this pattern. The cost is of the order of a numeric factorization
@@ -498,6 +509,54 @@ namespace GPBoost {
 		const den_mat_t L_R = chol.CholFactMatrix() * R;
 		ApplyPermutationCholeskyFactor<den_mat_t, T_chol>(chol, L_R, X, true);
 	}//end MultiplyCholeskyFactor
+
+	/*!
+	* \brief Calculate the squared norms of the columns of L^(-1) * P * R for a Cholesky factorization P * A * P^T = L * L^T
+	*		without storing L^(-1) * P * R for a sparse Cholesky factorization, see 'CalcColSquaredNormsCholFactorInvR'
+	* \param chol Cholesky factorization
+	* \param R Right-hand side
+	* \param[out] norms Squared norms of the columns of L^(-1) * P * R
+	*/
+	template <class T_chol, class T_mat_R, typename std::enable_if <std::is_same<chol_den_mat_t, T_chol>::value>::type* = nullptr >
+	void CalcColSquaredNormsCholFactorInvPR(const T_chol& chol, const T_mat_R& R, vec_t& norms) {
+		// A dense L^-1 has no fill-in, and a matrix product is faster than triangular solves for many dense right-hand sides
+		den_mat_t L_inv;
+		TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol, den_mat_t::Identity(chol.rows(), chol.cols()), L_inv, false);
+		den_mat_t L_inv_R;
+		L_inv_R.noalias() = L_inv * R;
+		norms = L_inv_R.colwise().squaredNorm().transpose();
+	}
+	template <class T_chol, class T_mat_R, typename std::enable_if <is_sparse_chol<T_chol>::value>::type* = nullptr >
+	void CalcColSquaredNormsCholFactorInvPR(const T_chol& chol, const T_mat_R& R, vec_t& norms) {
+		const sp_mat_t L = chol.CholFactMatrix();
+		sp_mat_t P_R = R;
+		if (CholeskyHasPermutation<T_chol>(chol)) {
+			const sp_mat_t R_cm = P_R;
+			P_R = chol.permutationP() * R_cm;
+		}
+		CalcColSquaredNormsCholFactorInvR(L, P_R, norms);
+	}//end CalcColSquaredNormsCholFactorInvPR
+
+	/*!
+	* \brief Calculate the entries of A^(-1) on the non-zeros of a matrix M given a Cholesky factorization of A, see
+	*		'SparseInverseEntries'. For a dense matrix, all entries are calculated
+	* \param chol Cholesky factorization of A
+	* \param[out] M Matrix whose non-zero entries are overwritten
+	*/
+	template <class T_chol, class T_mat, typename std::enable_if <std::is_same<chol_den_mat_t, T_chol>::value>::type* = nullptr >
+	void CalcInverseOnSparsityPattern(const T_chol& chol, T_mat& M) {
+		// the triangular solves are parallelized over the columns and the product is a parallel matrix multiplication
+		den_mat_t L_inv;
+		TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol, den_mat_t::Identity(chol.rows(), chol.cols()), L_inv, false);
+		M.noalias() = L_inv.transpose() * L_inv;
+	}
+	template <class T_chol, class T_mat, typename std::enable_if <is_sparse_chol<T_chol>::value>::type* = nullptr >
+	void CalcInverseOnSparsityPattern(const T_chol& chol, T_mat& M) {
+		const sp_mat_t L = chol.CholFactMatrix();
+		sp_mat_t M_cm = M;
+		SparseInverseEntries(L, chol.permutationP().indices()).OnSparsityPattern(M_cm);
+		M = M_cm;
+	}//end CalcInverseOnSparsityPattern
 
 	/*!
 	* \brief Solve a linear system L*L^T * X = R given a lower Cholesky factor
