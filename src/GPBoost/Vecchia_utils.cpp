@@ -1732,11 +1732,34 @@ namespace GPBoost {
 		}
 	}//end CalcCovFactorGradientVecchia
 
+	/*!
+	* \brief Check whether a matrix is L^-1 * Sigma_mn^T, where L is the Cholesky factor of the inducing point matrix
+	*		and Sigma_mn^T the transposed cross covariance matrix, by multiplying its first and last column by L
+	*/
+	static bool IsCholIpCrossCov(const chol_den_mat_t& chol_fact_sigma_ip,
+		const den_mat_t& sigma_cross_cov,
+		const den_mat_t& chol_ip_cross_cov) {
+		if (chol_ip_cross_cov.cols() == 0 || chol_ip_cross_cov.cols() != sigma_cross_cov.rows() ||
+			chol_ip_cross_cov.rows() != sigma_cross_cov.cols() || chol_ip_cross_cov.rows() != chol_fact_sigma_ip.rows()) {
+			return false;
+		}
+		const int last_col = (int)chol_ip_cross_cov.cols() - 1;
+		for (int i = 0; i <= last_col; i += std::max(last_col, 1)) {
+			const vec_t L_x = chol_fact_sigma_ip.matrixL() * chol_ip_cross_cov.col(i);
+			const vec_t c = sigma_cross_cov.row(i).transpose();
+			if ((L_x - c).norm() > 1e-6 * (L_x.norm() + c.norm())) {
+				return false;
+			}
+		}
+		return true;
+	}//end IsCholIpCrossCov
+
 	void CalcPredVecchiaObservedFirstOrder(bool CondObsOnly,
 		data_size_t cluster_i,
 		int num_data_pred,
 		const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
 		const chol_den_mat_t& chol_fact_sigma_ip_cluster_i,
+		const den_mat_t& chol_ip_cross_cov_obs_model,
 		const chol_den_mat_t& chol_fact_sigma_woodbury_cluster_i,
 		den_mat_t& cross_cov_pred_ip,
 		const sp_mat_rm_t& B_cluster_i,
@@ -1795,7 +1818,9 @@ namespace GPBoost {
 			re_comp->ScaleCoordinates(pars, coords_all, coords_scaled);
 		}
 		// Components for full scale vecchia
-		den_mat_t chol_ip_cross_cov_pred, chol_ip_cross_cov_obs, chol_ip_cross_cov_obs_pred, sigma_ip_inv_sigma_cross_cov_pred;
+		den_mat_t chol_ip_cross_cov_pred, chol_ip_cross_cov_obs_own, chol_ip_cross_cov_obs_pred, sigma_ip_inv_sigma_cross_cov_pred;
+		// L^-1 * Sigma_mn^T for the observations: the one of the model is used if it matches, it is an m x n matrix
+		const den_mat_t* chol_ip_cross_cov_obs_ptr = &chol_ip_cross_cov_obs_own;
 		// Cross-covariance between predictions and inducing points C_pm
 		den_mat_t cov_mat_pred_id, cross_dist;
 		std::shared_ptr<RECompGP<den_mat_t>> re_comp_cross_cov_cluster_i_pred_ip;
@@ -1805,17 +1830,23 @@ namespace GPBoost {
 			re_comp_cross_cov_cluster_i_pred_ip = re_comps_cross_cov_cluster_i[0];
 			re_comp_cross_cov_cluster_i_pred_ip->AddPredCovMatrices(gp_coords_mat_ip, gp_coords_mat_pred, cross_cov_pred_ip,
 				cov_mat_pred_id, true, false, true, nullptr, false, cross_dist);
-			TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_cluster_i,
-				(*sigma_cross_cov).transpose(), chol_ip_cross_cov_obs, false);
+			if (IsCholIpCrossCov(chol_fact_sigma_ip_cluster_i, *sigma_cross_cov, chol_ip_cross_cov_obs_model)) {
+				chol_ip_cross_cov_obs_ptr = &chol_ip_cross_cov_obs_model;
+			}
+			else {
+				TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_cluster_i,
+					(*sigma_cross_cov).transpose(), chol_ip_cross_cov_obs_own, false);
+			}
 			TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_cluster_i,
 				cross_cov_pred_ip.transpose(), chol_ip_cross_cov_pred, false);
 			sigma_ip_inv_sigma_cross_cov_pred = chol_fact_sigma_ip_cluster_i.solve(cross_cov_pred_ip.transpose());
 			if (vecchia_neighbor_selection == "residual_correlation") {
-				chol_ip_cross_cov_obs_pred.resize(chol_ip_cross_cov_obs.rows(), chol_ip_cross_cov_obs.cols() + chol_ip_cross_cov_pred.cols());
-				chol_ip_cross_cov_obs_pred.leftCols(chol_ip_cross_cov_obs.cols()) = chol_ip_cross_cov_obs;
+				chol_ip_cross_cov_obs_pred.resize(chol_ip_cross_cov_obs_ptr->rows(), chol_ip_cross_cov_obs_ptr->cols() + chol_ip_cross_cov_pred.cols());
+				chol_ip_cross_cov_obs_pred.leftCols(chol_ip_cross_cov_obs_ptr->cols()) = *chol_ip_cross_cov_obs_ptr;
 				chol_ip_cross_cov_obs_pred.rightCols(chol_ip_cross_cov_pred.cols()) = chol_ip_cross_cov_pred;
 			}
 		}
+		const den_mat_t& chol_ip_cross_cov_obs = *chol_ip_cross_cov_obs_ptr;
 		if (CondObsOnly) {
 			if ((gp_approx == "full_scale_vecchia" && vecchia_neighbor_selection == "residual_correlation") || vecchia_neighbor_selection == "correlation") {
 				find_nearest_neighbors_Vecchia_FSA_fast(coords_all, num_re_cli + num_re_pred_cli, num_neighbors_pred, chol_ip_cross_cov_obs_pred, vecchia_neighbor_selection,

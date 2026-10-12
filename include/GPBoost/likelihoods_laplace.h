@@ -2636,16 +2636,16 @@ namespace GPBoost {
 			}//end calc_aux_par_grad
 		}//end iterative
 		else {//Cholesky decomposition
-			// Calculate (Sigma^-1 + Zt*W*Z)^-1
-			sp_mat_t L_inv(dim_mode_, dim_mode_);
-			L_inv.setIdentity();
-			if (chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().size() > 0) {//Permutation is only used when having an ordering
-				L_inv = chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP() * L_inv;
-			}
-			sp_mat_t L = chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL();
-			TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(L, L_inv, L_inv, false);
-			L.resize(0, 0);
+			// Entries of (Sigma^-1 + Zt*W*Z)^-1 on the sparsity pattern of its Cholesky factor (selected inversion). Products with
+			//	(Sigma^-1 + Zt*W*Z)^-1 are calculated with solves, the inverse of the Cholesky factor is not sparse
+			const SparseInverseEntries SigmaI_plus_ZtWZ_inv_entries(chol_fact_SigmaI_plus_ZtWZ_grouped_.CholFactMatrix(),
+				chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().indices());
 			sp_mat_t SigmaI_plus_ZtWZ_inv;
+			// Data-scale diagonal of (Sigma^-1 + Zt*W*Z)^-1, i.e. diag(Z (Sigma^-1 + Zt*W*Z)^-1 Z^T)
+			vec_t Z_SigmaI_plus_ZtWZ_inv_Zt_diag;
+			if (grad_information_wrt_mode_non_zero_ || (calc_F_grad && HasExtraFEBlocks() && ExtraFEBlocksGradNeedDiag(true))) {
+				Z_SigmaI_plus_ZtWZ_inv_Zt_diag = SigmaI_plus_ZtWZ_inv_entries.DiagZAinvZt(*Zt_);
+			}
 			// calculate gradient of approx. marginal likelihood wrt the mode
 			vec_t deriv_information_diag_loc_par;//usually vector of negative third derivatives of log-likelihood
 			vec_t d_mll_d_mode;
@@ -2654,14 +2654,7 @@ namespace GPBoost {
 				CalcFirstDerivInformationLocPar_PerSample(y_data, y_data_int, location_par.data(), deriv_information_diag_loc_par);
 				sp_mat_t Zt_deriv_information_loc_par = (*Zt_) * deriv_information_diag_loc_par.asDiagonal();//every column of Z multiplied elementwise by deriv_information_diag_loc_par
 				// Note: Z^T * diag(diag_d_W_d_mode_i) * Z = Z^T * diag(Z.col(i) * deriv_information_diag_loc_par) * Z
-				// Precompute || L_inv * Z^T e_i ||^2  (i.e. squared norm of columns of L_inv * Zt)
-				vec_t L_inv_Zt_col_squaredNorm(num_data_);
-#pragma omp parallel for schedule(static)
-				for (data_size_t i = 0; i < num_data_; ++i) {
-					vec_t L_inv_Zt_col_i = L_inv * (*Zt_).col(i);
-					L_inv_Zt_col_squaredNorm[i] = L_inv_Zt_col_i.squaredNorm();
-				}
-				d_mll_d_mode = 0.5 * (Zt_deriv_information_loc_par * L_inv_Zt_col_squaredNorm);
+				d_mll_d_mode = 0.5 * (Zt_deriv_information_loc_par * Z_SigmaI_plus_ZtWZ_inv_Zt_diag);
 			}
 			// old equivalent code
 //				if (grad_information_wrt_mode_non_zero_) {
@@ -2715,13 +2708,13 @@ namespace GPBoost {
 						I_j.setFromTriplets(triplets.begin(), triplets.end());
 						I_j_ZtWZ = I_j * ZtWZ;
 						SigmaI_plus_ZtWZ_inv = I_j_ZtWZ;
-						CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv, false);
+						SigmaI_plus_ZtWZ_inv_entries.OnSparsityPattern(SigmaI_plus_ZtWZ_inv);
 						explicit_derivative += 0.5 * (SigmaI_plus_ZtWZ_inv.cwiseProduct(I_j_ZtWZ)).sum();
 						SigmaI_plus_ZtWZ_inv.resize(0, 0);
 						cov_grad[j] = explicit_derivative;
 						if (grad_information_wrt_mode_non_zero_) {
 							// calculate implicit derivative (through mode) of approx. mariginal log-likelihood
-							d_mode_d_par = L_inv.transpose() * (L_inv * (I_j * ((*Zt_) * first_deriv_ll_)));
+							d_mode_d_par = chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(I_j * ((*Zt_) * first_deriv_ll_));
 							cov_grad[j] += d_mll_d_mode.dot(d_mode_d_par);
 						}
 					}
@@ -2759,7 +2752,7 @@ namespace GPBoost {
 						const vec_t SigmaI_deriv_mode = SigmaI_deriv_full * mode_;
 						// Compute inverse-on-pattern for trace term:
 						SigmaI_plus_ZtWZ_inv_on_pattern = SigmaI_deriv_full;
-						CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv_on_pattern, false);
+						SigmaI_plus_ZtWZ_inv_entries.OnSparsityPattern(SigmaI_plus_ZtWZ_inv_on_pattern);
 						double explicit_derivative = 0.5 * (mode_.dot(SigmaI_deriv_mode) +
 							(SigmaI_deriv_full.cwiseProduct(SigmaI_plus_ZtWZ_inv_on_pattern)).sum());
 						// Add derivative of +0.5*log|Sigma| term (equivalently -0.5*log|Sigma^{-1}|)
@@ -2773,7 +2766,8 @@ namespace GPBoost {
 						// Implicit derivative via mode: differentiating the stationarity condition Z^T * l'(mode) = SigmaI * mode
 						//	gives d mode / dtheta = -(SigmaI_plus_ZtWZ)^-1 * SigmaI_deriv * mode
 						if (grad_information_wrt_mode_non_zero_) {
-							d_mode_d_par = -(L_inv.transpose() * (L_inv * SigmaI_deriv_mode));
+							d_mode_d_par = chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(SigmaI_deriv_mode);
+							d_mode_d_par *= -1.;
 							cov_grad[cov_ind] += d_mll_d_mode.dot(d_mode_d_par);
 						}
 						SigmaI_deriv_gp.resize(0, 0);
@@ -2787,28 +2781,18 @@ namespace GPBoost {
 				fixed_effect_grad = -first_deriv_ll_;
 				if (grad_information_wrt_mode_non_zero_) {
 					CHECK(first_deriv_information_loc_par_caluclated_);
-					vec_t d_detmll_d_F(num_data_);
-#pragma omp parallel for schedule(static)
-					for (int i = 0; i < num_data_; ++i) {
-						vec_t L_inv_Zt_col_i = L_inv * (*Zt_).col(i);
-						d_detmll_d_F[i] = 0.5 * deriv_information_diag_loc_par[i] * (L_inv_Zt_col_i.squaredNorm());
-
-					}
-					vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = (((d_mll_d_mode.transpose() * L_inv.transpose()) * L_inv) * (*Zt_)) * information_ll_.asDiagonal();
+					vec_t d_detmll_d_F = 0.5 * deriv_information_diag_loc_par.cwiseProduct(Z_SigmaI_plus_ZtWZ_inv_Zt_diag);
+					vec_t SigmaI_plus_ZtWZ_inv_d_mll_d_mode = chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(d_mll_d_mode);
+					vec_t d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W = ((*Zt_).transpose() * SigmaI_plus_ZtWZ_inv_d_mll_d_mode).cwiseProduct(information_ll_);
 					fixed_effect_grad += d_detmll_d_F - d_mll_d_modeT_SigmaI_plus_ZtWZ_inv_Zt_W;
 				}//end grad_information_wrt_mode_non_zero_
 				if (HasExtraFEBlocks()) {
 					vec_t diag_data, Z_Ainv_d_mll_d_mode;
 					if (ExtraFEBlocksGradNeedDiag(true)) {
-						// data-scale diagonal of (Sigma^-1 + Zt*W*Z)^-1, i.e. ||L_inv * Zt.col(i)||^2 (see the mean's d_detmll_d_F above)
-						diag_data.resize(num_data_);
-#pragma omp parallel for schedule(static)
-						for (data_size_t i = 0; i < num_data_; ++i) {
-							diag_data[i] = (L_inv * (*Zt_).col(i)).squaredNorm();
-						}
+						diag_data = Z_SigmaI_plus_ZtWZ_inv_Zt_diag;// data-scale diagonal of (Sigma^-1 + Zt*W*Z)^-1
 					}
 					if (ExtraFEBlocksGradNeedImpl(true)) {
-						Z_Ainv_d_mll_d_mode = (*Zt_).transpose() * (L_inv.transpose() * (L_inv * d_mll_d_mode));// = Z (Sigma^-1+ZtWZ)^-1 d_mll_d_mode (data scale)
+						Z_Ainv_d_mll_d_mode = (*Zt_).transpose() * chol_fact_SigmaI_plus_ZtWZ_grouped_.solve(d_mll_d_mode);// = Z (Sigma^-1+ZtWZ)^-1 d_mll_d_mode (data scale)
 					}
 					CalcExtraFEBlocksFixedEffectGrad(y_data, y_data_int, location_par.data(), information_ll_, diag_data,
 						Z_Ainv_d_mll_d_mode, nullptr, true, fixed_effect_grad);
@@ -2825,11 +2809,11 @@ namespace GPBoost {
 					CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 					sp_mat_t ZtdWZ = (*Zt_) * deriv_information_aux_par.asDiagonal() * (*Zt_).transpose();
 					SigmaI_plus_ZtWZ_inv = ZtdWZ;
-					CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_ZtWZ_inv, false);
+					SigmaI_plus_ZtWZ_inv_entries.OnSparsityPattern(SigmaI_plus_ZtWZ_inv);
 					double d_detmll_d_aux_par = (SigmaI_plus_ZtWZ_inv.cwiseProduct(ZtdWZ)).sum();
 					aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par;
 					if (grad_information_wrt_mode_non_zero_) {
-						d_mode_d_aux_par = L_inv.transpose() * (L_inv * ((*Zt_) * second_deriv_loc_aux_par));
+						d_mode_d_aux_par = chol_fact_SigmaI_plus_ZtWZ_grouped_.solve((*Zt_) * second_deriv_loc_aux_par);
 						aux_par_grad[ind_ap] += d_mll_d_mode.dot(d_mode_d_aux_par);
 					}
 				}
@@ -3832,10 +3816,9 @@ namespace GPBoost {
 			}//end cg_preconditioner_type_ != "fitc"
 		}//end matrix_inversion_method_ == "iterative"
 		else {// matrix_inversion_method_ == "cholesky"
-			// Calculate (Sigma^-1 + W)^-1
-			sp_mat_t L_inv(dim_mode_, dim_mode_);
-			L_inv.setIdentity();
-			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
+			// Entries of (Sigma^-1 + W)^-1 on the sparsity pattern of its Cholesky factor (selected inversion)
+			const SparseInverseEntries SigmaI_plus_W_inv_entries(chol_fact_SigmaI_plus_ZtWZ_vecchia_.CholFactMatrix(),
+				chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().indices());
 			vec_t SigmaI_plus_W_inv_d_mll_d_mode, SigmaI_plus_W_inv_diag;
 			sp_mat_t SigmaI_plus_W_inv, SigmaI;
 			// Calculate gradient wrt covariance parameters
@@ -3895,10 +3878,9 @@ namespace GPBoost {
 							sigma_woodbury_grad += cross_cov_Bt_D_inv_B_cross_cov_grad + cross_cov_Bt_D_inv_B_cross_cov_grad.transpose();
 						}
 						if (ipar == 0) {
-							// Calculate SigmaI_plus_W_inv = L_inv.transpose() * L_inv at non-zero entries of SigmaI_deriv
-							//	Note: fully calculating SigmaI_plus_W_inv = L_inv.transpose() * L_inv is very slow
+							// Calculate SigmaI_plus_W_inv = (Sigma^-1 + W)^-1 at non-zero entries of SigmaI_deriv
 							SigmaI_plus_W_inv = SigmaI_deriv;
-							CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_W_inv, true);
+							SigmaI_plus_W_inv_entries.OnSparsityPattern(SigmaI_plus_W_inv);
 							den_mat_t SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
 							den_mat_t woodbury_SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov_t;
 							TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_woodbury_,
@@ -3958,7 +3940,7 @@ namespace GPBoost {
 				if (!calc_cov_grad_internal) {
 					if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad)) {
 						SigmaI_plus_W_inv = D_inv;
-						CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_W_inv, true);
+						SigmaI_plus_W_inv_entries.OnSparsityPattern(SigmaI_plus_W_inv);
 						den_mat_t SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
 						den_mat_t woodbury_SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov_t;
 						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_woodbury_,
@@ -4372,10 +4354,9 @@ namespace GPBoost {
 			}//end calc_aux_par_grad
 		}//end iterative
 		else {//Cholesky decomposition
-			// Calculate (Sigma^-1 + W)^-1
-			sp_mat_t L_inv(dim_mode_, dim_mode_);
-			L_inv.setIdentity();
-			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
+			// Entries of (Sigma^-1 + W)^-1 on the sparsity pattern of its Cholesky factor (selected inversion)
+			const SparseInverseEntries SigmaI_plus_W_inv_entries(chol_fact_SigmaI_plus_ZtWZ_vecchia_.CholFactMatrix(),
+				chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().indices());
 			sp_mat_t SigmaI_plus_W_inv;
 			if (use_observed_hessian_for_mode_jacobian) {
 				if (!chol_fact_mode_jacobian_pattern_analyzed_) {
@@ -4393,7 +4374,7 @@ namespace GPBoost {
 			// Solve with the Jacobian of the score whose root is the mode, see above
 			auto SolveModeJacobian = [&](const vec_t& rhs) {
 				return use_observed_hessian_for_mode_jacobian ? (vec_t)chol_fact_mode_jacobian_vecchia_.solve(rhs) :
-					(vec_t)(L_inv.transpose() * (L_inv * rhs));
+					(vec_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
 			};
 			// Calculate gradient wrt covariance parameters
 			bool some_cov_par_estimated = std::any_of(estimate_cov_par_index.begin(), estimate_cov_par_index.end(), [](int x) { return x > 0; });
@@ -4430,10 +4411,9 @@ namespace GPBoost {
 							GPBoost::CreatSparseBlockDiagonalMartix<sp_mat_t>(SigmaI_deriv_1, SigmaI_deriv_2, SigmaI_deriv);
 						}
 						if (j == 0) {
-							// Calculate SigmaI_plus_W_inv = L_inv.transpose() * L_inv at non-zero entries of SigmaI_deriv
-								//  Note: fully calculating SigmaI_plus_W_inv = L_inv.transpose() * L_inv is very slow
+							// Calculate SigmaI_plus_W_inv = (Sigma^-1 + W)^-1 at non-zero entries of SigmaI_deriv
 							SigmaI_plus_W_inv = SigmaI_deriv;
-							CalcLtLGivenSparsityPattern<sp_mat_t>(L_inv, SigmaI_plus_W_inv, true);
+							SigmaI_plus_W_inv_entries.OnSparsityPattern(SigmaI_plus_W_inv);
 							if (grad_information_wrt_mode_non_zero_ && igp == 0) {
 								CHECK(first_deriv_information_loc_par_caluclated_);
 								if (num_sets_re_ > 1) {
@@ -4469,8 +4449,7 @@ namespace GPBoost {
 			if (calc_F_grad || calc_aux_par_grad) {
 				if (!calc_cov_grad_internal) {
 					if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad)) {
-						sp_mat_t L_inv_sqr = L_inv.cwiseProduct(L_inv);
-						SigmaI_plus_W_inv_diag = L_inv_sqr.transpose() * vec_t::Ones(L_inv_sqr.rows());// diagonal of (Sigma^-1 + W) ^ -1
+						SigmaI_plus_W_inv_diag = SigmaI_plus_W_inv_entries.Diagonal();// diagonal of (Sigma^-1 + W) ^ -1
 					SigmaI_plus_W_inv_diag_2nd_block = SigmaI_plus_W_inv_diag;
 					}
 					if (grad_information_wrt_mode_non_zero_) {
@@ -5209,22 +5188,24 @@ namespace GPBoost {
 				}//end has_vecchia_gp
 				else {//!has_vecchia_gp
 					//VERSION 1: pred_cov = Z_po * Σ * Z_po^T + Z_pp * Σ_p * Z_pp^T - Z_po * Σ * Z_po^T * (SigmaI_plus_ZtWZ)^-1 * Z * Σ * Z_po^T, Z_po = Ztilde
-					// This VERSION 1 seems slightly faster than VERSION 2 below for predictive variances (two randomly crossed REs, m = 1000, n = 10 * m) (24.02.2026)
-					sp_mat_t SigmaI_plus_ZtWZ_I(dim_re_group, dim_re_group);
-					SigmaI_plus_ZtWZ_I.setIdentity();
-					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, false);
-					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, true);
-					sp_mat_t Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I = (Sigma * ((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose())) * SigmaI_plus_ZtWZ_I;
+					// This VERSION 1 seems slightly faster than VERSION 2 below for predictive covariances (two randomly crossed REs, m = 1000, n = 10 * m) (24.02.2026)
 					if (calc_pred_cov) {
+						sp_mat_t SigmaI_plus_ZtWZ_I(dim_re_group, dim_re_group);
+						SigmaI_plus_ZtWZ_I.setIdentity();
+						TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, false);
+						TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, SigmaI_plus_ZtWZ_I, SigmaI_plus_ZtWZ_I, true);
+						sp_mat_t Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I = (Sigma * ((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose())) * SigmaI_plus_ZtWZ_I;
 						pred_cov -= (T_mat)(Ztilde * Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I * Ztilde.transpose());
 					}
 					if (calc_pred_var) {
-						sp_mat_t Maux = Ztilde;
-						CalcAtimesBGivenSparsityPattern<sp_mat_t>(Ztilde, Sigma_Zt_W_Z_SigmaI_plus_ZtWZ_I, Maux);
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < (int)pred_mean.size(); ++i) {
-							pred_var[i] -= (Ztilde.row(i)).dot(Maux.row(i));
-						}
+						// Sigma * Z^T W Z * (SigmaI_plus_ZtWZ)^-1 = Sigma - (SigmaI_plus_ZtWZ)^-1, i.e. only the entries of (SigmaI_plus_ZtWZ)^-1 for
+						//	the pairs of random effects in the rows of Ztilde are needed. Most of them are on the sparsity pattern of the
+						//	Cholesky factor (selected inversion), the remaining ones are calculated with solves
+						const SparseInverseEntries SigmaI_plus_ZtWZ_inv_entries(chol_fact_SigmaI_plus_ZtWZ_grouped_.CholFactMatrix(),
+							chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().indices());
+						const vec_t diag_Ztilde_SigmaI_plus_ZtWZ_inv_Ztilde_t = SigmaI_plus_ZtWZ_inv_entries.DiagZAinvZt(sp_mat_t(Ztilde.transpose()));
+						const vec_t diag_Ztilde_Sigma_Ztilde_t = (Ztilde * Sigma).cwiseProduct(Ztilde) * vec_t::Ones(Ztilde.cols());
+						pred_var -= diag_Ztilde_Sigma_Ztilde_t - diag_Ztilde_SigmaI_plus_ZtWZ_inv_Ztilde_t;
 					}
 					//					//VERSION 2: pred_cov = Z_pp * Σ_p * Z_pp^T + Z_po * (SigmaI_plus_ZtWZ)^-1 * Z_po^T, Z_po = Ztilde
 					//					//sp_mat_t SigmaI_plus_ZtWZ_I_Ztilde(dim_mode_, dim_re_group);
@@ -6135,24 +6116,12 @@ namespace GPBoost {
 	void Likelihood<T_mat, T_chol>::Sample_Posterior_LaplaceApprox_Stable(const std::shared_ptr<T_mat>& Sigma) {
 		CHECK(num_sets_re_ == 1);
 		CHECK(Sigma != nullptr);
-		T_chol chol_fact_SigmaI_plus_W;
-		{
-			T_mat Sigma_stable = (*Sigma);
-			Sigma_stable.diagonal().array() *= JITTER_MUL;
-			T_chol chol_fact_Sigma;
-			bool chol_fact_pattern_analyzed = false;
-			CalcChol<T_mat>(chol_fact_Sigma, Sigma_stable, chol_fact_pattern_analyzed);
-			T_mat SigmaI_plus_W(Sigma_stable.rows(), Sigma_stable.cols());
-			SigmaI_plus_W.setIdentity();
-			SolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_Sigma, SigmaI_plus_W, SigmaI_plus_W);
-			SigmaI_plus_W += information_ll_.asDiagonal();
-			chol_fact_pattern_analyzed = false;
-			CalcChol<T_mat>(chol_fact_SigmaI_plus_W, SigmaI_plus_W, chol_fact_pattern_analyzed);
-		} // Sigma_stable, chol_fact_Sigma, and SigmaI_plus_W are destroyed here
 		//sample iid normal random vectors
 		if (!sampled_rand_vec_I_sim_post_) {
 			rand_vec_I_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
 			GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_sim_post_);
+			rand_vec_I_2_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
+			GenRandVecNormalParallel(seed_rand_vec_trace_, cg_generator_counter_, rand_vec_I_2_sim_post_);
 			rand_vec_sim_post_.resize(dim_mode_, num_rand_vec_sim_post_);
 			if (reuse_rand_vec_I_sim_post_) {
 				sampled_rand_vec_I_sim_post_ = true;
@@ -6160,9 +6129,34 @@ namespace GPBoost {
 		}//end !sampled_rand_vec_I_sim_post_
 		CHECK(rand_vec_I_sim_post_.cols() == num_rand_vec_sim_post_);
 		CHECK(rand_vec_I_sim_post_.rows() == dim_mode_);
+		CHECK(rand_vec_I_2_sim_post_.cols() == num_rand_vec_sim_post_);
+		CHECK(rand_vec_I_2_sim_post_.rows() == dim_mode_);
 		CHECK(rand_vec_sim_post_.cols() == num_rand_vec_sim_post_);
 		CHECK(rand_vec_sim_post_.rows() == dim_mode_);
-		TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_W, rand_vec_I_sim_post_, rand_vec_sim_post_, true);
+		// Matheron's rule: x = f - Sigma W^(1/2) (I + W^(1/2) Sigma W^(1/2))^-1 (W^(1/2) f + z) with f ~ N(0, Sigma) and z ~ N(0, I)
+		//	has covariance (Sigma^-1 + W)^-1. Sigma^-1 is not needed, it is not sparse for a sparse Sigma
+		den_mat_t f;
+		{
+			T_mat Sigma_stable = (*Sigma);
+			Sigma_stable.diagonal().array() *= JITTER_MUL;
+			T_chol chol_fact_Sigma;
+			bool chol_fact_pattern_analyzed = false;
+			CalcChol<T_mat>(chol_fact_Sigma, Sigma_stable, chol_fact_pattern_analyzed);
+			MultiplyCholeskyFactor<T_chol>(chol_fact_Sigma, rand_vec_I_sim_post_, f);
+		} // Sigma_stable and chol_fact_Sigma are destroyed here
+		const vec_t W_sqrt = information_ll_.cwiseSqrt();
+		den_mat_t B_inv_rhs;
+		{
+			T_mat Id_plus_Wsqrt_Sigma_Wsqrt(dim_mode_, dim_mode_);
+			Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
+			Id_plus_Wsqrt_Sigma_Wsqrt += W_sqrt.asDiagonal() * (*Sigma) * W_sqrt.asDiagonal();
+			T_chol chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt;
+			bool chol_fact_pattern_analyzed = false;
+			CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt, Id_plus_Wsqrt_Sigma_Wsqrt, chol_fact_pattern_analyzed);
+			const den_mat_t rhs = W_sqrt.asDiagonal() * f + rand_vec_I_2_sim_post_;
+			B_inv_rhs = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt.solve(rhs);
+		}
+		rand_vec_sim_post_ = f - (*Sigma) * (W_sqrt.asDiagonal() * B_inv_rhs);
 		SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
 		rand_vec_sim_post_calculated_ = true;
 	}//end Sample_Posterior_LaplaceApprox_Stable
@@ -6763,13 +6757,8 @@ namespace GPBoost {
 			}
 		} //end iterative
 		else { //begin Cholesky
-			sp_mat_t L_inv(dim_mode_, dim_mode_);
-			L_inv.setIdentity();
-			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, L_inv, L_inv, false);
-#pragma omp parallel for schedule(static)
-			for (int i = 0; i < dim_mode_; ++i) {
-				pred_var[i] = L_inv.col(i).squaredNorm();
-			}
+			pred_var = SparseInverseEntries(chol_fact_SigmaI_plus_ZtWZ_grouped_.CholFactMatrix(),
+				chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().indices()).Diagonal();
 		} //end Cholesky
 	}//end CalcVarLaplaceApproxGroupedRE
 
@@ -6853,13 +6842,8 @@ namespace GPBoost {
 			pred_var /= nsim_var_pred_;
 		} //end Version Simulation
 		else {
-			sp_mat_t L_inv(dim_mode_, dim_mode_);
-			L_inv.setIdentity();
-			TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, L_inv, L_inv, false);
-#pragma omp parallel for schedule(static)
-			for (int i = 0; i < dim_mode_; ++i) {
-				pred_var[i] = L_inv.col(i).squaredNorm();
-			}
+			pred_var = SparseInverseEntries(chol_fact_SigmaI_plus_ZtWZ_vecchia_.CholFactMatrix(),
+				chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().indices()).Diagonal();
 		}
 	}//end CalcVarLaplaceApproxVecchia
 

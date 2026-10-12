@@ -8,6 +8,9 @@
 */
 #include <GPBoost/sparse_matrix_utils.h>
 
+#include <algorithm>
+#include <vector>
+
 namespace GPBoost {
 
 	void L_solve(const double* val, const int ncol, double* x) {
@@ -103,6 +106,436 @@ namespace GPBoost {
 			}
 		}
 	}//end CalcDiagLInvDLInvT
+
+	void CalcColSquaredNormsLInvR(const sp_mat_t& L, const sp_mat_t& R, vec_t& norms) {
+		CHECK(L.isCompressed());
+		CHECK(L.rows() == L.cols());
+		CHECK(L.cols() == R.rows());
+		const int n = (int)L.cols();
+		const int num_cols = (int)R.cols();
+		const double* val = L.valuePtr();
+		const int* row_idx = L.innerIndexPtr();
+		const int* col_ptr = L.outerIndexPtr();
+		norms = vec_t::Zero(num_cols);
+#pragma omp parallel
+		{
+			// Column of L^(-1) R. Every entry is set back to zero once it has been used
+			vec_t x = vec_t::Zero(n);
+#pragma omp for schedule(dynamic, 16)
+			for (int j = 0; j < num_cols; ++j) {
+				int first = n;
+				for (sp_mat_t::InnerIterator it(R, j); it; ++it) {
+					x[it.row()] = it.value();
+					first = std::min(first, (int)it.row());
+				}
+				double norm = 0.;
+				for (int k = first; k < n; ++k) {
+					if (x[k] != 0.) {
+						const double x_k = x[k] / val[col_ptr[k]];
+						for (int i = col_ptr[k] + 1; i < col_ptr[k + 1]; ++i) {
+							x[row_idx[i]] -= val[i] * x_k;
+						}
+						norm += x_k * x_k;
+						x[k] = 0.;
+					}
+				}
+				norms[j] = norm;
+			}
+		}
+	}//end CalcColSquaredNormsLInvR
+
+	/*!
+	* \brief First position in the sorted range [first, last) whose value is not smaller than 'value'. The search starts at
+	*		'first' with exponentially increasing steps, which is fast if the position is close to 'first'
+	*/
+	static inline const int* GallopingLowerBound(const int* first, const int* last, int value) {
+		if (first == last || *first >= value) {
+			return first;
+		}
+		const int* lo = first;// *lo < value
+		const int* hi;
+		size_t step = 1;
+		while (true) {
+			if ((size_t)(last - lo) <= step) {
+				hi = last;
+				break;
+			}
+			hi = lo + step;
+			if (*hi >= value) {
+				break;
+			}
+			lo = hi;
+			step *= 2;
+		}
+		return std::lower_bound(lo + 1, hi, value);
+	}
+
+	void SelectedInversionCholesky(const sp_mat_t& L, sp_mat_t& Z_lower, int max_num_rows_dense) {
+		CHECK(L.isCompressed());
+		CHECK(L.rows() == L.cols());
+		const int n = (int)L.cols();
+		const int* col_ptr = L.outerIndexPtr();
+		const int* row_idx = L.innerIndexPtr();
+		const double* l_val = L.valuePtr();
+		Z_lower = L;
+		double* z_val = Z_lower.valuePtr();
+		// Z = (L L^T)^(-1) satisfies Z L = L^(-T), which is upper triangular. For a supernode, i.e. consecutive columns J that
+		//	have the same rows S below J, this gives
+		//		Z[S, J] = -Z[S, S] Y and Z[J, J] = L[J, J]^(-T) L[J, J]^(-1) + Y^T Z[S, S] Y with Y = L[S, J] L[J, J]^(-1).
+		//	Z[S, S] is on the sparsity pattern of L, since the pattern of a Cholesky factor contains its fill-in, and it is known
+		//	when the supernodes are processed from the last to the first one
+		bool pattern_not_closed = false;
+		// Column j + 1 belongs to the supernode of column j if the rows of column j are j and the rows of column j + 1
+		std::vector<int> supernode_start(1, 0);
+		for (int j = 0; j < n - 1; ++j) {
+			const int nnz_j = col_ptr[j + 1] - col_ptr[j];
+			bool same_supernode = nnz_j >= 2 && nnz_j == col_ptr[j + 2] - col_ptr[j + 1] + 1 && row_idx[col_ptr[j] + 1] == j + 1;
+			if (same_supernode) {
+				same_supernode = std::equal(row_idx + col_ptr[j] + 2, row_idx + col_ptr[j + 1], row_idx + col_ptr[j + 1] + 1);
+			}
+			if (!same_supernode) {
+				supernode_start.push_back(j + 1);
+			}
+		}
+		supernode_start.push_back(n);
+		// Column j without a dense Z[R, R], where R are the rows below the diagonal in column j:
+		//	Z_ij = -1 / L_jj * sum_{k in R} L_kj Z_ik for i in R and Z_jj = 1 / L_jj^2 - 1 / L_jj * sum_{k in R} L_kj Z_kj
+		auto column_without_dense_block = [&](int j) {
+			const int p_diag = col_ptr[j];
+			const int num_r = col_ptr[j + 1] - p_diag - 1;
+			const int* R = row_idx + p_diag + 1;
+			const double* l_R = l_val + p_diag + 1;
+			const double l_jj = l_val[p_diag];
+			vec_t s(num_r);
+			bool entry_missing = false;
+			// s_a = sum_b Z(R[a], R[b]) L_{R[b], j}, the entries with b >= a are in column R[a] and the ones with b < a in column R[b]
+#pragma omp parallel for schedule(dynamic, 8) reduction(||:entry_missing)
+			for (int a = 0; a < num_r; ++a) {
+				double s_a = 0.;
+				const int* rows_a_end = row_idx + col_ptr[R[a] + 1];
+				const int* pos = row_idx + col_ptr[R[a]];
+				for (int b = a; b < num_r; ++b) {
+					pos = GallopingLowerBound(pos, rows_a_end, R[b]);
+					if (pos == rows_a_end || *pos != R[b]) {
+						entry_missing = true;
+					}
+					else {
+						s_a += z_val[pos - row_idx] * l_R[b];
+					}
+				}
+				for (int b = 0; b < a; ++b) {
+					const int* rows_b_end = row_idx + col_ptr[R[b] + 1];
+					const int* pos_b = std::lower_bound(row_idx + col_ptr[R[b]], rows_b_end, R[a]);
+					if (pos_b == rows_b_end || *pos_b != R[a]) {
+						entry_missing = true;
+					}
+					else {
+						s_a += z_val[pos_b - row_idx] * l_R[b];
+					}
+				}
+				s[a] = s_a;
+			}
+			if (entry_missing) {
+				pattern_not_closed = true;
+			}
+			double sum = 0.;
+			for (int a = 0; a < num_r; ++a) {
+				z_val[p_diag + 1 + a] = -s[a] / l_jj;
+				sum += l_R[a] * z_val[p_diag + 1 + a];
+			}
+			z_val[p_diag] = 1. / (l_jj * l_jj) - sum / l_jj;
+		};
+		den_mat_t Z_SS, L_JJ, L_SJ, Y, Z_SJ, L_JJ_inv, Z_JJ;
+		for (int sn = (int)supernode_start.size() - 2; sn >= 0; --sn) {
+			const int j0 = supernode_start[sn];
+			const int t = supernode_start[sn + 1] - j0;
+			// The rows S below the supernode are the rows below the diagonal in its last column
+			const int* S = row_idx + col_ptr[j0 + t - 1] + 1;
+			const int r = col_ptr[j0 + t] - col_ptr[j0 + t - 1] - 1;
+			if (r > max_num_rows_dense) {
+				for (int j = j0 + t - 1; j >= j0; --j) {
+					column_without_dense_block(j);
+				}
+				continue;
+			}
+			// Z[S, S]: column b is in column S[b] of Z
+			Z_SS.resize(r, r);
+			auto gather_column = [&](int b) -> bool {
+				const int* rows_c_end = row_idx + col_ptr[S[b] + 1];
+				const int* pos = row_idx + col_ptr[S[b]];
+				bool found_all = true;
+				for (int a = b; a < r; ++a) {
+					pos = GallopingLowerBound(pos, rows_c_end, S[a]);
+					double z_ab = 0.;
+					if (pos == rows_c_end || *pos != S[a]) {
+						found_all = false;
+					}
+					else {
+						z_ab = z_val[pos - row_idx];
+					}
+					Z_SS(a, b) = z_ab;
+					Z_SS(b, a) = z_ab;
+				}
+				return found_all;
+			};
+			if (r > 256) {
+#pragma omp parallel for schedule(dynamic, 8) reduction(||:pattern_not_closed)
+				for (int b = 0; b < r; ++b) {
+					if (!gather_column(b)) {
+						pattern_not_closed = true;
+					}
+				}
+			}
+			else {
+				for (int b = 0; b < r; ++b) {
+					if (!gather_column(b)) {
+						pattern_not_closed = true;
+					}
+				}
+			}
+			// Column j0 + p of L has the rows j0 + p, ..., j0 + t - 1 and then the rows S
+			L_JJ = den_mat_t::Zero(t, t);
+			L_SJ.resize(r, t);
+			for (int p = 0; p < t; ++p) {
+				const int c = col_ptr[j0 + p];
+				for (int q = p; q < t; ++q) {
+					L_JJ(q, p) = l_val[c + q - p];
+				}
+				for (int a = 0; a < r; ++a) {
+					L_SJ(a, p) = l_val[c + t - p + a];
+				}
+			}
+			L_JJ_inv = L_JJ.triangularView<Eigen::Lower>().solve(den_mat_t::Identity(t, t));
+			Z_JJ.noalias() = L_JJ_inv.transpose() * L_JJ_inv;
+			if (r > 0) {
+				Y.noalias() = L_SJ * L_JJ_inv;
+				Z_SJ.noalias() = Z_SS * Y;
+				Z_JJ.noalias() += Y.transpose() * Z_SJ;
+				Z_SJ *= -1.;
+			}
+			for (int p = 0; p < t; ++p) {
+				const int c = col_ptr[j0 + p];
+				for (int q = p; q < t; ++q) {
+					z_val[c + q - p] = Z_JJ(q, p);
+				}
+				for (int a = 0; a < r; ++a) {
+					z_val[c + t - p + a] = Z_SJ(a, p);
+				}
+			}
+		}
+		if (pattern_not_closed) {
+			Log::REFatal("SelectedInversionCholesky: the sparsity pattern of the Cholesky factor does not contain its fill-in ");
+		}
+	}//end SelectedInversionCholesky
+
+	SparseInverseEntries::SparseInverseEntries(const sp_mat_t& L, const Eigen::VectorXi& perm_indices) {
+		CHECK(L.isCompressed());
+		CHECK(L.rows() == L.cols());
+		const int n = (int)L.cols();
+		const int* col_ptr = L.outerIndexPtr();
+		const int* row_idx = L.innerIndexPtr();
+		bool sorted = true;
+		for (int j = 0; j < n && sorted; ++j) {
+			for (int p = col_ptr[j] + 1; p < col_ptr[j + 1]; ++p) {
+				if (row_idx[p] <= row_idx[p - 1]) {
+					sorted = false;
+					break;
+				}
+			}
+		}
+		if (sorted) {
+			L_ = &L;
+		}
+		else {
+			// a transposition sorts the indices
+			sp_mat_t L_t = L.transpose();
+			L_sorted_ = L_t.transpose();
+			L_ = &L_sorted_;
+		}
+		for (int j = 0; j < n; ++j) {
+			CHECK(L_->outerIndexPtr()[j] < L_->outerIndexPtr()[j + 1]);
+			CHECK(L_->innerIndexPtr()[L_->outerIndexPtr()[j]] == j);
+		}
+		perm_.resize(n);
+		if (perm_indices.size() == 0) {
+			for (int i = 0; i < n; ++i) {
+				perm_[i] = i;
+			}
+		}
+		else {
+			CHECK((int)perm_indices.size() == n);
+			for (int i = 0; i < n; ++i) {
+				perm_[i] = perm_indices[i];
+			}
+		}
+		SelectedInversionCholesky(*L_, Z_lower_);
+	}
+
+	int SparseInverseEntries::Position(int i, int j) const {
+		int r = perm_[i];
+		int c = perm_[j];
+		if (r < c) {
+			std::swap(r, c);
+		}
+		const int* row_idx = Z_lower_.innerIndexPtr();
+		const int* first = row_idx + Z_lower_.outerIndexPtr()[c];
+		const int* last = row_idx + Z_lower_.outerIndexPtr()[c + 1];
+		const int* pos = std::lower_bound(first, last, r);
+		return (pos != last && *pos == r) ? (int)(pos - row_idx) : -1;
+	}
+
+	vec_t SparseInverseEntries::Diagonal() const {
+		const int n = (int)perm_.size();
+		vec_t diag(n);
+		const int* col_ptr = Z_lower_.outerIndexPtr();
+		const double* z_val = Z_lower_.valuePtr();
+#pragma omp parallel for schedule(static)
+		for (int i = 0; i < n; ++i) {
+			diag[i] = z_val[col_ptr[perm_[i]]];
+		}
+		return diag;
+	}
+
+	void SparseInverseEntries::EntriesBySolves(const std::vector<int>& rows, const std::vector<int>& cols, std::vector<double>& values) const {
+		CHECK(rows.size() == cols.size());
+		values.resize(rows.size());
+		if (rows.empty()) {
+			return;
+		}
+		// Group the entries by their column
+		std::vector<int> order(rows.size());
+		for (int k = 0; k < (int)order.size(); ++k) {
+			order[k] = k;
+		}
+		std::sort(order.begin(), order.end(), [&cols](int a, int b) { return cols[a] < cols[b]; });
+		std::vector<int> group_start;
+		for (int k = 0; k < (int)order.size(); ++k) {
+			if (k == 0 || cols[order[k]] != cols[order[k - 1]]) {
+				group_start.push_back(k);
+			}
+		}
+		group_start.push_back((int)order.size());
+		const int n = (int)perm_.size();
+		const double* val = L_->valuePtr();
+		const int* row_idx = L_->innerIndexPtr();
+		const int* col_ptr = L_->outerIndexPtr();
+#pragma omp parallel
+		{
+			vec_t x(n);
+#pragma omp for schedule(dynamic, 1)
+			for (int g = 0; g < (int)group_start.size() - 1; ++g) {
+				// x = P A^(-1) e_j = (L L^T)^(-1) P e_j
+				x.setZero();
+				x[perm_[cols[order[group_start[g]]]]] = 1.;
+				sp_L_solve(val, row_idx, col_ptr, n, x.data());
+				sp_L_t_solve(val, row_idx, col_ptr, n, x.data());
+				for (int k = group_start[g]; k < group_start[g + 1]; ++k) {
+					values[order[k]] = x[perm_[rows[order[k]]]];
+				}
+			}
+		}
+	}//end EntriesBySolves
+
+	void SparseInverseEntries::OnSparsityPattern(sp_mat_t& M) const {
+		CHECK(M.rows() == (int)perm_.size());
+		CHECK(M.cols() == (int)perm_.size());
+		M.makeCompressed();
+		const double* z_val = Z_lower_.valuePtr();
+		double* m_val = M.valuePtr();
+		const int* m_row_idx = M.innerIndexPtr();
+		const int* m_col_ptr = M.outerIndexPtr();
+		std::vector<int> missing_pos;
+#pragma omp parallel
+		{
+			std::vector<int> missing_pos_private;
+#pragma omp for schedule(static)
+			for (int j = 0; j < (int)M.cols(); ++j) {
+				for (int p = m_col_ptr[j]; p < m_col_ptr[j + 1]; ++p) {
+					const int pos = Position(m_row_idx[p], j);
+					if (pos >= 0) {
+						m_val[p] = z_val[pos];
+					}
+					else {
+						missing_pos_private.push_back(p);
+					}
+				}
+			}
+#pragma omp critical
+			{
+				missing_pos.insert(missing_pos.end(), missing_pos_private.begin(), missing_pos_private.end());
+			}
+		}
+		if (!missing_pos.empty()) {
+			std::vector<int> rows(missing_pos.size()), cols(missing_pos.size());
+			for (int k = 0; k < (int)missing_pos.size(); ++k) {
+				rows[k] = m_row_idx[missing_pos[k]];
+				cols[k] = (int)(std::upper_bound(m_col_ptr, m_col_ptr + M.cols() + 1, missing_pos[k]) - m_col_ptr) - 1;
+			}
+			std::vector<double> values;
+			EntriesBySolves(rows, cols, values);
+			for (int k = 0; k < (int)missing_pos.size(); ++k) {
+				m_val[missing_pos[k]] = values[k];
+			}
+		}
+	}//end OnSparsityPattern
+
+	vec_t SparseInverseEntries::DiagZAinvZt(const sp_mat_t& Zt) const {
+		CHECK(Zt.rows() == (int)perm_.size());
+		const int num_rows_Z = (int)Zt.cols();
+		vec_t diag(num_rows_Z);
+		const double* z_val = Z_lower_.valuePtr();
+		// Entries that are not on the sparsity pattern of L: row of Z, (i,j) of A^(-1), and the factor of this entry
+		std::vector<int> missing_row_Z, missing_i, missing_j;
+		std::vector<double> missing_factor;
+#pragma omp parallel
+		{
+			std::vector<int> row_Z_private, i_private, j_private;
+			std::vector<double> factor_private;
+			std::vector<int> ind;
+			std::vector<double> val;
+#pragma omp for schedule(static)
+			for (int r = 0; r < num_rows_Z; ++r) {
+				ind.clear();
+				val.clear();
+				for (sp_mat_t::InnerIterator it(Zt, r); it; ++it) {
+					ind.push_back((int)it.row());
+					val.push_back(it.value());
+				}
+				double d = 0.;
+				for (int k = 0; k < (int)ind.size(); ++k) {
+					for (int l = 0; l <= k; ++l) {
+						const double factor = (k == l) ? val[k] * val[k] : 2. * val[k] * val[l];
+						const int pos = Position(ind[k], ind[l]);
+						if (pos >= 0) {
+							d += factor * z_val[pos];
+						}
+						else {
+							row_Z_private.push_back(r);
+							i_private.push_back(ind[k]);
+							j_private.push_back(ind[l]);
+							factor_private.push_back(factor);
+						}
+					}
+				}
+				diag[r] = d;
+			}
+#pragma omp critical
+			{
+				missing_row_Z.insert(missing_row_Z.end(), row_Z_private.begin(), row_Z_private.end());
+				missing_i.insert(missing_i.end(), i_private.begin(), i_private.end());
+				missing_j.insert(missing_j.end(), j_private.begin(), j_private.end());
+				missing_factor.insert(missing_factor.end(), factor_private.begin(), factor_private.end());
+			}
+		}
+		if (!missing_row_Z.empty()) {
+			std::vector<double> values;
+			EntriesBySolves(missing_i, missing_j, values);
+			for (int k = 0; k < (int)missing_row_Z.size(); ++k) {
+				diag[missing_row_Z[k]] += missing_factor[k] * values[k];
+			}
+		}
+		return diag;
+	}//end DiagZAinvZt
 
 	void sp_Lower_sp_RHS_cs_solve(cs* A, const cs* B, sp_mat_t& A_inv_B, bool lower) {
 		if (A->m != A->n || B->n < 1 || A->n < 1 || A->n != B->m) {

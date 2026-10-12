@@ -452,6 +452,8 @@ namespace GPBoost {
 	* \param num_data_pred Total number of prediction locations (over all clusters)
 	* \param Cross covariance matrix between inducing points and observations
 	* \param Cholesky factor of inducing point matrix
+	* \param chol_ip_cross_cov_obs_model L^-1 times the transposed cross covariance matrix between inducing points and observations, where
+	*		L is the Cholesky factor of the inducing point matrix (as calculated in 'CalcSigmaComps', it is calculated anew if it does not match)
 	* \param Cholesky factor of Woodbury matrix
 	* \param Cross covariance matrix between inducing points and prediction locations
 	* \param Vecchia matrix B
@@ -497,6 +499,7 @@ namespace GPBoost {
 		int num_data_pred,
 		const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
 		const chol_den_mat_t& chol_fact_sigma_ip_cluster_i,
+		const den_mat_t& chol_ip_cross_cov_obs_model,
 		const chol_den_mat_t& chol_fact_sigma_woodbury_cluster_i,
 		den_mat_t& cross_cov_pred_ip,
 		const sp_mat_rm_t& B_cluster_i,

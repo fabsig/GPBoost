@@ -1328,4 +1328,43 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("Predictive variances of a new cluster equal the diagonal of its predictive covariance matrix ", {
+    # Only the diagonal is calculated for the predictive variances of a cluster without observed data, whereas the
+    # predictive covariance matrix is calculated in full. The 'full_scale_vecchia' approximation is not included since
+    # it selects the inducing points of a new cluster anew in every call
+    y <- eps + xi
+    num_pred <- 30
+    coords_pred <- matrix(sim_rand_unif(n=num_pred*d, init_c=0.27), ncol=d)
+    rand_coef_pred <- sim_rand_unif(n=num_pred, init_c=0.43)
+    group <- rep(1:10, each=n/10)
+    group_pred <- rep(1:3, length.out=num_pred)
+    cases <- list(
+      list(model = list(gp_approx = "none"), cov_pars = c(1, 0.1)),
+      list(model = list(gp_approx = "none", gp_rand_coef_data = Z_SVC[,1]), cov_pars = c(1, 0.1, 0.5, 0.2),
+           pred = list(gp_rand_coef_data_pred = rand_coef_pred)),
+      list(model = list(gp_approx = "none", group_data = group), cov_pars = c(0.3, 1, 0.1),
+           pred = list(group_data_pred = group_pred)),
+      list(model = list(gp_approx = "vecchia", num_neighbors = 10, vecchia_ordering = "none"), cov_pars = c(1, 0.1)),
+      list(model = list(gp_approx = "fitc", num_ind_points = 20), cov_pars = c(1, 0.1)),
+      list(model = list(gp_approx = "full_scale_tapering", num_ind_points = 20, cov_fct_taper_range = 0.3, cov_fct_taper_shape = 1),
+           cov_pars = c(1, 0.1), gaussian_only = TRUE)
+    )
+    for (cs in cases) {
+      for (likelihood in c("gaussian", "bernoulli_probit")) {
+        if (likelihood != "gaussian" && isTRUE(cs$gaussian_only)) next
+        capture.output( gp_model <- do.call(GPModel, c(list(gp_coords = coords, cov_function = "exponential", cluster_ids = rep(1, n),
+                                                              likelihood = likelihood), cs$model)), file='NUL')
+        y_lik <- if (likelihood == "gaussian") y else as.numeric(y > 0)
+        cov_pars_pred <- if (likelihood == "gaussian") c(0.1, cs$cov_pars) else cs$cov_pars
+        for (predict_response in if (likelihood == "gaussian") c(FALSE, TRUE) else FALSE) {
+          args_pred <- c(list(gp_model, y = y_lik, gp_coords_pred = coords_pred, cluster_ids_pred = rep(2, num_pred),
+                              cov_pars = cov_pars_pred, predict_response = predict_response), cs$pred)
+          capture.output( pred_var <- do.call(predict, c(args_pred, list(predict_var = TRUE))), file='NUL')
+          capture.output( pred_cov <- do.call(predict, c(args_pred, list(predict_cov_mat = TRUE))), file='NUL')
+          expect_lt(max(abs(pred_var$var - diag(pred_cov$cov))), TOLERANCE_STRICT)
+        }
+      }
+    }
+  })
+
 }

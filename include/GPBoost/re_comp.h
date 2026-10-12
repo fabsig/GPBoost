@@ -101,6 +101,14 @@ namespace GPBoost {
 		virtual double GetZSigmaZtij(int i, int j) const = 0;
 
 		/*!
+		* \brief Virtual function that calculates the diagonal of the covariance matrix Z*Sigma*Z^T without calculating the
+		*		matrix, i.e., 'CalcSigma' does not need to be called before
+		* \param[out] diag Diagonal of Z*Sigma*Z^T
+		* \return False if the diagonal cannot be calculated in this way for this component
+		*/
+		virtual bool CalcZSigmaZtDiag(vec_t& diag) const = 0;
+
+		/*!
 		* \brief Get the marginal variance
 		* \return marginal variance
 		*/
@@ -453,6 +461,17 @@ namespace GPBoost {
 				Log::REFatal("Matrix ZZt_ not defined");
 			}
 			return(this->cov_pars_[0] * ZZt_.coeff(i, j));
+		}
+
+		bool CalcZSigmaZtDiag(vec_t& diag) const override {
+			if (this->cov_pars_.size() == 0) {
+				Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first.");
+			}
+			if (this->ZZt_.cols() == 0) {
+				return false;
+			}
+			diag = this->cov_pars_[0] * ZZt_.diagonal();
+			return true;
 		}
 
 		/*!
@@ -1441,6 +1460,44 @@ namespace GPBoost {
 				return(covij);
 			}
 		} // end GetZSigmaZtij
+
+		bool CalcZSigmaZtDiag(vec_t& diag) const override {
+			if (this->cov_pars_.size() == 0) { Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first."); }
+			if (is_cross_covariance_IP_) {
+				return false;
+			}
+			// Variances at the unique locations (the taper function is one on the diagonal)
+			vec_t sigma_diag(num_random_effects_);
+			if (cov_function_->variance_on_the_diagonal_) {
+				sigma_diag.setConstant(this->cov_pars_[0]);
+			}
+			else {
+				if (!coord_saved_) {
+					return false;
+				}
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < num_random_effects_; ++i) {
+					const vec_t coords_i = coords_.row(i).transpose();
+					sigma_diag[i] = cov_function_->CalculateCovarianceOneEntry(0., coords_i, coords_i, this->cov_pars_);
+				}
+			}
+			if (this->is_rand_coef_ || this->has_Z_) {
+				// diag(Z * Sigma * Z^T) = Z.^2 * diag(Sigma) requires at most one non-zero per row of Z
+				std::vector<int> num_non_zeros_row((size_t)this->Z_.rows(), 0);
+				for (int k = 0; k < this->Z_.outerSize(); ++k) {
+					for (sp_mat_t::InnerIterator it(this->Z_, k); it; ++it) {
+						if (++num_non_zeros_row[it.row()] > 1) {
+							return false;
+						}
+					}
+				}
+				diag = this->Z_.cwiseAbs2() * sigma_diag;
+			}
+			else {
+				diag = sigma_diag;
+			}
+			return true;
+		}//end CalcZSigmaZtDiag
 
 		double CalculateCovarianceOneEntry(const vec_t& coords,
 			const vec_t& coords_pred) const {
