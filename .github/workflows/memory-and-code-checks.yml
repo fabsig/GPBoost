@@ -437,7 +437,11 @@ jobs:
               ("valgrind, uninitialized or invalid memory",
                r"uninitialised value|Invalid (read|write|free)|Mismatched free"),
               ("valgrind, leak record", r"(definitely|indirectly|possibly) lost"),
-              ("failed test expectation", r"^Failure \(|^Error \("),
+              # testthat starts the report of a failed expectation with two box-drawing characters
+              # (U+2500) and "Failure ('file:line'): ...", depending on the reporter with a number
+              # ("1. Failure"); 00check.log repeats the output of the tests indented, so only lines
+              # without indentation are counted
+              ("failed test expectation", r"^\u2500\u2500 (\d+\. )?(Failure|Error) \("),
           ]
           counts = {name: 0 for name, _ in kinds}
           if root.is_dir():

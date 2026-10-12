@@ -1185,14 +1185,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
     ## FITC and VIF approximations with n - 1 inducing points (and n - 1 neighbors for VIF, which makes it exact)
     # Note: FITC depends on which point is not an inducing point. This point is chosen randomly, and the random numbers differ
-    #   between standard libraries (e.g., MSVC and libstdc++). Over 30 different choices (seeds), the maximal absolute differences
-    #   to the exact values below were 5.8e-2 (FITC) and 4.3e-6 (VIF) for the negative log-likelihood at 'cov_pars_eval', and
-    #   1.2e-3 (FITC) and 2.5e-4 (VIF) for the estimates and predictions. For VIF, the latter is due to the optimizer stopping at
-    #   slightly different points of a flat likelihood (the negative log-likelihoods at the optimum differed by at most 1.2e-6)
+    #   between standard libraries (libc++ chooses a different point than MSVC and libstdc++). Over 30 different choices (seeds),
+    #   the maximal absolute differences to the exact values below were 5.8e-2 (FITC) and 4.3e-6 (VIF) for the negative
+    #   log-likelihood at 'cov_pars_eval' and 2.5e-4 (VIF) for the estimates and predictions. Over all 100 choices, they were
+    #   2.8e-4 (FITC) for the estimates and 1.2e-3 (FITC) for the predictions, except for one choice with 7.6e-3.
+    #   The estimates lie on a flat ridge of the marginal variance and H: the exact negative log-likelihood is only 0.005 larger
+    #   at a distance of 0.065 from the optimum. Where the optimizer stops on this ridge can therefore vary with small numerical
+    #   differences. For FITC with clang and libc++, a run deviated by 0.065 (covariance parameters), 0.011 (coefficients),
+    #   and 0.016 (negative log-likelihood), but by less than 3e-3 for the predictions, while other runs of the same build
+    #   did not deviate. For VIF, the optimizer also stops at slightly different points (the negative log-likelihoods at the
+    #   optimum differed by at most 1.2e-6)
     ind_points_selection <- "random"
     num_ind_points <- n - 1
     for (gp_approx in c("fitc", "vif")) {
       tol_approx <- if (gp_approx == "fitc") 3e-3 else 1e-3
+      tol_estimates <- if (gp_approx == "fitc") 0.1 else 1e-3
       tol_nll_eval <- if (gp_approx == "fitc") 0.1 else 1e-4
       capture.output( gp_model <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
                                           gp_approx = gp_approx, num_ind_points = num_ind_points, ind_points_selection = ind_points_selection,
@@ -1202,9 +1209,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function, cov_fct_order = cov_fct_order,
                                              X=X, y = y, params = params, gp_approx = gp_approx, num_ind_points = num_ind_points,
                                              ind_points_selection = ind_points_selection, num_neighbors = n - 1, vecchia_ordering = "none") , file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),tol_approx)
-      expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),tol_approx)
-      expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),tol_approx)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),tol_estimates)
+      expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),tol_estimates)
+      expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),tol_estimates)
       capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                       predict_var=TRUE, predict_response = FALSE) , file='NUL')
       expect_lt(sum(abs(pred$mu-expected_mu)),tol_approx)
