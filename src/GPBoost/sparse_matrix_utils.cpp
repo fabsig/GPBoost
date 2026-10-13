@@ -232,7 +232,7 @@ namespace GPBoost {
 	}//end CalcColSquaredNormsCholFactorInvR
 
 	void CalcColSquaredNormsLInvPRColumnwise(const sp_mat_t& L, const Eigen::VectorXi& perm_indices, int num_cols,
-		const std::function<void(int, vec_t&)>& calc_column, vec_t& norms, int first_row, int num_rows) {
+		const std::function<void(int, vec_t&)>& calc_column, vec_t& norms) {
 		CHECK(L.isCompressed());
 		CHECK(L.rows() == L.cols());
 		const int n = (int)L.cols();
@@ -240,10 +240,6 @@ namespace GPBoost {
 		if (has_permutation) {
 			CHECK((int)perm_indices.size() == n);
 		}
-		if (num_rows < 0) {
-			num_rows = n - first_row;
-		}
-		CHECK(first_row >= 0 && num_rows >= 0 && first_row + num_rows <= n);
 		const double* val = L.valuePtr();
 		const int* row_idx = L.innerIndexPtr();
 		const int* col_ptr = L.outerIndexPtr();
@@ -260,11 +256,11 @@ namespace GPBoost {
 						x[perm_indices[i]] = r[i];
 					}
 					sp_L_solve(val, row_idx, col_ptr, n, x.data());
-					norms[j] = x.segment(first_row, num_rows).squaredNorm();
+					norms[j] = x.squaredNorm();
 				}
 				else {
 					sp_L_solve(val, row_idx, col_ptr, n, r.data());
-					norms[j] = r.segment(first_row, num_rows).squaredNorm();
+					norms[j] = r.squaredNorm();
 				}
 			}
 		}

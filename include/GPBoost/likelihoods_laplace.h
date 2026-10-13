@@ -6085,28 +6085,22 @@ namespace GPBoost {
 						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bpo, Bp_inv_Bpo, false);
 						Maux = Bp_inv_Bpo.transpose();
 					}
-					if (num_sets_re_ == 1) {
-						TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux, Maux, false);
-					}
-					else {
+					if (num_sets_re_ > 1) {
+						// The posterior covariance of the set 'num_gp' is the corresponding diagonal block of (Sigma^-1 + W)^-1. The columns
+						//	are embedded in the block of this set, and all rows of the solution are used since the factorization can mix the sets
 						CHECK(num_sets_re_ == 2);
-						sp_mat_t Maux_1, Maux_2, Maux_all;
-						if (num_gp == 0) {
-							Maux_1 = Maux;
-							Maux_2 = sp_mat_t(dim_mode_per_set_re_, num_pred);
+						sp_mat_t Maux_all(dim_mode_, num_pred);
+						std::vector<Triplet_t> triplets;
+						triplets.reserve((size_t)Maux.nonZeros());
+						for (int k = 0; k < Maux.outerSize(); ++k) {
+							for (sp_mat_t::InnerIterator it(Maux, k); it; ++it) {
+								triplets.emplace_back((int)it.row() + num_gp * dim_mode_per_set_re_, (int)it.col(), it.value());
+							}
 						}
-						else {
-							Maux_1 = sp_mat_t(dim_mode_per_set_re_, num_pred);
-							Maux_2 = Maux;
-						}
-						GPBoost::CreatSparseBlockDiagonalMartix<sp_mat_t>(Maux_1, Maux_2, Maux_all);
-						Maux_1.resize(0, 0);
-						Maux_2.resize(0, 0);
-						CHECK(Maux_all.rows() == dim_mode_);
-						CHECK(Maux_all.cols() == 2 * num_pred);
-						TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux_all, Maux_all, false);
-						Maux = Maux_all.block(num_gp * dim_mode_per_set_re_, num_gp * num_pred, dim_mode_per_set_re_, num_pred);
+						Maux_all.setFromTriplets(triplets.begin(), triplets.end());
+						Maux = Maux_all;
 					}
+					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux, Maux, false);
 					if (CondObsOnly) {
 						pred_cov = Maux.transpose() * Maux;
 						pred_cov.diagonal().array() += Dp.array();
@@ -6125,7 +6119,7 @@ namespace GPBoost {
 					}
 					// Squared norms of the columns of L^-1 * P * Bpo^T * Bp^-T for the Cholesky factorization L L^T = P * (Sigma^-1 + W) * P^T,
 					//	i.e. the diagonal of Bp^-1 * Bpo * (Sigma^-1 + W)^-1 * Bpo^T * Bp^-T. With two sets of random effects, the columns
-					//	are in the block of the set 'num_gp' and only the rows of this block are used, as above
+					//	are embedded in the block of the set 'num_gp', see above
 					vec_t norms;
 					CalcColSquaredNormsLInvPRColumnwise(chol_fact_SigmaI_plus_ZtWZ_vecchia_.CholFactMatrix(),
 						chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().indices(), num_pred, [&](int i, vec_t& column) {
@@ -6136,7 +6130,7 @@ namespace GPBoost {
 							}
 							column.setZero();
 							column.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_) = Bpo.transpose() * Bp_inv_t_e_i;
-						}, norms, num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_);
+						}, norms);
 					pred_var += norms;
 				}
 			}

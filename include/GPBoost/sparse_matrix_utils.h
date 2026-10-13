@@ -99,8 +99,7 @@ namespace GPBoost {
 
 	/*!
 	* \brief Calculate the squared norms of the columns of L^(-1) P R for a sparse lower triangular matrix L and a permutation P,
-	*		where the columns of R are calculated one after another by a function and are not stored, e.g., since R is not sparse.
-	*		Optionally, only a range of rows of L^(-1) P R is included in the norms
+	*		where the columns of R are calculated one after another by a function and are not stored, e.g., since R is not sparse
 	* \param L Sparse lower triangular matrix (compressed, column-major format, with the diagonal as first entry of every column)
 	* \param perm_indices Indices of the permutation P, i.e., (P x)[perm_indices[i]] = x[i] (see 'SparseInverseEntries'). No
 	*		permutation if it is empty
@@ -108,11 +107,9 @@ namespace GPBoost {
 	* \param calc_column Function that writes column i of R into a vector of length L.cols(), whose content on entry is
 	*		undefined. It is called from several threads at the same time
 	* \param[out] norms Squared norms of the columns of L^(-1) P R
-	* \param first_row First row of L^(-1) P R that is included in the norms
-	* \param num_rows Number of rows of L^(-1) P R that are included in the norms, all rows from 'first_row' on if negative
 	*/
 	void CalcColSquaredNormsLInvPRColumnwise(const sp_mat_t& L, const Eigen::VectorXi& perm_indices, int num_cols,
-		const std::function<void(int, vec_t&)>& calc_column, vec_t& norms, int first_row = 0, int num_rows = -1);
+		const std::function<void(int, vec_t&)>& calc_column, vec_t& norms);
 
 	/*!
 	* \brief Selected inversion with the Takahashi equations: calculate the entries of (L L^T)^(-1) on the sparsity pattern of a

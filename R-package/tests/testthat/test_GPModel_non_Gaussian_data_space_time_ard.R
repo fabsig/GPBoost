@@ -993,6 +993,65 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }# end loop inv_method in c("cholesky", "iterative")
   }) #end gaussian_heteroscedastic_fixed_and_random likelihood
 
+  test_that("Predictive variances of gaussian_heteroscedastic_fixed_and_random equal the exact Fisher-Laplace values ", {
+
+    # With all neighbors the Vecchia approximation is exact. The Fisher information of this likelihood is block-diagonal
+    # (exp(-zeta) for the mean, 1/2 for the log-variance), so the posterior covariance of each GP is
+    # (Sigma_g^-1 + W_gg)^-1 and the predictive variances are those of exact Gaussian conditioning given the modes.
+    # The random ordering permutes the two sets of random effects in the Cholesky factor, which must not matter
+    n_pv <- 100
+    coords_pv <- cbind(sim_rand_unif(n = n_pv, init_c = 0.1), sim_rand_unif(n = n_pv, init_c = 0.3))
+    D_pv <- as.matrix(dist(coords_pv))
+    L_pv <- t(chol(exp(-D_pv / 0.2) + diag(1e-10, n_pv)))
+    y_pv <- as.vector(L_pv %*% qnorm(sim_rand_unif(n = n_pv, init_c = 0.8)) +
+                        qnorm(sim_rand_unif(n = n_pv, init_c = 0.1234)) * exp(0.5 * L_pv %*% qnorm(sim_rand_unif(n = n_pv, init_c = 0.834))))
+    coord_test_pv <- cbind(c(0.1, 0.11, 0.7, 0.5), c(0.9, 0.91, 0.55, 0.5))
+    np_pv <- nrow(coord_test_pv)
+    cov_pars_pv <- c(1, 0.2, 0.1, 0.2)
+    D_po_pv <- as.matrix(dist(rbind(coord_test_pv, coords_pv)))[1:np_pv, (np_pv + 1):(np_pv + n_pv)]
+    D_pp_pv <- as.matrix(dist(coord_test_pv))
+    # Exact conditioning of GP 'set' (1 = mean, 2 = log-variance) given the modes 're_train' at the training locations
+    exact_pv <- function(set, re_train, cov_pars) {
+      ip <- if (set == 1) 1:2 else 3:4
+      C_po <- cov_pars[ip[1]] * exp(-D_po_pv / cov_pars[ip[2]])
+      C_pp <- cov_pars[ip[1]] * exp(-D_pp_pv / cov_pars[ip[2]])
+      Sigma_g <- cov_pars[ip[1]] * exp(-D_pv / cov_pars[ip[2]])
+      W_inv <- if (set == 1) exp(as.vector(re_train[, 2])) else rep(2, n_pv)
+      list(mu = as.vector(C_po %*% solve(Sigma_g, as.vector(re_train[, set]))),
+           var = diag(C_pp - C_po %*% solve(Sigma_g + diag(W_inv), t(C_po))))
+    }
+    for (inv_method_pv in c("cholesky", "iterative")) {
+      for (ordering_pv in c("none", "random")) {
+        gp_model_pv <- GPModel(gp_coords = coords_pv, cov_function = "exponential", gp_approx = "vecchia",
+                               num_neighbors = n_pv - 1, vecchia_ordering = ordering_pv, seed = 1,
+                               likelihood = "gaussian_heteroscedastic_fixed_and_random", matrix_inversion_method = inv_method_pv)
+        # one negligible optimizer step, so that the model has covariance parameters and modes
+        capture.output( fit(gp_model_pv, y = y_pv, params = list(init_cov_pars = cov_pars_pv, optimizer_cov = "gradient_descent",
+                                                                 lr_cov = 1e-8, maxit = 1, use_nesterov_acc = FALSE,
+                                                                 init_coef_aux_pars_from_iid_model = FALSE,
+                                                                 seed_rand_vec_trace = 1, num_rand_vec_trace = 50)), file = 'NUL')
+        cov_pars_fit_pv <- as.vector(gp_model_pv$get_cov_pars())
+        capture.output( re_train_pv <- predict_training_data_random_effects(gp_model_pv), file = 'NUL')
+        exact_1_pv <- exact_pv(1, re_train_pv, cov_pars_fit_pv)
+        exact_2_pv <- exact_pv(2, re_train_pv, cov_pars_fit_pv)
+        # the response variance is Var(mu) + E[exp(zeta)] for the log-normal variance exp(zeta)
+        var_resp_exact_pv <- exact_1_pv$var + exp(exact_2_pv$mu + exact_2_pv$var / 2)
+        tol_pv <- if (inv_method_pv == "iterative") 5e-2 else TOLERANCE_STRICT
+        tol_mu_pv <- if (inv_method_pv == "iterative") TOLERANCE_MEDIUM else TOLERANCE_STRICT
+        for (pred_type_pv in c("latent_order_obs_first_cond_obs_only", "latent_order_obs_first_cond_all")) {
+          gp_model_pv$set_prediction_data(vecchia_pred_type = pred_type_pv, num_neighbors_pred = n_pv + np_pv, nsim_var_pred = 20000)
+          capture.output( pred_pv <- predict(gp_model_pv, y = y_pv, gp_coords_pred = coord_test_pv,
+                                             predict_var = TRUE, predict_response = FALSE), file = 'NUL')
+          expect_lt(sum(abs(pred_pv$mu - exact_1_pv$mu)), tol_mu_pv)
+          expect_lt(sum(abs(as.vector(pred_pv$var) - exact_1_pv$var)), tol_pv)
+          capture.output( pred_resp_pv <- predict(gp_model_pv, y = y_pv, gp_coords_pred = coord_test_pv,
+                                                  predict_var = TRUE, predict_response = TRUE), file = 'NUL')
+          expect_lt(sum(abs(as.vector(pred_resp_pv$var) - var_resp_exact_pv)), tol_pv)
+        }
+      }
+    }
+  })
+
   test_that("gaussian_heteroscedastic_fixed_and_random likelihood with a smooth covariance function and iterative methods ", {
 
     # The iterative methods solve with Sigma^-1 + observed Hessian for the derivatives through the mode. With
