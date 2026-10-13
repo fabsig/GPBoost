@@ -1028,6 +1028,53 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
 
 
+  test_that("Predictions of grouped random effects and a Vecchia GP with neighbors among the prediction points ", {
+
+    # With all neighbors the Vecchia approximation is exact also when the prediction points are conditioned on the
+    # observed data and the preceding prediction points ('latent_order_obs_first_cond_all'), so the predictions have
+    # to equal the ones of the same model without an approximation. The predictive variances then contain the part
+    # Bp^-1 Dp Bp^-T of the Vecchia approximation among the prediction points, which is calculated with triangular
+    # solves, and two of the prediction points are close to each other such that this part matters
+    n_ca <- 60
+    m_ca <- 6
+    group_ca <- rep(1:m_ca, each = n_ca / m_ca)
+    coords_ca <- cbind(sim_rand_unif(n = n_ca, init_c = 0.312), sim_rand_unif(n = n_ca, init_c = 0.573))
+    D_ca <- as.matrix(dist(coords_ca))
+    Z_ca <- model.matrix(~ factor(group_ca) - 1)
+    cov_pars_ca <- c(0.7, 1.0, 0.2)# group variance, GP variance, GP range
+    Sigma_ca <- cov_pars_ca[1] * (Z_ca %*% t(Z_ca)) + cov_pars_ca[2] * exp(-D_ca / cov_pars_ca[3])
+    b_ca <- as.vector(t(chol(Sigma_ca + diag(1E-10, n_ca))) %*% qnorm(sim_rand_unif(n = n_ca, init_c = 0.751)))
+    y_ca <- qgamma(sim_rand_unif(n = n_ca, init_c = 0.418), shape = 1, rate = exp(-b_ca))
+    coords_pred_ca <- cbind(c(0.12, 0.44, 0.71, 0.93, 0.45), c(0.22, 0.51, 0.83, 0.07, 0.52))
+    group_pred_ca <- c(1, 2, 3, 99999, 2)# the fourth group does not occur in the training data
+    args_ca <- list(group_data = group_ca, gp_coords = coords_ca, cov_function = "exponential", likelihood = "gamma")
+    predict_ca <- function(args, preconditioner_params = list()) {
+      gp_model_ca <- do.call(GPModel, args)
+      gp_model_ca$set_optim_params(params = c(preconditioner_params,
+                                              list(seed_rand_vec_trace = 1, num_rand_vec_trace = 1000,
+                                                   init_coef_aux_pars_from_iid_model = FALSE)))
+      if (!is.null(args$gp_approx)) {
+        gp_model_ca$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_all",
+                                        num_neighbors_pred = n_ca + nrow(coords_pred_ca), nsim_var_pred = 2000)
+      }
+      capture.output( pred_ca <- gp_model_ca$predict(y = y_ca, gp_coords_pred = coords_pred_ca,
+                                                     group_data_pred = group_pred_ca, cov_pars = cov_pars_ca,
+                                                     predict_var = TRUE, predict_response = FALSE), file = 'NUL')
+      pred_ca
+    }
+    pred_exact_ca <- predict_ca(args_ca)
+    for (config_ca in INVERSION_CONFIGS_VECCHIA_GROUPED_RE) {
+      pred_vecchia_ca <- predict_ca(c(args_ca, list(gp_approx = "vecchia", num_neighbors = n_ca - 1,
+                                                    vecchia_ordering = "none",
+                                                    matrix_inversion_method = config_ca$method)),
+                                    config_ca$params)
+      tol_ca <- if (config_ca$method == "iterative") 1E-2 else 1E-6
+      expect_lt(sum(abs(pred_vecchia_ca$mu - pred_exact_ca$mu)), tol_ca)
+      expect_lt(sum(abs(as.vector(pred_vecchia_ca$var) - as.vector(pred_exact_ca$var))), tol_ca)
+    }
+  })
+
+
   test_that("Predictions of a weighted model with grouped random effects and a Vecchia GP ", {
 
     # The error variance of observation i is 'cov_pars[1] / weights[i]'. With all neighbors the Vecchia

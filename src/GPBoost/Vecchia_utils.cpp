@@ -2085,11 +2085,7 @@ namespace GPBoost {
 					else {
 						TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(Bp, B_po_cross_cov, cross_cov_pred_obs_pred_inv, false);
 						if (calc_pred_cov) {
-							sp_mat_t Bp_inv(num_re_pred_cli, num_re_pred_cli);
-							Bp_inv.setIdentity();
-							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
-							sp_mat_t Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
-							pred_cov = den_mat_t(Bp_inv_Dp * Bp_inv.transpose());
+							CalcLInvDLInvT(Bp, Dp, pred_cov);
 						}
 						if (calc_pred_var) {
 							CalcDiagLInvDLInvT(Bp, Dp, pred_var);
@@ -2141,11 +2137,7 @@ namespace GPBoost {
 					}
 					else {
 						if (calc_pred_cov) {
-							sp_mat_t Bp_inv(num_re_pred_cli, num_re_pred_cli);
-							Bp_inv.setIdentity();
-							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
-							sp_mat_t Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
-							pred_cov = den_mat_t(Bp_inv_Dp * Bp_inv.transpose());
+							CalcLInvDLInvT(Bp, Dp, pred_cov);
 						}
 						if (calc_pred_var) {
 							CalcDiagLInvDLInvT(Bp, Dp, pred_var);

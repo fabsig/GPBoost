@@ -4078,19 +4078,20 @@ namespace GPBoost {
 							cov_fct_taper_range = re_comp_resid_clus0->CovFunctionTaperRange();
 							cov_fct_taper_shape = re_comp_resid_clus0->CovFunctionTaperShape();
 						}
+						// Only the diagonal of psi is calculated if the predictive covariance matrix is not needed. The residual
+						//	components of 'full_scale_tapering' are then not created since the diagonal of psi does not need them
+						only_diag_of_psi = !predict_cov_mat;
 						std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 						std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 						std::vector<std::shared_ptr<RECompGP<T_mat>>> re_comps_resid_cluster_i;
 						CreateREComponentsFITC_FSA(num_data_pred, data_indices_per_cluster_pred, cluster_i, gp_coords_data_pred,
 							re_comp_gp_clus0->CovFunctionName(), re_comp_gp_clus0->CovFunctionShape(), re_comp_gp_clus0->CovFunctionOrder(), cov_fct_taper_range, cov_fct_taper_shape,
-							re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, true);
+							re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, re_comps_resid_cluster_i, true, !only_diag_of_psi);
 						if (only_one_GP_calculations_on_RE_scale_) {
 							// The cross-covariance is calculated on the random effects scale (i.e., on the unique coordinates)
 							num_REs_pred = re_comps_cross_cov_cluster_i[0]->GetNumUniqueREs();
 							random_effects_indices_of_data_pred = re_comps_cross_cov_cluster_i[0]->random_effects_indices_of_data_;
 						}
-						// Only the diagonal of psi is calculated if the predictive covariance matrix is not needed
-						only_diag_of_psi = !predict_cov_mat;
 						if (only_diag_of_psi) {
 							psi_diag = (gauss_likelihood_ && predict_response) ? vec_t::Ones(num_REs_pred) : vec_t::Zero(num_REs_pred);//nugget effect
 						}
@@ -4108,43 +4109,34 @@ namespace GPBoost {
 							re_comps_ip_cluster_i[j]->SetCovPars(pars);
 							re_comps_cross_cov_cluster_i[j]->SetCovPars(pars);
 							re_comps_ip_cluster_i[j]->CalcSigma();
-							re_comps_cross_cov_cluster_i[j]->CalcSigma();
 							den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[j]->GetZSigmaZt());
 							sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
-							chol_den_mat_t chol_fact_sigma_ip;
-							chol_fact_sigma_ip.compute(sigma_ip_stable);
-							den_mat_t cross_cov = *(re_comps_cross_cov_cluster_i[j]->GetZSigmaZt());
-							vec_t FITC_Diag;
-							if (gp_approx_ == "fitc") {
-								FITC_Diag = vec_t::Zero(cross_cov.rows());
-								if (re_comps_cross_cov_cluster_i[j]->VarianceOnDiagonal()) {
-									FITC_Diag.array() += sigma_ip_stable.coeffRef(0, 0);
+							// Marginal variances at the prediction points. For 'fitc', they are the diagonal of psi, which the diagonal
+							//	correction of the predictive process restores, and they contain the jitter of the inducing point matrix
+							//	as this correction does. For 'full_scale_tapering', the diagonal of psi is also the marginal variance
+							//	since the taper function is one on the diagonal
+							vec_t marginal_var;
+							if (only_diag_of_psi || gp_approx_ == "fitc") {
+								marginal_var = vec_t::Zero(re_comps_cross_cov_cluster_i[j]->GetNumUniqueREs());
+								if (gp_approx_ == "fitc" && re_comps_cross_cov_cluster_i[j]->VarianceOnDiagonal()) {
+									marginal_var.array() += sigma_ip_stable.coeffRef(0, 0);
 								}
 								else {
 #pragma omp parallel for schedule(static)
-									for (int ii = 0; ii < re_comps_cross_cov_cluster_i[j]->GetNumUniqueREs(); ++ii) {
-										FITC_Diag[ii] += re_comps_cross_cov_cluster_i[j]->GetZSigmaZtij(ii, ii);//uses coords of all data points (not IPs) to calculate Sigma[ii,ii]
+									for (int ii = 0; ii < (int)marginal_var.size(); ++ii) {
+										marginal_var[ii] = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtij(ii, ii);//uses coords of all data points (not IPs) to calculate Sigma[ii,ii]
 									}
 								}
 							}
 							if (only_diag_of_psi) {
-								den_mat_t chol_ip_cross_cov_pred;
-								TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip, cross_cov.transpose(), chol_ip_cross_cov_pred, false);
-								const vec_t diag_pred_proc = chol_ip_cross_cov_pred.colwise().squaredNorm().transpose();
-								vec_t diag_resid;
-								if (gp_approx_ == "full_scale_tapering") {
-									// the taper function is one on the diagonal
-									re_comps_resid_cluster_i[j]->SetCovPars(pars);
-									re_comps_resid_cluster_i[j]->CalcSigma();
-									diag_resid = (*(re_comps_resid_cluster_i[j]->GetZSigmaZt())).diagonal();
-									diag_resid -= diag_pred_proc;
-								}
-								else {
-									diag_resid = FITC_Diag - diag_pred_proc;
-								}
-								psi_diag += diag_pred_proc + diag_resid;
+								CHECK((int)marginal_var.size() == num_REs_pred);
+								psi_diag += marginal_var;
 							}
 							else {
+								re_comps_cross_cov_cluster_i[j]->CalcSigma();
+								chol_den_mat_t chol_fact_sigma_ip;
+								chol_fact_sigma_ip.compute(sigma_ip_stable);
+								den_mat_t cross_cov = *(re_comps_cross_cov_cluster_i[j]->GetZSigmaZt());
 								den_mat_t sigma_interim = cross_cov * chol_fact_sigma_ip.solve(cross_cov.transpose());
 								T_mat psi_j;
 								ConvertTo_T_mat_FromDense<T_mat>(sigma_interim, psi_j);
@@ -4156,8 +4148,8 @@ namespace GPBoost {
 									psi_j += *(re_comps_resid_cluster_i[j]->GetZSigmaZt());
 								}
 								else {
-									FITC_Diag -= psi_j.diagonal();
-									psi_j += FITC_Diag.asDiagonal();
+									marginal_var -= psi_j.diagonal();
+									psi_j += marginal_var.asDiagonal();
 								}
 								psi += psi_j;
 							}
@@ -8977,7 +8969,9 @@ namespace GPBoost {
 		* \param[out] re_comps_ip_cluster_i Inducing point GP for predictive process
 		* \param[out] re_comps_cross_cov_cluster_i Cross-covariance GP for predictive process
 		* \param[out] re_comps_resid_cluster_i Residual GP component for full scale approximation
-		* \param for_prediction_new_cluster
+		* \param for_prediction_new_cluster If true, the components are created for predictions for a cluster without observed data
+		* \param create_resid_comps If false, the residual components of 'full_scale_tapering' are not created (they are not
+		*		needed if only the diagonal of the covariance matrix of a cluster without observed data is calculated)
 		*/
 		void CreateREComponentsFITC_FSA(data_size_t num_data,
 			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster,
@@ -8991,7 +8985,8 @@ namespace GPBoost {
 			std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_ip_cluster_i,
 			std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i,
 			std::vector<std::shared_ptr<RECompGP<T_mat>>>& re_comps_resid_cluster_i,
-			bool for_prediction_new_cluster) {
+			bool for_prediction_new_cluster,
+			bool create_resid_comps = true) {
 			// Note: 'num_data_per_cluster_' must not be used here since it has no entry for a cluster
 			//		without observed data (i.e., when 'for_prediction_new_cluster' is true)
 			const data_size_t num_data_cluster_i = (data_size_t)data_indices_per_cluster[cluster_i].size();
@@ -9174,7 +9169,7 @@ namespace GPBoost {
 			}
 			re_comps_cross_cov_cluster_i.push_back(std::shared_ptr<RECompGP<den_mat_t>>(new RECompGP<den_mat_t>(
 				gp_coords_all_mat, gp_coords_ip_mat, cov_fct, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape, false, false, calc_on_RE_scale)));
-			if (gp_approx_ == "full_scale_tapering") {
+			if (gp_approx_ == "full_scale_tapering" && create_resid_comps) {
 				re_comps_resid_cluster_i.push_back(std::shared_ptr<RECompGP<T_mat>>(new RECompGP<T_mat>(
 					gp_coords_all_mat, cov_fct, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape,
 					true, true, true, false, false, true)));

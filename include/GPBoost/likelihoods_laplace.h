@@ -4888,64 +4888,63 @@ namespace GPBoost {
 				if (calc_pred_var) {
 					int n_pred = (int)pred_mean.size();
 					vec_t pred_var_global = vec_t::Zero(n_pred);
-					// 'A_pred' maps the mode to the prediction points. For grouped random effects only this is Z_po = Ztilde,
-					//	the predictive variances are then diag(A_pred * (SigmaI_plus_ZtWZ)^-1 * A_pred^T)
-					sp_mat_t Bp_inv, Bp_inv_Dp, A_pred;
+					// 'A' maps the mode to the prediction points: for grouped random effects only, this is Z_po = Ztilde, and the
+					//	predictive variances are diag(A * (SigmaI_plus_ZtWZ)^-1 * A^T). With an additional Vecchia-approximated GP,
+					//	the predictions are A * b with A = [Z_po, -Bp^-1 * Bpo] and the (approximate) posterior
+					//	b ~ N(mode, (SigmaI_plus_ZtWZ)^-1). The grouped random effects and the GP are correlated a posteriori,
+					//	so the whole matrix A has to be used for the stochastic estimate; calculating the grouped and the GP block
+					//	separately would omit their cross-covariance. Only Bp^-1 * Dp * Bp^-T is added separately below, since it
+					//	is the conditional covariance of the Vecchia prediction and does not involve the posterior.
+					//	A is not formed since Bp^-1 * Bpo is not sparse: products with A and A^T are calculated with triangular
+					//	solves with Bp
 					if (has_vecchia_gp) {
-						// With an additional Vecchia-approximated GP, the predictions are A_pred * b with
-						//	A_pred = [Z_po, -Bp^-1 * Bpo] and the (approximate) posterior b ~ N(mode, (SigmaI_plus_ZtWZ)^-1).
-						//	The grouped random effects and the GP are correlated a posteriori, so the whole matrix A_pred has
-						//	to be used for the stochastic estimate; calculating the grouped and the GP block separately would
-						//	omit their cross-covariance. Only Bp^-1 * Dp * Bp^-T is added separately below, since it is the
-						//	conditional covariance of the Vecchia prediction and does not involve the posterior
-						sp_mat_t Bp_inv_Bpo;
-						if (VecchiaCondObsOnly) {
-							Bp_inv_Bpo = Bpo; //Bp = Id
-						}
-						else {
-							Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
-							Bp_inv.setIdentity();
-							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
-							Bp_inv_Bpo = Bp_inv * Bpo;
-							Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
-						}
-						A_pred = sp_mat_t(n_pred, dim_mode_);
-						std::vector<Triplet_t> triplets_A;
-						triplets_A.reserve((size_t)(Ztilde.nonZeros() + Bp_inv_Bpo.nonZeros()));
-						for (int k = 0; k < Ztilde.outerSize(); ++k) {
-							for (sp_mat_t::InnerIterator it(Ztilde, k); it; ++it) {
-								triplets_A.emplace_back((int)it.row(), (int)it.col(), it.value());
-							}
-						}
-						for (int k = 0; k < Bp_inv_Bpo.outerSize(); ++k) {
-							for (sp_mat_t::InnerIterator it(Bp_inv_Bpo, k); it; ++it) {
-								triplets_A.emplace_back((int)it.row(), (int)it.col() + (int)dim_re_group, -it.value());
-							}
-						}
-						A_pred.setFromTriplets(triplets_A.begin(), triplets_A.end());
+						CHECK(Bp.rows() == n_pred);
+						CHECK(Bp.cols() == n_pred);
 					}
-					else {
-						A_pred = Ztilde;
-					}
-					//Variance reduction
-					sp_mat_rm_t Ztilde_P_sqrt_invt_rm;
-					vec_t varred_global, c_cov, c_var;
+					const sp_mat_t Ztilde_t = Ztilde.transpose();
+					// A * b
+					auto A_times = [&](const vec_t& b) -> vec_t {
+						vec_t out = Ztilde * b.head(dim_re_group);
+						if (has_vecchia_gp) {
+							vec_t Bp_inv_Bpo_b = Bpo * b.tail(dim_gp);
+							if (!VecchiaCondObsOnly) {
+								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, Bp_inv_Bpo_b, Bp_inv_Bpo_b, false);
+							}
+							out -= Bp_inv_Bpo_b;
+						}
+						return out;
+					};
+					// A^T * r
+					auto A_t_times = [&](const vec_t& r) -> vec_t {
+						vec_t out(dim_mode_);
+						out.head(dim_re_group) = Ztilde_t * r;
+						if (has_vecchia_gp) {
+							vec_t Bp_inv_t_r = r;
+							if (!VecchiaCondObsOnly) {
+								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, Bp_inv_t_r, Bp_inv_t_r, true);
+							}
+							out.tail(dim_gp) = Bpo.transpose() * Bp_inv_t_r;
+							out.tail(dim_gp) *= -1.;
+						}
+						return out;
+					};
+					//Variance reduction with the preconditioner P = P_sqrt * P_sqrt^T, P_sqrt is lower triangular
+					const sp_mat_rm_t* P_sqrt_rm = nullptr;
+					vec_t varred_global, c_cov, c_var, varred_determ;
 					if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
 						varred_global = vec_t::Zero(n_pred);
 						c_cov = vec_t::Zero(n_pred);
 						c_var = vec_t::Zero(n_pred);
-						//A * P^(-T/2) = (P^(-1/2) * A^T)^T, calculated with A^T as the right hand side of the triangular
-						//	solve. Inverting the triangular factor explicitly would need one right hand side per random
+						P_sqrt_rm = (cg_preconditioner_type_ == "incomplete_cholesky") ? &L_SigmaI_plus_ZtWZ_rm_ : &P_SSOR_L_D_sqrt_inv_rm_;
+						//Deterministic: diag(A P^(-1) A^T), i.e. the squared norms of the columns of P_sqrt^(-1) A^T, which are
+						//	calculated one after another. Inverting P_sqrt explicitly would need one right-hand side per random
 						//	effect instead of one per prediction point
-						sp_mat_rm_t A_pred_t_rm = sp_mat_rm_t(A_pred.transpose());
-						sp_mat_rm_t P_sqrt_inv_A_pred_t_rm;
-						if (cg_preconditioner_type_ == "incomplete_cholesky") {
-							TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(L_SigmaI_plus_ZtWZ_rm_, A_pred_t_rm, P_sqrt_inv_A_pred_t_rm, false);
-						}
-						else {
-							TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(P_SSOR_L_D_sqrt_inv_rm_, A_pred_t_rm, P_sqrt_inv_A_pred_t_rm, false);
-						}
-						Ztilde_P_sqrt_invt_rm = sp_mat_rm_t(P_sqrt_inv_A_pred_t_rm.transpose());
+						const sp_mat_t P_sqrt = sp_mat_t(*P_sqrt_rm);
+						CalcColSquaredNormsLInvPRColumnwise(P_sqrt, Eigen::VectorXi(), n_pred, [&](int i, vec_t& column) {
+							vec_t e_i = vec_t::Zero(n_pred);
+							e_i[i] = 1.;
+							column = A_t_times(e_i);
+							}, varred_determ);
 					}
 					int num_threads;
 #ifdef _OPENMP
@@ -4995,7 +4994,7 @@ namespace GPBoost {
 								}
 							}
 							//A^T RV
-							vec_t Z_tilde_t_RV = A_pred.transpose() * rand_vec_init;
+							vec_t Z_tilde_t_RV = A_t_times(rand_vec_init);
 							//Part 2: (Sigma^(-1) + Z^T W Z)^(-1) Z_po^T RV
 							vec_t MInv_Ztilde_t_RV(dim_mode_);
 							bool has_NA_or_Inf = false;
@@ -5008,14 +5007,15 @@ namespace GPBoost {
 								na_inf_flag_1 = true;
 							}
 							//Part 2: A (Sigma^(-1) + Z^T W Z)^(-1) A^T RV
-							vec_t rand_vec_final = A_pred * MInv_Ztilde_t_RV;
+							vec_t rand_vec_final = A_times(MInv_Ztilde_t_RV);
 							vec_t pred_var_iter = rand_vec_final.cwiseProduct(rand_vec_init);
 							pred_var_private += pred_var_iter;
 							//Variance reduction
 							if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
-								//Stochastic: Z_po P^(-0.5T) P^(-0.5) Z_po^T RV
-								vec_t P_sqrt_inv_Ztilde_t_RV = Ztilde_P_sqrt_invt_rm.transpose() * rand_vec_init;
-								vec_t rand_vec_varred = Ztilde_P_sqrt_invt_rm * P_sqrt_inv_Ztilde_t_RV;
+								//Stochastic: A P_sqrt^(-T) P_sqrt^(-1) A^T RV
+								vec_t P_sqrt_inv_A_t_RV = P_sqrt_rm->triangularView<Eigen::Lower>().solve(Z_tilde_t_RV);
+								vec_t P_sqrt_inv_t_P_sqrt_inv_A_t_RV = P_sqrt_rm->transpose().template triangularView<Eigen::Upper>().solve(P_sqrt_inv_A_t_RV);
+								vec_t rand_vec_varred = A_times(P_sqrt_inv_t_P_sqrt_inv_A_t_RV);
 								vec_t varred_iter = rand_vec_varred.cwiseProduct(rand_vec_init);
 								varred_private += varred_iter;
 								c_cov_private += varred_iter.cwiseProduct(pred_var_iter);
@@ -5041,8 +5041,6 @@ namespace GPBoost {
 						varred_global /= nsim_var_pred_;
 						c_cov /= nsim_var_pred_;
 						c_var /= nsim_var_pred_;
-						//Deterministic: diag(A P^(-0.5T) P^(-0.5) A^T)
-						vec_t varred_determ = Ztilde_P_sqrt_invt_rm.cwiseProduct(Ztilde_P_sqrt_invt_rm) * vec_t::Ones(dim_mode_);
 						//optimal c
 						c_cov -= varred_global.cwiseProduct(pred_var_global);
 						c_var -= varred_global.cwiseProduct(varred_global);
@@ -5063,7 +5061,9 @@ namespace GPBoost {
 							pred_var += Dp;
 						}
 						else {
-							pred_var += Bp_inv_Dp.cwiseProduct(Bp_inv) * vec_t::Ones(n_pred);
+							vec_t diag_Bp_inv_Dp_Bp_inv_t;
+							CalcDiagLInvDLInvT(Bp, Dp, diag_Bp_inv_Dp_Bp_inv_t);
+							pred_var += diag_Bp_inv_Dp_Bp_inv_t;
 						}
 					}//end has_vecchia_gp adding GP variance
 				} //end calc_pred_var
@@ -5152,60 +5152,75 @@ namespace GPBoost {
 					//	The predictive covariance is therefore
 					//	A * (SigmaI_plus_ZtWZ)^-1 * A^T + Bp^-1 * Dp * Bp^-T. The grouped random effects and the GP are
 					//	correlated a posteriori, i.e. their contributions cannot be calculated separately, and the triangular
-					//	solve has to be applied to the entire matrix A^T of dimension dim_mode_ x number of prediction points
+					//	solve has to be applied to the entire matrix A^T of dimension dim_mode_ x number of prediction points.
+					//	Bp^-1 is not formed since it is not sparse: for the predictive variances, the columns of A^T are calculated
+					//	one after another with triangular solves and are not stored
 					const int num_pred = (int)pred_mean.size();
-					sp_mat_t Bpo_T_Bp_inv_T; //Bpo_T_Bp_inv_T = Bpo^T * Bp^-T
-					sp_mat_t Bp_inv, Bp_inv_Dp;
-					if (VecchiaCondObsOnly) {
-						Bpo_T_Bp_inv_T = Bpo.transpose();//Bp = Id
-					}
-					else {
-						Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
-						Bp_inv.setIdentity();
-						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
-						Bpo_T_Bp_inv_T = Bpo.transpose() * Bp_inv.transpose();
-						Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
-					}
-					sp_mat_t Ztilde_T = Ztilde.transpose();
-					sp_mat_t A_T(dim_mode_, num_pred);
-					std::vector<Triplet_t> triplets;
-					triplets.reserve((size_t)(Ztilde_T.nonZeros() + Bpo_T_Bp_inv_T.nonZeros()));
-					for (int k = 0; k < Ztilde_T.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(Ztilde_T, k); it; ++it) {
-							triplets.emplace_back((int)it.row(), (int)it.col(), it.value());
-						}
-					}
-					for (int k = 0; k < Bpo_T_Bp_inv_T.outerSize(); ++k) {
-						for (sp_mat_t::InnerIterator it(Bpo_T_Bp_inv_T, k); it; ++it) {
-							triplets.emplace_back((int)it.row() + (int)dim_re_group, (int)it.col(), -it.value());
-						}
-					}
-					A_T.setFromTriplets(triplets.begin(), triplets.end());
-					Ztilde_T.resize(0, 0);
-					Bpo_T_Bp_inv_T.resize(0, 0);
-					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, A_T, A_T, false);
+					const sp_mat_t Ztilde_T = Ztilde.transpose();
 					if (calc_pred_cov) {
+						sp_mat_t Bpo_T_Bp_inv_T; //Bpo_T_Bp_inv_T = Bpo^T * Bp^-T
 						if (VecchiaCondObsOnly) {
-							pred_cov += (T_mat)(A_T.transpose() * A_T);
+							Bpo_T_Bp_inv_T = Bpo.transpose();//Bp = Id
+						}
+						else {
+							sp_mat_t Bp_inv_Bpo;
+							TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bpo, Bp_inv_Bpo, false);
+							Bpo_T_Bp_inv_T = Bp_inv_Bpo.transpose();
+						}
+						sp_mat_t A_T(dim_mode_, num_pred);
+						std::vector<Triplet_t> triplets;
+						triplets.reserve((size_t)(Ztilde_T.nonZeros() + Bpo_T_Bp_inv_T.nonZeros()));
+						for (int k = 0; k < Ztilde_T.outerSize(); ++k) {
+							for (sp_mat_t::InnerIterator it(Ztilde_T, k); it; ++it) {
+								triplets.emplace_back((int)it.row(), (int)it.col(), it.value());
+							}
+						}
+						for (int k = 0; k < Bpo_T_Bp_inv_T.outerSize(); ++k) {
+							for (sp_mat_t::InnerIterator it(Bpo_T_Bp_inv_T, k); it; ++it) {
+								triplets.emplace_back((int)it.row() + (int)dim_re_group, (int)it.col(), -it.value());
+							}
+						}
+						A_T.setFromTriplets(triplets.begin(), triplets.end());
+						Bpo_T_Bp_inv_T.resize(0, 0);
+						TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_grouped_, A_T, A_T, false);
+						pred_cov += (T_mat)(A_T.transpose() * A_T);
+						if (VecchiaCondObsOnly) {
 							pred_cov.diagonal().array() += Dp.array();
 						}
 						else {
-							pred_cov += (T_mat)(Bp_inv_Dp * Bp_inv.transpose() + A_T.transpose() * A_T);
+							den_mat_t Bp_inv_Dp_Bp_inv_t;
+							CalcLInvDLInvT(Bp, Dp, Bp_inv_Dp_Bp_inv_t);
+							T_mat Bp_inv_Dp_Bp_inv_t_T_mat;
+							ConvertTo_T_mat_FromDense<T_mat>(Bp_inv_Dp_Bp_inv_t, Bp_inv_Dp_Bp_inv_t_T_mat);
+							pred_cov += Bp_inv_Dp_Bp_inv_t_T_mat;
 						}
 					}//end calc_pred_cov
 					if (calc_pred_var) {
-						A_T = A_T.cwiseProduct(A_T);
+						// Squared norms of the columns of L^-1 * P * A^T for the Cholesky factorization L L^T = P * SigmaI_plus_ZtWZ * P^T,
+						//	i.e. the diagonal of A * (SigmaI_plus_ZtWZ)^-1 * A^T
+						vec_t norms;
+						CalcColSquaredNormsLInvPRColumnwise(chol_fact_SigmaI_plus_ZtWZ_grouped_.CholFactMatrix(),
+							chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().indices(), num_pred, [&](int i, vec_t& column) {
+								column.setZero();
+								for (sp_mat_t::InnerIterator it(Ztilde_T, i); it; ++it) {
+									column[it.row()] = it.value();
+								}
+								vec_t Bp_inv_t_e_i = vec_t::Zero(num_pred);
+								Bp_inv_t_e_i[i] = 1.;
+								if (!VecchiaCondObsOnly) {
+									TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, Bp_inv_t_e_i, Bp_inv_t_e_i, true);
+								}
+								column.tail(dim_gp) = Bpo.transpose() * Bp_inv_t_e_i;
+								column.tail(dim_gp) *= -1.;
+							}, norms);
+						pred_var += norms;
 						if (VecchiaCondObsOnly) {
-#pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_pred; ++i) {
-								pred_var[i] += Dp[i] + A_T.col(i).sum();
-							}
+							pred_var += Dp;
 						}
 						else {
-#pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_pred; ++i) {
-								pred_var[i] += (Bp_inv_Dp.row(i)).dot(Bp_inv.row(i)) + A_T.col(i).sum();
-							}
+							vec_t diag_Bp_inv_Dp_Bp_inv_t;
+							CalcDiagLInvDLInvT(Bp, Dp, diag_Bp_inv_Dp_Bp_inv_t);
+							pred_var += diag_Bp_inv_Dp_Bp_inv_t;
 						}
 					}//end calc_pred_var
 				}//end has_vecchia_gp
@@ -5398,8 +5413,6 @@ namespace GPBoost {
 			//	cross_cov_pred_ip.transpose(), chol_ip_cross_cov_pred, false);
 			GPBoost::solve_lower_triangular(chol_fact_sigma_ip, cross_cov_pred_ip.transpose(), chol_ip_cross_cov_pred, GPU_use);
 			sp_mat_rm_t Bpo_rm = sp_mat_rm_t(Bpo);
-			sp_mat_t Bp_inv_Dp;
-			sp_mat_t Bp_inv(Bp.rows(), Bp.cols());
 			//Version Simulation
 			if (matrix_inversion_method_ == "iterative") {
 				if (!sample_posterior) {
@@ -5416,16 +5429,7 @@ namespace GPBoost {
 					B_po_cross_cov.col(i) = Bpo_rm * (*cross_cov).col(i);
 				}
 				den_mat_t cross_cov_PP_Vecchia_woodbury = chol_fact_sigma_woodbury.solve(cross_cov_PP_Vecchia.transpose());
-				sp_mat_rm_t Bp_inv_Dp_rm, Bp_inv_rm;
-				// Bp^-1 is not sparse. It is only formed for the part Bp^-1 Dp Bp^-T of the predictive covariance matrix,
-				//	and products with Bp^-1 are calculated with triangular solves
-				if (!CondObsOnly && calc_pred_cov) {
-					sp_mat_rm_t Bp_rm = sp_mat_rm_t(Bp);
-					Bp_inv_rm = sp_mat_rm_t(Bp_rm.rows(), Bp_rm.cols());
-					Bp_inv_rm.setIdentity();
-					TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(Bp_rm, Bp_inv_rm, Bp_inv_rm, false);
-					Bp_inv_Dp_rm = Bp_inv_rm * Dp.asDiagonal();
-				}
+				// Products with Bp^-1, which is not sparse, are calculated with triangular solves
 				if (calc_pred_cov) {
 					pred_cov = den_mat_t::Zero(num_pred, num_pred);
 				}
@@ -5728,7 +5732,9 @@ namespace GPBoost {
 						pred_cov.diagonal().array() += Dp.array();
 					}
 					else {
-						pred_cov += Bp_inv_Dp_rm * Bp_inv_rm.transpose();
+						den_mat_t Bp_inv_Dp_Bp_inv_t;
+						CalcLInvDLInvT(Bp, Dp, Bp_inv_Dp_Bp_inv_t);
+						pred_cov += Bp_inv_Dp_Bp_inv_t;
 					}
 					if (pred_mean.size() > 10000) {
 						Log::REInfo("The computational complexity and the storage of the predictive covariance martix heavily depend on the number of prediction location. "
@@ -5802,33 +5808,30 @@ namespace GPBoost {
 
 				den_mat_t M_aux_1 = sigma_ip_inv_sigma_cross_cov_pred.transpose() * (Bt_D_inv_B_cross_cov.transpose() * sigma_resid_plus_W_inv_cross_cov);
 				den_mat_t M_aux_2 = chol_fact_sigma_woodbury_2.solve(M_aux_1.transpose());
-				sp_mat_t Maux; //Maux = L\(Bpo^T * Bp^-1), L = Chol(Sigma^-1 + W)
-				den_mat_t M_aux_3(pred_mean.size(), (*cross_cov).cols());
-				if (CondObsOnly) {
-					Maux = Bpo.transpose();//Bp = Id
-#pragma omp parallel for schedule(static)   
-					for (int i = 0; i < (*cross_cov).cols(); ++i) {
-						M_aux_3.col(i) = Bpo_rm * sigma_resid_plus_W_inv_cross_cov.col(i);
-					}
-				}
-				else {
-					Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
-					Bp_inv.setIdentity();
-					TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
-					//Bp.triangularView<Eigen::UpLoType::UnitLower>().solveInPlace(Bp_inv);//much slower
-					Maux = Bpo.transpose() * Bp_inv.transpose();
-					M_aux_3 = Maux.transpose() * sigma_resid_plus_W_inv_cross_cov;
+				// M_aux_3 = Bp^-1 * Bpo * (Sigma^-1 + W)^-1 * Sigma_nm. Bp^-1 is not formed since it is not sparse
+				den_mat_t M_aux_3 = Bpo * sigma_resid_plus_W_inv_cross_cov;
+				if (!CondObsOnly) {
+					TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(Bp, M_aux_3, M_aux_3, false);
 				}
 				den_mat_t M_aux_4 = chol_fact_sigma_woodbury_2.solve(M_aux_3.transpose());
-				TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux, Maux, false);
 				if (calc_pred_cov) {
+					sp_mat_t Maux; //Maux = L^-1 * P * Bpo^T * Bp^-T for the Cholesky factorization L L^T = P * (Sigma^-1 + W) * P^T
+					if (CondObsOnly) {
+						Maux = Bpo.transpose();//Bp = Id
+					}
+					else {
+						sp_mat_t Bp_inv_Bpo;
+						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bpo, Bp_inv_Bpo, false);
+						Maux = Bp_inv_Bpo.transpose();
+					}
+					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux, Maux, false);
 					if (CondObsOnly) {
 						pred_cov = Maux.transpose() * Maux;
 						pred_cov.diagonal().array() += Dp.array();
 					}
 					else {
-						Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
-						pred_cov = Bp_inv_Dp * Bp_inv.transpose() + Maux.transpose() * Maux;
+						CalcLInvDLInvT(Bp, Dp, pred_cov);
+						pred_cov += Maux.transpose() * Maux;
 					}
 					T_mat PP_Part, PP_Part1, PP_Part2, PP_Part3, PP_Part3_t, PP_Part4, PP_Part4_t, PP_Part5;
 					ConvertTo_T_mat_FromDense<T_mat>(chol_ip_cross_cov_pred.transpose() * chol_ip_cross_cov_pred, PP_Part);
@@ -5843,20 +5846,27 @@ namespace GPBoost {
 					pred_cov += PP_Part - PP_Part1 + PP_Part2 + PP_Part3 + PP_Part3_t - PP_Part4 - PP_Part4_t + PP_Part5;
 				}
 				if (calc_pred_var) {
-					pred_var = vec_t(num_pred);
-					Maux = Maux.cwiseProduct(Maux);
 					if (CondObsOnly) {
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_pred; ++i) {
-							pred_var[i] = Dp[i];
-						}
+						pred_var = Dp;
 					}
 					else {
-						pred_var = Bp_inv.cwiseAbs2() * Dp;
+						CalcDiagLInvDLInvT(Bp, Dp, pred_var);
 					}
+					// Squared norms of the columns of L^-1 * P * Bpo^T * Bp^-T for the Cholesky factorization L L^T = P * (Sigma^-1 + W) * P^T,
+					//	i.e. the diagonal of Bp^-1 * Bpo * (Sigma^-1 + W)^-1 * Bpo^T * Bp^-T. The columns are calculated one after another
+					vec_t norms;
+					CalcColSquaredNormsLInvPRColumnwise(chol_fact_SigmaI_plus_ZtWZ_vecchia_.CholFactMatrix(),
+						chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().indices(), num_pred, [&](int i, vec_t& column) {
+							vec_t Bp_inv_t_e_i = vec_t::Zero(num_pred);
+							Bp_inv_t_e_i[i] = 1.;
+							if (!CondObsOnly) {
+								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, Bp_inv_t_e_i, Bp_inv_t_e_i, true);
+							}
+							column = Bpo.transpose() * Bp_inv_t_e_i;
+						}, norms);
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_pred; ++i) {
-						pred_var[i] += Maux.col(i).sum() + chol_ip_cross_cov_pred.col(i).array().square().sum() - sigma_ip_inv_sigma_cross_cov_pred.col(i).dot(M_aux_1.row(i)) +
+						pred_var[i] += norms[i] + chol_ip_cross_cov_pred.col(i).array().square().sum() - sigma_ip_inv_sigma_cross_cov_pred.col(i).dot(M_aux_1.row(i)) +
 							M_aux_2.col(i).dot(M_aux_1.row(i)) + 2 * sigma_ip_inv_sigma_cross_cov_pred.col(i).dot(M_aux_3.row(i)) - 2 * M_aux_2.col(i).dot(M_aux_3.row(i)) +
 							M_aux_4.col(i).dot(M_aux_3.row(i));
 					}
@@ -5931,7 +5941,6 @@ namespace GPBoost {
 				}
 				diag_information_variance_correction_for_prediction_ = false;
 			}
-			sp_mat_t Bp_inv, Bp_inv_Dp;
 			//Version Simulation
 			if (matrix_inversion_method_ == "iterative") {
 				if (!sample_posterior) {
@@ -5940,17 +5949,8 @@ namespace GPBoost {
 				if (!calc_pred_cov && !calc_pred_var) {
 					nsim_var_pred_ = 0;
 				}
-				sp_mat_rm_t Bp_inv_Dp_rm, Bp_inv_rm;
 				sp_mat_rm_t Bpo_rm = sp_mat_rm_t(Bpo);
-				// Bp^-1 is not sparse. It is only formed for the part Bp^-1 Dp Bp^-T of the predictive covariance matrix,
-				//	and products with Bp^-1 are calculated with triangular solves
-				if (!CondObsOnly && calc_pred_cov) {
-					sp_mat_rm_t Bp_rm = sp_mat_rm_t(Bp);
-					Bp_inv_rm = sp_mat_rm_t(Bp_rm.rows(), Bp_rm.cols());
-					Bp_inv_rm.setIdentity();
-					TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(Bp_rm, Bp_inv_rm, Bp_inv_rm, false);
-					Bp_inv_Dp_rm = Bp_inv_rm * Dp.asDiagonal();
-				}
+				// Products with Bp^-1, which is not sparse, are calculated with triangular solves
 				if (calc_pred_cov) {
 					pred_cov = den_mat_t::Zero(num_pred, num_pred);
 				}
@@ -6052,7 +6052,9 @@ namespace GPBoost {
 						pred_cov.diagonal().array() += Dp.array();
 					}
 					else {
-						pred_cov += Bp_inv_Dp_rm * Bp_inv_rm.transpose();
+						den_mat_t Bp_inv_Dp_Bp_inv_t;
+						CalcLInvDLInvT(Bp, Dp, Bp_inv_Dp_Bp_inv_t);
+						pred_cov += Bp_inv_Dp_Bp_inv_t;
 					}
 				}
 				if (calc_pred_var) {
@@ -6071,65 +6073,71 @@ namespace GPBoost {
 				if (sample_posterior) {
 					Log::REFatal("Posterior sampling is not implemented for the Vecchia approximation using Cholesky decomposition.");
 				}
-				sp_mat_t Maux; //Maux = L\(Bpo^T * Bp^-1), L = Chol(Sigma^-1 + W)
-				if (CondObsOnly) {
-					Maux = Bpo.transpose();//Bp = Id
-				}
-				else {
-					Bp_inv = sp_mat_t(Bp.rows(), Bp.cols());
-					Bp_inv.setIdentity();
-					TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bp_inv, Bp_inv, false);
-					//Bp.triangularView<Eigen::UpLoType::UnitLower>().solveInPlace(Bp_inv);//much slower
-					Maux = Bpo.transpose() * Bp_inv.transpose();
-				}
-				if (num_sets_re_ == 1) {
-					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux, Maux, false);
-				}
-				else {
-					CHECK(num_sets_re_ == 2);
-					sp_mat_t Maux_1, Maux_2, Maux_all;
-					if (num_gp == 0) {
-						Maux_1 = Maux;
-						Maux_2 = sp_mat_t(dim_mode_per_set_re_, num_pred);
+				// Bp^-1 is not formed since it is not sparse. For the predictive variances, the columns of Bpo^T * Bp^-T are
+				//	calculated one after another with triangular solves and are not stored
+				if (calc_pred_cov) {
+					sp_mat_t Maux; //Maux = L^-1 * P * Bpo^T * Bp^-T for the Cholesky factorization L L^T = P * (Sigma^-1 + W) * P^T
+					if (CondObsOnly) {
+						Maux = Bpo.transpose();//Bp = Id
 					}
 					else {
-						Maux_1 = sp_mat_t(dim_mode_per_set_re_, num_pred);
-						Maux_2 = Maux;
+						sp_mat_t Bp_inv_Bpo;
+						TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(Bp, Bpo, Bp_inv_Bpo, false);
+						Maux = Bp_inv_Bpo.transpose();
 					}
-					GPBoost::CreatSparseBlockDiagonalMartix<sp_mat_t>(Maux_1, Maux_2, Maux_all);
-					Maux_1.resize(0, 0);
-					Maux_2.resize(0, 0);
-					CHECK(Maux_all.rows() == dim_mode_);
-					CHECK(Maux_all.cols() == 2 * num_pred);
-					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux_all, Maux_all, false);
-					Maux = Maux_all.block(num_gp * dim_mode_per_set_re_, num_gp * num_pred, dim_mode_per_set_re_, num_pred);
-				}
-				if (calc_pred_cov) {
+					if (num_sets_re_ == 1) {
+						TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux, Maux, false);
+					}
+					else {
+						CHECK(num_sets_re_ == 2);
+						sp_mat_t Maux_1, Maux_2, Maux_all;
+						if (num_gp == 0) {
+							Maux_1 = Maux;
+							Maux_2 = sp_mat_t(dim_mode_per_set_re_, num_pred);
+						}
+						else {
+							Maux_1 = sp_mat_t(dim_mode_per_set_re_, num_pred);
+							Maux_2 = Maux;
+						}
+						GPBoost::CreatSparseBlockDiagonalMartix<sp_mat_t>(Maux_1, Maux_2, Maux_all);
+						Maux_1.resize(0, 0);
+						Maux_2.resize(0, 0);
+						CHECK(Maux_all.rows() == dim_mode_);
+						CHECK(Maux_all.cols() == 2 * num_pred);
+						TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, sp_mat_t, sp_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_, Maux_all, Maux_all, false);
+						Maux = Maux_all.block(num_gp * dim_mode_per_set_re_, num_gp * num_pred, dim_mode_per_set_re_, num_pred);
+					}
 					if (CondObsOnly) {
 						pred_cov = Maux.transpose() * Maux;
 						pred_cov.diagonal().array() += Dp.array();
 					}
 					else {
-						Bp_inv_Dp = Bp_inv * Dp.asDiagonal();
-						pred_cov = Bp_inv_Dp * Bp_inv.transpose() + Maux.transpose() * Maux;
+						CalcLInvDLInvT(Bp, Dp, pred_cov);
+						pred_cov += Maux.transpose() * Maux;
 					}
 				}
 				if (calc_pred_var) {
-					pred_var = vec_t(num_pred);
-					Maux = Maux.cwiseProduct(Maux);
 					if (CondObsOnly) {
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_pred; ++i) {
-							pred_var[i] = Dp[i] + Maux.col(i).sum();
-						}
+						pred_var = Dp;
 					}
 					else {
-						const vec_t diag_Bp_inv_Dp_Bp_inv_t = Bp_inv.cwiseAbs2() * Dp;
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_pred; ++i) {
-							pred_var[i] = diag_Bp_inv_Dp_Bp_inv_t[i] + Maux.col(i).sum();
-						}
+						CalcDiagLInvDLInvT(Bp, Dp, pred_var);
 					}
+					// Squared norms of the columns of L^-1 * P * Bpo^T * Bp^-T for the Cholesky factorization L L^T = P * (Sigma^-1 + W) * P^T,
+					//	i.e. the diagonal of Bp^-1 * Bpo * (Sigma^-1 + W)^-1 * Bpo^T * Bp^-T. With two sets of random effects, the columns
+					//	are in the block of the set 'num_gp' and only the rows of this block are used, as above
+					vec_t norms;
+					CalcColSquaredNormsLInvPRColumnwise(chol_fact_SigmaI_plus_ZtWZ_vecchia_.CholFactMatrix(),
+						chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().indices(), num_pred, [&](int i, vec_t& column) {
+							vec_t Bp_inv_t_e_i = vec_t::Zero(num_pred);
+							Bp_inv_t_e_i[i] = 1.;
+							if (!CondObsOnly) {
+								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, Bp_inv_t_e_i, Bp_inv_t_e_i, true);
+							}
+							column.setZero();
+							column.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_) = Bpo.transpose() * Bp_inv_t_e_i;
+						}, norms, num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_);
+					pred_var += norms;
 				}
 			}
 		}//end calc_pred_cov || calc_pred_var || sample_posterior

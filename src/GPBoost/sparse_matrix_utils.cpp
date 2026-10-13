@@ -108,6 +108,19 @@ namespace GPBoost {
 		}
 	}//end CalcDiagLInvDLInvT
 
+	void CalcLInvDLInvT(const sp_mat_t& L, const vec_t& d, den_mat_t& M) {
+		CHECK(L.isCompressed());
+		CHECK(L.rows() == L.cols());
+		CHECK(L.cols() == d.size());
+		const int n = (int)L.cols();
+		// X = L^(-1) diag(d), and M = L^(-1) X^T = L^(-1) diag(d) L^(-T)
+		den_mat_t X = den_mat_t::Zero(n, n);
+		X.diagonal() = d;
+		TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(L, X, X, false);
+		M = X.transpose();
+		TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(L, M, M, false);
+	}//end CalcLInvDLInvT
+
 	void CalcColSquaredNormsLInvR(const sp_mat_t& L, const sp_mat_t& R, vec_t& norms) {
 		CHECK(L.isCompressed());
 		CHECK(L.rows() == L.cols());
@@ -218,6 +231,45 @@ namespace GPBoost {
 		}
 	}//end CalcColSquaredNormsCholFactorInvR
 
+	void CalcColSquaredNormsLInvPRColumnwise(const sp_mat_t& L, const Eigen::VectorXi& perm_indices, int num_cols,
+		const std::function<void(int, vec_t&)>& calc_column, vec_t& norms, int first_row, int num_rows) {
+		CHECK(L.isCompressed());
+		CHECK(L.rows() == L.cols());
+		const int n = (int)L.cols();
+		const bool has_permutation = perm_indices.size() > 0;
+		if (has_permutation) {
+			CHECK((int)perm_indices.size() == n);
+		}
+		if (num_rows < 0) {
+			num_rows = n - first_row;
+		}
+		CHECK(first_row >= 0 && num_rows >= 0 && first_row + num_rows <= n);
+		const double* val = L.valuePtr();
+		const int* row_idx = L.innerIndexPtr();
+		const int* col_ptr = L.outerIndexPtr();
+		norms.resize(num_cols);
+#pragma omp parallel
+		{
+			vec_t r(n), x(n);
+#pragma omp for schedule(dynamic, 16)
+			for (int j = 0; j < num_cols; ++j) {
+				calc_column(j, r);
+				CHECK((int)r.size() == n);
+				if (has_permutation) {
+					for (int i = 0; i < n; ++i) {
+						x[perm_indices[i]] = r[i];
+					}
+					sp_L_solve(val, row_idx, col_ptr, n, x.data());
+					norms[j] = x.segment(first_row, num_rows).squaredNorm();
+				}
+				else {
+					sp_L_solve(val, row_idx, col_ptr, n, r.data());
+					norms[j] = r.segment(first_row, num_rows).squaredNorm();
+				}
+			}
+		}
+	}//end CalcColSquaredNormsLInvPRColumnwise
+
 	/*!
 	* \brief First position in the sorted range [first, last) whose value is not smaller than 'value'. The search starts at
 	*		'first' with exponentially increasing steps, which is fast if the position is close to 'first'
@@ -323,6 +375,7 @@ namespace GPBoost {
 	void SelectedInversionCholesky(const sp_mat_t& L, sp_mat_t& Z_lower, int max_num_rows_dense) {
 		CHECK(L.isCompressed());
 		CHECK(L.rows() == L.cols());
+		CHECK(max_num_rows_dense > 0);
 		const int* col_ptr = L.outerIndexPtr();
 		const int* row_idx = L.innerIndexPtr();
 		const double* l_val = L.valuePtr();
@@ -332,108 +385,21 @@ namespace GPBoost {
 		//	have the same rows S below J, this gives
 		//		Z[S, J] = -Z[S, S] Y and Z[J, J] = L[J, J]^(-T) L[J, J]^(-1) + Y^T Z[S, S] Y with Y = L[S, J] L[J, J]^(-1).
 		//	Z[S, S] is on the sparsity pattern of L, since the pattern of a Cholesky factor contains its fill-in, and it is known
-		//	when the supernodes are processed from the last to the first one
+		//	when the supernodes are processed from the last to the first one. Its rows are gathered in panels S_b of at most
+		//	max_num_rows_dense^2 entries: Z[S_b, J] = -Z[S_b, S] Y, and Z[J, J] is accumulated as Y[S_b, J]^T (Z[S_b, S] Y)
 		bool pattern_not_closed = false;
 		std::vector<int> supernode_start;
 		SupernodesCholFactor(L, supernode_start);
-		// Column j without a dense Z[R, R], where R are the rows below the diagonal in column j:
-		//	Z_ij = -1 / L_jj * sum_{k in R} L_kj Z_ik for i in R and Z_jj = 1 / L_jj^2 - 1 / L_jj * sum_{k in R} L_kj Z_kj
-		auto column_without_dense_block = [&](int j) {
-			const int p_diag = col_ptr[j];
-			const int num_r = col_ptr[j + 1] - p_diag - 1;
-			const int* R = row_idx + p_diag + 1;
-			const double* l_R = l_val + p_diag + 1;
-			const double l_jj = l_val[p_diag];
-			vec_t s(num_r);
-			bool entry_missing = false;
-			// s_a = sum_b Z(R[a], R[b]) L_{R[b], j}, the entries with b >= a are in column R[a] and the ones with b < a in column R[b]
-#pragma omp parallel for schedule(dynamic, 8) reduction(||:entry_missing)
-			for (int a = 0; a < num_r; ++a) {
-				double s_a = 0.;
-				const int* rows_a_end = row_idx + col_ptr[R[a] + 1];
-				const int* pos = row_idx + col_ptr[R[a]];
-				for (int b = a; b < num_r; ++b) {
-					pos = GallopingLowerBound(pos, rows_a_end, R[b]);
-					if (pos == rows_a_end || *pos != R[b]) {
-						entry_missing = true;
-					}
-					else {
-						s_a += z_val[pos - row_idx] * l_R[b];
-					}
-				}
-				for (int b = 0; b < a; ++b) {
-					const int* rows_b_end = row_idx + col_ptr[R[b] + 1];
-					const int* pos_b = std::lower_bound(row_idx + col_ptr[R[b]], rows_b_end, R[a]);
-					if (pos_b == rows_b_end || *pos_b != R[a]) {
-						entry_missing = true;
-					}
-					else {
-						s_a += z_val[pos_b - row_idx] * l_R[b];
-					}
-				}
-				s[a] = s_a;
-			}
-			if (entry_missing) {
-				pattern_not_closed = true;
-			}
-			double sum = 0.;
-			for (int a = 0; a < num_r; ++a) {
-				z_val[p_diag + 1 + a] = -s[a] / l_jj;
-				sum += l_R[a] * z_val[p_diag + 1 + a];
-			}
-			z_val[p_diag] = 1. / (l_jj * l_jj) - sum / l_jj;
-		};
-		den_mat_t Z_SS, L_JJ, L_SJ, Y, Z_SJ, L_JJ_inv, Z_JJ;
+		den_mat_t Z_panel, Z_panel_Y, L_JJ, L_SJ, Y, L_JJ_inv, Z_JJ;
 		for (int sn = (int)supernode_start.size() - 2; sn >= 0; --sn) {
 			const int j0 = supernode_start[sn];
 			const int t = supernode_start[sn + 1] - j0;
 			// The rows S below the supernode are the rows below the diagonal in its last column
 			const int* S = row_idx + col_ptr[j0 + t - 1] + 1;
 			const int r = col_ptr[j0 + t] - col_ptr[j0 + t - 1] - 1;
-			if (r > max_num_rows_dense) {
-				for (int j = j0 + t - 1; j >= j0; --j) {
-					column_without_dense_block(j);
-				}
-				continue;
-			}
 			// Parallel computations only pay off for large supernodes, for the many small ones the overhead of starting
 			//	the threads dominates
 			const bool large_supernode = IsLargeSupernode((double)t, (double)r);
-			// Z[S, S]: column b is in column S[b] of Z
-			Z_SS.resize(r, r);
-			auto gather_column = [&](int b) -> bool {
-				const int* rows_c_end = row_idx + col_ptr[S[b] + 1];
-				const int* pos = row_idx + col_ptr[S[b]];
-				bool found_all = true;
-				for (int a = b; a < r; ++a) {
-					pos = GallopingLowerBound(pos, rows_c_end, S[a]);
-					double z_ab = 0.;
-					if (pos == rows_c_end || *pos != S[a]) {
-						found_all = false;
-					}
-					else {
-						z_ab = z_val[pos - row_idx];
-					}
-					Z_SS(a, b) = z_ab;
-					Z_SS(b, a) = z_ab;
-				}
-				return found_all;
-			};
-			if (r > 2048) {
-#pragma omp parallel for schedule(dynamic, 8) reduction(||:pattern_not_closed)
-				for (int b = 0; b < r; ++b) {
-					if (!gather_column(b)) {
-						pattern_not_closed = true;
-					}
-				}
-			}
-			else {
-				for (int b = 0; b < r; ++b) {
-					if (!gather_column(b)) {
-						pattern_not_closed = true;
-					}
-				}
-			}
 			// Column j0 + p of L has the rows j0 + p, ..., j0 + t - 1 and then the rows S
 			L_JJ = den_mat_t::Zero(t, t);
 			L_SJ.resize(r, t);
@@ -458,7 +424,6 @@ namespace GPBoost {
 						const int a0 = b * block_size;
 						L_JJ.triangularView<Eigen::Lower>().solveInPlace<Eigen::OnTheRight>(Y.middleRows(a0, std::min(block_size, r - a0)));
 					}
-					Z_SJ.noalias() = Z_SS * Y;
 				}
 				Z_JJ.setIdentity(t, t);
 				const int num_blocks_J = (t + block_size - 1) / block_size;
@@ -469,9 +434,6 @@ namespace GPBoost {
 					L_JJ.bottomRightCorner(t - p0, t - p0).triangularView<Eigen::Lower>().solveInPlace(Z_JJ.block(p0, p0, t - p0, w));
 					L_JJ.triangularView<Eigen::Lower>().transpose().solveInPlace(Z_JJ.middleCols(p0, w));
 				}
-				if (r > 0) {
-					Z_JJ.noalias() += Y.transpose() * Z_SJ;
-				}
 			}
 			else {
 				// lazy products are not parallelized
@@ -479,20 +441,99 @@ namespace GPBoost {
 				Z_JJ.noalias() = L_JJ_inv.transpose().lazyProduct(L_JJ_inv);
 				if (r > 0) {
 					Y.noalias() = L_SJ.lazyProduct(L_JJ_inv);
-					Z_SJ.noalias() = Z_SS.lazyProduct(Y);
-					Z_JJ.noalias() += Y.transpose().lazyProduct(Z_SJ);
 				}
 			}
-			if (r > 0) {
-				Z_SJ *= -1.;
+			// Z(S[a], S[c]) is in column S[min(a, c)] at row S[max(a, c)]. For the row a of a panel, the entries with c >= a are
+			//	gathered from column S[a], and they are also the entries (c, a) of the panel if c is in the panel. The entries
+			//	with c before the panel are gathered from column S[c]. The two loops write disjoint entries of the panel
+			const int num_rows_panel = (r <= max_num_rows_dense) ? r :
+				std::max(1, (int)((double)max_num_rows_dense * (double)max_num_rows_dense / (double)r));
+			for (int a0 = 0; a0 < r; a0 += num_rows_panel) {
+				const int nb = std::min(num_rows_panel, r - a0);
+				Z_panel.resize(nb, r);
+				auto gather_row = [&](int a) -> bool {
+					const int* rows_a_end = row_idx + col_ptr[S[a] + 1];
+					const int* pos = row_idx + col_ptr[S[a]];
+					bool found_all = true;
+					for (int c = a; c < r; ++c) {
+						pos = GallopingLowerBound(pos, rows_a_end, S[c]);
+						double z_ac = 0.;
+						if (pos == rows_a_end || *pos != S[c]) {
+							found_all = false;
+						}
+						else {
+							z_ac = z_val[pos - row_idx];
+						}
+						Z_panel(a - a0, c) = z_ac;
+						if (c < a0 + nb) {
+							Z_panel(c - a0, a) = z_ac;
+						}
+					}
+					return found_all;
+				};
+				auto gather_column_before_panel = [&](int c) -> bool {
+					const int* rows_c_end = row_idx + col_ptr[S[c] + 1];
+					const int* pos = std::lower_bound(row_idx + col_ptr[S[c]], rows_c_end, S[a0]);
+					bool found_all = true;
+					for (int a = a0; a < a0 + nb; ++a) {
+						pos = GallopingLowerBound(pos, rows_c_end, S[a]);
+						double z_ac = 0.;
+						if (pos == rows_c_end || *pos != S[a]) {
+							found_all = false;
+						}
+						else {
+							z_ac = z_val[pos - row_idx];
+						}
+						Z_panel(a - a0, c) = z_ac;
+					}
+					return found_all;
+				};
+				if (r > 2048) {
+#pragma omp parallel for schedule(dynamic, 8) reduction(||:pattern_not_closed)
+					for (int a = a0; a < a0 + nb; ++a) {
+						if (!gather_row(a)) {
+							pattern_not_closed = true;
+						}
+					}
+#pragma omp parallel for schedule(dynamic, 8) reduction(||:pattern_not_closed)
+					for (int c = 0; c < a0; ++c) {
+						if (!gather_column_before_panel(c)) {
+							pattern_not_closed = true;
+						}
+					}
+				}
+				else {
+					for (int a = a0; a < a0 + nb; ++a) {
+						if (!gather_row(a)) {
+							pattern_not_closed = true;
+						}
+					}
+					for (int c = 0; c < a0; ++c) {
+						if (!gather_column_before_panel(c)) {
+							pattern_not_closed = true;
+						}
+					}
+				}
+				if (large_supernode) {
+					Z_panel_Y.noalias() = Z_panel * Y;
+					Z_JJ.noalias() += Y.middleRows(a0, nb).transpose() * Z_panel_Y;
+				}
+				else {
+					Z_panel_Y.noalias() = Z_panel.lazyProduct(Y);
+					Z_JJ.noalias() += Y.middleRows(a0, nb).transpose().lazyProduct(Z_panel_Y);
+				}
+				// Z[S_b, J] = -Z[S_b, S] Y
+				for (int p = 0; p < t; ++p) {
+					const int c = col_ptr[j0 + p];
+					for (int a = 0; a < nb; ++a) {
+						z_val[c + t - p + a0 + a] = -Z_panel_Y(a, p);
+					}
+				}
 			}
 			for (int p = 0; p < t; ++p) {
 				const int c = col_ptr[j0 + p];
 				for (int q = p; q < t; ++q) {
 					z_val[c + q - p] = Z_JJ(q, p);
-				}
-				for (int a = 0; a < r; ++a) {
-					z_val[c + t - p + a] = Z_SJ(a, p);
 				}
 			}
 		}

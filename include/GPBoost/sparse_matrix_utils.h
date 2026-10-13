@@ -11,6 +11,7 @@
 
 #include <iterator>
 #include <memory>
+#include <functional>
 #include <GPBoost/type_defs.h>
 #include <LightGBM/utils/log.h>
 #include <GPBoost/utils.h>
@@ -68,6 +69,15 @@ namespace GPBoost {
 	void CalcDiagLInvDLInvT(const sp_mat_t& L, const vec_t& d, vec_t& diag);
 
 	/*!
+	* \brief Calculate L^(-1) diag(d) L^(-T) for a sparse lower triangular matrix L as a dense matrix without storing L^(-1),
+	*		which is usually not sparse, with two triangular solves with dense right-hand sides
+	* \param L Sparse lower triangular matrix (compressed, column-major format, with the diagonal as first entry of every column)
+	* \param d Vector d
+	* \param[out] M L^(-1) diag(d) L^(-T)
+	*/
+	void CalcLInvDLInvT(const sp_mat_t& L, const vec_t& d, den_mat_t& M);
+
+	/*!
 	* \brief Calculate the squared norms of the columns of L^(-1) R for a sparse lower triangular matrix L and a sparse matrix R
 	*		without storing L^(-1) R. The columns are calculated one after another, starting at the first non-zero row of a column of R
 	* \param L Sparse lower triangular matrix (compressed, column-major format, with the diagonal as first entry of every column)
@@ -88,14 +98,31 @@ namespace GPBoost {
 	void CalcColSquaredNormsCholFactorInvR(const sp_mat_t& L, const sp_mat_t& R, vec_t& norms);
 
 	/*!
+	* \brief Calculate the squared norms of the columns of L^(-1) P R for a sparse lower triangular matrix L and a permutation P,
+	*		where the columns of R are calculated one after another by a function and are not stored, e.g., since R is not sparse.
+	*		Optionally, only a range of rows of L^(-1) P R is included in the norms
+	* \param L Sparse lower triangular matrix (compressed, column-major format, with the diagonal as first entry of every column)
+	* \param perm_indices Indices of the permutation P, i.e., (P x)[perm_indices[i]] = x[i] (see 'SparseInverseEntries'). No
+	*		permutation if it is empty
+	* \param num_cols Number of columns of R
+	* \param calc_column Function that writes column i of R into a vector of length L.cols(), whose content on entry is
+	*		undefined. It is called from several threads at the same time
+	* \param[out] norms Squared norms of the columns of L^(-1) P R
+	* \param first_row First row of L^(-1) P R that is included in the norms
+	* \param num_rows Number of rows of L^(-1) P R that are included in the norms, all rows from 'first_row' on if negative
+	*/
+	void CalcColSquaredNormsLInvPRColumnwise(const sp_mat_t& L, const Eigen::VectorXi& perm_indices, int num_cols,
+		const std::function<void(int, vec_t&)>& calc_column, vec_t& norms, int first_row = 0, int num_rows = -1);
+
+	/*!
 	* \brief Selected inversion with the Takahashi equations: calculate the entries of (L L^T)^(-1) on the sparsity pattern of a
 	*		lower triangular Cholesky factor L. The pattern of a Cholesky factor contains the fill-in of the factorization,
 	*		and the recursion therefore only needs entries on this pattern. The cost is of the order of a numeric factorization
 	* \param L Lower triangular Cholesky factor (compressed, column-major format, with sorted row indices and the diagonal as
 	*		first entry of every column)
 	* \param[out] Z_lower Lower triangle of (L L^T)^(-1) on the sparsity pattern of L
-	* \param max_num_rows_dense The entries of the inverse that are needed for a column are gathered into a dense matrix if the
-	*		column has at most this many non-zeros below the diagonal
+	* \param max_num_rows_dense The entries of the inverse that a supernode needs are gathered into dense matrices in panels of
+	*		rows with at most max_num_rows_dense^2 entries per panel
 	*/
 	void SelectedInversionCholesky(const sp_mat_t& L, sp_mat_t& Z_lower, int max_num_rows_dense = 4096);
 
