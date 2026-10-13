@@ -4902,6 +4902,10 @@ namespace GPBoost {
 						CHECK(Bp.cols() == n_pred);
 					}
 					const sp_mat_t Ztilde_t = Ztilde.transpose();
+					sp_mat_rm_t Bpo_rm;
+					if (has_vecchia_gp) {
+						Bpo_rm = sp_mat_rm_t(Bpo);
+					}
 					// A * b
 					auto A_times = [&](const vec_t& b) -> vec_t {
 						vec_t out = Ztilde * b.head(dim_re_group);
@@ -4941,9 +4945,16 @@ namespace GPBoost {
 						//	effect instead of one per prediction point
 						const sp_mat_t P_sqrt = sp_mat_t(*P_sqrt_rm);
 						CalcColSquaredNormsLInvPRColumnwise(P_sqrt, Eigen::VectorXi(), n_pred, [&](int i, vec_t& column) {
-							vec_t e_i = vec_t::Zero(n_pred);
-							e_i[i] = 1.;
-							column = A_t_times(e_i);
+							// column i of A^T: column i of Z_po^T and -Bpo^T * Bp^-T * e_i
+							column.setZero();
+							for (sp_mat_t::InnerIterator it(Ztilde_t, i); it; ++it) {
+								column[it.row()] = it.value();
+							}
+							if (has_vecchia_gp) {
+								vec_t column_gp;
+								CalcColumnRtLInvT(VecchiaCondObsOnly ? nullptr : &Bp, Bpo_rm, i, column_gp);
+								column.tail(dim_gp) = -column_gp;
+							}
 							}, varred_determ);
 					}
 					int num_threads;
@@ -5157,6 +5168,7 @@ namespace GPBoost {
 					//	one after another with triangular solves and are not stored
 					const int num_pred = (int)pred_mean.size();
 					const sp_mat_t Ztilde_T = Ztilde.transpose();
+					const sp_mat_rm_t Bpo_rm = sp_mat_rm_t(Bpo);
 					if (calc_pred_cov) {
 						sp_mat_t Bpo_T_Bp_inv_T; //Bpo_T_Bp_inv_T = Bpo^T * Bp^-T
 						if (VecchiaCondObsOnly) {
@@ -5205,13 +5217,9 @@ namespace GPBoost {
 								for (sp_mat_t::InnerIterator it(Ztilde_T, i); it; ++it) {
 									column[it.row()] = it.value();
 								}
-								vec_t Bp_inv_t_e_i = vec_t::Zero(num_pred);
-								Bp_inv_t_e_i[i] = 1.;
-								if (!VecchiaCondObsOnly) {
-									TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, Bp_inv_t_e_i, Bp_inv_t_e_i, true);
-								}
-								column.tail(dim_gp) = Bpo.transpose() * Bp_inv_t_e_i;
-								column.tail(dim_gp) *= -1.;
+								vec_t column_gp;
+								CalcColumnRtLInvT(VecchiaCondObsOnly ? nullptr : &Bp, Bpo_rm, i, column_gp);
+								column.tail(dim_gp) = -column_gp;
 							}, norms);
 						pred_var += norms;
 						if (VecchiaCondObsOnly) {
@@ -5857,12 +5865,7 @@ namespace GPBoost {
 					vec_t norms;
 					CalcColSquaredNormsLInvPRColumnwise(chol_fact_SigmaI_plus_ZtWZ_vecchia_.CholFactMatrix(),
 						chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().indices(), num_pred, [&](int i, vec_t& column) {
-							vec_t Bp_inv_t_e_i = vec_t::Zero(num_pred);
-							Bp_inv_t_e_i[i] = 1.;
-							if (!CondObsOnly) {
-								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, Bp_inv_t_e_i, Bp_inv_t_e_i, true);
-							}
-							column = Bpo.transpose() * Bp_inv_t_e_i;
+							CalcColumnRtLInvT(CondObsOnly ? nullptr : &Bp, Bpo_rm, i, column);
 						}, norms);
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_pred; ++i) {
@@ -6075,6 +6078,7 @@ namespace GPBoost {
 				}
 				// Bp^-1 is not formed since it is not sparse. For the predictive variances, the columns of Bpo^T * Bp^-T are
 				//	calculated one after another with triangular solves and are not stored
+				const sp_mat_rm_t Bpo_rm = sp_mat_rm_t(Bpo);
 				if (calc_pred_cov) {
 					sp_mat_t Maux; //Maux = L^-1 * P * Bpo^T * Bp^-T for the Cholesky factorization L L^T = P * (Sigma^-1 + W) * P^T
 					if (CondObsOnly) {
@@ -6123,13 +6127,10 @@ namespace GPBoost {
 					vec_t norms;
 					CalcColSquaredNormsLInvPRColumnwise(chol_fact_SigmaI_plus_ZtWZ_vecchia_.CholFactMatrix(),
 						chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().indices(), num_pred, [&](int i, vec_t& column) {
-							vec_t Bp_inv_t_e_i = vec_t::Zero(num_pred);
-							Bp_inv_t_e_i[i] = 1.;
-							if (!CondObsOnly) {
-								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, Bp_inv_t_e_i, Bp_inv_t_e_i, true);
-							}
+							vec_t column_block;
+							CalcColumnRtLInvT(CondObsOnly ? nullptr : &Bp, Bpo_rm, i, column_block);
 							column.setZero();
-							column.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_) = Bpo.transpose() * Bp_inv_t_e_i;
+							column.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_) = column_block;
 						}, norms);
 					pred_var += norms;
 				}

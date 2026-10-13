@@ -70,12 +70,24 @@ namespace GPBoost {
 
 	/*!
 	* \brief Calculate L^(-1) diag(d) L^(-T) for a sparse lower triangular matrix L as a dense matrix without storing L^(-1),
-	*		which is usually not sparse, with two triangular solves with dense right-hand sides
+	*		which is usually not sparse, with two triangular solves in place of the dense result
 	* \param L Sparse lower triangular matrix (compressed, column-major format, with the diagonal as first entry of every column)
 	* \param d Vector d
 	* \param[out] M L^(-1) diag(d) L^(-T)
 	*/
 	void CalcLInvDLInvT(const sp_mat_t& L, const vec_t& d, den_mat_t& M);
+
+	/*!
+	* \brief Calculate R^T * L^(-T) * e_i, i.e. column i of R^T * L^(-T), for a sparse lower triangular matrix L (or the identity)
+	*		and a sparse row-major matrix R with as many rows as L. L^(-T) * e_i is zero below row i, so only the columns of L
+	*		and the rows of R up to i are used
+	* \param L Sparse lower triangular matrix (compressed, column-major format, with the diagonal as first entry of every column),
+	*		nullptr for the identity matrix
+	* \param R Sparse row-major matrix (compressed)
+	* \param i Column index
+	* \param[out] column R^T * L^(-T) * e_i
+	*/
+	void CalcColumnRtLInvT(const sp_mat_t* L, const sp_mat_rm_t& R, int i, vec_t& column);
 
 	/*!
 	* \brief Calculate the squared norms of the columns of L^(-1) R for a sparse lower triangular matrix L and a sparse matrix R

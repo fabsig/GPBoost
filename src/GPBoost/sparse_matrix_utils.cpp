@@ -113,13 +113,54 @@ namespace GPBoost {
 		CHECK(L.rows() == L.cols());
 		CHECK(L.cols() == d.size());
 		const int n = (int)L.cols();
-		// X = L^(-1) diag(d), and M = L^(-1) X^T = L^(-1) diag(d) L^(-T)
-		den_mat_t X = den_mat_t::Zero(n, n);
-		X.diagonal() = d;
-		TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(L, X, X, false);
-		M = X.transpose();
+		// M = L^(-1) diag(d) first and then M = L^(-1) M^T = L^(-1) diag(d) L^(-T), both in place
+		M = den_mat_t::Zero(n, n);
+		M.diagonal() = d;
+		TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(L, M, M, false);
+		M.transposeInPlace();
 		TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(L, M, M, false);
 	}//end CalcLInvDLInvT
+
+	void CalcColumnRtLInvT(const sp_mat_t* L, const sp_mat_rm_t& R, int i, vec_t& column) {
+		CHECK(R.isCompressed());
+		CHECK(i >= 0 && i < R.rows());
+		column = vec_t::Zero(R.cols());
+		const int* r_row_ptr = R.outerIndexPtr();
+		const int* r_col_idx = R.innerIndexPtr();
+		const double* r_val = R.valuePtr();
+		if (L == nullptr) {
+			for (int q = r_row_ptr[i]; q < r_row_ptr[i + 1]; ++q) {
+				column[r_col_idx[q]] = r_val[q];
+			}
+			return;
+		}
+		CHECK(L->isCompressed());
+		CHECK(L->rows() == L->cols());
+		CHECK(L->rows() == R.rows());
+		const double* val = L->valuePtr();
+		const int* row_idx = L->innerIndexPtr();
+		const int* col_ptr = L->outerIndexPtr();
+		// x = L^(-T) e_i by backward substitution over the columns i, ..., 0 of L, x is zero below row i
+		vec_t x = vec_t::Zero(i + 1);
+		x[i] = 1.;
+		for (int j = i; j >= 0; --j) {
+			double x_j = x[j];
+			for (int q = col_ptr[j] + 1; q < col_ptr[j + 1]; ++q) {
+				if (row_idx[q] <= i) {
+					x_j -= val[q] * x[row_idx[q]];
+				}
+			}
+			x[j] = x_j / val[col_ptr[j]];
+		}
+		// R^T x as the sum over the rows r <= i of R with x_r != 0
+		for (int r = 0; r <= i; ++r) {
+			if (x[r] != 0.) {
+				for (int q = r_row_ptr[r]; q < r_row_ptr[r + 1]; ++q) {
+					column[r_col_idx[q]] += x[r] * r_val[q];
+				}
+			}
+		}
+	}//end CalcColumnRtLInvT
 
 	void CalcColSquaredNormsLInvR(const sp_mat_t& L, const sp_mat_t& R, vec_t& norms) {
 		CHECK(L.isCompressed());
