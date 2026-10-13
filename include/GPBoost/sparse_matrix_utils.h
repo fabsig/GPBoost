@@ -100,10 +100,19 @@ namespace GPBoost {
 	void SelectedInversionCholesky(const sp_mat_t& L, sp_mat_t& Z_lower, int max_num_rows_dense = 4096);
 
 	/*!
+	* \brief Approximate run times of two ways of calculating the diagonal of (L L^T)^(-1) for a Cholesky factor L with the
+	*		current number of threads, in units of the time of one operation of a sparse triangular solve with one thread
+	* \param L Cholesky factor (compressed, column-major format, with sorted row indices and the diagonal as first entry of every column)
+	* \param[out] cost_solves Run time of one sparse triangular solve per column, see 'CalcColSquaredNormsCholFactorInvR'
+	* \param[out] cost_selected_inversion Run time of 'SelectedInversionCholesky'
+	*/
+	void CostsDiagonalCholFactorInverse(const sp_mat_t& L, double& cost_solves, double& cost_selected_inversion);
+
+	/*!
 	* \brief Entries of the inverse of a symmetric positive definite matrix A given a sparse Cholesky factorization
 	*		P A P^T = L L^T. The entries on the sparsity pattern of L + L^T, which include the diagonal and all entries
-	*		on the sparsity pattern of A, are calculated once with 'SelectedInversionCholesky'. Other entries are
-	*		calculated with triangular solves
+	*		on the sparsity pattern of A, are calculated with 'SelectedInversionCholesky' when they are first needed.
+	*		Other entries are calculated with triangular solves
 	*/
 	class SparseInverseEntries {
 	public:
@@ -117,8 +126,16 @@ namespace GPBoost {
 		/*! \brief A temporary factor, e.g. a converted row-major factor, would not exist as long as this object */
 		SparseInverseEntries(sp_mat_t&& L, const Eigen::VectorXi& perm_indices) = delete;
 
-		/*! \brief Diagonal of A^(-1) */
+		/*!
+		* \brief Diagonal of A^(-1). If the selected inverse has not been calculated yet, the diagonal is calculated with one
+		*		sparse triangular solve per column if this is cheaper, see 'CostsDiagonalCholFactorInverse', which is the case, e.g.,
+		*		for block-diagonal factors with small blocks
+		*/
 		vec_t Diagonal() const;
+		/*! \brief Diagonal of A^(-1) calculated with one sparse triangular solve per column */
+		vec_t DiagonalBySolves() const;
+		/*! \brief Diagonal of A^(-1) calculated with selected inversion */
+		vec_t DiagonalBySelectedInversion() const;
 
 		/*!
 		* \brief Write the entries of A^(-1) on the non-zeros of a sparse matrix M
@@ -134,6 +151,8 @@ namespace GPBoost {
 		vec_t DiagZAinvZt(const sp_mat_t& Zt) const;
 
 	private:
+		/*! \brief Calculate the selected inverse 'Z_lower_' if this has not been done yet */
+		void CalcSelectedInverse() const;
 		/*! \brief Position of the entry (i,j) of A^(-1) in 'Z_lower_' for indices of A, -1 if it is not on the sparsity pattern of L */
 		int Position(int i, int j) const;
 		/*!
@@ -149,8 +168,10 @@ namespace GPBoost {
 		const sp_mat_t* L_;
 		/*! \brief Copy of L with sorted row indices, used only if the row indices of the given factor are not sorted */
 		sp_mat_t L_sorted_;
-		/*! \brief Lower triangle of (L L^T)^(-1) on the sparsity pattern of L */
-		sp_mat_t Z_lower_;
+		/*! \brief Lower triangle of (L L^T)^(-1) on the sparsity pattern of L (calculated when it is first needed) */
+		mutable sp_mat_t Z_lower_;
+		/*! \brief True if 'Z_lower_' has been calculated */
+		mutable bool selected_inverse_calculated_ = false;
 		/*! \brief perm_[i] is the row of P A P^T that corresponds to row i of A */
 		std::vector<int> perm_;
 	};
@@ -511,6 +532,20 @@ namespace GPBoost {
 	}//end MultiplyCholeskyFactor
 
 	/*!
+	* \brief Column-major sparse Cholesky factor: the factor itself if it is column-major, otherwise a converted copy
+	* \param L Cholesky factor
+	* \param storage Storage of the converted copy
+	* \return Column-major Cholesky factor
+	*/
+	inline const sp_mat_t& ColMajorCholFactor(const sp_mat_t& L, sp_mat_t& /* storage */) {
+		return L;
+	}
+	inline const sp_mat_t& ColMajorCholFactor(const sp_mat_rm_t& L, sp_mat_t& storage) {
+		storage = L;
+		return storage;
+	}
+
+	/*!
 	* \brief Calculate the squared norms of the columns of L^(-1) * P * R for a Cholesky factorization P * A * P^T = L * L^T
 	*		without storing L^(-1) * P * R for a sparse Cholesky factorization, see 'CalcColSquaredNormsCholFactorInvR'
 	* \param chol Cholesky factorization
@@ -528,7 +563,8 @@ namespace GPBoost {
 	}
 	template <class T_chol, class T_mat_R, typename std::enable_if <is_sparse_chol<T_chol>::value>::type* = nullptr >
 	void CalcColSquaredNormsCholFactorInvPR(const T_chol& chol, const T_mat_R& R, vec_t& norms) {
-		const sp_mat_t L = chol.CholFactMatrix();
+		sp_mat_t L_storage;
+		const sp_mat_t& L = ColMajorCholFactor(chol.CholFactMatrix(), L_storage);
 		sp_mat_t P_R = R;
 		if (CholeskyHasPermutation<T_chol>(chol)) {
 			const sp_mat_t R_cm = P_R;
@@ -552,7 +588,8 @@ namespace GPBoost {
 	}
 	template <class T_chol, class T_mat, typename std::enable_if <is_sparse_chol<T_chol>::value>::type* = nullptr >
 	void CalcInverseOnSparsityPattern(const T_chol& chol, T_mat& M) {
-		const sp_mat_t L = chol.CholFactMatrix();
+		sp_mat_t L_storage;
+		const sp_mat_t& L = ColMajorCholFactor(chol.CholFactMatrix(), L_storage);
 		sp_mat_t M_cm = M;
 		SparseInverseEntries(L, chol.permutationP().indices()).OnSparsityPattern(M_cm);
 		M = M_cm;

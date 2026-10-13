@@ -61,6 +61,16 @@ namespace GPBoost {
 			}
 			return M;
 		}
+		/*! \brief The viewed matrix if this view consists of all columns of a single matrix, nullptr otherwise */
+		const den_mat_t* WholeMatrix() const {
+			if (offset_ == 0 && num_cols_ == first_->cols()) {
+				return first_;
+			}
+			if (second_ != nullptr && offset_ == first_->cols() && num_cols_ == second_->cols()) {
+				return second_;
+			}
+			return nullptr;
+		}
 	private:
 		const den_mat_t* first_;
 		const den_mat_t* second_;

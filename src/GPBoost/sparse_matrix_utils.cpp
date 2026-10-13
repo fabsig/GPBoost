@@ -9,6 +9,7 @@
 #include <GPBoost/sparse_matrix_utils.h>
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 namespace GPBoost {
@@ -144,6 +145,27 @@ namespace GPBoost {
 		}
 	}//end CalcColSquaredNormsLInvR
 
+	/*!
+	* \brief Elimination tree of a Cholesky factor (with the diagonal as first entry of every column): the parent of node j is
+	*		the first row below the diagonal in column j, and it is -1 for a root
+	*/
+	static void EliminationTreeCholFactor(const sp_mat_t& L, std::vector<int>& parent) {
+		const int n = (int)L.cols();
+		const int* row_idx = L.innerIndexPtr();
+		const int* col_ptr = L.outerIndexPtr();
+		parent.assign(n, -1);
+#pragma omp parallel for schedule(static)
+		for (int j = 0; j < n; ++j) {
+			int par = -1;
+			for (int p = col_ptr[j] + 1; p < col_ptr[j + 1]; ++p) {
+				if (par < 0 || row_idx[p] < par) {
+					par = row_idx[p];
+				}
+			}
+			parent[j] = par;
+		}
+	}//end EliminationTreeCholFactor
+
 	void CalcColSquaredNormsCholFactorInvR(const sp_mat_t& L, const sp_mat_t& R, vec_t& norms) {
 		CHECK(L.isCompressed());
 		CHECK(L.rows() == L.cols());
@@ -153,44 +175,43 @@ namespace GPBoost {
 		const double* val = L.valuePtr();
 		const int* row_idx = L.innerIndexPtr();
 		const int* col_ptr = L.outerIndexPtr();
-		// Elimination tree: the parent of node j is the first row below the diagonal in column j
-		std::vector<int> parent(n, -1);
-#pragma omp parallel for schedule(static)
-		for (int j = 0; j < n; ++j) {
-			for (int p = col_ptr[j] + 1; p < col_ptr[j + 1]; ++p) {
-				if (parent[j] < 0 || row_idx[p] < parent[j]) {
-					parent[j] = row_idx[p];
-				}
-			}
-		}
+		std::vector<int> parent;
+		EliminationTreeCholFactor(L, parent);
 		norms = vec_t::Zero(num_cols);
 #pragma omp parallel
 		{
 			// Column of L^(-1) R, every entry is set back to zero once it has been used
 			vec_t x = vec_t::Zero(n);
-			std::vector<char> on_path(n, 0);
-			std::vector<int> path;
+			std::vector<char> visited(n, 0);
+			// The nodes on the paths to the root are pushed on a stack such that the stack is a topological order:
+			//	a path that is found later ends below a node of a path that has been found earlier and is placed above it
+			std::vector<int> stack(n), path(n);
 #pragma omp for schedule(dynamic, 16)
 			for (int j = 0; j < num_cols; ++j) {
-				path.clear();
+				int top = n;
 				for (sp_mat_t::InnerIterator it(R, j); it; ++it) {
 					x[it.row()] = it.value();
-					for (int k = (int)it.row(); k >= 0 && !on_path[k]; k = parent[k]) {
-						on_path[k] = 1;
-						path.push_back(k);
+					int len = 0;
+					for (int k = (int)it.row(); k >= 0 && !visited[k]; k = parent[k]) {
+						visited[k] = 1;
+						path[len++] = k;
+					}
+					while (len > 0) {
+						stack[--top] = path[--len];
 					}
 				}
-				// a node is larger than its descendants in the elimination tree, i.e. this is a topological order
-				std::sort(path.begin(), path.end());
 				double norm = 0.;
-				for (const int k : path) {
-					const double x_k = x[k] / val[col_ptr[k]];
-					for (int i = col_ptr[k] + 1; i < col_ptr[k + 1]; ++i) {
-						x[row_idx[i]] -= val[i] * x_k;
+				for (int p = top; p < n; ++p) {
+					const int k = stack[p];
+					if (x[k] != 0.) {
+						const double x_k = x[k] / val[col_ptr[k]];
+						for (int i = col_ptr[k] + 1; i < col_ptr[k + 1]; ++i) {
+							x[row_idx[i]] -= val[i] * x_k;
+						}
+						norm += x_k * x_k;
+						x[k] = 0.;
 					}
-					norm += x_k * x_k;
-					x[k] = 0.;
-					on_path[k] = 0;
+					visited[k] = 0;
 				}
 				norms[j] = norm;
 			}
@@ -223,23 +244,20 @@ namespace GPBoost {
 		return std::lower_bound(lo + 1, hi, value);
 	}
 
-	void SelectedInversionCholesky(const sp_mat_t& L, sp_mat_t& Z_lower, int max_num_rows_dense) {
-		CHECK(L.isCompressed());
-		CHECK(L.rows() == L.cols());
+	/*!
+	* \brief Supernodes of a Cholesky factor (with sorted row indices and the diagonal as first entry of every column): column j + 1
+	*		belongs to the supernode of column j if the rows of column j are j and the rows of column j + 1
+	* \param L Cholesky factor
+	* \param[out] supernode_start First columns of the supernodes, followed by the number of columns
+	*/
+	static void SupernodesCholFactor(const sp_mat_t& L, std::vector<int>& supernode_start) {
 		const int n = (int)L.cols();
 		const int* col_ptr = L.outerIndexPtr();
 		const int* row_idx = L.innerIndexPtr();
-		const double* l_val = L.valuePtr();
-		Z_lower = L;
-		double* z_val = Z_lower.valuePtr();
-		// Z = (L L^T)^(-1) satisfies Z L = L^(-T), which is upper triangular. For a supernode, i.e. consecutive columns J that
-		//	have the same rows S below J, this gives
-		//		Z[S, J] = -Z[S, S] Y and Z[J, J] = L[J, J]^(-T) L[J, J]^(-1) + Y^T Z[S, S] Y with Y = L[S, J] L[J, J]^(-1).
-		//	Z[S, S] is on the sparsity pattern of L, since the pattern of a Cholesky factor contains its fill-in, and it is known
-		//	when the supernodes are processed from the last to the first one
-		bool pattern_not_closed = false;
-		// Column j + 1 belongs to the supernode of column j if the rows of column j are j and the rows of column j + 1
-		std::vector<int> supernode_start(1, 0);
+		supernode_start.assign(1, 0);
+		if (n == 0) {
+			return;
+		}
 		for (int j = 0; j < n - 1; ++j) {
 			const int nnz_j = col_ptr[j + 1] - col_ptr[j];
 			bool same_supernode = nnz_j >= 2 && nnz_j == col_ptr[j + 2] - col_ptr[j + 1] + 1 && row_idx[col_ptr[j] + 1] == j + 1;
@@ -251,6 +269,73 @@ namespace GPBoost {
 			}
 		}
 		supernode_start.push_back(n);
+	}//end SupernodesCholFactor
+
+	/*! \brief A supernode with t columns and r rows below it is processed with parallel matrix-matrix products if this is true */
+	static inline bool IsLargeSupernode(double t, double r) {
+		return t * (r * r + r * t + t * t) > 1e7;
+	}
+
+	void CostsDiagonalCholFactorInverse(const sp_mat_t& L, double& cost_solves, double& cost_selected_inversion) {
+		const int n = (int)L.cols();
+		const int* col_ptr = L.outerIndexPtr();
+		int num_threads;
+#ifdef _OPENMP
+		num_threads = omp_get_max_threads();
+#else
+		num_threads = 1;
+#endif
+		// The constants are measured run times relative to the time of one operation of the sequential solves. The solves are
+		//	parallelized over the columns, the selected inversion only for large supernodes, and these are processed with dense
+		//	operations, which are faster per operation but do not scale as well with the number of threads. The solves are up to
+		//	2.5 times slower per operation if the factor does not fit into the cache, since every solve runs through a large part
+		//	of it, while the dense operations work on blocks
+		const double cost_per_supernode = 100.;
+		const double speedup_large_supernodes = 5. * std::pow((double)num_threads, 0.75);
+		const double memory_factor_solves = 1. + 1.5 * std::min(1., std::max(0., ((double)L.nonZeros() - 1.5e6) / 1.5e6));
+		// A solve with the column k of the identity reaches all ancestors of k in the elimination tree, i.e. column j is used in the
+		//	solves for all nodes in the subtree of j
+		std::vector<int> parent;
+		EliminationTreeCholFactor(L, parent);
+		std::vector<double> subtree_size(n, 1.);
+		cost_solves = 0.;
+		for (int j = 0; j < n; ++j) {
+			cost_solves += subtree_size[j] * (double)(col_ptr[j + 1] - col_ptr[j]);
+			if (parent[j] >= 0) {
+				subtree_size[parent[j]] += subtree_size[j];
+			}
+		}
+		cost_solves *= memory_factor_solves / (double)num_threads;
+		std::vector<int> supernode_start;
+		SupernodesCholFactor(L, supernode_start);
+		const int num_supernodes = (int)supernode_start.size() - 1;
+		cost_selected_inversion = cost_per_supernode * (double)num_supernodes;
+		for (int sn = 0; sn < num_supernodes; ++sn) {
+			const double t = (double)(supernode_start[sn + 1] - supernode_start[sn]);
+			const int last_col = supernode_start[sn + 1] - 1;
+			const double r = (double)(col_ptr[last_col + 1] - col_ptr[last_col] - 1);
+			const double cost_dense = t * (r * r + r * t + t * t);
+			// gathering Z[S, S] and the dense operations
+			cost_selected_inversion += r * r + (IsLargeSupernode(t, r) ? cost_dense / speedup_large_supernodes : cost_dense);
+		}
+	}//end CostsDiagonalCholFactorInverse
+
+	void SelectedInversionCholesky(const sp_mat_t& L, sp_mat_t& Z_lower, int max_num_rows_dense) {
+		CHECK(L.isCompressed());
+		CHECK(L.rows() == L.cols());
+		const int* col_ptr = L.outerIndexPtr();
+		const int* row_idx = L.innerIndexPtr();
+		const double* l_val = L.valuePtr();
+		Z_lower = L;
+		double* z_val = Z_lower.valuePtr();
+		// Z = (L L^T)^(-1) satisfies Z L = L^(-T), which is upper triangular. For a supernode, i.e. consecutive columns J that
+		//	have the same rows S below J, this gives
+		//		Z[S, J] = -Z[S, S] Y and Z[J, J] = L[J, J]^(-T) L[J, J]^(-1) + Y^T Z[S, S] Y with Y = L[S, J] L[J, J]^(-1).
+		//	Z[S, S] is on the sparsity pattern of L, since the pattern of a Cholesky factor contains its fill-in, and it is known
+		//	when the supernodes are processed from the last to the first one
+		bool pattern_not_closed = false;
+		std::vector<int> supernode_start;
+		SupernodesCholFactor(L, supernode_start);
 		// Column j without a dense Z[R, R], where R are the rows below the diagonal in column j:
 		//	Z_ij = -1 / L_jj * sum_{k in R} L_kj Z_ik for i in R and Z_jj = 1 / L_jj^2 - 1 / L_jj * sum_{k in R} L_kj Z_kj
 		auto column_without_dense_block = [&](int j) {
@@ -313,7 +398,7 @@ namespace GPBoost {
 			}
 			// Parallel computations only pay off for large supernodes, for the many small ones the overhead of starting
 			//	the threads dominates
-			const bool large_supernode = (double)t * ((double)r * r + (double)r * t + (double)t * t) > 1e7;
+			const bool large_supernode = IsLargeSupernode((double)t, (double)r);
 			// Z[S, S]: column b is in column S[b] of Z
 			Z_SS.resize(r, r);
 			auto gather_column = [&](int b) -> bool {
@@ -361,17 +446,36 @@ namespace GPBoost {
 					L_SJ(a, p) = l_val[c + t - p + a];
 				}
 			}
-			L_JJ_inv = L_JJ.triangularView<Eigen::Lower>().solve(den_mat_t::Identity(t, t));
 			if (large_supernode) {
-				Z_JJ.noalias() = L_JJ_inv.transpose() * L_JJ_inv;
+				// Y and Z[J, J] = L[J, J]^(-T) L[J, J]^(-1) are calculated with triangular solves, which Eigen does not parallelize,
+				//	for blocks of rows and columns in parallel. Column p of L[J, J]^(-1) is zero above row p
+				const int block_size = 64;
 				if (r > 0) {
-					Y.noalias() = L_SJ * L_JJ_inv;
+					Y.swap(L_SJ);
+					const int num_blocks_S = (r + block_size - 1) / block_size;
+#pragma omp parallel for schedule(dynamic, 1)
+					for (int b = 0; b < num_blocks_S; ++b) {
+						const int a0 = b * block_size;
+						L_JJ.triangularView<Eigen::Lower>().solveInPlace<Eigen::OnTheRight>(Y.middleRows(a0, std::min(block_size, r - a0)));
+					}
 					Z_SJ.noalias() = Z_SS * Y;
+				}
+				Z_JJ.setIdentity(t, t);
+				const int num_blocks_J = (t + block_size - 1) / block_size;
+#pragma omp parallel for schedule(dynamic, 1)
+				for (int b = 0; b < num_blocks_J; ++b) {
+					const int p0 = b * block_size;
+					const int w = std::min(block_size, t - p0);
+					L_JJ.bottomRightCorner(t - p0, t - p0).triangularView<Eigen::Lower>().solveInPlace(Z_JJ.block(p0, p0, t - p0, w));
+					L_JJ.triangularView<Eigen::Lower>().transpose().solveInPlace(Z_JJ.middleCols(p0, w));
+				}
+				if (r > 0) {
 					Z_JJ.noalias() += Y.transpose() * Z_SJ;
 				}
 			}
 			else {
 				// lazy products are not parallelized
+				L_JJ_inv = L_JJ.triangularView<Eigen::Lower>().solve(den_mat_t::Identity(t, t));
 				Z_JJ.noalias() = L_JJ_inv.transpose().lazyProduct(L_JJ_inv);
 				if (r > 0) {
 					Y.noalias() = L_SJ.lazyProduct(L_JJ_inv);
@@ -437,7 +541,13 @@ namespace GPBoost {
 				perm_[i] = perm_indices[i];
 			}
 		}
-		SelectedInversionCholesky(*L_, Z_lower_);
+	}
+
+	void SparseInverseEntries::CalcSelectedInverse() const {
+		if (!selected_inverse_calculated_) {
+			SelectedInversionCholesky(*L_, Z_lower_);
+			selected_inverse_calculated_ = true;
+		}
 	}
 
 	int SparseInverseEntries::Position(int i, int j) const {
@@ -454,6 +564,35 @@ namespace GPBoost {
 	}
 
 	vec_t SparseInverseEntries::Diagonal() const {
+		if (selected_inverse_calculated_) {
+			return DiagonalBySelectedInversion();
+		}
+		double cost_solves, cost_selected_inversion;
+		CostsDiagonalCholFactorInverse(*L_, cost_solves, cost_selected_inversion);
+		if (cost_solves < cost_selected_inversion) {
+			return DiagonalBySolves();
+		}
+		else {
+			return DiagonalBySelectedInversion();
+		}
+	}
+
+	vec_t SparseInverseEntries::DiagonalBySolves() const {
+		const int n = (int)perm_.size();
+		// the diagonal of (L L^T)^(-1) = L^(-T) L^(-1) are the squared norms of the columns of L^(-1)
+		sp_mat_t Id(n, n);
+		Id.setIdentity();
+		vec_t norms;
+		CalcColSquaredNormsCholFactorInvR(*L_, Id, norms);
+		vec_t diag(n);
+		for (int i = 0; i < n; ++i) {
+			diag[i] = norms[perm_[i]];
+		}
+		return diag;
+	}
+
+	vec_t SparseInverseEntries::DiagonalBySelectedInversion() const {
+		CalcSelectedInverse();
 		const int n = (int)perm_.size();
 		vec_t diag(n);
 		const int* col_ptr = Z_lower_.outerIndexPtr();
@@ -508,6 +647,7 @@ namespace GPBoost {
 	void SparseInverseEntries::OnSparsityPattern(sp_mat_t& M) const {
 		CHECK(M.rows() == (int)perm_.size());
 		CHECK(M.cols() == (int)perm_.size());
+		CalcSelectedInverse();
 		M.makeCompressed();
 		const double* z_val = Z_lower_.valuePtr();
 		double* m_val = M.valuePtr();
@@ -550,6 +690,7 @@ namespace GPBoost {
 
 	vec_t SparseInverseEntries::DiagZAinvZt(const sp_mat_t& Zt) const {
 		CHECK(Zt.rows() == (int)perm_.size());
+		CalcSelectedInverse();
 		const int num_rows_Z = (int)Zt.cols();
 		vec_t diag(num_rows_Z);
 		const double* z_val = Z_lower_.valuePtr();

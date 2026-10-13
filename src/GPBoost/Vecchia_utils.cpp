@@ -489,8 +489,15 @@ namespace GPBoost {
 #ifdef USE_CUDA_GP
 					int cov_fct_shape_int = (int)(cov_fct_shape * 10);// faster to compare int than double on GPU
 					double range_param = (covfct == "matern_ard") ? 1. : pars[1];
+					// the GPU needs the columns in one matrix, they are only copied if the view consists of two matrices
+					den_mat_t chol_ip_cross_cov_copy;
+					const den_mat_t* chol_ip_cross_cov_mat = chol_ip_cross_cov.WholeMatrix();
+					if (chol_ip_cross_cov_mat == nullptr) {
+						chol_ip_cross_cov_copy = chol_ip_cross_cov.ToMatrix();
+						chol_ip_cross_cov_mat = &chol_ip_cross_cov_copy;
+					}
 					success = find_nearest_neighbors_bruteforce_GPU(coords_unique_scaled, num_data, num_neighbors, pars,
-						start_at, brute_force_threshold, end_search_at, (int)coords.cols(), corr_diag, chol_ip_cross_cov.ToMatrix(),
+						start_at, brute_force_threshold, end_search_at, (int)coords.cols(), corr_diag, *chol_ip_cross_cov_mat,
 						cov_fct_shape_int, range_param, EPSILON_NUMBERS, dist_funct, neighbors, start_dim);
 #endif 
 				}

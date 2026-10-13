@@ -625,6 +625,34 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("Predictive variances of crossed random effects with iterative methods ", {
+
+    # The variance reduction of the simulated predictive variances uses the diagonal of Z_p P^(-1) Z_p^T for the
+    #   preconditioner P, which is calculated differently for fewer and for more prediction points than random effects
+    #   (here 150). The differences to the Cholesky calculation are simulation errors, their measured maximum over
+    #   1 to 16 threads is 1.0e-2 (mean 2.6e-3) for 20 and 5.2e-2 (mean 9.3e-3) for 300 prediction points
+    y_pv <- Z1 %*% b1 + Z2 %*% b2 + xi
+    cov_pars_pv <- c(0.5, 1.2, 1.1)
+    group_data_pred_pv <- cbind(floor(sim_rand_unif(n = 300, init_c = 0.31) * (m + 5)) + 1,
+                                floor(sim_rand_unif(n = 300, init_c = 0.62) * (n_gr + 5)) + 1)
+    capture.output( gp_model_pv <- GPModel(group_data = cbind(group, group2), matrix_inversion_method = "cholesky"), file = 'NUL')
+    capture.output( pred_pv <- predict(gp_model_pv, y = y_pv, group_data_pred = group_data_pred_pv, cov_pars = cov_pars_pv,
+                                       predict_var = TRUE, predict_response = FALSE), file = 'NUL')
+    for (cg_preconditioner_type in c("ssor", "zic")) {
+      capture.output( gp_model_pv_it <- GPModel(group_data = cbind(group, group2), matrix_inversion_method = "iterative"), file = 'NUL')
+      gp_model_pv_it$set_optim_params(params = list(cg_preconditioner_type = cg_preconditioner_type))
+      for (n_p in c(20, 300)) {
+        capture.output( pred_pv_it <- predict(gp_model_pv_it, y = y_pv, group_data_pred = group_data_pred_pv[1:n_p, ],
+                                              cov_pars = cov_pars_pv, predict_var = TRUE, predict_response = FALSE), file = 'NUL')
+        label_pv <- paste0("(", cg_preconditioner_type, ", ", n_p, " prediction points)")
+        expect_lt(max(abs(pred_pv_it$mu - pred_pv$mu[1:n_p])), TOLERANCE_MEDIUM, label = paste("predictive mean", label_pv))
+        expect_lt(max(abs(pred_pv_it$var - pred_pv$var[1:n_p])), 0.15, label = paste("max. error predictive variance", label_pv))
+        expect_lt(mean(abs(pred_pv_it$var - pred_pv$var[1:n_p])), 0.03, label = paste("mean error predictive variance", label_pv))
+      }
+    }
+
+  })
+
   test_that("Multiple grouped random effects ", {
     
     vec_chol_or_iterative <- c("cholesky","iterative")

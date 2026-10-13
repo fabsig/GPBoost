@@ -11420,6 +11420,35 @@ namespace GPBoost {
 			}
 		}//end CalcCrossCovVecchiaProducts
 
+		/*!
+		* \brief Calculate Sigma_nm^T * B^T * D^-1 * B * Sigma_nm = (B * Sigma_nm)^T * (D^-1 * B * Sigma_nm) for the full-scale Vecchia
+		*		approximation, after 'CalcCrossCovVecchiaProducts'. B * Sigma_nm is calculated for blocks of rows and not stored
+		* \param cluster_i Cluster index
+		* \param cross_cov Cross covariance matrix Sigma_nm between the data and the inducing points
+		* \param[out] sigma_woodbury (B * Sigma_nm)^T * (D^-1 * B * Sigma_nm)
+		*/
+		void CalcGramCrossCovVecchia(data_size_t cluster_i,
+			const den_mat_t& cross_cov,
+			den_mat_t& sigma_woodbury) {
+			const den_mat_t& D_inv_B_cross_cov = D_inv_B_cross_cov_[cluster_i][0];
+			const sp_mat_rm_t& B_rm = B_rm_[cluster_i][0];
+			const int num_data_cluster_i = (int)D_inv_B_cross_cov.rows();
+			const int num_ind_points_cluster_i = (int)D_inv_B_cross_cov.cols();
+			if (GPU_use_) {
+				const den_mat_t B_cross_cov = B_rm * cross_cov;
+				GPBoost::matmul(B_cross_cov.transpose(), D_inv_B_cross_cov, sigma_woodbury, GPU_use_);
+				return;
+			}
+			sigma_woodbury = den_mat_t::Zero(num_ind_points_cluster_i, num_ind_points_cluster_i);
+			const int block_size = 4096;
+			den_mat_t B_cross_cov_block;
+			for (int i0 = 0; i0 < num_data_cluster_i; i0 += block_size) {
+				const int num_rows = std::min(block_size, num_data_cluster_i - i0);
+				B_cross_cov_block = B_rm.middleRows(i0, num_rows) * cross_cov;
+				sigma_woodbury.noalias() += B_cross_cov_block.transpose() * D_inv_B_cross_cov.middleRows(i0, num_rows);
+			}
+		}//end CalcGramCrossCovVecchia
+
 		void CalcCovFactorFITC_FSA() {
 			for (const auto& cluster_i : unique_clusters_) {
 				// factorize matrix used in Woodbury identity
@@ -11437,7 +11466,7 @@ namespace GPBoost {
 						const int num_ind_points_cluster_i = (int)(*cross_cov).cols();
 						CalcCrossCovVecchiaProducts(cluster_i, *cross_cov);
 						den_mat_t sigma_woodbury;
-						GPBoost::matmul((*cross_cov).transpose(), B_T_D_inv_B_cross_cov_[cluster_i][0], sigma_woodbury, GPU_use_);
+						CalcGramCrossCovVecchia(cluster_i, *cross_cov, sigma_woodbury);
 						CHECK((int)sigma_woodbury.rows() == num_ind_points_cluster_i);
 						sigma_woodbury += sigma_ip_stable;
 						sigma_woodbury_[cluster_i] = sigma_woodbury;
@@ -11487,7 +11516,7 @@ namespace GPBoost {
 					}
 					else if (gp_approx_ == "full_scale_vecchia") {
 						CalcCrossCovVecchiaProducts(cluster_i, *cross_cov);
-						GPBoost::matmul((*cross_cov).transpose(), B_T_D_inv_B_cross_cov_[cluster_i][0], sigma_woodbury, GPU_use_);
+						CalcGramCrossCovVecchia(cluster_i, *cross_cov, sigma_woodbury);
 					}
 					sigma_woodbury += sigma_ip_stable;
 
@@ -13032,7 +13061,8 @@ namespace GPBoost {
 		template <class T_chol_aux = T_chol, typename std::enable_if <is_sparse_chol<T_chol_aux>::value>::type* = nullptr>
 		vec_t CalcDiagZtildeSigmaIPlusZtZInvZtildeT(data_size_t cluster_i,
 			const sp_mat_t& Ztilde) {
-			const sp_mat_t L = chol_facts_[cluster_i].CholFactMatrix();
+			sp_mat_t L_storage;
+			const sp_mat_t& L = ColMajorCholFactor(chol_facts_[cluster_i].CholFactMatrix(), L_storage);
 			const SparseInverseEntries SigmaI_plus_ZtZ_inv_entries(L, chol_facts_[cluster_i].permutationP().indices());
 			return SigmaI_plus_ZtZ_inv_entries.DiagZAinvZt(sp_mat_t(Ztilde.transpose()));
 		}
@@ -13483,18 +13513,36 @@ namespace GPBoost {
 										sp_mat_t P_sqrt_inv(num_re, num_re);
 										P_sqrt_inv.setIdentity();
 										TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(P_sqrt, P_sqrt_inv, P_sqrt_inv, false);
-										// Row i of Z_po P_sqrt^(-T) is the linear combination of the columns of P_sqrt^(-1) given by row i of Z_po
+										// Row i of Z_po P_sqrt^(-T) is the linear combination of the columns of P_sqrt^(-1) given by row i of Z_po. It is
+										//	accumulated in a dense vector, of which only the non-zero entries are used and reset afterwards
 										const sp_mat_rm_t Ztilde_rm = sp_mat_rm_t(Ztilde);
 										varred_determ.resize(num_REs_pred);
-#pragma omp parallel for schedule(static)
-										for (int i = 0; i < num_REs_pred; ++i) {
-											double d = 0.;
-											for (sp_mat_rm_t::InnerIterator it_k(Ztilde_rm, i); it_k; ++it_k) {
-												for (sp_mat_rm_t::InnerIterator it_l(Ztilde_rm, i); it_l; ++it_l) {
-													d += it_k.value() * it_l.value() * P_sqrt_inv.col(it_k.col()).dot(P_sqrt_inv.col(it_l.col()));
+#pragma omp parallel
+										{
+											vec_t row_i = vec_t::Zero(num_re);
+											std::vector<char> is_non_zero(num_re, 0);
+											std::vector<int> non_zeros;
+#pragma omp for schedule(static)
+											for (int i = 0; i < num_REs_pred; ++i) {
+												non_zeros.clear();
+												for (sp_mat_rm_t::InnerIterator it_k(Ztilde_rm, i); it_k; ++it_k) {
+													for (sp_mat_t::InnerIterator it(P_sqrt_inv, it_k.col()); it; ++it) {
+														const int r = (int)it.row();
+														if (!is_non_zero[r]) {
+															is_non_zero[r] = 1;
+															non_zeros.push_back(r);
+														}
+														row_i[r] += it_k.value() * it.value();
+													}
 												}
+												double d = 0.;
+												for (int r : non_zeros) {
+													d += row_i[r] * row_i[r];
+													row_i[r] = 0.;
+													is_non_zero[r] = 0;
+												}
+												varred_determ[i] = d;
 											}
-											varred_determ[i] = d;
 										}
 									}
 								}
