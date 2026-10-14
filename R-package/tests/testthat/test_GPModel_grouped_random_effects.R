@@ -653,6 +653,42 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("Predictive variances of crossed random effects whose levels form disconnected blocks ", {
+
+    # Every observation combines two levels of the same block of three levels per random effect, so the posterior precision
+    #   matrix is block-diagonal up to a permutation. Prediction points that combine levels of two different blocks need
+    #   entries of its inverse that are zero and are not on the sparsity pattern of the Cholesky factor, and the levels 1
+    #   and 3 of a block are never observed together (non-zero entries that are not on the sparsity pattern either)
+    n_blocks_db <- 40
+    block_db <- rep(1:n_blocks_db, each = 5)
+    group_db <- cbind(3 * (block_db - 1) + rep(c(1, 1, 2, 2, 3), n_blocks_db),
+                      3 * (block_db - 1) + rep(c(1, 2, 2, 3, 3), n_blocks_db))
+    n_db <- nrow(group_db)
+    cov_pars_db <- c(0.4, 1.3, 0.8)
+    y_db <- qnorm(sim_rand_unif(n = n_db, init_c = 0.27))
+    first_level_db <- 3 * (1:n_blocks_db - 1) + 1
+    group_pred_db <- cbind(c(first_level_db, first_level_db, first_level_db[-n_blocks_db]),
+                           c(first_level_db, first_level_db + 2, first_level_db[-1]))
+    # Exact values
+    design_matrix_db <- function(group_data) {
+      cbind(model.matrix(~ factor(group_data[, 1], levels = 1:(3 * n_blocks_db)) - 1),
+            model.matrix(~ factor(group_data[, 2], levels = 1:(3 * n_blocks_db)) - 1))
+    }
+    Z_db <- design_matrix_db(group_db)
+    Ztilde_db <- design_matrix_db(group_pred_db)
+    Sigma_db <- diag(rep(cov_pars_db[2:3], each = 3 * n_blocks_db))
+    cross_cov_db <- Ztilde_db %*% Sigma_db %*% t(Z_db)
+    Psi_inv_db <- solve(Z_db %*% Sigma_db %*% t(Z_db) + cov_pars_db[1] * diag(n_db))
+    mu_exact_db <- as.vector(cross_cov_db %*% Psi_inv_db %*% y_db)
+    var_exact_db <- diag(Ztilde_db %*% Sigma_db %*% t(Ztilde_db)) - rowSums((cross_cov_db %*% Psi_inv_db) * cross_cov_db)
+    gp_model_db <- GPModel(group_data = group_db, matrix_inversion_method = "cholesky")
+    pred_db <- predict(gp_model_db, y = y_db, group_data_pred = group_pred_db, cov_pars = cov_pars_db,
+                       predict_var = TRUE, predict_response = FALSE)
+    expect_lt(max(abs(pred_db$mu - mu_exact_db)), TOLERANCE_STRICT)
+    expect_lt(max(abs(pred_db$var - var_exact_db)), TOLERANCE_STRICT)
+
+  })
+
   test_that("Multiple grouped random effects ", {
     
     vec_chol_or_iterative <- c("cholesky","iterative")

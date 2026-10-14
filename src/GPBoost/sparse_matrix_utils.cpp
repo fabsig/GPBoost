@@ -628,6 +628,22 @@ namespace GPBoost {
 		}
 	}
 
+	void SparseInverseEntries::CalcComponents() const {
+		if (components_calculated_) {
+			return;
+		}
+		// The parent of a node in the elimination forest is the first row below the diagonal of its column (the row indices are
+		//	sorted), and it has a larger index than the node. A pass in reverse order therefore labels every node with the root of its tree
+		const int n = (int)perm_.size();
+		const int* col_ptr = L_->outerIndexPtr();
+		const int* row_idx = L_->innerIndexPtr();
+		component_.resize(n);
+		for (int j = n - 1; j >= 0; --j) {
+			component_[j] = (col_ptr[j] + 1 < col_ptr[j + 1]) ? component_[row_idx[col_ptr[j] + 1]] : j;
+		}
+		components_calculated_ = true;
+	}
+
 	int SparseInverseEntries::Position(int i, int j) const {
 		int r = perm_[i];
 		int c = perm_[j];
@@ -688,11 +704,23 @@ namespace GPBoost {
 		if (rows.empty()) {
 			return;
 		}
-		// Group the entries by their column
-		std::vector<int> order(rows.size());
-		for (int k = 0; k < (int)order.size(); ++k) {
-			order[k] = k;
+		// A is block-diagonal up to a permutation with one block per connected component of its graph, and so is its inverse:
+		//	an entry whose row and column are in different components is zero
+		CalcComponents();
+		std::vector<int> order;
+		order.reserve(rows.size());
+		for (int k = 0; k < (int)rows.size(); ++k) {
+			if (component_[perm_[rows[k]]] == component_[perm_[cols[k]]]) {
+				order.push_back(k);
+			}
+			else {
+				values[k] = 0.;
+			}
 		}
+		if (order.empty()) {
+			return;
+		}
+		// Group the remaining entries by their column
 		std::sort(order.begin(), order.end(), [&cols](int a, int b) { return cols[a] < cols[b]; });
 		std::vector<int> group_start;
 		for (int k = 0; k < (int)order.size(); ++k) {

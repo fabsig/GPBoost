@@ -148,7 +148,8 @@ namespace GPBoost {
 	* \brief Entries of the inverse of a symmetric positive definite matrix A given a sparse Cholesky factorization
 	*		P A P^T = L L^T. The entries on the sparsity pattern of L + L^T, which include the diagonal and all entries
 	*		on the sparsity pattern of A, are calculated with 'SelectedInversionCholesky' when they are first needed.
-	*		Other entries are calculated with triangular solves
+	*		Other entries are calculated with triangular solves, except for entries whose row and column are in
+	*		different connected components of the graph of A, which are zero
 	*/
 	class SparseInverseEntries {
 	public:
@@ -192,13 +193,20 @@ namespace GPBoost {
 		/*! \brief Position of the entry (i,j) of A^(-1) in 'Z_lower_' for indices of A, -1 if it is not on the sparsity pattern of L */
 		int Position(int i, int j) const;
 		/*!
-		* \brief Calculate entries of A^(-1) with triangular solves. The entries are grouped by their column such that every
-		*		column of A^(-1) is calculated only once
+		* \brief Calculate entries of A^(-1) with triangular solves. Entries whose row and column are in different connected
+		*		components of the graph of A are zero and are not calculated, see 'CalcComponents'. The other entries are
+		*		grouped by their column such that every column of A^(-1) is calculated only once
 		* \param rows Row indices of the entries (indices of A)
 		* \param cols Column indices of the entries (indices of A)
 		* \param[out] values Entries of A^(-1)
 		*/
 		void EntriesBySolves(const std::vector<int>& rows, const std::vector<int>& cols, std::vector<double>& values) const;
+		/*!
+		* \brief Label the connected components of the graph of A in 'component_' if this has not been done yet. The trees
+		*		of the elimination forest of L are these components, since the fill-in of a Cholesky factorization stays
+		*		within a component
+		*/
+		void CalcComponents() const;
 
 		/*! \brief Cholesky factor L with sorted row indices */
 		const sp_mat_t* L_;
@@ -208,6 +216,10 @@ namespace GPBoost {
 		mutable sp_mat_t Z_lower_;
 		/*! \brief True if 'Z_lower_' has been calculated */
 		mutable bool selected_inverse_calculated_ = false;
+		/*! \brief component_[k] is the connected component of row k of P A P^T (calculated when it is first needed) */
+		mutable std::vector<int> component_;
+		/*! \brief True if 'component_' has been calculated */
+		mutable bool components_calculated_ = false;
 		/*! \brief perm_[i] is the row of P A P^T that corresponds to row i of A */
 		std::vector<int> perm_;
 	};

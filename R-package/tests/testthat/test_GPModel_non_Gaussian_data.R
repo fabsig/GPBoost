@@ -1040,6 +1040,42 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("Predictive variances of crossed random effects whose levels form disconnected blocks ", {
+
+    # Every observation combines two levels of the same block of three levels per random effect, so the posterior precision
+    #   matrix Sigma^-1 + Z^T W Z is block-diagonal up to a permutation. Prediction points that combine levels of two different
+    #   blocks need entries of its inverse that are zero and are not on the sparsity pattern of the Cholesky factor, and the
+    #   levels 1 and 3 of a block are never observed together (non-zero entries that are not on the sparsity pattern either).
+    #   The Laplace approximation gives the variances diag(Ztilde (Sigma^-1 + Z^T W Z)^-1 Ztilde^T) with W at the mode
+    n_blocks_db <- 40
+    block_db <- rep(1:n_blocks_db, each = 5)
+    group_db <- cbind(3 * (block_db - 1) + rep(c(1, 1, 2, 2, 3), n_blocks_db),
+                      3 * (block_db - 1) + rep(c(1, 2, 2, 3, 3), n_blocks_db))
+    n_db <- nrow(group_db)
+    cov_pars_db <- c(1.3, 0.8)
+    design_matrix_db <- function(group_data) {
+      cbind(model.matrix(~ factor(group_data[, 1], levels = 1:(3 * n_blocks_db)) - 1),
+            model.matrix(~ factor(group_data[, 2], levels = 1:(3 * n_blocks_db)) - 1))
+    }
+    Z_db <- design_matrix_db(group_db)
+    b_db <- sqrt(rep(cov_pars_db, each = 3 * n_blocks_db)) * qnorm(sim_rand_unif(n = 6 * n_blocks_db, init_c = 0.27))
+    y_db <- as.numeric(sim_rand_unif(n = n_db, init_c = 0.61) < 1 / (1 + exp(-as.vector(Z_db %*% b_db))))
+    first_level_db <- 3 * (1:n_blocks_db - 1) + 1
+    group_pred_db <- cbind(c(first_level_db, first_level_db, first_level_db[-n_blocks_db]),
+                           c(first_level_db, first_level_db + 2, first_level_db[-1]))
+    gp_model_db <- GPModel(group_data = group_db, likelihood = "bernoulli_logit", matrix_inversion_method = "cholesky")
+    pred_db <- predict(gp_model_db, y = y_db, group_data_pred = group_pred_db, cov_pars = cov_pars_db,
+                       predict_var = TRUE, predict_response = FALSE)
+    # Exact values with W at the mode, which the latent predictions for the training data give
+    eta_db <- predict(gp_model_db, y = y_db, group_data_pred = group_db, cov_pars = cov_pars_db, predict_response = FALSE)$mu
+    W_db <- exp(eta_db) / (1 + exp(eta_db))^2
+    Ztilde_db <- design_matrix_db(group_pred_db)
+    SigmaI_plus_ZtWZ_inv_db <- solve(diag(rep(1 / cov_pars_db, each = 3 * n_blocks_db)) + t(Z_db) %*% (W_db * Z_db))
+    var_exact_db <- rowSums((Ztilde_db %*% SigmaI_plus_ZtWZ_inv_db) * Ztilde_db)
+    expect_lt(max(abs(pred_db$var - var_exact_db)), TOLERANCE_STRICT)
+
+  })
+
   test_that("Binary classification with linear predictor and grouped random effects model ", {
 
     probs <- pnorm(Z1 %*% b_gr_1 + X%*%beta)
