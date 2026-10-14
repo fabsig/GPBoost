@@ -246,6 +246,49 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-as.vector(pred_no_offset$cov))),TOLERANCE_STRICT)
   })
   
+  test_that("Predictive covariance matrices of a single grouped random effect with repeated groups and weights ", {
+
+    # Prediction points in the same group share the random effect but not the error term, and the weights enter the
+    #   posterior variances of the random effects. Latent and response covariance matrices for groups of the training
+    #   data, repeated groups and a new group are compared with the exact values
+    group_sg <- c(1, 1, 1, 2, 2, 2, 3, 3)
+    weights_sg <- c(0.5, 0.5, 0.5, 1.5, 1.5, 1.5, 1, 1)
+    y_sg <- qnorm(sim_rand_unif(n = length(group_sg), init_c = 0.83))
+    cov_pars_sg <- c(0.7, 1.3)
+    group_pred_sg <- c(1, 1, 2, 4, 4, 3)
+    Z_sg <- model.matrix(~ factor(group_sg, levels = 1:4) - 1)
+    Z_pred_sg <- model.matrix(~ factor(group_pred_sg, levels = 1:4) - 1)
+    for (weighted in c(FALSE, TRUE)) {
+      w_sg <- if (weighted) weights_sg else rep(1, length(group_sg))
+      Psi_sg <- cov_pars_sg[2] * tcrossprod(Z_sg) + cov_pars_sg[1] * diag(1 / w_sg)
+      cross_cov_sg <- cov_pars_sg[2] * Z_pred_sg %*% t(Z_sg)
+      mu_exact_sg <- as.vector(cross_cov_sg %*% solve(Psi_sg, y_sg))
+      cov_exact_sg <- cov_pars_sg[2] * tcrossprod(Z_pred_sg) - cross_cov_sg %*% solve(Psi_sg, t(cross_cov_sg))
+      if (weighted) {
+        gp_model_sg <- GPModel(group_data = group_sg, weights = weights_sg)
+      } else {
+        gp_model_sg <- GPModel(group_data = group_sg)
+      }
+      for (predict_response in c(FALSE, TRUE)) {
+        label_sg <- paste0("(weighted = ", weighted, ", predict_response = ", predict_response, ")")
+        cov_exact_response_sg <- cov_exact_sg
+        if (predict_response) {
+          cov_exact_response_sg <- cov_exact_sg + cov_pars_sg[1] * diag(length(group_pred_sg))
+        }
+        pred_sg <- predict(gp_model_sg, y = y_sg, group_data_pred = group_pred_sg, cov_pars = cov_pars_sg,
+                           predict_cov_mat = TRUE, predict_response = predict_response)
+        expect_lt(max(abs(pred_sg$mu - mu_exact_sg)), TOLERANCE_STRICT, label = paste("predictive mean", label_sg))
+        expect_lt(max(abs(as.vector(pred_sg$cov) - as.vector(cov_exact_response_sg))), TOLERANCE_STRICT,
+                  label = paste("predictive covariance matrix", label_sg))
+        pred_var_sg <- predict(gp_model_sg, y = y_sg, group_data_pred = group_pred_sg, cov_pars = cov_pars_sg,
+                               predict_var = TRUE, predict_response = predict_response)
+        expect_lt(max(abs(pred_var_sg$var - diag(cov_exact_response_sg))), TOLERANCE_STRICT,
+                  label = paste("predictive variances", label_sg))
+      }
+    }
+
+  })
+
   test_that("Gaussian sample weights work for a single grouped random effect ", {
     
     group_w <- c(1, 1, 1, 2, 2, 3, 3, 3)

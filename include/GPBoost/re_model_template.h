@@ -5108,6 +5108,12 @@ namespace GPBoost {
 								}
 								Zpred.setFromTriplets(triplets.begin(), triplets.end());
 								cov_mat_pred_id = Zpred * cov_mat_pred_id_on_RE_scale * Zpred.transpose();
+								if (predict_response && only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
+									// nugget effect of the Gaussian likelihood, which is independent for every prediction point also within a group
+									T_mat nugget(num_data_per_cluster_pred[cluster_i], num_data_per_cluster_pred[cluster_i]);
+									nugget.setIdentity();
+									cov_mat_pred_id += nugget;
+								}
 							}
 						}//end only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_
 						// Add externaly provided fixed effects
@@ -13151,8 +13157,11 @@ namespace GPBoost {
 			}
 			if (predict_cov_mat) {
 				cov_mat_pred_id = T_mat(num_REs_pred, num_REs_pred);
-				if (gauss_likelihood_ && predict_response) {
-					cov_mat_pred_id.setIdentity();//nugget effect
+				if (gauss_likelihood_ && predict_response && !only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
+					// nugget effect. For a single grouped random intercept, the covariance matrix is calculated on the random effects scale,
+					//	and the nugget effect, which is independent for every prediction point also within a group, is added in 'Predict'
+					//	after the expansion to the data scale
+					cov_mat_pred_id.setIdentity();
 				}
 				else {
 					cov_mat_pred_id.setZero();
@@ -13170,7 +13179,8 @@ namespace GPBoost {
 					Log::REFatal("Posterior sampling is not implemented for single-level grouped random effects ");
 				}
 				std::shared_ptr<RECompGroup<T_mat>> re_comp = std::dynamic_pointer_cast<RECompGroup<T_mat>>(re_comps_[cluster_i][0][0]);
-				if (predict_cov_mat) {
+				if (predict_cov_mat && !only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
+					// for a Gaussian likelihood, the covariance matrix is calculated below from the posterior variances of the random effects
 					re_comp->AddPredCovMatrices(re_group_levels_pred[0], cross_cov, cov_mat_pred_id,
 						true, predict_cov_mat, true, true, nullptr);
 				}
@@ -13373,19 +13383,21 @@ namespace GPBoost {
 				else {
 					mean_pred_id = cross_cov * y_aux_[cluster_i];
 				}
-				if (predict_cov_mat && only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
-					sp_mat_t* Z = GetForCluster(re_comps_, cluster_i, 0)[0]->GetZ();
-					T_mat cross_cov_temp = cross_cov;
-					cross_cov = cross_cov_temp * (*Z).transpose();
-					cross_cov_temp.resize(0, 0);
-				}
 				if (predict_cov_mat) {
 					if (use_woodbury_identity_) {
-						if (only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {//only one grouped random intercept effect -> ZtZ_ is diagonal and 'cross_cov' has been calculated above
-							T_mat ZtM_aux = (T_mat)(Zt_[cluster_i] * cross_cov.transpose());
-							ZtM_aux = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().inverse().matrix().asDiagonal() * ZtM_aux;
-							cov_mat_pred_id -= (T_mat)(cross_cov * cross_cov.transpose());
-							cov_mat_pred_id += (T_mat)(ZtM_aux.transpose() * ZtM_aux);
+						if (only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) {
+							// Only one grouped random intercept effect: Sigma^-1 + Z^T R^-1 Z is diagonal, so the random effects of different groups
+							//	are independent a posteriori, and the predictive covariance matrix on the random effects scale is the diagonal
+							//	matrix of the posterior variances of the groups in the training data and the prior variances of the other groups
+							vec_t pred_var_RE_scale = vec_t::Constant(num_REs_pred, GetForCluster(re_comps_, cluster_i, 0)[0]->cov_pars_[0]);
+							vec_t SigmaI_plus_ZtZ_inv = sqrt_diag_SigmaI_plus_ZtZ_[cluster_i].array().square().inverse().matrix();
+#pragma omp parallel for schedule(static)
+							for (int i = 0; i < (int)random_effects_indices_of_pred.size(); ++i) {
+								if (random_effects_indices_of_pred[i] >= 0) {
+									pred_var_RE_scale[i] = SigmaI_plus_ZtZ_inv[random_effects_indices_of_pred[i]];
+								}
+							}
+							cov_mat_pred_id = T_mat(pred_var_RE_scale.asDiagonal());
 						}
 						else {
 							if (matrix_inversion_method_ == "iterative" && !SigmaI_plus_ZtZ_is_diagonal) {
