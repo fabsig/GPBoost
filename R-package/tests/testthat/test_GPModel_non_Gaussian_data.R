@@ -1076,6 +1076,47 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("Predictions for new clusters with grouped random effects and a non-Gaussian likelihood ", {
+
+    # A new cluster has no observed data, so the latent predictions are the prior of the random effects, and the response
+    #   mean of a Poisson likelihood is exp(mu + var / 2) with the prior variances. The variances are calculated without the
+    #   matrices Z Z^T of the prediction data, which have one entry for every pair of prediction points in the same group
+    group_ncp <- cbind(c(1, 1, 2, 2, 3, 3, 4, 4), c(1, 2, 1, 2, 1, 2, 1, 2))
+    y_ncp <- c(0, 2, 1, 0, 3, 1, 0, 2)
+    cluster_ids_ncp <- rep(1, nrow(group_ncp))
+    group_pred_ncp <- cbind(c(1, 1, 2, 7), c(1, 1, 3, 3))
+    cluster_ids_pred_ncp <- rep(2, nrow(group_pred_ncp))
+    Z1Z1t_ncp <- outer(group_pred_ncp[, 1], group_pred_ncp[, 1], "==") * 1
+    Z2Z2t_ncp <- outer(group_pred_ncp[, 2], group_pred_ncp[, 2], "==") * 1
+    # one random intercept (calculations on the random effects scale) and two crossed random intercepts
+    for (num_re_ncp in 1:2) {
+      if (num_re_ncp == 1) {
+        cov_pars_ncp <- 0.7
+        cov_latent_ncp <- 0.7 * Z1Z1t_ncp
+        gp_model_ncp <- GPModel(group_data = group_ncp[, 1], likelihood = "poisson", cluster_ids = cluster_ids_ncp)
+      } else {
+        cov_pars_ncp <- c(0.7, 1.1)
+        cov_latent_ncp <- 0.7 * Z1Z1t_ncp + 1.1 * Z2Z2t_ncp
+        gp_model_ncp <- GPModel(group_data = group_ncp, likelihood = "poisson", cluster_ids = cluster_ids_ncp)
+      }
+      label_ncp <- paste0("(", num_re_ncp, " random effects)")
+      group_data_pred_ncp <- if (num_re_ncp == 1) group_pred_ncp[, 1] else group_pred_ncp
+      pred_ncp <- predict(gp_model_ncp, y = y_ncp, group_data_pred = group_data_pred_ncp, cluster_ids_pred = cluster_ids_pred_ncp,
+                          cov_pars = cov_pars_ncp, predict_cov_mat = TRUE, predict_response = FALSE)
+      expect_lt(max(abs(pred_ncp$mu)), TOLERANCE_STRICT, label = paste("latent mean", label_ncp))
+      expect_lt(max(abs(as.vector(pred_ncp$cov) - as.vector(cov_latent_ncp))), TOLERANCE_STRICT, label = paste("latent covariance matrix", label_ncp))
+      pred_ncp <- predict(gp_model_ncp, y = y_ncp, group_data_pred = group_data_pred_ncp, cluster_ids_pred = cluster_ids_pred_ncp,
+                          cov_pars = cov_pars_ncp, predict_var = TRUE, predict_response = FALSE)
+      expect_lt(max(abs(pred_ncp$var - diag(cov_latent_ncp))), TOLERANCE_STRICT, label = paste("latent variances", label_ncp))
+      pred_ncp <- predict(gp_model_ncp, y = y_ncp, group_data_pred = group_data_pred_ncp, cluster_ids_pred = cluster_ids_pred_ncp,
+                          cov_pars = cov_pars_ncp, predict_var = TRUE, predict_response = TRUE)
+      expect_lt(max(abs(pred_ncp$mu - exp(diag(cov_latent_ncp) / 2))), TOLERANCE_STRICT, label = paste("response mean", label_ncp))
+      expect_lt(max(abs(pred_ncp$var - (exp(diag(cov_latent_ncp)) - 1) * exp(diag(cov_latent_ncp)) - exp(diag(cov_latent_ncp) / 2))),
+                TOLERANCE_STRICT, label = paste("response variances", label_ncp))
+    }
+
+  })
+
   test_that("Binary classification with linear predictor and grouped random effects model ", {
 
     probs <- pnorm(Z1 %*% b_gr_1 + X%*%beta)

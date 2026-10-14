@@ -1195,6 +1195,68 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
   })
   
+  test_that("Predictions for new clusters with grouped random effects: means, variances and covariance matrices ", {
+
+    # A new cluster has no observed data, so the predictions are the prior of the random effects: zero means, the prior
+    #   variances and covariances (repeated groups share their random effects) and the error variance for the response.
+    #   The variances are calculated without the matrices Z Z^T of the prediction data, which have one entry for every
+    #   pair of prediction points in the same group
+    group_nc <- cbind(c(1, 1, 2, 2, 3, 3, 4, 4), c(1, 2, 1, 2, 1, 2, 1, 2))
+    x_nc <- c(0.5, -1, 2, 1.5, -0.5, 1, -2, 0.3)
+    y_nc <- qnorm(sim_rand_unif(n = nrow(group_nc), init_c = 0.37))
+    cluster_ids_nc <- rep(1, nrow(group_nc))
+    group_pred_nc <- cbind(c(1, 1, 2, 7), c(1, 1, 3, 3))
+    x_pred_nc <- c(0.2, -0.4, 1, 0.5)
+    cluster_ids_pred_nc <- rep(2, nrow(group_pred_nc))
+    Z1Z1t_nc <- outer(group_pred_nc[, 1], group_pred_nc[, 1], "==") * 1
+    Z2Z2t_nc <- outer(group_pred_nc[, 2], group_pred_nc[, 2], "==") * 1
+    ZZt_slope_nc <- Z1Z1t_nc * outer(x_pred_nc, x_pred_nc)
+    # two crossed random intercepts and a random slope on the first factor, with and without the intercept of the first factor
+    for (drop_intercept_nc in c(FALSE, TRUE)) {
+      if (drop_intercept_nc) {
+        cov_pars_nc <- c(0.4, 1.1, 0.9)
+        cov_latent_nc <- 1.1 * Z2Z2t_nc + 0.9 * ZZt_slope_nc
+      } else {
+        cov_pars_nc <- c(0.4, 0.7, 1.1, 0.9)
+        cov_latent_nc <- 0.7 * Z1Z1t_nc + 1.1 * Z2Z2t_nc + 0.9 * ZZt_slope_nc
+      }
+      gp_model_nc <- GPModel(group_data = group_nc, group_rand_coef_data = x_nc, ind_effect_group_rand_coef = 1,
+                             drop_intercept_group_rand_effect = c(drop_intercept_nc, FALSE), cluster_ids = cluster_ids_nc)
+      for (predict_response in c(FALSE, TRUE)) {
+        cov_exact_nc <- cov_latent_nc
+        if (predict_response) {
+          cov_exact_nc <- cov_exact_nc + cov_pars_nc[1] * diag(nrow(group_pred_nc))
+        }
+        label_nc <- paste0("(drop_intercept = ", drop_intercept_nc, ", predict_response = ", predict_response, ")")
+        pred_nc <- predict(gp_model_nc, y = y_nc, group_data_pred = group_pred_nc, group_rand_coef_data_pred = x_pred_nc,
+                           cluster_ids_pred = cluster_ids_pred_nc, cov_pars = cov_pars_nc,
+                           predict_cov_mat = TRUE, predict_response = predict_response)
+        expect_lt(max(abs(pred_nc$mu)), TOLERANCE_STRICT, label = paste("predictive mean", label_nc))
+        expect_lt(max(abs(as.vector(pred_nc$cov) - as.vector(cov_exact_nc))), TOLERANCE_STRICT,
+                  label = paste("predictive covariance matrix", label_nc))
+        pred_var_nc <- predict(gp_model_nc, y = y_nc, group_data_pred = group_pred_nc, group_rand_coef_data_pred = x_pred_nc,
+                               cluster_ids_pred = cluster_ids_pred_nc, cov_pars = cov_pars_nc,
+                               predict_var = TRUE, predict_response = predict_response)
+        expect_lt(max(abs(pred_var_nc$var - diag(cov_exact_nc))), TOLERANCE_STRICT, label = paste("predictive variances", label_nc))
+      }
+      pred_mean_nc <- predict(gp_model_nc, y = y_nc, group_data_pred = group_pred_nc, group_rand_coef_data_pred = x_pred_nc,
+                              cluster_ids_pred = cluster_ids_pred_nc, cov_pars = cov_pars_nc, predict_response = TRUE)
+      expect_lt(max(abs(pred_mean_nc$mu)), TOLERANCE_STRICT, label = paste0("response mean (drop_intercept = ", drop_intercept_nc, ")"))
+    }
+    # A single random intercept and many prediction points in one group of a new cluster: the matrix Z Z^T of the prediction
+    #   data would have n_pred^2 entries
+    n_pred_nc <- 10000
+    gp_model_nc1 <- GPModel(group_data = group_nc[, 1], cluster_ids = cluster_ids_nc)
+    pred_nc1 <- predict(gp_model_nc1, y = y_nc, group_data_pred = rep(1, n_pred_nc), cluster_ids_pred = rep(2, n_pred_nc),
+                        cov_pars = c(0.4, 0.7), predict_var = TRUE, predict_response = TRUE)
+    expect_lt(max(abs(pred_nc1$mu)), TOLERANCE_STRICT)
+    expect_lt(max(abs(pred_nc1$var - 1.1)), TOLERANCE_STRICT)
+    pred_nc1 <- predict(gp_model_nc1, y = y_nc, group_data_pred = rep(1, n_pred_nc), cluster_ids_pred = rep(2, n_pred_nc),
+                        cov_pars = c(0.4, 0.7), predict_response = TRUE)
+    expect_lt(max(abs(pred_nc1$mu)), TOLERANCE_STRICT)
+
+  })
+
   test_that("Predictions for a single grouped random coefficient without an intercept random effect", {
 
     # Dropping the intercept random effect of the only grouping variable leaves a model with a single

@@ -1053,6 +1053,45 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   }) # end hurst covariance
 
+  test_that("hurst covariance: posterior samples when the anchor is a prediction point ", {
+
+    # The Hurst process is zero at the origin, so the predictive covariance matrix is singular when the origin is a
+    #   prediction point. Its samples are zero, and the other points are sampled from the remaining sub-matrix
+    coords_hs <- matrix(c(0.2, 0.6, 0.9), ncol = 1)
+    y_hs <- c(0.1, 0.2, -0.1)
+    for (order_hs in 1:2) {
+      cov_pars_hs <- c(0.3, 0.7, order_hs - 0.5)
+      for (coords_pred_hs in list(matrix(c(0, 1), ncol = 1), matrix(c(1, 0), ncol = 1))) {
+        capture.output( gp_model_hs <- GPModel(gp_coords = coords_hs, cov_function = "hurst", cov_fct_order = order_hs,
+                                               likelihood = "gaussian"), file = 'NUL')
+        pred_hs <- predict(gp_model_hs, y = y_hs, gp_coords_pred = coords_pred_hs, cov_pars = cov_pars_hs,
+                           predict_var = TRUE, predict_response = FALSE, sample_posterior = TRUE, num_post_samples = 100000)
+        ind_anchor_hs <- which(coords_pred_hs[, 1] == 0)
+        ind_other_hs <- which(coords_pred_hs[, 1] != 0)
+        label_hs <- paste0("(order ", order_hs, ", anchor at position ", ind_anchor_hs, ")")
+        expect_lt(abs(pred_hs$var[ind_anchor_hs]), TOLERANCE_STRICT, label = paste("variance at the anchor", label_hs))
+        expect_true(all(pred_hs$posterior_samples[ind_anchor_hs, ] == 0), label = paste("samples at the anchor", label_hs))
+        expect_lt(abs(var(pred_hs$posterior_samples[ind_other_hs, ]) / pred_hs$var[ind_other_hs] - 1), 0.02,
+                  label = paste("sample variance", label_hs))
+        expect_lt(abs(mean(pred_hs$posterior_samples[ind_other_hs, ]) - pred_hs$mu[ind_other_hs]), 0.01,
+                  label = paste("sample mean", label_hs))
+      }
+      # Samples from the prior of the latent process at the training locations, with the anchor among them
+      for (coords_prior_hs in list(matrix(c(0, 1), ncol = 1), matrix(c(1, 0), ncol = 1))) {
+        capture.output( gp_model_hs <- GPModel(gp_coords = coords_prior_hs, cov_function = "hurst", cov_fct_order = order_hs,
+                                               likelihood = "gaussian"), file = 'NUL')
+        pred_hs <- predict(gp_model_hs, y = c(0.1, -0.2), gp_coords_pred = matrix(0.5, ncol = 1), cov_pars = cov_pars_hs,
+                           predict_response = FALSE, sample_prior = TRUE, num_prior_samples = 100000)
+        ind_anchor_hs <- which(coords_prior_hs[, 1] == 0)
+        ind_other_hs <- which(coords_prior_hs[, 1] != 0)
+        label_hs <- paste0("(order ", order_hs, ", anchor at position ", ind_anchor_hs, ")")
+        expect_true(all(pred_hs$prior_samples[ind_anchor_hs, ] == 0), label = paste("prior samples at the anchor", label_hs))
+        expect_lt(abs(var(pred_hs$prior_samples[ind_other_hs, ]) / cov_pars_hs[2] - 1), 0.02, label = paste("prior sample variance", label_hs))
+      }
+    }
+
+  })
+
   test_that("hurst covariance of order 2 ", {
 
     # Anchored second-order Hurst covariance (1 < H < 2); 'ranges' are the ARD ranges of the coordinates 2, ..., d

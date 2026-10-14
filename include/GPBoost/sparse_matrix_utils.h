@@ -61,7 +61,8 @@ namespace GPBoost {
 
 	/*!
 	* \brief Calculate the diagonal of L^(-1) diag(d) L^(-T) for a sparse lower triangular matrix L without storing L^(-1),
-	*		which is usually not sparse. The columns of L^(-1) are calculated one after another, which requires O(n^2) operations
+	*		which is usually not sparse. The columns of L^(-1) are calculated one after another along their non-zero pattern,
+	*		so the cost is proportional to the number of non-zeros of L^(-1)
 	* \param L Sparse lower triangular matrix (compressed, column-major format, with the diagonal as first entry of every column)
 	* \param d Vector d
 	* \param[out] diag Diagonal of L^(-1) diag(d) L^(-T)
@@ -91,7 +92,7 @@ namespace GPBoost {
 
 	/*!
 	* \brief Calculate the squared norms of the columns of L^(-1) R for a sparse lower triangular matrix L and a sparse matrix R
-	*		without storing L^(-1) R. The columns are calculated one after another, starting at the first non-zero row of a column of R
+	*		without storing L^(-1) R. The columns are calculated one after another along their non-zero pattern
 	* \param L Sparse lower triangular matrix (compressed, column-major format, with the diagonal as first entry of every column)
 	* \param R Sparse right-hand side
 	* \param[out] norms Squared norms of the columns of L^(-1) R

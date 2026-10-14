@@ -67,6 +67,7 @@ namespace GPBoost {
 			cov_calculated_based_on_coords_(other.cov_calculated_based_on_coords_),
 			need_coordinates_for_calculating_covariance_(other.need_coordinates_for_calculating_covariance_),
 			variance_on_the_diagonal_(other.variance_on_the_diagonal_),
+			grad_is_multiple_of_cov_(other.grad_is_multiple_of_cov_),
 			use_precomputed_dist_for_calc_cov_(other.use_precomputed_dist_for_calc_cov_),
 			is_ar1_multifidelity_(other.is_ar1_multifidelity_),
 			base_cov_fct_type_(other.base_cov_fct_type_),
@@ -283,6 +284,14 @@ namespace GPBoost {
 
 		bool IsIsotropic() const {
 			return(is_isotropic_);
+		}
+
+		/*!
+		* \brief True if the gradients with respect to the range parameters are multiples of the entries of the covariance
+		*		matrix that is passed to them, so that they contain a taper that has been applied to this matrix
+		*/
+		bool GradientIsMultipleOfCov() const {
+			return(grad_is_multiple_of_cov_);
 		}
 
 		bool UseScaledCoordinates() const {
@@ -2434,6 +2443,7 @@ namespace GPBoost {
 						const double dist_ij, const T_mat& sigma, const den_mat_t* /* coords_ptr */, const den_mat_t* /* coords_pred_ptr */) -> double {
 							return GradientRangeMaternShape0_5(cm, dist_ij, sigma, i, j);
 						};
+					grad_is_multiple_of_cov_ = true;
 				}
 				else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
 					GradientCovFct_ = [this](double cm, double /* cm_num_deriv */, double par_aux, double /* shape */,
@@ -2467,6 +2477,7 @@ namespace GPBoost {
 					const double dist_ij, const T_mat& sigma, const den_mat_t* /* coords_ptr */, const den_mat_t* /* coords_pred_ptr */) -> double {
 						return GradientRangeGaussian(cm, dist_ij, sigma, i, j);
 					};
+				grad_is_multiple_of_cov_ = true;
 			}
 			else if (cov_fct_type_ == "powered_exponential") {
 				GradientCovFct_ = [this](double cm, double /* cm_num_deriv */, double /* par_aux */, double /* shape */,
@@ -2475,6 +2486,7 @@ namespace GPBoost {
 					const double dist_ij, const T_mat& sigma, const den_mat_t* /* coords_ptr */, const den_mat_t* /* coords_pred_ptr */) -> double {
 						return GradientRangePoweredExponential(cm, dist_ij, sigma, i, j);
 					};
+				grad_is_multiple_of_cov_ = true;
 			}
 			else if (cov_fct_type_ == "matern_space_time") {
 				if (TwoNumbersAreEqual<double>(shape_, 0.5)) {
@@ -2484,6 +2496,7 @@ namespace GPBoost {
 						const double dist_ij, const T_mat& sigma, const den_mat_t* coords_ptr, const den_mat_t* coords_pred_ptr) -> double {
 							return GradientRangeMaternSpaceTimeShape0_5(cm, dist_ij, sigma, ind_par, i, j, coords_ptr, coords_pred_ptr);
 						};
+					grad_is_multiple_of_cov_ = true;
 				}
 				else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
 					GradientCovFct_ = [this](double cm, double /* cm_num_deriv */, double /* par_aux */, double /* shape */,
@@ -2518,6 +2531,7 @@ namespace GPBoost {
 						const double dist_ij, const T_mat& sigma, const den_mat_t* coords_ptr, const den_mat_t* coords_pred_ptr) -> double {
 							return GradientRangeMaternARDShape0_5(cm, dist_ij, sigma, ind_par, i, j, coords_ptr, coords_pred_ptr);
 						};
+					grad_is_multiple_of_cov_ = true;
 				}
 				else if (TwoNumbersAreEqual<double>(shape_, 1.5)) {
 					GradientCovFct_ = [this](double cm, double /* cm_num_deriv */, double /* par_aux */, double /* shape */,
@@ -2567,6 +2581,7 @@ namespace GPBoost {
 					const double /* dist_ij */, const T_mat& sigma, const den_mat_t* coords_ptr, const den_mat_t* coords_pred_ptr) -> double {
 						return GradientRangeGaussianARD(cm, sigma, ind_par, i, j, coords_ptr, coords_pred_ptr);
 					};
+				grad_is_multiple_of_cov_ = true;
 			}
 			else if (cov_fct_type_ == "space_time_gneiting") {
 				GradientCovFct_coords_ = [this](const int i, const int j, const den_mat_t* coords, const den_mat_t* coords_pred,
@@ -3412,6 +3427,8 @@ namespace GPBoost {
 		bool need_coordinates_for_calculating_covariance_ = false;
 		/*! \brief If true, the diagonal of the covariance is constant and equal to the marginal variance */
 		bool variance_on_the_diagonal_ = true;
+		/*! \brief If true, the gradients with respect to the range parameters are multiples of the entries of the covariance matrix passed to them, see 'GradientIsMultipleOfCov' */
+		bool grad_is_multiple_of_cov_ = false;
 		/*! \brief If true, precomputed distances('dist') are used for calculating covariances, otherwise the coordinates are used('coords' and 'coords_pred') */
 		bool use_precomputed_dist_for_calc_cov_;
 		/*! \brief If true, this is a two-level autoregressive multifidelity covariance */

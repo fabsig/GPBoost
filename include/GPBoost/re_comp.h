@@ -467,10 +467,14 @@ namespace GPBoost {
 			if (this->cov_pars_.size() == 0) {
 				Log::REFatal("Covariance parameters are not specified. Call 'SetCovPars' first.");
 			}
-			if (this->ZZt_.cols() == 0) {
-				return false;
+			if (this->has_Z_) {
+				// every row of Z has one non-zero entry, so diag(Z * Sigma * Z^T) = sigma2 * Z.^2 * 1
+				diag = this->cov_pars_[0] * (this->Z_.cwiseAbs2() * vec_t::Ones(num_group_));
 			}
-			diag = this->cov_pars_[0] * ZZt_.diagonal();
+			else {
+				// calculations on the random effects scale (one entry per group)
+				diag = vec_t::Constant(num_group_, this->cov_pars_[0]);
+			}
 			return true;
 		}
 
@@ -1537,6 +1541,11 @@ namespace GPBoost {
 			else {
 				(*cov_function_).CalculateGradientCovMatFull(dist_ref, coords_, coords_, sigma_, this->cov_pars_,
 					sigma_grad, transf_scale, nugget_var, ind_par, true);
+			}
+			if (apply_tapering_ && !apply_tapering_manually_ && ind_par > 0 && !cov_function_->GradientIsMultipleOfCov()) {
+				// The gradient of the tapered covariance matrix is the tapered gradient. The derivative with respect to the variance
+				//	(ind_par = 0) and the gradients that are multiples of the entries of the tapered 'sigma_' contain the taper already
+				(*cov_function_).template MultiplyWendlandCorrelationTaper<T_mat>(dist_ref, sigma_grad, !is_cross_covariance_IP_);
 			}
 			if (this->has_Z_) {
 				Z_sigma_grad_Zt = this->Z_ * sigma_grad * this->Z_.transpose();

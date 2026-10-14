@@ -81,6 +81,31 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   b_multiple <- qnorm(sim_rand_unif(n=n, init_c=0.8))
   eps_multiple <- as.vector(C_multiple %*% b_multiple)
   
+  test_that("FITC: matching of prediction and training coordinates for the residual correction ", {
+
+    # A prediction point gets the residual correction if its coordinates equal those of a training point up to a relative
+    #   tolerance of 1e-10. The matches are found by a binary search in the sums of the coordinates
+    coords_fm <- coords[1:60, ]
+    y_fm <- (eps + xi)[1:60]
+    capture.output( gp_model_fm <- GPModel(gp_coords = coords_fm, cov_function = "exponential", gp_approx = "fitc",
+                                           num_ind_points = 20), file = 'NUL')
+    cov_pars_fm <- c(0.1, 1, 0.2)
+    coords_pred_fm <- rbind(coords_fm[7, ], coords_fm[7, ] + 1e-12, coords_fm[7, ] + 1e-5, coords_fm[25, ])
+    pred_fm <- predict(gp_model_fm, y = y_fm, gp_coords_pred = coords_pred_fm, cov_pars = cov_pars_fm,
+                       predict_var = TRUE, predict_response = FALSE)
+    # the point within the tolerance is treated as the training point itself
+    expect_lt(abs(pred_fm$mu[1] - pred_fm$mu[2]), TOLERANCE_STRICT)
+    expect_lt(abs(pred_fm$var[1] - pred_fm$var[2]), TOLERANCE_STRICT)
+    # the point outside the tolerance gets no residual correction
+    expect_gt(abs(pred_fm$mu[1] - pred_fm$mu[3]), 1e-4)
+    # the same predictions as for the training points one after another
+    pred_fm_single <- predict(gp_model_fm, y = y_fm, gp_coords_pred = coords_fm[c(7, 25), ], cov_pars = cov_pars_fm,
+                              predict_var = TRUE, predict_response = FALSE)
+    expect_lt(max(abs(pred_fm$mu[c(1, 4)] - pred_fm_single$mu)), TOLERANCE_STRICT)
+    expect_lt(max(abs(pred_fm$var[c(1, 4)] - pred_fm_single$var)), TOLERANCE_STRICT)
+
+  })
+
   test_that("fitc", {
     y <- eps + X%*%beta + xi
     coord_test_v1 <- rbind(c(0.11,0.45),coords[1:2,])

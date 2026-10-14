@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <queue>
 #include <vector>
 
 namespace GPBoost {
@@ -82,20 +84,34 @@ namespace GPBoost {
 #endif
 			vec_t& diag_local = diag_private[thread_nb];
 			diag_local = vec_t::Zero(n);
-			// Column j of L^(-1). It is zero above row j, and every entry is set back to zero once it has been used
+			// Column j of L^(-1). Its non-zeros are visited in increasing order of their row with a heap, since the pattern is not
+			//	known in advance, and every entry is set back to zero once it has been used. No zeros are scanned, so the cost is
+			//	proportional to the number of non-zeros of L^(-1) (n for a diagonal L)
 			vec_t x = vec_t::Zero(n);
-			// The cost of column j is proportional to n - j, cyclic scheduling balances the load
+			std::vector<char> in_heap(n, 0);
+			std::priority_queue<int, std::vector<int>, std::greater<int>> heap;
+			// Cyclic scheduling: every thread gets the same columns in every run, so the result does not depend on timing
 #pragma omp for schedule(static, 1)
 			for (int j = 0; j < n; ++j) {
 				x[j] = 1.;
-				for (int k = j; k < n; ++k) {
+				heap.push(j);
+				in_heap[j] = 1;
+				while (!heap.empty()) {
+					const int k = heap.top();
+					heap.pop();
+					in_heap[k] = 0;
 					if (x[k] != 0.) {
 						const double x_k = x[k] / val[col_ptr[k]];
+						x[k] = 0.;
 						for (int i = col_ptr[k] + 1; i < col_ptr[k + 1]; ++i) {
-							x[row_idx[i]] -= val[i] * x_k;
+							const int r = row_idx[i];
+							x[r] -= val[i] * x_k;
+							if (!in_heap[r]) {
+								heap.push(r);
+								in_heap[r] = 1;
+							}
 						}
 						diag_local[k] += d[j] * x_k * x_k;
-						x[k] = 0.;
 					}
 				}
 			}
@@ -174,24 +190,38 @@ namespace GPBoost {
 		norms = vec_t::Zero(num_cols);
 #pragma omp parallel
 		{
-			// Column of L^(-1) R. Every entry is set back to zero once it has been used
+			// Column of L^(-1) R. Its non-zeros are visited in increasing order of their row with a heap, see 'CalcDiagLInvDLInvT',
+			//	and every entry is set back to zero once it has been used
 			vec_t x = vec_t::Zero(n);
+			std::vector<char> in_heap(n, 0);
+			std::priority_queue<int, std::vector<int>, std::greater<int>> heap;
 #pragma omp for schedule(dynamic, 16)
 			for (int j = 0; j < num_cols; ++j) {
-				int first = n;
 				for (sp_mat_t::InnerIterator it(R, j); it; ++it) {
-					x[it.row()] = it.value();
-					first = std::min(first, (int)it.row());
+					const int r = (int)it.row();
+					x[r] = it.value();
+					if (!in_heap[r]) {
+						heap.push(r);
+						in_heap[r] = 1;
+					}
 				}
 				double norm = 0.;
-				for (int k = first; k < n; ++k) {
+				while (!heap.empty()) {
+					const int k = heap.top();
+					heap.pop();
+					in_heap[k] = 0;
 					if (x[k] != 0.) {
 						const double x_k = x[k] / val[col_ptr[k]];
+						x[k] = 0.;
 						for (int i = col_ptr[k] + 1; i < col_ptr[k + 1]; ++i) {
-							x[row_idx[i]] -= val[i] * x_k;
+							const int r = row_idx[i];
+							x[r] -= val[i] * x_k;
+							if (!in_heap[r]) {
+								heap.push(r);
+								in_heap[r] = 1;
+							}
 						}
 						norm += x_k * x_k;
-						x[k] = 0.;
 					}
 				}
 				norms[j] = norm;

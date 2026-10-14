@@ -3980,8 +3980,8 @@ namespace GPBoost {
 				// instead of the "data scale", in which case the predictions need to be mapped to the data scale below
 				std::vector<data_size_t> random_effects_indices_of_data_pred;
 				int num_REs_pred = num_data_per_cluster_pred[cluster_i];
-				//Calculate covariance matrix if needed
-				if (predict_cov_mat || predict_var || predict_response) {
+				//Calculate covariance matrix if needed (a Gaussian response mean does not need it)
+				if (predict_cov_mat || predict_var_or_response) {
 					if (gp_approx_ == "vecchia") {
 						//TODO: move this code out into another function for better readability
 						std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp_clus0 = GetForCluster(re_comps_vecchia_, unique_clusters_[0], 0)[0];
@@ -4302,10 +4302,11 @@ namespace GPBoost {
 						std::vector<std::vector<re_group_t>>& re_group_levels_pred_use =
 							(only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_) ?
 							re_group_levels_pred_orig : re_group_levels_pred;
-						// The distances among the prediction points are only needed for the predictive covariance matrix
+						// The distances among the prediction points and the matrices Z Z^T of the grouped random effects are only needed
+						//	for the predictive covariance matrix, the variances are calculated with 'CalcZSigmaZtDiag'
 						CreateREComponents(num_data_pred, data_indices_per_cluster_pred, cluster_i,
 							re_group_levels_pred_use, num_data_per_cluster_pred, re_group_rand_coef_data_pred,
-							gp_coords_data_pred, gp_rand_coef_data_pred, true,
+							gp_coords_data_pred, gp_rand_coef_data_pred, predict_cov_mat,
 							cov_fct, cov_fct_shape, cov_fct_order, cov_fct_taper_range, cov_fct_taper_shape,
 							re_comps_cluster_i, predict_cov_mat);
 						if (only_one_GP_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_) {
@@ -13715,16 +13716,11 @@ namespace GPBoost {
 				if (!only_one_grouped_RE_calculations_on_RE_scale_ && !only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ &&
 					!use_woodbury_identity_ && !grouped_RE_and_vecchia_GP_) {
 					CHECK(predict_cov_mat);
-					T_chol chol_fact_cov_mat;
-					chol_fact_cov_mat.compute(cov_mat_pred_id);
+					post_samples_id = den_mat_t(num_REs_pred, num_post_samples);
+					GenRandVecNormalParallel(seed_rng_, cg_generator_counter_, post_samples_id);
+					MultiplyCholeskyFactorOfCovMat(cov_mat_pred_id, post_samples_id);
 					if (cov_mat_only_for_simulation) {
 						cov_mat_pred_id.resize(0, 0);
-					}
-					post_samples_id = den_mat_t(num_REs_pred, num_post_samples);					
-					GenRandVecNormalParallel(seed_rng_, cg_generator_counter_, post_samples_id);
-					post_samples_id = chol_fact_cov_mat.CholFactMatrix().template triangularView<Eigen::Lower>() * post_samples_id;
-					if (CholeskyHasPermutation<T_chol>(chol_fact_cov_mat)) {
-						ApplyPermutationCholeskyFactor<den_mat_t, T_chol>(chol_fact_cov_mat, post_samples_id, post_samples_id, /*transpose=*/true);
 					}
 				}
 			}//end sample_posterior
@@ -13739,12 +13735,7 @@ namespace GPBoost {
 						T_mat sigma_latent;
 						CalcZSigmaZtLatent(sigma_latent, cluster_i);
 						sigma_latent.diagonal().array() *= JITTER_MUL;//the latent covariance is singular when there are duplicate locations
-						T_chol chol_fact_sigma_latent;
-						chol_fact_sigma_latent.compute(sigma_latent);
-						prior_samples_id = chol_fact_sigma_latent.CholFactMatrix().template triangularView<Eigen::Lower>() * prior_samples_id;
-						if (CholeskyHasPermutation<T_chol>(chol_fact_sigma_latent)) {
-							ApplyPermutationCholeskyFactor<den_mat_t, T_chol>(chol_fact_sigma_latent, prior_samples_id, prior_samples_id, /*transpose=*/true);
-						}
+						MultiplyCholeskyFactorOfCovMat(sigma_latent, prior_samples_id);
 					}
 					else {
 						prior_samples_id = chol_facts_[cluster_i].CholFactMatrix().template triangularView<Eigen::Lower>() * prior_samples_id;
@@ -13755,6 +13746,56 @@ namespace GPBoost {
 				}
 			}//end sample_prior
 		}//end CalcPred
+
+		/*!
+		* \brief Multiply standard normal samples with a Cholesky factor of a covariance matrix such that they become samples
+		*		from the normal distribution with mean zero and this covariance matrix. The matrix is singular when points are
+		*		deterministic, e.g. the anchor of a Hurst process at the origin, whose predictive variance is zero: the samples
+		*		of these points are zero, and the other points are sampled from their sub-matrix
+		* \param cov_mat Covariance matrix
+		* \param[out] samples Standard normal samples (one column per sample), overwritten by the samples from N(0, cov_mat)
+		*/
+		void MultiplyCholeskyFactorOfCovMat(const T_mat& cov_mat,
+			den_mat_t& samples) const {
+			CHECK(cov_mat.rows() == samples.rows());
+			T_chol chol_fact;
+			chol_fact.compute(cov_mat);
+			if (chol_fact.info() == Eigen::Success) {
+				samples = chol_fact.CholFactMatrix().template triangularView<Eigen::Lower>() * samples;
+				if (CholeskyHasPermutation<T_chol>(chol_fact)) {
+					ApplyPermutationCholeskyFactor<den_mat_t, T_chol>(chol_fact, samples, samples, /*transpose=*/true);
+				}
+				return;
+			}
+			std::vector<int> random_points;//points with a positive variance
+			for (int i = 0; i < (int)cov_mat.rows(); ++i) {
+				if (cov_mat.coeff(i, i) > 0.) {
+					random_points.push_back(i);
+				}
+			}
+			if ((int)random_points.size() == (int)cov_mat.rows()) {
+				Log::REFatal("The covariance matrix is not positive definite, samples cannot be drawn ");
+			}
+			// S selects the points with a positive variance
+			sp_mat_t S((int)random_points.size(), cov_mat.rows());
+			std::vector<Triplet_t> triplets(random_points.size());
+			for (int k = 0; k < (int)random_points.size(); ++k) {
+				triplets[k] = Triplet_t(k, random_points[k], 1.);
+			}
+			S.setFromTriplets(triplets.begin(), triplets.end());
+			const T_mat S_cov_mat = S * cov_mat;
+			const T_mat cov_mat_sub = S_cov_mat * S.transpose();
+			chol_fact.compute(cov_mat_sub);
+			if (chol_fact.info() != Eigen::Success) {
+				Log::REFatal("The covariance matrix is not positive definite, samples cannot be drawn ");
+			}
+			den_mat_t samples_sub = S * samples;
+			samples_sub = chol_fact.CholFactMatrix().template triangularView<Eigen::Lower>() * samples_sub;
+			if (CholeskyHasPermutation<T_chol>(chol_fact)) {
+				ApplyPermutationCholeskyFactor<den_mat_t, T_chol>(chol_fact, samples_sub, samples_sub, /*transpose=*/true);
+			}
+			samples = S.transpose() * samples_sub;
+		}//end MultiplyCholeskyFactorOfCovMat
 
 		void SetVecchiaPredType(const char* vecchia_pred_type) {
 			vecchia_pred_type_ = std::string(vecchia_pred_type);
@@ -13847,6 +13888,17 @@ namespace GPBoost {
 				for (int i = 0; i < num_REs_pred; ++i) {
 					coords_pred_sum[i] = gp_coords_mat_pred(i, Eigen::all).sum();
 				}
+				// The observed points are sorted by their coordinate sums, so that the candidates for a match with a prediction point are
+				//	found by binary search instead of a comparison with every observed point
+				std::vector<int> order_coords_sum(num_REs_obs);
+				for (int i = 0; i < num_REs_obs; ++i) {
+					order_coords_sum[i] = i;
+				}
+				std::sort(order_coords_sum.begin(), order_coords_sum.end(), [&coords_sum](int a, int b) { return coords_sum[a] < coords_sum[b]; });
+				std::vector<double> coords_sum_sorted(num_REs_obs);
+				for (int k = 0; k < num_REs_obs; ++k) {
+					coords_sum_sorted[k] = coords_sum[order_coords_sum[k]];
+				}
 				den_mat_t sigma_ip_inv_cross_cov_T;
 				//every thread collects its triplets in its own vector and they are concatenated afterwards
 				int num_threads_fitc_corr;
@@ -13875,7 +13927,11 @@ namespace GPBoost {
 						vec_t coord_pred_i = gp_coords_mat_pred.row(ii);
 						Sigma_ii = GetForCluster(re_comps_cross_cov_, cluster_i, 0)[0]->CalculateCovarianceOneEntry(coord_pred_i, coord_pred_i);
 					}
-					for (int jj = 0; jj < num_REs_obs; ++jj) {
+					// all observed points whose coordinate sum is within the tolerance of 'TwoNumbersAreEqual' are in this window
+					const double window = 2. * EPSILON_NUMBERS * std::max(1., std::abs(coords_pred_sum[ii]));
+					const int k_first = (int)(std::lower_bound(coords_sum_sorted.begin(), coords_sum_sorted.end(), coords_pred_sum[ii] - window) - coords_sum_sorted.begin());
+					for (int k = k_first; k < num_REs_obs && coords_sum_sorted[k] <= coords_pred_sum[ii] + window; ++k) {
+						const int jj = order_coords_sum[k];
 						if (TwoNumbersAreEqual<double>(coords_pred_sum[ii], coords_sum[jj])) {
 							bool are_the_same = true;
 							for (int ic = 0; ic < (int)gp_coords_mat_pred.cols(); ++ic) {//loop over coordinates

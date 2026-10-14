@@ -183,15 +183,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            cov_fct_shape = 2.5,
                                            gp_approx = "tapering", cov_fct_taper_shape = 1, cov_fct_taper_range = 0.5,
                                            y = y, X=X, params = params_25), file='NUL')
-    cov_pars <- c(0.8066310, 0.4394089)
-    coefs <- c(0.3572927, 1.3868262)
+    cov_pars <- c(0.80839469, 2.1121736)
+    coefs <- c(0.34039424, 1.3834627)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coefs)),TOLERANCE_MEDIUM)
-    expect_equal(gp_model$get_num_optim_iter(), 9)
+    expect_equal(gp_model$get_num_optim_iter(), 169)
     pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                     predict_var = TRUE, predict_response = FALSE, cov_pars = c(1,0.2))
-    expected_mu <- c( -0.4479216, 0.5456168, 2.4365937)
-    expected_var <- c(0.7188332, 0.7297977, 0.3826909)
+    expected_mu <- c(-0.45597781, 0.5352689, 2.4284282)
+    expected_var <- c(0.71792066, 0.72865611, 0.38241935)
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(pred$var)-expected_var)),TOLERANCE_MEDIUM)
 

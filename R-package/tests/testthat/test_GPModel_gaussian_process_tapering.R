@@ -155,6 +155,54 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)), TOLERANCE_STRICT)
   })
   
+  test_that("Gradients of tapered covariance functions ", {
+
+    # The gradient of a tapered covariance matrix is the tapered gradient. The gradient is read off one gradient descent step
+    #   with a small learning rate on the coordinates of the optimizer (the logarithms of the transformed parameters; the
+    #   error variance is a fixed auxiliary parameter of the 'gaussian_latent' likelihood, so that it is not profiled out)
+    #   and compared with central finite differences of the negative log-likelihood in the same coordinates
+    n_tg <- 40
+    err_var_tg <- 0.3
+    lr_tg <- 1e-5
+    h_tg <- 1e-5
+    y_tg <- (eps + xi)[1:n_tg]
+    for (cov_function_tg in c("exponential", "matern_1.5", "hurst")) {
+      if (cov_function_tg == "hurst") {
+        coords_tg <- coords[1:n_tg, 1, drop = FALSE]
+        cov_pars_tg <- c(1.2, 0.4)
+        # transformed parameter p = -log(H), the optimizer uses log(p)
+        to_coord_tg <- function(pars) c(log(pars[1]), log(-log(pars[2])))
+        from_coord_tg <- function(t) c(exp(t[1]), exp(-exp(t[2])))
+        capture.output( gp_model_tg <- GPModel(gp_coords = coords_tg, cov_function = "hurst", likelihood = "gaussian_latent",
+                                               gp_approx = "tapering", cov_fct_taper_range = 0.5, cov_fct_taper_shape = 1), file = 'NUL')
+      } else {
+        coords_tg <- coords[1:n_tg, ]
+        cov_pars_tg <- c(1.2, 0.15)
+        # transformed parameter c / range with a constant c, the optimizer uses log(c / range) = log(c) - log(range)
+        to_coord_tg <- function(pars) c(log(pars[1]), -log(pars[2]))
+        from_coord_tg <- function(t) c(exp(t[1]), exp(-t[2]))
+        cov_fct_shape_tg <- if (cov_function_tg == "matern_1.5") 1.5 else 0.5
+        capture.output( gp_model_tg <- GPModel(gp_coords = coords_tg, cov_function = "matern", cov_fct_shape = cov_fct_shape_tg,
+                                               likelihood = "gaussian_latent", gp_approx = "tapering",
+                                               cov_fct_taper_range = 0.5, cov_fct_taper_shape = 1), file = 'NUL')
+      }
+      nll_tg <- function(t) gp_model_tg$neg_log_likelihood(cov_pars = from_coord_tg(t), y = y_tg, aux_pars = err_var_tg)
+      t0_tg <- to_coord_tg(cov_pars_tg)
+      grad_fd_tg <- sapply(1:2, function(k) {
+        e_k <- rep(0, 2)
+        e_k[k] <- h_tg
+        (nll_tg(t0_tg + e_k) - nll_tg(t0_tg - e_k)) / (2 * h_tg)
+      })
+      capture.output( fit(gp_model_tg, y = y_tg, params = list(optimizer_cov = "gradient_descent", lr_cov = lr_tg, maxit = 1,
+                                                               use_nesterov_acc = FALSE, init_cov_pars = cov_pars_tg,
+                                                               init_aux_pars = err_var_tg, estimate_aux_pars = FALSE,
+                                                               init_coef_aux_pars_from_iid_model = FALSE)), file = 'NUL')
+      grad_gd_tg <- (t0_tg - to_coord_tg(as.vector(gp_model_tg$get_cov_pars()))) / lr_tg
+      expect_lt(max(abs(grad_gd_tg - grad_fd_tg) / abs(grad_fd_tg)), TOLERANCE_LOOSE, label = paste0("gradient (", cov_function_tg, ")"))
+    }
+
+  })
+
   test_that("Tapering ", {
     y <- eps + X%*%beta + xi
     coord_test <- cbind(c(0.1,0.2,0.7),c(0.9,0.4,0.55))
@@ -265,8 +313,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            gp_approx = "tapering", cov_fct_taper_shape = 1, cov_fct_taper_range = 0.5,
                                            y = y, X = X,
                                            params = params), file='NUL')
-    cov_pars_tap <- c(0.18970609, 0.07263436, 0.80493104, 0.20220891, 0.11212289, 0.02562848)
-    coef_tap <- c(2.35889350, 0.17954660, 1.87422223, 0.09831309)
+    cov_pars_tap <- c(0.20581626, 0.081466654, 0.80578734, 0.20577817, 0.12455989, 0.044084501)
+    coef_tap <- c(2.3539016, 0.18687168, 1.8724674, 0.098575378)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_tap)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_tap)),TOLERANCE_STRICT)
   })
