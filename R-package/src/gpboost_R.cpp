@@ -958,7 +958,8 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 	SEXP cg_convergence_criterion,
 	SEXP cg_rel_tol,
 	SEXP cg_abs_tol,
-	SEXP cg_multi_rhs_convergence) {
+	SEXP cg_multi_rhs_convergence,
+	SEXP reset_modes_line_search_lbfgs) {
 	SEXP optimizer_aux = PROTECT(Rf_asChar(optimizer));
 	SEXP convergence_criterion_aux = PROTECT(Rf_asChar(convergence_criterion));
 	SEXP optimizer_coef_aux = PROTECT(Rf_asChar(optimizer_coef));
@@ -1008,7 +1009,8 @@ SEXP GPB_SetOptimConfig_R(SEXP handle,
 		cg_convergence_criterion_ptr,
 		Rf_asReal(cg_rel_tol),
 		Rf_asReal(cg_abs_tol),
-		cg_multi_rhs_convergence_ptr));
+		cg_multi_rhs_convergence_ptr,
+		Rf_asLogical(reset_modes_line_search_lbfgs)));
 	R_API_END();
 	UNPROTECT(6);
 	return R_NilValue;
@@ -1520,7 +1522,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterDumpModel_R"          , (DL_FUNC)&LGBM_BoosterDumpModel_R          , 3},
   {"GPB_CreateREModel_R"              , (DL_FUNC)&GPB_CreateREModel_R              , 35},
   {"GPB_REModelFree_R"                , (DL_FUNC)&GPB_REModelFree_R                , 1},
-  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 37},
+  {"GPB_SetOptimConfig_R"             , (DL_FUNC)&GPB_SetOptimConfig_R             , 38},
   {"GPB_SetUsedInGPBoostAlgorithm_R", (DL_FUNC)&GPB_SetUsedInGPBoostAlgorithm_R, 1},
   {"GPB_CanCalculateStandardErrorsCovPars_R", (DL_FUNC)&GPB_CanCalculateStandardErrorsCovPars_R, 2},
   {"GPB_CanCalculateStandardErrorsAuxPars_R", (DL_FUNC)&GPB_CanCalculateStandardErrorsAuxPars_R, 2},

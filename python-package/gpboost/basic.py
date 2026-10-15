@@ -5683,6 +5683,7 @@ class GPModel(object):
                        "m_lbfgs": -999, # default value is set in C++
                        "max_num_restarts_lbfgs": -999, # default value is set in C++
                        "cold_restart_lbfgs": True,
+                       "reset_modes_line_search_lbfgs": False,
                        "delta_conv_mode_finding": -999. # default value is set in C++
                        }
         self.num_sets_re = 1
@@ -6568,6 +6569,10 @@ class GPModel(object):
                     optimizer thus terminates prematurely without having converged (e.g., for the "asymmetric_laplace"
                     likelihood, whose approximate marginal likelihood is not smooth).
                     If max_num_restarts_lbfgs = -999, internal default values are used.
+                - reset_modes_line_search_lbfgs : bool, optional (default = False)
+                    If True, the mode finding of the Laplace approximation starts at the modes of the current parameters for every
+                    trial point of the line search of the "lbfgs" optimizer, and not at the modes of the previous trial point. Only
+                    relevant for non-Gaussian likelihoods and optimizer_cov = "lbfgs".
                 - delta_conv_mode_finding : double, optional (default = 1e-8)
                     Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods.
                     The default is 1e-10 for the likelihood "gaussian_heteroscedastic_fixed_and_random".
@@ -6947,6 +6952,10 @@ class GPModel(object):
                     optimizer thus terminates prematurely without having converged (e.g., for the "asymmetric_laplace"
                     likelihood, whose approximate marginal likelihood is not smooth).
                     If max_num_restarts_lbfgs = -999, internal default values are used.
+                - reset_modes_line_search_lbfgs : bool, optional (default = False)
+                    If True, the mode finding of the Laplace approximation starts at the modes of the current parameters for every
+                    trial point of the line search of the "lbfgs" optimizer, and not at the modes of the previous trial point. Only
+                    relevant for non-Gaussian likelihoods and optimizer_cov = "lbfgs".
                 - delta_conv_mode_finding : double, optional (default = 1e-8)
                     Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods.
                     The default is 1e-10 for the likelihood "gaussian_heteroscedastic_fixed_and_random".
@@ -7029,7 +7038,8 @@ class GPModel(object):
             cg_convergence_criterion_c,
             ctypes.c_double(self.params["cg_rel_tol"]),
             ctypes.c_double(self.params["cg_abs_tol"]),
-            cg_multi_rhs_convergence_c))
+            cg_multi_rhs_convergence_c,
+            ctypes.c_bool(self.params["reset_modes_line_search_lbfgs"])))
         return self
 
     def _get_optim_params(self):

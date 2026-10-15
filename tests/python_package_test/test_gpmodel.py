@@ -411,6 +411,27 @@ def test_set_optim_params_limits_iterations():
     assert np.isfinite(gp_model.get_current_neg_log_likelihood())
 
 
+def test_reset_modes_line_search_lbfgs():
+    # The option is off by default and is passed on to the library. For a likelihood whose posterior has a single
+    # mode, the mode found for a trial point of the line search does not depend on where the mode finding starts,
+    # and the option does not change the estimates
+    coords, y_field = _sim_coords()
+    y = np.random.default_rng(3).poisson(np.exp(0.5 * y_field))
+    assert gpb.GPModel(gp_coords=coords, cov_function="exponential",
+                       likelihood="poisson").params["reset_modes_line_search_lbfgs"] is False
+    nll = {}
+    cov_pars = {}
+    for reset in (False, True):
+        gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential", likelihood="poisson")
+        gp_model.set_optim_params(params={"reset_modes_line_search_lbfgs": reset, "trace": False})
+        assert gp_model.params["reset_modes_line_search_lbfgs"] is reset
+        gp_model.fit(y=y)
+        nll[reset] = gp_model.get_current_neg_log_likelihood()
+        cov_pars[reset] = np.asarray(gp_model.get_cov_pars(format_pandas=False), dtype=float).ravel()
+    assert nll[True] == pytest.approx(nll[False], abs=1e-3)
+    np.testing.assert_allclose(cov_pars[True], cov_pars[False], atol=1e-3)
+
+
 def test_summary_runs():
     group, y = _sim_grouped()
     gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")

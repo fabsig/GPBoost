@@ -428,6 +428,14 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief True if the mode finding of every trial point of a line search starts at the modes of the current iterate
+		*		(see 'ResetModesToLag1()'), otherwise it starts at the modes of the previous trial point
+		*/
+		bool ResetModesEveryTrialPoint() const {
+			return re_model_templ_->ResetModesLineSearchLBFGS();
+		}
+
+		/*!
 		* \brief Save the current modes of the Laplace approximations as the modes of the best point found so far in a
 		*		line search ('x_lo' in 'LineSearchNocedalWright'). This function must be called whenever the current
 		*		point of a line search becomes this best point, since a line search can return the best point found so
@@ -776,10 +784,17 @@ namespace GPBoost {
 				param_LBFGSpp.max_iterations = max_iter - num_it;//the restarts share the total budget of 'max_iter' iterations
 				bool reuse_m_bfgs = reuse_m_bfgs_from_previous_call && restart == 0;//restarts use a re-initialized approximate Hessian
 				int num_it_restart = 0;
+				// With 'reset_modes_line_search_lbfgs', the objective function value of the optimizer is a variable of its own.
+				//	Otherwise, it is 'neg_log_likelihood', the value stored in the model, which evaluations of the model can change
+				//	without the optimizer noticing it, e.g., the calculation of the gradient after an unsuccessful line search, which
+				//	finds the modes anew
+				const bool separate_objective_value = optimizer == "lbfgs" && re_model_templ->ResetModesLineSearchLBFGS();
+				double nll_optimizer = neg_log_likelihood;
+				double& fx_optimizer = separate_objective_value ? nll_optimizer : neg_log_likelihood;
 				if (optimizer == "lbfgs") {
 					param_LBFGSpp.linesearch = 1;//LBFGS_LINESEARCH_BACKTRACKING_ARMIJO
 					LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchBacktracking> solver(param_LBFGSpp);
-					num_it_restart = solver.minimize(ll_fun, pars_init, neg_log_likelihood, reuse_m_bfgs, re_model_templ->GetMBFGS());
+					num_it_restart = solver.minimize(ll_fun, pars_init, fx_optimizer, reuse_m_bfgs, re_model_templ->GetMBFGS());
 					convergence_criterion_satisfied = solver.CriterionSatisfied();
 					if (restart == 0) {
 						re_model_templ->SetConvergedFirstIterationAfterBacktracking(solver.ConvergedFirstIterationAfterBacktracking());
@@ -788,11 +803,14 @@ namespace GPBoost {
 				else if (optimizer == "lbfgs_linesearch_nocedal_wright") {
 					param_LBFGSpp.linesearch = 3;//LBFGS_LINESEARCH_BACKTRACKING_STRONG_WOLFE
 					LBFGSpp::LBFGSSolver<double, LBFGSpp::LineSearchNocedalWright> solver(param_LBFGSpp);
-					num_it_restart = solver.minimize(ll_fun, pars_init, neg_log_likelihood, reuse_m_bfgs, re_model_templ->GetMBFGS());
+					num_it_restart = solver.minimize(ll_fun, pars_init, fx_optimizer, reuse_m_bfgs, re_model_templ->GetMBFGS());
 					convergence_criterion_satisfied = solver.CriterionSatisfied();
 					if (restart == 0) {
 						re_model_templ->SetConvergedFirstIterationAfterBacktracking(solver.ConvergedFirstIterationAfterBacktracking());
 					}
+				}
+				if (separate_objective_value) {
+					neg_log_likelihood = nll_optimizer;
 				}
 				num_it += num_it_restart;
 				double nll_current = neg_log_likelihood;

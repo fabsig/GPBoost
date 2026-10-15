@@ -74,6 +74,14 @@ public:
         int iter;
         for (iter = 0; iter < param.max_linesearch; iter++)
         {
+            // ChangedForGPBoost: with 'reset_modes_line_search_lbfgs', the mode finding of every candidate starts at the modes of 'xp'.
+            //  Otherwise, it starts at the modes of the previous candidate, and the objective function along the search direction then
+            //  depends on the candidates evaluated before. It does not approach its value at 'xp' for small steps if a previous candidate
+            //  has moved the modes to another local mode (e.g., for likelihoods that are not log-concave)
+            if (iter > 0 && f.ResetModesEveryTrialPoint())
+            {
+                f.ResetModesToLag1();
+            }
             // x_{k+1} = x_k + step * d_k
             x.noalias() = xp + step * drt;
             // Evaluate this candidate

@@ -215,6 +215,9 @@ fixed effects linear regression term (if there is one)}
     as long as the total number of iterations is below \code{maxit}. This can help when the line search of "lbfgs" fails
     and the optimizer thus terminates prematurely without having converged. This can happen, e.g., for the
     \code{"asymmetric_laplace"} (= quantile regression) likelihood, whose approximate marginal likelihood is not smooth
+    \item{reset_modes_line_search_lbfgs: \code{boolean} (Default = FALSE)}. If TRUE, the mode finding of the Laplace approximation
+    starts at the modes of the current parameters for every trial point of the line search of the "lbfgs" optimizer, and not at the
+    modes of the previous trial point. Only relevant for non-Gaussian likelihoods and \code{optimizer_cov = "lbfgs"}
     \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8, and 1E-10 for the likelihood "gaussian_heteroscedastic_fixed_and_random")}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 }}
 

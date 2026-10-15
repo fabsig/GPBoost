@@ -292,6 +292,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     , file='NUL')
     expect_lt(sum(abs(gp_model_restart$get_cov_pars(std_err = FALSE)-0.8153285415)),tolerance_loc_1)
     expect_lt(sum(abs((gp_model_restart$get_current_neg_log_likelihood()-117.1840987))),tolerance_loc_1)
+    # The mode finding of every trial point of the line search starts at the modes of the current parameters
+    #   ('reset_modes_line_search_lbfgs', off by default). The trial points of a line search then do not depend on each
+    #   other, the line search does not fail here, and lbfgs finds a better optimum than without this option
+    params_reset <- params
+    params_reset$reset_modes_line_search_lbfgs <- TRUE
+    capture.output( gp_model_reset <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
+                                                 y = y, X=X, params = params_reset, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model_reset$get_cov_pars(std_err = FALSE)-0.4272494868)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model_reset$get_aux_pars()-0.2688214850)),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model_reset$get_coef(std_err = FALSE))-c(-0.1523493476, 2.0705376179))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model_reset$get_current_neg_log_likelihood()-116.1079141))),tolerance_loc_1)
+    expect_lt(gp_model_reset$get_current_neg_log_likelihood(), 117.1840987)
     expect_error(fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
                             y = y, X=X, params = list(max_num_restarts_lbfgs = -1L)), "max_num_restarts_lbfgs is not >= 0", fixed = TRUE)
 

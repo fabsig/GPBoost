@@ -739,6 +739,7 @@ GPBOOST_C_EXPORT SEXP GPB_REModelFree_R(
 * \param max_num_restarts_lbfgs Maximal number of restarts of the lbfgs optimizers after they have terminated. If max_num_restarts_lbfgs = -999, internal default values are used
 * \param cold_restart_lbfgs If true, restarts of the lbfgs optimizers are "cold" restarts, otherwise "warm" restarts (only relevant if max_num_restarts_lbfgs > 0)
 * \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
+* \param reset_modes_line_search_lbfgs If true, the mode finding of every trial point of the line search of the "lbfgs" optimizer starts at the modes of the current iterate, and the objective function value of the optimizer is kept separate from the negative log-likelihood stored in the model
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
@@ -778,7 +779,8 @@ GPBOOST_C_EXPORT SEXP GPB_SetOptimConfig_R(
 	SEXP cg_convergence_criterion,
 	SEXP cg_rel_tol,
 	SEXP cg_abs_tol,
-	SEXP cg_multi_rhs_convergence
+	SEXP cg_multi_rhs_convergence,
+	SEXP reset_modes_line_search_lbfgs
 );
 
 /*!

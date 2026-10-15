@@ -815,6 +815,14 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief True if the mode finding of every trial point of the line search of the "lbfgs" optimizer starts at the modes of the
+		*		current iterate and the objective function value of the optimizer is kept separate from 'neg_log_likelihood_'
+		*/
+		bool ResetModesLineSearchLBFGS() const {
+			return reset_modes_line_search_lbfgs_;
+		}
+
+		/*!
 		* \brief Report that a line search of an lbfgs optimizer has not been successful
 		* \param line_search_has_not_been_successful True if a line search has not been successful
 		*/
@@ -902,6 +910,8 @@ namespace GPBoost {
 		* \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 		* \param max_num_restarts_lbfgs Maximal number of restarts of the lbfgs optimizers after they have terminated. If max_num_restarts_lbfgs = -999, internal default values are used
 		* \param cold_restart_lbfgs If true, restarts of the lbfgs optimizers are "cold" restarts, otherwise "warm" restarts (only relevant if max_num_restarts_lbfgs > 0)
+		* \param reset_modes_line_search_lbfgs If true, the mode finding of every trial point of the line search of the "lbfgs" optimizer starts
+		*		at the modes of the current iterate, and the objective function value of the optimizer is kept separate from 'neg_log_likelihood_'
 		*/
 		void SetOptimConfig(double lr_cov,
 			double acc_rate_cov,
@@ -932,7 +942,9 @@ namespace GPBoost {
 			const char* cg_convergence_criterion = nullptr,
 			double cg_rel_tol = -999.,
 			double cg_abs_tol = -999.,
-			const char* cg_multi_rhs_convergence = nullptr) {
+			const char* cg_multi_rhs_convergence = nullptr,
+			bool reset_modes_line_search_lbfgs = false) {
+			reset_modes_line_search_lbfgs_ = reset_modes_line_search_lbfgs;
 			if (acc_rate_cov > 0.) {
 				acc_rate_cov_ = acc_rate_cov;
 			}
@@ -6720,6 +6732,14 @@ namespace GPBoost {
 		// If true, restarts of the lbfgs optimizers are "cold" restarts (regression coefficients, auxiliary parameters,
 		//	and modes are reset to their initial values), otherwise "warm" restarts
 		bool cold_restart_lbfgs_ = true;
+		// If true, the mode finding of every trial point of the line search of the "lbfgs" optimizer starts at the modes of the current
+		//	iterate, and the objective function value of the optimizer is kept separate from 'neg_log_likelihood_' (see 'OptimExternal()').
+		//	The approximate marginal likelihood along the search direction then does not depend on the trial points evaluated before,
+		//	and line searches fail less often, e.g., for the 't' likelihood, whose posterior can have several modes. In addition, the
+		//	optimizer terminates when a line search is not successful (see 'max_num_restarts_lbfgs_' for restarts). Note that a lower
+		//	value of the objective function does not always give better predictions: for the 't' likelihood, it can lead to degenerate
+		//	estimates with a very small scale parameter
+		bool reset_modes_line_search_lbfgs_ = false;
 		// True if the modes of the Laplace approximations have been reset (to zero, to a previous value, or to a saved
 		//	value) after the last mode finding. All quantities that depend on the modes ('first_deriv_ll_',
 		//	'information_ll_', the Cholesky factors, ...) then correspond to modes and parameters that have been

@@ -1536,4 +1536,39 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("'reset_modes_line_search_lbfgs' option of the lbfgs optimizer ", {
+
+    # The option is off by default, it can be set, only a logical value is accepted, and it is saved with a model
+    capture.output( gp_model_rm <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "poisson"), file = 'NUL')
+    expect_false(gp_model_rm$get_optim_params()$reset_modes_line_search_lbfgs)
+    expect_error(set_optim_params(gp_model_rm, params = list(reset_modes_line_search_lbfgs = "yes")),
+                 "Can only use", fixed = TRUE)
+    set_optim_params(gp_model_rm, params = list(reset_modes_line_search_lbfgs = TRUE))
+    expect_true(gp_model_rm$get_optim_params()$reset_modes_line_search_lbfgs)
+    # For a likelihood whose posterior has a single mode, the mode that is found for a trial point of the line search does
+    #   not depend on where the mode finding starts, and the option does not change the estimates
+    y_rm <- qpois(sim_rand_unif(n = n, init_c = 0.5631), lambda = exp(as.vector(L %*% b_1)))
+    X_rm <- cbind(1, x)
+    fits_rm <- list()
+    for (reset_rm in c(FALSE, TRUE)) {
+      capture.output( fits_rm[[as.character(reset_rm)]] <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                                     likelihood = "poisson", y = y_rm, X = X_rm,
+                                                                     params = c(OPTIM_PARAMS_BFGS, list(reset_modes_line_search_lbfgs = reset_rm))),
+                      file = 'NUL')
+    }
+    expect_lt(sum(abs(fits_rm[["TRUE"]]$get_cov_pars(std_err = FALSE) - fits_rm[["FALSE"]]$get_cov_pars(std_err = FALSE))),
+              TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(fits_rm[["TRUE"]]$get_coef(std_err = FALSE) - fits_rm[["FALSE"]]$get_coef(std_err = FALSE))),
+              TOLERANCE_MEDIUM)
+    expect_lt(abs(fits_rm[["TRUE"]]$get_current_neg_log_likelihood() - fits_rm[["FALSE"]]$get_current_neg_log_likelihood()),
+              TOLERANCE_MEDIUM)
+    filename_rm <- tempfile(fileext = ".json")
+    saveGPModel(fits_rm[["TRUE"]], filename = filename_rm)
+    capture.output( gp_model_loaded_rm <- loadGPModel(filename = filename_rm), file = 'NUL')
+    expect_true(gp_model_loaded_rm$get_optim_params()$reset_modes_line_search_lbfgs)
+    expect_equal(gp_model_loaded_rm$get_current_neg_log_likelihood(), fits_rm[["TRUE"]]$get_current_neg_log_likelihood(),
+                 tolerance = TOLERANCE_STRICT)
+
+  })
+
 }

@@ -730,6 +730,33 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_var <- c(0.0092433831081, 0.0091525152933, 0.0091867058615)
     expect_lt(sum(abs(pred$mu-expected_mu)),0.15)
     expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_LOOSE)
+    # With 'reset_modes_line_search_lbfgs' (off by default), the mode finding of every trial point of the line search
+    #   starts at the modes of the current parameters. The posterior of the 't' likelihood can have several modes. Without
+    #   this option, a trial point can move the modes to another posterior mode, all shorter steps of the line search keep
+    #   this mode, and the line search fails. The estimates are in the same flat region as above, the deviations over 1, 2,
+    #   6, 10, and 16 threads are up to 4e-4 for the covariance parameters, 2e-2 for the coefficients, and 8e-3 for the
+    #   negative log-likelihood
+    params_reset <- c(params, list(reset_modes_line_search_lbfgs = TRUE))
+    capture.output( gp_model_reset <- fitGPModel(gp_coords = coords, likelihood = likelihood,  cov_function = cov_function,
+                                                 matrix_inversion_method = matrix_inversion_method, X=X, y = y, params = params_reset)
+                    , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model_reset$get_cov_pars(std_err = FALSE))-c(0.01828061, 0.00087331))),tol_flat_region)
+    expect_lt(sum(abs(as.vector(gp_model_reset$get_coef(std_err = FALSE))-c(0.09852542, 2.02101583))),tol_flat_region)
+    expect_lt(sum(abs(gp_model_reset$get_current_neg_log_likelihood()-(-76.56998692))),tol_flat_region)
+    # On the reference platform, the line search fails once without this option (for all numbers of threads listed above)
+    #   and never with it
+    if (USE_STRICT_TOLERANCES) {
+      num_failed_line_searches <- function(params_fit) {
+        capture.output( gp_model_trace <- GPModel(gp_coords = coords, likelihood = likelihood, cov_function = cov_function,
+                                                  matrix_inversion_method = matrix_inversion_method), file='NUL')
+        # 'trace' sets the log level of the process, it is restored for the tests that follow
+        on.exit(set_optim_params(gp_model_trace, params = list(trace = FALSE)), add = TRUE)
+        out <- capture.output( fit(gp_model_trace, y = y, X = X, params = c(params_fit, list(trace = TRUE))) )
+        sum(grepl("line search routine reached the maximum number of iterations", out, fixed = TRUE))
+      }
+      expect_gt(num_failed_line_searches(params), 0)
+      expect_equal(num_failed_line_searches(params_reset), 0)
+    }
 
     ## Vecchia approximation
     gp_approx <- "vecchia"

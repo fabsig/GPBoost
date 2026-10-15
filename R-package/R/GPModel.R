@@ -665,6 +665,9 @@
 #'                as long as the total number of iterations is below \code{maxit}. This can help when the line search of "lbfgs" fails
 #'                and the optimizer thus terminates prematurely without having converged. This can happen, e.g., for the
 #'                \code{"asymmetric_laplace"} (= quantile regression) likelihood, whose approximate marginal likelihood is not smooth
+#'                \item{reset_modes_line_search_lbfgs: \code{boolean} (Default = FALSE)}. If TRUE, the mode finding of the Laplace approximation
+#'                starts at the modes of the current parameters for every trial point of the line search of the "lbfgs" optimizer, and not at the
+#'                modes of the previous trial point. Only relevant for non-Gaussian likelihoods and \code{optimizer_cov = "lbfgs"}
 #'                \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8, and 1E-10 for the likelihood "gaussian_heteroscedastic_fixed_and_random")}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 #'            }
 #' @param offset A \code{numeric} \code{vector} with 
@@ -1692,6 +1695,7 @@ gpb.GPModel <- R6::R6Class(
         , private$params[["cg_rel_tol"]]
         , private$params[["cg_abs_tol"]]
         , private$params[["cg_multi_rhs_convergence"]]
+        , private$params[["reset_modes_line_search_lbfgs"]]
       )
       return(invisible(self))
     },
@@ -3132,6 +3136,7 @@ gpb.GPModel <- R6::R6Class(
           m_lbfgs = -999L, # default value is set in C++
           max_num_restarts_lbfgs = -999L, # default value is set in C++
           cold_restart_lbfgs = TRUE,
+          reset_modes_line_search_lbfgs = FALSE,
           delta_conv_mode_finding = -999 # default value is set in C++
     ),
     num_sets_re = 1,
@@ -3232,7 +3237,7 @@ gpb.GPModel <- R6::R6Class(
                                     cg_multi_rhs_convergence = c("average", "max", "per_rhs"))
       logical_params <- c("use_nesterov_acc", "trace",  
                           "reuse_rand_vec_trace", "estimate_aux_pars", "init_coef_aux_pars_from_iid_model",
-                          "cold_restart_lbfgs")
+                          "cold_restart_lbfgs", "reset_modes_line_search_lbfgs")
       if (!is.null(params[["init_cov_pars"]])) {
         if (is.vector(params[["init_cov_pars"]])) {
           if (storage.mode(params[["init_cov_pars"]]) != "double") {

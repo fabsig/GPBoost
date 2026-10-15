@@ -199,6 +199,13 @@ namespace GPBoost {
 		* \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 		* \param max_num_restarts_lbfgs Maximal number of restarts of the lbfgs optimizers after they have terminated. If max_num_restarts_lbfgs = -999, internal default values are used
 		* \param cold_restart_lbfgs If true, restarts of the lbfgs optimizers are "cold" restarts, otherwise "warm" restarts (only relevant if max_num_restarts_lbfgs > 0)
+		* \param cg_convergence_criterion Convergence criterion of the conjugate gradient algorithm ("absolute" or "relative")
+		* \param cg_rel_tol Relative tolerance of the conjugate gradient algorithm
+		* \param cg_abs_tol Absolute tolerance of the conjugate gradient algorithm
+		* \param cg_multi_rhs_convergence How the stopping rule is aggregated over the columns of a linear system with several right-hand sides
+		* \param reset_modes_line_search_lbfgs If true, the mode finding of every trial point of the line search of the "lbfgs" optimizer starts
+		*		at the modes of the current iterate, and the objective function value of the optimizer is kept separate from the negative
+		*		log-likelihood stored in the model
 		*/
 		void SetOptimConfig(double* init_cov_pars,
 			double lr,
@@ -235,7 +242,8 @@ namespace GPBoost {
 			const char* cg_convergence_criterion,
 			double cg_rel_tol,
 			double cg_abs_tol,
-			const char* cg_multi_rhs_convergence);
+			const char* cg_multi_rhs_convergence,
+			bool reset_modes_line_search_lbfgs);
 
 		/*!
 		* \brief Reset cov_pars_ (to their initial values).

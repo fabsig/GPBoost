@@ -2802,7 +2802,8 @@ int GPB_SetOptimConfig(REModelHandle handle,
 	const char* cg_convergence_criterion,
 	double cg_rel_tol,
 	double cg_abs_tol,
-	const char* cg_multi_rhs_convergence) {
+	const char* cg_multi_rhs_convergence,
+	bool reset_modes_line_search_lbfgs) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
 	ref_remodel->SetOptimConfig(init_cov_pars,
@@ -2840,7 +2841,8 @@ int GPB_SetOptimConfig(REModelHandle handle,
 		cg_convergence_criterion,
 		cg_rel_tol,
 		cg_abs_tol,
-		cg_multi_rhs_convergence);
+		cg_multi_rhs_convergence,
+		reset_modes_line_search_lbfgs);
 	API_END();
 }
 
