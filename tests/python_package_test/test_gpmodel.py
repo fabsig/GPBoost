@@ -612,6 +612,18 @@ def test_cg_prediction_settings_do_not_change_the_fit(pred_opts, likelihood):
     np.testing.assert_allclose(fit(pred_opts), reference, rtol=1e-12)
 
 
+def test_free_raw_data_frees_additional_likelihood_data():
+    # The model keeps its own copy of the additional likelihood data, it is freed in Python as the other data
+    rng = np.random.default_rng(5)
+    n, n_groups = 200, 20
+    group = np.repeat(np.arange(n_groups), n // n_groups)
+    num_events = rng.poisson(1., size=n)
+    gp_model = gpb.GPModel(group_data=group, likelihood="tweedie_joint", additional_likelihood_data=num_events,
+                           free_raw_data=True)
+    assert gp_model.additional_likelihood_data is None
+    assert gp_model.group_data is None
+
+
 def test_test_neg_log_likelihood_metric_with_a_second_predictor():
     # The default validation metric of the GPBoost algorithm for a likelihood with a second, fixed-effects-only
     # predictor: a joint Tweedie likelihood with an observed number of events and a log-dispersion predictor

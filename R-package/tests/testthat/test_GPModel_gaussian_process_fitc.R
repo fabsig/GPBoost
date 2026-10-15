@@ -84,7 +84,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   test_that("FITC: matching of prediction and training coordinates for the residual correction ", {
 
     # A prediction point gets the residual correction if its coordinates equal those of a training point up to a relative
-    #   tolerance of 1e-10. The matches are found by a binary search in the sums of the coordinates
+    #   tolerance of 1e-10. The matches are found by a binary search in the sorted values of every coordinate
     coords_fm <- coords[1:60, ]
     y_fm <- (eps + xi)[1:60]
     capture.output( gp_model_fm <- GPModel(gp_coords = coords_fm, cov_function = "exponential", gp_approx = "fitc",
@@ -103,6 +103,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                               predict_var = TRUE, predict_response = FALSE)
     expect_lt(max(abs(pred_fm$mu[c(1, 4)] - pred_fm_single$mu)), TOLERANCE_STRICT)
     expect_lt(max(abs(pred_fm$var[c(1, 4)] - pred_fm_single$var)), TOLERANCE_STRICT)
+    # All training points have the same coordinate sum, and the coordinates are large, so that a perturbation within the
+    #   tolerance of every coordinate can change the sum by more than the tolerance of the sum: the coordinates decide
+    coords_big_fm <- cbind(1e6 + 0.05 * (1:40), -1e6 - 0.05 * (1:40))
+    capture.output( gp_model_big_fm <- GPModel(gp_coords = coords_big_fm, cov_function = "exponential", gp_approx = "fitc",
+                                               num_ind_points = 10), file = 'NUL')
+    coords_pred_big_fm <- rbind(coords_big_fm[7, ], coords_big_fm[7, ] + c(1e-5, 0), coords_big_fm[7, ] + c(1e-5, -1e-5),
+                                coords_big_fm[7, ] + c(0.01, -0.01))
+    pred_big_fm <- predict(gp_model_big_fm, y = y_fm[1:40], gp_coords_pred = coords_pred_big_fm, cov_pars = cov_pars_fm,
+                           predict_var = TRUE, predict_response = FALSE)
+    expect_lt(max(abs(pred_big_fm$var[2:3] - pred_big_fm$var[1])), 1e-3)
+    expect_lt(max(abs(pred_big_fm$mu[2:3] - pred_big_fm$mu[1])), 1e-3)
+    # a point that is not within the tolerance gets no residual correction, although its coordinate sum is the same
+    expect_gt(abs(pred_big_fm$var[4] - pred_big_fm$var[1]), 0.05)
 
   })
 

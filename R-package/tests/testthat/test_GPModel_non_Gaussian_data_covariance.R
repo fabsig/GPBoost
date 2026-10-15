@@ -709,11 +709,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Note: the optimizer ends up in a very flat region of the log-likelihood (the Hurst parameter goes to almost 0).
     #   Which point in this region it stops at depends on the order in which floating point numbers are summed, i.e.,
     #   on the number of OpenMP threads: measured against the values below (which were recorded with all threads of
-    #   this machine), the deviations over 1, 2, 4 and 8 threads are up to 2e-4 for the covariance parameters, 7e-3
-    #   for the coefficients, 2e-3 for the negative log-likelihood and 6e-2 for the predicted means, and the number
-    #   of iterations varies between 59 and 69. The tolerances below have to accommodate this. Note: this must not be
-    #   solved by pinning the number of threads of the model, since that would only hide the dependence on the number
-    #   of threads instead of covering it
+    #   this machine), the deviations over 1 to 16 threads are up to 3e-3 for the covariance parameters, 7e-3 for the
+    #   coefficients, and 2e-2 for the negative log-likelihood, and the number of iterations varies between 52 and 68.
+    #   The predicted means vary more: the posterior of the 't' likelihood has several modes here, and parameters that
+    #   differ by less than 1e-4 can lead to different modes, which shift all predicted means by about 0.07 (the sum
+    #   of the absolute deviations is 0.21 with 10 threads). The tolerances below have to accommodate this. Note: this
+    #   must not be solved by pinning the number of threads of the model, since that would only hide the dependence on
+    #   the number of threads instead of covering it
     capture.output( gp_model <- fitGPModel(gp_coords = coords, likelihood = likelihood,  cov_function = cov_function,
                                            matrix_inversion_method = matrix_inversion_method, X=X, y = y, params = params) , file='NUL')
     cov_pars_exp <- c(0.01850628942, 0.008229165631)
@@ -728,7 +730,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     predict_var=TRUE, predict_response = FALSE)
     expected_mu <- c(-0.9401364534, 0.4826689913, 0.8811585466)
     expected_var <- c(0.0092433831081, 0.0091525152933, 0.0091867058615)
-    expect_lt(sum(abs(pred$mu-expected_mu)),0.15)
+    expect_lt(sum(abs(pred$mu-expected_mu)),0.3)
     expect_lt(sum(abs(pred$var-expected_var)),TOLERANCE_LOOSE)
     # With 'reset_modes_line_search_lbfgs' (off by default), the mode finding of every trial point of the line search
     #   starts at the modes of the current parameters. The posterior of the 't' likelihood can have several modes. Without
@@ -1114,6 +1116,24 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         label_hs <- paste0("(order ", order_hs, ", anchor at position ", ind_anchor_hs, ")")
         expect_true(all(pred_hs$prior_samples[ind_anchor_hs, ] == 0), label = paste("prior samples at the anchor", label_hs))
         expect_lt(abs(var(pred_hs$prior_samples[ind_other_hs, ]) / cov_pars_hs[2] - 1), 0.02, label = paste("prior sample variance", label_hs))
+      }
+      # All points are deterministic: the covariance matrix is zero, and so are all samples
+      for (coords_pred_hs in list(matrix(0, ncol = 1), matrix(c(0, 0), ncol = 1))) {
+        capture.output( gp_model_hs <- GPModel(gp_coords = coords_hs, cov_function = "hurst", cov_fct_order = order_hs,
+                                               likelihood = "gaussian"), file = 'NUL')
+        pred_hs <- predict(gp_model_hs, y = y_hs, gp_coords_pred = coords_pred_hs, cov_pars = cov_pars_hs,
+                           predict_var = TRUE, predict_response = FALSE, sample_posterior = TRUE, num_post_samples = 200)
+        label_hs <- paste0("(order ", order_hs, ", ", nrow(coords_pred_hs), " prediction points at the anchor)")
+        expect_lt(max(abs(pred_hs$var)), TOLERANCE_STRICT, label = paste("variance at the anchor", label_hs))
+        expect_true(all(pred_hs$posterior_samples == 0), label = paste("samples at the anchor", label_hs))
+      }
+      for (coords_prior_hs in list(matrix(0, ncol = 1), matrix(c(0, 0), ncol = 1))) {
+        capture.output( gp_model_hs <- GPModel(gp_coords = coords_prior_hs, cov_function = "hurst", cov_fct_order = order_hs,
+                                               likelihood = "gaussian"), file = 'NUL')
+        pred_hs <- predict(gp_model_hs, y = c(0.1, -0.2)[1:nrow(coords_prior_hs)], gp_coords_pred = matrix(0.5, ncol = 1),
+                           cov_pars = cov_pars_hs, predict_response = FALSE, sample_prior = TRUE, num_prior_samples = 200)
+        label_hs <- paste0("(order ", order_hs, ", ", nrow(coords_prior_hs), " training points at the anchor)")
+        expect_true(all(pred_hs$prior_samples == 0), label = paste("prior samples at the anchor", label_hs))
       }
     }
 

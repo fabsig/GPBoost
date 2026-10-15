@@ -520,8 +520,8 @@ the observed number of events (e.g., claims) N. N must be a non-negative integer
 
 \item{likelihood_learning_rate}{A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)}
 
-\item{free_raw_data}{A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
-is freed in R after initialization}
+\item{free_raw_data}{A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients,
+cluster IDs, weights, and additional likelihood data) is freed in R after initialization}
 
 \item{y}{A \code{vector} with response variable data}
 
@@ -731,7 +731,7 @@ fixed effects linear regression term (if there is one)}
     \code{"asymmetric_laplace"} (= quantile regression) likelihood, whose approximate marginal likelihood is not smooth
     \item{reset_modes_line_search_lbfgs: \code{boolean} (Default = FALSE)}. If TRUE, the mode finding of the Laplace approximation
     starts at the modes of the current parameters for every trial point of the line search of the "lbfgs" optimizer, and not at the
-    modes of the previous trial point. Only relevant for non-Gaussian likelihoods and \code{optimizer_cov = "lbfgs"}
+    modes of the previous trial point. Only relevant for non-Gaussian likelihoods and \code{optimizer_cov = "lbfgs"} or \code{"lbfgs_linesearch_nocedal_wright"}
     \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8, and 1E-10 for the likelihood "gaussian_heteroscedastic_fixed_and_random")}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 }}
 

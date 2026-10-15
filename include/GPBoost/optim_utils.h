@@ -788,7 +788,7 @@ namespace GPBoost {
 				//	Otherwise, it is 'neg_log_likelihood', the value stored in the model, which evaluations of the model can change
 				//	without the optimizer noticing it, e.g., the calculation of the gradient after an unsuccessful line search, which
 				//	finds the modes anew
-				const bool separate_objective_value = optimizer == "lbfgs" && re_model_templ->ResetModesLineSearchLBFGS();
+				const bool separate_objective_value = re_model_templ->ResetModesLineSearchLBFGS();
 				double nll_optimizer = neg_log_likelihood;
 				double& fx_optimizer = separate_objective_value ? nll_optimizer : neg_log_likelihood;
 				if (optimizer == "lbfgs") {

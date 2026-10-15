@@ -705,18 +705,20 @@ namespace GPBoost {
 	void REModel::FindInitialValueBoosting(const double* fixed_effects) {
 		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
 		CHECK(cov_pars_initialized_);
-		// The initial covariance parameters from a homoscedastic model of 'InitializeCovParsIfNotDefined()' do not account for an
-		//	offset of the mean, they are determined again with it if there is one
-		if (cov_pars_from_homoscedastic_model_without_offset_ && fixed_effects != nullptr) {
-			cov_pars_from_homoscedastic_model_without_offset_ = false;
+		// The homoscedastic model for the initial covariance parameters is estimated here and not in 'InitializeCovParsIfNotDefined()',
+		//	since it accounts for an offset of the mean (initial score), which is only known now
+		if (homoscedastic_model_deferred_to_boosting_) {
+			homoscedastic_model_deferred_to_boosting_ = false;
 			bool has_offset = false;
-			for (data_size_t i = 0; i < num_data_; ++i) {
-				if (fixed_effects[i] != 0.) {
-					has_offset = true;
-					break;
+			if (fixed_effects != nullptr) {
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					if (fixed_effects[i] != 0.) {
+						has_offset = true;
+						break;
+					}
 				}
 			}
-			if (has_offset && InitCovParsFromHomoscedasticModel(nullptr, nullptr, 0, fixed_effects)) {
+			if (InitCovParsFromHomoscedasticModel(nullptr, nullptr, 0, has_offset ? fixed_effects : nullptr)) {
 				init_cov_pars_ = cov_pars_;
 				covariance_matrix_has_been_factorized_ = false;
 			}
@@ -1468,9 +1470,11 @@ namespace GPBoost {
 			}
 			else {
 				cov_pars_ = vec_t(num_cov_pars_);
-				const bool from_homoscedastic_model = InitCovParsFromHomoscedasticModel(y_data, covariate_data, num_covariates, fixed_effects);
-				// In the GPBoost algorithm, an offset (initial score) is only available later, see 'FindInitialValueBoosting()'
-				cov_pars_from_homoscedastic_model_without_offset_ = from_homoscedastic_model && y_data == nullptr;
+				// In the GPBoost algorithm (y_data == nullptr), an offset (initial score) is only available later. The homoscedastic model
+				//	is then estimated in 'FindInitialValueBoosting()', and the default initial values are used until then
+				homoscedastic_model_deferred_to_boosting_ = y_data == nullptr && HomoscedasticModelCanInitCovPars();
+				const bool from_homoscedastic_model = !homoscedastic_model_deferred_to_boosting_ &&
+					InitCovParsFromHomoscedasticModel(y_data, covariate_data, num_covariates, fixed_effects);
 				if (!from_homoscedastic_model) {
 					if (matrix_format_ == "sp_mat_t") {
 						re_model_sp_->FindInitCovPar(y_data, fixed_effects, cov_pars_.data());
@@ -1489,18 +1493,25 @@ namespace GPBoost {
 		}
 	}
 
+	bool REModel::HomoscedasticModelCanInitCovPars() const {
+		if (!gp_args_aux_model_ || GetLikelihood() != "gaussian_heteroscedastic_fixed_and_random") {
+			return false;
+		}
+		if (has_weights_ && !weights_.empty() && HasZero<double>(weights_.data(), num_data_)) {
+			return false;// a Gaussian likelihood requires positive weights
+		}
+		return true;
+	}
+
 	bool REModel::InitCovParsFromHomoscedasticModel(const double* y_data,
 		const double* covariate_data,
 		int num_covariates,
 		const double* fixed_effects) {
-		if (!gp_args_aux_model_ || GetLikelihood() != "gaussian_heteroscedastic_fixed_and_random") {
+		if (!HomoscedasticModelCanInitCovPars()) {
 			return false;
 		}
 		const GPArgsAuxModel& gp_args = *gp_args_aux_model_;
 		const double* weights_ptr = (has_weights_ && !weights_.empty()) ? weights_.data() : nullptr;
-		if (weights_ptr != nullptr && HasZero<double>(weights_ptr, num_data_)) {
-			return false;// a Gaussian likelihood requires positive weights
-		}
 		// In the GPBoost algorithm, the response variable has been set before, and the tree ensemble starts at a constant
 		//	initial score: the homoscedastic model then has an intercept
 		vec_t y_set, intercept;

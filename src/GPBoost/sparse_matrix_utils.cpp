@@ -11,7 +11,9 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <numeric>
 #include <queue>
+#include <utility>
 #include <vector>
 
 namespace GPBoost {
@@ -137,9 +139,17 @@ namespace GPBoost {
 		TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(L, M, M, false);
 	}//end CalcLInvDLInvT
 
-	void CalcColumnRtLInvT(const sp_mat_t* L, const sp_mat_rm_t& R, int i, vec_t& column) {
+	void CheckArgumentsCalcColumnRtLInvT(const sp_mat_t* L, const sp_mat_rm_t& R, int num_columns) {
 		CHECK(R.isCompressed());
-		CHECK(i >= 0 && i < R.rows());
+		CHECK(num_columns >= 0 && num_columns <= R.rows());
+		if (L != nullptr) {
+			CHECK(L->isCompressed());
+			CHECK(L->rows() == L->cols());
+			CHECK(L->rows() == R.rows());
+		}
+	}//end CheckArgumentsCalcColumnRtLInvT
+
+	void CalcColumnRtLInvT(const sp_mat_t* L, const sp_mat_rm_t& R, int i, vec_t& column) {
 		column = vec_t::Zero(R.cols());
 		const int* r_row_ptr = R.outerIndexPtr();
 		const int* r_col_idx = R.innerIndexPtr();
@@ -150,9 +160,6 @@ namespace GPBoost {
 			}
 			return;
 		}
-		CHECK(L->isCompressed());
-		CHECK(L->rows() == L->cols());
-		CHECK(L->rows() == R.rows());
 		const double* val = L->valuePtr();
 		const int* row_idx = L->innerIndexPtr();
 		const int* col_ptr = L->outerIndexPtr();
@@ -228,6 +235,96 @@ namespace GPBoost {
 			}
 		}
 	}//end CalcColSquaredNormsLInvR
+
+	void CalcColSquaredNormsLInvRByRows(const sp_mat_rm_t& L, const sp_mat_rm_t& R, vec_t& norms) {
+		CHECK(L.isCompressed());
+		CHECK(R.isCompressed());
+		CHECK(L.rows() == L.cols());
+		CHECK(L.rows() == R.rows());
+		const int n = (int)L.rows();
+		const int num_cols = (int)R.cols();
+		const double* val = L.valuePtr();
+		const int* col_idx = L.innerIndexPtr();
+		const int* row_ptr = L.outerIndexPtr();
+		for (int k = 0; k < n; ++k) {
+			CHECK(row_ptr[k] < row_ptr[k + 1] && col_idx[row_ptr[k + 1] - 1] == k);
+		}
+		const double* r_val = R.valuePtr();
+		const int* r_col_idx = R.innerIndexPtr();
+		const int* r_row_ptr = R.outerIndexPtr();
+		int num_threads;
+#ifdef _OPENMP
+		num_threads = omp_get_max_threads();
+#else
+		num_threads = 1;
+#endif
+		// The partial sums of every thread are added in a fixed order such that the result does not depend on the scheduling
+		std::vector<vec_t> norms_private(num_threads);
+#pragma omp parallel
+		{
+			int thread_nb;
+#ifdef _OPENMP
+			thread_nb = omp_get_thread_num();
+#else
+			thread_nb = 0;
+#endif
+			vec_t& norms_local = norms_private[thread_nb];
+			norms_local = vec_t::Zero(num_cols);
+			// x = L^(-T) e_k, i.e., row k of L^(-1), by backward substitution. Its non-zeros are visited in decreasing order of their
+			//	row with a heap, and every entry is set back to zero once it has been used
+			vec_t x = vec_t::Zero(n);
+			std::vector<char> in_heap(n, 0);
+			std::priority_queue<int> heap;
+			// Row k of L^(-1) R, of which only the non-zero entries are used and reset afterwards
+			vec_t row_k = vec_t::Zero(num_cols);
+			std::vector<char> is_non_zero(num_cols, 0);
+			std::vector<int> non_zeros;
+			// Cyclic scheduling: every thread gets the same rows in every run, so the result does not depend on timing
+#pragma omp for schedule(static, 16)
+			for (int k = 0; k < n; ++k) {
+				x[k] = 1.;
+				heap.push(k);
+				in_heap[k] = 1;
+				while (!heap.empty()) {
+					const int q = heap.top();
+					heap.pop();
+					in_heap[q] = 0;
+					if (x[q] != 0.) {
+						const double x_q = x[q] / val[row_ptr[q + 1] - 1];
+						x[q] = 0.;
+						for (int p = row_ptr[q]; p < row_ptr[q + 1] - 1; ++p) {
+							const int j = col_idx[p];
+							x[j] -= val[p] * x_q;
+							if (!in_heap[j]) {
+								heap.push(j);
+								in_heap[j] = 1;
+							}
+						}
+						for (int p = r_row_ptr[q]; p < r_row_ptr[q + 1]; ++p) {
+							const int c = r_col_idx[p];
+							if (!is_non_zero[c]) {
+								is_non_zero[c] = 1;
+								non_zeros.push_back(c);
+							}
+							row_k[c] += x_q * r_val[p];
+						}
+					}
+				}
+				for (int c : non_zeros) {
+					norms_local[c] += row_k[c] * row_k[c];
+					row_k[c] = 0.;
+					is_non_zero[c] = 0;
+				}
+				non_zeros.clear();
+			}
+		}
+		norms = vec_t::Zero(num_cols);
+		for (const vec_t& norms_local : norms_private) {
+			if (norms_local.size() == num_cols) {
+				norms += norms_local;
+			}
+		}
+	}//end CalcColSquaredNormsLInvRByRows
 
 	/*!
 	* \brief Elimination tree of a Cholesky factor (with the diagonal as first entry of every column): the parent of node j is
@@ -315,13 +412,17 @@ namespace GPBoost {
 		const int* row_idx = L.innerIndexPtr();
 		const int* col_ptr = L.outerIndexPtr();
 		norms.resize(num_cols);
+		bool wrong_length = false;
 #pragma omp parallel
 		{
 			vec_t r(n), x(n);
-#pragma omp for schedule(dynamic, 16)
+#pragma omp for schedule(dynamic, 16) reduction(||:wrong_length)
 			for (int j = 0; j < num_cols; ++j) {
 				calc_column(j, r);
-				CHECK((int)r.size() == n);
+				if ((int)r.size() != n) {
+					wrong_length = true;
+					continue;
+				}
 				if (has_permutation) {
 					for (int i = 0; i < n; ++i) {
 						x[perm_indices[i]] = r[i];
@@ -334,6 +435,9 @@ namespace GPBoost {
 					norms[j] = r.squaredNorm();
 				}
 			}
+		}
+		if (wrong_length) {
+			Log::REFatal("CalcColSquaredNormsLInvPRColumnwise: a column of the right-hand side does not have the length of L ");
 		}
 	}//end CalcColSquaredNormsLInvPRColumnwise
 
@@ -674,6 +778,22 @@ namespace GPBoost {
 		components_calculated_ = true;
 	}
 
+	void SparseInverseEntries::CalcPathCosts() const {
+		if (path_costs_calculated_) {
+			return;
+		}
+		// The parent of a node in the elimination tree is the first row below the diagonal of its column, and it has a larger index
+		const int n = (int)perm_.size();
+		const int* col_ptr = L_->outerIndexPtr();
+		const int* row_idx = L_->innerIndexPtr();
+		path_cost_.resize(n);
+		for (int j = n - 1; j >= 0; --j) {
+			const double num_non_zeros_col = (double)(col_ptr[j + 1] - col_ptr[j]);
+			path_cost_[j] = (col_ptr[j] + 1 < col_ptr[j + 1]) ? num_non_zeros_col + path_cost_[row_idx[col_ptr[j] + 1]] : num_non_zeros_col;
+		}
+		path_costs_calculated_ = true;
+	}
+
 	int SparseInverseEntries::Position(int i, int j) const {
 		int r = perm_[i];
 		int c = perm_[j];
@@ -737,46 +857,210 @@ namespace GPBoost {
 		// A is block-diagonal up to a permutation with one block per connected component of its graph, and so is its inverse:
 		//	an entry whose row and column are in different components is zero
 		CalcComponents();
-		std::vector<int> order;
-		order.reserve(rows.size());
+		CalcPathCosts();
+		const int n = (int)perm_.size();
+		// The other entries as pairs (a, b), a <= b, of indices of P A P^T, since entry (i, j) of A^(-1) is entry (P i, P j) of
+		//	(L L^T)^(-1), which is symmetric. Every pair is calculated once, also if it is needed for several entries
+		std::vector<std::pair<int, int>> pairs;
+		std::vector<int> entry_of_pair;
+		pairs.reserve(rows.size());
+		entry_of_pair.reserve(rows.size());
 		for (int k = 0; k < (int)rows.size(); ++k) {
-			if (component_[perm_[rows[k]]] == component_[perm_[cols[k]]]) {
-				order.push_back(k);
-			}
-			else {
+			int a = perm_[rows[k]];
+			int b = perm_[cols[k]];
+			if (component_[a] != component_[b]) {
 				values[k] = 0.;
+				continue;
 			}
+			if (a > b) {
+				std::swap(a, b);
+			}
+			pairs.push_back(std::make_pair(a, b));
+			entry_of_pair.push_back(k);
 		}
-		if (order.empty()) {
+		if (pairs.empty()) {
 			return;
 		}
-		// Group the remaining entries by their column
-		std::sort(order.begin(), order.end(), [&cols](int a, int b) { return cols[a] < cols[b]; });
-		std::vector<int> group_start;
-		for (int k = 0; k < (int)order.size(); ++k) {
-			if (k == 0 || cols[order[k]] != cols[order[k - 1]]) {
-				group_start.push_back(k);
+		std::vector<int> order(pairs.size());
+		std::iota(order.begin(), order.end(), 0);
+		std::sort(order.begin(), order.end(), [&pairs](int s, int t) { return pairs[s] < pairs[t]; });
+		std::vector<std::pair<int, int>> unique_pairs;
+		std::vector<int> unique_pair_of_pair(pairs.size());
+		for (int t = 0; t < (int)order.size(); ++t) {
+			if (t == 0 || pairs[order[t]] != pairs[order[t - 1]]) {
+				unique_pairs.push_back(pairs[order[t]]);
+			}
+			unique_pair_of_pair[order[t]] = (int)unique_pairs.size() - 1;
+		}
+		const int num_unique_pairs = (int)unique_pairs.size();
+		// The column of a pair is the one of its two indices that occurs in more pairs, so that few columns are needed
+		std::vector<int> num_pairs_of_index(n, 0);
+		for (const auto& pair : unique_pairs) {
+			num_pairs_of_index[pair.first]++;
+			if (pair.second != pair.first) {
+				num_pairs_of_index[pair.second]++;
 			}
 		}
-		group_start.push_back((int)order.size());
-		const int n = (int)perm_.size();
+		std::vector<int> col_of_pair(num_unique_pairs), row_of_pair(num_unique_pairs);
+		for (int u = 0; u < num_unique_pairs; ++u) {
+			const int a = unique_pairs[u].first;
+			const int b = unique_pairs[u].second;
+			if (num_pairs_of_index[a] >= num_pairs_of_index[b]) {
+				col_of_pair[u] = a;
+				row_of_pair[u] = b;
+			}
+			else {
+				col_of_pair[u] = b;
+				row_of_pair[u] = a;
+			}
+		}
+		std::vector<int> order_unique(num_unique_pairs);
+		std::iota(order_unique.begin(), order_unique.end(), 0);
+		std::sort(order_unique.begin(), order_unique.end(), [&col_of_pair](int s, int t) { return col_of_pair[s] < col_of_pair[t]; });
+		std::vector<int> group_start;
+		for (int t = 0; t < num_unique_pairs; ++t) {
+			if (t == 0 || col_of_pair[order_unique[t]] != col_of_pair[order_unique[t - 1]]) {
+				group_start.push_back(t);
+			}
+		}
+		group_start.push_back(num_unique_pairs);
 		const double* val = L_->valuePtr();
 		const int* row_idx = L_->innerIndexPtr();
 		const int* col_ptr = L_->outerIndexPtr();
+		// Columns whose entries are calculated as inner products of columns of L^(-1), and columns that are calculated with two
+		//	triangular solves over all of L
+		const int num_groups = (int)group_start.size() - 1;
+		const double cost_column_full_solves = 2. * (double)n + (double)L_->nonZeros();
+		std::vector<int> groups_inner_products, groups_full_solves;
+		for (int g = 0; g < num_groups; ++g) {
+			double cost_inner_products = path_cost_[col_of_pair[order_unique[group_start[g]]]];
+			for (int t = group_start[g]; t < group_start[g + 1]; ++t) {
+				cost_inner_products += path_cost_[row_of_pair[order_unique[t]]];
+			}
+			if (cost_inner_products < cost_column_full_solves) {
+				groups_inner_products.push_back(g);
+			}
+			else {
+				groups_full_solves.push_back(g);
+			}
+		}
+		// The columns with full solves are calculated in blocks, so that L is read once per block and not once per column (the
+		//	solves are limited by the memory bandwidth if L is large). The blocks of all threads have at most 2^26 entries (512 MB)
+		int num_threads;
+#ifdef _OPENMP
+		num_threads = omp_get_max_threads();
+#else
+		num_threads = 1;
+#endif
+		const int num_full_solves = (int)groups_full_solves.size();
+		const int max_cols_block_memory = (int)std::max(1., std::floor((double)(1 << 26) / ((double)n * (double)num_threads)));
+		const int cols_per_block = std::max(1, std::min(std::min(16, max_cols_block_memory), (num_full_solves + num_threads - 1) / num_threads));
+		const int num_blocks = (num_full_solves + cols_per_block - 1) / cols_per_block;
+		std::vector<double> values_unique_pairs(num_unique_pairs);
 #pragma omp parallel
 		{
-			vec_t x(n);
-#pragma omp for schedule(dynamic, 1)
-			for (int g = 0; g < (int)group_start.size() - 1; ++g) {
-				// x = P A^(-1) e_j = (L L^T)^(-1) P e_j
-				x.setZero();
-				x[perm_[cols[order[group_start[g]]]]] = 1.;
-				sp_L_solve(val, row_idx, col_ptr, n, x.data());
-				sp_L_t_solve(val, row_idx, col_ptr, n, x.data());
-				for (int k = group_start[g]; k < group_start[g + 1]; ++k) {
-					values[order[k]] = x[perm_[rows[order[k]]]];
+			vec_t x = vec_t::Zero(n);
+			vec_t y = vec_t::Zero(n);
+			std::vector<int> path_x, path_y;
+			// z = L^(-1) e_k: its non-zeros are on the path from k to the root of the elimination tree, since the rows below the
+			//	diagonal of a column of L are ancestors of the column. The next node of the path is the parent, the first of these rows
+			auto calc_column_on_path = [&](int k, vec_t& z, std::vector<int>& path) {
+				path.clear();
+				z[k] = 1.;
+				for (int m = k; m >= 0; ) {
+					path.push_back(m);
+					const double z_m = z[m] / val[col_ptr[m]];
+					z[m] = z_m;
+					for (int p = col_ptr[m] + 1; p < col_ptr[m + 1]; ++p) {
+						z[row_idx[p]] -= val[p] * z_m;
+					}
+					m = (col_ptr[m] + 1 < col_ptr[m + 1]) ? row_idx[col_ptr[m] + 1] : -1;
+				}
+			};
+#pragma omp for schedule(dynamic, 1) nowait
+			for (int i = 0; i < (int)groups_inner_products.size(); ++i) {
+				const int g = groups_inner_products[i];
+				// entry (r, col) of (L L^T)^(-1) = (L^(-1) e_r)^T (L^(-1) e_col)
+				calc_column_on_path(col_of_pair[order_unique[group_start[g]]], x, path_x);
+				for (int t = group_start[g]; t < group_start[g + 1]; ++t) {
+					const int u = order_unique[t];
+					calc_column_on_path(row_of_pair[u], y, path_y);
+					double value = 0.;
+					for (int m : path_y) {
+						value += y[m] * x[m];
+						y[m] = 0.;
+					}
+					values_unique_pairs[u] = value;
+				}
+				for (int m : path_x) {
+					x[m] = 0.;
 				}
 			}
+			// X = (L L^T)^(-1) [e_col_1, ..., e_col_nb], stored row by row: row j of X are the entries j of the columns of the block
+			std::vector<double> X;
+#pragma omp for schedule(dynamic, 1)
+			for (int b = 0; b < num_blocks; ++b) {
+				const int i_begin = b * cols_per_block;
+				const int nb = std::min(cols_per_block, num_full_solves - i_begin);
+				X.assign((size_t)n * (size_t)nb, 0.);
+				int first_col = n;
+				for (int k = 0; k < nb; ++k) {
+					const int col = col_of_pair[order_unique[group_start[groups_full_solves[i_begin + k]]]];
+					X[(size_t)col * nb + k] = 1.;
+					first_col = std::min(first_col, col);
+				}
+				// X = L^(-1) X, the rows before the first column of the block are zero, and so are rows that are not on a path
+				//	from a column of the block to the root
+				for (int j = first_col; j < n; ++j) {
+					double* x_j = X.data() + (size_t)j * nb;
+					bool is_zero = true;
+					for (int k = 0; k < nb; ++k) {
+						if (x_j[k] != 0.) {
+							is_zero = false;
+							break;
+						}
+					}
+					if (is_zero) {
+						continue;
+					}
+					const double l_jj_inv = 1. / val[col_ptr[j]];
+					for (int k = 0; k < nb; ++k) {
+						x_j[k] *= l_jj_inv;
+					}
+					for (int p = col_ptr[j] + 1; p < col_ptr[j + 1]; ++p) {
+						double* x_r = X.data() + (size_t)row_idx[p] * nb;
+						const double l_rj = val[p];
+						for (int k = 0; k < nb; ++k) {
+							x_r[k] -= l_rj * x_j[k];
+						}
+					}
+				}
+				// X = L^(-T) X
+				for (int j = n - 1; j >= 0; --j) {
+					double* x_j = X.data() + (size_t)j * nb;
+					for (int p = col_ptr[j] + 1; p < col_ptr[j + 1]; ++p) {
+						const double* x_r = X.data() + (size_t)row_idx[p] * nb;
+						const double l_rj = val[p];
+						for (int k = 0; k < nb; ++k) {
+							x_j[k] -= l_rj * x_r[k];
+						}
+					}
+					const double l_jj_inv = 1. / val[col_ptr[j]];
+					for (int k = 0; k < nb; ++k) {
+						x_j[k] *= l_jj_inv;
+					}
+				}
+				for (int k = 0; k < nb; ++k) {
+					const int g = groups_full_solves[i_begin + k];
+					for (int t = group_start[g]; t < group_start[g + 1]; ++t) {
+						const int u = order_unique[t];
+						values_unique_pairs[u] = X[(size_t)row_of_pair[u] * nb + k];
+					}
+				}
+			}
+		}
+		for (int s = 0; s < (int)pairs.size(); ++s) {
+			values[entry_of_pair[s]] = values_unique_pairs[unique_pair_of_pair[s]];
 		}
 	}//end EntriesBySolves
 

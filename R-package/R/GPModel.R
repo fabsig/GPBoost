@@ -459,8 +459,8 @@
 #' used by the joint Tweedie likelihoods ("tweedie_joint" and its variants), for which its first column contains
 #' the observed number of events (e.g., claims) N. N must be a non-negative integer that is 0 if and only if y is 0
 #' @param likelihood_learning_rate A \code{numeric} with a learning rate for the likelihood for generalized Bayesian inference (only non-Gaussian likelihoods)
-#' @param free_raw_data A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
-#' is freed in R after initialization
+#' @param free_raw_data A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients,
+#' cluster IDs, weights, and additional likelihood data) is freed in R after initialization
 #' @param y A \code{vector} with response variable data
 #' @param X A \code{matrix} with numeric covariate data for the 
 #' fixed effects linear regression term (if there is one)
@@ -667,7 +667,7 @@
 #'                \code{"asymmetric_laplace"} (= quantile regression) likelihood, whose approximate marginal likelihood is not smooth
 #'                \item{reset_modes_line_search_lbfgs: \code{boolean} (Default = FALSE)}. If TRUE, the mode finding of the Laplace approximation
 #'                starts at the modes of the current parameters for every trial point of the line search of the "lbfgs" optimizer, and not at the
-#'                modes of the previous trial point. Only relevant for non-Gaussian likelihoods and \code{optimizer_cov = "lbfgs"}
+#'                modes of the previous trial point. Only relevant for non-Gaussian likelihoods and \code{optimizer_cov = "lbfgs"} or \code{"lbfgs_linesearch_nocedal_wright"}
 #'                \item{delta_conv_mode_finding: \code{numeric} (Default = 1E-8, and 1E-10 for the likelihood "gaussian_heteroscedastic_fixed_and_random")}. Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 #'            }
 #' @param offset A \code{numeric} \code{vector} with 
@@ -1339,6 +1339,14 @@ gpb.GPModel <- R6::R6Class(
         if (is.data.frame(additional_likelihood_data)) {
           additional_likelihood_data <- as.matrix(additional_likelihood_data)
         }
+        # a list is also a vector in R, but it cannot be converted to a numeric matrix
+        if (is.list(additional_likelihood_data)) {
+          stop("GPModel: Can only use ", sQuote("vector"), " or ", sQuote("matrix"), " as ", sQuote("additional_likelihood_data"),
+               ", but a ", sQuote("list"), " was provided")
+        }
+        if (!is.numeric(additional_likelihood_data) && !is.logical(additional_likelihood_data)) {
+          stop("GPModel: ", sQuote("additional_likelihood_data"), " must be numeric")
+        }
         if (is.vector(additional_likelihood_data)) {
           additional_likelihood_data <- matrix(additional_likelihood_data, ncol = 1)
         }
@@ -1420,6 +1428,7 @@ gpb.GPModel <- R6::R6Class(
         private$gp_rand_coef_data <- NULL
         private$cluster_ids <- NULL
         private$weights <- NULL
+        private$additional_likelihood_data <- NULL
       }
       if (private$model_has_been_loaded_from_saved_file) {
         # pseudo call to fit to save things in C++ 
@@ -2571,6 +2580,10 @@ gpb.GPModel <- R6::R6Class(
     },
 
     get_additional_likelihood_data = function() {
+      if(isTRUE(private$free_raw_data)){
+        stop("GPModel: cannot return ", sQuote("additional_likelihood_data"), ",
+             please set ", sQuote("free_raw_data = FALSE"), " when you create the ", sQuote("GPModel"))
+      }
       return(private$additional_likelihood_data)
     },
     

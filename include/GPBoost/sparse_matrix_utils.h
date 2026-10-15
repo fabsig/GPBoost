@@ -87,8 +87,18 @@ namespace GPBoost {
 	* \param R Sparse row-major matrix (compressed)
 	* \param i Column index
 	* \param[out] column R^T * L^(-T) * e_i
+	* Note: the arguments are not checked since this function is usually called from several threads at the same time, where an
+	*	error cannot be raised. They have to be checked before with 'CheckArgumentsCalcColumnRtLInvT'
 	*/
 	void CalcColumnRtLInvT(const sp_mat_t* L, const sp_mat_rm_t& R, int i, vec_t& column);
+
+	/*!
+	* \brief Check the arguments of 'CalcColumnRtLInvT' for the columns 0, ..., num_columns - 1
+	* \param L Sparse lower triangular matrix, nullptr for the identity matrix
+	* \param R Sparse row-major matrix
+	* \param num_columns Number of columns that are calculated
+	*/
+	void CheckArgumentsCalcColumnRtLInvT(const sp_mat_t* L, const sp_mat_rm_t& R, int num_columns);
 
 	/*!
 	* \brief Calculate the squared norms of the columns of L^(-1) R for a sparse lower triangular matrix L and a sparse matrix R
@@ -98,6 +108,19 @@ namespace GPBoost {
 	* \param[out] norms Squared norms of the columns of L^(-1) R
 	*/
 	void CalcColSquaredNormsLInvR(const sp_mat_t& L, const sp_mat_t& R, vec_t& norms);
+
+	/*!
+	* \brief Calculate the squared norms of the columns of L^(-1) R for a sparse lower triangular matrix L and a sparse matrix R
+	*		row by row instead of column by column: row k of L^(-1) is L^(-T) e_k, and the squares of the entries of row k of
+	*		L^(-1) R = (L^(-T) e_k)^T R are added to the norms. This needs one triangular solve per row of R instead of one per
+	*		column, which is faster than 'CalcColSquaredNormsLInvR' if R has more columns than rows. Only one row of L^(-1) R
+	*		is stored at a time (per thread), and L^(-1) is not formed
+	* \param L Sparse lower triangular matrix (compressed, row-major format, with sorted column indices and the diagonal as last
+	*		entry of every row)
+	* \param R Sparse right-hand side (compressed, row-major format)
+	* \param[out] norms Squared norms of the columns of L^(-1) R
+	*/
+	void CalcColSquaredNormsLInvRByRows(const sp_mat_rm_t& L, const sp_mat_rm_t& R, vec_t& norms);
 
 	/*!
 	* \brief Calculate the squared norms of the columns of L^(-1) R for a sparse Cholesky factor L and a sparse matrix R without
@@ -196,7 +219,11 @@ namespace GPBoost {
 		/*!
 		* \brief Calculate entries of A^(-1) with triangular solves. Entries whose row and column are in different connected
 		*		components of the graph of A are zero and are not calculated, see 'CalcComponents'. The other entries are
-		*		grouped by their column such that every column of A^(-1) is calculated only once
+		*		grouped by their column, where the column of an entry (i,j) is the index of i and j that is needed for more
+		*		entries (A^(-1) is symmetric). For every column, either the column of A^(-1) is calculated with two triangular
+		*		solves over all of L, or every entry (i,j) of the column is calculated as the inner product of the columns i and
+		*		j of L^(-1) P^T, which are non-zero only on the paths from P i and P j to the root of the elimination tree of L.
+		*		The cheaper of the two is chosen, see 'CalcPathCosts'
 		* \param rows Row indices of the entries (indices of A)
 		* \param cols Column indices of the entries (indices of A)
 		* \param[out] values Entries of A^(-1)
@@ -208,6 +235,11 @@ namespace GPBoost {
 		*		within a component
 		*/
 		void CalcComponents() const;
+		/*!
+		* \brief Calculate 'path_cost_' if this has not been done yet: path_cost_[k] is the number of non-zeros of the columns
+		*		of L on the path from k to the root of the elimination tree of L, which is the cost of calculating L^(-1) e_k
+		*/
+		void CalcPathCosts() const;
 
 		/*! \brief Cholesky factor L with sorted row indices */
 		const sp_mat_t* L_;
@@ -221,6 +253,10 @@ namespace GPBoost {
 		mutable std::vector<int> component_;
 		/*! \brief True if 'component_' has been calculated */
 		mutable bool components_calculated_ = false;
+		/*! \brief See 'CalcPathCosts' (calculated when it is first needed) */
+		mutable std::vector<double> path_cost_;
+		/*! \brief True if 'path_cost_' has been calculated */
+		mutable bool path_costs_calculated_ = false;
 		/*! \brief perm_[i] is the row of P A P^T that corresponds to row i of A */
 		std::vector<int> perm_;
 	};

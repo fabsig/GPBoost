@@ -146,8 +146,17 @@ public:
         //   See also:
         //     "Numerical Optimization", "Algorithm 3.5 (Line Search Algorithm)".
         int iter = 0;
+        // ChangedForGPBoost: with 'reset_modes_line_search_lbfgs', the mode finding of every trial point starts at the modes of
+        //  'xp'. Otherwise, it starts at the modes of the previous trial point, and the objective function along the search direction
+        //  then depends on the trial points evaluated before
+        int num_trial_points = 0;
         for (;;)
         {
+            if (num_trial_points > 0 && f.ResetModesEveryTrialPoint())
+            {
+                f.ResetModesToLag1();
+            }
+            num_trial_points++;
             // Evaluate the current step size
             x.noalias() = xp + step * drt;
             // ChangedForGPBoost: the curvature condition requires the gradient at the new point. It is only calculated if the
@@ -242,6 +251,11 @@ public:
             // estimate the minimum
             step = quad_interp(step_lo, step_hi, fx_lo, fx_hi, dg_lo);
 
+            if (num_trial_points > 0 && f.ResetModesEveryTrialPoint())
+            {
+                f.ResetModesToLag1();
+            }
+            num_trial_points++;
             // Evaluate the current step size
             x.noalias() = xp + step * drt;
             // ChangedForGPBoost: the curvature condition requires the gradient at the new point. It is only calculated if the

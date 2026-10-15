@@ -458,8 +458,8 @@ are correlated (correlation 1/4) whereas they are independent for the discrete R
 
 \item{num_data}{A \code{numeric} with the number of samples. This is only used for iid models}
 
-\item{free_raw_data}{A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients) 
-is freed in R after initialization}
+\item{free_raw_data}{A \code{boolean}. If TRUE, the data (groups, coordinates, covariate data for random coefficients,
+cluster IDs, weights, and additional likelihood data) is freed in R after initialization}
 
 \item{vecchia_approx}{Discontinued. Use the argument \code{gp_approx} instead}
 

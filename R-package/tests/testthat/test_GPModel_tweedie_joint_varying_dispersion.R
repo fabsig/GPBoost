@@ -612,6 +612,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_error(fitGPModel(group_data = group, likelihood = "tweedie_joint", additional_likelihood_data = N_wrong, y = y_gr), "0 if and only if")
     N_wrong <- N_gr + 0.5
     expect_error(fitGPModel(group_data = group, likelihood = "tweedie_joint", additional_likelihood_data = N_wrong, y = y_gr), "nonnegative integer")
+    expect_error(GPModel(group_data = group, likelihood = "tweedie_joint", additional_likelihood_data = as.list(N_gr)),
+                 "but a 'list' was provided", fixed = TRUE)
+    expect_error(GPModel(group_data = group, likelihood = "tweedie_joint", additional_likelihood_data = as.character(N_gr)),
+                 "must be numeric")
+    # 'free_raw_data' also frees the additional likelihood data in R, the model keeps its own copy
+    capture.output( gp_model_kept <- fitGPModel(group_data = group, likelihood = "tweedie_joint", additional_likelihood_data = N_gr,
+                                                y = y_gr), file = 'NUL')
+    capture.output( gp_model_freed <- fitGPModel(group_data = group, likelihood = "tweedie_joint", additional_likelihood_data = N_gr,
+                                                 y = y_gr, free_raw_data = TRUE), file = 'NUL')
+    expect_error(gp_model_freed$get_additional_likelihood_data(), "free_raw_data")
+    expect_equal(gp_model_freed$get_cov_pars(), gp_model_kept$get_cov_pars())
+    expect_equal(gp_model_freed$get_aux_pars(), gp_model_kept$get_aux_pars())
   })
 
   test_that("test negative log-likelihood metric of the GPBoost algorithm for varying-dispersion Tweedie likelihoods ", {

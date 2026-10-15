@@ -1546,22 +1546,27 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     set_optim_params(gp_model_rm, params = list(reset_modes_line_search_lbfgs = TRUE))
     expect_true(gp_model_rm$get_optim_params()$reset_modes_line_search_lbfgs)
     # For a likelihood whose posterior has a single mode, the mode that is found for a trial point of the line search does
-    #   not depend on where the mode finding starts, and the option does not change the estimates
+    #   not depend on where the mode finding starts, and the option does not change the estimates. This holds for both
+    #   line searches of the "lbfgs" optimizers
     y_rm <- qpois(sim_rand_unif(n = n, init_c = 0.5631), lambda = exp(as.vector(L %*% b_1)))
     X_rm <- cbind(1, x)
-    fits_rm <- list()
-    for (reset_rm in c(FALSE, TRUE)) {
-      capture.output( fits_rm[[as.character(reset_rm)]] <- fitGPModel(gp_coords = coords, cov_function = "exponential",
-                                                                     likelihood = "poisson", y = y_rm, X = X_rm,
-                                                                     params = c(OPTIM_PARAMS_BFGS, list(reset_modes_line_search_lbfgs = reset_rm))),
-                      file = 'NUL')
+    for (optimizer_rm in c("lbfgs", "lbfgs_linesearch_nocedal_wright")) {
+      fits_rm <- list()
+      for (reset_rm in c(FALSE, TRUE)) {
+        params_rm <- c(OPTIM_PARAMS_BFGS, list(reset_modes_line_search_lbfgs = reset_rm))
+        params_rm$optimizer_cov <- optimizer_rm
+        params_rm$optimizer_coef <- optimizer_rm
+        capture.output( fits_rm[[as.character(reset_rm)]] <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                                       likelihood = "poisson", y = y_rm, X = X_rm,
+                                                                       params = params_rm), file = 'NUL')
+      }
+      expect_lt(sum(abs(fits_rm[["TRUE"]]$get_cov_pars(std_err = FALSE) - fits_rm[["FALSE"]]$get_cov_pars(std_err = FALSE))),
+                TOLERANCE_MEDIUM)
+      expect_lt(sum(abs(fits_rm[["TRUE"]]$get_coef(std_err = FALSE) - fits_rm[["FALSE"]]$get_coef(std_err = FALSE))),
+                TOLERANCE_MEDIUM)
+      expect_lt(abs(fits_rm[["TRUE"]]$get_current_neg_log_likelihood() - fits_rm[["FALSE"]]$get_current_neg_log_likelihood()),
+                TOLERANCE_MEDIUM)
     }
-    expect_lt(sum(abs(fits_rm[["TRUE"]]$get_cov_pars(std_err = FALSE) - fits_rm[["FALSE"]]$get_cov_pars(std_err = FALSE))),
-              TOLERANCE_MEDIUM)
-    expect_lt(sum(abs(fits_rm[["TRUE"]]$get_coef(std_err = FALSE) - fits_rm[["FALSE"]]$get_coef(std_err = FALSE))),
-              TOLERANCE_MEDIUM)
-    expect_lt(abs(fits_rm[["TRUE"]]$get_current_neg_log_likelihood() - fits_rm[["FALSE"]]$get_current_neg_log_likelihood()),
-              TOLERANCE_MEDIUM)
     filename_rm <- tempfile(fileext = ".json")
     saveGPModel(fits_rm[["TRUE"]], filename = filename_rm)
     capture.output( gp_model_loaded_rm <- loadGPModel(filename = filename_rm), file = 'NUL')

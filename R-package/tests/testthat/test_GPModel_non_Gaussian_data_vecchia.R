@@ -334,8 +334,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
           expect_lt(sum(abs(pred$mu-mu_resp_less_neig)),tolerance_loc_1)
           expect_lt(sum(abs(pred$var-var_resp_less_neig)), tolerance_loc_1)
           # Use vecchia_pred_type = "latent_order_obs_first_cond_obs_only"
+          # Note: the covariance matrices below are simulated with the iterative methods. Their Monte Carlo error
+          #   depends on the random stream, and thus on the platform and the number of threads. With 10000 simulations,
+          #   the deviations from the expected values are up to 0.04 over 13 seeds (and up to 0.08 with 2000 simulations)
           gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_obs_only",
-                                       nsim_var_pred = 2000)
+                                       nsim_var_pred = nsim_var_pred)
           pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, predict_cov_mat = TRUE,
                           predict_response = FALSE, cov_pars = cov_pars_pred_eval, X_pred = X_test)
           expected_cov_loc <- c(0.6193174862, 0.2835405301, -0.0001440701, 0.2835405301, 0.6159312648,

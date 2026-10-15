@@ -104,7 +104,7 @@ namespace GPBoost {
 		int& level,
 		bool distances_saved,
 		string_t dist_function) {
-		den_mat_t coords = coords_mat;
+		const den_mat_t& coords = coords_mat;
 		// Distances already computed
 		std::shared_ptr<RECompGP<den_mat_t>> re_comp = std::dynamic_pointer_cast<RECompGP<den_mat_t>>(re_comps_vecchia_cluster_i[0]);
 		//Select data point with index 0 as root

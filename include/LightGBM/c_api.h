@@ -1445,7 +1445,7 @@ GPBOOST_C_EXPORT int GPB_REModelFree(REModelHandle handle);
 * \param cg_rel_tol Relative tolerance of the "relative" stopping rule. If cg_rel_tol = -999, internal default values are used (= 1e-6)
 * \param cg_abs_tol Absolute tolerance floor of the "relative" stopping rule, which makes it robust for right-hand sides that are zero or very small. Independent of cg_delta_conv. If cg_abs_tol = -999, internal default values are used (= 1e-8)
 * \param cg_multi_rhs_convergence How the stopping rule is aggregated over the columns of a linear system with several right-hand sides, such as the stochastic Lanczos quadrature: "average", "max", or "per_rhs"
-* \param reset_modes_line_search_lbfgs If true, the mode finding of every trial point of the line search of the "lbfgs" optimizer starts at the modes of the current iterate, and the objective function value of the optimizer is kept separate from the negative log-likelihood stored in the model
+* \param reset_modes_line_search_lbfgs If true, the mode finding of every trial point of the line search of the "lbfgs" optimizers starts at the modes of the current iterate, and the objective function value of the optimizer is kept separate from the negative log-likelihood stored in the model
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT int GPB_SetOptimConfig(REModelHandle handle,

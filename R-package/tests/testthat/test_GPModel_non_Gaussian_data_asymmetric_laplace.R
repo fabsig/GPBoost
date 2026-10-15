@@ -328,6 +328,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model_nw$get_num_optim_iter(), 13)
     # this line search finds a better optimum than the backtracking one for the data below (nll = 117.1840987)
     expect_lt(gp_model_nw$get_current_neg_log_likelihood(), 117.1840987)
+    # 'reset_modes_line_search_lbfgs' (see above) also applies to this line search, which then finds a better optimum
+    params_nw_reset <- params_nw
+    params_nw_reset$reset_modes_line_search_lbfgs <- TRUE
+    capture.output( gp_model_nw_reset <- fitGPModel(group_data = group, likelihood = likelihood, likelihood_additional_param = quantile,
+                                                    y = y, X=X, params = params_nw_reset, matrix_inversion_method = matrix_inversion_method)
+                    , file='NUL')
+    expect_lt(sum(abs(gp_model_nw_reset$get_cov_pars(std_err = FALSE)-0.4087295520)),tolerance_loc_1)
+    expect_lt(sum(abs(gp_model_nw_reset$get_aux_pars()-0.2684176291)),tolerance_loc_1)
+    expect_lt(sum(abs(as.vector(gp_model_nw_reset$get_coef(std_err = FALSE))-c(-0.2479629801, 2.0787105933))),tolerance_loc_1)
+    expect_lt(sum(abs((gp_model_nw_reset$get_current_neg_log_likelihood()-116.1677217))),tolerance_loc_1)
+    expect_lt(gp_model_nw_reset$get_current_neg_log_likelihood(), gp_model_nw$get_current_neg_log_likelihood())
 
     # Non-zero true intercept: the initial intercept is the marginal sample quantile of y and estimation is
     #   thus equivariant under a location shift of y (the results below are those of the fits above with the

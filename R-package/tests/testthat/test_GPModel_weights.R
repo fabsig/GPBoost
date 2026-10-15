@@ -346,7 +346,11 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
   test_that("zero 'weights' with a Vecchia approximation and iterative methods", {
     # A zero weight makes the derivative of the information wrt the mode exactly zero. The gradient wrt the shape
     # needs the diagonal of (Sigma^-1 + W)^-1 also at these points, which the iterative methods estimate by dividing
-    # a stochastic estimate by this derivative. The estimates are compared with the ones of the Cholesky decomposition
+    # a stochastic estimate by this derivative. The estimates are compared with the ones of the Cholesky decomposition.
+    # Only the shape is estimated: the covariance parameters vary much more with the random vectors of the stochastic
+    # approximation (by up to 45% over 16 seeds, also without zero weights), and this would hide the shape. With fixed
+    # covariance parameters, the relative deviation of the shape is below 0.007 for all these seeds, with and without
+    # zero weights
     n_gp <- 100L
     coords <- cbind(sim_rand_unif(n_gp, init_c = 0.11), sim_rand_unif(n_gp, init_c = 0.37))
     b_gp <- as.vector(t(chol(0.5 * exp(-as.matrix(dist(coords)) / 0.2) + diag(1e-10, n_gp))) %*%
@@ -360,14 +364,12 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
                                             gp_approx = "vecchia", num_neighbors = 30L, vecchia_ordering = "none",
                                             matrix_inversion_method = method, weights = weights_gp, y = y_gp,
                                             params = list(num_rand_vec_trace = 200, seed_rand_vec_trace = 1,
+                                                          init_cov_pars = c(0.5, 0.2), estimate_cov_par_index = c(0, 0),
                                                           init_coef_aux_pars_from_iid_model = FALSE)), file = "NUL")
-      estimates[[method]] <- c(as.vector(gp_model$get_cov_pars()), as.vector(gp_model$get_aux_pars()))
+      estimates[[method]] <- as.vector(gp_model$get_aux_pars())
     }
     expect_true(all(is.finite(estimates$iterative)))
-    # the shape is estimated accurately with both methods, the covariance parameters with the accuracy of the
-    #   stochastic approximation (about 8% also without zero weights)
-    expect_lt(abs(estimates$iterative[3] / estimates$cholesky[3] - 1), 0.02)
-    expect_lt(max(abs(estimates$iterative[1:2] / estimates$cholesky[1:2] - 1)), 0.2)
+    expect_lt(abs(estimates$iterative / estimates$cholesky - 1), 0.02)
   })
 
   test_that("the 'test_neg_log_likelihood' metric works for 't' with both approximation types", {

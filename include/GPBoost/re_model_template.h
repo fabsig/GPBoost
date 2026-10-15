@@ -815,7 +815,7 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief True if the mode finding of every trial point of the line search of the "lbfgs" optimizer starts at the modes of the
+		* \brief True if the mode finding of every trial point of the line search of the "lbfgs" optimizers starts at the modes of the
 		*		current iterate and the objective function value of the optimizer is kept separate from 'neg_log_likelihood_'
 		*/
 		bool ResetModesLineSearchLBFGS() const {
@@ -910,7 +910,7 @@ namespace GPBoost {
 		* \param delta_conv_mode_finding Used for checking convergence in mode finding algorithm for non-Gaussian likelihoods. If delta_conv_mode_finding = -999, internal default values are used
 		* \param max_num_restarts_lbfgs Maximal number of restarts of the lbfgs optimizers after they have terminated. If max_num_restarts_lbfgs = -999, internal default values are used
 		* \param cold_restart_lbfgs If true, restarts of the lbfgs optimizers are "cold" restarts, otherwise "warm" restarts (only relevant if max_num_restarts_lbfgs > 0)
-		* \param reset_modes_line_search_lbfgs If true, the mode finding of every trial point of the line search of the "lbfgs" optimizer starts
+		* \param reset_modes_line_search_lbfgs If true, the mode finding of every trial point of the line search of the "lbfgs" optimizers starts
 		*		at the modes of the current iterate, and the objective function value of the optimizer is kept separate from 'neg_log_likelihood_'
 		*/
 		void SetOptimConfig(double lr_cov,
@@ -4730,7 +4730,8 @@ namespace GPBoost {
 				else if (has_fixed_effects_) {
 					fixed_effects_ptr = fixed_effects_.data();
 				}
-				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false, sample_prior);
+				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false, sample_prior,
+					restore_response.active);
 			}
 			bool predict_var_or_response = predict_var || (!gauss_likelihood_ && predict_response && likelihood_[unique_clusters_[0]]->NeedPredLatentVarForResponseMean()); //variance needs to be available for response prediction for most non-Gaussian likelihoods
 			// Loop over different clusters to calculate predictions
@@ -5721,7 +5722,7 @@ namespace GPBoost {
 			int ind_par;
 			double init_marg_var = 1.;
 			if (gauss_likelihood_ || likelihood_[unique_clusters_[0]]->IsGaussianLikelihood() ||
-				likelihood_[unique_clusters_[0]]->GetLikelihood() == "gaussian_heteroscedastic") {
+				likelihood_[unique_clusters_[0]]->IsGaussianHeteroscedastic()) {
 				CHECK(num_data > 0);
 				//determine initial value for nugget effect
 				if (fixed_effects == nullptr) {
@@ -5758,7 +5759,7 @@ namespace GPBoost {
 			else {//non-Gaussian likelihoods
 				ind_par = 0;
 				if (likelihood_[unique_clusters_[0]]->IsGaussianLikelihood() ||
-					likelihood_[unique_clusters_[0]]->GetLikelihood() == "gaussian_heteroscedastic") {
+					likelihood_[unique_clusters_[0]]->IsGaussianHeteroscedastic()) {
 					init_marg_var = var / 2;
 				}
 				else if (optimizer_cov_pars_ == "nelder_mead") {
@@ -6092,12 +6093,6 @@ namespace GPBoost {
 							//	(*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose(), GetForCluster(chol_ip_cross_cov_, cluster_i, 0), false);
 							GPBoost::solve_lower_triangular(GetForCluster(chol_fact_sigma_ip_, cluster_i, 0),
 								(*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose(), GetForCluster(chol_ip_cross_cov_, cluster_i, 0), GPU_use_);
-							if (gp_approx_ == "full_scale_vecchia") {
-								// 'GetNumIndPointsForCluster' still returns the number before the redetermination, which is what is compared here
-								if (fitc_piv_chol_preconditioner_rank_ == GetNumIndPointsForCluster(cluster_i)) {
-									fitc_piv_chol_preconditioner_rank_ = num_ind_points;
-								}
-							}
 							SetNumIndPointsForCluster(cluster_i, num_ind_points);
 							if (num_ll_evaluations_ > 0) {
 								Log::REDebug("Inducing points redetermined after iteration number %d ", num_iter_ + 1);
@@ -6110,18 +6105,23 @@ namespace GPBoost {
 					if (gp_approx_ == "fitc" || ((gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") && (gauss_likelihood_ && !vecchia_latent_approx_gaussian_))) {
 						Log::REFatal("'iterative' methods are not implemented for gp_approx = '%s' and the chosen likelihood ", gp_approx_.c_str());
 					}
-					int num_ind_points_max = 0;
 					for (const auto& cluster_i : unique_clusters_) {
 						if (ReuseIndPointsForPreconditioner(cluster_i)) {
 							re_comps_ip_preconditioner_[cluster_i][0] = re_comps_ip_[cluster_i][0];
 							re_comps_cross_cov_preconditioner_[cluster_i][0] = re_comps_cross_cov_[cluster_i][0];
 							GetForCluster(chol_fact_sigma_ip_preconditioner_, cluster_i, 0) = GetForCluster(chol_fact_sigma_ip_, cluster_i, 0);
 							chol_ip_cross_cov_preconditioner_[cluster_i] = chol_ip_cross_cov_[cluster_i];
-							num_ind_points_max = std::max(num_ind_points_max, GetNumIndPointsForCluster(cluster_i));
 						}
 						else {
-							// Every cluster starts from the rank requested by the user, methods that determine the number of inducing points themselves do so separately for every cluster
+							// Every cluster starts from the rank requested by the user, methods that determine the number of inducing points themselves
+							//	do so separately for every cluster. The 'kmeans++' algorithm starts at the inducing points of the previous determination
+							//	and keeps their number, which can be smaller than the requested rank (see 'RemoveZeroVarianceCandidatesIndPoints()' and
+							//	'ReplaceZeroVarianceIndPoints()') and can thus differ among the clusters
+							const bool has_previous_ind_points = clusters_with_ind_points_for_preconditioner_.find(cluster_i) != clusters_with_ind_points_for_preconditioner_.end();
 							int num_ind_points = fitc_piv_chol_preconditioner_rank_;
+							if (ind_points_selection_ == "kmeans++" && has_previous_ind_points) {
+								num_ind_points = (int)gp_coords_ip_mat_preconditioner_[cluster_i].rows();
+							}
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 							std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 							std::shared_ptr<RECompGP<den_mat_t>> re_comp = re_comps_cross_cov_[cluster_i][0][0];
@@ -6170,7 +6170,7 @@ namespace GPBoost {
 								int max_it_kmeans = 1000;
 								den_mat_t gp_coords_ip_mat_scaled;
 								// Start with inducing points from last redetermination
-								if (clusters_with_ind_points_for_preconditioner_.find(cluster_i) != clusters_with_ind_points_for_preconditioner_.end()) {
+								if (has_previous_ind_points) {
 									if (re_comp->UseScaledCoordinates()) {
 										re_comp->ScaleCoordinates(pars, gp_coords_ip_mat_preconditioner_[cluster_i], gp_coords_ip_mat_scaled);
 									}
@@ -6231,10 +6231,8 @@ namespace GPBoost {
 							//	(*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose(), GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0), false);
 							GPBoost::solve_lower_triangular(GetForCluster(chol_fact_sigma_ip_preconditioner_, cluster_i, 0),
 								(*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose(), GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0), GPU_use_);
-							num_ind_points_max = std::max(num_ind_points_max, num_ind_points);
 						}
 					}
-					fitc_piv_chol_preconditioner_rank_ = num_ind_points_max;
 					if (num_ll_evaluations_ > 0) {
 						Log::REDebug("Inducing points for preconditioner redetermined after iteration number %d ", num_iter_ + 1);
 					}
@@ -6732,7 +6730,7 @@ namespace GPBoost {
 		// If true, restarts of the lbfgs optimizers are "cold" restarts (regression coefficients, auxiliary parameters,
 		//	and modes are reset to their initial values), otherwise "warm" restarts
 		bool cold_restart_lbfgs_ = true;
-		// If true, the mode finding of every trial point of the line search of the "lbfgs" optimizer starts at the modes of the current
+		// If true, the mode finding of every trial point of the line search of the "lbfgs" optimizers starts at the modes of the current
 		//	iterate, and the objective function value of the optimizer is kept separate from 'neg_log_likelihood_' (see 'OptimExternal()').
 		//	The approximate marginal likelihood along the search direction then does not depend on the trial points evaluated before,
 		//	and line searches fail less often, e.g., for the 't' likelihood, whose posterior can have several modes. In addition, the
@@ -8928,14 +8926,23 @@ namespace GPBoost {
 
 		/*!
 		* \brief True if the inducing points of the model are also used for the FITC preconditioner of a cluster instead of
-		*		determining separate ones. The number of inducing points can differ among the clusters, the decision is thus
-		*		taken for every cluster separately
+		*		determining separate ones. This is the case if the requested rank of the preconditioner equals the requested number of
+		*		inducing points. The numbers of inducing points of the clusters are not compared since they can be smaller than the
+		*		requested number (e.g., for a cluster with few locations) and can change when the inducing points are redetermined.
+		*		The cover tree algorithm determines the number of inducing points itself, its number is thus compared for every cluster
 		* \param cluster_i Index / label of the independent realization of the GP
 		*/
 		bool ReuseIndPointsForPreconditioner(data_size_t cluster_i) const {
-			return(gp_approx_ == "full_scale_tapering" ||
-				(fitc_piv_chol_preconditioner_rank_ == GetNumIndPointsForCluster(cluster_i) && gp_approx_ != "vecchia") ||
-				ind_points_selection_ == "space_time_kmeans++");
+			if (gp_approx_ == "full_scale_tapering" || ind_points_selection_ == "space_time_kmeans++") {
+				return(true);
+			}
+			if (gp_approx_ == "vecchia") {
+				return(false);
+			}
+			if (ind_points_selection_ == "cover_tree") {
+				return(fitc_piv_chol_preconditioner_rank_ == GetNumIndPointsForCluster(cluster_i));
+			}
+			return(fitc_piv_chol_preconditioner_rank_ == num_ind_points_requested_);
 		}//end ReuseIndPointsForPreconditioner
 
 		/*!
@@ -11369,6 +11376,7 @@ namespace GPBoost {
 						false, false, only_one_GP_calculations_on_RE_scale_loc)));
 					re_comps_ip_preconditioner_[cluster_i][0] = re_comps_ip_cluster_i;
 					re_comps_cross_cov_preconditioner_[cluster_i][0] = re_comps_cross_cov_cluster_i;
+					gp_coords_ip_mat_preconditioner_[cluster_i] = gp_coords_ip_mat;
 					clusters_with_ind_points_for_preconditioner_.insert(cluster_i);
 				}
 				vec_t pars = re_comp_gp_clus0->CovPars();
@@ -12978,6 +12986,7 @@ namespace GPBoost {
 		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian likelihoods)
 		* \param predict_training_data_random_effects If true, the goal is to predict training data random effects
 		* \param sample_prior If true, prior samples are generated
+		* \param y_obs_is_placeholder If true, the model has no response variable data and 'y_obs' is a placeholder (used for prior samples)
 		 */
 		void SetYCalcCovCalcYAuxForPred(const vec_t& cov_pars,
 			const vec_t& coef,
@@ -12985,7 +12994,8 @@ namespace GPBoost {
 			bool calc_cov_factor,
 			const double* fixed_effects,
 			bool predict_training_data_random_effects,
-			bool sample_prior) {
+			bool sample_prior,
+			bool y_obs_is_placeholder = false) {
 			const double* fixed_effects_ptr = fixed_effects;
 			vec_t fixed_effects_vec;
 			// Set response data and fixed effects
@@ -13035,6 +13045,12 @@ namespace GPBoost {
 					SetY(y_obs);
 				}
 			}//end if not gauss_likelihood_
+			if (y_obs_is_placeholder) {
+				// The model has no response variable data, and 'y_obs' is only used for the calculations of this prediction. The model
+				//	is marked as such right away and not only at the end of 'Predict', since an error can leave 'Predict' without
+				//	unwinding the stack (e.g., an R error raised with 'Rf_error'), such that its local destructors do not run
+				y_has_been_set_ = false;
+			}
 			//TODO (low prio): the factorization needs to be done only for the GP realizations / clusters for which predictions are made (currently it is done for all)
 			SetCovParsComps(cov_pars);
 			if (!(gp_approx_ == "vecchia" && gauss_likelihood_) || predict_training_data_random_effects || (sample_prior && gp_approx_ == "vecchia")) {
@@ -13064,6 +13080,9 @@ namespace GPBoost {
 					CalcYAux(1., false);//note: in some cases a call to CalcYAux() could be avoided (e.g. no covariates and not GPBoost algorithm)...
 				}
 			}//end not (gp_approx_ == "vecchia" && gauss_likelihood_)
+			if (y_obs_is_placeholder) {
+				y_aux_has_been_calculated_ = false;
+			}
 		}// end SetYCalcCovCalcYAuxForPred
 
 		/*!
@@ -13552,48 +13571,15 @@ namespace GPBoost {
 									else {
 										P_sqrt_rm = &(P_SSOR_L_D_sqrt_inv_rm_[cluster_i]);
 									}
-									//Deterministic: diag(Z_po P^(-1) Z_po^T), i.e. the squared norms of the columns of P_sqrt^(-1) Z_po^T. P_sqrt^(-1) is not
-									//	sparse, it is only formed if there are more prediction points than random effects
-									const sp_mat_t P_sqrt = sp_mat_t(*P_sqrt_rm);
+									//Deterministic: diag(Z_po P^(-1) Z_po^T), i.e. the squared norms of the columns of P_sqrt^(-1) Z_po^T. They are calculated
+									//	with one triangular solve per prediction point or per random effect, whichever are fewer. P_sqrt^(-1) is not formed
+									//	since it can have much more non-zeros than P_sqrt, e.g., for three or more crossed random effects
 									const int num_re = cum_num_rand_eff_[cluster_i][num_comps_total_];
 									if (num_REs_pred <= num_re) {
-										CalcColSquaredNormsLInvR(P_sqrt, sp_mat_t(Ztilde.transpose()), varred_determ);
+										CalcColSquaredNormsLInvR(sp_mat_t(*P_sqrt_rm), sp_mat_t(Ztilde.transpose()), varred_determ);
 									}
 									else {
-										sp_mat_t P_sqrt_inv(num_re, num_re);
-										P_sqrt_inv.setIdentity();
-										TriangularSolve<sp_mat_t, sp_mat_t, sp_mat_t>(P_sqrt, P_sqrt_inv, P_sqrt_inv, false);
-										// Row i of Z_po P_sqrt^(-T) is the linear combination of the columns of P_sqrt^(-1) given by row i of Z_po. It is
-										//	accumulated in a dense vector, of which only the non-zero entries are used and reset afterwards
-										const sp_mat_rm_t Ztilde_rm = sp_mat_rm_t(Ztilde);
-										varred_determ.resize(num_REs_pred);
-#pragma omp parallel
-										{
-											vec_t row_i = vec_t::Zero(num_re);
-											std::vector<char> is_non_zero(num_re, 0);
-											std::vector<int> non_zeros;
-#pragma omp for schedule(static)
-											for (int i = 0; i < num_REs_pred; ++i) {
-												non_zeros.clear();
-												for (sp_mat_rm_t::InnerIterator it_k(Ztilde_rm, i); it_k; ++it_k) {
-													for (sp_mat_t::InnerIterator it(P_sqrt_inv, it_k.col()); it; ++it) {
-														const int r = (int)it.row();
-														if (!is_non_zero[r]) {
-															is_non_zero[r] = 1;
-															non_zeros.push_back(r);
-														}
-														row_i[r] += it_k.value() * it.value();
-													}
-												}
-												double d = 0.;
-												for (int r : non_zeros) {
-													d += row_i[r] * row_i[r];
-													row_i[r] = 0.;
-													is_non_zero[r] = 0;
-												}
-												varred_determ[i] = d;
-											}
-										}
+										CalcColSquaredNormsLInvRByRows(*P_sqrt_rm, sp_mat_rm_t(Ztilde.transpose()), varred_determ);
 									}
 								}
 								int num_threads;
@@ -13799,7 +13785,8 @@ namespace GPBoost {
 		* \brief Multiply standard normal samples with a Cholesky factor of a covariance matrix such that they become samples
 		*		from the normal distribution with mean zero and this covariance matrix. The matrix is singular when points are
 		*		deterministic, e.g. the anchor of a Hurst process at the origin, whose predictive variance is zero: the samples
-		*		of these points are zero, and the other points are sampled from their sub-matrix
+		*		of these points are zero, and the other points are sampled from their sub-matrix (all samples are zero if all
+		*		points are deterministic)
 		* \param cov_mat Covariance matrix
 		* \param[out] samples Standard normal samples (one column per sample), overwritten by the samples from N(0, cov_mat)
 		*/
@@ -13823,6 +13810,10 @@ namespace GPBoost {
 			}
 			if ((int)random_points.size() == (int)cov_mat.rows()) {
 				Log::REFatal("The covariance matrix is not positive definite, samples cannot be drawn ");
+			}
+			if (random_points.empty()) {
+				samples.setZero();
+				return;
 			}
 			// S selects the points with a positive variance
 			sp_mat_t S((int)random_points.size(), cov_mat.rows());
@@ -13927,25 +13918,26 @@ namespace GPBoost {
 				// check whether "FITC diagonal" correction needs to be added for duplicate coordinates
 				std::vector<Triplet_t> triplets;
 				double sigma2 = sigma_ip_stable.coeffRef(0, 0);
-				std::vector<double> coords_sum(num_REs_obs), coords_pred_sum(num_REs_pred);
+				// A prediction point and an observed point are the same if all their coordinates are equal according to 'TwoNumbersAreEqual'.
+				//	The observed points are sorted by every coordinate. For a prediction point, the candidates are the observed points whose
+				//	value of one coordinate is within the tolerance of 'TwoNumbersAreEqual', and the coordinate with the fewest candidates
+				//	is used. The candidates are found by binary search instead of a comparison with every observed point
+				const den_mat_t& coords_obs_fitc = re_comp_cross_cov_cluster_i_pred_ip->coords_;
+				const int dim_coords_fitc = (int)gp_coords_mat_pred.cols();
+				std::vector<std::vector<int>> order_coord(dim_coords_fitc);
+				std::vector<std::vector<double>> coord_sorted(dim_coords_fitc);
 #pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_REs_obs; ++i) {
-					coords_sum[i] = (re_comp_cross_cov_cluster_i_pred_ip->coords_)(i, Eigen::all).sum();
-				}
-#pragma omp parallel for schedule(static)
-				for (int i = 0; i < num_REs_pred; ++i) {
-					coords_pred_sum[i] = gp_coords_mat_pred(i, Eigen::all).sum();
-				}
-				// The observed points are sorted by their coordinate sums, so that the candidates for a match with a prediction point are
-				//	found by binary search instead of a comparison with every observed point
-				std::vector<int> order_coords_sum(num_REs_obs);
-				for (int i = 0; i < num_REs_obs; ++i) {
-					order_coords_sum[i] = i;
-				}
-				std::sort(order_coords_sum.begin(), order_coords_sum.end(), [&coords_sum](int a, int b) { return coords_sum[a] < coords_sum[b]; });
-				std::vector<double> coords_sum_sorted(num_REs_obs);
-				for (int k = 0; k < num_REs_obs; ++k) {
-					coords_sum_sorted[k] = coords_sum[order_coords_sum[k]];
+				for (int ic = 0; ic < dim_coords_fitc; ++ic) {
+					std::vector<int>& order = order_coord[ic];
+					order.resize(num_REs_obs);
+					for (int i = 0; i < num_REs_obs; ++i) {
+						order[i] = i;
+					}
+					std::sort(order.begin(), order.end(), [&coords_obs_fitc, ic](int a, int b) { return coords_obs_fitc.coeff(a, ic) < coords_obs_fitc.coeff(b, ic); });
+					coord_sorted[ic].resize(num_REs_obs);
+					for (int k = 0; k < num_REs_obs; ++k) {
+						coord_sorted[ic][k] = coords_obs_fitc.coeff(order[k], ic);
+					}
 				}
 				den_mat_t sigma_ip_inv_cross_cov_T;
 				//every thread collects its triplets in its own vector and they are concatenated afterwards
@@ -13975,27 +13967,37 @@ namespace GPBoost {
 						vec_t coord_pred_i = gp_coords_mat_pred.row(ii);
 						Sigma_ii = GetForCluster(re_comps_cross_cov_, cluster_i, 0)[0]->CalculateCovarianceOneEntry(coord_pred_i, coord_pred_i);
 					}
-					// all observed points whose coordinate sum is within the tolerance of 'TwoNumbersAreEqual' are in this window
-					const double window = 2. * EPSILON_NUMBERS * std::max(1., std::abs(coords_pred_sum[ii]));
-					const int k_first = (int)(std::lower_bound(coords_sum_sorted.begin(), coords_sum_sorted.end(), coords_pred_sum[ii] - window) - coords_sum_sorted.begin());
-					for (int k = k_first; k < num_REs_obs && coords_sum_sorted[k] <= coords_pred_sum[ii] + window; ++k) {
-						const int jj = order_coords_sum[k];
-						if (TwoNumbersAreEqual<double>(coords_pred_sum[ii], coords_sum[jj])) {
-							bool are_the_same = true;
-							for (int ic = 0; ic < (int)gp_coords_mat_pred.cols(); ++ic) {//loop over coordinates
-								are_the_same = are_the_same && TwoNumbersAreEqual<double>(gp_coords_mat_pred.coeff(ii, ic), (re_comp_cross_cov_cluster_i_pred_ip->coords_).coeff(jj, ic));
-							}
-							if (are_the_same) {
+					// All observed values of a coordinate that 'TwoNumbersAreEqual' can consider equal to the one of the prediction point
+					//	are in the window [v - w, v + w] with w = 2 * EPSILON_NUMBERS * max(1, |v|)
+					int ic_candidates = 0, k_begin_candidates = 0, k_end_candidates = num_REs_obs;
+					for (int ic = 0; ic < dim_coords_fitc && k_end_candidates > k_begin_candidates; ++ic) {
+						const double v = gp_coords_mat_pred.coeff(ii, ic);
+						const double window = 2. * EPSILON_NUMBERS * std::max(1., std::abs(v));
+						const std::vector<double>& values = coord_sorted[ic];
+						const int k_begin = (int)(std::lower_bound(values.begin(), values.end(), v - window) - values.begin());
+						const int k_end = (int)(std::upper_bound(values.begin(), values.end(), v + window) - values.begin());
+						if (k_end - k_begin < k_end_candidates - k_begin_candidates) {
+							ic_candidates = ic;
+							k_begin_candidates = k_begin;
+							k_end_candidates = k_end;
+						}
+					}
+					for (int k = k_begin_candidates; k < k_end_candidates; ++k) {
+						const int jj = order_coord[ic_candidates][k];
+						bool are_the_same = true;
+						for (int ic = 0; ic < dim_coords_fitc && are_the_same; ++ic) {//loop over coordinates
+							are_the_same = TwoNumbersAreEqual<double>(gp_coords_mat_pred.coeff(ii, ic), coords_obs_fitc.coeff(jj, ic));
+						}
+						if (are_the_same) {
 #pragma omp critical
-								{
-									if (!has_fitc_correction) {
-										has_fitc_correction = true;
-										GPBoost::solve_linear_sys(GetForCluster(chol_fact_sigma_ip_, cluster_i, 0), (*cross_cov).transpose(), sigma_ip_inv_cross_cov_T, GPU_use_);
-									}
+							{
+								if (!has_fitc_correction) {
+									has_fitc_correction = true;
+									GPBoost::solve_linear_sys(GetForCluster(chol_fact_sigma_ip_, cluster_i, 0), (*cross_cov).transpose(), sigma_ip_inv_cross_cov_T, GPU_use_);
 								}
-								double fitc_corr_ij = Sigma_ii - (cross_cov_pred_ip.row(ii)).dot(sigma_ip_inv_cross_cov_T.col(jj));
-								triplets_local.push_back(Triplet_t(ii, jj, fitc_corr_ij));
 							}
+							double fitc_corr_ij = Sigma_ii - (cross_cov_pred_ip.row(ii)).dot(sigma_ip_inv_cross_cov_T.col(jj));
+							triplets_local.push_back(Triplet_t(ii, jj, fitc_corr_ij));
 						}
 					}
 				}

@@ -150,9 +150,6 @@ namespace GPBoost {
 			RefineModeAsymLaplaceSSNALM(y_data, y_data_int, fixed_effects, solve_H, nullptr, SigmaI_mode_, location_par, &location_par_ptr, approx_marginal_ll);
 		}
 		if (!has_NA_or_Inf) {//calculate determinant
-			if (sample_from_posterior_after_mode_finding_) {
-				Sample_Posterior_LaplaceApprox_Stable(Sigma);
-			}
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			if (information_changes_after_mode_finding_) {
 				CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
@@ -166,6 +163,9 @@ namespace GPBoost {
 				Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
 				Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
 				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt, chol_fact_pattern_analyzed_);
+			}
+			if (sample_from_posterior_after_mode_finding_) {
+				Sample_Posterior_LaplaceApprox_Stable(Sigma);
 			}
 			approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
@@ -4944,6 +4944,9 @@ namespace GPBoost {
 						//	calculated one after another. Inverting P_sqrt explicitly would need one right-hand side per random
 						//	effect instead of one per prediction point
 						const sp_mat_t P_sqrt = sp_mat_t(*P_sqrt_rm);
+						if (has_vecchia_gp) {
+							CheckArgumentsCalcColumnRtLInvT(VecchiaCondObsOnly ? nullptr : &Bp, Bpo_rm, n_pred);
+						}
 						CalcColSquaredNormsLInvPRColumnwise(P_sqrt, Eigen::VectorXi(), n_pred, [&](int i, vec_t& column) {
 							// column i of A^T: column i of Z_po^T and -Bpo^T * Bp^-T * e_i
 							column.setZero();
@@ -5213,6 +5216,7 @@ namespace GPBoost {
 						// Squared norms of the columns of L^-1 * P * A^T for the Cholesky factorization L L^T = P * SigmaI_plus_ZtWZ * P^T,
 						//	i.e. the diagonal of A * (SigmaI_plus_ZtWZ)^-1 * A^T
 						vec_t norms;
+						CheckArgumentsCalcColumnRtLInvT(VecchiaCondObsOnly ? nullptr : &Bp, Bpo_rm, num_pred);
 						CalcColSquaredNormsLInvPRColumnwise(chol_fact_SigmaI_plus_ZtWZ_grouped_.CholFactMatrix(),
 							chol_fact_SigmaI_plus_ZtWZ_grouped_.permutationP().indices(), num_pred, [&](int i, vec_t& column) {
 								column.setZero();
@@ -5867,6 +5871,7 @@ namespace GPBoost {
 					// Squared norms of the columns of L^-1 * P * Bpo^T * Bp^-T for the Cholesky factorization L L^T = P * (Sigma^-1 + W) * P^T,
 					//	i.e. the diagonal of Bp^-1 * Bpo * (Sigma^-1 + W)^-1 * Bpo^T * Bp^-T. The columns are calculated one after another
 					vec_t norms;
+					CheckArgumentsCalcColumnRtLInvT(CondObsOnly ? nullptr : &Bp, Bpo_rm, num_pred);
 					CalcColSquaredNormsLInvPRColumnwise(chol_fact_SigmaI_plus_ZtWZ_vecchia_.CholFactMatrix(),
 						chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().indices(), num_pred, [&](int i, vec_t& column) {
 							CalcColumnRtLInvT(CondObsOnly ? nullptr : &Bp, Bpo_rm, i, column);
@@ -6131,6 +6136,7 @@ namespace GPBoost {
 					//	i.e. the diagonal of Bp^-1 * Bpo * (Sigma^-1 + W)^-1 * Bpo^T * Bp^-T. With two sets of random effects, the columns
 					//	are embedded in the block of the set 'num_gp', see above
 					vec_t norms;
+					CheckArgumentsCalcColumnRtLInvT(CondObsOnly ? nullptr : &Bp, Bpo_rm, num_pred);
 					CalcColSquaredNormsLInvPRColumnwise(chol_fact_SigmaI_plus_ZtWZ_vecchia_.CholFactMatrix(),
 						chol_fact_SigmaI_plus_ZtWZ_vecchia_.permutationP().indices(), num_pred, [&](int i, vec_t& column) {
 							vec_t column_block;
@@ -6176,18 +6182,10 @@ namespace GPBoost {
 			CalcChol<T_mat>(chol_fact_Sigma, Sigma_stable, chol_fact_pattern_analyzed);
 			MultiplyCholeskyFactor<T_chol>(chol_fact_Sigma, rand_vec_I_sim_post_, f);
 		} // Sigma_stable and chol_fact_Sigma are destroyed here
+		// 'chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_' is the factorization of I + W^(1/2) Sigma W^(1/2) at the mode, see 'FindModePostRandEffCalcMLLStable'
 		const vec_t W_sqrt = information_ll_.cwiseSqrt();
-		den_mat_t B_inv_rhs;
-		{
-			T_mat Id_plus_Wsqrt_Sigma_Wsqrt(dim_mode_, dim_mode_);
-			Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
-			Id_plus_Wsqrt_Sigma_Wsqrt += W_sqrt.asDiagonal() * (*Sigma) * W_sqrt.asDiagonal();
-			T_chol chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt;
-			bool chol_fact_pattern_analyzed = false;
-			CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt, Id_plus_Wsqrt_Sigma_Wsqrt, chol_fact_pattern_analyzed);
-			const den_mat_t rhs = W_sqrt.asDiagonal() * f + rand_vec_I_2_sim_post_;
-			B_inv_rhs = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt.solve(rhs);
-		}
+		const den_mat_t rhs = W_sqrt.asDiagonal() * f + rand_vec_I_2_sim_post_;
+		const den_mat_t B_inv_rhs = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(rhs);
 		rand_vec_sim_post_ = f - (*Sigma) * (W_sqrt.asDiagonal() * B_inv_rhs);
 		SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
 		rand_vec_sim_post_calculated_ = true;
@@ -6666,22 +6664,19 @@ namespace GPBoost {
 		pred_var = vec_t(dim_mode_);
 		if (matrix_inversion_method_ == "iterative") {
 			pred_var = vec_t::Zero(dim_mode_);
-			//Variance reduction
-			sp_mat_rm_t P_sqrt_invt_rm;
-			vec_t varred_global, c_cov, c_var;
+			//Variance reduction with the preconditioner P = P_sqrt * P_sqrt^T, P_sqrt is lower triangular
+			const sp_mat_rm_t* P_sqrt_rm = nullptr;
+			vec_t varred_global, c_cov, c_var, varred_determ;
 			if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
 				varred_global = vec_t::Zero(dim_mode_);
 				c_cov = vec_t::Zero(dim_mode_);
 				c_var = vec_t::Zero(dim_mode_);
-				//Calculate P^(-0.5) explicitly
+				P_sqrt_rm = (cg_preconditioner_type_ == "incomplete_cholesky") ? &L_SigmaI_plus_ZtWZ_rm_ : &P_SSOR_L_D_sqrt_inv_rm_;
+				//Deterministic: diag(P^(-1)), i.e. the squared norms of the columns of P_sqrt^(-1). P_sqrt^(-1) is not formed since it
+				//	can have much more non-zeros than P_sqrt, e.g., for three or more crossed random effects
 				sp_mat_rm_t Identity_rm(dim_mode_, dim_mode_);
 				Identity_rm.setIdentity();
-				if (cg_preconditioner_type_ == "incomplete_cholesky") {
-					TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(L_SigmaI_plus_ZtWZ_rm_, Identity_rm, P_sqrt_invt_rm, true);
-				}
-				else {
-					TriangularSolve<sp_mat_rm_t, sp_mat_rm_t, sp_mat_rm_t>(P_SSOR_L_D_sqrt_inv_rm_, Identity_rm, P_sqrt_invt_rm, true);
-				}
+				CalcColSquaredNormsLInvRByRows(*P_sqrt_rm, Identity_rm, varred_determ);
 			}
 			int num_threads;
 #ifdef _OPENMP
@@ -6748,9 +6743,9 @@ namespace GPBoost {
 					pred_var_private += pred_var_iter;
 					//Variance reduction
 					if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
-						//Stochastic: P^(-0.5T) P^(-0.5) RV
-						vec_t P_sqrt_inv_RV = P_sqrt_invt_rm.transpose() * rand_vec_init;
-						vec_t rand_vec_varred = P_sqrt_invt_rm * P_sqrt_inv_RV;
+						//Stochastic: P_sqrt^(-T) P_sqrt^(-1) RV
+						vec_t P_sqrt_inv_RV = P_sqrt_rm->triangularView<Eigen::Lower>().solve(rand_vec_init);
+						vec_t rand_vec_varred = P_sqrt_rm->transpose().template triangularView<Eigen::Upper>().solve(P_sqrt_inv_RV);
 						vec_t varred_iter = rand_vec_varred.cwiseProduct(rand_vec_init);
 						varred_private += varred_iter;
 						c_cov_private += varred_iter.cwiseProduct(pred_var_iter);
@@ -6775,8 +6770,6 @@ namespace GPBoost {
 				varred_global /= nsim_var_pred_;
 				c_cov /= nsim_var_pred_;
 				c_var /= nsim_var_pred_;
-				//Deterministic: diag(P^(-0.5T) P^(-0.5))
-				vec_t varred_determ = P_sqrt_invt_rm.cwiseProduct(P_sqrt_invt_rm) * vec_t::Ones(dim_mode_);
 				//optimal c
 				c_cov -= varred_global.cwiseProduct(pred_var);
 				c_var -= varred_global.cwiseProduct(varred_global);

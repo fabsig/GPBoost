@@ -5546,8 +5546,8 @@ class GPModel(object):
                     - No default is used for the Tweedie likelihoods with a fixed power ('tweedie_fixed_p' and the other '_fixed_p' variants); the power must be supplied explicitly.
 
             free_raw_data : bool, optional (default=False)
-                If True, the data (groups, coordinates, covariate data for random coefficients) is freed in Python
-                after initialization
+                If True, the data (groups, coordinates, covariate data for random coefficients, cluster IDs, weights,
+                and additional likelihood data) is freed in Python after initialization
             model_file : string or None, optional (default=None)
                 Path to the model file.
             model_dict : dict or None, optional (default=None)
@@ -6181,6 +6181,7 @@ class GPModel(object):
             self.gp_rand_coef_data = None
             self.cluster_ids = None
             self.weights = None
+            self.additional_likelihood_data = None
 
         if self.model_has_been_loaded_from_saved_file:
             if model_dict["params"]['init_cov_pars'] is not None:
@@ -6572,7 +6573,7 @@ class GPModel(object):
                 - reset_modes_line_search_lbfgs : bool, optional (default = False)
                     If True, the mode finding of the Laplace approximation starts at the modes of the current parameters for every
                     trial point of the line search of the "lbfgs" optimizer, and not at the modes of the previous trial point. Only
-                    relevant for non-Gaussian likelihoods and optimizer_cov = "lbfgs".
+                    relevant for non-Gaussian likelihoods and optimizer_cov = "lbfgs" or "lbfgs_linesearch_nocedal_wright".
                 - delta_conv_mode_finding : double, optional (default = 1e-8)
                     Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods.
                     The default is 1e-10 for the likelihood "gaussian_heteroscedastic_fixed_and_random".
@@ -6955,7 +6956,7 @@ class GPModel(object):
                 - reset_modes_line_search_lbfgs : bool, optional (default = False)
                     If True, the mode finding of the Laplace approximation starts at the modes of the current parameters for every
                     trial point of the line search of the "lbfgs" optimizer, and not at the modes of the previous trial point. Only
-                    relevant for non-Gaussian likelihoods and optimizer_cov = "lbfgs".
+                    relevant for non-Gaussian likelihoods and optimizer_cov = "lbfgs" or "lbfgs_linesearch_nocedal_wright".
                 - delta_conv_mode_finding : double, optional (default = 1e-8)
                     Convergence tolerance in mode finding algorithm for Laplace approximation for non-Gaussian likelihoods.
                     The default is 1e-10 for the likelihood "gaussian_heteroscedastic_fixed_and_random".

@@ -203,7 +203,7 @@ namespace GPBoost {
 		* \param cg_rel_tol Relative tolerance of the conjugate gradient algorithm
 		* \param cg_abs_tol Absolute tolerance of the conjugate gradient algorithm
 		* \param cg_multi_rhs_convergence How the stopping rule is aggregated over the columns of a linear system with several right-hand sides
-		* \param reset_modes_line_search_lbfgs If true, the mode finding of every trial point of the line search of the "lbfgs" optimizer starts
+		* \param reset_modes_line_search_lbfgs If true, the mode finding of every trial point of the line search of the "lbfgs" optimizers starts
 		*		at the modes of the current iterate, and the objective function value of the optimizer is kept separate from the negative
 		*		log-likelihood stored in the model
 		*/
@@ -546,13 +546,18 @@ namespace GPBoost {
 		* \param covariate_data Covariate data (column-major), can be nullptr
 		* \param num_covariates Number of covariates
 		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset), can be nullptr
-		* \return True if cov_pars_ has been set, false if this is not applicable (other likelihood, no Gaussian process arguments
-		*		kept, or weights that are zero)
+		* \return True if cov_pars_ has been set, false if this is not applicable (see 'HomoscedasticModelCanInitCovPars()')
 		*/
 		bool InitCovParsFromHomoscedasticModel(const double* y_data,
 			const double* covariate_data,
 			int num_covariates,
 			const double* fixed_effects);
+
+		/*!
+		* \brief True if 'InitCovParsFromHomoscedasticModel()' is applicable: likelihood = 'gaussian_heteroscedastic_fixed_and_random',
+		*		the arguments of the Gaussian process have been kept, and no weight is zero (a Gaussian likelihood requires positive weights)
+		*/
+		bool HomoscedasticModelCanInitCovPars() const;
 
 		/*!
 		* \brief Initial linear regression coefficients for likelihood = 'gaussian_heteroscedastic_fixed_and_random' from the
@@ -705,8 +710,9 @@ namespace GPBoost {
 		int intercept_col_homoscedastic_model_ = -1;
 		/*! \brief Error variance of the homoscedastic model (<= 0 if it has not been fitted) */
 		double error_var_homoscedastic_model_ = -1.;
-		/*! \brief True if the initial covariance parameters have been obtained from the homoscedastic model in the GPBoost algorithm, before an offset is known, see 'FindInitialValueBoosting()' */
-		bool cov_pars_from_homoscedastic_model_without_offset_ = false;
+		/*! \brief True if the initial covariance parameters of the GPBoost algorithm are obtained from the homoscedastic model in
+		*		'FindInitialValueBoosting()', where the offset (initial score) is known, and not in 'InitializeCovParsIfNotDefined()' */
+		bool homoscedastic_model_deferred_to_boosting_ = false;
 		/*! \brief Initial variance of the GP of the log-error variance when the initial values are obtained from the homoscedastic model */
 		const double INIT_VAR_LOG_ERROR_VAR_GP_ = 0.01;
 	};

@@ -490,12 +490,26 @@ namespace GPBoost {
 		CHECK((data_size_t)coords.rows() == num_data)
 			unique_idx = std::vector<int>(num_data);
 		double EPSILON_NUMBERS_SQUARE = EPSILON_NUMBERS * EPSILON_NUMBERS;
+		// The points are sorted by a weighted sum of their coordinates, and duplicates are searched among the points whose weighted
+		//	sums are close. The weights differ among the coordinates, since distinct points often have the same unweighted sum (e.g.,
+		//	on a grid or on a line with x_1 + x_2 = const), and every point would then be compared with all of them. Two points at a
+		//	distance below EPSILON_NUMBERS have weighted sums that differ by less than 2 * sqrt(d) * EPSILON_NUMBERS (weights in [1, 2))
+		const int dim_coords = (int)coords.cols();
+		std::vector<double> weights(dim_coords);
+		for (int ic = 0; ic < dim_coords; ++ic) {
+			weights[ic] = 1. + std::fmod((ic + 1) * 0.6180339887498949, 1.);
+		}
+		const double window_distance = 2. * std::sqrt((double)dim_coords) * EPSILON_NUMBERS;
 		std::vector<double> coords_sum(num_data);
 		std::vector<int> sort_sum(num_data);
 		std::vector<int> uniques_sorted;//index of unique points on sorted mean scale
 #pragma omp parallel for schedule(static)
 		for (int i = 0; i < num_data; ++i) {
-			coords_sum[i] = coords(i, Eigen::all).sum();
+			double weighted_sum = 0.;
+			for (int ic = 0; ic < dim_coords; ++ic) {
+				weighted_sum += weights[ic] * coords.coeff(i, ic);
+			}
+			coords_sum[i] = weighted_sum;
 		}
 		SortIndeces<double>(coords_sum, sort_sum);
 		for (int i_sort = 0; i_sort < num_data; ++i_sort) {
@@ -504,9 +518,11 @@ namespace GPBoost {
 			uniques_sorted.push_back(i_actual);//assume that 'i_sort' / 'i_actual' is a new unique point -> add it to 'uniques_sorted' (might be changed below)
 			unique_idx[i_actual] = (int)uniques_sorted.size() - 1;//'i_sort' / 'i_actual' is a new unique point -> its index stored in 'unique_idx' is its position in 'uniques_sorted', i.e., the last position of 'uniques_sorted' 
 			int j_sort;
-			//check for potential duplicates: find all points that have the same mean / 'coords_sum' value as 'i_actual'
+			//check for potential duplicates: find all points whose 'coords_sum' value is within the window of the one of 'i_actual'
+			//	(the window also covers the rounding errors of the weighted sums)
+			const double window_i = window_distance + EPSILON_NUMBERS * std::max(1., std::abs(coords_sum[i_actual]));
 			for (j_sort = i_sort + 1; j_sort < num_data; ++j_sort) {
-				if (NumberIsSmallerThan<double>(coords_sum[i_actual], coords_sum[sort_sum[j_sort]])) {
+				if (coords_sum[sort_sum[j_sort]] - coords_sum[i_actual] > window_i) {
 					break;//the loop end when 'j_sort' > 'i_sort' is for sure not a duplicate
 				}
 			}
