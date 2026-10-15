@@ -824,10 +824,11 @@ namespace GPBoost {
 				}
 				if (!any_positive_weight) Log::REFatal("For likelihood='%s', at least one effective weight must be strictly positive ", likelihood_type_.c_str());
 			}
-			// A zero weight makes the information of the log-likelihood exactly zero for any likelihood
+			// A zero weight makes the information of the log-likelihood and its derivative wrt the mode exactly zero for any likelihood
 			if (has_weights_) {
 				has_zero_weights_ = std::any_of(weights_, weights_ + num_data_, [](double w) { return w == 0.; });
 				information_ll_can_be_exact_zero_ = information_ll_can_be_exact_zero_ || has_zero_weights_;
+				grad_information_wrt_mode_can_be_zero_for_some_points_ = grad_information_wrt_mode_can_be_zero_for_some_points_ || has_zero_weights_;
 			}
 			has_int_label_ = label_type() == "int";
 			if (iid_model_) {

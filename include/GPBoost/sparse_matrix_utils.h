@@ -623,6 +623,35 @@ namespace GPBoost {
 	}//end CalcColSquaredNormsCholFactorInvPR
 
 	/*!
+	* \brief Calculate the squared norms of the columns of L^(-1) * P * R for a Cholesky factorization P * A * P^T = L * L^T
+	*		with a memory requirement that does not grow with the number of columns of R: for a dense factorization, the
+	*		columns of R are solved in blocks, and for a sparse one, see 'CalcColSquaredNormsCholFactorInvPR'
+	* \param chol Cholesky factorization
+	* \param R Right-hand side
+	* \param[out] norms Squared norms of the columns of L^(-1) * P * R
+	*/
+	template <class T_chol, class T_mat_R, typename std::enable_if <std::is_same<chol_den_mat_t, T_chol>::value>::type* = nullptr >
+	void CalcColSquaredNormsCholFactorInvPRLowMemory(const T_chol& chol, const T_mat_R& R, vec_t& norms) {
+		const int num_cols = (int)R.cols();
+		const int block_size = 128;
+		const int num_blocks = (num_cols + block_size - 1) / block_size;
+		norms.resize(num_cols);
+#pragma omp parallel for schedule(dynamic)
+		for (int b = 0; b < num_blocks; ++b) {
+			const int first_col = b * block_size;
+			const int num_cols_block = std::min(block_size, num_cols - first_col);
+			const den_mat_t R_block = R.middleCols(first_col, num_cols_block);
+			den_mat_t L_inv_R_block;
+			TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol, R_block, L_inv_R_block, false);
+			norms.segment(first_col, num_cols_block) = L_inv_R_block.colwise().squaredNorm().transpose();
+		}
+	}
+	template <class T_chol, class T_mat_R, typename std::enable_if <is_sparse_chol<T_chol>::value>::type* = nullptr >
+	void CalcColSquaredNormsCholFactorInvPRLowMemory(const T_chol& chol, const T_mat_R& R, vec_t& norms) {
+		CalcColSquaredNormsCholFactorInvPR<T_chol, T_mat_R>(chol, R, norms);
+	}//end CalcColSquaredNormsCholFactorInvPRLowMemory
+
+	/*!
 	* \brief Calculate the entries of A^(-1) on the non-zeros of a matrix M given a Cholesky factorization of A, see
 	*		'SparseInverseEntries'. For a dense matrix, all entries are calculated
 	* \param chol Cholesky factorization of A

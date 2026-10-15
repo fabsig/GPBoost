@@ -207,4 +207,51 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("An error when sampling from the prior does not change the response data of the model ", {
+
+    # Prior sampling is not implemented for the latent Vecchia prediction types and stops with an error. This must
+    # leave the response data of the model unchanged, both for a model with response data, whose later predictions
+    # must not change, and for a model without, which must still have none afterwards
+    y_er <- eps + xi
+    capture.output( gp_model_er <- fitGPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "vecchia",
+                                              num_neighbors = 20, vecchia_ordering = "none", y = y_er,
+                                              params = OPTIM_PARAMS_BFGS), file = 'NUL')
+    pred_er <- predict(gp_model_er, gp_coords_pred = coords[1:5, ], predict_var = TRUE)
+    gp_model_er$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_obs_only")
+    expect_error(predict(gp_model_er, gp_coords_pred = coords[1:3, ], sample_prior = TRUE, num_prior_samples = 2))
+    gp_model_er$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only")
+    pred_after_er <- predict(gp_model_er, gp_coords_pred = coords[1:5, ], predict_var = TRUE)
+    expect_lt(max(abs(pred_after_er$mu - pred_er$mu)), TOLERANCE_STRICT)
+    expect_lt(max(abs(pred_after_er$var - pred_er$var)), TOLERANCE_STRICT)
+    capture.output( gp_model_er <- GPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "vecchia",
+                                           num_neighbors = 20, vecchia_ordering = "none"), file = 'NUL')
+    gp_model_er$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_obs_only")
+    expect_error(predict(gp_model_er, gp_coords_pred = coords[1:3, ], cov_pars = c(0.1, sigma2_1, rho),
+                         sample_prior = TRUE, num_prior_samples = 2))
+    gp_model_er$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only")
+    expect_error(predict(gp_model_er, gp_coords_pred = coords[1:3, ], cov_pars = c(0.1, sigma2_1, rho)),
+                 "Response variable data is not provided")
+
+  })
+
+  test_that("Repeated predictive variances of a Vecchia-Laplace approximation with iterative methods are the same ", {
+
+    # The predictive variances are estimated by simulation. The random vectors have to depend only on the seed
+    y_rv <- as.numeric(sim_rand_unif(n = n, init_c = 0.4321) < pnorm(eps))
+    capture.output( gp_model_rv <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                                           gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none",
+                                           matrix_inversion_method = "iterative"), file = 'NUL')
+    coord_test_rv <- cbind(seq(0.05, 0.95, length.out = 10), seq(0.95, 0.05, length.out = 10))
+    for (pred_type_rv in c("latent_order_obs_first_cond_obs_only", "latent_order_obs_first_cond_all")) {
+      gp_model_rv$set_prediction_data(vecchia_pred_type = pred_type_rv, nsim_var_pred = 100)
+      capture.output( pred_rv_1 <- predict(gp_model_rv, y = y_rv, gp_coords_pred = coord_test_rv, cov_pars = c(sigma2_1, rho),
+                                           predict_var = TRUE, predict_response = FALSE), file = 'NUL')
+      capture.output( pred_rv_2 <- predict(gp_model_rv, y = y_rv, gp_coords_pred = coord_test_rv, cov_pars = c(sigma2_1, rho),
+                                           predict_var = TRUE, predict_response = FALSE), file = 'NUL')
+      expect_equal(pred_rv_2$mu, pred_rv_1$mu)
+      expect_equal(pred_rv_2$var, pred_rv_1$var)
+    }
+
+  })
+
 }

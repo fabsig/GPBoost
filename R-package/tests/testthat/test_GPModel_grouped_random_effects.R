@@ -416,7 +416,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       cross_cov_w %*% solve(Sigma_w, t(cross_cov_w))
     expect_lt(sum(abs(pred_w$mu - pred_mean_manual_w)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred_w$cov) - as.vector(pred_cov_manual_w))), TOLERANCE_STRICT)
-    
+    # The iterative methods simulate the predictive covariance matrix with random vectors whose covariance matrix
+    #   is Sigma^-1 + Z^T W Z. The simulation error of the entries is about 0.006 here
+    capture.output( gp_model_w_it_pred <- GPModel(group_data = group_data_w, weights = weights_w,
+                                                  matrix_inversion_method = "iterative") , file='NUL')
+    gp_model_w_it_pred$set_prediction_data(nsim_var_pred = 20000)
+    pred_w_it <- predict(gp_model_w_it_pred, y = y_w, group_data_pred = group_pred_w,
+                         cov_pars = cov_pars_w, predict_cov_mat = TRUE)
+    expect_lt(max(abs(pred_w_it$mu - pred_mean_manual_w)), TOLERANCE_LOOSE)
+    expect_lt(max(abs(as.vector(pred_w_it$cov) - as.vector(pred_cov_manual_w))), 0.02)
+
     capture.output( gp_model_w_it <- GPModel(group_data = group_data_w, weights = weights_w,
                                              matrix_inversion_method = "iterative") , file='NUL')
     gp_model_w_it$set_optim_params(params = list(num_rand_vec_trace = 500,

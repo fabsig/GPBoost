@@ -343,6 +343,33 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     }
   })
 
+  test_that("zero 'weights' with a Vecchia approximation and iterative methods", {
+    # A zero weight makes the derivative of the information wrt the mode exactly zero. The gradient wrt the shape
+    # needs the diagonal of (Sigma^-1 + W)^-1 also at these points, which the iterative methods estimate by dividing
+    # a stochastic estimate by this derivative. The estimates are compared with the ones of the Cholesky decomposition
+    n_gp <- 100L
+    coords <- cbind(sim_rand_unif(n_gp, init_c = 0.11), sim_rand_unif(n_gp, init_c = 0.37))
+    b_gp <- as.vector(t(chol(0.5 * exp(-as.matrix(dist(coords)) / 0.2) + diag(1e-10, n_gp))) %*%
+                        qnorm(sim_rand_unif(n_gp, init_c = 0.62)))
+    y_gp <- qgamma(sim_rand_unif(n_gp, init_c = 0.213), shape = 2, rate = 2 / exp(b_gp))
+    weights_gp <- rep(1, n_gp)
+    weights_gp[c(3, 17, 58)] <- 0
+    estimates <- list()
+    for (method in c("cholesky", "iterative")) {
+      capture.output(gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "gamma",
+                                            gp_approx = "vecchia", num_neighbors = 30L, vecchia_ordering = "none",
+                                            matrix_inversion_method = method, weights = weights_gp, y = y_gp,
+                                            params = list(num_rand_vec_trace = 200, seed_rand_vec_trace = 1,
+                                                          init_coef_aux_pars_from_iid_model = FALSE)), file = "NUL")
+      estimates[[method]] <- c(as.vector(gp_model$get_cov_pars()), as.vector(gp_model$get_aux_pars()))
+    }
+    expect_true(all(is.finite(estimates$iterative)))
+    # the shape is estimated accurately with both methods, the covariance parameters with the accuracy of the
+    #   stochastic approximation (about 8% also without zero weights)
+    expect_lt(abs(estimates$iterative[3] / estimates$cholesky[3] - 1), 0.02)
+    expect_lt(max(abs(estimates$iterative[1:2] / estimates$cholesky[1:2] - 1)), 0.2)
+  })
+
   test_that("the 'test_neg_log_likelihood' metric works for 't' with both approximation types", {
     # 'CalcDiagInformationLogLikOneSample' (used only by the adaptive Gauss-Hermite quadrature behind
     # the 'test_neg_log_likelihood' metric) used to support 't' for 'fisher_laplace' only, so that the

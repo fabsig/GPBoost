@@ -1473,8 +1473,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       # The predictive distribution of the response at the anchor is the conditional distribution given a latent value of zero
       for (likelihood in c("bernoulli_logit", "beta", "zero_one_censored_transformed_beta")) {
         capture.output( gp_model <- GPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = order, likelihood = likelihood) , file='NUL')
-        pred <- predict(gp_model, y = if (likelihood == "bernoulli_logit") y_bin_0 else y_beta_0, gp_coords_pred = matrix(c(0, 0.5)),
-                        cov_pars = cov_pars_eval[2:3], predict_var = TRUE, predict_response = TRUE)
+        capture.output( pred <- predict(gp_model, y = if (likelihood == "bernoulli_logit") y_bin_0 else y_beta_0, gp_coords_pred = matrix(c(0, 0.5)),
+                                        cov_pars = cov_pars_eval[2:3], predict_var = TRUE, predict_response = TRUE) , file='NUL')
         expect_true(all(is.finite(c(pred$mu, pred$var))))
         expect_lt(abs(pred$mu[1] - 0.5), TOLERANCE_STRICT)
         aux <- as.numeric(gp_model$get_aux_pars())

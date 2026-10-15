@@ -180,13 +180,15 @@ namespace GPBoost {
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
 		std::vector<int>& neighbors_i,
 		std::vector<double>& dist_of_neighbors_i,
-		std::map<int, std::vector<int>>& cover_tree,
-		string_t dist_function) {
+		const std::map<int, std::vector<int>>& cover_tree,
+		string_t dist_function,
+		int first_candidate,
+		int end_candidates) {
 		// Initialize distance and help matrices
 		// query point
 		den_mat_t coords_i = coords(i, Eigen::all);
 		// Initialize vectors
-		int root = cover_tree[-1][0];
+		int root = cover_tree.at(-1)[0];
 		std::vector<int> Q;
 		std::vector<double> Q_dist;
 		std::vector<int> diff_rev = { root };
@@ -205,7 +207,7 @@ namespace GPBoost {
 				diff_rev_interim.push_back(root);
 			}
 			for (int j : diff_rev) {
-				for (int jj : cover_tree[j]) {
+				for (int jj : cover_tree.at(j)) {
 					if (jj < i) {
 						if (jj != j) {
 							Q.push_back(jj);
@@ -291,18 +293,21 @@ namespace GPBoost {
 			}
 		}
 		else {
-			vec_t dist_vect(1);
-#pragma omp parallel for schedule(static)
+			// brute-force search among the points of the tree that precede 'i'
+			std::vector<int> candidates(std::max(0, std::min(i, end_candidates) - first_candidate));
+			std::iota(candidates.begin(), candidates.end(), first_candidate);
+			vec_t dist_vect(candidates.size());
+			if (!candidates.empty()) {
+				distances_funct(i, candidates, coords, corr_diag, chol_ip_cross_cov,
+					re_comps_vecchia_cluster_i, dist_vect, dist_function, distances_saved);
+			}
 			for (int j = 0; j < k; ++j) {
 				nn_dist[j] = std::numeric_limits<double>::infinity();
 			}
-			for (int jj = 0; jj < i; ++jj) {
-				std::vector<int> indj{ jj };
-				distances_funct(i, indj, coords, corr_diag, chol_ip_cross_cov,
-					re_comps_vecchia_cluster_i, dist_vect, dist_function, distances_saved);
-				if (dist_vect[0] < nn_dist[k - 1]) {
-					nn_dist[k - 1] = dist_vect[0];
-					neighbors_i[k - 1] = jj;
+			for (int jj = 0; jj < (int)candidates.size(); ++jj) {
+				if (dist_vect[jj] < nn_dist[k - 1]) {
+					nn_dist[k - 1] = dist_vect[jj];
+					neighbors_i[k - 1] = candidates[jj];
 					SortVectorsIncreasing<double>(nn_dist.data(), neighbors_i.data(), k);
 				}
 			}
@@ -511,70 +516,39 @@ namespace GPBoost {
 			}
 			else {
 				if (brute_force_threshold < num_data) {
-					int level = 0;
-					// Build CoverTree
-					std::map<int, std::vector<int>> cover_tree;
-					std::map<int, std::map<int, std::vector<int>>> cover_trees;
+					// Build cover trees: the candidate neighbors are split into segments of at least 'min_segment_size'
+					//	points with one tree per segment, which are built in parallel
 					std::vector<double> dist_dummy;
-					// Set number of threads to the maximum available
+					const int num_candidates = (prediction && !cond_on_all) ? num_data_obs : num_data;
+					const int min_segment_size = std::max(1000, num_neighbors);
 					int num_threads;
 #ifdef _OPENMP
 					num_threads = omp_get_max_threads();
 #else
 					num_threads = 1;
 #endif
-					std::vector<int> levels_threads(num_threads);
-					std::vector<int> segment_start(num_threads);
-					std::vector<int> segment_length(num_threads);
-					den_mat_t coords_ct;
-					if (prediction && !cond_on_all) {
-						coords_ct = coords.topRows(num_data_obs);
+					const int num_trees = std::max(1, std::min(num_threads, num_candidates / min_segment_size));
+					std::vector<std::map<int, std::vector<int>>> cover_trees(num_trees);
+					std::vector<int> levels_trees(num_trees);
+					std::vector<int> segment_start(num_trees + 1);
+					for (int t = 0; t <= num_trees; ++t) {
+						segment_start[t] = (int)(((int64_t)t * num_candidates) / num_trees);
 					}
-					else {
-						coords_ct = coords;
-					}
-					for (int i = 0; i < num_threads; ++i) {
-						cover_trees[i] = cover_tree;
-					}
-					if (num_threads != 1) {
-						int segment_size = (int)(std::ceil((double)coords_ct.rows() / (double)num_threads));
-						if (segment_size < std::max(1000, num_neighbors)) {
-							num_threads = (int)(std::floor((double)coords_ct.rows() / (double)std::max(1000, num_neighbors)));
-							segment_size = (int)(std::ceil((double)coords_ct.rows() / (double)num_threads));
-						}
-						int last_segment = (int)(coords_ct.rows()) - (num_threads - 1) * segment_size;
-						bool overhead = false;
-						if (last_segment != segment_size) {
-							num_threads -= 1;
-							levels_threads.resize(num_threads);
-							segment_start.resize(num_threads);
-							segment_length.resize(num_threads);
-							overhead = true;
-						}
-#pragma omp parallel for
-						for (int i = 0; i < num_threads; ++i) {
-							segment_start[i] = i * segment_size;
-							segment_length[i] = segment_size;
-							if (i == num_threads - 1 && overhead) {
-								segment_length[i] += last_segment;
-							}
-							const ColumnBlocksView chol_ip_cross_cov_sub = (dist_function == "residual_correlation_FSA") ?
-								chol_ip_cross_cov.MiddleCols(segment_start[i], segment_length[i]) : chol_ip_cross_cov.MiddleCols(0, 0);
-							CoverTree_kNN(coords_ct.middleRows(segment_start[i], segment_length[i]), chol_ip_cross_cov_sub,
-								corr_diag.segment(segment_start[i], segment_length[i]), segment_start[i], re_comps_vecchia_cluster_i, cover_trees[i],
-								levels_threads[i], save_distances, dist_function);
-						}
-					}
-					else {
-						CoverTree_kNN(coords_ct, chol_ip_cross_cov, corr_diag, 0, re_comps_vecchia_cluster_i, cover_trees[0],
-							level, save_distances, dist_function);
+#pragma omp parallel for schedule(dynamic)
+					for (int t = 0; t < num_trees; ++t) {
+						const int segment_length = segment_start[t + 1] - segment_start[t];
+						const ColumnBlocksView chol_ip_cross_cov_sub = (dist_function == "residual_correlation_FSA") ?
+							chol_ip_cross_cov.MiddleCols(segment_start[t], segment_length) : chol_ip_cross_cov.MiddleCols(0, 0);
+						CoverTree_kNN(coords.middleRows(segment_start[t], segment_length), chol_ip_cross_cov_sub,
+							corr_diag.segment(segment_start[t], segment_length), segment_start[t], re_comps_vecchia_cluster_i, cover_trees[t],
+							levels_trees[t], save_distances, dist_function);
 					}
 #pragma omp parallel for schedule(dynamic)
 					for (int i = brute_force_threshold; i < num_data; ++i) {
-						if (num_threads != 1) {
+						if (num_trees > 1) {
 							std::map<int, std::vector<int>> neighbors_per_tree;
 							std::map<int, std::vector<double>> dist_of_neighbors_per_tree;
-							for (int ii = 0; ii < num_threads; ++ii) {
+							for (int ii = 0; ii < num_trees; ++ii) {
 								if (segment_start[ii] >= i) {
 									break;
 								}
@@ -583,8 +557,9 @@ namespace GPBoost {
 							}
 							for (int ii = 0; ii < (int)neighbors_per_tree.size(); ++ii) {
 								if ((segment_start[ii] + num_neighbors) < i) {
-									find_kNN_CoverTree(i, num_neighbors, levels_threads[ii], save_distances, coords, chol_ip_cross_cov,
-										corr_diag, re_comps_vecchia_cluster_i, neighbors_per_tree[ii], dist_of_neighbors_per_tree[ii], cover_trees[ii], dist_function);
+									find_kNN_CoverTree(i, num_neighbors, levels_trees[ii], save_distances, coords, chol_ip_cross_cov,
+										corr_diag, re_comps_vecchia_cluster_i, neighbors_per_tree[ii], dist_of_neighbors_per_tree[ii], cover_trees[ii], dist_function,
+										segment_start[ii], segment_start[ii + 1]);
 								}
 								else if (segment_start[ii] < i) {
 									vec_t dist_vect(1);
@@ -629,9 +604,11 @@ namespace GPBoost {
 							}
 						}
 						else {
-							find_kNN_CoverTree(i, num_neighbors, level, save_distances,
+							std::vector<double> dist_of_neighbors_i;
+							find_kNN_CoverTree(i, num_neighbors, levels_trees[0], save_distances,
 								coords, chol_ip_cross_cov, corr_diag, re_comps_vecchia_cluster_i,
-								neighbors[i - start_at], dist_dummy, cover_trees[0], dist_function);
+								neighbors[i - start_at], dist_of_neighbors_i, cover_trees[0], dist_function,
+								segment_start[0], segment_start[1]);
 						}
 						//Save distances between points and neighbors
 						if (save_distances) {
@@ -888,6 +865,12 @@ namespace GPBoost {
 			}
 			else {
 				int first_i = (start_at <= num_neighbors) ? (num_neighbors + 1) : start_at;//The first point (first_i) for which the search is done is the point with index (num_neighbors + 1) or start_at
+				// The random neighbors of every point are drawn with a random number generator of their own, which is seeded
+				//	from 'gen', such that they do not depend on the number of threads
+				uint32_t seed_random_neighbors = 0;
+				if (neighbor_selection == "half_random" || neighbor_selection == "half_random_close_neighbors") {
+					seed_random_neighbors = std::uniform_int_distribution<uint32_t>()(gen);
+				}
 #pragma omp parallel for schedule(static)
 				for (int i = first_i; i < num_data; ++i) {
 					int num_cand_neighbors = std::min<int>({ i, end_search_at + 1 });
@@ -920,16 +903,17 @@ namespace GPBoost {
 					}
 					//Find non-nearest neighbors
 					if (neighbor_selection == "half_random" || neighbor_selection == "half_random_close_neighbors") {
+						RNG_t gen_i(seed_random_neighbors + (uint32_t)i);
 						if (neighbor_selection == "half_random" ||
 							(neighbor_selection == "half_random_close_neighbors" && num_cand_neighbors <= num_close_neighbors)) {
 							std::vector<int> nearest_neighbors(neighbors[i - start_at].begin(), neighbors[i - start_at].begin() + num_nearest_neighbors);
 							std::vector<int> non_nearest_neighbors;
-							SampleIntNoReplaceExcludeSomeIndices(num_cand_neighbors, num_non_nearest_neighbors, gen, non_nearest_neighbors, nearest_neighbors);
+							SampleIntNoReplaceExcludeSomeIndices(num_cand_neighbors, num_non_nearest_neighbors, gen_i, non_nearest_neighbors, nearest_neighbors);
 							std::copy(non_nearest_neighbors.begin(), non_nearest_neighbors.end(), neighbors[i - start_at].begin() + num_nearest_neighbors);
 						}
 						else if (neighbor_selection == "half_random_close_neighbors" && num_cand_neighbors > num_close_neighbors){
 							std::vector<int> ind_non_nearest_neighbors;
-							SampleIntNoReplace(num_close_neighbors - num_nearest_neighbors, num_non_nearest_neighbors, gen, ind_non_nearest_neighbors);
+							SampleIntNoReplace(num_close_neighbors - num_nearest_neighbors, num_non_nearest_neighbors, gen_i, ind_non_nearest_neighbors);
 							for (int j = 0; j < num_non_nearest_neighbors; ++j) {
 								neighbors[i - start_at][num_nearest_neighbors + j] = neighbors_i[ind_non_nearest_neighbors[j] + num_nearest_neighbors];
 							}

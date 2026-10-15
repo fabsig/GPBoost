@@ -213,6 +213,9 @@ namespace GPBoost {
 	* \param[out] dist_of_neighbors_i
 	* \param cover_tree
 	* \param dist_function distance function
+	* \param first_candidate First index of the points in the tree
+	* \param end_candidates One past the last index of the points in the tree. The neighbors are searched among the points
+	*		of the tree with indices smaller than 'i', also if the search in the tree is replaced by a brute-force search
 	*/
 	void find_kNN_CoverTree(const int i,
 		const int k,
@@ -224,8 +227,10 @@ namespace GPBoost {
 		std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_vecchia_cluster_i,
 		std::vector<int>& neighbors_i,
 		std::vector<double>& dist_of_neighbors_i,
-		std::map<int, std::vector<int>>& cover_tree,
-		string_t dist_function);
+		const std::map<int, std::vector<int>>& cover_tree,
+		string_t dist_function,
+		int first_candidate,
+		int end_candidates);
 
 	/*!
 	* \brief Finds the nearest_neighbors among the previous observations

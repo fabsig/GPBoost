@@ -344,7 +344,7 @@ namespace GPBoost {
 		//	so shrink to the iterations that were actually carried out
 		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
 		conv.LogDiagnostics("CGTridiagVecchiaLaplace");
-		cg_steps_reporter.converged = !conv.HasUnmetTolerance();
+		cg_steps_reporter.converged = false;
 		if (conv.HasUnmetTolerance()) {
 			NA_or_Inf_found = true;
 		}
@@ -701,7 +701,7 @@ namespace GPBoost {
 		//	so shrink to the iterations that were actually carried out
 		conv.ShrinkTridiagonals(Tdiags, Tsubdiags, p);
 		conv.LogDiagnostics("CGTridiagVecchiaLaplace_Version_SigmaPlusWinv");
-		cg_steps_reporter.converged = !conv.HasUnmetTolerance();
+		cg_steps_reporter.converged = false;
 		if (conv.HasUnmetTolerance()) {
 			NA_or_Inf_found = true;
 		}

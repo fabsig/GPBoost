@@ -1396,12 +1396,14 @@ namespace GPBoost {
 					for (int j = 0; j < num_data_per_cluster_[cluster_i]; ++j) {
 						y_vec_cluster_i[j] = y_vec_[data_indices_per_cluster_[cluster_i][j]];
 					}
-					numer = y_vec_cluster_i.dot(y_aux_[cluster_i]);
-					denom = y_[cluster_i].dot(y_aux_[cluster_i]);
+					numer += y_vec_cluster_i.dot(y_aux_[cluster_i]);
+					denom += y_[cluster_i].dot(y_aux_[cluster_i]);
 				}
 				optim_coef[0] = numer / denom;
 				Log::REDebug(" ");
 				Log::REDebug("GPModel: optimal learning rate = %g ", -optim_coef[0]);
+				// the new base learner was passed as 'covariate_data', the model has no covariates, see the end of this function
+				has_covariates_ = false;
 				return;
 			}
 			// Assume that this function is only called for initialization of the GPBoost algorithm
@@ -3788,6 +3790,9 @@ namespace GPBoost {
 			}//end calc_cov_factor
 			//2. Calculate gradient
 			if (gauss_likelihood_) {//Gaussian data
+				// The residual is needed by the line search for the step length in the GPBoost algorithm, see 'OptimLinRegrCoefCovPar()',
+				//	also if the covariance parameters are not estimated
+				y_vec_ = Eigen::Map<const vec_t>(y, num_data_);
 				SetY(y);
 				CalcYAux(cov_pars[0], false);
 				GetYAux(y);
@@ -4614,27 +4619,55 @@ namespace GPBoost {
 			if (sample_posterior && sample_prior) {
 				Log::REFatal("Cannot sample from prior and posterior simultaneously ");
 			}
+			// Restores the response data of the model when 'Predict' is left, also if an error is thrown
+			struct RestoreResponseAfterPriorSampling {
+				REModelTemplate<T_mat, T_chol>& model;
+				bool active = false;
+				std::map<data_size_t, vec_t> y, Zty, y_aux;
+				std::map<data_size_t, vec_int_t> y_int;
+				bool y_has_been_set = false;
+				bool y_aux_has_been_calculated = false;
+				~RestoreResponseAfterPriorSampling() {
+					if (active) {
+						model.y_.swap(y);
+						model.y_int_.swap(y_int);
+						model.Zty_.swap(Zty);
+						model.y_aux_.swap(y_aux);
+						model.y_has_been_set_ = y_has_been_set;
+						model.y_aux_has_been_calculated_ = y_aux_has_been_calculated;
+						if (!model.gauss_likelihood_) {
+							for (const auto& cluster_i : model.unique_clusters_) {
+								model.likelihood_.at(cluster_i)->InvalidateResponseDependentCaches();
+							}
+						}
+					}
+				}
+			} restore_response{ *this };
 			vec_t y_zero_dummy;
-			std::map<data_size_t, vec_t> y_before_prior_sampling;
-			std::map<data_size_t, vec_int_t> y_int_before_prior_sampling;
-			std::map<data_size_t, vec_t> Zty_before_prior_sampling, y_aux_before_prior_sampling;
-			bool y_has_been_set_before_prior_sampling = y_has_been_set_;
-			bool y_aux_has_been_calculated_before_prior_sampling = y_aux_has_been_calculated_;
 			if (sample_prior) {
 				if (predict_cov_mat || predict_var) {
 					Log::REFatal("Cannot calculate predictive (co-)variances if sampling from prior ");
 				}
-				// Prior samples do not condition on the response variable. A zero response is used since the
-				//	calculations below expect one, and the response data of the model is restored at the end
-				y_before_prior_sampling = y_;
-				y_int_before_prior_sampling = y_int_;
-				Zty_before_prior_sampling = Zty_;
-				y_aux_before_prior_sampling = y_aux_;
-				y_zero_dummy = vec_t::Zero(num_data_);
-				y_obs = y_zero_dummy.data();
+				if (only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_ ||
+					use_woodbury_identity_ || grouped_RE_and_vecchia_GP_) {
+					Log::REFatal("Prior sampling is not implemented for grouped random effects ");
+				}
+				// Prior samples do not condition on the response variable, but the calculations below expect one. If the model
+				//	has none, a zero response is used, and the response data of the model is restored when 'Predict' is left
+				if (y_obs == nullptr && !y_has_been_set_) {
+					restore_response.y = y_;
+					restore_response.y_int = y_int_;
+					restore_response.Zty = Zty_;
+					restore_response.y_aux = y_aux_;
+					restore_response.y_has_been_set = y_has_been_set_;
+					restore_response.y_aux_has_been_calculated = y_aux_has_been_calculated_;
+					restore_response.active = true;
+					y_zero_dummy = vec_t::Zero(num_data_);
+					y_obs = y_zero_dummy.data();
+				}
 			}
 			if (y_obs == nullptr) {
-				if (!y_has_been_set_ && !(sample_prior && !sample_posterior)) {
+				if (!y_has_been_set_) {
 					Log::REFatal("Response variable data is not provided and has not been set before");
 				}
 			}
@@ -4692,10 +4725,13 @@ namespace GPBoost {
 			for (const auto& cluster_i : unique_clusters_pred) {				
 				if (std::find(unique_clusters_.begin(), unique_clusters_.end(), cluster_i) == unique_clusters_.end()) {
 					//Case 1: no data observed for this Gaussian process with ID 'cluster_i'
-					PredictNewCluster(cluster_i, num_data_pred, data_indices_per_cluster_pred, num_data_per_cluster_pred,
-						gp_coords_data_pred, gp_rand_coef_data_pred, re_group_levels_pred, re_group_levels_pred_orig, re_group_rand_coef_data_pred,
-						cov_pars, mu, fixed_effects_pred, predict_cov_mat, predict_var, predict_response,
-						predict_var_or_response, sample_posterior, out_predict);
+					//	Prior samples are generated at the locations of the training data only, i.e. there is nothing to do here
+					if (!sample_prior) {
+						PredictNewCluster(cluster_i, num_data_pred, data_indices_per_cluster_pred, num_data_per_cluster_pred,
+							gp_coords_data_pred, gp_rand_coef_data_pred, re_group_levels_pred, re_group_levels_pred_orig, re_group_rand_coef_data_pred,
+							cov_pars, mu, fixed_effects_pred, predict_cov_mat, predict_var, predict_response,
+							predict_var_or_response, sample_posterior, out_predict);
+					}
 				}//end cluster_i with no observed data
 				else {
 					//Case 2: there exists observed data for this cluster_i
@@ -5245,14 +5281,6 @@ namespace GPBoost {
 					}
 				}
 			}
-			if (sample_prior) {
-				y_ = y_before_prior_sampling;
-				y_int_ = y_int_before_prior_sampling;
-				Zty_ = Zty_before_prior_sampling;
-				y_aux_ = y_aux_before_prior_sampling;
-				y_has_been_set_ = y_has_been_set_before_prior_sampling;
-				y_aux_has_been_calculated_ = y_aux_has_been_calculated_before_prior_sampling;
-			}
 		}//end Predict
 
 		/*!
@@ -5388,49 +5416,36 @@ namespace GPBoost {
 									mean_pred_id = sigma * (*Z_j) * ((*Z_j).transpose() * (*y_aux));
 								}
 								if (calc_var) {
-									//Z_j^T * R^-1 * Z_j, where R is the diagonal error covariance after profiling out sigma2, consistent with 'ZtZj_'
-									sp_mat_t ZjtZj = (has_weights_ && gauss_likelihood_) ?
-										(sp_mat_t)((*Z_j).transpose() * (weights_[cluster_i].asDiagonal() * (*Z_j))) :
-										(sp_mat_t)((*Z_j).transpose() * (*Z_j));
+									// Every row of Z_j has one non-zero entry, so the variance of a data point is given by the posterior
+									//	variance of its random effect, i.e. by the diagonal of the posterior covariance of the random effects
+									vec_t post_var_re;
 									if (use_woodbury_identity_) {
 										if (matrix_inversion_method_ == "iterative") {
 											Log::REFatal("PredictTrainingDataRandomEffects() is currently not implemented for matrix_inversion_method_ == '%s' and likelihood == 'Gaussian'. Call the predict() function instead.",
 												matrix_inversion_method_.c_str());
 										} //end iterative
 										else { //start Cholesky
-											T_mat M_aux;
-											if (CholeskyHasPermutation<T_chol>(chol_facts_[cluster_i])) {
-												TriangularSolve<T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i].CholFactMatrix(), P_ZtZj_[cluster_i][cn], M_aux, false);
-											}
-											else {
-												TriangularSolve<T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i].CholFactMatrix(), ZtZj_[cluster_i][cn], M_aux, false);
-											}
-											T_mat M_aux3 = sigma * sigma * (M_aux.transpose() * M_aux - ZjtZj);
-											M_aux3.diagonal().array() += sigma;
-											if (GetForCluster(re_comps_, cluster_i, 0)[cn]->IsRandCoef()) {
-												Z_j = &Z_base_j;
-											}
-											T_mat M_aux4 = (*Z_j) * M_aux3;
-#pragma omp parallel for schedule(static)
-											for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
-												var_pred_id[i] = cov_pars[0] * (*Z_j).row(i).cwiseProduct(M_aux4.row(i)).sum();
-											}
+											//diagonal of Z_j^T * R^-1 * Z_j, where R is the diagonal error covariance after profiling out sigma2, consistent with 'ZtZj_'
+											vec_t ZjtZj_diag = (has_weights_ && gauss_likelihood_) ?
+												(vec_t)((*Z_j).cwiseAbs2().transpose() * weights_[cluster_i]) :
+												(vec_t)((*Z_j).cwiseAbs2().transpose() * vec_t::Ones(num_data_per_cluster_[cluster_i]));
+											// squared norms of the columns of L^-1 * P * Z^T * R^-1 * Z_j
+											vec_t col_norms;
+											CalcColSquaredNormsCholFactorInvPRLowMemory<T_chol, sp_mat_t>(chol_facts_[cluster_i], ZtZj_[cluster_i][cn], col_norms);
+											post_var_re = (sigma * sigma * (col_norms - ZjtZj_diag).array() + sigma).matrix();
 										} //end Cholesky
 									}//end use_woodbury_identity_
 									else {//!use_woodbury_identity_
-										T_mat M_aux;
 										//The triangular solve uses the slope-weighted design, the mapping of the resulting
 										//	covariance of the coefficients back to the observations uses the unweighted one
-										TriangularSolveGivenCholesky<T_chol, T_mat, sp_mat_t, T_mat>(chol_facts_[cluster_i], *Z_j, M_aux, false);
-										if (GetForCluster(re_comps_, cluster_i, 0)[cn]->IsRandCoef()) {
-											Z_j = &Z_base_j;
-										}
-										T_mat M_aux2 = (*Z_j) * M_aux.transpose();
-#pragma omp parallel for schedule(static)
-										for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
-											var_pred_id[i] = cov_pars[0] * (sigma - sigma * sigma * M_aux2.row(i).squaredNorm());
-										}
+										vec_t col_norms;
+										CalcColSquaredNormsCholFactorInvPRLowMemory<T_chol, sp_mat_t>(chol_facts_[cluster_i], *Z_j, col_norms);
+										post_var_re = (sigma - sigma * sigma * col_norms.array()).matrix();
 									}//end !use_woodbury_identity_
+									if (GetForCluster(re_comps_, cluster_i, 0)[cn]->IsRandCoef()) {
+										Z_j = &Z_base_j;
+									}
+									var_pred_id = cov_pars[0] * ((*Z_j).cwiseAbs2() * post_var_re);
 								}//end calc_var
 							}//end !(use_woodbury_identity_ && num_re_group_total_ == 1)
 #pragma omp parallel for schedule(static)// Write on output
@@ -5467,26 +5482,25 @@ namespace GPBoost {
 									mean_pred_id = (re_comp->sigma_) * (*y_aux);
 								}
 								if (calc_var) {
-									T_mat M_aux, M_aux2, M_aux3;
-									if (re_comp_base->HasZ()) {
-										M_aux = (*Z_j) * (re_comp->sigma_) * (*Z_base_j).transpose();
-									}
-									else if (re_comp->IsRandCoef()) {
-										M_aux = (*Z_j) * (re_comp->sigma_);
+									// Posterior variances of the random effects of the unique locations: prior variance minus the squared norms
+									//	of the columns of L^-1 * P * Cov(Z_j b, b), where Cov(Z_j b, b) = Z_j * Sigma for random coefficients or
+									//	duplicate locations. The prior variance is not the marginal variance parameter for covariance functions
+									//	whose variance varies over the locations (e.g. 'ar1_mf_*' and 'hurst')
+									vec_t col_norms;
+									if (re_comp->IsRandCoef() || re_comp_base->HasZ()) {
+										const T_mat Zj_sigma = (*Z_j) * (re_comp->sigma_);
+										CalcColSquaredNormsCholFactorInvPRLowMemory<T_chol, T_mat>(chol_facts_[cluster_i], Zj_sigma, col_norms);
 									}
 									else {
-										M_aux = re_comp->sigma_;
+										CalcColSquaredNormsCholFactorInvPRLowMemory<T_chol, T_mat>(chol_facts_[cluster_i], re_comp->sigma_, col_norms);
 									}
-									//Prior variance of the predicted random effect. This is not the marginal variance parameter 'sigma'
-									//	for covariance functions whose variance varies over the locations (e.g. 'ar1_mf_*' and 'hurst')
-									vec_t prior_var_diag = re_comp->sigma_.diagonal();
+									vec_t post_var_re = re_comp->sigma_.diagonal();
+									post_var_re -= col_norms;
 									if (re_comp_base->HasZ()) {
-										prior_var_diag = (*Z_base_j) * prior_var_diag;
+										var_pred_id = cov_pars[0] * ((*Z_base_j) * post_var_re);
 									}
-									TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_facts_[cluster_i], M_aux, M_aux2, false);
-#pragma omp parallel for schedule(static)
-									for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
-										var_pred_id[i] = cov_pars[0] * (prior_var_diag[i] - M_aux2.col(i).squaredNorm());
+									else {
+										var_pred_id = cov_pars[0] * post_var_re;
 									}
 								}
 #pragma omp parallel for schedule(static)// Write on output
@@ -13404,6 +13418,11 @@ namespace GPBoost {
 							if (matrix_inversion_method_ == "iterative" && !SigmaI_plus_ZtZ_is_diagonal) {
 								den_mat_t pred_cov_global = den_mat_t::Zero(num_REs_pred, num_REs_pred);
 								vec_t SigmaI_diag_sqrt = Sigma.diagonal().cwiseInverse().cwiseSqrt();
+								// Z^T W Z with the weights W is contained in 'SigmaI_plus_ZtZ_rm_'
+								vec_t weights_sqrt;
+								if (has_weights_ && gauss_likelihood_) {
+									weights_sqrt = weights_[cluster_i].cwiseSqrt();
+								}
 								int num_threads;
 #ifdef _OPENMP
 								num_threads = omp_get_max_threads();
@@ -13439,7 +13458,10 @@ namespace GPBoost {
 										for (int j = 0; j < num_data_per_cluster_[cluster_i]; j++) {
 											rand_vec_pred_I_2(j) = ndist(rng_local);
 										}
-										//z_i ~ N(0,(Sigma^(-1) + Z^T Z))
+										if (weights_sqrt.size() > 0) {
+											rand_vec_pred_I_2.array() *= weights_sqrt.array();
+										}
+										//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
 										vec_t rand_vec_pred_SigmaI_plus_ZtZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_pred_I_1 + Zt_[cluster_i] * rand_vec_pred_I_2;
 										vec_t rand_vec_pred_SigmaI_plus_ZtZ_inv(cum_num_rand_eff_[cluster_i][num_comps_total_]);
 										//z_i ~ N(0,(Sigma^(-1) + Z^T Z)^(-1))
@@ -13735,6 +13757,12 @@ namespace GPBoost {
 						T_mat sigma_latent;
 						CalcZSigmaZtLatent(sigma_latent, cluster_i);
 						sigma_latent.diagonal().array() *= JITTER_MUL;//the latent covariance is singular when there are duplicate locations
+						MultiplyCholeskyFactorOfCovMat(sigma_latent, prior_samples_id);
+					}
+					else if (!gauss_likelihood_) {
+						// 'ZSigmaZt_' is the covariance of the latent process (on the random effects scale if only_one_GP_calculations_on_RE_scale_)
+						T_mat sigma_latent = *(ZSigmaZt_[cluster_i]);
+						sigma_latent.diagonal().array() *= JITTER_MUL;
 						MultiplyCholeskyFactorOfCovMat(sigma_latent, prior_samples_id);
 					}
 					else {

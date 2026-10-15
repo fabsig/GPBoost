@@ -836,6 +836,32 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(nll_correlation - nll_nearest), TOLERANCE_STRICT)
   })
 
+  test_that("Predictions with correlation-based neighbors for many prediction points ", {
+    # For an isotropic covariance function, the neighbors selected based on correlations are the nearest neighbors.
+    # Beyond the first 500 prediction points, the neighbors are searched with cover trees, which are built for
+    # segments of at least 1000 points. This is checked with fewer observations than the size of a segment and with
+    # a number of observations for which only one segment fits
+    cov_pars_ct <- c(0.1, 1, 0.2)
+    coords_pred_ct <- matrix(sim_rand_unif(n = 600 * d, init_c = 0.53), ncol = d)
+    for (n_obs_ct in c(200, 1200)) {
+      coords_ct <- matrix(sim_rand_unif(n = n_obs_ct * d, init_c = 0.31), ncol = d)
+      y_ct <- sin(4 * coords_ct[, 1]) + cos(3 * coords_ct[, 2])
+      for (pred_type_ct in c("order_obs_first_cond_obs_only", "order_obs_first_cond_all")) {
+        pred_ct <- list()
+        for (approx_ct in c("vecchia", "vecchia_correlation_based")) {
+          capture.output( gp_model_ct <- GPModel(gp_coords = coords_ct, cov_function = "exponential", gp_approx = approx_ct,
+                                                 num_neighbors = 10, vecchia_ordering = "none"), file = 'NUL')
+          gp_model_ct$set_prediction_data(vecchia_pred_type = pred_type_ct, num_neighbors_pred = 10)
+          capture.output( pred_ct[[approx_ct]] <- predict(gp_model_ct, y = y_ct, gp_coords_pred = coords_pred_ct,
+                                                          cov_pars = cov_pars_ct, predict_var = TRUE), file = 'NUL')
+        }
+        label_ct <- paste0("(", n_obs_ct, " observations, ", pred_type_ct, ")")
+        expect_lt(max(abs(pred_ct[[1]]$mu - pred_ct[[2]]$mu)), TOLERANCE_STRICT, label = paste("predictive means", label_ct))
+        expect_lt(max(abs(pred_ct[[1]]$var - pred_ct[[2]]$var)), TOLERANCE_STRICT, label = paste("predictive variances", label_ct))
+      }
+    }
+  })
+
   test_that("Vecchia approximation: predictions for a new cluster use 'num_neighbors_pred' ", {
     # With all previous prediction points as neighbors, the approximation of the prior of a new cluster is exact. The
     # models use fewer neighbors for estimation, and the neighbors are determined in different ways: Euclidean

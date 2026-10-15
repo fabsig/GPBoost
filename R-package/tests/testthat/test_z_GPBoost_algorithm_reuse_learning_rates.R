@@ -131,6 +131,32 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
 
     })
 
+    test_that("GPBoost algorithm: the step length of 'line_search_step_length' does not depend on the order of the clusters", {
+
+      # The step length minimizes the negative log-likelihood along the base learner for all clusters (independent
+      #   realizations) together, i.e. it does not depend on which cluster appears first in the data
+      n <- 400
+      X_train <- matrix(sim_rand_unif(n=2*n, init_c=0.235), ncol=2)
+      group <- rep(1:40, each = 10)
+      cluster_ids <- rep(1:2, each = n / 2)
+      b1 <- 0.7 * qnorm(sim_rand_unif(n=40, init_c=0.362))
+      y <- f1d(X_train[, 1]) + b1[group] + 0.3 * qnorm(sim_rand_unif(n=n, init_c=0.27556))
+      params <- list(learning_rate = 0.5, max_depth = 3, min_data_in_leaf = 5, objective = "regression_l2",
+                     feature_pre_filter = FALSE, seed = 1)
+      fit_ls <- function(ind) {
+        gp_model <- GPModel(group_data = group[ind], cluster_ids = cluster_ids[ind])
+        set_optim_params(gp_model, params = OPTIM_PARAMS_GRAD_DESC)
+        bst <- gpboost(data = X_train[ind, ], label = y[ind], gp_model = gp_model, nrounds = 5, params = params,
+                       verbose = 0, line_search_step_length = TRUE, train_gp_model_cov_pars = FALSE)
+        pred <- predict(bst, data = X_train[ind, ], group_data_pred = group[ind], cluster_ids_pred = cluster_ids[ind],
+                        pred_latent = TRUE)
+        pred$fixed_effect[order(ind)]
+      }
+      # in the second data set, the second cluster appears first
+      expect_lt(max(abs(fit_ls(1:n) - fit_ls(c((n / 2 + 1):n, 1:(n / 2))))), TOLERANCE_STRICT)
+
+    })
+
   }
   
 }

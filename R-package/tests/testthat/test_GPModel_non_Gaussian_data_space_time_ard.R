@@ -1052,6 +1052,49 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("gaussian_heteroscedastic_fixed_and_random likelihood with duplicate locations: gradient wrt the coefficients ", {
+
+    # With duplicate locations, the gradient wrt the coefficients of the log-variance needs the diagonal of the block of the
+    # mean in (Sigma^-1 + W)^-1. When the gradient wrt the covariance parameters is calculated at the same time, the
+    # coefficients estimated with lbfgs must be a stationary point of the negative log-likelihood, which is checked with
+    # central finite differences
+    n_u_gd <- 80
+    coords_u_gd <- cbind(sim_rand_unif(n = n_u_gd, init_c = 0.1), sim_rand_unif(n = n_u_gd, init_c = 0.3))
+    coords_gd <- rbind(coords_u_gd, coords_u_gd, coords_u_gd)
+    n_gd <- nrow(coords_gd)
+    idx_gd <- rep(1:n_u_gd, 3)
+    L_gd <- t(chol(exp(-as.matrix(dist(coords_u_gd)) / 0.2) + diag(1e-10, n_u_gd)))
+    x_gd <- sim_rand_unif(n = n_gd, init_c = 0.47)
+    X_gd <- cbind(1, x_gd)
+    y_gd <- as.vector((L_gd %*% qnorm(sim_rand_unif(n = n_u_gd, init_c = 0.8)))[idx_gd] + 0.5 * x_gd +
+                        qnorm(sim_rand_unif(n = n_gd, init_c = 0.1234)) *
+                        exp(0.5 * ((L_gd %*% qnorm(sim_rand_unif(n = n_u_gd, init_c = 0.834)))[idx_gd] * 1.5 - 1 + x_gd)))
+    capture.output( gp_model_gd <- fitGPModel(gp_coords = coords_gd, cov_function = "exponential", gp_approx = "vecchia",
+                                              num_neighbors = 30, vecchia_ordering = "none",
+                                              likelihood = "gaussian_heteroscedastic_fixed_and_random",
+                                              matrix_inversion_method = "cholesky", y = y_gd, X = X_gd,
+                                              params = list(maxit = 1000, delta_rel_conv = 1e-12,
+                                                            init_coef_aux_pars_from_iid_model = FALSE)), file = 'NUL')
+    cov_pars_gd <- as.vector(gp_model_gd$get_cov_pars())
+    coef_gd <- as.vector(gp_model_gd$get_coef())
+    capture.output( gp_model_nll_gd <- GPModel(gp_coords = coords_gd, cov_function = "exponential", gp_approx = "vecchia",
+                                               num_neighbors = 30, vecchia_ordering = "none",
+                                               likelihood = "gaussian_heteroscedastic_fixed_and_random",
+                                               matrix_inversion_method = "cholesky"), file = 'NUL')
+    nll_gd <- function(coef) gp_model_nll_gd$neg_log_likelihood(cov_pars = cov_pars_gd, y = y_gd,
+                                                                 fixed_effects = c(X_gd %*% coef[1:2], X_gd %*% coef[3:4]))
+    h_gd <- 1e-5
+    grad_fd_gd <- sapply(1:4, function(j) {
+      e_j <- rep(0, 4)
+      e_j[j] <- h_gd
+      (nll_gd(coef_gd + e_j) - nll_gd(coef_gd - e_j)) / (2 * h_gd)
+    })
+    # the largest component is about 0.03 at the estimates, the term that is checked for is of the order of 1 here
+    expect_lt(max(abs(grad_fd_gd)), 0.2)
+    expect_gt(min(cov_pars_gd[c(3, 4)]), 1e-3)
+
+  })
+
   test_that("gaussian_heteroscedastic_fixed_and_random likelihood with a smooth covariance function and iterative methods ", {
 
     # The iterative methods solve with Sigma^-1 + observed Hessian for the derivatives through the mode. With

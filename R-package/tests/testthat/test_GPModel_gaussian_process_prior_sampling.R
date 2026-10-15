@@ -162,4 +162,58 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Prior samples for a non-Gaussian likelihood without an approximation ", {
+
+    # The samples are drawn from the covariance of the latent process, which is calculated on the scale of the unique
+    # locations if there are duplicate locations
+    sigma2_ng <- 1.3
+    num_samples_ng <- 20000
+    coords_unique_ng <- coords[1:20, ]
+    D_ng <- as.matrix(dist(coords_unique_ng))
+    for (has_duplicates_ng in c(FALSE, TRUE)) {
+      coords_ng <- if (has_duplicates_ng) rbind(coords_unique_ng, coords_unique_ng) else coords_unique_ng
+      capture.output( gp_model_ng <- GPModel(gp_coords = coords_ng, cov_function = "exponential",
+                                             likelihood = "bernoulli_probit"), file = 'NUL')
+      capture.output( prior_ng <- predict(gp_model_ng, gp_coords_pred = coords[1:3, ], cov_pars = c(sigma2_ng, rho),
+                                          sample_prior = TRUE, num_prior_samples = num_samples_ng,
+                                          predict_response = FALSE)$prior_samples, file = 'NUL')
+      expect_equal(dim(prior_ng), c(nrow(coords_ng), num_samples_ng))
+      expect_lt(abs(mean(prior_ng^2) / sigma2_ng - 1), TOLERANCE_ITERATIVE)
+      cov_emp_ng <- cov(t(prior_ng[1:20, ]))
+      expect_lt(max(abs(cov_emp_ng - sigma2_ng * exp(-D_ng / rho))), 0.1)
+      if (has_duplicates_ng) {
+        expect_equal(prior_ng[1:20, ], prior_ng[21:40, ])
+      }
+    }
+
+  })
+
+  test_that("Prior samples when the prediction data contains a new cluster ", {
+
+    # The prior samples are generated at the locations of the training data. A cluster that has no training data
+    # has no prior samples and must not write its predictive means into them
+    capture.output( gp_model_nc <- GPModel(gp_coords = coords, cov_function = "exponential", cluster_ids = cluster_ids),
+                    file = 'NUL')
+    capture.output( prior_nc <- predict(gp_model_nc, gp_coords_pred = coords[1:60, ], cluster_ids_pred = rep(1:3, each = 20),
+                                        cov_pars = c(0.5, sigma2_1, rho), sample_prior = TRUE, num_prior_samples = 3,
+                                        predict_response = FALSE)$prior_samples, file = 'NUL')
+    expect_equal(dim(prior_nc), c(n, 3))
+    expect_true(all(is.finite(prior_nc)))
+    expect_false(any(prior_nc == 0))
+
+  })
+
+  test_that("Prior sampling is not supported for grouped random effects ", {
+
+    group_ps <- rep(1:10, each = 10)
+    group_2_ps <- rep(1:5, times = 20)
+    for (group_data_ps in list(group_ps, cbind(group_ps, group_2_ps))) {
+      capture.output( gp_model_gr <- GPModel(group_data = group_data_ps), file = 'NUL')
+      group_data_pred_ps <- if (is.matrix(group_data_ps)) group_data_ps[1:3, ] else group_data_ps[1:3]
+      expect_error(predict(gp_model_gr, group_data_pred = group_data_pred_ps, cov_pars = c(0.5, rep(1, NCOL(group_data_ps))),
+                           sample_prior = TRUE, num_prior_samples = 2), "not implemented for grouped random effects")
+    }
+
+  })
+
 }

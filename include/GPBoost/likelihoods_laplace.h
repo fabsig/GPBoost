@@ -3962,14 +3962,12 @@ namespace GPBoost {
 			if (calc_F_grad || calc_aux_par_grad) {
 				if (!calc_cov_grad_internal) {
 					if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad)) {
-						SigmaI_plus_W_inv = D_inv;
-						SigmaI_plus_W_inv_entries.OnSparsityPattern(SigmaI_plus_W_inv);
 						den_mat_t SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
 						den_mat_t woodbury_SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov_t;
 						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_woodbury_,
 							SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov.transpose(), woodbury_SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov_t, false);
 						SigmaI_plus_W_inv_diag = (woodbury_SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov_t.cwiseProduct(woodbury_SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov_t)).colwise().sum();
-						SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv.diagonal().array() + SigmaI_plus_W_inv_diag.array()).matrix();
+						SigmaI_plus_W_inv_diag += SigmaI_plus_W_inv_entries.Diagonal();
 					}
 					if (grad_information_wrt_mode_non_zero_) {
 						d_mll_d_mode = 0.5 * (SigmaI_plus_W_inv_diag.array() * deriv_information_diag_loc_par.array()).matrix();
@@ -4489,7 +4487,9 @@ namespace GPBoost {
 				}
 				else if (calc_aux_par_grad || (use_random_effects_indices_of_data_ && grad_information_wrt_mode_non_zero_) || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad) ||
 					(ExtraFEBlocksNeedEtaBlockDiag(true) && grad_information_wrt_mode_non_zero_ && calc_F_grad)) {// the extra blocks' log-det term reads the eta block's diagonal of (Sigma^-1+W)^-1 for a zero-inflated count regression and for the varying-shape gamma likelihoods
-					SigmaI_plus_W_inv_diag = SigmaI_plus_W_inv.diagonal();
+					// 'SigmaI_plus_W_inv' contains only the block of the last set of random effects if num_sets_re_ > 1, the selected
+					//	inverse, which has been calculated for it, contains the diagonal of all blocks
+					SigmaI_plus_W_inv_diag = SigmaI_plus_W_inv_entries.Diagonal();
 				SigmaI_plus_W_inv_diag_2nd_block = SigmaI_plus_W_inv_diag;
 				}
 			}//end calc_F_grad || calc_aux_par_grad
@@ -4963,6 +4963,8 @@ namespace GPBoost {
 #else
 					num_threads = 1;
 #endif
+					// seeded at every call so that repeated predictions with the same model give the same result
+					cg_generator_ = RNG_t(seed_rand_vec_trace_);
 					std::uniform_int_distribution<> unif(0, 2147483646);
 					std::vector<RNG_t> parallel_rngs;
 					for (int ig = 0; ig < num_threads; ++ig) {
@@ -5574,6 +5576,8 @@ namespace GPBoost {
 #else
 				num_threads = 1;
 #endif
+				// seeded at every call so that repeated predictions with the same model give the same result
+				cg_generator_ = RNG_t(seed_rand_vec_trace_);
 				std::uniform_int_distribution<> unif(0, 2147483646);
 				std::vector<RNG_t> parallel_rngs;
 				for (int ig = 0; ig < num_threads; ++ig) {
@@ -5972,6 +5976,8 @@ namespace GPBoost {
 #else
 				num_threads = 1;
 #endif
+				// seeded at every call so that repeated predictions with the same model give the same result
+				cg_generator_ = RNG_t(seed_rand_vec_trace_);
 				std::uniform_int_distribution<> unif(0, 2147483646);
 				std::vector<RNG_t> parallel_rngs;
 				for (int ig = 0; ig < num_threads; ++ig) {
@@ -6683,6 +6689,8 @@ namespace GPBoost {
 #else
 			num_threads = 1;
 #endif
+			// seeded at every call so that repeated predictions with the same model give the same result
+			cg_generator_ = RNG_t(seed_rand_vec_trace_);
 			std::uniform_int_distribution<> unif(0, 2147483646);
 			std::vector<RNG_t> parallel_rngs;
 			for (int ig = 0; ig < num_threads; ++ig) {
@@ -6822,6 +6830,8 @@ namespace GPBoost {
 #else
 			num_threads = 1;
 #endif
+			// seeded at every call so that repeated predictions with the same model give the same result
+			cg_generator_ = RNG_t(seed_rand_vec_trace_);
 			std::uniform_int_distribution<> unif(0, 2147483646);
 			std::vector<RNG_t> parallel_rngs;
 			for (int ig = 0; ig < num_threads; ++ig) {
