@@ -312,11 +312,16 @@ namespace GPBoost {
 		bool save_distances,
 		bool GPU_use);
 
+	/*!
+	* \brief Nearest neighbors of point i among the points before it (and not after 'end_search_at'), see 'find_nearest_neighbors_Vecchia_fast'
+	* \param bound_factor The candidates are visited in the order of 'coords_sum' until the squared difference to 'coords_sum[i]' times
+	*		'bound_factor' exceeds the largest squared distance among the neighbors, see 'ProjectCoordinatesNeighborSearch'
+	*/
 	void find_nearest_neighbors_fast_internal(const int i,
 		const int num_data,
 		const int num_nearest_neighbors,
 		const int end_search_at,
-		const int dim_coords,
+		const double bound_factor,
 		const den_mat_t& coords,
 		const std::vector<int>& sort_sum,
 		const std::vector<int>& sort_inv_sum,

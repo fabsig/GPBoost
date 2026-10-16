@@ -138,15 +138,15 @@ namespace LightGBM {
 			vsnprintf(str_buf, kBufSize, format, val);
 #endif
 			va_end(val);
-			// R code should write back to R's error stream,
-			// otherwise to stderr
+			// The error is a C++ exception also in the R package, so that the destructors of the C++ objects run when it propagates.
+			//	It becomes an R error in the R interface functions ('R_API_END' in gpboost_R.cpp), and is written to stderr otherwise
 #ifndef LGB_R_BUILD
 			fprintf(stderr, "[GPBoost] [Fatal] %s\n", str_buf);
 			fflush(stderr);
-#else
-			Rf_error("[GPBoost] [Fatal] %s\n", str_buf);
-#endif
 			throw std::runtime_error(std::string(str_buf));
+#else
+			throw std::runtime_error(std::string("[GPBoost] [Fatal] ") + str_buf + "\n");
+#endif
 		}
 
 		//Log functions for REModel
@@ -179,15 +179,15 @@ namespace LightGBM {
 			vsnprintf(str_buf, kBufSize, format, val);
 #endif
 			va_end(val);
-			// R code should write back to R's error stream,
-			// otherwise to stderr
+			// The error is a C++ exception also in the R package, so that the destructors of the C++ objects run when it propagates.
+			//	It becomes an R error in the R interface functions ('R_API_END' in gpboost_R.cpp), and is written to stderr otherwise
 #ifndef LGB_R_BUILD
 			fprintf(stderr, "[GPBoost] [Fatal] %s\n", str_buf);
 			fflush(stderr);
-#else
-			Rf_error("[GPBoost] [Fatal] %s\n", str_buf);
-#endif
 			throw std::runtime_error(std::string(str_buf));
+#else
+			throw std::runtime_error(std::string("[GPBoost] [Fatal] ") + str_buf + "\n");
+#endif
 		}
 
 		static LogLevelRE& GetLevelRE() {

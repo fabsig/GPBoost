@@ -996,6 +996,7 @@ namespace GPBoost {
 			T_mat& sigma,
 			bool is_symmmetric) const {
 			CHECK(apply_tapering_);
+			CheckWendlandTaperShape();
 			if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < (int)dist.rows(); ++i) {
@@ -1008,9 +1009,6 @@ namespace GPBoost {
 						}
 						else if (TwoNumbersAreEqual<double>(taper_shape_, 2.)) {
 							sigma(i, j) *= WendlandCorrelationShape2(dist(i, j));
-						}
-						else {
-							Log::REFatal("MultiplyWendlandCorrelationTaper: 'taper_shape' of %g is not supported for the 'wendland' covariance function ", taper_shape_);
 						}
 						sigma(j, i) = sigma(i, j);
 					}
@@ -1029,9 +1027,6 @@ namespace GPBoost {
 						else if (TwoNumbersAreEqual<double>(taper_shape_, 2.)) {
 							sigma(i, j) *= WendlandCorrelationShape2(dist(i, j));
 						}
-						else {
-							Log::REFatal("MultiplyWendlandCorrelationTaper: 'taper_shape' of %g is not supported for the 'wendland' covariance function ", taper_shape_);
-						}
 					}
 				}
 			}
@@ -1041,6 +1036,7 @@ namespace GPBoost {
 			T_mat& sigma,
 			bool is_symmmetric) const {
 			CHECK(apply_tapering_);
+			CheckWendlandTaperShape();
 			if (is_symmmetric) {
 #pragma omp parallel for schedule(static)
 				for (int k = 0; k < sigma.outerSize(); ++k) {
@@ -1056,9 +1052,6 @@ namespace GPBoost {
 							}
 							else if (TwoNumbersAreEqual<double>(taper_shape_, 2.)) {
 								it.valueRef() *= WendlandCorrelationShape2(dist.coeff(i, j));
-							}
-							else {
-								Log::REFatal("MultiplyWendlandCorrelationTaper: 'taper_shape' of %g is not supported for the 'wendland' covariance function ", taper_shape_);
 							}
 							sigma.coeffRef(j, i) = it.value();
 						}
@@ -1080,13 +1073,18 @@ namespace GPBoost {
 						else if (TwoNumbersAreEqual<double>(taper_shape_, 2.)) {
 							it.valueRef() *= WendlandCorrelationShape2(dist.coeff(i, j));
 						}
-						else {
-							Log::REFatal("MultiplyWendlandCorrelationTaper: 'taper_shape' of %g is not supported for the 'wendland' covariance function ", taper_shape_);
-						}
 					}
 				}
 			}
 		}//end MultiplyWendlandCorrelationTaper (sparse)
+
+		/*! \brief Raise an error if 'taper_shape_' is not supported by 'MultiplyWendlandCorrelationTaper' (0, 1, or 2) */
+		void CheckWendlandTaperShape() const {
+			if (!TwoNumbersAreEqual<double>(taper_shape_, 0.) && !TwoNumbersAreEqual<double>(taper_shape_, 1.) &&
+				!TwoNumbersAreEqual<double>(taper_shape_, 2.)) {
+				Log::REFatal("MultiplyWendlandCorrelationTaper: 'taper_shape' of %g is not supported for the 'wendland' covariance function ", taper_shape_);
+			}
+		}//end CheckWendlandTaperShape
 
 		/*!
 		* \brief Multiply covariance with Wendland correlation tapering function for one distance value

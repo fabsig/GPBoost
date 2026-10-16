@@ -41,6 +41,22 @@ namespace GPBoost {
 		std::vector<int>& unique_idx);
 
 	/*!
+	* \brief Projections of points for the neighbor searches of Ra and Kim (1993), which visit the candidates in the order of their
+	*		projections and stop when the squared difference of the projections times 'bound_factor' exceeds the largest squared
+	*		distance that is still needed. The projections are the sums of the coordinates (bound_factor = dimension) unless these sums
+	*		vary much less than the points, e.g., for points on a line with x_1 + x_2 = const or for coordinates that sum to one. The
+	*		candidates would then hardly be pruned, and the projections on the first principal direction of the points are used
+	*		instead (bound_factor = 1)
+	* \param coords Coordinates
+	* \param allow_principal_direction If false, the sums of the coordinates are used in any case
+	* \param[out] projections Projections of the points
+	* \return bound_factor
+	*/
+	double ProjectCoordinatesNeighborSearch(const den_mat_t& coords,
+		bool allow_principal_direction,
+		std::vector<double>& projections);
+
+	/*!
 	* \brief Calculate distance matrix (dense matrix)
 	* \param coords1 First set of points
 	* \param coords2 Second set of points
@@ -169,21 +185,17 @@ namespace GPBoost {
 		else {
 			num_data = (int)(coords1.rows() + coords2.rows());
 		}
-		std::vector<double> coords_sum(num_data);
+		// 'coords_sum' are the sums of the coordinates or, if they hardly vary, projections on another direction, see 'ProjectCoordinatesNeighborSearch'
+		std::vector<double> coords_sum;
 		std::vector<int> sort_sum(num_data);
+		double bound_factor;
 		if (only_one_set_of_coords) {
-#pragma omp parallel for schedule(static)
-			for (int i = 0; i < num_data; ++i) {
-				coords_sum[i] = coords1(i, Eigen::all).sum();
-			}
+			bound_factor = ProjectCoordinatesNeighborSearch(coords1, true, coords_sum);
 		}
 		else {
 			den_mat_t coords_all(num_data, dim_coords);
 			coords_all << coords2, coords1;
-#pragma omp parallel for schedule(static)
-			for (int i = 0; i < num_data; ++i) {
-				coords_sum[i] = coords_all(i, Eigen::all).sum();
-			}
+			bound_factor = ProjectCoordinatesNeighborSearch(coords_all, true, coords_sum);
 		}
 		SortIndeces<double>(coords_sum, sort_sum);
 		std::vector<int> sort_inv_sum(num_data);
@@ -232,7 +244,7 @@ namespace GPBoost {
 					if ((only_one_set_of_coords && sort_sum[down_i] > i) ||
 						(!only_one_set_of_coords && sort_sum[down_i] >= coords2.rows())) {
 						smd = std::pow(coords_sum[sort_sum[down_i]] - coords_sum[i], 2);
-						if (smd > dim_coords * taper_range_square) {
+						if (smd > bound_factor * taper_range_square) {
 							down = false;
 						}
 						else {
@@ -252,7 +264,7 @@ namespace GPBoost {
 									triplets_local.emplace_back(i, sort_sum[down_i] - coords2.rows(), dist_i_j);
 								}
 							}//end sed < taper_range_square
-						}//end smd <= dim_coords * taper_range_square
+						}//end smd <= bound_factor * taper_range_square
 					}
 				}//end down
 				if (up) {
@@ -260,7 +272,7 @@ namespace GPBoost {
 					if ((only_one_set_of_coords && sort_sum[up_i] > i) ||
 						(!only_one_set_of_coords && sort_sum[up_i] >= coords2.rows())) {
 						smd = std::pow(coords_sum[sort_sum[up_i]] - coords_sum[i], 2);
-						if (smd > dim_coords * taper_range_square) {
+						if (smd > bound_factor * taper_range_square) {
 							up = false;
 						}
 						else {
@@ -280,7 +292,7 @@ namespace GPBoost {
 									triplets_local.emplace_back(i, sort_sum[up_i] - coords2.rows(), dist_i_j);
 								}
 							}//end sed < taper_range_square
-						}//end smd <= dim_coords * taper_range_square
+						}//end smd <= bound_factor * taper_range_square
 					}
 				}//end up
 			}//end while (up || down)

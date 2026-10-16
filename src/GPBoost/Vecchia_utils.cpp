@@ -753,12 +753,9 @@ namespace GPBoost {
 		//atomic: written and read concurrently in the parallel loops below
 		std::atomic<bool> has_duplicates(false);
 		int dim_coords = (int)coords.cols();
-		//Sort along the sum of the coordinates
-		std::vector<double> coords_sum(num_data);
-#pragma omp parallel for schedule(static)
-		for (int i = 0; i < num_data; ++i) {
-			coords_sum[i] = coords(i, Eigen::all).sum();
-		}
+		//Sort along the sum of the coordinates or, if the sums hardly vary, along another direction (not for the GPU, which uses the sums)
+		std::vector<double> coords_sum;
+		const double bound_factor = ProjectCoordinatesNeighborSearch(coords, !GPU_use, coords_sum);
 		std::vector<int> sort_sum(num_data);
 		SortIndeces<double>(coords_sum, sort_sum);
 		std::vector<int> sort_inv_sum(num_data);
@@ -879,12 +876,12 @@ namespace GPBoost {
 					if (neighbor_selection == "half_random_close_neighbors" && num_cand_neighbors > num_close_neighbors) {
 						neighbors_i.resize(num_close_neighbors);
 						find_nearest_neighbors_fast_internal(i, num_data, num_close_neighbors, end_search_at,
-							dim_coords, coords, sort_sum, sort_inv_sum, coords_sum, neighbors_i, nn_square_dist);
+							bound_factor, coords, sort_sum, sort_inv_sum, coords_sum, neighbors_i, nn_square_dist);
 						std::copy(neighbors_i.begin(), neighbors_i.begin() + num_nearest_neighbors, neighbors[i - start_at].begin());
 					}
 					else {
 						find_nearest_neighbors_fast_internal(i, num_data, num_nearest_neighbors, end_search_at,
-							dim_coords, coords, sort_sum, sort_inv_sum, coords_sum, neighbors[i - start_at], nn_square_dist);
+							bound_factor, coords, sort_sum, sort_inv_sum, coords_sum, neighbors[i - start_at], nn_square_dist);
 					}
 					//Save distances between points and neighbors
 					if (save_distances) {
@@ -1019,7 +1016,7 @@ namespace GPBoost {
 		const int num_data,
 		const int num_nearest_neighbors,
 		const int end_search_at,
-		const int dim_coords,
+		const double bound_factor,
 		const den_mat_t& coords,
 		const std::vector<int>& sort_sum,
 		const std::vector<int>& sort_inv_sum,
@@ -1047,7 +1044,7 @@ namespace GPBoost {
 				//counting is done on the sorted scale, but the index on the orignal scale needs to be (i) smaller than 'i' in order to be a neighbor (ii) and also below or equal the largest potential neighbor 'end_search_at'
 				if (sort_sum[down_i] < i && sort_sum[down_i] <= end_search_at) {
 					smd = std::pow(coords_sum[sort_sum[down_i]] - coords_sum[i], 2);
-					if (smd > dim_coords * nn_square_dist[num_nearest_neighbors - 1]) {
+					if (smd > bound_factor * nn_square_dist[num_nearest_neighbors - 1]) {
 						down = false;
 					}
 					else {
@@ -1065,7 +1062,7 @@ namespace GPBoost {
 				//counting is done on the sorted scale, but the index on the orignal scale needs to be (i) smaller than 'i' in order to be a neighbor (ii) and also below or equal the largest potential neighbor 'end_search_at'
 				if (sort_sum[up_i] < i && sort_sum[up_i] <= end_search_at) {
 					smd = std::pow(coords_sum[sort_sum[up_i]] - coords_sum[i], 2);
-					if (smd > dim_coords * nn_square_dist[num_nearest_neighbors - 1]) {
+					if (smd > bound_factor * nn_square_dist[num_nearest_neighbors - 1]) {
 						up = false;
 					}
 					else {
@@ -1356,9 +1353,11 @@ namespace GPBoost {
 				ctr++;
 			}
 			if (num_neighbors < num_re) {
-#pragma omp parallel for schedule(static)
 				for (int i = num_neighbors; i < num_re; ++i) {
 					CHECK((int)nearest_neighbors_cluster_i[i].size() == num_neighbors);
+				}
+#pragma omp parallel for schedule(static)
+				for (int i = num_neighbors; i < num_re; ++i) {
 					for (int j = 0; j < num_neighbors; ++j) {
 						entries_init_B_cluster_i[ctr + (i - num_neighbors) * (num_neighbors + 1) + j] = Triplet_t(i, nearest_neighbors_cluster_i[i][j], 0.);
 					}

@@ -613,7 +613,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     N_wrong <- N_gr + 0.5
     expect_error(fitGPModel(group_data = group, likelihood = "tweedie_joint", additional_likelihood_data = N_wrong, y = y_gr), "nonnegative integer")
     expect_error(GPModel(group_data = group, likelihood = "tweedie_joint", additional_likelihood_data = as.list(N_gr)),
-                 "but a 'list' was provided", fixed = TRUE)
+                 "but a .list. was provided")
     expect_error(GPModel(group_data = group, likelihood = "tweedie_joint", additional_likelihood_data = as.character(N_gr)),
                  "must be numeric")
     # 'free_raw_data' also frees the additional likelihood data in R, the model keeps its own copy

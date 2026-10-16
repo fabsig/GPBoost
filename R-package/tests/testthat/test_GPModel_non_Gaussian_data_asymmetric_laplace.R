@@ -497,7 +497,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                        matrix_inversion_method = "iterative",
                        optim_params = list(fitc_piv_chol_preconditioner_rank = 30, seed_rand_vec_trace = 1,
                                            num_rand_vec_trace = 200)),
-               174.7950602, 174.3383760)
+               174.8439023, 174.3763661)
     ## Grouped random effects combined with a GP
     expect_ssn(nll_ssn(c(0.9, 0.9, 0.2), group_data = group, gp_coords = coords,
                        cov_function = "exponential"), 147.5915422, 146.6669310)

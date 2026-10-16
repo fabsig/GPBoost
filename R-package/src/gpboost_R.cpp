@@ -34,16 +34,25 @@
 
 #define COL_MAJOR (0)
 
+// An R error is a jump that does not run the destructors of C++ objects. Errors are therefore C++ exceptions until the end of
+//	the block, where they are raised as R errors after the objects of the block have been destroyed
 #define R_API_BEGIN() \
+  { \
+  bool r_api_has_error = false; \
   try {
 #define R_API_END() } \
-  catch(std::exception& ex) { LGBM_SetLastError(ex.what()); } \
-  catch(std::string& ex) { LGBM_SetLastError(ex.c_str()); } \
-  catch(...) { LGBM_SetLastError("unknown exception"); } 
+  catch(std::exception& ex) { LGBM_SetLastError(ex.what()); r_api_has_error = true; } \
+  catch(std::string& ex) { LGBM_SetLastError(ex.c_str()); r_api_has_error = true; } \
+  catch(...) { LGBM_SetLastError("unknown exception"); r_api_has_error = true; } \
+  if (r_api_has_error) { \
+    Rf_error("%s", LGBM_GetLastError()); \
+  } \
+  }
 
+// to be used between 'R_API_BEGIN' and 'R_API_END'
 #define CHECK_CALL(x) \
   if ((x) != 0) { \
-    Rf_error("%s", LGBM_GetLastError()); \
+    throw std::runtime_error(LGBM_GetLastError()); \
   }
 
 using LightGBM::Common::Split;
@@ -216,7 +225,9 @@ SEXP LGBM_DatasetGetFeatureNames_R(SEXP handle) {
 				ptr_names.data()));
 		R_API_END();
 	}
+	R_API_BEGIN();
 	CHECK_EQ(len, out_len);
+	R_API_END();
 	feature_names = PROTECT(Rf_allocVector(STRSXP, len));
 	for (int i = 0; i < len; ++i) {
 		SET_STRING_ELT(feature_names, i, Rf_mkChar(ptr_names[i]));
@@ -581,7 +592,9 @@ SEXP LGBM_BoosterGetEvalNames_R(SEXP handle) {
 				ptr_names.data()));
 		R_API_END();
 	}
+	R_API_BEGIN();
 	CHECK_EQ(out_len, len);
+	R_API_END();
 	eval_names = PROTECT(Rf_allocVector(STRSXP, len));
 	for (int i = 0; i < len; ++i) {
 		SET_STRING_ELT(eval_names, i, Rf_mkChar(ptr_names[i]));

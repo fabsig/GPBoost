@@ -1949,7 +1949,7 @@ GPBOOST_C_EXPORT int GPB_GetInitAuxPars(REModelHandle handle,
  * \brief Handle of error message.
  * \return Error message
  */
-static char* LastErrorMsg() { static THREAD_LOCAL char err_msg[512] = "Everything is fine"; return err_msg; }
+static char* LastErrorMsg() { static THREAD_LOCAL char err_msg[2048] = "Everything is fine"; return err_msg; }
 
 #ifdef _MSC_VER
   #pragma warning(disable : 4996)
@@ -1959,7 +1959,7 @@ static char* LastErrorMsg() { static THREAD_LOCAL char err_msg[512] = "Everythin
  * \param msg Error message
  */
 inline void LGBM_SetLastError(const char* msg) {
-  const int err_buf_len = 512;
+  const int err_buf_len = 2048;
   snprintf(LastErrorMsg(), err_buf_len, "%s", msg);
 }
 

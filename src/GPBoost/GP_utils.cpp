@@ -577,4 +577,78 @@ namespace GPBoost {
 		}
 	}//end DetermineUniqueDuplicateCoordsFast
 
+	double ProjectCoordinatesNeighborSearch(const den_mat_t& coords,
+		bool allow_principal_direction,
+		std::vector<double>& projections) {
+		const int num_data = (int)coords.rows();
+		const int dim_coords = (int)coords.cols();
+		projections.resize(num_data);
+#pragma omp parallel for schedule(static)
+		for (int i = 0; i < num_data; ++i) {
+			projections[i] = coords(i, Eigen::all).sum();
+		}
+		// Above this dimension, the eigendecomposition of the covariance matrix of the points is not calculated
+		const int max_dim_principal_direction = 1000;
+		if (!allow_principal_direction || dim_coords < 2 || dim_coords > max_dim_principal_direction || num_data < 3) {
+			return (double)dim_coords;
+		}
+		// The variance of the projections on the unit vector (1, ..., 1) / sqrt(d) is compared with the one on the first principal
+		//	direction, i.e., the largest eigenvalue of the covariance matrix C of the points, which is at most trace(C). The
+		//	eigendecomposition is thus only needed if the former is small compared with trace(C). The calculations are sequential such
+		//	that the decision does not depend on the number of threads
+		vec_t mean = vec_t::Zero(dim_coords);
+		double mean_sum = 0.;
+		for (int i = 0; i < num_data; ++i) {
+			mean += coords.row(i).transpose();
+			mean_sum += projections[i];
+		}
+		mean /= num_data;
+		mean_sum /= num_data;
+		double var_sum = 0., trace_cov = 0.;
+		for (int i = 0; i < num_data; ++i) {
+			var_sum += (projections[i] - mean_sum) * (projections[i] - mean_sum);
+			trace_cov += (coords.row(i).transpose() - mean).squaredNorm();
+		}
+		var_sum /= ((double)num_data * dim_coords);
+		trace_cov /= num_data;
+		const double min_rel_var_sum = 0.1;
+		if (!(trace_cov > 0.) || var_sum >= min_rel_var_sum * trace_cov) {
+			return (double)dim_coords;
+		}
+		den_mat_t cov = den_mat_t::Zero(dim_coords, dim_coords);
+		vec_t centered(dim_coords);
+		for (int i = 0; i < num_data; ++i) {
+			centered = coords.row(i).transpose() - mean;
+			for (int c2 = 0; c2 < dim_coords; ++c2) {
+				for (int c1 = c2; c1 < dim_coords; ++c1) {
+					cov(c1, c2) += centered[c1] * centered[c2];
+				}
+			}
+		}
+		cov /= num_data;
+		Eigen::SelfAdjointEigenSolver<den_mat_t> eigen_solver(cov);//only the lower triangle is used
+		if (eigen_solver.info() != Eigen::Success) {
+			return (double)dim_coords;
+		}
+		const double var_largest = eigen_solver.eigenvalues()[dim_coords - 1];
+		if (var_sum >= min_rel_var_sum * var_largest) {
+			return (double)dim_coords;
+		}
+		vec_t direction = eigen_solver.eigenvectors().col(dim_coords - 1);
+		int ind_max;
+		direction.cwiseAbs().maxCoeff(&ind_max);
+		if (direction[ind_max] < 0.) {
+			direction = -direction;
+		}
+#pragma omp parallel for schedule(static)
+		for (int i = 0; i < num_data; ++i) {
+			double projection = 0.;
+			for (int c = 0; c < dim_coords; ++c) {
+				projection += coords.coeff(i, c) * direction[c];
+			}
+			projections[i] = projection;
+		}
+		return 1.;
+	}//end ProjectCoordinatesNeighborSearch
+
 }  // namespace GPBoost

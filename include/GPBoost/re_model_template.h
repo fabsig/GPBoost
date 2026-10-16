@@ -4730,8 +4730,7 @@ namespace GPBoost {
 				else if (has_fixed_effects_) {
 					fixed_effects_ptr = fixed_effects_.data();
 				}
-				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false, sample_prior,
-					restore_response.active);
+				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false, sample_prior);
 			}
 			bool predict_var_or_response = predict_var || (!gauss_likelihood_ && predict_response && likelihood_[unique_clusters_[0]]->NeedPredLatentVarForResponseMean()); //variance needs to be available for response prediction for most non-Gaussian likelihoods
 			// Loop over different clusters to calculate predictions
@@ -11306,7 +11305,12 @@ namespace GPBoost {
 			CHECK(!gauss_likelihood_ && matrix_inversion_method_ == "iterative" && cg_preconditioner_type_ == "fitc");
 			for (const auto& cluster_i : unique_clusters_) {
 				std::shared_ptr<RECompGP<den_mat_t>> re_comp_gp_clus0 = re_comps_vecchia_[cluster_i][0][0];
-				if (clusters_with_ind_points_for_preconditioner_.find(cluster_i) == clusters_with_ind_points_for_preconditioner_.end()) {
+				if (ReuseIndPointsForPreconditioner(cluster_i)) {
+					// the inducing points of the model are used, as after a redetermination (see 'RedetermineNearestNeighborsVecchiaInducingPointsFITC')
+					re_comps_ip_preconditioner_[cluster_i][0] = re_comps_ip_[cluster_i][0];
+					re_comps_cross_cov_preconditioner_[cluster_i][0] = re_comps_cross_cov_[cluster_i][0];
+				}
+				else if (clusters_with_ind_points_for_preconditioner_.find(cluster_i) == clusters_with_ind_points_for_preconditioner_.end()) {
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_ip_cluster_i;
 					std::vector<std::shared_ptr<RECompGP<den_mat_t>>> re_comps_cross_cov_cluster_i;
 					int num_ind_points = fitc_piv_chol_preconditioner_rank_;
@@ -12986,7 +12990,6 @@ namespace GPBoost {
 		* \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian likelihoods)
 		* \param predict_training_data_random_effects If true, the goal is to predict training data random effects
 		* \param sample_prior If true, prior samples are generated
-		* \param y_obs_is_placeholder If true, the model has no response variable data and 'y_obs' is a placeholder (used for prior samples)
 		 */
 		void SetYCalcCovCalcYAuxForPred(const vec_t& cov_pars,
 			const vec_t& coef,
@@ -12994,8 +12997,7 @@ namespace GPBoost {
 			bool calc_cov_factor,
 			const double* fixed_effects,
 			bool predict_training_data_random_effects,
-			bool sample_prior,
-			bool y_obs_is_placeholder = false) {
+			bool sample_prior) {
 			const double* fixed_effects_ptr = fixed_effects;
 			vec_t fixed_effects_vec;
 			// Set response data and fixed effects
@@ -13045,12 +13047,6 @@ namespace GPBoost {
 					SetY(y_obs);
 				}
 			}//end if not gauss_likelihood_
-			if (y_obs_is_placeholder) {
-				// The model has no response variable data, and 'y_obs' is only used for the calculations of this prediction. The model
-				//	is marked as such right away and not only at the end of 'Predict', since an error can leave 'Predict' without
-				//	unwinding the stack (e.g., an R error raised with 'Rf_error'), such that its local destructors do not run
-				y_has_been_set_ = false;
-			}
 			//TODO (low prio): the factorization needs to be done only for the GP realizations / clusters for which predictions are made (currently it is done for all)
 			SetCovParsComps(cov_pars);
 			if (!(gp_approx_ == "vecchia" && gauss_likelihood_) || predict_training_data_random_effects || (sample_prior && gp_approx_ == "vecchia")) {
@@ -13080,9 +13076,6 @@ namespace GPBoost {
 					CalcYAux(1., false);//note: in some cases a call to CalcYAux() could be avoided (e.g. no covariates and not GPBoost algorithm)...
 				}
 			}//end not (gp_approx_ == "vecchia" && gauss_likelihood_)
-			if (y_obs_is_placeholder) {
-				y_aux_has_been_calculated_ = false;
-			}
 		}// end SetYCalcCovCalcYAuxForPred
 
 		/*!
@@ -13456,6 +13449,8 @@ namespace GPBoost {
 						else {
 							if (matrix_inversion_method_ == "iterative" && !SigmaI_plus_ZtZ_is_diagonal) {
 								den_mat_t pred_cov_global = den_mat_t::Zero(num_REs_pred, num_REs_pred);
+								// NaN or Inf in the CG algorithm: every simulation has its own flag, and the error is raised after the parallel region
+								bool cg_na_or_inf = false;
 								vec_t SigmaI_diag_sqrt = Sigma.diagonal().cwiseInverse().cwiseSqrt();
 								// Z^T W Z with the weights W is contained in 'SigmaI_plus_ZtZ_rm_'
 								vec_t weights_sqrt;
@@ -13486,7 +13481,7 @@ namespace GPBoost {
 #endif
 									RNG_t rng_local = parallel_rngs[thread_nb];
 									den_mat_t pred_cov_private = den_mat_t::Zero(num_REs_pred, num_REs_pred);
-#pragma omp for
+#pragma omp for reduction(||:cg_na_or_inf)
 									for (int i = 0; i < nsim_var_pred_; ++i) {
 										//z_i ~ N(0,I)
 										std::normal_distribution<double> ndist(0.0, 1.0);
@@ -13505,12 +13500,14 @@ namespace GPBoost {
 										vec_t rand_vec_pred_SigmaI_plus_ZtZ_inv(cum_num_rand_eff_[cluster_i][num_comps_total_]);
 										//z_i ~ N(0,(Sigma^(-1) + Z^T Z)^(-1))
 										int num_cg_steps_dummy;
-										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], rand_vec_pred_SigmaI_plus_ZtZ, rand_vec_pred_SigmaI_plus_ZtZ_inv, NaN_found, cg_max_num_it_, cg_delta_conv_pred_, true, THRESHOLD_ZERO_RHS_CG_,
+										bool cg_na_or_inf_i = false;
+										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], rand_vec_pred_SigmaI_plus_ZtZ, rand_vec_pred_SigmaI_plus_ZtZ_inv, cg_na_or_inf_i, cg_max_num_it_, cg_delta_conv_pred_, true, THRESHOLD_ZERO_RHS_CG_,
 											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i], num_cg_steps_dummy, cg_convergence_params_pred_
 											//cum_num_rand_eff_[cluster_i], num_comps_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
 										);
-										if (NaN_found) {
-											Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
+										if (cg_na_or_inf_i) {
+											cg_na_or_inf = true;
+											continue;
 										}
 										//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T Z)^(-1) Z_p^T)
 										vec_t rand_vec_pred = Ztilde * rand_vec_pred_SigmaI_plus_ZtZ_inv;
@@ -13521,6 +13518,9 @@ namespace GPBoost {
 										pred_cov_global += pred_cov_private;
 									}
 								} // end #pragma omp parallel
+								if (cg_na_or_inf) {
+									Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
+								}
 								pred_cov_global /= nsim_var_pred_;
 								T_mat pred_cov_T_mat;
 								ConvertTo_T_mat_FromDense<T_mat>(pred_cov_global, pred_cov_T_mat);
@@ -13582,6 +13582,8 @@ namespace GPBoost {
 										CalcColSquaredNormsLInvRByRows(*P_sqrt_rm, sp_mat_rm_t(Ztilde.transpose()), varred_determ);
 									}
 								}
+								// NaN or Inf in the CG algorithm: every simulation has its own flag, and the error is raised after the parallel region
+								bool cg_na_or_inf = false;
 								int num_threads;
 #ifdef _OPENMP
 								num_threads = omp_get_max_threads();
@@ -13615,7 +13617,7 @@ namespace GPBoost {
 										c_cov_private = vec_t::Zero(num_REs_pred);
 										c_var_private = vec_t::Zero(num_REs_pred);
 									}
-#pragma omp for
+#pragma omp for reduction(||:cg_na_or_inf)
 									for (int i = 0; i < nsim_var_pred_; ++i) {
 										//RV - Rademacher
 										std::uniform_real_distribution<double> udist(0.0, 1.0);
@@ -13635,12 +13637,14 @@ namespace GPBoost {
 										//Part 2: (Sigma^(-1) + Z^T Z)^(-1) Z_po^T RV
 										vec_t MInv_Ztilde_t_RV(cum_num_rand_eff_[cluster_i][num_comps_total_]);
 										int num_cg_steps_dummy;
-										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], Z_tilde_t_RV, MInv_Ztilde_t_RV, NaN_found, cg_max_num_it_, cg_delta_conv_pred_, true, THRESHOLD_ZERO_RHS_CG_,
+										bool cg_na_or_inf_i = false;
+										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], Z_tilde_t_RV, MInv_Ztilde_t_RV, cg_na_or_inf_i, cg_max_num_it_, cg_delta_conv_pred_, true, THRESHOLD_ZERO_RHS_CG_,
 											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i], num_cg_steps_dummy, cg_convergence_params_pred_
 											//cum_num_rand_eff_[cluster_i], num_comps_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
 										);
-										if (NaN_found) {
-											Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
+										if (cg_na_or_inf_i) {
+											cg_na_or_inf = true;
+											continue;
 										}
 										//Part 2: Z_po (Sigma^(-1) + Z^T Z)^(-1) Z_po^T RV
 										vec_t rand_vec_final = Ztilde * MInv_Ztilde_t_RV;
@@ -13669,6 +13673,9 @@ namespace GPBoost {
 										}
 									}
 								} // end #pragma omp parallel
+								if (cg_na_or_inf) {
+									Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
+								}
 								pred_var_global /= nsim_var_pred_;
 								var_pred_id += pred_var_global;
 								//Variance reduction
@@ -14378,6 +14385,7 @@ namespace GPBoost {
 									int seed_local = unif(cg_generator_);
 									parallel_rngs.push_back(RNG_t(seed_local));
 								}
+								bool cg_na_or_inf = false;
 #pragma omp parallel
 								{
 									//every thread accumulates into its own vectors, added up in one '#pragma omp critical' at the end
@@ -14389,7 +14397,7 @@ namespace GPBoost {
 										c_p_z_private = vec_t::Zero(c_p_z.size());
 										c_p_private = vec_t::Zero(c_p.size());
 									}
-#pragma omp for nowait
+#pragma omp for reduction(||:cg_na_or_inf)
 									for (int i = 0; i < nsim_var_pred; ++i) {
 										//z_i ~ N(0,I)
 										int thread_nb;
@@ -14410,10 +14418,14 @@ namespace GPBoost {
 
 										// sigma_resid^-1 * rand_vec_probe_pred
 										den_mat_t sigma_resid_inv_pv(num_REs_obs, 1);
-										CGFSA_RESID<T_mat>(*sigma_resid, rand_vec_probe_pred.matrix(), sigma_resid_inv_pv, NaN_found, num_REs_obs, 1,
+										bool cg_na_or_inf_i = false;
+										CGFSA_RESID<T_mat>(*sigma_resid, rand_vec_probe_pred.matrix(), sigma_resid_inv_pv, cg_na_or_inf_i, num_REs_obs, 1,
 											cg_max_num_it_tridiag_, cg_delta_conv_pred,
 											cg_preconditioner_type_, diagonal_approx_inv_preconditioner_[cluster_i],
 											cg_convergence_params_pred_);
+										if (cg_na_or_inf_i) {
+											cg_na_or_inf = true;
+										}
 										// sigma_resid_pred * sigma_resid_inv_pv
 										den_mat_t rand_vec_probe_final = sigma_resid_pred_obs * sigma_resid_inv_pv;
 
@@ -14441,6 +14453,7 @@ namespace GPBoost {
 										}
 									}
 								}
+								NaN_found = NaN_found || cg_na_or_inf;
 								stoch_part_pred_var /= nsim_var_pred;
 								if (cg_preconditioner_type_ == "fitc") {
 									diag_P_stoch /= nsim_var_pred;
