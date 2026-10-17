@@ -737,14 +737,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     #   this option, a trial point can move the modes to another posterior mode, all shorter steps of the line search keep
     #   this mode, and the line search fails. The estimates are in the same flat region as above, the deviations over 1, 2,
     #   6, 10, and 16 threads are up to 4e-4 for the covariance parameters, 2e-2 for the coefficients, and 8e-3 for the
-    #   negative log-likelihood
+    #   negative log-likelihood. With other last bits of the data or another order of summation, the fit can also stop at
+    #   the point of this region at which the fit without this option stops (H about 8e-3 instead of 9e-4, and a negative
+    #   log-likelihood of about -76.64 instead of -76.57). This happens, e.g., on Linux with gcc when R simulates the data
+    #   with other OpenBLAS kernels (OPENBLAS_CORETYPE=Sandybridge with OMP_NUM_THREADS=4, or Prescott with 2). The
+    #   negative log-likelihood is therefore only required to lie between these two points
     params_reset <- c(params, list(reset_modes_line_search_lbfgs = TRUE))
     capture.output( gp_model_reset <- fitGPModel(gp_coords = coords, likelihood = likelihood,  cov_function = cov_function,
                                                  matrix_inversion_method = matrix_inversion_method, X=X, y = y, params = params_reset)
                     , file='NUL')
     expect_lt(sum(abs(as.vector(gp_model_reset$get_cov_pars(std_err = FALSE))-c(0.01828061, 0.00087331))),tol_flat_region)
     expect_lt(sum(abs(as.vector(gp_model_reset$get_coef(std_err = FALSE))-c(0.09852542, 2.02101583))),tol_flat_region)
-    expect_lt(sum(abs(gp_model_reset$get_current_neg_log_likelihood()-(-76.56998692))),tol_flat_region)
+    nll_reset <- gp_model_reset$get_current_neg_log_likelihood()
+    expect_gt(nll_reset, nll_opt_exp - tol_flat_region)
+    expect_lt(nll_reset, -76.56998692 + tol_flat_region)
     # On the reference platform, the line search fails once without this option (for all numbers of threads listed above)
     #   and never with it
     if (USE_STRICT_TOLERANCES) {
