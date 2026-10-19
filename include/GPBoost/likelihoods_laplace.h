@@ -150,6 +150,9 @@ namespace GPBoost {
 			RefineModeAsymLaplaceSSNALM(y_data, y_data_int, fixed_effects, solve_H, nullptr, SigmaI_mode_, location_par, &location_par_ptr, approx_marginal_ll);
 		}
 		if (!has_NA_or_Inf) {//calculate determinant
+			if (sample_from_posterior_after_mode_finding_) {
+				Sample_Posterior_LaplaceApprox_Stable(Sigma);
+			}
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			if (information_changes_after_mode_finding_) {
 				CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
@@ -163,9 +166,6 @@ namespace GPBoost {
 				Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
 				Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
 				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt, chol_fact_pattern_analyzed_);
-			}
-			if (sample_from_posterior_after_mode_finding_) {
-				Sample_Posterior_LaplaceApprox_Stable(Sigma);
 			}
 			approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
 			mode_has_been_calculated_ = true;
@@ -1959,17 +1959,17 @@ namespace GPBoost {
 		if (approx_marginal_ll_best <= approx_marginal_ll_entry && !ssn_alm_exact_subgradient_valid_) {
 			return false;// neither the mode nor the score was improved, the quasi-Newton result has been kept
 		}
-		// Refresh the likelihood state for the new mode. 'CertifyAsymLaplaceSubgradient' above has already set the score
+		// Refresh the score for the new mode. 'CertifyAsymLaplaceSubgradient' above has already set the score
 		//	to the certifying subgradient wherever the mode could be certified, so that 'Q b = Z^T first_deriv_ll_' holds;
 		//	the gradients of the approximate marginal likelihood are derived under that stationarity condition and would
 		//	otherwise be inconsistent with the refined mode. If the mode could not be certified, the ordinary endpoint
-		//	score of an improved but approximate mode is used. The calling routine rebuilds the approximation-specific
-		//	matrix 'Q + Z^T W_Laplace Z' whenever the information depends on the mode; the SSN active-set matrix is
-		//	unrelated to it and is never used there
+		//	score of an improved but approximate mode is used. The information is not recalculated here: it is either
+		//	constant or recalculated by the calling routine (see the CHECK above), which also rebuilds the matrix
+		//	'Q + Z^T W_Laplace Z'. Until then, 'information_ll_' matches the factorizations of the mode finding, which the
+		//	posterior samplers use. The SSN active-set matrix is unrelated to 'Q + Z^T W_Laplace Z' and is never used there
 		if (!ssn_alm_exact_subgradient_valid_) {
 			CalcFirstDerivLogLik(y_data, y_data_int, *location_par_ptr);
 		}
-		CalcInformationLogLik(y_data, y_data_int, *location_par_ptr, false);
 		//Log::REInfo("RefineModeAsymLaplaceSSNALM: %d outer, %d SSN iterations, KKT residual %g -> %g ",
 		//	num_it_mode_finding_ssn_alm_outer_, num_it_mode_finding_ssn_, ssn_alm_initial_kkt_resid_, ssn_alm_final_kkt_resid_);//for debugging
 		return true;
@@ -6182,7 +6182,8 @@ namespace GPBoost {
 			CalcChol<T_mat>(chol_fact_Sigma, Sigma_stable, chol_fact_pattern_analyzed);
 			MultiplyCholeskyFactor<T_chol>(chol_fact_Sigma, rand_vec_I_sim_post_, f);
 		} // Sigma_stable and chol_fact_Sigma are destroyed here
-		// 'chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_' is the factorization of I + W^(1/2) Sigma W^(1/2) at the mode, see 'FindModePostRandEffCalcMLLStable'
+		// 'chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_' is the factorization of I + W^(1/2) Sigma W^(1/2) with W = 'information_ll_' from the mode finding.
+		//	This function is therefore called before the information is recalculated for the final approximation, see 'FindModePostRandEffCalcMLLStable'
 		const vec_t W_sqrt = information_ll_.cwiseSqrt();
 		const den_mat_t rhs = W_sqrt.asDiagonal() * f + rand_vec_I_2_sim_post_;
 		const den_mat_t B_inv_rhs = chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.solve(rhs);
