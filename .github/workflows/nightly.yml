@@ -1,7 +1,12 @@
 name: Nightly
 
 # the jobs here are either slow or cover a platform that is not needed for every commit, so they
-# run once a night on master and on request
+# run once a night on master and on request.
+# Only the public repository runs them on the schedule. In a private copy of it, such as a mirror,
+# every minute of a runner is taken from the minutes included in the plan of the account, those of
+# Windows twice and those of macOS ten times, and one night costs about 155 of them, so there they
+# run on request only. The condition is repeated in every job, since a workflow as a whole cannot
+# be skipped by one
 on:
   schedule:
     - cron: "0 22 * * *"
@@ -18,6 +23,7 @@ jobs:
 
   python-tests-other-platforms:
     name: Python tests (${{ matrix.os }})
+    if: github.event_name != 'schedule' || github.repository == 'fabsig/GPBoost'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
 
@@ -67,6 +73,7 @@ jobs:
 
   r-tests-slow:
     name: R tests including the slow extras
+    if: github.event_name != 'schedule' || github.repository == 'fabsig/GPBoost'
     runs-on: ubuntu-latest
     timeout-minutes: 180
 
@@ -128,6 +135,7 @@ jobs:
 
   cran-check:
     name: R CMD check --as-cran (no manual)
+    if: github.event_name != 'schedule' || github.repository == 'fabsig/GPBoost'
     runs-on: ubuntu-latest
     timeout-minutes: 90
 

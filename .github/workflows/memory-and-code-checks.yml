@@ -10,6 +10,14 @@ name: Memory and code checks
 # combining the two conditions in cron itself is not possible, because a day of the month and a day
 # of the week are combined with OR and not with AND.
 #
+# Only the public repository runs them on the schedule. In a private copy of it, such as a mirror,
+# every minute of a runner is taken from the minutes included in the plan of the account: the
+# valgrind Sunday took about 2500 of them on 2026-10-18 and the ASan Sunday about 370, so there the
+# checks are started by hand, with only as many containers, shards and test files as needed. The
+# runners of a private repository also have 2 vCPUs and 8 GB of memory instead of 4 and 16, which
+# is what the number of parallel compile jobs below accounts for. Note that a test file can still
+# run out of memory under valgrind there ('GPModel_gaussian_process_cover_tree' did).
+#
 # A job on a GitHub-hosted runner is killed after 6 hours. The instrumented code is roughly 2x
 # slower than a normal build, and under valgrind 20-50x, with all threads serialized onto one core.
 # The whole test suite therefore does not fit into one job under valgrind, and it is tight under
@@ -113,6 +121,8 @@ jobs:
 
   select:
     name: Select the containers
+    # the jobs below need this one, so they are skipped along with it
+    if: github.event_name != 'schedule' || github.repository == 'fabsig/GPBoost'
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -355,7 +365,14 @@ jobs:
               opts=(-e ASAN_OPTIONS=detect_leaks=0 -e UBSAN_OPTIONS=print_stacktrace=1)
               ;;
           esac
-          opts+=(--rm -v "${PWD}:/check" -e MAKEFLAGS=-j4 -e GPBOOST_STRICT_TOLERANCES=false)
+          # 're_model.cpp' needs about 9 GB of memory to compile with '-g -O2' (measured with gcc 13),
+          # the other files at most 3.5 GB and mostly 1.5 to 2. The number of parallel compile jobs is
+          # therefore derived from the memory of the runner: four on the public runners (16 GB), one
+          # on those of a private repository (8 GB), where 're_model.cpp' has to be compiled on its own
+          make_jobs=$(awk -v cpus="$(nproc)" '/^MemTotal:/ {
+            j = 1 + int(($2 / 1048576 - 9) / 2); if (j > cpus) j = cpus; if (j < 1) j = 1; print j }' /proc/meminfo)
+          echo "compiling with ${make_jobs} parallel jobs"
+          opts+=(--rm -v "${PWD}:/check" -e MAKEFLAGS=-j${make_jobs} -e GPBOOST_STRICT_TOLERANCES=false)
           if [ "${ALL_TESTS}" = "true" ]; then
             opts+=(-e GPBOOST_ALL_TESTS=GPBOOST_ALL_TESTS)
           fi
@@ -537,8 +554,11 @@ jobs:
       # still fail the job
       - name: Run rchk
         run: |
+          # the number of parallel compile jobs follows the memory of the runner, see the r-check job
+          make_jobs=$(awk -v cpus="$(nproc)" '/^MemTotal:/ {
+            j = 1 + int(($2 / 1048576 - 9) / 2); if (j > cpus) j = cpus; if (j < 1) j = 1; print j }' /proc/meminfo)
           run_rchk() {
-            docker run --rm -v "${PWD}:/check" -e MAKEFLAGS=-j4 "$1" \
+            docker run --rm -v "${PWD}:/check" -e MAKEFLAGS=-j${make_jobs} "$1" \
               r-check > rchk.log 2>&1 && status=0 || status=$?
             tail -n 20 rchk.log
             echo "${1}: exit ${status}"
