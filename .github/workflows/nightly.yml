@@ -142,6 +142,9 @@ jobs:
     env:
       MAKEFLAGS: "-j4"
       _R_CHECK_FORCE_SUGGESTS_: "false"
+      # master keeps the version of the last release until the next one is prepared, so the
+      # comparison with the version on CRAN would fail every night after a release
+      _R_CHECK_CRAN_INCOMING_SKIP_VERSIONS_: "true"
 
     steps:
       - name: Check out repository

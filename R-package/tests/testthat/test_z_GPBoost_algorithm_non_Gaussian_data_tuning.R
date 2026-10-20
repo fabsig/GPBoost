@@ -56,47 +56,6 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
     return(list(X=X,f=f))
   }
   
-  # Make plot of fitted boosting ensemble ("manual test")
-  n <- 1000
-  m <- 100
-  sim_data <- sim_non_lin_f(n=n)
-  group <- rep(1,n) # grouping variable
-  for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-  b1 <- qnorm(sim_rand_unif(n=m, init_c=0.3242))
-  eps <- b1[group]
-  eps <- eps - mean(eps)
-  probs <- pnorm(sim_data$f+eps)
-  y <- as.numeric(sim_rand_unif(n=n, init_c=0.6352) < probs)
-  
-  nrounds <- 200
-  learning_rate <- 0.2
-  min_data_in_leaf <- 50
-  gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
-  bst <- gpboost(data = sim_data$X, label = y, gp_model = gp_model,
-                 objective = "binary", nrounds=200, learning_rate=learning_rate,
-                 train_gp_model_cov_pars=TRUE, min_data_in_leaf=min_data_in_leaf,verbose=0,
-                 metric="approx_neg_marginal_log_likelihood")
-  # summary(gp_model)
-  nplot <- 200
-  X_test_plot <- cbind(seq(from=0,to=1,length.out=nplot),rep(0.5,nplot))
-  group_data_pred <- rep(-9999,dim(X_test_plot)[1])
-  pred_prob <- predict(bst, data = X_test_plot, group_data_pred = group_data_pred, pred_latent = FALSE)$response_mean
-  pred <- predict(bst, data = X_test_plot, group_data_pred = group_data_pred, pred_latent = TRUE)
-  x <- seq(from=0,to=1,length.out=200)
-  plot(x,f1d(x),type="l",lwd=3,col=2,main="Data, true and fitted function")
-  points(sim_data$X[,1],y)
-  lines(X_test_plot[,1],pred$fixed_effect,col=4,lwd=3)
-  lines(X_test_plot[,1],pred_prob,col=3,lwd=3)
-  legend(legend=c("True","Pred F","Pred p"),"bottomright",bty="n",lwd=3,col=c(2,4,3))
-  
-  # ## Compare to independent boosting
-  # bst_std <- gpboost(data = sim_data$X, label = y,verbose=0,
-  #                objective = "binary", nrounds=200, learning_rate=learning_rate,
-  #                train_gp_model_cov_pars=FALSE, min_data_in_leaf=min_data_in_leaf)
-  # pred <- predict(bst_std, data = X_test_plot, pred_latent=TRUE)
-  # lines(X_test_plot[,1],pred,col=5,lwd=3, lty=2)
-  
-  
   # Avoid that long tests get executed on CRAN
   if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
@@ -118,14 +77,14 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       for(i in 1:m) group[((i-1)*ntrain/m+1):(i*ntrain/m)] <- i
       n_new <- 3# number of new random effects in test data
       group[(length(group)-n_new+1):length(group)] <- rep(99999,n_new)
-      Z1 <- model.matrix(rep(1,n) ~ factor(group) - 1)
+      Z1 <- model.matrix(rep(1,ntrain) ~ factor(group) - 1)
       b1 <- sqrt(sigma2_1) * qnorm(sim_rand_unif(n=length(unique(group)), init_c=0.53542))
       # Second random effect
       n_obs_gr <- ntrain/m# number of sampels per group
       group2 <- rep(1,ntrain) # grouping variable
       for(i in 1:m) group2[(1:n_obs_gr)+n_obs_gr*(i-1)] <- 1:n_obs_gr
       group2[(length(group2)-n_new+1):length(group2)] <- rep(99999,n_new)
-      Z2 <- model.matrix(rep(1,n)~factor(group2)-1)
+      Z2 <- model.matrix(rep(1,ntrain)~factor(group2)-1)
       b2 <- sqrt(sigma2_2) * qnorm(sim_rand_unif(n=length(unique(group2)), init_c=0.282354))
       eps <- Z1 %*% b1 + Z2 %*% b2
       eps <- eps - mean(eps)
@@ -198,7 +157,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
           # Gamma distribution
           mu <- exp(f + eps)
           shape <- 1
-          y <- qgamma(sim_rand_unif(n=n, init_c=0.1864), scale = mu/shape, shape = shape)
+          y <- qgamma(sim_rand_unif(n=ntrain, init_c=0.1864), scale = mu/shape, shape = shape)
           gp_model <- GPModel(group_data = group_data, likelihood = "gamma", matrix_inversion_method = inv_method)
           gp_model$set_optim_params(params=params_gp)
           dtrain <- gpb.Dataset(data = X, label = y)
@@ -217,7 +176,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
           
           # Poisson distribution
           mu <- exp(f + eps)
-          y <- qpois(sim_rand_unif(n=n, init_c=0.879), lambda = mu)
+          y <- qpois(sim_rand_unif(n=ntrain, init_c=0.879), lambda = mu)
           gp_model <- GPModel(group_data = group_data, likelihood = "poisson", matrix_inversion_method = inv_method)
           gp_model$set_optim_params(params=params_gp)
           dtrain <- gpb.Dataset(data = X, label = y)

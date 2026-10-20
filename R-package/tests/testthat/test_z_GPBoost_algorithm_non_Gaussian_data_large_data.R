@@ -56,47 +56,6 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
     return(list(X=X,f=f))
   }
   
-  # Make plot of fitted boosting ensemble ("manual test")
-  n <- 1000
-  m <- 100
-  sim_data <- sim_non_lin_f(n=n)
-  group <- rep(1,n) # grouping variable
-  for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-  b1 <- qnorm(sim_rand_unif(n=m, init_c=0.3242))
-  eps <- b1[group]
-  eps <- eps - mean(eps)
-  probs <- pnorm(sim_data$f+eps)
-  y <- as.numeric(sim_rand_unif(n=n, init_c=0.6352) < probs)
-  
-  nrounds <- 200
-  learning_rate <- 0.2
-  min_data_in_leaf <- 50
-  gp_model <- GPModel(group_data = group, likelihood = "bernoulli_probit")
-  bst <- gpboost(data = sim_data$X, label = y, gp_model = gp_model,
-                 objective = "binary", nrounds=200, learning_rate=learning_rate,
-                 train_gp_model_cov_pars=TRUE, min_data_in_leaf=min_data_in_leaf,verbose=0,
-                 metric="approx_neg_marginal_log_likelihood")
-  # summary(gp_model)
-  nplot <- 200
-  X_test_plot <- cbind(seq(from=0,to=1,length.out=nplot),rep(0.5,nplot))
-  group_data_pred <- rep(-9999,dim(X_test_plot)[1])
-  pred_prob <- predict(bst, data = X_test_plot, group_data_pred = group_data_pred, pred_latent = FALSE)$response_mean
-  pred <- predict(bst, data = X_test_plot, group_data_pred = group_data_pred, pred_latent = TRUE)
-  x <- seq(from=0,to=1,length.out=200)
-  plot(x,f1d(x),type="l",lwd=3,col=2,main="Data, true and fitted function")
-  points(sim_data$X[,1],y)
-  lines(X_test_plot[,1],pred$fixed_effect,col=4,lwd=3)
-  lines(X_test_plot[,1],pred_prob,col=3,lwd=3)
-  legend(legend=c("True","Pred F","Pred p"),"bottomright",bty="n",lwd=3,col=c(2,4,3))
-  
-  # ## Compare to independent boosting
-  # bst_std <- gpboost(data = sim_data$X, label = y,verbose=0,
-  #                objective = "binary", nrounds=200, learning_rate=learning_rate,
-  #                train_gp_model_cov_pars=FALSE, min_data_in_leaf=min_data_in_leaf)
-  # pred <- predict(bst_std, data = X_test_plot, pred_latent=TRUE)
-  # lines(X_test_plot[,1],pred,col=5,lwd=3, lty=2)
-  
-  
   # Avoid that long tests get executed on CRAN
   if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     

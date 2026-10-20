@@ -49,29 +49,6 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
     return(list(X=X,f=f))
   }
   
-  # Make plot of fitted boosting ensemble ("manual test")
-  n <- 1000
-  m <- 100
-  sim_data <- sim_non_lin_f(n=n)
-  group <- rep(1,n) # grouping variable
-  for(i in 1:m) group[((i-1)*n/m+1):(i*n/m)] <- i
-  b1 <- qnorm(sim_rand_unif(n=m, init_c=0.943242))
-  eps <- b1[group]
-  eps <- eps - mean(eps)
-  y <- sim_data$f + eps + 0.1^2*sim_rand_unif(n=n, init_c=0.32543)
-  gp_model <- GPModel(group_data = group)
-  bst <- gpboost(data = sim_data$X, label = y, gp_model = gp_model,
-                 nrounds = 100, learning_rate = 0.05, max_depth = 6,
-                 min_data_in_leaf = 5, objective = "regression_l2", verbose = 0,
-                 leaves_newton_update = TRUE)
-  nplot <- 200
-  X_test_plot <- cbind(seq(from=0,to=1,length.out=nplot),rep(0.5,nplot))
-  pred <- predict(bst, data = X_test_plot, group_data_pred = rep(-9999,nplot), 
-                  pred_latent = TRUE)
-  x <- seq(from=0,to=1,length.out=200)
-  plot(x,f1d(x),type="l",lwd=3,col=2,main="True and fitted function")
-  lines(X_test_plot[,1],pred$fixed_effect,col=4,lwd=3)
-  
   # Avoid that long tests get executed on CRAN
   if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
