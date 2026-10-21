@@ -8597,7 +8597,11 @@ namespace GPBoost {
 		// (sub-differential) MAP optimality conditions. If enabled, the mode is certified with an exact KKT check after
 		// the quasi-Newton loop and, if the check fails, refined with a semismooth Newton method applied to the
 		// subproblems of an augmented Lagrangian method, optionally warm started by an alternating direction method of
-		// multipliers at a fixed penalty (see 'RefineModeAsymLaplaceSSNALM').
+		// multipliers at a fixed penalty (see 'RefineModeAsymLaplaceSSNALM'). This makes the approximate marginal
+		// likelihood a well-defined function of the parameters, i.e., independent of the path taken by the optimizer and
+		// of the number of threads, at the price of additional linear solves during mode finding. This matters for
+		// standard errors and for likelihood-based model comparison, but it does not necessarily improve predictive
+		// accuracy; increasing 'max_num_restarts_lbfgs' can be a cheaper way of avoiding poor optima.
 		// Note: the active-set curvature 'rho * Z^T A Z' of the semismooth Newton system, and the corresponding 'rho * Z^T Z'
 		//		of the ADMM system, exist only to solve the augmented Lagrangian subproblem. They are not used as the
 		//		curvature of the Laplace approximation.
