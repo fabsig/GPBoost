@@ -652,3 +652,15 @@ def test_test_neg_log_likelihood_metric_with_a_second_predictor():
     cv_result = gpb.cv(params=params, train_set=gpb.Dataset(x, y), gp_model=gp_model, num_boost_round=5,
                        folds=[(tr, va), (va, tr)])
     assert np.all(np.isfinite(cv_result["test_neg_log_likelihood-mean"]))
+
+
+def test_tweedie_log_likelihood_for_a_small_dispersion():
+    # For phi = 1e-7 and p = 1.5, the largest term of the series of the Tweedie normalizer has the index
+    # y^(2-p) / (phi * (2-p)), about 2e7. The series is summed around it, wherever it is. The expected value is the
+    # sum of the log-densities in 50-digit arithmetic; with a negligible random effect variance, the
+    # negative log-likelihood equals it up to rounding, which grows with the index, about 1e-14 per unit of it
+    y = np.array([0.8, 1.0, 1.3])
+    gp_model = gpb.GPModel(group_data=np.arange(len(y)), likelihood="tweedie")
+    nll = gp_model.neg_log_likelihood(cov_pars=np.array([1e-20]), y=y, fixed_effects=np.log(y),
+                                      aux_pars=np.array([1e-7, 1.5]))
+    assert nll == pytest.approx(-21.39091231387951, abs=1e-5)

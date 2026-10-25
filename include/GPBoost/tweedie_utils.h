@@ -35,46 +35,81 @@ struct TweedieSeriesResult {
 	bool converged = true;
 };
 
+/*! \brief Values f(j) of a function for the contiguous index range j = start, ..., start + values.size() - 1 */
+struct TweedieIndexedValues {
+	int64_t start = 1;
+	std::vector<double> values;
+
+	/*!
+	* \brief Makes sure that f(lower), ..., f(upper) are stored. The stored range is extended to cover them, by at
+	*	least a quarter of its length so that extending it term by term costs amortized constant time. If the extended
+	*	range would hold more than max_values values, it is replaced by [lower, upper]
+	*/
+	template <typename F>
+	void Ensure(int64_t lower, int64_t upper, int64_t max_values, F f) {
+		const int64_t end = start + static_cast<int64_t>(values.size());
+		if (!values.empty() && lower >= start && upper < end) return;
+		if (values.empty() || std::max(upper + 1, end) - std::min(lower, start) > max_values) {
+			start = lower;
+			values.resize(static_cast<size_t>(upper - lower + 1));
+			for (int64_t j = lower; j <= upper; ++j) values[static_cast<size_t>(j - lower)] = f(j);
+			return;
+		}
+		const int64_t growth = std::max<int64_t>(64, static_cast<int64_t>(values.size()) / 4);
+		if (lower < start) {
+			lower = std::max<int64_t>({ 1, std::min(lower, start - growth), std::max(upper + 1, end) - max_values });
+			std::vector<double> front(static_cast<size_t>(start - lower));
+			for (int64_t j = lower; j < start; ++j) front[static_cast<size_t>(j - lower)] = f(j);
+			values.insert(values.begin(), front.begin(), front.end());
+			start = lower;
+		}
+		if (upper >= end) {
+			upper = std::min(std::max(upper, end - 1 + growth), start + max_values - 1);
+			for (int64_t j = end; j <= upper; ++j) values.push_back(f(j));
+		}
+	}
+
+	double operator[](int64_t j) const {
+		return values[static_cast<size_t>(j - start)];
+	}
+
+	void Clear() {
+		start = 1;
+		values.clear();
+	}
+};
+
+/*!
+* \brief The special functions of the terms j of the series of the Tweedie normalizer. They depend on p only, not on y
+*	or phi, so that one cache can be used for all observations. Each function is stored for the range of j that is in
+*	use, with at most max_values values, and not for all j = 1, ..., upper
+*/
 struct TweedieSpecialFunctionCache {
+	int64_t max_values = 1000000;
 	double p = std::numeric_limits<double>::quiet_NaN();
 	double alpha = std::numeric_limits<double>::quiet_NaN();
-	std::vector<double> log_factorial{ 0. };
-	std::vector<double> log_gamma_alpha{ std::numeric_limits<double>::quiet_NaN() };
-	std::vector<double> digamma_alpha{ std::numeric_limits<double>::quiet_NaN() };
-	std::vector<double> trigamma_alpha{ std::numeric_limits<double>::quiet_NaN() };
+	TweedieIndexedValues log_factorial;
+	TweedieIndexedValues log_gamma_alpha;
+	TweedieIndexedValues digamma_alpha;
+	TweedieIndexedValues trigamma_alpha;
 
-	void Ensure(double power, int64_t upper, TweedieDerivativeOrder order, bool calculate_power_derivatives) {
-		if (upper < 1) return;
-		const size_t required_size = static_cast<size_t>(upper + 1);
-		const size_t old_factorial_size = log_factorial.size();
-		if (old_factorial_size < required_size) {
-			log_factorial.resize(required_size);
-			for (size_t j = old_factorial_size; j < required_size; ++j) log_factorial[j] = std::lgamma(static_cast<double>(j) + 1.);
-		}
+	void Ensure(double power, int64_t lower, int64_t upper, TweedieDerivativeOrder order, bool calculate_power_derivatives) {
+		lower = std::max<int64_t>(1, lower);
+		if (upper < lower) return;
 		if (power != p) {
 			p = power;
 			alpha = (2. - p) / (p - 1.);
-			log_gamma_alpha.assign(1, std::numeric_limits<double>::quiet_NaN());
-			digamma_alpha.assign(1, std::numeric_limits<double>::quiet_NaN());
-			trigamma_alpha.assign(1, std::numeric_limits<double>::quiet_NaN());
+			log_gamma_alpha.Clear();
+			digamma_alpha.Clear();
+			trigamma_alpha.Clear();
 		}
-		const size_t old_gamma_size = log_gamma_alpha.size();
-		if (old_gamma_size < required_size) {
-			log_gamma_alpha.resize(required_size);
-			for (size_t j = old_gamma_size; j < required_size; ++j) log_gamma_alpha[j] = std::lgamma(static_cast<double>(j) * alpha);
-		}
+		const double a = alpha;
+		log_factorial.Ensure(lower, upper, max_values, [](int64_t j) { return std::lgamma(static_cast<double>(j) + 1.); });
+		log_gamma_alpha.Ensure(lower, upper, max_values, [a](int64_t j) { return std::lgamma(static_cast<double>(j) * a); });
 		if (calculate_power_derivatives && order != TweedieDerivativeOrder::kValue) {
-			const size_t old_digamma_size = digamma_alpha.size();
-			if (old_digamma_size < required_size) {
-				digamma_alpha.resize(required_size);
-				for (size_t j = old_digamma_size; j < required_size; ++j) digamma_alpha[j] = GPBoost::digamma(static_cast<double>(j) * alpha);
-			}
+			digamma_alpha.Ensure(lower, upper, max_values, [a](int64_t j) { return GPBoost::digamma(static_cast<double>(j) * a); });
 			if (order == TweedieDerivativeOrder::kSecond) {
-				const size_t old_trigamma_size = trigamma_alpha.size();
-				if (old_trigamma_size < required_size) {
-					trigamma_alpha.resize(required_size);
-					for (size_t j = old_trigamma_size; j < required_size; ++j) trigamma_alpha[j] = GPBoost::trigamma(static_cast<double>(j) * alpha);
-				}
+				trigamma_alpha.Ensure(lower, upper, max_values, [a](int64_t j) { return GPBoost::trigamma(static_cast<double>(j) * a); });
 			}
 		}
 	}
@@ -160,14 +195,19 @@ inline double TweedieSeriesLogTerm(int64_t j, double log_y, double rho, double p
 	const double alpha = (2. - p) / (p - 1.);
 	const double jd = static_cast<double>(j);
 	if (cache != nullptr) {
-		cache->Ensure(p, j, TweedieDerivativeOrder::kValue, false);
+		cache->Ensure(p, j, j, TweedieDerivativeOrder::kValue, false);
 		return jd * alpha * (log_y - std::log(p - 1.)) - jd * (alpha + 1.) * rho -
-			jd * std::log(2. - p) - cache->log_factorial[static_cast<size_t>(j)] - cache->log_gamma_alpha[static_cast<size_t>(j)];
+			jd * std::log(2. - p) - cache->log_factorial[j] - cache->log_gamma_alpha[j];
 	}
 	return jd * alpha * (log_y - std::log(p - 1.)) - jd * (alpha + 1.) * rho -
 		jd * std::log(2. - p) - std::lgamma(jd + 1.) - std::lgamma(jd * alpha);
 }
 
+/*!
+* \brief log(a(y, phi, p)) of the Tweedie density with phi = exp(rho), and its derivatives wrt rho and the transformed
+*	power theta. The series is summed over the terms j that are within eps^2 of the largest one, wherever they are,
+*	and the result is not converged if more than max_terms terms are needed
+*/
 inline TweedieSeriesResult EvaluateTweedieLogNormalizer(double y, double rho, double p,
 	double dp_dtheta, double d2p_dtheta2, TweedieDerivativeOrder order,
 	bool calculate_power_derivatives, int64_t max_terms = 1000000, TweedieSpecialFunctionCache* cache = nullptr) {
@@ -179,18 +219,22 @@ inline TweedieSeriesResult EvaluateTweedieLogNormalizer(double y, double rho, do
 	}
 	const double log_y = std::log(y);
 	const double log_mode = (2. - p) * log_y - rho - std::log(2. - p);
-	if (!std::isfinite(log_mode) || log_mode > std::log(static_cast<double>(max_terms))) {
+	// j and j * alpha have to be exact doubles
+	if (!std::isfinite(log_mode) || log_mode > 53. * std::log(2.)) {
 		ans.converged = false;
 		return ans;
 	}
 	int64_t mode = std::max<int64_t>(1, static_cast<int64_t>(std::floor(std::exp(log_mode))));
-	if (mode > max_terms) {
-		ans.converged = false;
-		return ans;
+	const double log_tol = 2. * std::log(std::numeric_limits<double>::epsilon());
+	if (cache != nullptr) {
+		// The terms within log_tol of the largest one are within about sqrt(2 |log_tol| (p - 1) mode) of it,
+		// since -d^2 log(W_j) / dj^2 is approximately 1 / ((p - 1) j)
+		const int64_t half_width = static_cast<int64_t>(std::ceil(1.1 * std::sqrt(2. * std::abs(log_tol) * (p - 1.) * static_cast<double>(mode)))) + 16;
+		cache->Ensure(p, mode - half_width, mode + half_width, TweedieDerivativeOrder::kValue, false);
 	}
 	// Move to the discrete maximum. The continuous approximation is normally within a few terms.
 	double mode_term = TweedieSeriesLogTerm(mode, log_y, rho, p, cache);
-	while (mode < max_terms) {
+	while (true) {
 		const double next = TweedieSeriesLogTerm(mode + 1, log_y, rho, p, cache);
 		if (next <= mode_term) break;
 		mode_term = next;
@@ -202,18 +246,17 @@ inline TweedieSeriesResult EvaluateTweedieLogNormalizer(double y, double rho, do
 		mode_term = prev;
 		--mode;
 	}
-	const double log_tol = 2. * std::log(std::numeric_limits<double>::epsilon());
 	int64_t lower = mode;
-	while (lower > 1 && TweedieSeriesLogTerm(lower - 1, log_y, rho, p, cache) - mode_term > log_tol) --lower;
+	while (lower > 1 && mode - lower < max_terms && TweedieSeriesLogTerm(lower - 1, log_y, rho, p, cache) - mode_term > log_tol) --lower;
 	int64_t upper = mode;
-	while (upper < max_terms && TweedieSeriesLogTerm(upper + 1, log_y, rho, p, cache) - mode_term > log_tol) ++upper;
-	if (upper == max_terms || upper - lower + 1 > max_terms) {
+	while (upper - lower < max_terms && TweedieSeriesLogTerm(upper + 1, log_y, rho, p, cache) - mode_term > log_tol) ++upper;
+	if (upper - lower + 1 > max_terms) {
 		ans.converged = false;
 		return ans;
 	}
 	ans.lower = lower;
 	ans.upper = upper;
-	if (cache != nullptr) cache->Ensure(p, upper, order, calculate_power_derivatives);
+	if (cache != nullptr) cache->Ensure(p, lower, upper, order, calculate_power_derivatives);
 	const int64_t n_terms = upper - lower + 1;
 	std::vector<double> terms(static_cast<size_t>(n_terms));
 	double max_log = -std::numeric_limits<double>::infinity();
@@ -237,14 +280,14 @@ inline TweedieSeriesResult EvaluateTweedieLogNormalizer(double y, double rho, do
 		const double lr = -jd / (p - 1.);
 		double lt = 0., lrp = 0., lpp = 0.;
 		if (calculate_power_derivatives) {
-			const double digamma_value = cache == nullptr ? GPBoost::digamma(jd * alpha) : cache->digamma_alpha[static_cast<size_t>(j)];
+			const double digamma_value = cache == nullptr ? GPBoost::digamma(jd * alpha) : cache->digamma_alpha[j];
 			const double H = log_y - std::log(p - 1.) - rho - digamma_value;
 			const double lp = jd * (alpha_p * H - alpha / (p - 1.) + 1. / (2. - p));
 			lt = dp_dtheta * lp;
 			lrp = dp_dtheta * jd / ((p - 1.) * (p - 1.));
 			e_second_rt += w * lrp;
 			if (order == TweedieDerivativeOrder::kSecond) {
-				const double trigamma_value = cache == nullptr ? GPBoost::trigamma(jd * alpha) : cache->trigamma_alpha[static_cast<size_t>(j)];
+				const double trigamma_value = cache == nullptr ? GPBoost::trigamma(jd * alpha) : cache->trigamma_alpha[j];
 				lpp = jd * (alpha_pp * H - 2. * alpha_p / (p - 1.) - jd * alpha_p * alpha_p * trigamma_value + alpha / ((p - 1.) * (p - 1.)) + 1. / ((2. - p) * (2. - p)));
 				e_second_t += w * (dp_dtheta * dp_dtheta * lpp + d2p_dtheta2 * lp);
 			}
