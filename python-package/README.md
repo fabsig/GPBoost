@@ -79,7 +79,7 @@ Installation from source can be either done from PyPI or GitHub.
 
   * In case you prefer **gcc**, you need to install it (details for installation can be found in the [Installation Guide](https://github.com/fabsig/GPBoost/blob/master/docs/Installation_guide.rst#gcc)) and specify compilers by running ``export CXX=g++-7 CC=gcc-7`` (replace "7" with the version of **gcc** installed on your machine) first.
 
-* For **Windows** users, **Visual Studio** (or [VS Build Tools](https://visualstudio.microsoft.com/downloads/)) is needed. 
+* For **Windows** users, **Visual Studio** (or [VS Build Tools](https://visualstudio.microsoft.com/downloads/)) is needed, or [MinGW-w64](https://www.mingw-w64.org/) for the build with MinGW-w64 (see below).
 
 
 #### Installation from source from PyPI
@@ -109,9 +109,6 @@ cd GPBoost/python-package
 python -m pip install .
 ```
 
-* [CMake](https://cmake.org/) and [MinGW-w64](https://www.mingw-w64.org/) should be installed first.
-
-
 ##### Build with MinGW-w64 on Windows
 
 ```sh
@@ -120,6 +117,8 @@ python -m pip install .
 ```
 
 (in **PowerShell**, use ``$env:GPBOOST_MINGW = "1"`` instead of ``set GPBOOST_MINGW=1``)
+
+* [CMake](https://cmake.org/) and [MinGW-w64](https://www.mingw-w64.org/) should be installed first.
 
 ##### Build options
 
