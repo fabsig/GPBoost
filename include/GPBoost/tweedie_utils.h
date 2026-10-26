@@ -43,7 +43,8 @@ struct TweedieIndexedValues {
 	/*!
 	* \brief Makes sure that f(lower), ..., f(upper) are stored. The stored range is extended to cover them, by at
 	*	least a quarter of its length so that extending it term by term costs amortized constant time. If the extended
-	*	range would hold more than max_values values, it is replaced by [lower, upper]
+	*	range would hold more than max_values values, it is replaced by [lower, upper], which has to hold at most max_values
+	*	values
 	*/
 	template <typename F>
 	void Ensure(int64_t lower, int64_t upper, int64_t max_values, F f) {
@@ -206,7 +207,7 @@ inline double TweedieSeriesLogTerm(int64_t j, double log_y, double rho, double p
 /*!
 * \brief log(a(y, phi, p)) of the Tweedie density with phi = exp(rho), and its derivatives wrt rho and the transformed
 *	power theta. The series is summed over the terms j that are within eps^2 of the largest one, wherever they are,
-*	and the result is not converged if more than max_terms terms are needed
+*	and the result is not converged if more than max_terms terms, or more than the max_values of the cache, are needed
 */
 inline TweedieSeriesResult EvaluateTweedieLogNormalizer(double y, double rho, double p,
 	double dp_dtheta, double d2p_dtheta2, TweedieDerivativeOrder order,
@@ -226,11 +227,19 @@ inline TweedieSeriesResult EvaluateTweedieLogNormalizer(double y, double rho, do
 	}
 	int64_t mode = std::max<int64_t>(1, static_cast<int64_t>(std::floor(std::exp(log_mode))));
 	const double log_tol = 2. * std::log(std::numeric_limits<double>::epsilon());
+	// Every range that is requested from the cache has at most max_terms values
+	if (cache != nullptr) max_terms = std::min(max_terms, cache->max_values);
+	// The terms within log_tol of the largest one are within about half_width = sqrt(2 |log_tol| (p - 1) mode) of it,
+	// since -d^2 log(W_j) / dj^2 is approximately 1 / ((p - 1) j). This decreases with j, so that the terms above the
+	// largest one alone span at least about half_width, and more than max_terms terms are needed if it exceeds max_terms
+	const double half_width = std::sqrt(2. * std::abs(log_tol) * (p - 1.) * static_cast<double>(mode));
+	if (half_width > static_cast<double>(max_terms)) {
+		ans.converged = false;
+		return ans;
+	}
 	if (cache != nullptr) {
-		// The terms within log_tol of the largest one are within about sqrt(2 |log_tol| (p - 1) mode) of it,
-		// since -d^2 log(W_j) / dj^2 is approximately 1 / ((p - 1) j)
-		const int64_t half_width = static_cast<int64_t>(std::ceil(1.1 * std::sqrt(2. * std::abs(log_tol) * (p - 1.) * static_cast<double>(mode)))) + 16;
-		cache->Ensure(p, mode - half_width, mode + half_width, TweedieDerivativeOrder::kValue, false);
+		const int64_t prefill_half_width = std::min<int64_t>(static_cast<int64_t>(std::ceil(1.1 * half_width)) + 16, (max_terms - 1) / 2);
+		cache->Ensure(p, mode - prefill_half_width, mode + prefill_half_width, TweedieDerivativeOrder::kValue, false);
 	}
 	// Move to the discrete maximum. The continuous approximation is normally within a few terms.
 	double mode_term = TweedieSeriesLogTerm(mode, log_y, rho, p, cache);
