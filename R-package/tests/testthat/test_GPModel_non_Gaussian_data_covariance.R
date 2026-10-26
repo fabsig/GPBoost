@@ -128,11 +128,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
           tolerance_loc_1 <- 2
           tolerance_loc_2 <- 0.05
           tolerance_loc_3 <- 6
+          # The nugget variance is small (0.014), and the intercept is weakly identified since the linear
+          # kernel of the uncentred coordinates contains the constant direction. With the default CG
+          # tolerance of 1e-2, the estimates and predictions then depend on the last bits of the data:
+          # perturbations of y of the order of the machine precision change the coefficients by up to 0.16
+          params_loc <- c(params, list(cg_delta_conv = 1e-6))
         } else {
           tolerance_loc_1 <- TOLERANCE_STRICT
           tolerance_loc_2 <- TOLERANCE_STRICT
           tolerance_loc_3 <- TOLERANCE_STRICT
           tolerance_loc_4 <- 0.002
+          params_loc <- params
         }
 
         # Evaluate negative log-likelihood
@@ -144,7 +150,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
         expect_lt(abs(nll-nll_exp),tolerance_loc_1)
         # Estimation
         capture.output( gp_model <- fitGPModel(gp_coords = coords_lin, likelihood = likelihood,  cov_function = cov_function,
-                                               matrix_inversion_method = matrix_inversion_method, X=X, y = y, params = params) , file='NUL')
+                                               matrix_inversion_method = matrix_inversion_method, X=X, y = y, params = params_loc) , file='NUL')
         cov_pars_exp <- c(0.01428942126, 0.92806146725)
         coef_exp <- c(0.08076221412, 1.97947766605)
         nll_opt_exp <- 81.26251299
