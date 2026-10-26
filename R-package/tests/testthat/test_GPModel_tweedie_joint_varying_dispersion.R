@@ -551,16 +551,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   test_that("Tweedie likelihoods: density evaluation failures, zero weights, and a change of the response variable ", {
 
-    # The series of the Tweedie normalizer cannot be evaluated for a very small dispersion. This is a legitimate parameter
-    # value (e.g., a trial point of an optimizer), so the negative log-likelihood is non-finite and there is no error
+    # The series of the Tweedie normalizer is summed around its largest term, so that it can be evaluated for small
+    # dispersions (1e-7). For a very small dispersion (1e-12), it needs more terms than its maximal number. This is a
+    # legitimate parameter value (e.g., a trial point of an optimizer), so the negative log-likelihood is non-finite and
+    # there is no error
     i_pos <- which(y_gr > 0)[1]
-    zeta_small <- zeta_gr
-    zeta_small[i_pos] <- log(1e-7)
-    nll_vd <- GPModel(group_data = group, likelihood = "tweedie_varying_dispersion")$neg_log_likelihood(
-      cov_pars = 0.3, y = y_gr, fixed_effects = c(eta_gr, zeta_small), aux_pars = 1.5)
-    expect_false(is.finite(nll_vd))
-    nll_const <- GPModel(group_data = group, likelihood = "tweedie")$neg_log_likelihood(cov_pars = 0.3, y = y_gr, fixed_effects = eta_gr, aux_pars = c(1e-7, 1.5))
-    expect_false(is.finite(nll_const))
+    for (phi_small in c(1e-7, 1e-12)) {
+      zeta_small <- zeta_gr
+      zeta_small[i_pos] <- log(phi_small)
+      nll_vd <- GPModel(group_data = group, likelihood = "tweedie_varying_dispersion")$neg_log_likelihood(
+        cov_pars = 0.3, y = y_gr, fixed_effects = c(eta_gr, zeta_small), aux_pars = 1.5)
+      expect_equal(is.finite(nll_vd), phi_small == 1e-7)
+      nll_const <- GPModel(group_data = group, likelihood = "tweedie")$neg_log_likelihood(cov_pars = 0.3, y = y_gr, fixed_effects = eta_gr,
+                                                                                           aux_pars = c(phi_small, 1.5))
+      expect_equal(is.finite(nll_const), phi_small == 1e-7)
+    }
     # An optimizer whose trial points pass through this region rejects them and finds the same optimum as lbfgs
     X_big <- cbind(1, 30 * X[, 2])
     capture.output(fit_lbfgs <- fitGPModel(group_data = group, likelihood = "tweedie_varying_dispersion", y = y_gr, X = X_big, params = OPTIM_PARAMS), file = "NUL")
@@ -574,7 +579,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
     # An observation with a zero weight does not contribute and is not evaluated (its series could not be evaluated here)
     y_w <- y_gr
-    y_w[1] <- 1e12
+    y_w[1] <- 1e24
     weights_w <- c(0, rep(1, n - 1))
     for (lik in c("tweedie", "tweedie_varying_dispersion")) {
       vd <- lik == "tweedie_varying_dispersion"
@@ -695,7 +700,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # A validation point for which the series of the Tweedie density exceeds its computational budget gives a test
     # negative log-likelihood of +inf (with a warning) instead of stopping the GPBoost algorithm
     y_huge <- sim_v$y
-    y_huge[2] <- 1e16# a validation point
+    y_huge[2] <- 1e24# a validation point
     tr <- seq(1, n_v, by = 2)
     va <- seq(2, n_v, by = 2)
     for (lik in c("tweedie", "tweedie_varying_dispersion")) {
