@@ -1348,10 +1348,12 @@ namespace GPBoost {
 			}
 			has_intercept_ = false; //If true, the covariates contain an intercept column (only relevant if there are covariates)
 			intercept_col_ = -1;
-			// Check whether one of the columns contains only 1's (-> has_intercept_)
+			// Check which columns are constant. The first constant column that is not zero is the intercept (-> has_intercept_)
+			std::vector<bool> covariate_is_constant;
 			if (has_covariates_) {
 				num_covariates_ = num_covariates;
 				X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_covariates_);
+				covariate_is_constant = std::vector<bool>(num_covariates_);
 				for (int icol = 0; icol < num_covariates_; ++icol) {
 					//atomic: written and read concurrently in the parallel loop below
 					std::atomic<bool> var_is_constant(true);
@@ -1363,10 +1365,10 @@ namespace GPBoost {
 							}
 						}
 					}
-					if (var_is_constant) {
+					covariate_is_constant[icol] = var_is_constant;
+					if (var_is_constant && !has_intercept_ && X_.coeff(0, icol) != 0.) {
 						has_intercept_ = true;
 						intercept_col_ = icol;
-						break;
 					}
 				}
 				if (num_covariates_ > 1) {
@@ -1468,17 +1470,18 @@ namespace GPBoost {
 					scale_transf_ = vec_t(num_covariates_);
 					vec_t col_i_centered;
 					for (int icol = 0; icol < num_covariates_; ++icol) {
-						if (!has_intercept_ || icol != intercept_col_) {
+						if (covariate_is_constant[icol]) {
+							// the intercept and other constant columns (zero or collinear with the intercept) are not scaled
+							loc_transf_[icol] = 0.;
+							scale_transf_[icol] = 1.;
+						}
+						else {
 							loc_transf_[icol] = X_.col(icol).mean();
 							col_i_centered = X_.col(icol);
 							col_i_centered.array() -= loc_transf_[icol];
 							scale_transf_[icol] = std::sqrt(col_i_centered.array().square().sum() / num_data_);
 							X_.col(icol) = col_i_centered / scale_transf_[icol];
 						}
-					}
-					if (has_intercept_) {
-						loc_transf_[intercept_col_] = 0.;
-						scale_transf_[intercept_col_] = 1.;
 					}
 				}
 				beta_ = vec_t(num_covariates_ * num_sets_fixed_effects_);
@@ -2191,10 +2194,7 @@ namespace GPBoost {
 						if (!has_intercept_ || icol != intercept_col_) {
 							X_.col(icol).array() *= scale_transf_[icol];
 							X_.col(icol).array() += loc_transf_[icol];
-			}
-					}
-					if (has_intercept_) {
-						X_.col(intercept_col_).array() = 1.;
+						}
 					}
 				}//end scale_covariates_
 			}//end has_covariates_
@@ -4988,6 +4988,10 @@ namespace GPBoost {
 											"Use these settings or set 'predict_response' = true ");
 									}
 								}
+							}
+							if (predict_var && gp_approx_ == "full_scale_vecchia") {
+								// the variances are relative to the error variance
+								ClampTooSmallPredictiveVariances(var_pred_id[0], predict_response ? 1. : 0.);
 							}
 						}//end gauss_likelihood_
 						else {//not gauss_likelihood_
@@ -9783,6 +9787,32 @@ namespace GPBoost {
 			Log::REWarning(("GPModel: " + details + ". This can be checked with matrix_inversion_method = 'cholesky' if the sample size is "
 				"not very large" + larger_cg_max_num_it + " ").c_str());
 		}//end NonConvergedCGPredictionWarning
+
+		/*!
+		* \brief Set predictive variances that are smaller than possible to the smallest possible value and warn if this is
+		*		more than a round-off error. Such variances are the result of cancellations, e.g., when the GP is almost
+		*		constant over the data and its marginal variance is large (see 'CovFunction::AlmostConstantGPWarning()')
+		* \param[out] pred_var Predictive variances
+		* \param min_var Smallest possible predictive variance (zero for the latent process, the error variance for the response variable)
+		*/
+		void ClampTooSmallPredictiveVariances(vec_t& pred_var,
+			double min_var) const {
+			int num_clamped = 0;
+#pragma omp parallel for schedule(static) reduction(+:num_clamped)
+			for (int i = 0; i < (int)pred_var.size(); ++i) {
+				if (pred_var[i] < min_var) {
+					if (pred_var[i] < min_var - 1e-8 * std::max(1., min_var)) {
+						num_clamped++;
+					}
+					pred_var[i] = min_var;
+				}
+			}
+			if (num_clamped > 0) {
+				Log::REWarning("%d predictive variances are smaller than possible due to numerical inaccuracies and are set to the smallest possible value "
+					"(zero for the latent process and the error variance for the response variable). This can happen when the Gaussian process is almost "
+					"constant over the data (large marginal variance and range parameters). The predictive variances are then inaccurate ", num_clamped);
+			}
+		}//end ClampTooSmallPredictiveVariances
 
 		/*!
 		* \brief Make a warning of some parameters are e.g. too large

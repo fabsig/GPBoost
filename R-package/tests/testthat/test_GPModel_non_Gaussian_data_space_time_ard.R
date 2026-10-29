@@ -1211,9 +1211,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   test_that("Initial values of gaussian_heteroscedastic_fixed_and_random from a homoscedastic model ", {
 
     # Without initial values of the user, they are obtained from a homoscedastic GP model: the GP of the mean
-    #   gets its parameters, the GP of the log-error variance its range and a variance of 0.01, the coefficients
+    #   gets its parameters, the GP of the log-error variance its range and a variance of 0.1, the coefficients
     #   of the mean are its coefficients, and the intercept of the log-error variance is the logarithm of its
-    #   error variance
+    #   error variance, but at least of 1% of its total variance. On this almost noise-free field, the error
+    #   variance of the homoscedastic model is smaller than that. From the logarithm of such an error variance
+    #   and a variance of 0.01, the estimation often stopped at a collapsed GP of the log-error variance at a
+    #   clearly worse optimum, and it sometimes stopped early on larger data sets
     likelihood <- "gaussian_heteroscedastic_fixed_and_random"
     n_seq <- 500
     data_seq <- sim_seq_hetero_field(n_seq = n_seq, init_c_coords = 0.63)
@@ -1229,8 +1232,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            likelihood = likelihood, gp_approx = "vecchia", num_neighbors = 10,
                                            vecchia_ordering = "none", y = y_seq, X = X_seq,
                                            params = list(maxit = 0)), file='NUL')# returns the initial values
-    expect_lt(max(abs(as.vector(gp_model$get_cov_pars()) / c(cov_pars_hom[2:3], 0.01, cov_pars_hom[3]) - 1)), TOLERANCE_STRICT_LOWER)
-    expect_lt(max(abs(as.vector(gp_model$get_coef()) - c(coef_hom, log(cov_pars_hom[1]), 0))), TOLERANCE_STRICT_LOWER)
+    expect_lt(max(abs(as.vector(gp_model$get_cov_pars()) / c(cov_pars_hom[2:3], 0.1, cov_pars_hom[3]) - 1)), TOLERANCE_STRICT_LOWER)
+    expect_lt(cov_pars_hom[1], 0.01 * sum(cov_pars_hom[1:2]))
+    expect_lt(max(abs(as.vector(gp_model$get_coef()) - c(coef_hom, log(0.01 * sum(cov_pars_hom[1:2])), 0))), TOLERANCE_STRICT_LOWER)
     # Initial covariance parameters of the user are kept
     init_cov_pars_user <- c(1, 0.1, 0.2, 0.1)
     capture.output( gp_model <- fitGPModel(gp_coords = data_seq$coords, cov_function = "matern", cov_fct_shape = 1.5,
@@ -1289,7 +1293,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            vecchia_ordering = "none", y = y_seq, X = cbind(1, x_seq),
                                            params = list(maxit = 0)), file='NUL')
     cov_pars_init <- as.vector(gp_model$get_cov_pars())# low-fidelity variance and range, discrepancy variance and range, rho
-    expect_equal(cov_pars_init[c(6, 8)], c(0.01, 0.01))
+    expect_equal(cov_pars_init[c(6, 8)], c(0.1, 0.1))
     expect_equal(cov_pars_init[c(7, 9, 10)], cov_pars_init[c(2, 4, 5)])
     # Random coefficients are not supported for this likelihood
     expect_error(GPModel(gp_coords = data_seq$coords, gp_rand_coef_data = x_seq, cov_function = "exponential",

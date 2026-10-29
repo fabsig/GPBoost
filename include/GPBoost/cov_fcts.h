@@ -495,6 +495,48 @@ namespace GPBoost {
 		}//CovarianceParameterRangeWarning
 
 		/*!
+		* \brief Warning if the correlation between the two corners of the bounding box of the coordinates is large, i.e., if the
+		*		GP is almost constant over the data. The marginal variance and the range parameters can then increase together
+		*		without changing the likelihood much, and the estimates depend on the initial values
+		* \param pars Vector with covariance parameters (on transformed scale)
+		* \param coords Coordinates
+		*/
+		void AlmostConstantGPWarning(const vec_t& pars,
+			const den_mat_t& coords) const {
+			if (is_ar1_multifidelity_ || cov_calculated_based_on_coords_ || cov_fct_type_ == "wendland" || cov_fct_type_ == "linear" ||
+				num_cov_par_ < 2 || coords.rows() < 2) {
+				return;
+			}
+#if !HAS_STD_CYL_BESSEL_K
+			const bool general_matern_shape = cov_fct_type_ == "matern_estimate_shape" || cov_fct_type_ == "matern_ard_estimate_shape" ||
+				((cov_fct_type_ == "matern" || cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard") &&
+					!TwoNumbersAreEqual<double>(shape_, 0.5) && !TwoNumbersAreEqual<double>(shape_, 1.5) && !TwoNumbersAreEqual<double>(shape_, 2.5));
+			if (general_matern_shape) {
+				return;
+			}
+#endif
+			const vec_t extent = (coords.colwise().maxCoeff() - coords.colwise().minCoeff()).transpose();
+			double dist_max;
+			if (is_isotropic_) {
+				dist_max = extent.norm();
+			}
+			else {
+				vec_t extent_scaled;
+				ScaleCoordinates_vec(pars, extent, extent_scaled);
+				dist_max = extent_scaled.norm();
+			}
+			const double shape = (cov_fct_type_ == "matern_estimate_shape" || cov_fct_type_ == "matern_ard_estimate_shape") ? pars[num_cov_par_ - 1] : 0.;
+			const double range = is_isotropic_ ? pars[1] : 1.;
+			if (dist_max > 0. && CovFct_dist_(dist_max, 1., range, shape) > ALMOST_CONSTANT_GP_CORRELATION_) {
+				Log::REWarning("The correlation between the most distant coordinates is larger than %g: the Gaussian process is almost constant over the data. "
+					"Its marginal variance and range parameters are then only weakly identified (they can increase together without changing the likelihood much), "
+					"the estimates can depend on the initial values, and the calculations can be numerically inaccurate. Consider a covariance function with "
+					"automatic relevance determination (e.g., 'matern_ard') if there are several input features, another smoothness parameter, or a linear "
+					"regression term for the coordinates ", ALMOST_CONSTANT_GP_CORRELATION_);
+			}
+		}//end AlmostConstantGPWarning
+
+		/*!
 		* \brief Cap parameters
 		* \param pars Vector with covariance parameters
 		*/
@@ -1595,13 +1637,12 @@ namespace GPBoost {
 				}//end cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "space_time_gneiting"
 				else if (cov_fct_type_ == "matern_ard" || cov_fct_type_ == "gaussian_ard" || cov_fct_type_ == "matern_ard_estimate_shape") {
 					med_dist_per_coord = std::vector<double>((int)coords.cols());
+					std::vector<bool> feature_is_constant((int)coords.cols(), false);
 					for (int ic = 0; ic < (int)coords.cols(); ++ic) {
 						vec_t col_i = coords.col(ic);
 						int num_unique_values = GPBoost::NumberUniqueValues(col_i, 11);
-						bool feature_is_constant = false;
 						if (num_unique_values == 1) {
-							add_error_str = "";
-							feature_is_constant = true;
+							feature_is_constant[ic] = true;
 						}
 						else if (num_unique_values <= 10) {
 							// average distance among two random points on {1,...,num_unique_values} times the average spacing of the values,
@@ -1631,22 +1672,39 @@ namespace GPBoost {
 							}
 							med_dist_per_coord[ic] = med_dist_coord_i;
 							if (med_dist_coord_i < EPSILON_NUMBERS) {
-								feature_is_constant = true;
+								feature_is_constant[ic] = true;
 							}
 						}// end num_unique_values > 10
-						if (feature_is_constant) {
-							Log::REFatal(("Cannot find an initial value for the range parameter for the input feature number " + std::to_string(ic + 1) +
-								" (counting starts at 1) since this feature is constant " + add_error_str).c_str());
-						}
 					}// end loop over features
+					const int dim_coords = (int)coords.cols();
+					std::vector<int> constant_features;
+					double max_med_dist_non_constant = 0.;
+					for (int ic = 0; ic < dim_coords; ++ic) {
+						if (feature_is_constant[ic]) {
+							constant_features.push_back(ic);
+						}
+						else {
+							max_med_dist_non_constant = std::max(max_med_dist_non_constant, med_dist_per_coord[ic]);
+						}
+					}
+					if ((int)constant_features.size() == dim_coords) {
+						Log::REFatal(("Cannot find initial values for the range parameters since all input features are constant " + add_error_str).c_str());
+					}
+					if (!constant_features.empty()) {
+						string_t features_str;
+						for (int ic : constant_features) {
+							features_str += (features_str.empty() ? "" : ", ") + std::to_string(ic + 1);
+						}
+						Log::REWarning(("The input feature(s) number " + features_str + " (counting starts at 1) are constant and carry no information. "
+							"They are treated as irrelevant: their range parameters are set to very large values, which the estimation does not change ").c_str());
+					}
 					// The median distances per coordinate are multiplied by the median distance in the coordinates scaled by them.
 					//	Otherwise, the distances in the scaled coordinates grow with the number of coordinates, and the initial
 					//	correlations are almost zero in higher dimensions. For coordinates with equal median distances, this gives
 					//	the initial range of the isotropic covariance function
-					const int dim_coords = (int)coords.cols();
 					vec_t med_dist_per_coord_inv(dim_coords);
 					for (int ic = 0; ic < dim_coords; ++ic) {
-						med_dist_per_coord_inv[ic] = 1. / med_dist_per_coord[ic];
+						med_dist_per_coord_inv[ic] = feature_is_constant[ic] ? 0. : 1. / med_dist_per_coord[ic];
 					}
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < (num_data_find_init - 1); ++i) {
@@ -1665,6 +1723,11 @@ namespace GPBoost {
 						for (int ic = 0; ic < dim_coords; ++ic) {
 							med_dist_per_coord[ic] *= med_dist_scaled;
 						}
+						max_med_dist_non_constant *= med_dist_scaled;
+					}
+					for (int ic : constant_features) {
+						// the scale of a constant feature is unknown, the range is thus large relative to all other features
+						med_dist_per_coord[ic] = 1e10 * max_med_dist_non_constant;
 					}
 				}//end cov_fct_type_ == "matern_ard" && cov_fct_type_ == "gaussian_ard" || cov_fct_type_ == "matern_ard_estimate_shape"
 				if (cov_fct_type_ == "matern") {
@@ -3448,6 +3511,8 @@ namespace GPBoost {
 			"gaussian", "gaussian_ard",
 			"space_time_gneiting", "wendland", "linear", "hurst", "hurst_ard"};
 		const double LARGE_SHAPE_WARNING_THRESHOLD_ = 50.;
+		/*! \brief Threshold for the correlation between the most distant coordinates in 'AlmostConstantGPWarning()' */
+		const double ALMOST_CONSTANT_GP_CORRELATION_ = 0.9;
 		const char* LARGE_SHAPE_WARNING_ = "The shape parameter is very large, it is recommended to use the 'gausian' covariance funtion ";
 
 		template<typename>

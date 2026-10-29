@@ -1276,6 +1276,55 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("Constant covariates other than the intercept with the lbfgs optimizers ", {
+
+    # The lbfgs optimizers standardize the covariates of non-Gaussian likelihoods. A constant column other than
+    #   the intercept, e.g. a dummy variable that is zero on a training set, had a standard deviation of zero,
+    #   and the initial negative log-likelihood was NaN. A column of zeros keeps a zero coefficient, also before
+    #   the intercept column, and for a column that is collinear with the intercept, only the combined
+    #   intercept is identified
+    probs <- pnorm(L %*% b_1 + X%*%beta)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.199) < probs)
+    params <- OPTIM_PARAMS_BFGS
+    params$init_cov_pars <- c(1,mean(dist(coords))/3)
+    fit_X <- function(X_loc) {
+      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                                             y = y, X = X_loc, params = params), file='NUL')
+      gp_model
+    }
+    gp_model <- fit_X(X)
+    nll <- gp_model$get_current_neg_log_likelihood()
+    coefs <- as.vector(gp_model$get_coef(std_err = FALSE))
+    for (X_zero in list(cbind(X, 0), cbind(0, X))) {
+      gp_model_zero <- fit_X(X_zero)
+      coefs_zero <- as.vector(gp_model_zero$get_coef(std_err = FALSE))
+      is_zero_col <- colSums(X_zero != 0) == 0
+      expect_lt(abs(gp_model_zero$get_current_neg_log_likelihood() - nll), TOLERANCE_MEDIUM)
+      expect_lt(max(abs(coefs_zero[!is_zero_col] - coefs)), TOLERANCE_MEDIUM)
+      expect_equal(coefs_zero[is_zero_col], 0)
+    }
+    gp_model_coll <- fit_X(cbind(X, 2))
+    coefs_coll <- as.vector(gp_model_coll$get_coef(std_err = FALSE))
+    expect_lt(abs(gp_model_coll$get_current_neg_log_likelihood() - nll), TOLERANCE_MEDIUM)
+    expect_lt(abs(coefs_coll[1] + 2 * coefs_coll[3] - coefs[1]), TOLERANCE_LOOSE)
+    expect_lt(abs(coefs_coll[2] - coefs[2]), TOLERANCE_LOOSE)
+    # the same for the likelihood with two linear predictors
+    x_het <- sin((1:n)^2 * 3 / n)
+    y_het <- X %*% beta + exp(0.25 * x_het) * qnorm(sim_rand_unif(n=n, init_c=0.3712))
+    for (X_het in list(cbind(1, x_het), cbind(1, x_het, 0))) {
+      capture.output( gp_model_het <- fitGPModel(gp_coords = coords, cov_function = "exponential",
+                                                 likelihood = "gaussian_heteroscedastic_fixed_and_random",
+                                                 gp_approx = "vecchia", num_neighbors = 10, vecchia_ordering = "none",
+                                                 y = y_het, X = X_het), file='NUL')
+      expect_true(is.finite(gp_model_het$get_current_neg_log_likelihood()))
+      if (ncol(X_het) == 2) {
+        nll_het <- gp_model_het$get_current_neg_log_likelihood()
+      } else {
+        expect_lt(abs(gp_model_het$get_current_neg_log_likelihood() - nll_het), TOLERANCE_LOOSE)
+      }
+    }
+  })
+
   test_that("Binary classification with Gaussian process model and logit link function", {
 
     probs <- 1/(1+exp(- L %*% b_1))

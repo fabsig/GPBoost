@@ -638,6 +638,7 @@ namespace GPBoost {
 		coef_homoscedastic_model_.resize(0);
 		intercept_col_homoscedastic_model_ = -1;
 		error_var_homoscedastic_model_ = -1.;
+		total_var_homoscedastic_model_ = -1.;
 		if ((int)coef_.size() == num_coef_) {
 			init_coef_ptr = coef_.data();
 		}
@@ -1566,9 +1567,14 @@ namespace GPBoost {
 		vec_t cov_pars_hom_orig, cov_pars_orig(num_cov_pars_);
 		re_model_hom->TransformBackCovPars(cov_pars_hom, cov_pars_hom_orig);
 		const int num_par_per_set = num_cov_par_hom - 1;
+		double total_var_hom = cov_pars_hom_orig[0];
 		for (int ip = 0; ip < num_par_per_set; ++ip) {
+			const bool is_marginal_variance = re_model_hom->IsMarginalVarianceParameter(ip + 1);
 			cov_pars_orig[ip] = cov_pars_hom_orig[ip + 1];
-			cov_pars_orig[num_par_per_set + ip] = re_model_hom->IsMarginalVarianceParameter(ip + 1) ? INIT_VAR_LOG_ERROR_VAR_GP_ : cov_pars_hom_orig[ip + 1];
+			cov_pars_orig[num_par_per_set + ip] = is_marginal_variance ? INIT_VAR_LOG_ERROR_VAR_GP_ : cov_pars_hom_orig[ip + 1];
+			if (is_marginal_variance) {
+				total_var_hom += cov_pars_hom_orig[ip + 1];
+			}
 		}
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->TransformCovPars(cov_pars_orig, cov_pars_);
@@ -1580,6 +1586,7 @@ namespace GPBoost {
 			re_model_den_->TransformCovPars(cov_pars_orig, cov_pars_);
 		}
 		error_var_homoscedastic_model_ = cov_pars_hom_orig[0];
+		total_var_homoscedastic_model_ = total_var_hom;
 		if (covariate_data != nullptr) {
 			coef_homoscedastic_model_ = coef_hom;
 			intercept_col_homoscedastic_model_ = re_model_hom->has_intercept_ ? re_model_hom->intercept_col_ : -1;
@@ -1612,8 +1619,9 @@ namespace GPBoost {
 			}
 			mean_fixed_effects_log_var /= num_data_;
 		}
+		const double init_error_var = std::max(error_var_homoscedastic_model_, MIN_SHARE_INIT_ERROR_VAR_ * total_var_homoscedastic_model_);
 		coef_[num_covariates + intercept_col_homoscedastic_model_] =
-			(std::log(error_var_homoscedastic_model_) - mean_fixed_effects_log_var) / intercept_value;
+			(std::log(init_error_var) - mean_fixed_effects_log_var) / intercept_value;
 		return true;
 	}
 

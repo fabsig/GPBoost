@@ -1869,8 +1869,11 @@ namespace GPBoost {
 			coords_sub = coords_(ind, Eigen::all);
 		}
 
-		void CovarianceParameterRangeWarning(const vec_t& pars) override { 
+		void CovarianceParameterRangeWarning(const vec_t& pars) override {
 			cov_function_->CovarianceParameterRangeWarning(pars);
+			if (coord_saved_ && !this->is_rand_coef_) {
+				cov_function_->AlmostConstantGPWarning(pars, coords_);
+			}
 		}
 
 		void CapCovPars(vec_t& pars) const override {

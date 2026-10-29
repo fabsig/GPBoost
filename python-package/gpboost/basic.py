@@ -6375,11 +6375,6 @@ class GPModel(object):
                     (only for models with a linear regression term).
                     This option is ignored if init_coef is provided. If init_aux_pars is provided but init_coef
                     is not, only regression coefficients are initialized from an iid model.
-                    For likelihood = "gaussian_heteroscedastic_fixed_and_random", if init_cov_pars is not provided,
-                    the initial covariance parameters are obtained from a homoscedastic Gaussian process model, and the
-                    regression coefficients are then initialized from this model instead: the coefficients of the mean
-                    from its coefficients and the intercept of the log-error variance from the logarithm of its error
-                    variance.
                 - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1) 
                     This allows for disabling the estimation of some (or all) covariance parameters.
                     If estimate_cov_par_index = -1, all covariance parameters are estimated.
@@ -6758,11 +6753,6 @@ class GPModel(object):
                     (only for models with a linear regression term).
                     This option is ignored if init_coef is provided. If init_aux_pars is provided but init_coef
                     is not, only regression coefficients are initialized from an iid model.
-                    For likelihood = "gaussian_heteroscedastic_fixed_and_random", if init_cov_pars is not provided,
-                    the initial covariance parameters are obtained from a homoscedastic Gaussian process model, and the
-                    regression coefficients are then initialized from this model instead: the coefficients of the mean
-                    from its coefficients and the intercept of the log-error variance from the logarithm of its error
-                    variance.
                 - estimate_cov_par_index : list, numpy 1-D array, pandas Series / one-column DataFrame with integer data or None, optional (default = -1) 
                     This allows for disabling the estimation of some (or all) covariance parameters.
                     If estimate_cov_par_index = -1, all covariance parameters are estimated.

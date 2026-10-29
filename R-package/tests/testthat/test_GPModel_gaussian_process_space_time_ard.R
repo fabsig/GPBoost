@@ -1254,4 +1254,35 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("ARD covariance functions with a constant input feature ", {
+
+    # A feature that is constant, e.g. on a training set, carries no information on its range. Finding its
+    #   initial range ended with an error. It is treated as irrelevant, so that the model is the one without this
+    #   feature, also for predictions at other values of it
+    n_c <- 200
+    coords_c <- cbind(sim_rand_unif(n = n_c, init_c = 0.2718), sim_rand_unif(n = n_c, init_c = 0.5772))
+    D_c <- as.matrix(dist(sweep(coords_c, 2, c(0.2, 0.5), "/")))
+    Sigma_c <- (1 + sqrt(3) * D_c) * exp(-sqrt(3) * D_c) + diag(1E-10, n_c)
+    y_c <- as.vector(t(chol(Sigma_c)) %*% qnorm(sim_rand_unif(n = n_c, init_c = 0.1414))) +
+      sqrt(0.05) * qnorm(sim_rand_unif(n = n_c, init_c = 0.7071))
+    coords_pred_c <- cbind(sim_rand_unif(n = 10, init_c = 0.3333), sim_rand_unif(n = 10, init_c = 0.6666))
+    for (cov_fct in c("matern_ard", "gaussian_ard")) {
+      capture.output( gp_model_2 <- fitGPModel(gp_coords = coords_c, cov_function = cov_fct, cov_fct_shape = 1.5,
+                                               y = y_c, params = OPTIM_PARAMS_BFGS), file='NUL')
+      capture.output( gp_model_3 <- fitGPModel(gp_coords = cbind(coords_c[, 1], 0.3, coords_c[, 2]), cov_function = cov_fct,
+                                               cov_fct_shape = 1.5, y = y_c, params = OPTIM_PARAMS_BFGS), file='NUL')
+      cov_pars_2 <- as.vector(gp_model_2$get_cov_pars())
+      cov_pars_3 <- as.vector(gp_model_3$get_cov_pars())
+      expect_lt(max(abs(cov_pars_3[-4] / cov_pars_2 - 1)), TOLERANCE_LOOSE)
+      expect_gt(cov_pars_3[4], 1e6 * max(cov_pars_2[3:4]))
+      expect_lt(abs(gp_model_3$get_current_neg_log_likelihood() - gp_model_2$get_current_neg_log_likelihood()), TOLERANCE_LOOSE)
+      pred_2 <- predict(gp_model_2, gp_coords_pred = coords_pred_c, predict_var = TRUE)
+      pred_3 <- predict(gp_model_3, gp_coords_pred = cbind(coords_pred_c[, 1], 0.9, coords_pred_c[, 2]), predict_var = TRUE)
+      expect_lt(max(abs(pred_3$mu - pred_2$mu)), TOLERANCE_LOOSE)
+      expect_lt(max(abs(pred_3$var - pred_2$var)), TOLERANCE_LOOSE)
+    }
+    expect_error(capture.output( fitGPModel(gp_coords = matrix(0.3, nrow = n_c, ncol = 2), cov_function = "matern_ard",
+                                            cov_fct_shape = 1.5, y = y_c), file='NUL'), "all input features are constant")
+  })
+
 }
