@@ -1348,27 +1348,32 @@ namespace GPBoost {
 			}
 			has_intercept_ = false; //If true, the covariates contain an intercept column (only relevant if there are covariates)
 			intercept_col_ = -1;
-			// Check which columns are constant. The first constant column that is not zero is the intercept (-> has_intercept_)
+			// Check which columns are constant. The first constant column that is not zero is the intercept (-> has_intercept_).
+			//	The comparison is relative, so that a column with small values but a relative variation is not constant
 			std::vector<bool> covariate_is_constant;
+			intercept_value_ = 1.;
 			if (has_covariates_) {
 				num_covariates_ = num_covariates;
 				X_ = Eigen::Map<const den_mat_t>(covariate_data, num_data_, num_covariates_);
 				covariate_is_constant = std::vector<bool>(num_covariates_);
 				for (int icol = 0; icol < num_covariates_; ++icol) {
+					const double x_first = X_.coeff(0, icol);
 					//atomic: written and read concurrently in the parallel loop below
 					std::atomic<bool> var_is_constant(true);
 #pragma omp parallel for schedule(static)
 					for (data_size_t i = 1; i < num_data_; ++i) {
 						if (var_is_constant.load(std::memory_order_relaxed)) {
-							if (!(TwoNumbersAreEqual<double>(X_.coeff(i, icol), X_.coeff(0, icol)))) {
+							const double x_i = X_.coeff(i, icol);
+							if (std::abs(x_i - x_first) > EPSILON_NUMBERS * std::max(std::abs(x_i), std::abs(x_first))) {
 								var_is_constant.store(false, std::memory_order_relaxed);
 							}
 						}
 					}
 					covariate_is_constant[icol] = var_is_constant;
-					if (var_is_constant && !has_intercept_ && X_.coeff(0, icol) != 0.) {
+					if (var_is_constant && !has_intercept_ && x_first != 0.) {
 						has_intercept_ = true;
 						intercept_col_ = icol;
+						intercept_value_ = x_first;
 					}
 				}
 				if (num_covariates_ > 1) {
@@ -1476,7 +1481,8 @@ namespace GPBoost {
 							scale_transf_[icol] = 1.;
 						}
 						else {
-							loc_transf_[icol] = X_.col(icol).mean();
+							// without an intercept, the columns are only scaled: there is no coefficient that absorbs the means
+							loc_transf_[icol] = has_intercept_ ? X_.col(icol).mean() : 0.;
 							col_i_centered = X_.col(icol);
 							col_i_centered.array() -= loc_transf_[icol];
 							scale_transf_[icol] = std::sqrt(col_i_centered.array().square().sum() / num_data_);
@@ -1503,13 +1509,14 @@ namespace GPBoost {
 							CHECK(num_sets_re_ == 2); // check whether this makes sense if other models with num_sets_re_> 1 are implemented in the future
 						}
 						for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
+							// the intercept column has the value 'intercept_value_'
 							if (y_data == nullptr) {
 								vec_t y_temp(num_data_);
 								GetY(y_temp.data());
-								beta_[num_covariates * igp + intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_temp.data(), num_data_, tot_var_mean_re, fixed_effects, igp, weights_all_ptr);
+								beta_[num_covariates * igp + intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_temp.data(), num_data_, tot_var_mean_re, fixed_effects, igp, weights_all_ptr) / intercept_value_;
 							}
 							else {
-								beta_[num_covariates * igp + intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_data, num_data_, tot_var_mean_re, fixed_effects, igp, weights_all_ptr);
+								beta_[num_covariates * igp + intercept_col_] = likelihood_[unique_clusters_[0]]->FindInitialIntercept(y_data, num_data_, tot_var_mean_re, fixed_effects, igp, weights_all_ptr) / intercept_value_;
 							}
 						}
 					}
@@ -6520,6 +6527,8 @@ namespace GPBoost {
 		bool has_intercept_ = false;
 		/*! \brief Index of the intercept column in X_ */
 		int intercept_col_;
+		/*! \brief Value of the intercept column in X_ (1 if there is no intercept) */
+		double intercept_value_ = 1.;
 		/*! \brief If true, X_ and the linear regression covariates are scaled */
 		bool scale_covariates_;
 		/*! \brief Location transformation if covariate data is scaled */
@@ -9825,15 +9834,20 @@ namespace GPBoost {
 					const vec_t pars = cov_pars.segment(ind_par_[j] + igp * num_cov_par_per_set_re_, ind_par_[j + 1] - ind_par_[j]);
 					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 						GetForCluster(re_comps_ip_, unique_clusters_[0], igp)[j]->CovarianceParameterRangeWarning(pars);
+						// the cross-covariance component has the coordinates of the data, the other one those of the inducing points
+						GetForCluster(re_comps_cross_cov_, unique_clusters_[0], igp)[j]->AlmostConstantGPWarning(pars);
 					}
 					else if (gp_approx_ == "vecchia" && !grouped_RE_and_vecchia_GP_) {
 						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[j]->CovarianceParameterRangeWarning(pars);
+						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[j]->AlmostConstantGPWarning(pars);
 					}
 					else if (grouped_RE_and_vecchia_GP_ && j == (num_comps_total_ - 1)) {
 						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[0]->CovarianceParameterRangeWarning(pars);
+						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[0]->AlmostConstantGPWarning(pars);
 					}
 					else {
 						GetForCluster(re_comps_, unique_clusters_[0], igp)[j]->CovarianceParameterRangeWarning(pars);
+						GetForCluster(re_comps_, unique_clusters_[0], igp)[j]->AlmostConstantGPWarning(pars);
 					}
 				}
 			}
@@ -9883,7 +9897,7 @@ namespace GPBoost {
 				for (int icol = 0; icol < num_covariates_; ++icol) {
 					if (!has_intercept_ || icol != intercept_col_) {
 						if (has_intercept_) {
-							beta_trans[igp * num_covariates_ + intercept_col_] += beta_trans[igp * num_covariates_ + icol] * loc_transf_[icol];
+							beta_trans[igp * num_covariates_ + intercept_col_] += beta_trans[igp * num_covariates_ + icol] * loc_transf_[icol] / intercept_value_;
 						}
 						beta_trans[igp * num_covariates_ + icol] *= scale_transf_[icol];
 					}
@@ -9912,7 +9926,7 @@ namespace GPBoost {
 					if (!has_intercept_ || icol != intercept_col_) {
 						beta_orig[igp * num_covariates_ + icol] /= scale_transf_[icol];
 						if (has_intercept_) {
-							beta_orig[igp * num_covariates_ + intercept_col_] -= beta_orig[igp * num_covariates_ + icol] * loc_transf_[icol];
+							beta_orig[igp * num_covariates_ + intercept_col_] -= beta_orig[igp * num_covariates_ + icol] * loc_transf_[icol] / intercept_value_;
 						}
 					}
 				}
@@ -12674,9 +12688,11 @@ namespace GPBoost {
 			CalcFisherInformation(cov_pars, FI, false, true, false);
 			const double nan_value = std::numeric_limits<double>::quiet_NaN();
 			std_dev = vec_t::Constant(FI.rows(), nan_value);
+			// Parameters on which the likelihood does not depend (e.g., the range of a constant ARD feature) have a zero row and
+			//	column in the Fisher information. They are left out, so that the information of the others is invertible
 			std::vector<int> ind_estimated;
 			for (int i = 0; i < (int)FI.rows(); ++i) {
-				if (i >= (int)estimate_cov_par_index_.size() || estimate_cov_par_index_[i] > 0) {
+				if ((i >= (int)estimate_cov_par_index_.size() || estimate_cov_par_index_[i] > 0) && FI(i, i) != 0.) {
 					ind_estimated.push_back(i);
 				}
 			}
@@ -12945,7 +12961,8 @@ namespace GPBoost {
 			const double nan_value = std::numeric_limits<double>::quiet_NaN();
 			std::vector<int> ind_estimated;
 			for (int i = 0; i < num_cov_par_; ++i) {
-				if (estimate_cov_par_index_[i] > 0) {
+				// a parameter on which the likelihood does not depend (e.g., the range of a constant ARD feature) has a zero row and column
+				if (estimate_cov_par_index_[i] > 0 && Hessian(i, i) != 0.) {
 					ind_estimated.push_back(i);
 				}
 			}

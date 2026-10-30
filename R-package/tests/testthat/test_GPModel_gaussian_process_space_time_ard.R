@@ -1258,7 +1258,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
     # A feature that is constant, e.g. on a training set, carries no information on its range. Finding its
     #   initial range ended with an error. It is treated as irrelevant, so that the model is the one without this
-    #   feature, also for predictions at other values of it
+    #   feature, also for predictions at other values of it and when its units differ from those of the other
+    #   features (with a range of 1e10 times the scales of the other features, the second coding below changed the
+    #   predictions). The standard deviations of the other parameters are those of the model without this feature
+    #   (the Fisher information has a zero row and column for its range, and none of them could be calculated)
     n_c <- 200
     coords_c <- cbind(sim_rand_unif(n = n_c, init_c = 0.2718), sim_rand_unif(n = n_c, init_c = 0.5772))
     D_c <- as.matrix(dist(sweep(coords_c, 2, c(0.2, 0.5), "/")))
@@ -1269,20 +1272,66 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     for (cov_fct in c("matern_ard", "gaussian_ard")) {
       capture.output( gp_model_2 <- fitGPModel(gp_coords = coords_c, cov_function = cov_fct, cov_fct_shape = 1.5,
                                                y = y_c, params = OPTIM_PARAMS_BFGS), file='NUL')
-      capture.output( gp_model_3 <- fitGPModel(gp_coords = cbind(coords_c[, 1], 0.3, coords_c[, 2]), cov_function = cov_fct,
-                                               cov_fct_shape = 1.5, y = y_c, params = OPTIM_PARAMS_BFGS), file='NUL')
-      cov_pars_2 <- as.vector(gp_model_2$get_cov_pars())
-      cov_pars_3 <- as.vector(gp_model_3$get_cov_pars())
-      expect_lt(max(abs(cov_pars_3[-4] / cov_pars_2 - 1)), TOLERANCE_LOOSE)
-      expect_gt(cov_pars_3[4], 1e6 * max(cov_pars_2[3:4]))
-      expect_lt(abs(gp_model_3$get_current_neg_log_likelihood() - gp_model_2$get_current_neg_log_likelihood()), TOLERANCE_LOOSE)
+      cov_pars_2 <- gp_model_2$get_cov_pars(std_err = TRUE)
       pred_2 <- predict(gp_model_2, gp_coords_pred = coords_pred_c, predict_var = TRUE)
-      pred_3 <- predict(gp_model_3, gp_coords_pred = cbind(coords_pred_c[, 1], 0.9, coords_pred_c[, 2]), predict_var = TRUE)
-      expect_lt(max(abs(pred_3$mu - pred_2$mu)), TOLERANCE_LOOSE)
-      expect_lt(max(abs(pred_3$var - pred_2$var)), TOLERANCE_LOOSE)
+      for (const_value in c(0.3, 3e8)) {
+        capture.output( gp_model_3 <- fitGPModel(gp_coords = cbind(coords_c[, 1], const_value, coords_c[, 2]), cov_function = cov_fct,
+                                                 cov_fct_shape = 1.5, y = y_c, params = OPTIM_PARAMS_BFGS), file='NUL')
+        cov_pars_3 <- gp_model_3$get_cov_pars(std_err = TRUE)
+        expect_lt(max(abs(cov_pars_3[1, -4] / cov_pars_2[1, ] - 1)), TOLERANCE_LOOSE)
+        expect_gt(cov_pars_3[1, 4], 1e6 * max(cov_pars_2[1, 3:4]))
+        expect_true(is.na(cov_pars_3[2, 4]))
+        expect_lt(max(abs(cov_pars_3[2, -4] / cov_pars_2[2, ] - 1)), TOLERANCE_LOOSE)
+        expect_lt(abs(gp_model_3$get_current_neg_log_likelihood() - gp_model_2$get_current_neg_log_likelihood()), TOLERANCE_LOOSE)
+        pred_3 <- predict(gp_model_3, gp_coords_pred = cbind(coords_pred_c[, 1], 3 * const_value, coords_pred_c[, 2]), predict_var = TRUE)
+        expect_lt(max(abs(pred_3$mu - pred_2$mu)), TOLERANCE_LOOSE)
+        expect_lt(max(abs(pred_3$var - pred_2$var)), TOLERANCE_LOOSE)
+      }
     }
     expect_error(capture.output( fitGPModel(gp_coords = matrix(0.3, nrow = n_c, ncol = 2), cov_function = "matern_ard",
                                             cov_fct_shape = 1.5, y = y_c), file='NUL'), "all input features are constant")
+  })
+
+  test_that("Default initial ARD ranges for features with small units or rare values ", {
+
+    # A feature is only treated as constant if it is constant on all data. The thresholds for a zero median and
+    #   mean distance were absolute, so that a feature with small units was treated as constant (and thus as
+    #   irrelevant). A feature whose values differ only on a few data points was treated as constant if the random
+    #   sub-sample for the initial values missed these points
+    n_c <- 200
+    coords_c <- cbind(sim_rand_unif(n = n_c, init_c = 0.2718), sim_rand_unif(n = n_c, init_c = 0.5772))
+    D_c <- as.matrix(dist(sweep(coords_c, 2, c(0.2, 0.5), "/")))
+    Sigma_c <- (1 + sqrt(3) * D_c) * exp(-sqrt(3) * D_c) + diag(1E-10, n_c)
+    y_c <- as.vector(t(chol(Sigma_c)) %*% qnorm(sim_rand_unif(n = n_c, init_c = 0.1414))) +
+      sqrt(0.05) * qnorm(sim_rand_unif(n = n_c, init_c = 0.7071))
+    params_init <- list(maxit = 0, init_coef_aux_pars_from_iid_model = FALSE)# returns the initial values
+    unit <- c(1, 1e-11)
+    for (cov_fct in c("matern_ard", "gaussian_ard")) {
+      init_ranges <- nll <- list()
+      for (scaling in c("original", "small")) {
+        coords_loc <- if (scaling == "original") coords_c else sweep(coords_c, 2, unit, "*")
+        capture.output( gp_model <- fitGPModel(gp_coords = coords_loc, cov_function = cov_fct, cov_fct_shape = 1.5,
+                                               y = y_c, params = params_init), file='NUL')
+        init_ranges[[scaling]] <- as.vector(gp_model$get_cov_pars())[-c(1, 2)]
+        capture.output( gp_model <- fitGPModel(gp_coords = coords_loc, cov_function = cov_fct, cov_fct_shape = 1.5,
+                                               y = y_c, params = OPTIM_PARAMS_BFGS), file='NUL')
+        nll[[scaling]] <- gp_model$get_current_neg_log_likelihood()
+      }
+      expect_lt(max(abs(init_ranges[["small"]] / (init_ranges[["original"]] * unit) - 1)), TOLERANCE_STRICT)
+      expect_lt(abs(nll[["small"]] - nll[["original"]]), TOLERANCE_LOOSE)
+    }
+    n_r <- 20000
+    x_rare <- rep(0, n_r)
+    x_rare[seq(1, by = 997, length.out = 15)] <- 1:15
+    coords_r <- cbind(sim_rand_unif(n = n_r, init_c = 0.8123), x_rare)
+    y_r <- qnorm(sim_rand_unif(n = n_r, init_c = 0.4242))
+    for (seed in 1:5) {
+      capture.output( gp_model <- fitGPModel(gp_coords = coords_r, cov_function = "matern_ard", cov_fct_shape = 1.5,
+                                             gp_approx = "vecchia", num_neighbors = 5, seed = seed,
+                                             y = y_r, params = params_init), file='NUL')
+      init_ranges <- as.vector(gp_model$get_cov_pars())[-c(1, 2)]
+      expect_lt(init_ranges[2], 1e6 * init_ranges[1])
+    }
   })
 
 }

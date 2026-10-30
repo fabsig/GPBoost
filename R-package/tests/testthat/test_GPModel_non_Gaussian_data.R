@@ -1325,6 +1325,41 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Standardization of the covariates by the lbfgs optimizers does not change the model ", {
+
+    # The standardization is a reparametrization only if the coefficients are transformed consistently. The
+    #   correction of the intercept for the means of the other columns ignored a value of the intercept column other
+    #   than 1, the columns were centered also without an intercept, and a column with small values was treated as
+    #   constant and not scaled. The fitted linear predictor and the negative log-likelihood at the returned
+    #   coefficients thus differed from those of the same model with other units or another coding of the intercept
+    probs <- pnorm(L %*% b_1 + X%*%beta)
+    y <- as.numeric(sim_rand_unif(n=n, init_c=0.199) < probs)
+    params <- OPTIM_PARAMS_BFGS
+    params$init_cov_pars <- c(1,mean(dist(coords))/3)
+    fit_X <- function(X_loc) {
+      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                                             y = y, X = X_loc, params = params), file='NUL')
+      gp_model
+    }
+    nll_at_coef <- function(gp_model, X_loc) {
+      gp_model$neg_log_likelihood(cov_pars = as.vector(gp_model$get_cov_pars()), y = y,
+                                  fixed_effects = as.vector(X_loc %*% as.vector(gp_model$get_coef())))
+    }
+    gp_model <- fit_X(X)
+    nll <- gp_model$get_current_neg_log_likelihood()
+    lin_pred <- as.vector(X %*% as.vector(gp_model$get_coef()))
+    x <- X[, 2]
+    for (X_loc in list(cbind(2, x), cbind(2, 1, x), cbind(1, 1e-11 * x), cbind(1e-11 * x, 1))) {
+      gp_model_loc <- fit_X(X_loc)
+      expect_lt(abs(gp_model_loc$get_current_neg_log_likelihood() - nll), TOLERANCE_MEDIUM)
+      expect_lt(abs(nll_at_coef(gp_model_loc, X_loc) - nll), TOLERANCE_MEDIUM)
+      expect_lt(max(abs(as.vector(X_loc %*% as.vector(gp_model_loc$get_coef())) - lin_pred)), TOLERANCE_LOOSE)
+    }
+    X_no_intercept <- matrix(x + 2, ncol = 1)
+    gp_model_no_intercept <- fit_X(X_no_intercept)
+    expect_lt(abs(nll_at_coef(gp_model_no_intercept, X_no_intercept) - gp_model_no_intercept$get_current_neg_log_likelihood()), TOLERANCE_MEDIUM)
+  })
+
   test_that("Binary classification with Gaussian process model and logit link function", {
 
     probs <- 1/(1+exp(- L %*% b_1))

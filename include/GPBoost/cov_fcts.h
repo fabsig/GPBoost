@@ -504,7 +504,7 @@ namespace GPBoost {
 		void AlmostConstantGPWarning(const vec_t& pars,
 			const den_mat_t& coords) const {
 			if (is_ar1_multifidelity_ || cov_calculated_based_on_coords_ || cov_fct_type_ == "wendland" || cov_fct_type_ == "linear" ||
-				num_cov_par_ < 2 || coords.rows() < 2) {
+				apply_tapering_ || num_cov_par_ < 2 || coords.rows() < 2) {
 				return;
 			}
 #if !HAS_STD_CYL_BESSEL_K
@@ -1666,14 +1666,25 @@ namespace GPBoost {
 									}
 								}
 							}//end not use_subsamples
+							// the thresholds are relative to the extent of the feature, so that they do not depend on its units
+							const double tol_dist = EPSILON_NUMBERS * (col_i.maxCoeff() - col_i.minCoeff());
 							med_dist_coord_i = GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(distances);
-							if (med_dist_coord_i < EPSILON_NUMBERS) {
+							if (med_dist_coord_i <= tol_dist) {
 								med_dist_coord_i = GPBoost::CalculateMean<std::vector<double>>(distances);
 							}
-							med_dist_per_coord[ic] = med_dist_coord_i;
-							if (med_dist_coord_i < EPSILON_NUMBERS) {
-								feature_is_constant[ic] = true;
+							if (med_dist_coord_i <= tol_dist) {
+								// The feature is (almost) constant on the sub-sample but not on all data: the average distance among
+								//	all pairs of points is calculated from the sorted values
+								std::vector<double> values_sorted(col_i.data(), col_i.data() + col_i.size());
+								std::sort(values_sorted.begin(), values_sorted.end());
+								const double num_values = (double)values_sorted.size();
+								double sum_weighted = 0.;
+								for (int i = 0; i < (int)values_sorted.size(); ++i) {
+									sum_weighted += (2. * (i + 1) - num_values - 1.) * values_sorted[i];
+								}
+								med_dist_coord_i = 2. * sum_weighted / (num_values * (num_values - 1.));
 							}
+							med_dist_per_coord[ic] = med_dist_coord_i;
 						}// end num_unique_values > 10
 					}// end loop over features
 					const int dim_coords = (int)coords.cols();
@@ -1688,7 +1699,7 @@ namespace GPBoost {
 						}
 					}
 					if ((int)constant_features.size() == dim_coords) {
-						Log::REFatal(("Cannot find initial values for the range parameters since all input features are constant " + add_error_str).c_str());
+						Log::REFatal("Cannot find initial values for the range parameters since all input features are constant ");
 					}
 					if (!constant_features.empty()) {
 						string_t features_str;
@@ -1726,8 +1737,10 @@ namespace GPBoost {
 						max_med_dist_non_constant *= med_dist_scaled;
 					}
 					for (int ic : constant_features) {
-						// the scale of a constant feature is unknown, the range is thus large relative to all other features
-						med_dist_per_coord[ic] = 1e10 * max_med_dist_non_constant;
+						// The scale of a constant feature is unknown. Its range is so large relative to the scales of all other features
+						//	that the feature is irrelevant also for predictions at other values of it, unless the units of the features
+						//	differ by many orders of magnitude
+						med_dist_per_coord[ic] = 1e30 * max_med_dist_non_constant;
 					}
 				}//end cov_fct_type_ == "matern_ard" && cov_fct_type_ == "gaussian_ard" || cov_fct_type_ == "matern_ard_estimate_shape"
 				if (cov_fct_type_ == "matern") {

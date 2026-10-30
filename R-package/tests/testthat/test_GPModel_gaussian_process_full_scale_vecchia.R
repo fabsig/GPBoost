@@ -221,5 +221,28 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
     }# end loop over i (vec_kNN_search)
   })
+
+  test_that("VIF predictive covariance matrix for a large marginal variance ", {
+
+    # The predictive covariance was calculated as a sum of terms of the order of the marginal variance that cancel. For
+    #   a large marginal variance, the covariance matrix of the response variable had negative eigenvalues and
+    #   diagonal entries smaller than the error variance, which are impossible
+    n_v <- 60
+    coords_v <- matrix(sim_rand_unif(n = 2 * n_v, init_c = 0.4321), ncol = 2)
+    y_v <- qnorm(sim_rand_unif(n = n_v, init_c = 0.2468))
+    coords_pred_v <- matrix(sim_rand_unif(n = 2 * 20, init_c = 0.1357), ncol = 2)
+    for (pred_type in c("order_obs_first_cond_obs_only", "order_obs_first_cond_all")) {
+      gp_model <- GPModel(gp_coords = coords_v, cov_function = "matern", cov_fct_shape = 1.5, gp_approx = "full_scale_vecchia",
+                          num_ind_points = 5, num_neighbors = 6, vecchia_ordering = "none")
+      gp_model$set_prediction_data(vecchia_pred_type = pred_type, num_neighbors_pred = 6)
+      pred <- predict(gp_model, y = y_v, gp_coords_pred = coords_pred_v, cov_pars = c(1, 1e8, 100),
+                      predict_cov_mat = TRUE, predict_response = TRUE)
+      expect_gt(min(eigen(pred$cov, symmetric = TRUE, only.values = TRUE)$values), 0)
+      expect_gt(min(diag(pred$cov)), 1 - 1e-6)# at least the error variance
+      pred_var <- predict(gp_model, y = y_v, gp_coords_pred = coords_pred_v, cov_pars = c(1, 1e8, 100),
+                          predict_var = TRUE, predict_response = TRUE)
+      expect_lt(max(abs(pred_var$var - diag(pred$cov))), TOLERANCE_STRICT * max(diag(pred$cov)))
+    }
+  })
   
 }

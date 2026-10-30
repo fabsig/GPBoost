@@ -1806,7 +1806,7 @@ namespace GPBoost {
 			re_comp->ScaleCoordinates(pars, coords_all, coords_scaled);
 		}
 		// Components for full scale vecchia
-		den_mat_t chol_ip_cross_cov_pred, chol_ip_cross_cov_obs_own, sigma_ip_inv_sigma_cross_cov_pred;
+		den_mat_t chol_ip_cross_cov_pred, chol_ip_cross_cov_obs_own;
 		// L^-1 * Sigma_mn^T for the observations: the one of the model is used if it matches, it is an m x n matrix
 		const den_mat_t* chol_ip_cross_cov_obs_ptr = &chol_ip_cross_cov_obs_own;
 		// Cross-covariance between predictions and inducing points C_pm
@@ -1827,7 +1827,6 @@ namespace GPBoost {
 			}
 			TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_ip_cluster_i,
 				cross_cov_pred_ip.transpose(), chol_ip_cross_cov_pred, false);
-			sigma_ip_inv_sigma_cross_cov_pred = chol_fact_sigma_ip_cluster_i.solve(cross_cov_pred_ip.transpose());
 		}
 		const den_mat_t& chol_ip_cross_cov_obs = *chol_ip_cross_cov_obs_ptr;
 		// L^-1 * Sigma_mn^T at the observed and the prediction locations for the neighbor search with residual correlations
@@ -2043,19 +2042,15 @@ namespace GPBoost {
 				}
 				pred_mean += cross_cov_pred_ip * vecchia_y;
 				if (calc_pred_cov || calc_pred_var) {
-					den_mat_t Vecchia_cross_cov((*sigma_cross_cov).rows(), (*sigma_cross_cov).cols());
-#pragma omp parallel for schedule(static)   
+					// The predictive covariance is Bp^-1 Dp Bp^-T + H S^-1 H^T with H = Sigma_pm + Bp^-1 Bpo Sigma_nm (Bpo contains the
+					//	negative regression coefficients of the Vecchia approximation) and S = Sigma_m + Sigma_mn B^T D^-1 B Sigma_nm, whose
+					//	Cholesky factor is 'chol_fact_sigma_woodbury_cluster_i'. Both summands are positive semidefinite, and there are no
+					//	cancellations of terms of the order of the marginal variance
+					den_mat_t H(num_re_pred_cli, (*sigma_cross_cov).cols());
+#pragma omp parallel for schedule(static)
 					for (int i = 0; i < (*sigma_cross_cov).cols(); ++i) {
-						Vecchia_cross_cov.col(i) = Bt_D_inv_cluster_i * (B_cluster_i * (*sigma_cross_cov).col(i));
+						H.col(i) = Bpo_rm * (*sigma_cross_cov).col(i);
 					}
-					den_mat_t cross_cov_PP_Vecchia = chol_ip_cross_cov_pred.transpose() * (chol_ip_cross_cov_obs * Vecchia_cross_cov);
-					den_mat_t cross_cov_pred_obs_pred_inv;
-					den_mat_t B_po_cross_cov(num_re_pred_cli, (*sigma_cross_cov).cols());
-#pragma omp parallel for schedule(static)   
-					for (int i = 0; i < (*sigma_cross_cov).cols(); ++i) {
-						B_po_cross_cov.col(i) = Bpo_rm * (*sigma_cross_cov).col(i);
-					}
-					den_mat_t cross_cov_PP_Vecchia_woodbury = chol_fact_sigma_woodbury_cluster_i.solve(cross_cov_PP_Vecchia.transpose());
 					if (CondObsOnly) {
 						if (calc_pred_cov) {
 							pred_cov = Dp.asDiagonal();
@@ -2063,10 +2058,9 @@ namespace GPBoost {
 						if (calc_pred_var) {
 							pred_var = Dp;
 						}
-						cross_cov_pred_obs_pred_inv = B_po_cross_cov;
 					}
 					else {
-						TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(Bp, B_po_cross_cov, cross_cov_pred_obs_pred_inv, false);
+						TriangularSolve<sp_mat_t, den_mat_t, den_mat_t>(Bp, H, H, false);
 						if (calc_pred_cov) {
 							CalcLInvDLInvT(Bp, Dp, pred_cov);
 						}
@@ -2074,30 +2068,19 @@ namespace GPBoost {
 							CalcDiagLInvDLInvT(Bp, Dp, pred_var);
 						}
 					}
-					den_mat_t cross_cov_pred_obs_pred_inv_woodbury = chol_fact_sigma_woodbury_cluster_i.solve(cross_cov_pred_obs_pred_inv.transpose());
+					H += cross_cov_pred_ip;
+					den_mat_t L_inv_Ht;// L^-1 H^T for S = L L^T
+					TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_cluster_i,
+						H.transpose(), L_inv_Ht, false);
 					if (calc_pred_cov) {
 						if (num_re_pred_cli > 10000) {
 							Log::REInfo("The computational complexity and the storage of the predictive covariance martix heavily depend on the number of prediction location. "
 								"Therefore, if this number is large we recommend only computing the predictive variances ");
 						}
-						den_mat_t PP_Part = cross_cov_pred_ip * sigma_ip_inv_sigma_cross_cov_pred;
-						den_mat_t PP_V_Part = cross_cov_PP_Vecchia * sigma_ip_inv_sigma_cross_cov_pred;
-						den_mat_t V_Part = cross_cov_pred_obs_pred_inv * sigma_ip_inv_sigma_cross_cov_pred;
-						den_mat_t V_Part_t = V_Part.transpose();
-						den_mat_t PP_V_PP_Part = cross_cov_pred_obs_pred_inv * cross_cov_PP_Vecchia_woodbury;
-						den_mat_t PP_V_PP_Part_t = PP_V_PP_Part.transpose();
-						den_mat_t PP_V_V_Part = cross_cov_PP_Vecchia * cross_cov_PP_Vecchia_woodbury;
-						den_mat_t V_V_Part = cross_cov_pred_obs_pred_inv * cross_cov_pred_obs_pred_inv_woodbury;
-						pred_cov += PP_Part - PP_V_Part + V_Part + V_Part_t - PP_V_PP_Part + PP_V_V_Part - PP_V_PP_Part_t + V_V_Part;
+						pred_cov.noalias() += L_inv_Ht.transpose() * L_inv_Ht;
 					}
 					if (calc_pred_var) {
-#pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_re_pred_cli; ++i) {
-							pred_var[i] += (cross_cov_pred_ip.row(i) - cross_cov_PP_Vecchia.row(i) +
-								2 * cross_cov_pred_obs_pred_inv.row(i)).dot(sigma_ip_inv_sigma_cross_cov_pred.col(i)) +
-								(cross_cov_PP_Vecchia.row(i) - 2 * cross_cov_pred_obs_pred_inv.row(i)).dot(cross_cov_PP_Vecchia_woodbury.col(i)) +
-								(cross_cov_pred_obs_pred_inv.row(i)).dot(cross_cov_pred_obs_pred_inv_woodbury.col(i));
-						}
+						pred_var += L_inv_Ht.colwise().squaredNorm().transpose();
 					}
 				}
 			} // end FSVA
