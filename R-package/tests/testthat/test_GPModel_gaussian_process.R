@@ -1390,4 +1390,34 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Warning for a Gaussian process that is almost constant over the data with several clusters ", {
+
+    # The clusters are independent realizations, and the GP is almost constant over the data only if it is almost
+    #   constant over every cluster. The warning was based on the first cluster only and thus depended on the order
+    #   of the data
+    n_cl <- 40
+    coords_narrow <- 0.01 * sim_rand_unif(n = n_cl, init_c = 0.1919)
+    coords_broad <- 10 * sim_rand_unif(n = n_cl, init_c = 0.2828)
+    sim_cluster <- function(coords_1d, init_c) {
+      D_cl <- as.matrix(dist(coords_1d))
+      Sigma_cl <- (1 + sqrt(3) * D_cl) * exp(-sqrt(3) * D_cl) + diag(1E-10, length(coords_1d))
+      as.vector(t(chol(Sigma_cl)) %*% qnorm(sim_rand_unif(n = length(coords_1d), init_c = init_c))) +
+        0.1 * qnorm(sim_rand_unif(n = length(coords_1d), init_c = init_c / 2))
+    }
+    y_narrow <- sim_cluster(coords_narrow, 0.3737)
+    y_broad <- sim_cluster(coords_broad, 0.4646)
+    for (narrow_first in c(TRUE, FALSE)) {
+      if (narrow_first) {
+        coords_cl <- matrix(c(coords_narrow, coords_broad))
+        y_cl <- c(y_narrow, y_broad)
+      } else {
+        coords_cl <- matrix(c(coords_broad, coords_narrow))
+        y_cl <- c(y_broad, y_narrow)
+      }
+      output <- capture.output( gp_model <- fitGPModel(gp_coords = coords_cl, cluster_ids = rep(1:2, each = n_cl),
+                                                       cov_function = "matern", cov_fct_shape = 1.5, y = y_cl) )
+      expect_false(any(grepl("almost constant", output)))
+    }
+  })
+
 }

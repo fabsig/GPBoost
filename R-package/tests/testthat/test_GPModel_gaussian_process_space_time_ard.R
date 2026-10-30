@@ -1332,6 +1332,43 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       init_ranges <- as.vector(gp_model$get_cov_pars())[-c(1, 2)]
       expect_lt(init_ranges[2], 1e6 * init_ranges[1])
     }
+    # The average distance of all pairs of values of such a feature was calculated as a sum of terms with opposite signs,
+    #   which canceled for a large common offset: the initial range was negative
+    n_r <- 100000
+    x_rare <- rep(0, n_r)
+    x_rare[seq(1, by = 4999, length.out = 20)] <- (1:20) * 1e-5
+    y_r <- qnorm(sim_rand_unif(n = n_r, init_c = 0.4242))
+    for (seed in 1:3) {
+      init_ranges <- list()
+      for (offset_value in c(0, 1.7e9)) {
+        capture.output( gp_model <- fitGPModel(gp_coords = cbind((1:n_r) / n_r, offset_value + x_rare), cov_function = "matern_ard",
+                                               cov_fct_shape = 1.5, gp_approx = "vecchia", num_neighbors = 5, vecchia_ordering = "none",
+                                               seed = seed, y = y_r, params = params_init), file='NUL')
+        init_ranges[[as.character(offset_value)]] <- as.vector(gp_model$get_cov_pars())[-c(1, 2)]
+      }
+      expect_gt(init_ranges[["1.7e+09"]][2], 0)
+      # the values with the offset are rounded to multiples of about 2.4e-7
+      expect_lt(abs(init_ranges[["1.7e+09"]][2] / init_ranges[["0"]][2] - 1), 0.05)
+    }
+  })
+
+  test_that("Convergence criterion 'relative_change_in_parameters' with a constant ARD feature ", {
+
+    # For 'matern_ard_estimate_shape', the parameters are the ranges themselves. The very large range of a constant
+    #   feature dominated the norm of all parameters, and the estimation stopped after one iteration
+    if (SKIP_BESSEL_COV_TESTS) {
+      skip("std::cyl_bessel_k is not available")
+    }
+    n_s <- 80
+    x_s <- sim_rand_unif(n = n_s, init_c = 0.3779)
+    y_s <- sin(8 * x_s) + 0.1 * qnorm(sim_rand_unif(n = n_s, init_c = 0.9182))
+    params_s <- list(optimizer_cov = "gradient_descent", convergence_criterion = "relative_change_in_parameters", maxit = 30)
+    capture.output( gp_model_1 <- fitGPModel(gp_coords = matrix(x_s), cov_function = "matern_ard_estimate_shape",
+                                             y = y_s, params = params_s), file='NUL')
+    capture.output( gp_model_2 <- fitGPModel(gp_coords = cbind(x_s, 0.3), cov_function = "matern_ard_estimate_shape",
+                                             y = y_s, params = params_s), file='NUL')
+    expect_equal(gp_model_2$get_num_optim_iter(), gp_model_1$get_num_optim_iter())
+    expect_lt(abs(gp_model_2$get_current_neg_log_likelihood() - gp_model_1$get_current_neg_log_likelihood()), TOLERANCE_LOOSE)
   })
 
 }

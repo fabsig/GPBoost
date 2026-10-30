@@ -1349,7 +1349,8 @@ namespace GPBoost {
 			has_intercept_ = false; //If true, the covariates contain an intercept column (only relevant if there are covariates)
 			intercept_col_ = -1;
 			// Check which columns are constant. The first constant column that is not zero is the intercept (-> has_intercept_).
-			//	The comparison is relative, so that a column with small values but a relative variation is not constant
+			//	A column is only constant if all its values are equal: small values or a large common offset (e.g., time stamps)
+			//	do not make it constant
 			std::vector<bool> covariate_is_constant;
 			intercept_value_ = 1.;
 			if (has_covariates_) {
@@ -1363,8 +1364,7 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 					for (data_size_t i = 1; i < num_data_; ++i) {
 						if (var_is_constant.load(std::memory_order_relaxed)) {
-							const double x_i = X_.coeff(i, icol);
-							if (std::abs(x_i - x_first) > EPSILON_NUMBERS * std::max(std::abs(x_i), std::abs(x_first))) {
+							if (X_.coeff(i, icol) != x_first) {
 								var_is_constant.store(false, std::memory_order_relaxed);
 							}
 						}
@@ -2196,6 +2196,11 @@ namespace GPBoost {
 					//	but this function is called for initialization of the GPBoost algorithm.
 				}
 				if (scale_covariates_) {
+					// With max_iter_ = 0 (e.g., when a saved model is loaded), the coefficients are still on the scale of the scaled
+					//	covariates, and they have to be consistent with the covariates in later calculations (e.g., of standard deviations)
+					if (max_iter_ <= 0) {
+						TransformBackCoef(beta_, beta_);
+					}
 					//transform covariates back
 					for (int icol = 0; icol < num_covariates_; ++icol) {
 						if (!has_intercept_ || icol != intercept_col_) {
@@ -2349,13 +2354,24 @@ namespace GPBoost {
 			const vec_t& cov_aux_pars_lag1,
 			const vec_t& beta_lag1) const {
 			if (convergence_criterion_ == "relative_change_in_parameters") {
+				// Parameters that do not change up to rounding errors (e.g., parameters that are not estimated or the range of a
+				//	constant ARD feature, which can be very large) are left out, so that they do not dominate the norm of the others
+				double norm_change_sq = 0., norm_lag1_sq = 0.;
+				for (int i = 0; i < (int)cov_aux_pars.size(); ++i) {
+					if (std::abs(cov_aux_pars[i] - cov_aux_pars_lag1[i]) > 1e-12 * std::abs(cov_aux_pars_lag1[i])) {
+						norm_change_sq += (cov_aux_pars[i] - cov_aux_pars_lag1[i]) * (cov_aux_pars[i] - cov_aux_pars_lag1[i]);
+						norm_lag1_sq += cov_aux_pars_lag1[i] * cov_aux_pars_lag1[i];
+					}
+				}
+				const double norm_change_cov_aux = std::sqrt(norm_change_sq), norm_lag1_cov_aux = std::sqrt(norm_lag1_sq);
 				if (has_covariates_) {
-					if (((beta_ - beta_lag1).norm() <= delta_rel_conv_ * beta_lag1.norm()) && ((cov_aux_pars - cov_aux_pars_lag1).norm() < delta_rel_conv_ * cov_aux_pars_lag1.norm())) {
+					if (((beta_ - beta_lag1).norm() <= delta_rel_conv_ * beta_lag1.norm()) && (norm_change_cov_aux < delta_rel_conv_ * norm_lag1_cov_aux ||
+						norm_change_cov_aux == 0.)) {
 						return true;
 					}
 				}
 				else {
-					if ((cov_aux_pars - cov_aux_pars_lag1).norm() <= delta_rel_conv_ * cov_aux_pars_lag1.norm()) {
+					if (norm_change_cov_aux <= delta_rel_conv_ * norm_lag1_cov_aux) {
 						return true;
 					}
 				}
@@ -6523,6 +6539,8 @@ namespace GPBoost {
 		den_mat_t X_;
 		/*! \brief Number of coefficients that are printed out when trace / logging is activated */
 		const int NUM_COEF_PRINT_TRACE_ = 5;
+		/*! \brief Threshold for the correlation between the most distant coordinates above which a GP is considered almost constant (see 'CovarianceParameterRangeWarning()') */
+		const double ALMOST_CONSTANT_GP_CORRELATION_ = 0.9;
 		/*! \brief True if X_ contains an intercept column */
 		bool has_intercept_ = false;
 		/*! \brief Index of the intercept column in X_ */
@@ -9800,7 +9818,7 @@ namespace GPBoost {
 		/*!
 		* \brief Set predictive variances that are smaller than possible to the smallest possible value and warn if this is
 		*		more than a round-off error. Such variances are the result of cancellations, e.g., when the GP is almost
-		*		constant over the data and its marginal variance is large (see 'CovFunction::AlmostConstantGPWarning()')
+		*		constant over the data and its marginal variance is large (see 'CovarianceParameterRangeWarning()')
 		* \param[out] pred_var Predictive variances
 		* \param min_var Smallest possible predictive variance (zero for the latent process, the error variance for the response variable)
 		*/
@@ -9832,22 +9850,47 @@ namespace GPBoost {
 			for (int igp = 0; igp < num_sets_re_; ++igp) {
 				for (int j = 0; j < num_comps_total_; ++j) {
 					const vec_t pars = cov_pars.segment(ind_par_[j] + igp * num_cov_par_per_set_re_, ind_par_[j + 1] - ind_par_[j]);
+					// For the full-scale approximations, the cross-covariance component has the coordinates of the data, the other one
+					//	those of the inducing points
+					auto correlation_most_distant_coords = [&](data_size_t cluster_i) -> double {
+						if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
+							return GetForCluster(re_comps_cross_cov_, cluster_i, igp)[j]->CorrelationMostDistantCoords(pars);
+						}
+						else if (gp_approx_ == "vecchia" && !grouped_RE_and_vecchia_GP_) {
+							return GetForCluster(re_comps_vecchia_, cluster_i, igp)[j]->CorrelationMostDistantCoords(pars);
+						}
+						else if (grouped_RE_and_vecchia_GP_ && j == (num_comps_total_ - 1)) {
+							return GetForCluster(re_comps_vecchia_, cluster_i, igp)[0]->CorrelationMostDistantCoords(pars);
+						}
+						return GetForCluster(re_comps_, cluster_i, igp)[j]->CorrelationMostDistantCoords(pars);
+					};
 					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 						GetForCluster(re_comps_ip_, unique_clusters_[0], igp)[j]->CovarianceParameterRangeWarning(pars);
-						// the cross-covariance component has the coordinates of the data, the other one those of the inducing points
-						GetForCluster(re_comps_cross_cov_, unique_clusters_[0], igp)[j]->AlmostConstantGPWarning(pars);
 					}
 					else if (gp_approx_ == "vecchia" && !grouped_RE_and_vecchia_GP_) {
 						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[j]->CovarianceParameterRangeWarning(pars);
-						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[j]->AlmostConstantGPWarning(pars);
 					}
 					else if (grouped_RE_and_vecchia_GP_ && j == (num_comps_total_ - 1)) {
 						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[0]->CovarianceParameterRangeWarning(pars);
-						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[0]->AlmostConstantGPWarning(pars);
 					}
 					else {
 						GetForCluster(re_comps_, unique_clusters_[0], igp)[j]->CovarianceParameterRangeWarning(pars);
-						GetForCluster(re_comps_, unique_clusters_[0], igp)[j]->AlmostConstantGPWarning(pars);
+					}
+					// The clusters are independent realizations: the GP is almost constant over the data if it is almost constant
+					//	over every cluster with at least two different coordinates
+					double min_correlation = std::numeric_limits<double>::infinity();
+					for (const auto& cluster_i : unique_clusters_) {
+						const double correlation = correlation_most_distant_coords(cluster_i);
+						if (correlation >= 0.) {
+							min_correlation = std::min(min_correlation, correlation);
+						}
+					}
+					if (std::isfinite(min_correlation) && min_correlation > ALMOST_CONSTANT_GP_CORRELATION_) {
+						Log::REWarning("The correlation between the most distant coordinates is larger than %g: the Gaussian process is almost constant over the data. "
+							"Its marginal variance and range parameters are then only weakly identified (they can increase together without changing the likelihood much), "
+							"the estimates can depend on the initial values, and the calculations can be numerically inaccurate. Consider a covariance function with "
+							"automatic relevance determination (e.g., 'matern_ard') if there are several input features, another smoothness parameter, or a linear "
+							"regression term for the coordinates ", ALMOST_CONSTANT_GP_CORRELATION_);
 					}
 				}
 			}

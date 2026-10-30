@@ -206,10 +206,13 @@ namespace GPBoost {
 		virtual void CovarianceParameterRangeWarning(const vec_t& pars) = 0;
 
 		/*!
-		* \brief Warning if a Gaussian process is almost constant over its coordinates (see 'CovFunction::AlmostConstantGPWarning()')
+		* \brief Correlation of a Gaussian process between the two corners of the bounding box of its coordinates (see 'CovFunction::CorrelationMostDistantCoords()')
 		* \param cov_pars Covariance parameters (on transformed scale)
+		* \return Correlation, or -1 if it is not applicable
 		*/
-		virtual void AlmostConstantGPWarning(const vec_t& /* pars */) const { }
+		virtual double CorrelationMostDistantCoords(const vec_t& /* pars */) const {
+			return -1.;
+		}
 
 		/*!
 		* \brief Cap the covariance parameters to the range that is used when they are set (see 'SetCovPars')
@@ -1879,10 +1882,11 @@ namespace GPBoost {
 			cov_function_->CovarianceParameterRangeWarning(pars);
 		}
 
-		void AlmostConstantGPWarning(const vec_t& pars) const override {
+		double CorrelationMostDistantCoords(const vec_t& pars) const override {
 			if (coord_saved_ && !this->is_rand_coef_) {
-				cov_function_->AlmostConstantGPWarning(pars, coords_);
+				return cov_function_->CorrelationMostDistantCoords(pars, coords_);
 			}
+			return -1.;
 		}
 
 		void CapCovPars(vec_t& pars) const override {

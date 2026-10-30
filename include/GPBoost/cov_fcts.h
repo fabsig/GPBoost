@@ -495,24 +495,25 @@ namespace GPBoost {
 		}//CovarianceParameterRangeWarning
 
 		/*!
-		* \brief Warning if the correlation between the two corners of the bounding box of the coordinates is large, i.e., if the
-		*		GP is almost constant over the data. The marginal variance and the range parameters can then increase together
-		*		without changing the likelihood much, and the estimates depend on the initial values
+		* \brief Correlation between the two corners of the bounding box of the coordinates. If it is large, the GP is almost
+		*		constant over the data: the marginal variance and the range parameters can then increase together without changing
+		*		the likelihood much, and the estimates depend on the initial values
 		* \param pars Vector with covariance parameters (on transformed scale)
 		* \param coords Coordinates
+		* \return Correlation, or -1 if it is not applicable (e.g., tapering, less than two different coordinates)
 		*/
-		void AlmostConstantGPWarning(const vec_t& pars,
+		double CorrelationMostDistantCoords(const vec_t& pars,
 			const den_mat_t& coords) const {
 			if (is_ar1_multifidelity_ || cov_calculated_based_on_coords_ || cov_fct_type_ == "wendland" || cov_fct_type_ == "linear" ||
 				apply_tapering_ || num_cov_par_ < 2 || coords.rows() < 2) {
-				return;
+				return -1.;
 			}
 #if !HAS_STD_CYL_BESSEL_K
 			const bool general_matern_shape = cov_fct_type_ == "matern_estimate_shape" || cov_fct_type_ == "matern_ard_estimate_shape" ||
 				((cov_fct_type_ == "matern" || cov_fct_type_ == "matern_space_time" || cov_fct_type_ == "matern_ard") &&
 					!TwoNumbersAreEqual<double>(shape_, 0.5) && !TwoNumbersAreEqual<double>(shape_, 1.5) && !TwoNumbersAreEqual<double>(shape_, 2.5));
 			if (general_matern_shape) {
-				return;
+				return -1.;
 			}
 #endif
 			const vec_t extent = (coords.colwise().maxCoeff() - coords.colwise().minCoeff()).transpose();
@@ -527,14 +528,11 @@ namespace GPBoost {
 			}
 			const double shape = (cov_fct_type_ == "matern_estimate_shape" || cov_fct_type_ == "matern_ard_estimate_shape") ? pars[num_cov_par_ - 1] : 0.;
 			const double range = is_isotropic_ ? pars[1] : 1.;
-			if (dist_max > 0. && CovFct_dist_(dist_max, 1., range, shape) > ALMOST_CONSTANT_GP_CORRELATION_) {
-				Log::REWarning("The correlation between the most distant coordinates is larger than %g: the Gaussian process is almost constant over the data. "
-					"Its marginal variance and range parameters are then only weakly identified (they can increase together without changing the likelihood much), "
-					"the estimates can depend on the initial values, and the calculations can be numerically inaccurate. Consider a covariance function with "
-					"automatic relevance determination (e.g., 'matern_ard') if there are several input features, another smoothness parameter, or a linear "
-					"regression term for the coordinates ", ALMOST_CONSTANT_GP_CORRELATION_);
+			if (!(dist_max > 0.)) {
+				return -1.;
 			}
-		}//end AlmostConstantGPWarning
+			return CovFct_dist_(dist_max, 1., range, shape);
+		}//end CorrelationMostDistantCoords
 
 		/*!
 		* \brief Cap parameters
@@ -1674,15 +1672,16 @@ namespace GPBoost {
 							}
 							if (med_dist_coord_i <= tol_dist) {
 								// The feature is (almost) constant on the sub-sample but not on all data: the average distance among
-								//	all pairs of points is calculated from the sorted values
+								//	all pairs of points is calculated from the sorted values. The gap between the sorted values k - 1
+								//	and k occurs in k (n - k) pairs. A sum of these non-negative terms has no cancellations
 								std::vector<double> values_sorted(col_i.data(), col_i.data() + col_i.size());
 								std::sort(values_sorted.begin(), values_sorted.end());
 								const double num_values = (double)values_sorted.size();
-								double sum_weighted = 0.;
-								for (int i = 0; i < (int)values_sorted.size(); ++i) {
-									sum_weighted += (2. * (i + 1) - num_values - 1.) * values_sorted[i];
+								double sum_dist = 0.;
+								for (int k = 1; k < (int)values_sorted.size(); ++k) {
+									sum_dist += (double)k * (num_values - (double)k) * (values_sorted[k] - values_sorted[k - 1]);
 								}
-								med_dist_coord_i = 2. * sum_weighted / (num_values * (num_values - 1.));
+								med_dist_coord_i = 2. * sum_dist / (num_values * (num_values - 1.));
 							}
 							med_dist_per_coord[ic] = med_dist_coord_i;
 						}// end num_unique_values > 10
@@ -3524,8 +3523,6 @@ namespace GPBoost {
 			"gaussian", "gaussian_ard",
 			"space_time_gneiting", "wendland", "linear", "hurst", "hurst_ard"};
 		const double LARGE_SHAPE_WARNING_THRESHOLD_ = 50.;
-		/*! \brief Threshold for the correlation between the most distant coordinates in 'AlmostConstantGPWarning()' */
-		const double ALMOST_CONSTANT_GP_CORRELATION_ = 0.9;
 		const char* LARGE_SHAPE_WARNING_ = "The shape parameter is very large, it is recommended to use the 'gausian' covariance funtion ";
 
 		template<typename>

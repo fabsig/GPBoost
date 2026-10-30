@@ -1329,9 +1329,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
     # The standardization is a reparametrization only if the coefficients are transformed consistently. The
     #   correction of the intercept for the means of the other columns ignored a value of the intercept column other
-    #   than 1, the columns were centered also without an intercept, and a column with small values was treated as
-    #   constant and not scaled. The fitted linear predictor and the negative log-likelihood at the returned
-    #   coefficients thus differed from those of the same model with other units or another coding of the intercept
+    #   than 1, the columns were centered also without an intercept, and a column with small values or with a small
+    #   variation relative to a large common offset (e.g., time stamps) was treated as constant and not scaled. The
+    #   fitted linear predictor and the negative log-likelihood at the returned coefficients thus differed from those
+    #   of the same model with other units or another coding of the intercept
     probs <- pnorm(L %*% b_1 + X%*%beta)
     y <- as.numeric(sim_rand_unif(n=n, init_c=0.199) < probs)
     params <- OPTIM_PARAMS_BFGS
@@ -1349,7 +1350,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll <- gp_model$get_current_neg_log_likelihood()
     lin_pred <- as.vector(X %*% as.vector(gp_model$get_coef()))
     x <- X[, 2]
-    for (X_loc in list(cbind(2, x), cbind(2, 1, x), cbind(1, 1e-11 * x), cbind(1e-11 * x, 1))) {
+    for (X_loc in list(cbind(2, x), cbind(2, 1, x), cbind(1, 1e-11 * x), cbind(1e-11 * x, 1), cbind(1, 1.7e9 + 0.05 * x))) {
       gp_model_loc <- fit_X(X_loc)
       expect_lt(abs(gp_model_loc$get_current_neg_log_likelihood() - nll), TOLERANCE_MEDIUM)
       expect_lt(abs(nll_at_coef(gp_model_loc, X_loc) - nll), TOLERANCE_MEDIUM)
@@ -1358,6 +1359,23 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     X_no_intercept <- matrix(x + 2, ncol = 1)
     gp_model_no_intercept <- fit_X(X_no_intercept)
     expect_lt(abs(nll_at_coef(gp_model_no_intercept, X_no_intercept) - gp_model_no_intercept$get_current_neg_log_likelihood()), TOLERANCE_MEDIUM)
+  })
+
+  test_that("Standard deviations of the coefficients of a loaded model ", {
+
+    # A model is loaded with an estimation with maxit = 0. Its coefficients stayed on the scale of the standardized
+    #   covariates while the covariates were restored, and the standard deviations of the coefficients changed
+    x_load <- 2 + 2 * sim_rand_unif(n = n, init_c = 0.731)
+    y_load <- qpois(sim_rand_unif(n = n, init_c = 0.523), lambda = as.vector(exp(-0.5 + 0.5 * x_load + 0.3 * Z1 %*% b_gr_1)))
+    X_load <- cbind(1, x_load)
+    capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "poisson", y = y_load, X = X_load), file='NUL')
+    filename <- tempfile(fileext = ".json")
+    saveGPModel(gp_model, filename = filename)
+    gp_model_loaded <- loadGPModel(filename)
+    unlink(filename)
+    coef <- gp_model$get_coef(std_err = TRUE)
+    coef_loaded <- gp_model_loaded$get_coef(std_err = TRUE)
+    expect_lt(max(abs(as.vector(coef_loaded) / as.vector(coef) - 1)), TOLERANCE_MEDIUM)
   })
 
   test_that("Binary classification with Gaussian process model and logit link function", {
