@@ -4150,7 +4150,7 @@ namespace GPBoost {
 							re_comps_cross_cov_cluster_i[j]->SetCovPars(pars);
 							re_comps_ip_cluster_i[j]->CalcSigma();
 							den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[j]->GetZSigmaZt());
-							sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+							sigma_ip_stable.diagonal().array() *= JitterMultInducingPoints(sigma_ip_stable);
 							// Marginal variances at the prediction points. For 'fitc', they are the diagonal of psi, which the diagonal
 							//	correction of the predictive process restores, and they contain the jitter of the inducing point matrix
 							//	as this correction does. For 'full_scale_tapering', the diagonal of psi is also the marginal variance
@@ -4225,7 +4225,7 @@ namespace GPBoost {
 							re_comps_ip_cluster_i[j]->CalcSigma();
 							re_comps_cross_cov_cluster_i[j]->CalcSigma();
 							den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[j]->GetZSigmaZt());
-							sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+							sigma_ip_stable.diagonal().array() *= JitterMultInducingPoints(sigma_ip_stable);
 							chol_den_mat_t chol_fact_sigma_ip;
 							chol_fact_sigma_ip.compute(sigma_ip_stable);
 							den_mat_t cross_cov = *(re_comps_cross_cov_cluster_i[j]->GetZSigmaZt());
@@ -4244,7 +4244,7 @@ namespace GPBoost {
 						// Cholesky factor of the inducing point matrix and the corresponding cross-covariance. These are
 						// calculated here since the member variables have no entry for a cluster without observed data
 						den_mat_t sigma_ip_stable_pred = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
-						sigma_ip_stable_pred.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+						sigma_ip_stable_pred.diagonal().array() *= JitterMultInducingPoints(sigma_ip_stable_pred);
 						chol_den_mat_t chol_fact_sigma_ip_pred;
 						chol_fact_sigma_ip_pred.compute(sigma_ip_stable_pred);
 						den_mat_t chol_ip_cross_cov_pred = (*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose();
@@ -6113,7 +6113,7 @@ namespace GPBoost {
 							re_comps_ip_cluster_i[0]->CalcSigma();
 							re_comps_cross_cov_cluster_i[0]->CalcSigma();
 							den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
-							sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+							sigma_ip_stable.diagonal().array() *= JitterMultInducingPoints(sigma_ip_stable);
 							GetForCluster(chol_fact_sigma_ip_, cluster_i, 0).compute(sigma_ip_stable);
 							//TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(GetForCluster(chol_fact_sigma_ip_, cluster_i, 0),
 							//	(*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose(), GetForCluster(chol_ip_cross_cov_, cluster_i, 0), false);
@@ -6251,7 +6251,7 @@ namespace GPBoost {
 							re_comps_ip_cluster_i[0]->CalcSigma();
 							re_comps_cross_cov_cluster_i[0]->CalcSigma();
 							den_mat_t sigma_ip_stable = *(re_comps_ip_cluster_i[0]->GetZSigmaZt());
-							sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+							sigma_ip_stable.diagonal().array() *= JitterMultInducingPoints(sigma_ip_stable);
 							GetForCluster(chol_fact_sigma_ip_preconditioner_, cluster_i, 0).compute(sigma_ip_stable);
 							//TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(GetForCluster(chol_fact_sigma_ip_preconditioner_, cluster_i, 0),
 							//	(*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZt())).transpose(), GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0), false);
@@ -9816,6 +9816,25 @@ namespace GPBoost {
 		}//end NonConvergedCGPredictionWarning
 
 		/*!
+		* \brief Factor by which the diagonal of the inducing point covariance matrix Sigma_m is multiplied before its Cholesky
+		*		factorization. For a Gaussian likelihood, the covariances are relative to the nugget effect variance, and the rounding
+		*		error of the low-rank part Sigma_nm Sigma_m^-1 Sigma_mn and of the residual process is of the order of machine epsilon
+		*		times m times the largest diagonal entry of Sigma_m divided by the jitter. For a very large marginal variance relative to
+		*		the nugget effect variance and long ranges, this error can be larger than the nugget effect variance, the likelihood is
+		*		then meaningless, and the optimization can end at degenerate estimates. The jitter is increased so that this bound
+		*		stays below 1e-2 times the nugget effect variance. For usual parameters, the jitter is not changed. The larger jitter
+		*		makes the approximation less accurate for very large ratios of the marginal and the nugget effect variance
+		* \param sigma_ip Inducing point covariance matrix (without jitter)
+		*/
+		double JitterMultInducingPoints(const den_mat_t& sigma_ip) const {
+			if (!gauss_likelihood_ || sigma_ip.rows() == 0) {
+				return JITTER_MULT_IP_FITC_FSA;
+			}
+			const double jitter = 1e2 * std::numeric_limits<double>::epsilon() * (double)sigma_ip.rows() * sigma_ip.diagonal().maxCoeff();
+			return std::max(JITTER_MULT_IP_FITC_FSA, 1. + jitter);
+		}//end JitterMultInducingPoints
+
+		/*!
 		* \brief Set predictive variances that are smaller than possible to the smallest possible value and warn if this is
 		*		more than a round-off error. Such variances are the result of cancellations, e.g., when the GP is almost
 		*		constant over the data and its marginal variance is large (see 'CovarianceParameterRangeWarning()')
@@ -10007,7 +10026,7 @@ namespace GPBoost {
 						GetForCluster(re_comps_ip_, cluster_i, 0)[j]->CalcSigma();
 						GetForCluster(re_comps_cross_cov_, cluster_i, 0)[j]->CalcSigma();
 						den_mat_t sigma_ip_stable = *(GetForCluster(re_comps_ip_, cluster_i, 0)[j]->GetZSigmaZt());
-						sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+						sigma_ip_stable.diagonal().array() *= JitterMultInducingPoints(sigma_ip_stable);
 						GetForCluster(chol_fact_sigma_ip_, cluster_i, 0).compute(sigma_ip_stable);
 						const den_mat_t* cross_cov = GetForCluster(re_comps_cross_cov_, cluster_i, 0)[j]->GetSigmaPtr();
 						if (gp_approx_ == "fitc") {
@@ -11477,7 +11496,7 @@ namespace GPBoost {
 					GetForCluster(re_comps_ip_preconditioner_, cluster_i, 0)[j]->CalcSigma();
 					GetForCluster(re_comps_cross_cov_preconditioner_, cluster_i, 0)[j]->CalcSigma();
 					den_mat_t sigma_ip_stable = *(GetForCluster(re_comps_ip_preconditioner_, cluster_i, 0)[j]->GetZSigmaZt());
-					sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+					sigma_ip_stable.diagonal().array() *= JitterMultInducingPoints(sigma_ip_stable);
 					GetForCluster(chol_fact_sigma_ip_preconditioner_, cluster_i, 0).compute(sigma_ip_stable);
 					const den_mat_t* cross_cov_p = GetForCluster(re_comps_cross_cov_preconditioner_, cluster_i, 0)[j]->GetSigmaPtr();
 					GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0) = (*cross_cov_p).transpose();
@@ -11594,7 +11613,7 @@ namespace GPBoost {
 					else if (gp_approx_ == "full_scale_vecchia") {
 						const den_mat_t* cross_cov = GetForCluster(re_comps_cross_cov_, cluster_i, 0)[0]->GetSigmaPtr();
 						den_mat_t sigma_ip_stable = *(GetForCluster(re_comps_ip_, cluster_i, 0)[0]->GetZSigmaZt());
-						sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+						sigma_ip_stable.diagonal().array() *= JitterMultInducingPoints(sigma_ip_stable);
 						if (gauss_likelihood_) {
 							Log::REFatal("The iterative methods are not implemented for the Full-Scale-Vecchia approximation with Gaussian likelihood. Please use Cholesky.");
 						}
@@ -11615,7 +11634,7 @@ namespace GPBoost {
 							std::shared_ptr<T_mat> sigma_resid;
 							sigma_resid = GetForCluster(re_comps_resid_, cluster_i, 0)[0]->GetZSigmaZt();
 							diagonal_approx_preconditioner_[cluster_i] = (*sigma_resid).diagonal();
-							sigma_ip_stable_preconditioner.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+							sigma_ip_stable_preconditioner.diagonal().array() *= JitterMultInducingPoints(sigma_ip_stable_preconditioner);
 							diagonal_approx_inv_preconditioner_[cluster_i] = diagonal_approx_preconditioner_[cluster_i].cwiseInverse();
 							//sigma_woodbury_preconditioner = (*cross_cov_preconditioner).transpose() * (diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * (*cross_cov_preconditioner));
 							den_mat_t D_cross_cov = diagonal_approx_inv_preconditioner_[cluster_i].asDiagonal() * (*cross_cov_preconditioner);
@@ -11633,7 +11652,7 @@ namespace GPBoost {
 				else if (matrix_inversion_method_ == "cholesky") {
 					const den_mat_t* cross_cov = GetForCluster(re_comps_cross_cov_, cluster_i, 0)[0]->GetSigmaPtr();
 					den_mat_t sigma_ip_stable = *(GetForCluster(re_comps_ip_, cluster_i, 0)[0]->GetZSigmaZt());
-					sigma_ip_stable.diagonal().array() *= JITTER_MULT_IP_FITC_FSA;
+					sigma_ip_stable.diagonal().array() *= JitterMultInducingPoints(sigma_ip_stable);
 					den_mat_t sigma_woodbury;// sigma_woodbury = sigma_ip + cross_cov^T * sigma_resid^-1 * cross_cov or for Preconditioner sigma_ip + cross_cov^T * D^-1 * cross_cov
 					if (gp_approx_ == "fitc") {
 						GPBoost::matmul((*cross_cov).transpose(), fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * (*cross_cov), sigma_woodbury, GPU_use_);
