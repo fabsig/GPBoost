@@ -537,8 +537,9 @@ namespace GPBoost {
 		/*!
 		* \brief Initial covariance parameters for likelihood = 'gaussian_heteroscedastic_fixed_and_random' from a homoscedastic
 		*		Gaussian process model with the same Gaussian process: the GP of the mean gets its parameters, the GP of the
-		*		log-error variance its ranges and marginal variances of 'INIT_VAR_LOG_ERROR_VAR_GP_' (from a GP of the log-error
-		*		variance that has almost collapsed, the optimizer can stop far from the optimum). The estimates of this model are also kept for
+		*		log-error variance its ranges and small marginal variances of 'INIT_VAR_LOG_ERROR_VAR_GP_' (with larger variances,
+		*		the mode finding of the Laplace approximation can fail to converge at the initial values on large data sets). The
+		*		estimates of this model are also kept for
 		*		'InitCoefFromHomoscedasticModel()'. Otherwise, the default initial values explain all variation by the error
 		*		variance, and the optimization can end at a local optimum at which the GP of the log-error variance explains
 		*		part of the variation of the mean
@@ -720,7 +721,7 @@ namespace GPBoost {
 		*		'FindInitialValueBoosting()', where the offset (initial score) is known, and not in 'InitializeCovParsIfNotDefined()' */
 		bool homoscedastic_model_deferred_to_boosting_ = false;
 		/*! \brief Initial variance of the GP of the log-error variance when the initial values are obtained from the homoscedastic model */
-		const double INIT_VAR_LOG_ERROR_VAR_GP_ = 0.1;
+		const double INIT_VAR_LOG_ERROR_VAR_GP_ = 0.01;
 		/*! \brief Lower bound for the initial error variance from the homoscedastic model, relative to its total variance */
 		const double MIN_SHARE_INIT_ERROR_VAR_ = 0.01;
 	};
