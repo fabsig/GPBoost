@@ -464,4 +464,37 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Jitter of the inducing point matrix in the gradient and the predictions ", {
+
+    # For a marginal variance that is very large relative to the error variance, the jitter of the inducing point matrix
+    #   depends on the parameters. The gradient did not contain the derivative of the jitter and had the wrong sign for
+    #   'fitc', and the 'fitc' marginal variances contained the jitter in the estimation but not in the predictions, so that
+    #   latent predictive variances at the training locations were up to 18 422, although they cannot exceed the error variance 1
+    n_j <- 20
+    coords_j <- matrix(seq(0, 1, length.out = n_j), ncol = 1)
+    y_j <- 400 * sin(1.7 * (0:(n_j - 1)))
+    var_j <- 1e9
+    for (approx in c("fitc", "full_scale_vecchia")) {
+      new_model <- function() {
+        GPModel(gp_coords = coords_j, cov_function = "matern", cov_fct_shape = 1.5, gp_approx = approx,
+                num_ind_points = if (approx == "fitc") 1 else 2, num_neighbors = 3, vecchia_ordering = "none",
+                ind_points_selection = "random")
+      }
+      nll_j <- function(v) new_model()$neg_log_likelihood(cov_pars = c(1, v, 100), y = y_j)
+      h <- 1e-2# a smaller step suffers from rounding errors of the negative log-likelihood for these parameters
+      grad_fd <- (nll_j(var_j * exp(h)) - nll_j(var_j * exp(-h))) / (2 * h)
+      # one gradient descent step with a small learning rate gives the gradient wrt the logarithm of the marginal variance
+      lr <- 1e-8
+      gp_model <- new_model()
+      capture.output( gp_model$fit(y = y_j, params = list(optimizer_cov = "gradient_descent", lr_cov = lr, use_nesterov_acc = FALSE,
+                                                         maxit = 1, init_cov_pars = c(1, var_j, 100),
+                                                         estimate_cov_par_index = c(0, 1, 0))), file='NUL')
+      grad <- (log(var_j) - log(as.vector(gp_model$get_cov_pars())[2])) / lr
+      expect_lt(abs(grad / grad_fd - 1), if (approx == "fitc") 1e-3 else 1e-4)# 'full_scale_vecchia': 4.7e-4 without the derivative of the jitter
+      pred <- predict(new_model(), y = y_j, gp_coords_pred = coords_j, cov_pars = c(1, var_j, 100),
+                      predict_var = TRUE, predict_response = FALSE)
+      expect_lt(max(pred$var), 1 + 1e-8)
+    }
+  })
+
 }

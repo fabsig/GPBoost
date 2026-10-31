@@ -1457,6 +1457,8 @@ namespace GPBoost {
 				for (int ipar = 0; ipar < (int)num_par_comp; ++ipar) {
 					if (estimate_cov_par_index[ipar + nugget_offset_ind_est] > 0) {
 						sigma_ip_grad[ipar] = *(re_comps_ip_cluster_i[0]->GetZSigmaZtGrad(ipar, true, nugget_var));
+						// the factorization of the inducing point matrix has the jitter of 'JitterMultInducingPoints()'
+						JitterInducingPointsGrad(*(re_comps_ip_cluster_i[0]->GetZSigmaZt()), gauss_likelihood, sigma_ip_grad[ipar]);
 						sigma_cross_cov_gradT[ipar] = (*(re_comps_cross_cov_cluster_i[0]->GetZSigmaZtGrad(ipar, true, nugget_var))).transpose();
 						sigma_ip_grad_sigma_ip_inv_cross_cov_T_cluster_i[ipar] = sigma_ip_grad[ipar] * sigma_ip_inv_cross_cov_T_cluster_i;
 					}

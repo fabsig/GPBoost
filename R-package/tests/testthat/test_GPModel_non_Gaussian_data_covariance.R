@@ -247,7 +247,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
           capture.output( gp_model <- fitGPModel(gp_coords = coords_lin, likelihood = likelihood,  cov_function = cov_function,
                                                  matrix_inversion_method = matrix_inversion_method, X=X, y = y, params = params,
                                                  gp_approx = gp_approx, num_ind_points = num_ind_points, ind_points_selection = ind_points_selection) , file='NUL')
-          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),0.02)
+          # The FITC estimates are (0.0129, 0.863). With a gradient that did not contain the derivative of the jitter of the
+          #   inducing point matrix, the optimization stopped at (0.0119, 0.913), where the gradient wrt the log-parameters is (-1.43, 1.43)
+          expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),0.08)
           expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),0.05)
           expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),2.5)
           capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,

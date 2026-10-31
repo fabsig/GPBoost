@@ -249,6 +249,56 @@ namespace GPBoost {
 	/*! \brief Small number by which the diagonal of inducing points matrix in the FITC & full scales approximations is multiplied with (increased) to make inversions numerically stable */
 	const double JITTER_MULT_IP_FITC_FSA = 1. + 1e-6;
 
+	/*! \brief Factor of the jitter of 'JitterMultInducingPoints()' that grows with the dimension and the largest diagonal entry of the inducing point matrix */
+	const double JITTER_IP_ADAPTIVE_FACTOR = 1e2 * std::numeric_limits<double>::epsilon();
+
+	/*!
+	* \brief Factor by which the diagonal of the inducing point covariance matrix Sigma_m is multiplied before its Cholesky
+	*		factorization. The jitter only stabilizes the solves with Sigma_m, the marginal variances are those without jitter.
+	*		For a Gaussian likelihood, the covariances are relative to the nugget effect variance, and the rounding error of the
+	*		low-rank part Sigma_nm Sigma_m^-1 Sigma_mn and of the residual process is of the order of machine epsilon times m times
+	*		the largest diagonal entry of Sigma_m divided by the jitter. For a very large marginal variance relative to the nugget
+	*		effect variance and long ranges, this error can be larger than the nugget effect variance, the likelihood is then
+	*		meaningless, and the optimization can end at degenerate estimates. The jitter is increased so that this bound stays
+	*		below 1e-2 times the nugget effect variance. For usual parameters, the jitter is not changed. The larger jitter makes
+	*		the approximation less accurate for very large ratios of the marginal and the nugget effect variance
+	* \param sigma_ip Inducing point covariance matrix (without jitter)
+	* \param gauss_likelihood True for a Gaussian likelihood (the jitter is constant otherwise)
+	* \return Factor for the diagonal
+	*/
+	inline double JitterMultInducingPoints(const den_mat_t& sigma_ip,
+		bool gauss_likelihood) {
+		if (!gauss_likelihood || sigma_ip.rows() == 0) {
+			return JITTER_MULT_IP_FITC_FSA;
+		}
+		const double jitter = JITTER_IP_ADAPTIVE_FACTOR * (double)sigma_ip.rows() * sigma_ip.diagonal().maxCoeff();
+		return std::max(JITTER_MULT_IP_FITC_FSA, 1. + jitter);
+	}//end JitterMultInducingPoints
+
+	/*!
+	* \brief Derivative of the inducing point covariance matrix with the jitter of 'JitterMultInducingPoints()': the jittered matrix
+	*		has the diagonal (1 + delta) diag(Sigma_m), and delta = JITTER_IP_ADAPTIVE_FACTOR * m * max(diag(Sigma_m)) depends on
+	*		the parameters if it is larger than the constant jitter
+	* \param sigma_ip Inducing point covariance matrix (without jitter)
+	* \param gauss_likelihood True for a Gaussian likelihood (otherwise, the derivative is not changed)
+	* \param[in,out] sigma_ip_grad On input the derivative of 'sigma_ip' (without jitter), on output the derivative of the jittered matrix
+	*/
+	inline void JitterInducingPointsGrad(const den_mat_t& sigma_ip,
+		bool gauss_likelihood,
+		den_mat_t& sigma_ip_grad) {
+		if (!gauss_likelihood || sigma_ip.rows() == 0) {
+			return;
+		}
+		const double jitter_mult = JitterMultInducingPoints(sigma_ip, gauss_likelihood);
+		vec_t diag_grad = jitter_mult * sigma_ip_grad.diagonal();
+		if (jitter_mult > JITTER_MULT_IP_FITC_FSA) {
+			Eigen::Index i_max;
+			sigma_ip.diagonal().maxCoeff(&i_max);
+			diag_grad += (JITTER_IP_ADAPTIVE_FACTOR * (double)sigma_ip.rows() * sigma_ip_grad(i_max, i_max)) * sigma_ip.diagonal();
+		}
+		sigma_ip_grad.diagonal() = diag_grad;
+	}//end JitterInducingPointsGrad
+
 	/*! \brief Termination criterion for low-rank pivoted Cholesky decomposition */
 	const double PIV_CHOL_STOP_TOL = 1e-6;
 

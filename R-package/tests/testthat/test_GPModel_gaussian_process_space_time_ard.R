@@ -481,16 +481,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                           gp_approx = "fitc", ind_points_selection = "space_time_kmeans++", num_ind_points = 30), 
                       file='NUL')
       nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting,y=y)
-      expect_lt(abs(nll-339.411253590468),TOLERANCE_STRICT)
+      expect_lt(abs(nll-339.41162125921),TOLERANCE_STRICT)
       # Fit model
       capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
                                              gp_approx = "fitc", ind_points_selection = "space_time_kmeans++", num_ind_points = 30,
                                              y = y, X = X, params = params_ST), 
                       file='NUL')
-      cov_pars_nn <- c(0.14666538, 0.82530619, 0.02268084, 101.37316301, 0.17523760, 154.00191351, 0.01261858, 18.64147777)
-      coef_nn <- c(1.9194304, 0.1401412, 2.2149501, 0.1364415)
-      nrounds_nn <- 39
-      nll_opt_nn <- 137.073147464373
+      cov_pars_nn <- c(0.1467511421, 0.8271310455, 0.02258225454, 100.8016698, 0.1759956593, 154.4711077, 0.01266192069, 18.47361778)
+      coef_nn <- c(1.916564551, 0.1410972384, 2.213749012, 0.1364557449)
+      nrounds_nn <- 41
+      nll_opt_nn <- 137.073364114858
       capture.output( expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_nn)),0.04), file='NUL')
       capture.output( expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_nn)),0.001), file='NUL')
       expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
@@ -498,7 +498,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       # Prediction 
       pred <- predict(gp_model, gp_coords_pred = coord_test,
                       X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
-      expected_mu <- c(1.919430, 1.751229, 2.389440)
+      expected_mu <- c(1.9165646, 1.7514143, 2.3897651)
       expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
     }
   })
@@ -958,10 +958,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            num_neighbors = 10, num_ind_points = 20,vecchia_ordering = "none",
                                            y = y, X = X, params = OPTIM_PARAMS_BFGS), 
                     file='NUL')
-    cov_pars_nn <- c(5.649128e-06, 1.270109e+00, 3.806525e-01, 5.835826e-01, 3.327165e-01)
-    coef_nn <- c(2.271157, 1.729481)
+    cov_pars_nn <- c(5.586656e-06, 1.270082078, 0.3806405617, 0.5835695798, 0.3327069724)
+    coef_nn <- c(2.27115719, 1.729474642)
     nrounds_nn <- 34
-    nll_opt_nn <- 110.248660959757
+    nll_opt_nn <- 110.248658892601
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_nn)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_nn)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
@@ -994,10 +994,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            num_neighbors = 10, num_ind_points = 20,vecchia_ordering = "none",
                                            y = y, X = X, params = OPTIM_PARAMS_BFGS), 
                     file='NUL')
-    cov_pars_nn <- c(4.343210e-06, 1.246736e+00, 3.685636e-01, 5.591977e-01, 3.140119e-01)
-    coef_nn <- c(2.278199, 1.717998)
+    cov_pars_nn <- c(7.029607e-06, 1.243988571, 0.3674820406, 0.5565380538, 0.3139791788)
+    coef_nn <- c(2.275114107, 1.718294673)
     nrounds_nn <- 38
-    nll_opt_nn <- 111.014825115058
+    nll_opt_nn <- 111.002393295999
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_nn)),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_nn)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
@@ -1006,7 +1006,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_all")
     pred <- predict(gp_model, gp_coords_pred = coord_test,
                     X_pred = X_test, predict_cov_mat = TRUE, cov_pars = cov_pars_pred)
-    expected_mu_nn <- c(2.278199, 3.081812, 3.337652)
+    expected_mu_nn <- c(2.2751141, 3.0809920, 3.3376188)
     expected_cov_nn <- c(2.000000000, 0.000000000, 0.000000000, 0.000000000, 1.4864848946, -0.0009735682, 0.0000000, -0.0009735682, 1.4072311387)
     expect_lt(sum(abs(pred$mu-expected_mu_nn)),TOLERANCE_LOOSE)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov_nn)),TOLERANCE_STRICT)
@@ -1058,9 +1058,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            gp_approx = "fitc", num_ind_points = num_ind_points, ind_points_selection = "kmeans++",
                                            y = y, X = X, params = params_ARD), 
                     file='NUL')
-    cov_pars_nn <- c(1.735005e-05, 8.627363e-02, 1.290560e+00, 4.357872e-01, 3.452861e-01, 1.654098e-01, 6.571689e-01, 3.280626e-01, 3.710781e-01, 1.798495e-01)
-    coef_nn <- c(2.27868746, 0.48056816, 1.70536543, 0.08686789)
-    nll_opt_nn <- 112.714161295749
+    cov_pars_nn <- c(1.933188e-05, 8.923092e-02, 1.290648e+00, 4.576348e-01, 3.453293e-01, 1.755326e-01, 6.572336e-01, 3.576040e-01, 3.710933e-01, 1.899286e-01)
+    coef_nn <- c(2.278697574, 0.4806093997, 1.70539005, 0.08686758966)
+    nll_opt_nn <- 112.714173837518
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))[c(1,3,5,7,9)]-cov_pars_nn[c(1,3,5,7,9)])),TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))[c(1,3,5,7,9)+1]-cov_pars_nn[c(1,3,5,7,9)+1])),0.1)
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_nn)),TOLERANCE_STRICT)

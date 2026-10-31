@@ -488,7 +488,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                        gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = "iterative"),
                174.7652059, 174.2813998)
     expect_ssn(nll_ssn(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
-                       gp_approx = "fitc", num_ind_points = 30), 172.4871945, 172.1303044)
+                       gp_approx = "fitc", num_ind_points = 30), 172.4866789, 172.1303165)
     expect_ssn(nll_ssn(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
                        gp_approx = "full_scale_vecchia", num_ind_points = 30, num_neighbors = 20),
                174.7149656, 174.2474945)
@@ -603,7 +603,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                          gp_approx = "vecchia", num_neighbors = 20, matrix_inversion_method = "iterative"),
                 174.7652059, 174.2784319, 174.2784312)
     expect_admm(nll_admm(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
-                         gp_approx = "fitc", num_ind_points = 30), 172.4871945, 172.1302166, 172.1302166)
+                         gp_approx = "fitc", num_ind_points = 30), 172.4866789, 172.1302485, 172.1302485)
     expect_admm(nll_admm(c(0.9, 0.2), gp_coords = coords, cov_function = "exponential",
                          gp_approx = "full_scale_vecchia", num_ind_points = 30, num_neighbors = 20),
                 174.7149656, 174.2474984, 174.2474984)
