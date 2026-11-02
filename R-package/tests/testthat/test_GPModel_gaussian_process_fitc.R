@@ -518,4 +518,83 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Fisher information of the error variance with the jitter of the inducing point matrix ", {
+
+    # For a marginal variance that is very large relative to the error variance, the jitter of the inducing point matrix
+    #   grows with their ratio and thus depends on the error variance. On the original scale, the derivative of the covariance
+    #   matrix wrt the error variance contains the derivative of the jitter. Without it, the standard error of the error
+    #   variance was 11 740 instead of 0.528 for 'fitc' and 2 443 instead of 0.540 for 'full_scale_tapering'
+    n_j <- 20
+    coords_j <- matrix(seq(0, 1, length.out = n_j), ncol = 1)
+    y_j <- 400 * sin(1.7 * (0:(n_j - 1)))
+    cov_pars_j <- c(1, 1e9, 100)
+    ind_point_j <- 0.5# 'kmeans++' with one inducing point gives the mean of the coordinates
+    taper_range_j <- 0.3
+    dist_j <- as.matrix(dist(coords_j))
+    taper_j <- ifelse(dist_j < taper_range_j, (1 - dist_j / taper_range_j)^1.5, 0)# Wendland, shape 0, mu = 1.5 in 1-d
+    matern32 <- function(d, s2, rho) s2 * (1 + sqrt(3) * d / rho) * exp(-sqrt(3) * d / rho)
+    # covariance matrix of the approximations with the jitter of the inducing point matrix
+    psi_j <- function(p, approx) {
+      k <- matern32(abs(coords_j[, 1] - ind_point_j), p[2], p[3])
+      jitter_mult <- max(1 + 1e-6, 1 + 100 * .Machine$double.eps * p[2] / p[1])
+      Q <- outer(k, k) / (p[2] * jitter_mult)
+      if (approx == "fitc") {
+        Q + diag(p[2] - diag(Q)) + diag(p[1], n_j)
+      } else {
+        Q + (matern32(dist_j, p[2], p[3]) - Q) * taper_j + diag(p[1], n_j)
+      }
+    }
+    for (approx in c("fitc", "full_scale_tapering")) {
+      # Fisher information with derivatives from central differences in the log-parameters
+      grads <- lapply(1:3, function(i) {
+        e <- rep(1, 3)
+        e[i] <- exp(1e-3)
+        (psi_j(cov_pars_j * e, approx) - psi_j(cov_pars_j / e, approx)) / (2e-3 * cov_pars_j[i])
+      })
+      psi_inv <- solve(psi_j(cov_pars_j, approx))
+      FI <- matrix(0, 3, 3)
+      for (i in 1:3) for (k in 1:3) FI[i, k] <- 0.5 * sum(diag(psi_inv %*% grads[[i]] %*% psi_inv %*% grads[[k]]))
+      fit_j <- function(y_fit, estimate_cov_par_index) {
+        capture.output( gp_model <- GPModel(gp_coords = coords_j, cov_function = "matern", cov_fct_shape = 1.5, gp_approx = approx,
+                                            num_ind_points = 1, ind_points_selection = "kmeans++", cov_fct_taper_range = taper_range_j,
+                                            cov_fct_taper_shape = 0, matrix_inversion_method = "cholesky"), file='NUL')
+        capture.output( gp_model$fit(y = y_fit, params = list(optimizer_cov = "gradient_descent", lr_cov = 1e-30, use_nesterov_acc = FALSE,
+                                                             maxit = 1, init_cov_pars = cov_pars_j, num_rand_vec_trace = 5000,
+                                                             estimate_cov_par_index = estimate_cov_par_index)), file='NUL')
+        gp_model$get_cov_pars(std_err = TRUE)
+      }
+      # The error variance is profiled out when it is estimated together with the marginal variance. The data are scaled such that
+      #   the profiled error variance is the one of 'cov_pars_j'
+      y_scaled <- y_j / sqrt(fit_j(y_j, c(1, 1, 1))[1, 1])
+      for (ind in list(1, c(1, 2), c(1, 3), 1:3)) {
+        cov_pars <- fit_j(y_scaled, as.numeric(1:3 %in% ind))
+        expect_lt(max(abs(cov_pars[1, ] / cov_pars_j - 1)), 1e-6)
+        # the inverse of the Fisher information is calculated with a scaling, the variance parameters differ by 9 orders of magnitude
+        S <- diag(1 / sqrt(diag(FI[ind, ind, drop = FALSE])), nrow = length(ind))
+        std_err_exp <- sqrt(diag(S %*% solve(S %*% FI[ind, ind, drop = FALSE] %*% S) %*% S))
+        # the Fisher information is calculated with stochastic trace estimation
+        expect_lt(max(abs(cov_pars[2, ind] / std_err_exp - 1)), 0.1)
+      }
+    }
+  })
+
+  test_that("Standard error of the Hurst parameter for FITC and an error variance other than one ", {
+
+    # On the original scale, the derivative of the diagonal of the 'fitc' covariance matrix wrt parameters other than the marginal
+    #   variance was calculated for an error variance of one: the standard error of the Hurst parameter was 0.0079 instead of 0.286
+    n_j <- 20
+    coords_j <- matrix(seq(0.1, 3, length.out = n_j), ncol = 1)
+    y_j <- sin(1.7 * (0:(n_j - 1)))
+    std_err_H <- sapply(c("none", "fitc"), function(approx) {
+      capture.output( gp_model <- GPModel(gp_coords = coords_j, cov_function = "hurst", gp_approx = approx, num_ind_points = n_j,
+                                          ind_points_selection = "random"), file='NUL')
+      capture.output( gp_model$fit(y = y_j, params = list(optimizer_cov = "gradient_descent", lr_cov = 1e-30, use_nesterov_acc = FALSE,
+                                                         maxit = 1, init_cov_pars = c(0.25, 1, 0.7), estimate_cov_par_index = c(0, 0, 1),
+                                                         num_rand_vec_trace = 5000)), file='NUL')
+      gp_model$get_cov_pars(std_err = TRUE)[2, 3]
+    })
+    # 'fitc' with all points as inducing points is exact, its Fisher information is calculated with stochastic trace estimation
+    expect_lt(abs(std_err_H[["fitc"]] / std_err_H[["none"]] - 1), 0.05)
+  })
+
 }

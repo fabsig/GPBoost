@@ -12361,7 +12361,7 @@ namespace GPBoost {
 								- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * sigma_inv_rand_vec);
 						}
 						else if (gp_approx_ == "fitc") {
-							den_mat_t sigma_ip_stable_grad_nugget = *(GetForCluster(re_comps_ip_, cluster_i, 0)[j]->GetZSigmaZtGrad(jpar, transf_scale, 1.));
+							den_mat_t sigma_ip_stable_grad_nugget = *(GetForCluster(re_comps_ip_, cluster_i, 0)[j]->GetZSigmaZtGrad(jpar, transf_scale, cov_pars[0]));
 							vec_t FITC_Diag_grad = vec_t::Zero(num_data_per_cluster_[cluster_i]);
 							if (GetForCluster(re_comps_cross_cov_, cluster_i, 0)[0]->VarianceOnDiagonal()) {
 								FITC_Diag_grad.array() += sigma_ip_stable_grad_nugget.coeffRef(0, 0);
@@ -12370,7 +12370,7 @@ namespace GPBoost {
 								CHECK(num_data_per_cluster_[cluster_i] == GetForCluster(re_comps_cross_cov_, cluster_i, 0)[j]->GetNumUniqueREs());
 #pragma omp parallel for schedule(static)
 								for (int ii = 0; ii < GetForCluster(re_comps_cross_cov_, cluster_i, 0)[j]->GetNumUniqueREs(); ++ii) {
-									FITC_Diag_grad[ii] += GetForCluster(re_comps_cross_cov_, cluster_i, 0)[j]->GetZSigmaZtGradDiagonal_ii(ii, jpar, transf_scale, 1.);//uses coords of all data points to calculate Sigma[ii,ii]
+									FITC_Diag_grad[ii] += GetForCluster(re_comps_cross_cov_, cluster_i, 0)[j]->GetZSigmaZtGradDiagonal_ii(ii, jpar, transf_scale, cov_pars[0]);//uses coords of all data points to calculate Sigma[ii,ii]
 								}
 							}
 #pragma omp parallel for schedule(static)
@@ -12409,6 +12409,68 @@ namespace GPBoost {
 								- sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_grad_inv_sigma_cross_cov * sigma_inv_rand_vec);
 						}
 						deriv_par_nb += 1;
+					}
+					// On the original scale, the jitter of the inducing point matrix depends on the error variance if it is larger than the
+					//	constant jitter, since it grows with the ratio of the marginal variances and the error variance, see 'JitterMultInducingPoints()'.
+					//	The derivative of the covariance matrix wrt the error variance is then R - (jitter_mult - 1) * dPsi / d(jitter_mult),
+					//	where R = diag(1 / weights) is the derivative for a constant jitter
+					if (include_error_var && !transf_scale) {
+						const den_mat_t sigma_ip = *(GetForCluster(re_comps_ip_, cluster_i, 0)[j]->GetZSigmaZt());
+						const double jitter_mult = JitterMultInducingPoints(sigma_ip, gauss_likelihood_);
+						if (jitter_mult > JITTER_MULT_IP_FITC_FSA) {
+							// dPsi / d(jitter_mult) = -A^T diag(Sigma_m) A + derivative of the residual process, with A = Sigma_m^-1 Sigma_mn
+							const vec_t sigma_ip_diag = sigma_ip.diagonal();
+							vec_t fitc_diag_jitter_grad;
+							T_mat resid_jitter_grad;
+							if (gp_approx_ == "fitc") {
+								fitc_diag_jitter_grad = (sigma_ip_inv_sigma_cross_cov.array().square().colwise() * sigma_ip_diag.array()).colwise().sum().transpose();
+							}
+							else {
+								resid_jitter_grad = *(GetForCluster(re_comps_resid_, cluster_i, 0)[j]->GetZSigmaZt());
+								resid_jitter_grad *= 0.;
+								den_mat_t sigma_ip_diag_A = sigma_ip_diag.asDiagonal() * sigma_ip_inv_sigma_cross_cov;
+								SubtractProdFromMat<T_mat>(resid_jitter_grad, -sigma_ip_inv_sigma_cross_cov, sigma_ip_diag_A, false);
+								GetForCluster(re_comps_resid_, cluster_i, 0)[j]->ApplyTaper(*(GetForCluster(re_comps_resid_, cluster_i, 0)[j]->dist_), resid_jitter_grad);
+							}
+							auto jitter_grad_times = [&](const den_mat_t& rhs) -> den_mat_t {
+								den_mat_t res = -(sigma_ip_inv_sigma_cross_cov.transpose() * (sigma_ip_diag.asDiagonal() * (sigma_ip_inv_sigma_cross_cov * rhs)));
+								if (gp_approx_ == "fitc") {
+									res += fitc_diag_jitter_grad.asDiagonal() * rhs;
+								}
+								else {
+									res += resid_jitter_grad * rhs;
+								}
+								return res;
+							};
+							auto psi_inv_times = [&](const den_mat_t& rhs) -> den_mat_t {
+								den_mat_t res;
+								if (gp_approx_ == "fitc") {
+									den_mat_t D_inv_rhs = fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * rhs;
+									den_mat_t D_inv_cross_cov = fitc_resid_diag_[cluster_i].cwiseInverse().asDiagonal() * (*cross_cov);
+									res = D_inv_rhs - D_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * D_inv_rhs));
+								}
+								else if (matrix_inversion_method_ == "cholesky") {
+									den_mat_t resid_inv_rhs = chol_fact_resid_[cluster_i].solve(rhs);
+									res = resid_inv_rhs - Sigma_inv_cross_cov * (chol_fact_sigma_woodbury_[cluster_i].solve((*cross_cov).transpose() * resid_inv_rhs));
+								}
+								else {
+									res.resize(rhs.rows(), rhs.cols());
+									const den_mat_t* cross_cov_cg = (cg_preconditioner_type_ == "fitc") ?
+										GetForCluster(re_comps_cross_cov_preconditioner_, cluster_i, 0)[0]->GetSigmaPtr() : cross_cov;
+									CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov_cg, GetForCluster(chol_ip_cross_cov_, cluster_i, 0), rhs, res, NaN_found,
+										num_data_per_cluster_[cluster_i], num_rand_vec_trace_, cg_max_num_it_tridiag_, cg_delta_conv_, cg_preconditioner_type_,
+										chol_fact_woodbury_preconditioner_[cluster_i], diagonal_approx_inv_preconditioner_[cluster_i],
+										cg_convergence_params_);
+									if (NaN_found) {
+										Log::REFatal("CalcFisherInformation_FITC_FSA: Nan or Inf value generated in the conjugate gradient method ");
+									}
+								}
+								return res;
+							};
+							// the terms of the error variance below are (dPsi / d(error var)) Psi^-1 z and Psi^-1 (dPsi / d(error var)) z
+							sigma_inv_rand_vec_nugget -= (jitter_mult - 1.) * jitter_grad_times(psi_inv_times(rand_vec_fisher_info_[cluster_i]));
+							sigma_inv_R_rand_vec_nugget -= (jitter_mult - 1.) * psi_inv_times(jitter_grad_times(rand_vec_fisher_info_[cluster_i]));
+						}
 					}
 				}
 				if (include_error_var) {
