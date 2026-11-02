@@ -372,4 +372,45 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(max(abs(std_err[, "iterative"] / std_err[, "cholesky"] - 1)), 0.05)
   })
 
+  test_that("Predictive variances of full-scale tapering for covariance functions with a location-dependent variance ", {
+
+    # With 'iterative' and with the variances 'pred_var_exact' for 'cholesky', the prior variance at the prediction points was the
+    #   variance parameter instead of k(x, x): the latent predictive variances were, e.g., -22.19 instead of 1.81 for the linear
+    #   kernel at (3, 4) and -2.69 instead of 3.28 for the Hurst kernel at 4
+    n_j <- 12
+    taper_range_j <- 0.3
+    cross_dist <- function(A, B) sqrt(pmax(outer(rowSums(A^2), rowSums(B^2), "+") - 2 * A %*% t(B), 0))
+    cases <- list(
+      linear = list(coords = cbind(seq(0.05, 0.95, length.out = n_j), (sin(1:n_j) + 1) / 2), coords_pred = rbind(c(3, 4), c(0.5, 0.5)),
+                    cov_pars = c(0.25, 1), kern = function(A, B) A %*% t(B), taper_mu = 2),
+      hurst = list(coords = matrix(seq(0.1, 3, length.out = n_j)), coords_pred = matrix(c(4, 2.05)), cov_pars = c(0.25, 1, 0.7),
+                   kern = function(A, B) 0.5 * (outer(rowSums(A^2)^0.7, rowSums(B^2)^0.7, "+") - cross_dist(A, B)^1.4), taper_mu = 1.5)
+    )
+    for (cov_function in names(cases)) {
+      cs <- cases[[cov_function]]
+      y_j <- sin(2 * (1:n_j)) + cs$coords[, 1]
+      # latent predictive variances of the approximation with one inducing point ('kmeans++' gives the mean of the coordinates),
+      #   a Wendland taper of shape 0, and the jitter of the inducing point matrix
+      taper <- function(d) ifelse(d < taper_range_j, (1 - d / taper_range_j)^cs$taper_mu, 0)
+      ind_point <- matrix(colMeans(cs$coords), nrow = 1)
+      sigma_ip <- cs$kern(ind_point, ind_point) * (1 + 1e-6)
+      cross_cov <- cs$kern(cs$coords, ind_point)
+      Q <- cross_cov %*% solve(sigma_ip, t(cross_cov))
+      psi <- Q + (cs$kern(cs$coords, cs$coords) - Q) * taper(cross_dist(cs$coords, cs$coords)) + diag(cs$cov_pars[1], n_j)
+      Q_pred <- cs$kern(cs$coords_pred, ind_point) %*% solve(sigma_ip, t(cross_cov))
+      cov_pred_obs <- Q_pred + (cs$kern(cs$coords_pred, cs$coords) - Q_pred) * taper(cross_dist(cs$coords_pred, cs$coords))
+      var_exp <- diag(cs$kern(cs$coords_pred, cs$coords_pred)) - rowSums((cov_pred_obs %*% solve(psi)) * cov_pred_obs)
+      for (variant in c("iterative", "pred_var_exact", "pred_var_exact_stable")) {
+        capture.output( gp_model <- GPModel(gp_coords = cs$coords, cov_function = cov_function,
+                                            gp_approx = if (variant == "iterative") "full_scale_tapering" else paste0("full_scale_tapering_", variant),
+                                            num_ind_points = 1, ind_points_selection = "kmeans++", cov_fct_taper_range = taper_range_j,
+                                            cov_fct_taper_shape = 0, matrix_inversion_method = if (variant == "iterative") "iterative" else "cholesky"),
+                        file='NUL')
+        if (variant == "iterative") gp_model$set_prediction_data(cg_delta_conv_pred = 1e-10)
+        pred <- predict(gp_model, y = y_j, gp_coords_pred = cs$coords_pred, cov_pars = cs$cov_pars, predict_var = TRUE, predict_response = FALSE)
+        expect_lt(max(abs(pred$var - var_exp)), 1e-5)
+      }
+    }
+  })
+
 }

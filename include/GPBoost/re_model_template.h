@@ -14245,7 +14245,16 @@ namespace GPBoost {
 				// Add unconditional variances
 				if (calc_pred_var) {
 					if (gp_approx_ == "full_scale_tapering" && (!gauss_likelihood_ || (matrix_inversion_method_ == "iterative" || calc_pred_cov_var_FSA_cholesky_ == "exact"))) {
-						re_comp_cross_cov_cluster_i_pred_ip->AddPredUncondVar(pred_var.data(), num_REs_pred, nullptr);
+						if (re_comp_cross_cov_cluster_i_pred_ip->VarianceOnDiagonal()) {
+							re_comp_cross_cov_cluster_i_pred_ip->AddPredUncondVar(pred_var.data(), num_REs_pred, nullptr);
+						}
+						else {// the variance depends on the location, e.g., for the 'linear' and 'hurst' covariance functions
+#pragma omp parallel for schedule(static)
+							for (int ii = 0; ii < num_REs_pred; ++ii) {
+								vec_t coord_pred_i = gp_coords_mat_pred.row(ii);
+								pred_var[ii] += re_comp_cross_cov_cluster_i_pred_ip->CalculateCovarianceOneEntry(coord_pred_i, coord_pred_i);
+							}
+						}
 					}
 					else {
 						CHECK(calc_diag_resid_var_pred);
