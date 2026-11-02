@@ -417,31 +417,26 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     ## GPBoost algorithm
     dtrain <- gpb.Dataset(data = X, label = y)
     gp_model <- GPModel(group_data = group, likelihood = likelihood, matrix_inversion_method = "cholesky")
-    # Note: with the default convergence tolerance, the covariance parameter estimated here depends on the order in
-    #   which floating point numbers are summed, i.e. on the number of OpenMP threads. A tighter tolerance makes the
-    #   result essentially thread-independent, but not bit-identical: deviations of up to about 0.01 have been
-    #   observed for the covariance parameter and the predicted means below, which the tolerances have to accommodate
-    gp_model$set_optim_params(params=modifyList(OPTIM_PARAMS_BFGS, list(delta_rel_conv = 1e-10)))
+    # Note: the auxiliary parameters are fixed at the estimates of the linear model above. With this sample size, the
+    #   likelihood has several optima in the precision parameter and 'u' (e.g., along a ridge on which both increase),
+    #   and when they are estimated in every boosting iteration, the result depends on the order in which floating
+    #   point numbers are summed, i.e. on the number of OpenMP threads and the compiler: the boosting can then end at a
+    #   degenerate solution (precision parameter of about 1, 'u' of about 0, and a negative log-likelihood of several
+    #   hundreds instead of -50). With fixed auxiliary parameters, the covariance parameter and the predictions vary by
+    #   at most 0.003 across numbers of threads and compilers
+    gp_model$set_optim_params(params=modifyList(OPTIM_PARAMS_BFGS, list(delta_rel_conv = 1e-10, estimate_aux_pars = FALSE,
+                                                                     init_aux_pars = c(22.879799528, 0.168605624))))
     bst <- gpboost(data = dtrain, gp_model = gp_model,
                    nrounds = 30, learning_rate = 0.1, max_depth = 6,
                    min_data_in_leaf = 5, verbose = 0, deterministic = TRUE)
-    # The predicted values are only compared with the expected values on the reference platform: they react
-    #   much more sensitively to the summation order than the estimate itself
-    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE) - 0.0972135292)), relax_tolerance(0.05, 0.0972135292))
+    expect_lt(sum(abs(gp_model$get_cov_pars(std_err = FALSE) - 0.2832633578)), relax_tolerance(0.01, 0.2832633578))
     # Prediction
     pred <- predict(bst, data = X_test, group_data_pred = group_test,
                     predict_var = TRUE, pred_latent = FALSE)
-    if (USE_STRICT_TOLERANCES) {
-      expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.3781333136, 0.3284435388, 0.1879960730, 0.7152683344))),0.05)
-      expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.015931476492, 0.015692558118, 0.013436139072, 0.033427809073))), 0.05)
-    } else {
-      # Note: the response is censored at 0 and 1, so a predicted variance can be 0
-      expect_true(all(is.finite(pred$response_mean)) &&
-                    all(pred$response_mean >= 0) && all(pred$response_mean <= 1),
-                  info = paste(pred$response_mean, collapse = ", "))
-      expect_true(all(is.finite(pred$response_var)) && all(pred$response_var >= 0),
-                  info = paste(pred$response_var, collapse = ", "))
-    }
+    expected_mu <- c(0.3891767366, 0.3069166465, 0.2153102669, 0.7187042510)
+    expected_var <- c(0.019925485611, 0.018753088024, 0.016158471444, 0.036424639488)
+    expect_lt(sum(abs(tail(pred$response_mean, n=4)-expected_mu)), relax_tolerance(0.01, expected_mu))
+    expect_lt(sum(abs(tail(pred$response_var, n=4)-expected_var)), relax_tolerance(0.002, expected_var))
 
     # cv function
     dtrain <- gpb.Dataset(data = X, label = y)
