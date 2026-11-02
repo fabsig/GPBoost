@@ -12331,6 +12331,7 @@ namespace GPBoost {
 								}
 								if (has_weights_ && include_error_var && !transf_scale) {
 									den_mat_t R_rand_vec = weights_[cluster_i].cwiseInverse().asDiagonal() * rand_vec_fisher_info_[cluster_i];
+									sigma_inv_R_rand_vec_nugget.resize(num_data_per_cluster_[cluster_i], num_rand_vec_trace_);
 									if (cg_preconditioner_type_ == "fitc") {
 										const den_mat_t* cross_cov_preconditioner = GetForCluster(re_comps_cross_cov_preconditioner_, cluster_i, 0)[0]->GetSigmaPtr();
 										CGFSA_MULTI_RHS<T_mat>(*sigma_resid, *cross_cov_preconditioner, GetForCluster(chol_ip_cross_cov_, cluster_i, 0), R_rand_vec, sigma_inv_R_rand_vec_nugget, NaN_found,

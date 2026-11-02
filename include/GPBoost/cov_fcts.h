@@ -911,11 +911,13 @@ namespace GPBoost {
 				}// end !is_symmmetric
 			}//end cov_calculated_based_on_coords_
 			else if (cov_fct_type_ == "linear") {
-				if (is_symmmetric) {
-					sigma = (pars[0] * (coords * coords.transpose())).sparseView();
-				}
-				else {
-					sigma = (pars[0] * (coords_pred * coords.transpose())).sparseView();
+				// covariances only for the entries in the sparsity pattern of 'dist' (e.g., the pairs within the taper range)
+				const den_mat_t& coords_rows = is_symmmetric ? coords : coords_pred;
+#pragma omp parallel for schedule(static)
+				for (int k = 0; k < sigma.outerSize(); ++k) {
+					for (typename T_mat::InnerIterator it(sigma, k); it; ++it) {
+						it.valueRef() = pars[0] * coords_rows.row(it.row()).dot(coords.row(it.col()));
+					}
 				}
 			}//end linear
 			else {// cov_fct_type_ != "wendland"

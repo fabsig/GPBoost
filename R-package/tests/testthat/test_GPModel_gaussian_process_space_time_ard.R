@@ -491,15 +491,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       coef_nn <- c(1.916564551, 0.1410972384, 2.213749012, 0.1364557449)
       nrounds_nn <- 41
       nll_opt_nn <- 137.073364114858
-      capture.output( expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_nn)),0.04), file='NUL')
+      # The two spatial ranges are weakly identified, and the estimates depend on the number of threads. Measured on Linux with
+      #   1, 2, 3, 4, 8 and 16 threads: deviations of the covariance parameters 0.0057 to 0.130 (0.041 on a CI runner), of the
+      #   negative log-likelihood up to 5.8e-6, and of the predictive means up to 8.5e-6
+      capture.output( expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_nn)),0.3), file='NUL')
       capture.output( expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_nn)),0.001), file='NUL')
       expect_equal(gp_model$get_num_optim_iter(), nrounds_nn)
-      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), TOLERANCE_STRICT)
+      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_nn), 3e-5)
       # Prediction 
       pred <- predict(gp_model, gp_coords_pred = coord_test,
                       X_pred = X_test, cov_pars = cov_pars_nll_gneiting)
       expected_mu <- c(1.9165646, 1.7514143, 2.3897651)
-      expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(pred$mu-expected_mu)), 3e-5)
     }
   })
   

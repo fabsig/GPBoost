@@ -322,4 +322,54 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }# end loop over i (matrix_inversion_method)
   })# end FSA
   
+  test_that("Linear covariance function with full-scale tapering ", {
+
+    # The tapered residual process of the linear kernel contained all pairs of points instead of only those within the taper
+    #   range, and the taper was one for the pairs outside. The negative log-likelihood was NaN for 'cholesky' and 16.09 instead
+    #   of 16.63 for 'iterative'
+    n_j <- 12
+    coords_j <- cbind(seq(0.05, 0.95, length.out = n_j), (sin(1:n_j) + 1) / 2)
+    y_j <- sin(2 * (1:n_j)) + coords_j[, 1]
+    cov_pars_j <- c(0.25, 1)
+    taper_range_j <- 0.3
+    ind_point_j <- colMeans(coords_j)# 'kmeans++' with one inducing point gives the mean of the coordinates
+    dist_j <- as.matrix(dist(coords_j))
+    taper_j <- ifelse(dist_j < taper_range_j, (1 - dist_j / taper_range_j)^2, 0)# Wendland, shape 0, mu = 2 in 2-d
+    K <- cov_pars_j[2] * coords_j %*% t(coords_j)
+    k <- cov_pars_j[2] * coords_j %*% ind_point_j
+    Q <- k %*% t(k) / (cov_pars_j[2] * sum(ind_point_j^2) * (1 + 1e-6))# with the jitter of the inducing point matrix
+    psi <- Q + (K - Q) * taper_j + diag(cov_pars_j[1], n_j)
+    nll_exp <- 0.5 * (determinant(psi)$modulus[1] + sum(y_j * solve(psi, y_j)) + n_j * log(2 * pi))
+    for (matrix_inversion_method in c("cholesky", "iterative")) {
+      capture.output( gp_model <- GPModel(gp_coords = coords_j, cov_function = "linear", gp_approx = "full_scale_tapering", num_ind_points = 1,
+                                          ind_points_selection = "kmeans++", cov_fct_taper_range = taper_range_j, cov_fct_taper_shape = 0,
+                                          matrix_inversion_method = matrix_inversion_method), file='NUL')
+      nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_j, y = y_j)
+      # 'iterative' approximates the log-determinant stochastically
+      expect_lt(abs(nll - nll_exp), if (matrix_inversion_method == "cholesky") 1e-6 else TOLERANCE_ITERATIVE)
+    }
+  })
+
+  test_that("Standard errors with weights for full-scale tapering and iterative methods ", {
+
+    # The conjugate gradient method for the weights did not get a matrix of the right size for its solution, and the standard
+    #   errors were NaN for 'iterative'
+    n_j <- 100
+    coords_j <- cbind(((1:n_j) * 0.6180339887) %% 1, ((1:n_j) * 0.7548776662) %% 1)
+    y_j <- sin(5 * coords_j[, 1]) + cos(3 * coords_j[, 2]) + 0.3 * sin(17 * (1:n_j))
+    weights_j <- 0.5 + ((1:n_j) %% 3) / 2
+    std_err <- sapply(c("cholesky", "iterative"), function(matrix_inversion_method) {
+      capture.output( gp_model <- GPModel(gp_coords = coords_j, cov_function = "exponential", gp_approx = "full_scale_tapering", num_ind_points = 10,
+                                          ind_points_selection = "kmeans++", cov_fct_taper_range = 0.3, cov_fct_taper_shape = 0, weights = weights_j,
+                                          matrix_inversion_method = matrix_inversion_method), file='NUL')
+      capture.output( gp_model$fit(y = y_j, params = list(optimizer_cov = "gradient_descent", lr_cov = 1e-30, use_nesterov_acc = FALSE,
+                                                         maxit = 1, init_cov_pars = c(0.1, 1, 0.2), estimate_cov_par_index = c(1, 0, 1),
+                                                         num_rand_vec_trace = 1000)), file='NUL')
+      gp_model$get_cov_pars(std_err = TRUE)[2, c(1, 3)]
+    })
+    expect_true(all(is.finite(std_err)))
+    # the Fisher information is calculated with stochastic trace estimation and, for 'iterative', with conjugate gradients
+    expect_lt(max(abs(std_err[, "iterative"] / std_err[, "cholesky"] - 1)), 0.05)
+  })
+
 }
