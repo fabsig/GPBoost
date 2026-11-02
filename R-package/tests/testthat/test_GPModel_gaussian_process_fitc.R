@@ -467,33 +467,54 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   test_that("Jitter of the inducing point matrix in the gradient and the predictions ", {
 
     # For a marginal variance that is very large relative to the error variance, the jitter of the inducing point matrix
-    #   depends on the parameters. The gradient did not contain the derivative of the jitter and had the wrong sign for
-    #   'fitc', and the 'fitc' marginal variances contained the jitter in the estimation but not in the predictions, so that
-    #   latent predictive variances at the training locations were up to 18 422, although they cannot exceed the error variance 1
+    #   depends on the parameters. The gradient did not contain the derivative of the jitter: its relative error was 1 for
+    #   'fitc' with the Matern kernel (wrong sign), 0.94 for the linear kernel, 1.3e-2 for the Hurst kernel, 4.7e-4 for
+    #   'full_scale_vecchia' with the Matern kernel, and 1 for 'full_scale_vecchia' with the linear kernel (1.6 instead of 76 296).
+    #   For stationary kernels, the 'fitc' marginal variances contained the jitter in the estimation but not in the predictions,
+    #   so that latent predictive variances at the training locations were up to 18 422, although they cannot exceed the error variance 1
     n_j <- 20
-    coords_j <- matrix(seq(0, 1, length.out = n_j), ncol = 1)
     y_j <- 400 * sin(1.7 * (0:(n_j - 1)))
-    var_j <- 1e9
-    for (approx in c("fitc", "full_scale_vecchia")) {
+    coords_1d <- matrix(seq(0, 1, length.out = n_j), ncol = 1)
+    coords_hurst <- matrix(seq(0.1, 3, length.out = n_j), ncol = 1)
+    coords_lin <- cbind(seq(0.2, 2, length.out = n_j), cos(1:n_j) + 1.5)
+    cases <- list(
+      list(args = list(gp_coords = coords_1d, cov_function = "matern", cov_fct_shape = 1.5, gp_approx = "fitc", num_ind_points = 1),
+           cov_pars = c(1, 1e9, 100)),
+      list(args = list(gp_coords = coords_1d, cov_function = "matern", cov_fct_shape = 1.5, gp_approx = "full_scale_vecchia", num_ind_points = 2),
+           cov_pars = c(1, 1e9, 100)),
+      # three inducing points for a linear kernel of rank two: the inducing point matrix is singular without the jitter
+      list(args = list(gp_coords = coords_lin, cov_function = "linear", gp_approx = "fitc", num_ind_points = 3),
+           cov_pars = c(1, 1e9)),
+      list(args = list(gp_coords = coords_hurst, cov_function = "hurst", gp_approx = "fitc", num_ind_points = 3),
+           cov_pars = c(1, 1e9, 0.7)),
+      list(args = list(gp_coords = coords_lin, cov_function = "linear", gp_approx = "full_scale_vecchia", num_ind_points = 2),
+           cov_pars = c(1, 1e7))
+    )
+    for (cs in cases) {
       new_model <- function() {
-        GPModel(gp_coords = coords_j, cov_function = "matern", cov_fct_shape = 1.5, gp_approx = approx,
-                num_ind_points = if (approx == "fitc") 1 else 2, num_neighbors = 3, vecchia_ordering = "none",
-                ind_points_selection = "random")
+        # 'capture.output': the 'hurst' covariance informs about its anchor
+        capture.output( gp_model_j <- do.call(GPModel, c(cs$args, list(num_neighbors = 3, vecchia_ordering = "none",
+                                                                       ind_points_selection = "random"))), file='NUL')
+        gp_model_j
       }
-      nll_j <- function(v) new_model()$neg_log_likelihood(cov_pars = c(1, v, 100), y = y_j)
-      h <- 1e-2# a smaller step suffers from rounding errors of the negative log-likelihood for these parameters
-      grad_fd <- (nll_j(var_j * exp(h)) - nll_j(var_j * exp(-h))) / (2 * h)
+      var_j <- cs$cov_pars[2]
+      nll_j <- function(v) new_model()$neg_log_likelihood(cov_pars = replace(cs$cov_pars, 2, v), y = y_j)
+      # central differences with Richardson extrapolation; a smaller step suffers from rounding errors of the negative
+      #   log-likelihood for these parameters
+      fd_j <- function(h) (nll_j(var_j * exp(h)) - nll_j(var_j * exp(-h))) / (2 * h)
+      grad_fd <- (4 * fd_j(5e-3) - fd_j(1e-2)) / 3
       # one gradient descent step with a small learning rate gives the gradient wrt the logarithm of the marginal variance
       lr <- 1e-8
       gp_model <- new_model()
       capture.output( gp_model$fit(y = y_j, params = list(optimizer_cov = "gradient_descent", lr_cov = lr, use_nesterov_acc = FALSE,
-                                                         maxit = 1, init_cov_pars = c(1, var_j, 100),
-                                                         estimate_cov_par_index = c(0, 1, 0))), file='NUL')
+                                                         maxit = 1, init_cov_pars = cs$cov_pars,
+                                                         estimate_cov_par_index = as.numeric(seq_along(cs$cov_pars) == 2))), file='NUL')
       grad <- (log(var_j) - log(as.vector(gp_model$get_cov_pars())[2])) / lr
-      expect_lt(abs(grad / grad_fd - 1), if (approx == "fitc") 1e-3 else 1e-4)# 'full_scale_vecchia': 4.7e-4 without the derivative of the jitter
-      pred <- predict(new_model(), y = y_j, gp_coords_pred = coords_j, cov_pars = c(1, var_j, 100),
+      expect_lt(abs(grad / grad_fd - 1), 1e-4)
+      pred <- predict(new_model(), y = y_j, gp_coords_pred = cs$args$gp_coords, cov_pars = cs$cov_pars,
                       predict_var = TRUE, predict_response = FALSE)
-      expect_lt(max(pred$var), 1 + 1e-8)
+      # the bound holds up to rounding errors of the order of the machine epsilon times the marginal variances (up to 1e10)
+      expect_lt(max(pred$var), 1 + 1e-4)
     }
   })
 
