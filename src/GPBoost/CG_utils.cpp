@@ -1502,17 +1502,15 @@ namespace GPBoost {
 
 	void CalcOptimalC(const vec_t& zt_AI_A_deriv_PI_z,
 		const vec_t& zt_BI_B_deriv_PI_z,
-		const double& tr_AI_A_deriv,
-		const double& tr_BI_B_deriv,
 		double& c_opt) {
 
-		vec_t centered_zt_BI_B_deriv_PI_z = zt_BI_B_deriv_PI_z.array() - tr_BI_B_deriv;
+		vec_t centered_zt_BI_B_deriv_PI_z = zt_BI_B_deriv_PI_z.array() - zt_BI_B_deriv_PI_z.mean();
 		double c_denom = (centered_zt_BI_B_deriv_PI_z.cwiseProduct(centered_zt_BI_B_deriv_PI_z)).mean();
-		if (c_denom == 0) {
+		if (c_denom <= CONTROL_VARIATE_REL_ZERO_VAR * (zt_BI_B_deriv_PI_z.cwiseProduct(zt_BI_B_deriv_PI_z)).mean()) {
 			c_opt = 1;
 		}
 		else {
-			vec_t centered_zt_AI_A_deriv_PI_z = zt_AI_A_deriv_PI_z.array() - tr_AI_A_deriv;
+			vec_t centered_zt_AI_A_deriv_PI_z = zt_AI_A_deriv_PI_z.array() - zt_AI_A_deriv_PI_z.mean();
 			c_opt = (centered_zt_AI_A_deriv_PI_z.cwiseProduct(centered_zt_BI_B_deriv_PI_z)).mean();
 			c_opt /= c_denom;
 		}
@@ -1520,18 +1518,17 @@ namespace GPBoost {
 
 	void CalcOptimalCVectorized(const den_mat_t& Z_AI_A_deriv_PI_Z,
 		const den_mat_t& Z_BI_B_deriv_PI_Z,
-		const vec_t& tr_AI_A_deriv,
-		const vec_t& tr_BI_B_deriv,
 		vec_t& c_opt) {
 
-		den_mat_t centered_Z_AI_A_deriv_PI_Z = Z_AI_A_deriv_PI_Z.colwise() - tr_AI_A_deriv;
-		den_mat_t centered_Z_BI_B_deriv_PI_Z = Z_BI_B_deriv_PI_Z.colwise() - tr_BI_B_deriv;
+		den_mat_t centered_Z_AI_A_deriv_PI_Z = Z_AI_A_deriv_PI_Z.colwise() - Z_AI_A_deriv_PI_Z.rowwise().mean();
+		den_mat_t centered_Z_BI_B_deriv_PI_Z = Z_BI_B_deriv_PI_Z.colwise() - Z_BI_B_deriv_PI_Z.rowwise().mean();
 		vec_t c_cov = (centered_Z_AI_A_deriv_PI_Z.cwiseProduct(centered_Z_BI_B_deriv_PI_Z)).rowwise().mean();
 		vec_t c_var = (centered_Z_BI_B_deriv_PI_Z.cwiseProduct(centered_Z_BI_B_deriv_PI_Z)).rowwise().mean();
+		vec_t mean_square = (Z_BI_B_deriv_PI_Z.cwiseProduct(Z_BI_B_deriv_PI_Z)).rowwise().mean();
 		c_opt = c_cov.array() / c_var.array();
 #pragma omp parallel for schedule(static)   
 		for (int i = 0; i < c_opt.size(); ++i) {
-			if (c_var.coeffRef(i) == 0) {
+			if (c_var.coeffRef(i) <= CONTROL_VARIATE_REL_ZERO_VAR * mean_square[i]) {
 				c_opt[i] = 1;
 			}
 		}

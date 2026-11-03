@@ -1697,7 +1697,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # The coefficients and covariance parameters of this fit are not compared to hard-wired values: the
     # stochastic trace estimates make the point on the flat ridge that is reached build dependent, see the
     # note below. The negative log-likelihood is a robust statistic on this ridge and is checked instead
-    expect_lt(abs(gp_model_fsva_iter$get_current_neg_log_likelihood() - 163.15168709), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(gp_model_fsva_iter$get_current_neg_log_likelihood() - 163.13367715), TOLERANCE_NON_CONVEX)
     nll_fsva_iter_at_exact_ll <- gp_model_fsva_exact_ll$neg_log_likelihood(
       cov_pars = cov_pars_fsva_iter, y = y_het2, fixed_effects = as.vector(cbind(X_het2 %*% coef_fsva_iter[1:2], X_het2 %*% coef_fsva_iter[3:4])))
     # The exact (cholesky) NLL at the iterative solution should be close to the exact NLL at the cholesky solution,
@@ -1715,7 +1715,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     coef_fsva_iter_vifdu <- as.vector(gp_model_fsva_iter_vifdu$get_coef(std_err = FALSE))
     # As for the iterative fit above, only the negative log-likelihood is compared to a hard-wired value,
     # and the solution is additionally checked through the exact (cholesky) negative log-likelihood
-    expect_lt(abs(gp_model_fsva_iter_vifdu$get_current_neg_log_likelihood() - 163.39130273), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(gp_model_fsva_iter_vifdu$get_current_neg_log_likelihood() - 162.97099405), TOLERANCE_NON_CONVEX)
     nll_fsva_vifdu_at_exact_ll <- gp_model_fsva_exact_ll$neg_log_likelihood(
       cov_pars = as.vector(gp_model_fsva_iter_vifdu$get_cov_pars()), y = y_het2,
       fixed_effects = as.vector(cbind(X_het2 %*% coef_fsva_iter_vifdu[1:2], X_het2 %*% coef_fsva_iter_vifdu[3:4])))

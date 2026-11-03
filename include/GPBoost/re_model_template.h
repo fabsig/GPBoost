@@ -2856,7 +2856,7 @@ namespace GPBoost {
 									Tr_P += sigma_woodbury_inv_sigma_woodbury_stable_grad.trace();
 									// Calculate optimal c
 									double c_opt;
-									CalcOptimalC(sample_Sigma, sample_P, stochastic_tr, Tr_P, c_opt);
+									CalcOptimalC(sample_Sigma, sample_P, c_opt);
 									// Reduce variance
 									stochastic_tr += c_opt * (Tr_P - Tr_P_stoch);
 								}
@@ -3067,7 +3067,7 @@ namespace GPBoost {
 							double tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
 							//optimal c
 							double c_opt;
-							CalcOptimalC(zt_SigmaI_plus_ZtZ_inv_SigmaI_deriv_PI_z, zt_PI_P_deriv_PI_z, trace_PsiInvGradPsi, tr_PI_P_deriv, c_opt);
+							CalcOptimalC(zt_SigmaI_plus_ZtZ_inv_SigmaI_deriv_PI_z, zt_PI_P_deriv_PI_z, c_opt);
 							trace_PsiInvGradPsi += c_opt * (tr_D_inv_SigmaI_deriv - tr_PI_P_deriv);
 						}
 						trace_PsiInvGradPsi += cum_num_rand_eff_[cluster_i][j + 1] - cum_num_rand_eff_[cluster_i][j]; //tr(Sigma)^(-1) dSigma/dtheta_j)
@@ -14627,13 +14627,14 @@ namespace GPBoost {
 									c_var /= nsim_var_pred;
 									c_p_z /= nsim_var_pred;
 									c_p /= nsim_var_pred;
+									// Optimal c: the covariance and the variance with both samples centered at their sample means ('c_var' is the second
+									//	moment of the control variate around its known mean 'diag_P'), so that c = 1 if the samples are equal
 									vec_t c_cov = c_p_z - stoch_part_pred_var.cwiseProduct(c_p);
-									// Optimal c
-									vec_t c_opt = c_cov.array() / c_var.array();
-									// Correction if c_opt_i = inf
+									vec_t c_var_centered = c_var - c_p.cwiseProduct(c_p);
+									vec_t c_opt = c_cov.array() / c_var_centered.array();
 #pragma omp parallel for schedule(static)   
 									for (int i = 0; i < c_opt.size(); ++i) {
-										if (c_var.coeffRef(i) == 0) {
+										if (c_var_centered.coeffRef(i) <= CONTROL_VARIATE_REL_ZERO_VAR * c_var.coeffRef(i)) {
 											c_opt[i] = 1;
 										}
 									}

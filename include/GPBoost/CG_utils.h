@@ -817,33 +817,31 @@ namespace GPBoost {
 		const data_size_t num_data,
 		const int t);
 
+	/*! \brief The variance of a control variate is treated as zero, and its optimal coefficient as one, if the variance is at most this
+	*		factor times the mean of the squared samples */
+	const double CONTROL_VARIATE_REL_ZERO_VAR = 1e-10;
+
 	/*!
 	* \brief Calculate c_opt = Cov(z_i^T (A^(-1) dA P^(-1)) z_i, z_i^T (B^(-1) dB P^(-1)) z_i) / Var(z_i^T (B^(-1) dB P^(-1)) z_i) according to StochSim_script_AS20.pdf on p.39.
-	*		 c_opt is used to weight the variance reduction when calculating the gradients.
+	*		 c_opt is used to weight the variance reduction when calculating the gradients. The covariance and the variance are calculated with
+	*		 both quadratic forms centered at their sample means, also if the trace tr(B^(-1) dB) is known, so that c_opt = 1 if the quadratic forms
+	*		 are equal. The known trace is used only in the variance reduction itself, tr(A^(-1) dA) + c_opt * (tr(B^(-1) dB) - mean of the quadratic forms of B)
 	* \param zt_AI_A_deriv_PI_z Vector of dimension t, where each entry is a quadratic form z_i^T (A^(-1) dA P^(-1)) z_i with a random vectors z_1, ..., z_t with Cov(z_i) = P.
 	* \param zt_BI_B_deriv_PI_z Vector of dimension t, where each entry is a quadratic form z_i^T (B^(-1) dB P^(-1)) z_i with a random vectors z_1, ..., z_t with Cov(z_i) = P.
-	* \param tr_AI_A_deriv Stochastic tr(A^(-1) dA) which is equal to the mean of the vector zt_AI_A_deriv_PI_z.
-	* \param tr_BI_B_deriv Stochastic tr(B^(-1) dB) which is equal to the mean of the vector zt_BI_B_deriv_PI_z.
-	* \param c_opt[out] Evaluation of Cov(z_i^T (A^(-1) dA P^(-1)) z_i, z_i^T (B^(-1) dB P^(-1)) z_i) / Var(z_i^T (B^(-1) dB P^(-1)) z_i)
+	* \param c_opt[out] Evaluation of Cov(z_i^T (A^(-1) dA P^(-1)) z_i, z_i^T (B^(-1) dB P^(-1)) z_i) / Var(z_i^T (B^(-1) dB P^(-1)) z_i), 1 if the variance is zero
 	*/
 	void CalcOptimalC(const vec_t& zt_AI_A_deriv_PI_z,
 		const vec_t& zt_BI_B_deriv_PI_z,
-		const double& tr_AI_A_deriv,
-		const double& tr_BI_B_deriv,
 		double& c_opt);
 
 	/*!
 	* \brief Vectorized version of CalcOptimalC where c_opt is calculated for all dA/db_i, respectively dB/db_i, with i in 1, ..., n.
 	* \param Z_AI_A_deriv_PI_Z Matrix of dimension nxt, where each entry is a quadratic form z_i^T (A^(-1) dA/db_i P^(-1)) z_i, where z_i changes columnwise and dA/db_i changes rowwise.
 	* \param Z_BI_B_deriv_PI_Z Matrix of dimension nxt, where each entry is a quadratic form z_i^T (B^(-1) dB/db_i P^(-1)) z_i, where z_i changes columnwise and dB/db_i changes rowwise.
-	* \param tr_AI_A_deriv Vector of dimension n, where the ith entry contains tr(A^(-1) dA/db_i) (=mean of the row i of the matrix Z_AI_A_deriv_PI_Z).
-	* \param tr_BI_B_deriv Vector of dimension n, where the ith entry contains tr(B^(-1) dB/db_i) (=mean of the row i of the matrix Z_BI_B_deriv_PI_Z).
 	* \param c_opt[out] Vector of dimension n, that contains the rowwise evaluation of c_opt.
 	*/
 	void CalcOptimalCVectorized(const den_mat_t& Z_AI_A_deriv_PI_Z,
 		const den_mat_t& Z_BI_B_deriv_PI_Z,
-		const vec_t& tr_AI_A_deriv,
-		const vec_t& tr_BI_B_deriv,
 		vec_t& c_opt);
 
 	/*!

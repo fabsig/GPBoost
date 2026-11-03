@@ -433,4 +433,46 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(max(abs(pred_var[, "iterative"] - pred_var[, "cholesky"])), 1e-4)
   })
 
+  test_that("Control variates of full-scale tapering with iterative methods and an exact preconditioner ", {
+
+    # With a taper range below all distances, the residual process is diagonal, and the FITC preconditioner equals the covariance
+    #   matrix. The stochastic estimates and their control variates are then equal, and the optimal coefficient of the control
+    #   variates is one, which removes the simulation error. The variance of the control variates was centered at their known mean
+    #   and the covariance at the sample means: the latent predictive variance at a training location requested twice in one
+    #   prediction was 63 820 instead of 0.25, and the gradients deviated from those with 'cholesky' by up to 0.9%
+    n_j <- 12
+    coords_j <- matrix(seq(0.1, 3, length.out = n_j))
+    y_j <- sin(1.7 * (0:(n_j - 1)))
+    new_model <- function(gp_approx, matrix_inversion_method) {
+      capture.output( gp_model <- GPModel(gp_coords = coords_j, cov_function = "matern", cov_fct_shape = 1.5, num_ind_points = 1,
+                                          gp_approx = gp_approx, ind_points_selection = "kmeans++", cov_fct_taper_range = 0.01,
+                                          cov_fct_taper_shape = 0, matrix_inversion_method = matrix_inversion_method), file='NUL')
+      gp_model
+    }
+    # Predictive variances
+    cov_pars_pred <- c(0.25, 2.5e8, 0.7)
+    gp_model <- new_model("full_scale_tapering_pred_var_exact_stable", "cholesky")
+    var_exp <- predict(gp_model, y = y_j, gp_coords_pred = coords_j, cov_pars = cov_pars_pred, predict_var = TRUE, predict_response = FALSE)$var
+    for (ind_pred in list(3, c(3, 3), 1:n_j)) {
+      gp_model <- new_model("full_scale_tapering", "iterative")
+      pred <- predict(gp_model, y = y_j, gp_coords_pred = coords_j[ind_pred, , drop = FALSE], cov_pars = cov_pars_pred,
+                      predict_var = TRUE, predict_response = FALSE)
+      expect_lt(max(abs(pred$var - var_exp[ind_pred])), 1e-5)
+    }
+    # Gradients of the negative log-likelihood wrt the logarithms of the marginal variance and the range: one gradient descent
+    #   step with a small learning rate
+    cov_pars_j <- c(0.25, 1, 0.7)
+    for (k in 2:3) {
+      grad <- sapply(c("iterative", "cholesky"), function(matrix_inversion_method) {
+        gp_model <- new_model("full_scale_tapering", matrix_inversion_method)
+        lr <- 1e-6
+        capture.output( gp_model$fit(y = y_j, params = list(optimizer_cov = "gradient_descent", lr_cov = lr, use_nesterov_acc = FALSE,
+                                                           maxit = 1, init_cov_pars = cov_pars_j, cg_delta_conv = 1e-10,
+                                                           estimate_cov_par_index = as.numeric(1:3 == k))), file='NUL')
+        (log(cov_pars_j[k]) - log(as.vector(gp_model$get_cov_pars())[k])) / lr
+      })
+      expect_lt(abs(grad[["iterative"]] / grad[["cholesky"]] - 1), 1e-6)
+    }
+  })
+
 }
