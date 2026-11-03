@@ -787,13 +787,14 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Set whether a warning is written when the parameter estimation has not converged. This is
-		*		disabled for auxiliary models that are estimated internally to obtain initial values, since
-		*		their convergence status does not say anything about the model of the user
-		* \param report_convergence_warnings If true, a warning is written when the estimation has not converged
+		* \brief Set whether warnings about the estimation (e.g., on its convergence or on a missing intercept) are written.
+		*		This is disabled for auxiliary models that are estimated internally to obtain initial values, since their
+		*		convergence status does not say anything about the model of the user, and since the warnings on their
+		*		data repeat those of the model of the user
+		* \param report_warnings If true, warnings about the estimation are written
 		*/
-		void SetReportConvergenceWarnings(bool report_convergence_warnings) {
-			report_convergence_warnings_ = report_convergence_warnings;
+		void SetReportWarnings(bool report_warnings) {
+			report_warnings_ = report_warnings;
 		}
 
 		/*!
@@ -1552,19 +1553,20 @@ namespace GPBoost {
 					C_mu_C_sigma2_have_been_calculated_ = true;
 				}
 			}//end if has_covariates_
-			if (!has_intercept_ && !called_in_GPBoost_algorithm && !find_learning_rate_for_GPBoost_algo && fixed_effects == nullptr) {
+			if (!has_intercept_ && !called_in_GPBoost_algorithm && !find_learning_rate_for_GPBoost_algo && report_warnings_) {
 				CHECK(y_data != nullptr);
 				string_t cov_function_name = CovFunctionName();
 				if (cov_function_name == "hurst" || cov_function_name == "hurst_ard") {
-					const string_t covariates_msg = (cov_fct_order_ == 1) ? "an intercept" : "an intercept and the coordinates as linear covariates";
-					Log::REWarning("There is no intercept (= a column of 1's) included in the covariates 'X' or there are no covariates. For the '%s' covariance, it is recommended to include %s since the GP is anchored at 0 (i.e., %s) ",
-						cov_function_name.c_str(), covariates_msg.c_str(), HurstAnchorConditions().c_str());
+					if (fixed_effects == nullptr) {
+						const string_t covariates_msg = (cov_fct_order_ == 1) ? "an intercept" : "an intercept and the coordinates as linear covariates";
+						Log::REWarning("There is no intercept (= a column of 1's) included in the covariates 'X' or there are no covariates. For the '%s' covariance, it is recommended to include %s since the GP is anchored at 0 (i.e., %s) ",
+							cov_function_name.c_str(), covariates_msg.c_str(), HurstAnchorConditions().c_str());
+					}
 				}
 				else {
-					double tot_var = GetTotalVarComps(cov_aux_pars.segment(0, num_cov_par_), 0);
 					vec_t weights_all_ic;
 					const double* weights_all_ic_ptr = GetWeightsAllClusters(weights_all_ic);
-					if (likelihood_[unique_clusters_[0]]->ShouldHaveIntercept(y_data, num_data_, tot_var, fixed_effects, weights_all_ic_ptr)) {
+					if (likelihood_[unique_clusters_[0]]->ShouldHaveIntercept(y_data, num_data_, fixed_effects, weights_all_ic_ptr)) {
 						string_t msg = "There is no intercept (= a column of 1's) included in the covariates 'X' or there are no covariates. Consider including an intercept ";
 						if (has_covariates_) {
 							Log::REWarning(msg.c_str());
@@ -2088,7 +2090,7 @@ namespace GPBoost {
 				}
 				if (!convergence_criterion_satisfied) {
 					convergence_status_ = 1;
-					if (called_in_GPBoost_algorithm || !report_convergence_warnings_) {
+					if (called_in_GPBoost_algorithm || !report_warnings_) {
 						Log::REDebug("GPModel: no convergence after the maximal number of iterations "
 							"(%d, nb. likelihood evaluations = %d) ", max_iter_, num_ll_evaluations_);
 					}
@@ -2114,7 +2116,7 @@ namespace GPBoost {
 						"has shortened the step. Since the first step is not based on curvature information, the convergence criterion "
 						"can be satisfied far away from the optimum. Consider restarting the optimizer by setting the parameter "
 						"'max_num_restarts_lbfgs' to a value larger than 0 (see also 'cold_restart_lbfgs') to check this ";
-					if (report_convergence_warnings_) {
+					if (report_warnings_) {
 						Log::REWarning(message.c_str(), optimizer_cov_pars_.c_str());
 					}
 					else {
@@ -2133,7 +2135,7 @@ namespace GPBoost {
 						string_t message = "GPModel: the optimizer '%s' has terminated since its line search has not been successful. "
 							"This can mean that no further progress is possible (the parameters are then essentially a local "
 							"optimum) or that the optimizer has stopped prematurely." + restart_str + " ";
-						if (report_convergence_warnings_) {
+						if (report_warnings_) {
 							Log::REWarning(message.c_str(), optimizer_cov_pars_.c_str());
 						}
 						else {
@@ -6791,9 +6793,9 @@ namespace GPBoost {
 		//	be verified that nothing more can be gained (i.e., restarts have either not been done or they still
 		//	improved the objective function when the last one was done)
 		int convergence_status_ = 0;
-		// If true, a warning is written when the parameter estimation has not converged ('convergence_status_' != 0).
-		//	Set to false for auxiliary models that are estimated internally to obtain initial values
-		bool report_convergence_warnings_ = true;
+		// If true, warnings about the estimation are written, e.g., when it has not converged ('convergence_status_' != 0)
+		//	or when there is no intercept. Set to false for auxiliary models that are estimated internally to obtain initial values
+		bool report_warnings_ = true;
 		/*! \brief True if the warning of 'SlowIterativeMethodsWarning()' has been given */
 		bool slow_iterative_methods_warning_given_ = false;
 		/*! \brief 'SlowIterativeMethodsWarning()' warns if the runs of the conjugate gradient algorithm of one kind (one right-hand side or log-determinant) needed at least this many iterations on average */
@@ -9642,7 +9644,7 @@ namespace GPBoost {
 				"%s%g ", stats.num_runs, stats.num_runs_not_converged, stats.MeanSteps(), stats_tridiag.num_runs,
 				stats_tridiag.num_runs_not_converged, stats_tridiag.MeanSteps(), stats_mode.num_runs, stats_mode.num_runs_not_converged,
 				stats_mode.MeanSteps(), cg_work_rel_cholesky_is_upper_bound ? "at most " : "", cg_work_rel_cholesky);
-			if (!report_convergence_warnings_) {
+			if (!report_warnings_) {
 				return;
 			}
 			// The mode finding is an inexact Newton method. If most of the linear systems of its Newton steps are not solved within
@@ -9763,7 +9765,7 @@ namespace GPBoost {
 		*/
 		void NonConvergedCGPredictionWarning() {
 			if (gauss_likelihood_ || matrix_inversion_method_ != "iterative" || gp_approx_ != "vecchia" || grouped_RE_and_vecchia_GP_ ||
-				non_converged_cg_prediction_warning_given_ || !report_convergence_warnings_) {
+				non_converged_cg_prediction_warning_given_ || !report_warnings_) {
 				return;
 			}
 			const CGStatistics stats = SumCGStatisticsLikelihoods();

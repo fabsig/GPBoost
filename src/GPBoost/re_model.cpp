@@ -516,8 +516,8 @@ namespace GPBoost {
 			re_model_iid->SetAuxPars(re_model->GetAuxPars());
 		}
 		// The convergence status of this auxiliary model says nothing about the model of the user, its
-		//	non-convergence is thus not reported as a warning
-		re_model_iid->SetReportConvergenceWarnings(false);
+		//	non-convergence is thus not reported as a warning. The warnings on its data repeat those of the model of the user
+		re_model_iid->SetReportWarnings(false);
 		vec_t init_cov_pars_iid = vec_t::Ones(re_model_iid->num_cov_par_);
 		vec_t cov_pars_iid(re_model_iid->num_cov_par_);
 		vec_t coef_iid(num_sets_fixed_effects_ * num_covariates);
@@ -1539,8 +1539,9 @@ namespace GPBoost {
 				gp_args.ind_points_selection.empty() ? nullptr : gp_args.ind_points_selection.c_str(),
 				"gaussian", likelihood_additional_param_, "cholesky", seed_, num_parallel_threads_, GPU_use_,
 				weights_ptr != nullptr, weights_ptr, likelihood_learning_rate_, 0, nullptr));
-		// The convergence status of this auxiliary model says nothing about the model of the user
-		re_model_hom->SetReportConvergenceWarnings(false);
+		// The convergence status of this auxiliary model says nothing about the model of the user, and the warnings on its data
+		//	repeat those of the model of the user
+		re_model_hom->SetReportWarnings(false);
 		LogLevelREGuard log_level_re_guard(trace_);
 		const int num_cov_par_hom = re_model_hom->num_cov_par_;// error variance and the parameters of the GP
 		CHECK(num_cov_pars_ == 2 * (num_cov_par_hom - 1));

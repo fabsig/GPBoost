@@ -722,26 +722,73 @@ namespace GPBoost {
 	template <typename T_mat, typename T_chol>
 	bool Likelihood<T_mat, T_chol>::ShouldHaveIntercept(const double* y_data,
 		const data_size_t num_data,
-		double rand_eff_var,
 		const double* fixed_effects,
 		const double* weights) const {
-		bool ret_val = false;
-		if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || IsTweedie() || IsEGPDLikelihood() ||
-			likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" || IsZeroInflatedCount() ||
-			IsGaussianHeteroscedastic() || likelihood_type_ == "lognormal" || IsHurdlePositive() ||
-			IsZeroCensPowNorm() || IsGammaVaryingShape() || IsZeroCensShiftedGamma() ||
-			likelihood_type_ == "zoctn" || likelihood_type_ == "zero_one_censored_transformed_beta" ||
-			likelihood_type_ == "zero_one_censored_shifted_gamma" ||
-			likelihood_type_ == "asymmetric_laplace") {
-			ret_val = true;
+		const double* weights_ptr = (weights != nullptr) ? weights : weights_;
+		// An intercept is recommended if it exceeds this threshold relative to the scale of the response net of the offset
+		//	(Gaussian and "t" likelihoods) or on the scale of the link function (binary and proportion likelihoods)
+		const double intercept_threshold = 0.1;
+		if (IsGaussianLikelihood()) {
+			double sw = 0., swy = 0.;
+#pragma omp parallel for schedule(static) reduction(+:sw, swy)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				const double w = has_weights_ ? weights_ptr[i] : 1.0;
+				swy += w * (fixed_effects == nullptr ? y_data[i] : y_data[i] - fixed_effects[i]);
+				sw += w;
+			}
+			const double mean = swy / sw;
+			double sw_sq_dev = 0.;
+#pragma omp parallel for schedule(static) reduction(+:sw_sq_dev)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				const double w = has_weights_ ? weights_ptr[i] : 1.0;
+				const double dev = (fixed_effects == nullptr ? y_data[i] : y_data[i] - fixed_effects[i]) - mean;
+				sw_sq_dev += w * dev * dev;
+			}
+			return(std::abs(mean) > intercept_threshold * std::sqrt(sw_sq_dev / sw));
+		}
+		else if (likelihood_type_ == "t") {
+			// robust location and scale: the median and the MAD
+			std::vector<double> y_v(num_data);
+#pragma omp parallel for schedule(static)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				y_v[i] = (fixed_effects == nullptr) ? y_data[i] : y_data[i] - fixed_effects[i];
+			}
+			const double median = has_weights_ ? GPBoost::CalculateWeightedQuantile(y_v, weights_ptr, 0.5) :
+				GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v);
+#pragma omp parallel for schedule(static)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				y_v[i] = std::abs(y_v[i] - median);
+			}
+			const double mad = 1.4826 * (has_weights_ ? GPBoost::CalculateWeightedQuantile(y_v, weights_ptr, 0.5) :
+				GPBoost::CalculateMedianPartiallySortInput<std::vector<double>>(y_v));
+			return(std::abs(median) > intercept_threshold * mad);
+		}
+		else if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" ||
+			likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
+			likelihood_type_ == "quasi_bernoulli_probit" || likelihood_type_ == "quasi_bernoulli_logit" ||
+			likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial") {
+			// The intercept b on the link scale is the root of sum_i w_i * (F(offset_i + b) - y_i), where F is the inverse link.
+			//	Since this sum increases in b, |b| exceeds the threshold if and only if the sum is positive at b = -threshold
+			//	or negative at b = threshold
+			const bool probit_link = likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "binomial_probit" ||
+				likelihood_type_ == "quasi_bernoulli_probit";
+			double sum_lower = 0., sum_upper = 0.;
+#pragma omp parallel for schedule(static) reduction(+:sum_lower, sum_upper)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				const double w = has_weights_ ? weights_ptr[i] : 1.0;
+				const double offset = (fixed_effects == nullptr) ? 0. : fixed_effects[i];
+				const double mean_lower = probit_link ? GPBoost::normalCDF(offset - intercept_threshold) : GPBoost::sigmoid_stable(offset - intercept_threshold);
+				const double mean_upper = probit_link ? GPBoost::normalCDF(offset + intercept_threshold) : GPBoost::sigmoid_stable(offset + intercept_threshold);
+				sum_lower += w * (mean_lower - y_data[i]);
+				sum_upper += w * (mean_upper - y_data[i]);
+			}
+			return(sum_lower > 0. || sum_upper < 0.);
 		}
 		else {
-			double beta_zero = FindInitialIntercept(y_data, num_data, rand_eff_var, fixed_effects, 0, weights);
-			if (std::abs(beta_zero) > 0.1) {
-				ret_val = true;
-			}
+			// For the other likelihoods, an intercept is recommended regardless of the data. An offset can contain it,
+			//	and there is no data-based check for these likelihoods
+			return(fixed_effects == nullptr);
 		}
-		return(ret_val);
 	}
 
 	template <typename T_mat, typename T_chol>

@@ -345,4 +345,54 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("a missing intercept is reported once and the offset is taken into account", {
+    # The auxiliary iid model that provides the initial coefficients is fitted to the same data and
+    #   reported the missing intercept a second time. With an offset, the check was skipped entirely
+    num_no_intercept_warnings <- function(out) {
+      sum(grepl("[Warning]", out, fixed = TRUE) & grepl("There is no intercept", out, fixed = TRUE))
+    }
+    X_no_intercept <- X[, 2, drop = FALSE]
+    out <- capture.output(gp_model <- fitGPModel(group_data = group, y = y, X = X_no_intercept))
+    expect_equal(num_no_intercept_warnings(out), 1)
+    out <- capture.output(gp_model <- fitGPModel(group_data = group, y = y, X = X))
+    expect_equal(num_no_intercept_warnings(out), 0)
+    # The mean of the response is compared to its standard deviation, independently of the units
+    y_centered <- y - mean(y)
+    out <- capture.output(gp_model <- fitGPModel(group_data = group, y = 1E3 * (y_centered + 0.05 * sd(y)),
+                                                 X = X_no_intercept))
+    expect_equal(num_no_intercept_warnings(out), 0)
+    out <- capture.output(gp_model <- fitGPModel(group_data = group, y = 1E-3 * (y_centered + 0.3 * sd(y)),
+                                                 X = X_no_intercept))
+    expect_equal(num_no_intercept_warnings(out), 1)
+    # An offset can contain the intercept
+    out <- capture.output(gp_model <- fitGPModel(group_data = group, y = y, X = X_no_intercept,
+                                                 offset = rep(mean(y), n)))
+    expect_equal(num_no_intercept_warnings(out), 0)
+    out <- capture.output(gp_model <- fitGPModel(group_data = group, y = y, X = X_no_intercept,
+                                                 offset = rep(0, n)))
+    expect_equal(num_no_intercept_warnings(out), 1)
+    # For binary data, the intercept is on the scale of the link function
+    y_bin <- as.numeric(sim_rand_unif(n = n, init_c = 0.2718) < plogis(-2 + 0.5 * b[group]))
+    for (likelihood in c("bernoulli_logit", "bernoulli_probit")) {
+      link_mean <- if (likelihood == "bernoulli_logit") qlogis(mean(y_bin)) else qnorm(mean(y_bin))
+      out <- capture.output(gp_model <- fitGPModel(group_data = group, y = y_bin, X = X_no_intercept,
+                                                   likelihood = likelihood))
+      expect_equal(num_no_intercept_warnings(out), 1)
+      out <- capture.output(gp_model <- fitGPModel(group_data = group, y = y_bin, X = X_no_intercept,
+                                                   likelihood = likelihood, offset = rep(link_mean, n)))
+      expect_equal(num_no_intercept_warnings(out), 0)
+      out <- capture.output(gp_model <- fitGPModel(group_data = group, y = y_bin, X = X_no_intercept,
+                                                   likelihood = likelihood, offset = rep(link_mean + 0.2, n)))
+      expect_equal(num_no_intercept_warnings(out), 1)
+    }
+    # Without a data-based check, an offset is assumed to contain the intercept
+    y_pois <- qpois(sim_rand_unif(n = n, init_c = 0.1618), lambda = exp(1 + 0.5 * b[group]))
+    out <- capture.output(gp_model <- fitGPModel(group_data = group, y = y_pois, X = X_no_intercept,
+                                                 likelihood = "poisson"))
+    expect_equal(num_no_intercept_warnings(out), 1)
+    out <- capture.output(gp_model <- fitGPModel(group_data = group, y = y_pois, X = X_no_intercept,
+                                                 likelihood = "poisson", offset = rep(1, n)))
+    expect_equal(num_no_intercept_warnings(out), 0)
+  })
+
 }

@@ -2129,12 +2129,11 @@ namespace GPBoost {
 		* \brief Should there be an intercept or not (might raise a warning)
 		* \param y_data Response variable data
 		* \param num_data Number of data points
-		* \param rand_eff_var Variance of random effects
-		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset)
+		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset) (can be nullptr)
+		* \param weights Weights of all data points (if nullptr, the weights of this object are used)
 		*/
 		bool ShouldHaveIntercept(const double* y_data,
 			const data_size_t num_data,
-			double rand_eff_var,
 			const double* fixed_effects,
 			const double* weights = nullptr) const;
 
