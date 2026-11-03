@@ -14061,7 +14061,7 @@ namespace GPBoost {
 			}
 			// Construct components
 			const den_mat_t* cross_cov = GetForCluster(re_comps_cross_cov_, cluster_i, 0)[0]->GetSigmaPtr();
-			den_mat_t sigma_ip_stable = *(GetForCluster(re_comps_ip_, cluster_i, 0)[0]->GetZSigmaZt());
+			const den_mat_t sigma_ip = *(GetForCluster(re_comps_ip_, cluster_i, 0)[0]->GetZSigmaZt());
 			// Cross-covariance between predictions and inducing points C_pm
 			den_mat_t cov_mat_pred_id, cross_dist; // unused dummy variables
 			std::shared_ptr<RECompGP<den_mat_t>> re_comp_cross_cov_cluster_i_pred_ip = re_comps_cross_cov_[cluster_i][0][0];
@@ -14082,7 +14082,7 @@ namespace GPBoost {
 			else if (gp_approx_ == "fitc") {
 				// check whether "FITC diagonal" correction needs to be added for duplicate coordinates
 				std::vector<Triplet_t> triplets;
-				double sigma2 = sigma_ip_stable.coeffRef(0, 0);
+				double sigma2 = sigma_ip.coeff(0, 0);
 				// A prediction point and an observed point are the same if all their coordinates are equal according to 'TwoNumbersAreEqual'.
 				//	The observed points are sorted by every coordinate. For a prediction point, the candidates are the observed points whose
 				//	value of one coordinate is within the tolerance of 'TwoNumbersAreEqual', and the coordinate with the fewest candidates
@@ -14228,7 +14228,7 @@ namespace GPBoost {
 				if (calc_diag_resid_var_pred) {
 					resid_diag_pred = vec_t::Zero(num_REs_pred);
 					if (GetForCluster(re_comps_cross_cov_, cluster_i, 0)[0]->VarianceOnDiagonal()) {
-						resid_diag_pred.array() += sigma_ip_stable.coeffRef(0, 0);
+						resid_diag_pred.array() += sigma_ip.coeff(0, 0);
 					}
 					else {
 #pragma omp parallel for schedule(static)
@@ -14680,9 +14680,12 @@ namespace GPBoost {
 								den_mat_t cross_cov_sigma_resid_inv_cross_cov = (*cross_cov).transpose() * sigma_resid_inv_cross_cov;
 								// Ensure symmetry
 								cross_cov_sigma_resid_inv_cross_cov = (cross_cov_sigma_resid_inv_cross_cov + cross_cov_sigma_resid_inv_cross_cov.transpose()) / 2;
-								// Woodburry factor
+								// Woodburry factor, with the jitter of the inducing point matrix as in its factorization 'chol_fact_sigma_ip_'
+								den_mat_t sigma_woodbury_pred = sigma_ip;
+								sigma_woodbury_pred.diagonal().array() *= JitterMultInducingPoints(sigma_ip, gauss_likelihood_);
+								sigma_woodbury_pred += cross_cov_sigma_resid_inv_cross_cov;
 								chol_den_mat_t Woodburry_fact_chol;
-								Woodburry_fact_chol.compute(sigma_ip_stable + cross_cov_sigma_resid_inv_cross_cov);
+								Woodburry_fact_chol.compute(sigma_woodbury_pred);
 								den_mat_t Woodburry_fact;
 								TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(Woodburry_fact_chol, sigma_resid_inv_cross_cov.transpose(), Woodburry_fact, false);
 								den_mat_t sigma_resid_pred_obs_WF(num_REs_pred, (*cross_cov).cols());

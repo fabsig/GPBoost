@@ -413,4 +413,24 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Predictive variances of full-scale tapering with iterative methods and the jitter of the inducing point matrix ", {
+
+    # For a marginal variance that is very large relative to the error variance, the jitter of the inducing point matrix is
+    #   not negligible. The Woodbury matrix of the predictive variances for 'iterative' contained the inducing point matrix
+    #   without the jitter: the latent predictive variances at the training locations were up to 14.07 instead of 1
+    n_j <- 12
+    coords_j <- matrix(seq(0, 1, length.out = n_j))
+    y_j <- sin(1.7 * (0:(n_j - 1)))
+    coords_pred_j <- rbind(coords_j, matrix(c(0.04, 0.5, 2)))
+    pred_var <- sapply(c("iterative", "cholesky"), function(matrix_inversion_method) {
+      capture.output( gp_model <- GPModel(gp_coords = coords_j, cov_function = "matern", cov_fct_shape = 1.5, num_ind_points = 1,
+                                          gp_approx = if (matrix_inversion_method == "iterative") "full_scale_tapering" else "full_scale_tapering_pred_var_exact_stable",
+                                          ind_points_selection = "kmeans++", cov_fct_taper_range = 0.01, cov_fct_taper_shape = 0,
+                                          matrix_inversion_method = matrix_inversion_method), file='NUL')
+      if (matrix_inversion_method == "iterative") gp_model$set_prediction_data(cg_delta_conv_pred = 1e-10)
+      predict(gp_model, y = y_j, gp_coords_pred = coords_pred_j, cov_pars = c(1, 1e9, 0.3), predict_var = TRUE, predict_response = FALSE)$var
+    })
+    expect_lt(max(abs(pred_var[, "iterative"] - pred_var[, "cholesky"])), 1e-4)
+  })
+
 }
