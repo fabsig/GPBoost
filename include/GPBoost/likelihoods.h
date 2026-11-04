@@ -1206,6 +1206,7 @@ namespace GPBoost {
 				SigmaI_mode_ = SigmaI_mode_previous_value_;
 			}
 			na_or_inf_during_last_call_to_find_mode_ = na_or_inf_during_second_last_call_to_find_mode_;
+			failed_cholesky_mode_finding_message_.clear();// it belongs to the last call
 			// See the comment in 'RestoreModeState()': all quantities that depend on the mode are not
 			//	recalculated here, i.e., the mode is only used as starting value for the next call to a
 			//	mode finding algorithm, which recalculates all of them
@@ -1529,6 +1530,17 @@ namespace GPBoost {
 		/*! \brief True for both zero-censored power-transformed normal likelihoods (homoscedastic and heteroscedastic) */
 		bool IsZeroCensPowNorm() const {
 			return(likelihood_type_ == "zero_censored_power_transformed_normal" || IsZeroCensPowNormHetero());
+		}
+
+		/*!
+		* \brief True if the set 'igp' of fixed effects (location_par[i + igp * num_data_]) is the logarithm of a scale parameter:
+		*		the log-error variance of the heteroscedastic Gaussian likelihoods and the log(sigma) of
+		*		'zero_censored_power_transformed_normal_heteroscedastic'. The step length of the corresponding linear regression
+		*		coefficients is limited like the one of the covariance parameters, which are also optimized on the log-scale,
+		*		see 'MaximalLearningRateCoef' in re_model_template.h
+		*/
+		bool FixedEffectsSetIsLogScaleParameter(int igp) const {
+			return(igp == 1 && (IsGaussianHeteroscedastic() || IsZeroCensPowNormHetero()));
 		}
 
 		/*!
@@ -2150,7 +2162,8 @@ namespace GPBoost {
 			const double* weights = nullptr);
 
 		/*!
-		* \brief Determine constants C_mu and C_sigma2 used for checking whether step sizes for linear regression coefficients are clearly too large
+		* \brief Determine constants C_mu and C_sigma2 used for checking whether step sizes for linear regression coefficients are clearly too large.
+		*		They concern the first set of fixed effects, see 'FixedEffectsSetIsLogScaleParameter' for the other sets
 		* \param y_data Response variable data
 		* \param num_data Number of data points
 		* \param fixed_effects Additional fixed effects that are added to the linear predictor (= offset)
@@ -5142,9 +5155,7 @@ namespace GPBoost {
 		inline double SecondDerivNegLogLikZeroCensPowNormHetero(double y, double loc_eta, double loc_zeta) const {
 			const double sigma = std::exp(loc_zeta);
 			if (y <= 0.0) {
-				const double a0 = -loc_eta / sigma;
-				const double r = GPBoost::InvMillsRatioNormalPhi(a0);
-				return (1.0 / (sigma * sigma)) * r * (a0 + r);
+				return (1.0 / (sigma * sigma)) * GPBoost::NegSecondDerivNormalLogCDF(-loc_eta / sigma);
 			}
 			return 1.0 / (sigma * sigma);
 		}
@@ -5155,9 +5166,7 @@ namespace GPBoost {
 				return 0.0;// the information 1 / sigma^2 does not depend on eta for positive observations
 			}
 			const double sigma = std::exp(loc_zeta);
-			const double a0 = -loc_eta / sigma;
-			const double r = GPBoost::InvMillsRatioNormalPhi(a0);
-			return (r / (sigma * sigma * sigma)) * ((a0 + r) * (a0 + 2.0 * r) - 1.0);
+			return GPBoost::ThirdDerivNormalLogCDF(-loc_eta / sigma) / (sigma * sigma * sigma);
 		}
 
 		/*!
@@ -5173,9 +5182,10 @@ namespace GPBoost {
 			if (y <= 0.0) {
 				const double a0 = -loc_eta / sigma;
 				const double r = GPBoost::InvMillsRatioNormalPhi(a0);
+				const double neg_second_deriv = GPBoost::NegSecondDerivNormalLogCDF(a0);// r * (a0 + r)
 				dZeta = r * loc_eta / sigma;
-				lEtaZeta = r * (1.0 + ((a0 + r) * loc_eta) / sigma) / sigma;
-				dJetadZeta = r * ((loc_eta * (1.0 - (a0 + r) * (a0 + 2.0 * r))) / (sigma * sigma * sigma) - 2.0 * (a0 + r) / (sigma * sigma));
+				lEtaZeta = r / sigma + neg_second_deriv * loc_eta / (sigma * sigma);
+				dJetadZeta = -loc_eta * GPBoost::ThirdDerivNormalLogCDF(a0) / (sigma * sigma * sigma) - 2.0 * neg_second_deriv / (sigma * sigma);
 			}
 			else {
 				const double u = std::exp((1.0 / aux_pars_[0]) * std::log(y));
@@ -6342,27 +6352,21 @@ namespace GPBoost {
 
 		inline double SecondDerivNegLogLikBernoulliProbit(int y, double location_par) const {
 			if (y == 0) {
-				const double pdf_div_omcdf = GPBoost::InvMillsRatioNormalOneMinusPhi(location_par);//phi(x) / (1 - Phi(x))
-				return -pdf_div_omcdf * (location_par - pdf_div_omcdf);
+				return GPBoost::NegSecondDerivNormalLogCDF(-location_par);// log(1 - Phi(x)) = log(Phi(-x))
 			}
 			else {
-				const double pdf_div_cdf = GPBoost::InvMillsRatioNormalPhi(location_par);//phi(x) / Phi(x)
-				return pdf_div_cdf * (location_par + pdf_div_cdf);
+				return GPBoost::NegSecondDerivNormalLogCDF(location_par);
 			}
 		}
 
 		inline double SecondDerivNegLogLikBinomialProbit(double y, double location_par) const {
 			if (y == 0.0) {
-				const double pdf_div_omcdf = GPBoost::InvMillsRatioNormalOneMinusPhi(location_par);//phi(x) / (1 - Phi(x))
-				return -pdf_div_omcdf * (location_par - pdf_div_omcdf);
+				return GPBoost::NegSecondDerivNormalLogCDF(-location_par);// log(1 - Phi(x)) = log(Phi(-x))
 			}
 			if (y == 1.0) {
-				const double pdf_div_cdf = GPBoost::InvMillsRatioNormalPhi(location_par);//phi(x) / Phi(x)
-				return pdf_div_cdf * (location_par + pdf_div_cdf);
+				return GPBoost::NegSecondDerivNormalLogCDF(location_par);
 			}
-			const double pdf_div_cdf = GPBoost::InvMillsRatioNormalPhi(location_par);//phi(x) / Phi(x)
-			const double pdf_div_omcdf = GPBoost::InvMillsRatioNormalOneMinusPhi(location_par);//phi(x) / (1 - Phi(x))
-			return y * pdf_div_cdf * (location_par + pdf_div_cdf) + (1.0 - y) * -pdf_div_omcdf * (location_par - pdf_div_omcdf);
+			return y * GPBoost::NegSecondDerivNormalLogCDF(location_par) + (1.0 - y) * GPBoost::NegSecondDerivNormalLogCDF(-location_par);
 		}
 
 		inline double SecondDerivNegLogLikBernoulliLogit(double location_par) const {
@@ -6471,9 +6475,7 @@ namespace GPBoost {
 			const double sigma = aux_pars_[0];
 			if (y <= 0.0) {
 				// Negative second derivative for zeros = - d^2/dmu^2 log Phi(-mu/sigma) = (1/sigma^2) * r * (a0 + r),  r = phi(a0)/Phi(a0), a0 = -mu/sigma
-				const double a0 = -location_par / sigma;
-				const double r = GPBoost::InvMillsRatioNormalPhi(a0);
-				return (1.0 / (sigma * sigma)) * r * (a0 + r);
+				return (1.0 / (sigma * sigma)) * GPBoost::NegSecondDerivNormalLogCDF(-location_par / sigma);
 			}
 			else {
 				return 1.0 / (sigma * sigma);
@@ -6483,14 +6485,11 @@ namespace GPBoost {
 		inline double SecondDerivNegLogLikZeroOneCensTransfNorm(double y, double location_par) const {
 			const double sigma = aux_pars_[0];
 			if (y <= 0.0) {
-				const double a0 = -location_par / sigma;
-				const double r = GPBoost::InvMillsRatioNormalPhi(a0);
-				return (1.0 / (sigma * sigma)) * r * (a0 + r);
+				return (1.0 / (sigma * sigma)) * GPBoost::NegSecondDerivNormalLogCDF(-location_par / sigma);
 			}
 			else if (y >= 1.0) {
 				const double v = (1.0 - location_par) / sigma;
-				const double r2 = GPBoost::InvMillsRatioNormalOneMinusPhi(v);
-				return (1.0 / (sigma * sigma)) * r2 * (r2 - v);
+				return (1.0 / (sigma * sigma)) * GPBoost::NegSecondDerivNormalLogCDF(-v);// r2 * (r2 - v), r2 = phi(v) / (1 - Phi(v))
 			}
 			else {
 				return 1.0 / (sigma * sigma);
@@ -6835,14 +6834,11 @@ namespace GPBoost {
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						const double x = location_par[i];
-						const double x2 = x * x;
 						if (y_data_int[i] == 0) {
-							const double pdf_div_omcdf = GPBoost::InvMillsRatioNormalOneMinusPhi(x);//phi(x) / (1 - Phi(x))
-							deriv_information_diag_loc_par[i] = w * (-pdf_div_omcdf * (1.0 - x2 + pdf_div_omcdf * (3.0 * x - 2.0 * pdf_div_omcdf)));
+							deriv_information_diag_loc_par[i] = w * GPBoost::ThirdDerivNormalLogCDF(-x);// log(1 - Phi(x)) = log(Phi(-x))
 						}
 						else {
-							const double pdf_div_cdf = GPBoost::InvMillsRatioNormalPhi(x);//phi(x) / Phi(x)
-							deriv_information_diag_loc_par[i] = w * (-pdf_div_cdf * (x2 - 1.0 + pdf_div_cdf * (3.0 * x + 2.0 * pdf_div_cdf)));
+							deriv_information_diag_loc_par[i] = -w * GPBoost::ThirdDerivNormalLogCDF(x);
 						}
 					}
 				}
@@ -6863,20 +6859,15 @@ namespace GPBoost {
 					for (data_size_t i = 0; i < num_data_; ++i) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						const double x = location_par[i];
-						const double x2 = x * x;
 						if (y_data[i] == 0.) {
-							const double pdf_div_omcdf = GPBoost::InvMillsRatioNormalOneMinusPhi(x);//phi(x) / (1 - Phi(x))
-							deriv_information_diag_loc_par[i] = w * (-pdf_div_omcdf * (1.0 - x2 + pdf_div_omcdf * (3.0 * x - 2.0 * pdf_div_omcdf)));
+							deriv_information_diag_loc_par[i] = w * GPBoost::ThirdDerivNormalLogCDF(-x);// log(1 - Phi(x)) = log(Phi(-x))
 						}
 						else if (y_data[i] == 1.) {
-							const double pdf_div_cdf = GPBoost::InvMillsRatioNormalPhi(x);//phi(x) / Phi(x)
-							deriv_information_diag_loc_par[i] = w * (-pdf_div_cdf * (x2 - 1.0 + pdf_div_cdf * (3.0 * x + 2.0 * pdf_div_cdf)));
+							deriv_information_diag_loc_par[i] = -w * GPBoost::ThirdDerivNormalLogCDF(x);
 						}
 						else {
-							const double pdf_div_cdf = GPBoost::InvMillsRatioNormalPhi(x);//phi(x) / Phi(x)
-							const double pdf_div_omcdf = GPBoost::InvMillsRatioNormalOneMinusPhi(x);//phi(x) / (1 - Phi(x))
-							deriv_information_diag_loc_par[i] = w * (y_data[i] * (-pdf_div_cdf * (x2 - 1.0 + pdf_div_cdf * (3.0 * x + 2.0 * pdf_div_cdf))) +
-								(1.0 - y_data[i]) * (-pdf_div_omcdf * (1.0 - x2 + pdf_div_omcdf * (3.0 * x - 2 * pdf_div_omcdf))));
+							deriv_information_diag_loc_par[i] = w * (-y_data[i] * GPBoost::ThirdDerivNormalLogCDF(x) +
+								(1.0 - y_data[i]) * GPBoost::ThirdDerivNormalLogCDF(-x));
 						}
 					}
 				}
@@ -7030,10 +7021,8 @@ namespace GPBoost {
 						const double mu = location_par[i];
 						if (y_data[i] <= 0.0) {
 							// info(mu) = (1/sigma^2) * r * (a0 + r),  a0 = -mu/sigma, r = phi(a0)/Phi(a0)
-							// d/dmu info(mu) = (r/sigma^3) * ( (a0 + r)*(a0 + 2r) - 1 )
-							const double a0 = -mu / sigma;
-							const double r = GPBoost::InvMillsRatioNormalPhi(a0);
-							deriv_information_diag_loc_par[i] = w * (r / (sigma * sigma * sigma)) * ((a0 + r) * (a0 + 2.0 * r) - 1.0);
+							// d/dmu info(mu) = (r/sigma^3) * ( (a0 + r)*(a0 + 2r) - 1 ) = (d^3/da0^3 log Phi(a0)) / sigma^3
+							deriv_information_diag_loc_par[i] = w * GPBoost::ThirdDerivNormalLogCDF(-mu / sigma) / (sigma * sigma * sigma);
 						}
 						else {
 							deriv_information_diag_loc_par[i] = 0.0;
@@ -7063,18 +7052,14 @@ namespace GPBoost {
 						const double mu = location_par[i];
 						if (y_data[i] <= 0.0) {
 							// info(mu) = (1/s^2) * r * (a0 + r),  a0 = -mu/s, r = phi(a0)/Phi(a0)
-							// d/dmu info(mu) = (r/s^3) * ( (a0 + r)*(a0 + 2r) - 1 )
-							const double a0 = -mu / s;
-							const double r = GPBoost::InvMillsRatioNormalPhi(a0);
-							deriv_information_diag_loc_par[i] = w * (r / (s * s * s)) * ((a0 + r) * (a0 + 2.0 * r) - 1.0);
+							// d/dmu info(mu) = (r/s^3) * ( (a0 + r)*(a0 + 2r) - 1 ) = (d^3/da0^3 log Phi(a0)) / s^3
+							deriv_information_diag_loc_par[i] = w * GPBoost::ThirdDerivNormalLogCDF(-mu / s) / (s * s * s);
 						}
 						else if (y_data[i] >= 1.0) {
 							// info(mu) = (1/s^2) * r2 * (r2 - v),  v = (1-mu)/s, r2 = phi(v)/(1-Phi(v))
-							// d/dmu info(mu) = (r2/s^3) * (1 - v^2 + 3*v*r2 - 2*r2^2)
+							// d/dmu info(mu) = (r2/s^3) * (1 - v^2 + 3*v*r2 - 2*r2^2) = -(d^3/dx^3 log Phi(x) at x = -v) / s^3
 							const double v = (1.0 - mu) / s;
-							const double r2 = GPBoost::InvMillsRatioNormalOneMinusPhi(v);
-							const double term = 1.0 - v * v + 3.0 * v * r2 - 2.0 * r2 * r2;
-							deriv_information_diag_loc_par[i] = w * (r2 / (s * s * s)) * term;
+							deriv_information_diag_loc_par[i] = -w * GPBoost::ThirdDerivNormalLogCDF(-v) / (s * s * s);
 						}
 						else {
 							deriv_information_diag_loc_par[i] = 0.0;// 0 < y < 1: info(mu) = 1/s^2 (constant in mu) -> derivative 0
@@ -7629,7 +7614,11 @@ namespace GPBoost {
 			return HasNegativeValueInformationLogLik();
 		}
 
-		void LogFatalWithPotentialFisherLaplaceHint(const char* caller, const char* message) const {
+		/*!
+		* \brief Message '<caller>: <message>' followed by a recommendation of a Fisher-Laplace approximation if this is
+		*		available for the likelihood and an observed-Hessian Laplace approximation is currently used
+		*/
+		string_t MessageWithPotentialFisherLaplaceHint(const char* caller, const char* message) const {
 			// Recommend Fisher-Laplace only as an alternative to a currently selected observed-Hessian Laplace determinant
 			bool should_recommend_fisher_laplace = false, should_recommend_fisher_laplace_combined = false;
 			if (approximation_type_ == "laplace" && LIKELIHOODS_SUPPORTS_FISHER_MODE_FINDING_.find(likelihood_type_) != LIKELIHOODS_SUPPORTS_FISHER_MODE_FINDING_.end()) {
@@ -7642,17 +7631,55 @@ namespace GPBoost {
 			}
 			const bool quasi_fisher = likelihood_type_ == "negative_binomial_1" || likelihood_type_ == "zero_inflated_negative_binomial_1" ||
 				likelihood_type_ == "zero_inflated_regression_negative_binomial_1";
+			const string_t information_name = quasi_fisher ? "quasi-Fisher" : "Fisher";
+			string_t msg = string_t(caller) + ": " + message;
 			if (should_recommend_fisher_laplace) {
-				Log::REFatal("%s: %sTry likelihood '%s_fisher_laplace' to use %s information for both mode finding and log-determinant ",
-					caller, message, likelihood_type_.c_str(), quasi_fisher ? "quasi-Fisher" : "Fisher");
-			} 
+				msg += "Try likelihood '" + likelihood_type_ + "_fisher_laplace' to use " + information_name +
+					" information for both mode finding and log-determinant ";
+			}
 			else if (should_recommend_fisher_laplace_combined) {
-				Log::REFatal("%s: %sTry either (i) likelihood '%s_fisher_laplace_combined' to use %s information for mode finding and Hessian for log-determinant or (ii) likelihood '%s_fisher_laplace' to use %s information for both mode finding and log-determinant ",
-					caller, message, likelihood_type_.c_str(), quasi_fisher ? "quasi-Fisher" : "Fisher",
-					likelihood_type_.c_str(), quasi_fisher ? "quasi-Fisher" : "Fisher");
+				msg += "Try either (i) likelihood '" + likelihood_type_ + "_fisher_laplace_combined' to use " + information_name +
+					" information for mode finding and Hessian for log-determinant or (ii) likelihood '" + likelihood_type_ +
+					"_fisher_laplace' to use " + information_name + " information for both mode finding and log-determinant ";
+			}
+			return msg;
+		}
+
+		void LogFatalWithPotentialFisherLaplaceHint(const char* caller, const char* message) const {
+			Log::REFatal("%s", MessageWithPotentialFisherLaplaceHint(caller, message).c_str());
+		}
+
+		/*!
+		* \brief Treat a failed Cholesky factorization of the mode finding like NA or Inf: the approximate marginal log-likelihood
+		*		is NaN, and an optimizer can then shorten its step (e.g., the line search of 'lbfgs') instead of stopping with an
+		*		error. For a log-concave likelihood, the factorized matrices are positive definite in exact arithmetic, but they
+		*		can fail to be so numerically for extreme parameters, e.g., at a trial point of a line search. The message is
+		*		reported if the result of the mode finding is needed (e.g., for a gradient or a prediction), see 'LogFatalNAOrInfModeFinding()'
+		* \param caller Name of the calling function
+		* \param message Description of the factorization that has failed
+		* \param[out] approx_marginal_ll Approximate marginal log-likelihood, set to NaN
+		* \param[out] has_NA_or_Inf Set to true
+		*/
+		void SetNAOrInfFailedCholeskyModeFinding(const char* caller,
+			const char* message,
+			double& approx_marginal_ll,
+			bool& has_NA_or_Inf) {
+			has_NA_or_Inf = true;
+			approx_marginal_ll = std::numeric_limits<double>::quiet_NaN();
+			na_or_inf_during_last_call_to_find_mode_ = true;
+			mode_has_been_calculated_ = false;
+			failed_cholesky_mode_finding_message_ = MessageWithPotentialFisherLaplaceHint(caller, message);
+			Log::REDebug("%s", failed_cholesky_mode_finding_message_.c_str());
+			Log::REDebug(NA_OR_INF_WARNING_);
+		}
+
+		/*! \brief Error for NA or Inf in the last mode finding, including the message of a failed Cholesky factorization if this was the cause */
+		void LogFatalNAOrInfModeFinding() const {
+			if (failed_cholesky_mode_finding_message_.empty()) {
+				Log::REFatal(NA_OR_INF_ERROR_);
 			}
 			else {
-				Log::REFatal("%s: %s", caller, message);
+				Log::REFatal("%s(%s)", NA_OR_INF_ERROR_, failed_cholesky_mode_finding_message_.c_str());
 			}
 		}
 
@@ -7686,6 +7713,7 @@ namespace GPBoost {
 		*/
 		bool InitializeModeForModeFinding() {
 			ssn_alm_exact_subgradient_valid_ = false;//the stored subgradient belongs to the mode of the previous call
+			failed_cholesky_mode_finding_message_.clear();
 			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
 				InitializeModeAvec();
 				return false;
@@ -8548,6 +8576,8 @@ namespace GPBoost {
 		bool na_or_inf_during_last_call_to_find_mode_ = false;
 		/*! \brief If true, NA or Inf has occurred during the second last call to find mode when mode_previous_value_ was calculated */
 		bool na_or_inf_during_second_last_call_to_find_mode_ = false;
+		/*! \brief Message of a Cholesky factorization that has failed in the last call to find the mode (empty if none has failed), see 'SetNAOrInfFailedCholeskyModeFinding()' */
+		string_t failed_cholesky_mode_finding_message_;
 		/*! \brief Normalizing constant of the log-likelihood (not all likelihoods have one) */
 		double log_normalizing_constant_;
 		/*! \brief If true, the function 'CalculateLogNormalizingConstant' has been called */

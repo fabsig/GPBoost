@@ -1133,6 +1133,61 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(gp_model_fitc_zcp$get_current_neg_log_likelihood() - 119.41168559), relax_tolerance_nll(TOLERANCE_MEDIUM))
   }) #end zero_censored_power_transformed_normal_heteroscedastic likelihood
 
+  test_that("Laplace approximation far in the lower tail of the normal distribution and after a failed Cholesky factorization ", {
+
+    # The information r(x) * (x + r(x)), r(x) = phi(x) / Phi(x), of a probit observation and of a zero of a zero-censored
+    # likelihood was calculated with log(Phi(x)), which is imprecise where Phi(x) is subnormal (x around -38.4), and with a
+    # cancellation in x + r(x) for x -> -infinity. The information could then be negative, the Cholesky factorization of the
+    # mode finding of a Vecchia approximation failed, and the dense GP gave NaN. This happened for a GPBoost model with
+    # 'zero_censored_power_transformed_normal_heteroscedastic' at an lbfgs trial point with a small log(sigma) intercept, for
+    # which the zeros at locations with positive observations have x = -mu / sigma far in the tail.
+    # With 'num_neighbors' = number of unique locations - 1, the Vecchia approximation is exact and must match the dense GP
+    n_tail <- 100
+    coords_tail <- matrix(sim_rand_unif(n = 20, init_c = 0.7311), ncol = 2)[rep(1:10, each = 10), ]
+    y_tail <- pmax(0, 0.5 + qnorm(sim_rand_unif(n = n_tail, init_c = 0.2871)))^0.75
+    expect_equal(mean(y_tail == 0), 0.33)
+    likelihood <- "zero_censored_power_transformed_normal_heteroscedastic"
+    for (log_sigma in c(-10, -20)) {
+      fe_tail <- c(rep(0, n_tail), rep(log_sigma, n_tail))
+      nll_vecchia <- GPModel(gp_coords = coords_tail, cov_function = "exponential", likelihood = likelihood,
+                             gp_approx = "vecchia", num_neighbors = 9, vecchia_ordering = "none",
+                             matrix_inversion_method = "cholesky")$neg_log_likelihood(
+        cov_pars = c(1, 0.3), y = y_tail, fixed_effects = fe_tail, aux_pars = 0.75)
+      nll_dense <- GPModel(gp_coords = coords_tail, cov_function = "exponential", likelihood = likelihood)$neg_log_likelihood(
+        cov_pars = c(1, 0.3), y = y_tail, fixed_effects = fe_tail, aux_pars = 0.75)
+      expect_true(is.finite(nll_vecchia))
+      expect_true(is.finite(nll_dense))
+      if (log_sigma == -10) {
+        # For sigma = exp(-20), the information is of the order 1e17 and the mode finding of the two variants stops at different points
+        expect_lt(abs(nll_vecchia / nll_dense - 1), TOLERANCE_STRICT)
+      }
+    }
+    coords_probit <- matrix(sim_rand_unif(n = 40, init_c = 0.1234), ncol = 2)
+    for (location in c(-38.45, -60)) {
+      nll_vecchia <- GPModel(gp_coords = coords_probit, cov_function = "exponential", likelihood = "bernoulli_probit",
+                             gp_approx = "vecchia", num_neighbors = 19, vecchia_ordering = "none",
+                             matrix_inversion_method = "cholesky")$neg_log_likelihood(
+        cov_pars = c(1, 0.3), y = rep(1, 20), fixed_effects = rep(location, 20))
+      nll_dense <- GPModel(gp_coords = coords_probit, cov_function = "exponential", likelihood = "bernoulli_probit")$neg_log_likelihood(
+        cov_pars = c(1, 0.3), y = rep(1, 20), fixed_effects = rep(location, 20))
+      expect_true(is.finite(nll_dense))
+      expect_lt(abs(nll_vecchia / nll_dense - 1), TOLERANCE_STRICT)
+    }
+
+    # A failed Cholesky factorization of the mode finding gives NaN, so that the line search of an optimizer shortens its
+    # step instead of stopping with an error. Here, the observed information of 't_laplace' is -(df + 1) / (8 * df) =
+    # -0.1875 for every observation (residual sqrt(3 * df), scale 1), i.e., -1.875 at every location with its ten
+    # observations, whereas the largest eigenvalue of Sigma is at least the marginal variance 1: Sigma^-1 + W is indefinite
+    gp_model_t <- GPModel(gp_coords = coords_tail, cov_function = "exponential", likelihood = "t_laplace",
+                          likelihood_additional_param = 2, gp_approx = "vecchia", num_neighbors = 9,
+                          vecchia_ordering = "none", matrix_inversion_method = "cholesky")
+    y_t <- rep(sqrt(6), n_tail)
+    expect_true(is.nan(gp_model_t$neg_log_likelihood(cov_pars = c(1, 0.3), y = y_t, aux_pars = c(1, 2))))
+    # The error of a prediction, which needs the mode, reports the failed factorization
+    expect_error(predict(gp_model_t, y = y_t, cov_pars = c(1, 0.3), gp_coords_pred = coords_tail[1:2, ]),
+                 "Cholesky factorization")
+  })
+
   test_that("test negative log-likelihood metric of the GPBoost algorithm for varying-shape and heteroscedastic likelihoods ", {
 
     # The "test_neg_log_likelihood" metric of the GPBoost algorithm on validation data, together with an independent

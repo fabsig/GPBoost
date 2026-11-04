@@ -6316,7 +6316,11 @@ namespace GPBoost {
 		}//end MaximalLearningRateCovAuxPars
 
 		/*!
-		* \brief Get the maximal step length along a direction such that the change in linear regression coefficients is not overly large (monitor relative change in linear predictor)
+		* \brief Get the maximal step length along a direction such that the change in linear regression coefficients is not overly large (monitor relative change in linear predictor).
+		*		Every set of fixed effects is considered separately: the first set (the mean / location) with the constants 'C_mu_' and 'C_sigma2_',
+		*		and a set that is the logarithm of a scale parameter (see 'FixedEffectsSetIsLogScaleParameter') like the covariance parameters,
+		*		i.e., the mean of its linear predictor can change by at most 'MAX_GRADIENT_UPDATE_LOG_SCALE_'. The step length is not limited
+		*		by the other sets of fixed effects
 		* \param beta Current / lag1 value of beta
 		* \param neg_step_dir Negative step direction for making updates
 		*/
@@ -6329,33 +6333,46 @@ namespace GPBoost {
 					"'FindConstantsCapTooLargeLearningRateCoef' needs to be called for optimizer_cov = '%s' and optimizer_coef = '%s' ",
 					optimizer_cov_pars_.c_str(), optimizer_coef_.c_str());
 			}
-			vec_t lp_change = vec_t(num_data_ * num_sets_re_);
-			for (int igp = 0; igp < num_sets_re_; ++igp) {
-				lp_change.segment(igp * num_data_, num_data_) = X_ * (neg_step_dir.segment(num_covariates_ * igp, num_covariates_));
-			}
-			vec_t lp_lag1 = vec_t(num_data_ * num_sets_re_);
-			for (int igp = 0; igp < num_sets_re_; ++igp) {
-				lp_lag1.segment(igp * num_data_, num_data_) = X_ * (beta.segment(num_covariates_ * igp, num_covariates_));
-			}
-			double mean_lp_change = 0., mean_lp_lag1 = 0., var_lp_change = 0, cov_lp_lag1_lp_change = 0;
+			double max_lr = std::numeric_limits<double>::infinity();
+			for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
+				double max_change_mean, max_change_var;
+				if (igp == 0) {
+					max_change_mean = C_mu_ * C_MAX_CHANGE_COEF_;
+					max_change_var = C_sigma2_ * C_MAX_CHANGE_COEF_;
+				}
+				else if (likelihood_.at(unique_clusters_[0])->FixedEffectsSetIsLogScaleParameter(igp)) {
+					max_change_mean = MAX_GRADIENT_UPDATE_LOG_SCALE_;
+					max_change_var = MAX_GRADIENT_UPDATE_LOG_SCALE_ * MAX_GRADIENT_UPDATE_LOG_SCALE_;
+				}
+				else {
+					continue;
+				}
+				const vec_t lp_change = X_ * (neg_step_dir.segment(num_covariates_ * igp, num_covariates_));
+				const vec_t lp_lag1 = X_ * (beta.segment(num_covariates_ * igp, num_covariates_));
+				double mean_lp_change = 0., mean_lp_lag1 = 0., var_lp_change = 0, cov_lp_lag1_lp_change = 0;
 #pragma omp parallel for schedule(static) reduction(+:mean_lp_change, mean_lp_lag1, var_lp_change, cov_lp_lag1_lp_change)
-			for (data_size_t i = 0; i < num_data_ * num_sets_re_; ++i) {
-				mean_lp_change += lp_change[i];
-				mean_lp_lag1 += lp_lag1[i];
-				var_lp_change += lp_change[i] * lp_change[i];
-				cov_lp_lag1_lp_change += lp_change[i] * lp_lag1[i];
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					mean_lp_change += lp_change[i];
+					mean_lp_lag1 += lp_lag1[i];
+					var_lp_change += lp_change[i] * lp_change[i];
+					cov_lp_lag1_lp_change += lp_change[i] * lp_lag1[i];
+				}
+				mean_lp_change /= num_data_;
+				mean_lp_lag1 /= num_data_;
+				var_lp_change /= num_data_;
+				cov_lp_lag1_lp_change /= num_data_;
+				var_lp_change -= mean_lp_change * mean_lp_change;
+				cov_lp_lag1_lp_change -= mean_lp_change * mean_lp_lag1;
+				const double max_lr_mu = max_change_mean / std::abs(mean_lp_change);
+				double max_lr_var = std::numeric_limits<double>::infinity();
+				if (var_lp_change > 0.) {// the variance of the change is zero up to rounding errors if only an intercept changes
+					max_lr_var = (std::abs(cov_lp_lag1_lp_change) +
+						std::sqrt(cov_lp_lag1_lp_change * cov_lp_lag1_lp_change + 4 * var_lp_change * max_change_var)) /
+						2 / var_lp_change;
+				}
+				max_lr = std::min({ max_lr, max_lr_mu, max_lr_var });
 			}
-			mean_lp_change /= num_data_;
-			mean_lp_lag1 /= num_data_;
-			var_lp_change /= num_data_;
-			cov_lp_lag1_lp_change /= num_data_;
-			var_lp_change -= mean_lp_change * mean_lp_change;
-			cov_lp_lag1_lp_change -= mean_lp_change * mean_lp_lag1;
-			double max_lr_mu = C_mu_ * C_MAX_CHANGE_COEF_ / std::abs(mean_lp_change);
-			double max_lr_var = (std::abs(cov_lp_lag1_lp_change) +
-				std::sqrt(cov_lp_lag1_lp_change * cov_lp_lag1_lp_change + 4 * var_lp_change * C_sigma2_ * C_MAX_CHANGE_COEF_)) /
-				2 / var_lp_change;
-			return(std::min({ max_lr_mu , max_lr_var }));
+			return(max_lr);
 		}//end MaximalLearningRateCoef
 
 		/*!

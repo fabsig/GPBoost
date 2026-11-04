@@ -546,13 +546,10 @@ namespace GPBoost {
 			double S = 0.0, I = 0.0;// S and information I at mu_tilde
 			// Terms that only depend on mu via a0 for the zero part
 			const double a0 = -mu_tilde / sigma;
-			const double Phi_a0 = GPBoost::normalCDF(a0);
-			const double phi_a0 = GPBoost::normalPDF(a0);
-			const double Phi_clipped = std::max(Phi_a0, 1e-12); // avoid division by zero
-			const double r = phi_a0 / Phi_clipped; // r(a0) = phi/Phi
+			const double r = GPBoost::InvMillsRatioNormalPhi(a0); // r(a0) = phi/Phi
 			// Zero-part contributions
 			S += W0 * (-r / sigma);// Score: sum w * ( -r / sigma )
-			I += W0 * (r * (a0 + r) / (sigma * sigma));// Info : sum w * ( r*(a0 + r) / sigma^2 )
+			I += W0 * (GPBoost::NegSecondDerivNormalLogCDF(a0) / (sigma * sigma));// Info : sum w * ( r*(a0 + r) / sigma^2 )
 			// Positive-part contributions: Score: sum w * ( (u - mu) / sigma^2 ), Info : sum w * ( 1 / sigma^2 )
 #pragma omp parallel for schedule(static) reduction(+:S, I)
 			for (data_size_t i = 0; i < num_data_; ++i) {
@@ -1752,8 +1749,9 @@ namespace GPBoost {
 				C_sigma2 = C_sigma2 * C_sigma2;
 			}
 		}//end "t"
-		else if (IsGaussianLikelihood() || likelihood_type_ == "zero_censored_power_transformed_normal" ||
+		else if (IsGaussianLikelihood() || IsGaussianHeteroscedastic() || IsZeroCensPowNorm() ||
 			likelihood_type_ == "asymmetric_laplace") {
+			// the heteroscedastic likelihoods: the first set of fixed effects is the mean / location as for the homoscedastic ones
 			double sw = 0.0, mean = 0., sec_mom = 0;
 			if (fixed_effects == nullptr) {
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
@@ -1768,7 +1766,7 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
 				for (data_size_t i = 0; i < num_data; ++i) {
 					const double w = has_weights_ ? weights_ptr[i] : 1.0;
-					mean += w * y_data[i] - fixed_effects[i];
+					mean += w * (y_data[i] - fixed_effects[i]);
 					sec_mom += w * (y_data[i] - fixed_effects[i]) * (y_data[i] - fixed_effects[i]);
 					sw += w;
 				}
@@ -1777,11 +1775,7 @@ namespace GPBoost {
 			sec_mom /= sw;
 			C_mu = std::abs(mean);
 			C_sigma2 = sec_mom - mean * mean;
-		}//end "gaussian"|| likelihood_type_ == "zero_censored_power_transformed_normal" || likelihood_type_ == "asymmetric_laplace"
-		else if (IsGaussianHeteroscedastic() || IsZeroCensPowNormHetero()) {
-			C_mu = 1e99;//not implemented
-			C_sigma2 = 1e99;
-		}
+		}//end "gaussian"|| IsGaussianHeteroscedastic() || IsZeroCensPowNorm() || likelihood_type_ == "asymmetric_laplace"
 		else {
 			NotSupportedForLikelihood(__func__);
 		}
@@ -2841,11 +2835,11 @@ namespace GPBoost {
 					double dinfo = 0.0; // deriv_information_aux_par
 					if (yi <= 0.0) {
 						const double a0 = -mu / s;
-						const double r = GPBoost::InvMillsRatioNormalPhi(a0);
 						if (ind_aux_par == 0) {
-							sdl = r * (1.0 + ((a0 + r) * mu) / s) / s;// d^2/dmu d log(sigma) log f at y=0 								
-							dinfo = r * ((mu * (1.0 - (a0 + r) * (a0 + 2.0 * r))) / (s * s * s)
-								- 2.0 * (a0 + r) / (s * s));// d/d log(sigma) of info(mu) = (1/s^2)*r*(a0 + r)  = r * [ mu * (1 - (a0 + r)*(a0 + 2r)) / s^3 - 2*(a0 + r) / s^2 ]
+							const double neg_second_deriv = GPBoost::NegSecondDerivNormalLogCDF(a0);// r * (a0 + r)
+							sdl = GPBoost::InvMillsRatioNormalPhi(a0) / s + neg_second_deriv * mu / (s * s);// d^2/dmu d log(sigma) log f at y=0 = r * (1 + (a0 + r) * mu / s) / s
+							dinfo = -mu * GPBoost::ThirdDerivNormalLogCDF(a0) / (s * s * s)
+								- 2.0 * neg_second_deriv / (s * s);// d/d log(sigma) of info(mu) = (1/s^2)*r*(a0 + r)  = r * [ mu * (1 - (a0 + r)*(a0 + 2r)) / s^3 - 2*(a0 + r) / s^2 ]
 						}
 						else {// ind_aux_par == 1							
 							sdl = 0.0;// log(lambda), no dependence at y=0	
@@ -2901,10 +2895,10 @@ namespace GPBoost {
 					double dinfo = 0.0; // deriv_information_aux_par
 					if (yi <= 0.0) {
 						const double a0 = -mu / s;
-						const double r = GPBoost::InvMillsRatioNormalPhi(a0);
 						if (ind_aux_par == 0) {
-							sdl = r * (1.0 + ((a0 + r) * mu) / s) / s;// d^2/dmu d log(sigma) log f at y=0								
-							dinfo = r * ((mu * (1.0 - (a0 + r) * (a0 + 2.0 * r))) / (s * s * s) - 2.0 * (a0 + r) / (s * s));// d/d log(sigma) of info(mu) at y=0
+							const double neg_second_deriv = GPBoost::NegSecondDerivNormalLogCDF(a0);// r * (a0 + r)
+							sdl = GPBoost::InvMillsRatioNormalPhi(a0) / s + neg_second_deriv * mu / (s * s);// d^2/dmu d log(sigma) log f at y=0
+							dinfo = -mu * GPBoost::ThirdDerivNormalLogCDF(a0) / (s * s * s) - 2.0 * neg_second_deriv / (s * s);// d/d log(sigma) of info(mu) at y=0
 						}
 						else {// no dependence on a or b at y=0 
 							sdl = 0.0;
@@ -2918,9 +2912,9 @@ namespace GPBoost {
 							// d^2/dmu d log(sigma) log f at y=1
 							// S_mu = (1/s)*r2, v=(1-mu)/s, r2' = r2*(r2 - v)
 							// dS_mu/d log(sigma) = -(r2/s) * (1 + v*(r2 - v))
-							const double G = r2 * (r2 - v);
-							const double dGdv = r2 * (2.0 * G - 1.0) - v * G;
-							sdl = -(r2 / s) * (1.0 + v * (r2 - v));
+							const double G = GPBoost::NegSecondDerivNormalLogCDF(-v);// r2 * (r2 - v)
+							const double dGdv = GPBoost::ThirdDerivNormalLogCDF(-v);// r2 * (2 * G - 1) - v * G
+							sdl = -(r2 + v * G) / s;
 							dinfo = -(1.0 / (s * s)) * (2.0 * G + v * dGdv);// info(mu) = (1/s^2)*G, d/d log(sigma) info = -(1/s^2)*(2*G + v*dGdv)
 						}
 						else {// no dependence on a or b at y=1 

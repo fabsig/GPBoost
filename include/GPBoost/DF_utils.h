@@ -71,16 +71,42 @@ namespace GPBoost {
 		return 0.5 * std::erfc(-x * M_SQRT1_2);
 	}
 
+	/*! \brief Arguments below this threshold use the continued fraction in 'InvMillsRatioNormalPhiTails' */
+	const double THRESHOLD_CONT_FRAC_NORMAL = -5.;
+
+	/*!
+	* \brief Tails of the continued fraction of the inverse Mills ratio r(x) = phi(x) / Phi(x) for x < -5. With u = -x,
+	*		r(x) = u + 1 / t_2, t_k = u + k / t_{k+1}, i.e., r(x) = u + 1 / (u + 2 / (u + 3 / (u + ...))). Truncating it at
+	*		k = 40 gives machine precision for u >= 5. In contrast to a calculation with Phi(x), this does not lose precision when Phi(x)
+	*		becomes subnormal (around x = -38), it has no underflow, and it gives x + r(x) = 1 / t_2 without cancellation
+	* \param u Minus the argument (u > 5)
+	* \param[out] t2 Tail t_2
+	* \param[out] t3 Tail t_3
+	* \param[out] t4 Tail t_4
+	*/
+	inline void InvMillsRatioNormalPhiTails(double u,
+		double& t2,
+		double& t3,
+		double& t4) {
+		double t = u;
+		for (int k = 40; k > 4; --k) {
+			t = u + k / t;
+		}
+		t4 = u + 4. / t;
+		t3 = u + 3. / t4;
+		t2 = u + 2. / t3;
+	}
+
 	inline double normalLogCDF(double x) {
+		if (x < THRESHOLD_CONT_FRAC_NORMAL) {
+			// log(Phi(x)) = log(phi(x)) - log(r(x))
+			double t2, t3, t4;
+			InvMillsRatioNormalPhiTails(-x, t2, t3, t4);
+			return normalLogPDF(x) - std::log(-x + 1. / t2);
+		}
 		if (x < 0.0) {
 			// Left tail: Phi(x) = 0.5 * erfc(-x/sqrt(2))
-			const double e = std::erfc(-x * M_SQRT1_2);
-			if (e > 0.0) return std::log(0.5) + std::log(e);
-			// Extreme left tail: asymptotic approximation
-			const double u = -x;
-			const double u2 = u * u;
-			const double series = 1.0 - 1.0 / u2 + 3.0 / (u2 * u2);
-			return -0.5 * u2 - std::log(u) - 0.5 * std::log(2 * M_PI) + std::log(series);
+			return std::log(0.5) + std::log(std::erfc(-x * M_SQRT1_2));
 		}
 		else {
 			// Right/center: log(Phi(x)) = log(1 - Q), Q = 1 - Phi(x) = 0.5 * erfc(x/sqrt(2))
@@ -90,16 +116,51 @@ namespace GPBoost {
 		}
 	}
 
+	/*! \brief Inverse Mills ratio r(x) = phi(x) / Phi(x) = d/dx log(Phi(x)) */
 	inline double InvMillsRatioNormalPhi(double x) {
+		if (x < THRESHOLD_CONT_FRAC_NORMAL) {
+			double t2, t3, t4;
+			InvMillsRatioNormalPhiTails(-x, t2, t3, t4);
+			return -x + 1. / t2;
+		}
 		const double logphi = normalLogPDF(x);
 		const double logPhi = normalLogCDF(x);
 		return std::exp(logphi - logPhi);
 	}
 
+	/*! \brief Inverse Mills ratio phi(x) / (1 - Phi(x)) = r(-x) */
 	inline double InvMillsRatioNormalOneMinusPhi(double x) {
-		const double logphi = normalLogPDF(x);
-		const double logQ = normalLogCDF(-x);//log(1-Phi(x)) = log(Phi(-x))
-		return std::exp(logphi - logQ);
+		return InvMillsRatioNormalPhi(-x);
+	}
+
+	/*!
+	* \brief Negative second derivative -d^2/dx^2 log(Phi(x)) = r(x) * (x + r(x)) with r(x) = phi(x) / Phi(x). This is in (0, 1),
+	*		but the product r(x) * (x + r(x)) suffers from cancellation for x -> -infinity, where r(x) ~ -x
+	*/
+	inline double NegSecondDerivNormalLogCDF(double x) {
+		if (x < THRESHOLD_CONT_FRAC_NORMAL) {
+			double t2, t3, t4;
+			InvMillsRatioNormalPhiTails(-x, t2, t3, t4);
+			return (-x + 1. / t2) / t2;// x + r(x) = 1 / t_2
+		}
+		const double r = InvMillsRatioNormalPhi(x);
+		return r * (x + r);
+	}
+
+	/*!
+	* \brief Third derivative d^3/dx^3 log(Phi(x)) = r(x) * ((x + r(x)) * (x + 2 * r(x)) - 1) = r(x) * (x^2 - 1 + r(x) * (3 * x + 2 * r(x)))
+	*		with r(x) = phi(x) / Phi(x). For x < -5, (x + r) * (x + 2 * r) - 1 = 2 * (3 * t_3 - 2 * t_4) / (t_2^2 * t_3^2 * t_4)
+	*		with the tails t_k of the continued fraction in 'InvMillsRatioNormalPhiTails'. This avoids the cancellation of the
+	*		direct formula, which subtracts 1 from a product that tends to 1
+	*/
+	inline double ThirdDerivNormalLogCDF(double x) {
+		if (x < THRESHOLD_CONT_FRAC_NORMAL) {
+			double t2, t3, t4;
+			InvMillsRatioNormalPhiTails(-x, t2, t3, t4);
+			return (-x + 1. / t2) * 2. * (3. * t3 - 2. * t4) / (t2 * t2 * t3 * t3 * t4);
+		}
+		const double r = InvMillsRatioNormalPhi(x);
+		return r * (x * x - 1. + r * (3. * x + 2. * r));
 	}
 
 	//// Inverse Mills ratios phi(x) / (1 - Phi(x)) and phi(x) / Phi(x) 

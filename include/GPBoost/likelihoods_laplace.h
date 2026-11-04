@@ -272,8 +272,9 @@ namespace GPBoost {
 					}
 					chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
 					if (chol_fact_SigmaI_plus_ZtWZ_grouped_.info() != Eigen::Success) {
-						LogFatalWithPotentialFisherLaplaceHint(__func__, "Cholesky factorization of Sigma^(-1) + Z^T W Z failed. "
-							"The complete mode-finding curvature matrix is not positive definite ");
+						SetNAOrInfFailedCholeskyModeFinding(__func__, "Cholesky factorization of Sigma^(-1) + Z^T W Z failed. "
+							"The complete mode-finding curvature matrix is not positive definite ", approx_marginal_ll, has_NA_or_Inf);
+						break;
 					}
 				}
 				// Update mode and do backtracking line search
@@ -457,18 +458,22 @@ namespace GPBoost {
 					SigmaI_plus_ZtWZ.makeCompressed();
 					chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
 					if (chol_fact_SigmaI_plus_ZtWZ_grouped_.info() != Eigen::Success) {
-						LogFatalWithPotentialFisherLaplaceHint(__func__, "Cholesky factorization of Sigma^(-1) + Z^T W Z failed when "
+						SetNAOrInfFailedCholeskyModeFinding(__func__, "Cholesky factorization of Sigma^(-1) + Z^T W Z failed when "
 							"calculating the Laplace determinant. The observed-Hessian matrix is not positive definite (negative "
-							"individual entries of W are permitted) ");
+							"individual entries of W are permitted) ", approx_marginal_ll, has_NA_or_Inf);
 					}
 				}
-				approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
-				if (has_vecchia_gp) {
-					approx_marginal_ll += 0.5 * D_inv.diagonal().array().log().sum();
+				if (!has_NA_or_Inf) {
+					approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_grouped_.matrixL()).diagonal().array().log().sum() + 0.5 * SigmaI.diagonal().array().log().sum();
+					if (has_vecchia_gp) {
+						approx_marginal_ll += 0.5 * D_inv.diagonal().array().log().sum();
+					}
 				}
-			}//end cholesky	
-			mode_has_been_calculated_ = true;
-			na_or_inf_during_last_call_to_find_mode_ = false;
+			}//end cholesky
+			if (!has_NA_or_Inf) {
+				mode_has_been_calculated_ = true;
+				na_or_inf_during_last_call_to_find_mode_ = false;
+			}
 		}
 		FinalizeModeFinding(it);
 	}//end FindModePostRandEffCalcMLLGroupedRE
@@ -751,13 +756,21 @@ namespace GPBoost {
 						chol_fact_pattern_analyzed_ = true;
 					}
 					chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
-					CheckCholeskyFactorization(chol_fact_SigmaI_plus_ZtWZ_vecchia_, "FindModePostRandEffCalcMLLFSVA mode update");
+					if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.info() != Eigen::Success) {
+						SetNAOrInfFailedCholeskyModeFinding(__func__, "Cholesky factorization of Sigma^(-1) + W failed in the mode update. ",
+							approx_marginal_ll, has_NA_or_Inf);
+						break;
+					}
 					// 'sigma_woodbury_2' depends on the mode only through 'chol_fact_SigmaI_plus_ZtWZ_vecchia_', so it is
 					//	calculated under the same condition. Its solve has 'num_ip' right-hand sides and was previously
 					//	repeated in every iteration of the mode finding even when W does not change
 					sigma_woodbury_2 = (sigma_woodbury) - Bt_D_inv_B_cross_cov.transpose() * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
 					chol_fact_sigma_woodbury_2.compute(sigma_woodbury_2);
-					CheckCholeskyFactorization(chol_fact_sigma_woodbury_2, "FindModePostRandEffCalcMLLFSVA Woodbury mode update");
+					if (chol_fact_sigma_woodbury_2.info() != Eigen::Success) {
+						SetNAOrInfFailedCholeskyModeFinding(__func__, "Cholesky factorization of the Woodbury matrix failed in the mode update. ",
+							approx_marginal_ll, has_NA_or_Inf);
+						break;
+					}
 				}
 				vec_t Sigma_I_rhs = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(rhs);
 				vec_t Bt_D_inv_B_cross_cov_T_Sigma_I_rhs = Bt_D_inv_B_cross_cov.transpose() * Sigma_I_rhs;
@@ -993,18 +1006,25 @@ namespace GPBoost {
 					}
 					chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
 					if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.info() != Eigen::Success) {
-						LogFatalWithPotentialFisherLaplaceHint(__func__, "Cholesky factorization failed because the matrix is not positive "
-							"definite or contains non-finite values ");
+						SetNAOrInfFailedCholeskyModeFinding(__func__, "Cholesky factorization failed because the matrix is not positive "
+							"definite or contains non-finite values ", approx_marginal_ll, has_NA_or_Inf);
 					}
 				}
-				TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_,
-					Bt_D_inv_B_cross_cov, chol_fact_SigmaI_plus_ZtWZ_vecchia_cross_cov, false);
-				sigma_woodbury_woodbury_ = sigma_woodbury - chol_fact_SigmaI_plus_ZtWZ_vecchia_cross_cov.transpose() * chol_fact_SigmaI_plus_ZtWZ_vecchia_cross_cov;
-				chol_fact_sigma_woodbury_woodbury_.compute(sigma_woodbury_woodbury_);
-				CheckCholeskyFactorization(chol_fact_sigma_woodbury_woodbury_, "FindModePostRandEffCalcMLLFSVA Woodbury determinant");
-				approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
-				approx_marginal_ll += ((den_mat_t)chol_fact_sigma_ip.matrixL()).diagonal().array().log().sum();
-				approx_marginal_ll -= ((den_mat_t)chol_fact_sigma_woodbury_woodbury_.matrixL()).diagonal().array().log().sum();
+				if (!has_NA_or_Inf) {
+					TriangularSolveGivenCholesky<chol_cholmod_sp_mat_t, sp_mat_t, den_mat_t, den_mat_t>(chol_fact_SigmaI_plus_ZtWZ_vecchia_,
+						Bt_D_inv_B_cross_cov, chol_fact_SigmaI_plus_ZtWZ_vecchia_cross_cov, false);
+					sigma_woodbury_woodbury_ = sigma_woodbury - chol_fact_SigmaI_plus_ZtWZ_vecchia_cross_cov.transpose() * chol_fact_SigmaI_plus_ZtWZ_vecchia_cross_cov;
+					chol_fact_sigma_woodbury_woodbury_.compute(sigma_woodbury_woodbury_);
+					if (chol_fact_sigma_woodbury_woodbury_.info() != Eigen::Success) {
+						SetNAOrInfFailedCholeskyModeFinding(__func__, "Cholesky factorization of the Woodbury matrix of the determinant failed. ",
+							approx_marginal_ll, has_NA_or_Inf);
+					}
+				}
+				if (!has_NA_or_Inf) {
+					approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum() + 0.5 * D_inv.diagonal().array().log().sum();
+					approx_marginal_ll += ((den_mat_t)chol_fact_sigma_ip.matrixL()).diagonal().array().log().sum();
+					approx_marginal_ll -= ((den_mat_t)chol_fact_sigma_woodbury_woodbury_.matrixL()).diagonal().array().log().sum();
+				}
 			}
 		}
 		FinalizeModeFinding(it);
@@ -1154,7 +1174,11 @@ namespace GPBoost {
 						chol_fact_pattern_analyzed_ = true;
 					}
 					chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);//This is the bottleneck for large data
-					CheckCholeskyFactorization(chol_fact_SigmaI_plus_ZtWZ_vecchia_, "FindModePostRandEffCalcMLLVecchia mode update");
+					if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.info() != Eigen::Success) {
+						SetNAOrInfFailedCholeskyModeFinding(__func__, "Cholesky factorization of Sigma^(-1) + W failed in the mode update. ",
+							approx_marginal_ll, has_NA_or_Inf);
+						break;
+					}
 				}
 				//Log::REInfo("SigmaI_plus_W: number non zeros = %d", (int)SigmaI_plus_W.nonZeros());//only for debugging
 				//Log::REInfo("chol_fact_SigmaI_plus_ZtWZ: Number non zeros = %d", (int)((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).nonZeros());//only for debugging
@@ -1363,13 +1387,15 @@ namespace GPBoost {
 					}
 					chol_fact_SigmaI_plus_ZtWZ_vecchia_.factorize(SigmaI_plus_W);
 					if (chol_fact_SigmaI_plus_ZtWZ_vecchia_.info() != Eigen::Success) {
-						LogFatalWithPotentialFisherLaplaceHint(__func__, " (determinant) Cholesky factorization failed because the matrix is "
-							"not positive definite or contains non-finite values ");
+						SetNAOrInfFailedCholeskyModeFinding(__func__, " (determinant) Cholesky factorization failed because the matrix is "
+							"not positive definite or contains non-finite values ", approx_marginal_ll, has_NA_or_Inf);
 					}
 				}
-				approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum();
-				for (int igp = 0; igp < num_sets_re_; ++igp) {
-					approx_marginal_ll += 0.5 * D_inv[igp].diagonal().array().log().sum();
+				if (!has_NA_or_Inf) {
+					approx_marginal_ll += -((sp_mat_t)chol_fact_SigmaI_plus_ZtWZ_vecchia_.matrixL()).diagonal().array().log().sum();
+					for (int igp = 0; igp < num_sets_re_; ++igp) {
+						approx_marginal_ll += 0.5 * D_inv[igp].diagonal().array().log().sum();
+					}
 				}
 			}
 		}
@@ -1455,7 +1481,11 @@ namespace GPBoost {
 				GPBoost::matmul((*cross_cov).transpose(), W_times_DW_plus_I_inv_diag_cross_cov, cross_cov_t_W_times_DW_plus_I_inv_diag_cross_cov, GPU_use);
 				M_aux_Woodbury += cross_cov_t_W_times_DW_plus_I_inv_diag_cross_cov;
 				chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of sigma_ip + Sigma_nm^T * Wsqrt * DW_plus_I_inv_diag * Wsqrt * Sigma_nm
-				CheckCholeskyFactorization(chol_fact_dense_Newton_, "FindModePostRandEffCalcMLLFITC mode update");
+				if (chol_fact_dense_Newton_.info() != Eigen::Success) {
+					SetNAOrInfFailedCholeskyModeFinding(__func__, "Cholesky factorization of the Woodbury matrix failed in the mode update. ",
+						approx_marginal_ll, has_NA_or_Inf);
+					break;
+				}
 			}
 			rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
 			// Update mode and SigmaI_mode_
@@ -1566,15 +1596,20 @@ namespace GPBoost {
 				GPBoost::matmul((*cross_cov).transpose(), D_plus_WI_inv_diag_cross_cov, cross_cov_t_D_plus_WI_inv_diag_cross_cov, GPU_use);
 				M_aux_Woodbury += cross_cov_t_D_plus_WI_inv_diag_cross_cov;
 				chol_fact_dense_Newton_.compute(M_aux_Woodbury);//Cholesky factor of (sigma_ip + Sigma_nm^T * D_plus_WI_inv_diag * Sigma_nm)
-				CheckCholeskyFactorization(chol_fact_dense_Newton_, "FindModePostRandEffCalcMLLFITC determinant");
+				if (chol_fact_dense_Newton_.info() != Eigen::Success) {
+					SetNAOrInfFailedCholeskyModeFinding(__func__, "Cholesky factorization of the Woodbury matrix of the determinant failed. ",
+						approx_marginal_ll, has_NA_or_Inf);
+				}
 			}
 			else {
 				D_plus_WI_inv_diag = (fitc_resid_diag + information_ll_.cwiseInverse()).cwiseInverse();
 			}
-			approx_marginal_ll -= ((den_mat_t)chol_fact_dense_Newton_.matrixL()).diagonal().array().log().sum();
-			approx_marginal_ll += ((den_mat_t)chol_fact_sigma_ip.matrixL()).diagonal().array().log().sum();
-			approx_marginal_ll += 0.5 * D_plus_WI_inv_diag.array().log().sum();
-			approx_marginal_ll -= 0.5 * information_ll_.array().log().sum();
+			if (!has_NA_or_Inf) {
+				approx_marginal_ll -= ((den_mat_t)chol_fact_dense_Newton_.matrixL()).diagonal().array().log().sum();
+				approx_marginal_ll += ((den_mat_t)chol_fact_sigma_ip.matrixL()).diagonal().array().log().sum();
+				approx_marginal_ll += 0.5 * D_plus_WI_inv_diag.array().log().sum();
+				approx_marginal_ll -= 0.5 * information_ll_.array().log().sum();
+			}
 		}
 		FinalizeModeFinding(it);
 	}//end FindModePostRandEffCalcMLLFITC
@@ -2216,7 +2251,7 @@ namespace GPBoost {
 				Log::REFatal(CANNOT_CALC_STDEV_ERROR_);
 			}
 			else {
-				Log::REFatal(NA_OR_INF_ERROR_);
+				LogFatalNAOrInfModeFinding();
 			}
 		}
 		CHECK(mode_has_been_calculated_);
@@ -2394,7 +2429,7 @@ namespace GPBoost {
 				Log::REFatal(CANNOT_CALC_STDEV_ERROR_);
 			}
 			else {
-				Log::REFatal(NA_OR_INF_ERROR_);
+				LogFatalNAOrInfModeFinding();
 			}
 		}
 		CHECK(mode_has_been_calculated_);
@@ -2869,7 +2904,7 @@ namespace GPBoost {
 				Log::REFatal(CANNOT_CALC_STDEV_ERROR_);
 			}
 			else {
-				Log::REFatal(NA_OR_INF_ERROR_);
+				LogFatalNAOrInfModeFinding();
 			}
 		}
 		CHECK(mode_has_been_calculated_);
@@ -3004,7 +3039,7 @@ namespace GPBoost {
 				Log::REFatal(CANNOT_CALC_STDEV_ERROR_);
 			}
 			else {
-				Log::REFatal(NA_OR_INF_ERROR_);
+				LogFatalNAOrInfModeFinding();
 			}
 		}
 		den_mat_t sigma_ip_stable = sigma_ip;
@@ -4068,7 +4103,7 @@ namespace GPBoost {
 				Log::REFatal(CANNOT_CALC_STDEV_ERROR_);
 			}
 			else {
-				Log::REFatal(NA_OR_INF_ERROR_);
+				LogFatalNAOrInfModeFinding();
 			}
 		}
 		CHECK(mode_has_been_calculated_);
@@ -4594,7 +4629,7 @@ namespace GPBoost {
 				Log::REFatal(CANNOT_CALC_STDEV_ERROR_);
 			}
 			else {
-				Log::REFatal(NA_OR_INF_ERROR_);
+				LogFatalNAOrInfModeFinding();
 			}
 		}
 		CHECK(mode_has_been_calculated_);
@@ -4769,7 +4804,7 @@ namespace GPBoost {
 			FindModePostRandEffCalcMLLStable(y_data, y_data_int, fixed_effects, ZSigmaZt, mll);
 		}
 		if (na_or_inf_during_last_call_to_find_mode_) {
-			Log::REFatal(NA_OR_INF_ERROR_);
+			LogFatalNAOrInfModeFinding();
 		}
 		CHECK(mode_has_been_calculated_);
 		if (can_use_first_deriv_log_like_for_pred_mean_) {
@@ -4850,7 +4885,7 @@ namespace GPBoost {
 			FindModePostRandEffCalcMLLGroupedRE(y_data, y_data_int, fixed_effects, SigmaI, has_vecchia_gp, B, D_inv, false, false, mll);
 		}
 		if (na_or_inf_during_last_call_to_find_mode_) {
-			Log::REFatal(NA_OR_INF_ERROR_);
+			LogFatalNAOrInfModeFinding();
 		}
 		CHECK(mode_has_been_calculated_);
 		const data_size_t dim_re_group = (data_size_t)SigmaI.cols();
@@ -5313,7 +5348,7 @@ namespace GPBoost {
 			FindModePostRandEffCalcMLLOnlyOneGroupedRECalculationsOnREScale(y_data, y_data_int, fixed_effects, sigma2, mll);
 		}
 		if (na_or_inf_during_last_call_to_find_mode_) {
-			Log::REFatal(NA_OR_INF_ERROR_);
+			LogFatalNAOrInfModeFinding();
 		}
 		CHECK(mode_has_been_calculated_);
 		pred_mean = vec_t::Zero(num_data_pred);
@@ -5398,7 +5433,7 @@ namespace GPBoost {
 				chol_ip_cross_cov_preconditioner, chol_fact_sigma_ip_preconditioner, GPU_use);
 		}
 		if (na_or_inf_during_last_call_to_find_mode_) {
-			Log::REFatal(NA_OR_INF_ERROR_);
+			LogFatalNAOrInfModeFinding();
 		}
 		// Compute predictive mean
 		den_mat_t sigma_ip_stable = *sigma_ip;
@@ -5924,7 +5959,7 @@ namespace GPBoost {
 				re_comps_ip_cluster_i, re_comps_cross_cov_cluster_i, chol_ip_cross_cov, chol_fact_sigma_ip, cluster_i, re_model);
 		}
 		if (na_or_inf_during_last_call_to_find_mode_) {
-			Log::REFatal(NA_OR_INF_ERROR_);
+			LogFatalNAOrInfModeFinding();
 		}
 		CHECK(mode_has_been_calculated_);
 		int num_pred = (int)Bp.cols();
@@ -6579,7 +6614,7 @@ namespace GPBoost {
 				cross_cov, fitc_resid_diag, mll, GPU_use);
 		}
 		if (na_or_inf_during_last_call_to_find_mode_) {
-			Log::REFatal(NA_OR_INF_ERROR_);
+			LogFatalNAOrInfModeFinding();
 		}
 		CHECK(mode_has_been_calculated_);
 		if (can_use_first_deriv_log_like_for_pred_mean_) {
@@ -6637,7 +6672,7 @@ namespace GPBoost {
 	void Likelihood<T_mat, T_chol>::CalcVarLaplaceApproxOnlyOneGPCalculationsOnREScale(const std::shared_ptr<T_mat>& Sigma,
 		vec_t& pred_var) {
 		if (na_or_inf_during_last_call_to_find_mode_) {
-			Log::REFatal(NA_OR_INF_ERROR_);
+			LogFatalNAOrInfModeFinding();
 		}
 		CHECK(mode_has_been_calculated_);
 		pred_var = vec_t(dim_mode_);
@@ -6659,7 +6694,7 @@ namespace GPBoost {
 	void Likelihood<T_mat, T_chol>::CalcVarLaplaceApproxGroupedRE(vec_t& pred_var) {
 		CHECK(num_sets_re_ == 1);
 		if (na_or_inf_during_last_call_to_find_mode_) {
-			Log::REFatal(NA_OR_INF_ERROR_);
+			LogFatalNAOrInfModeFinding();
 		}
 		CHECK(mode_has_been_calculated_);
 		pred_var = vec_t(dim_mode_);
@@ -6793,7 +6828,7 @@ namespace GPBoost {
 	template <typename T_mat, typename T_chol>
 	void Likelihood<T_mat, T_chol>::CalcVarLaplaceApproxOnlyOneGroupedRECalculationsOnREScale(vec_t& pred_var) {
 		if (na_or_inf_during_last_call_to_find_mode_) {
-			Log::REFatal(NA_OR_INF_ERROR_);
+			LogFatalNAOrInfModeFinding();
 		}
 		CHECK(mode_has_been_calculated_);
 		pred_var = vec_t(dim_mode_);
@@ -6804,7 +6839,7 @@ namespace GPBoost {
 	void Likelihood<T_mat, T_chol>::CalcVarLaplaceApproxVecchia(vec_t& pred_var,
 		const std::vector<std::shared_ptr<RECompGP<den_mat_t>>>& re_comps_cross_cov_cluster_i) {
 		if (na_or_inf_during_last_call_to_find_mode_) {
-			Log::REFatal(NA_OR_INF_ERROR_);
+			LogFatalNAOrInfModeFinding();
 		}
 		CHECK(mode_has_been_calculated_);
 		pred_var = vec_t(dim_mode_);
