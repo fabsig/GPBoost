@@ -2178,6 +2178,45 @@ namespace GPBoost {
 			const double* weights = nullptr) const;
 
 		/*!
+		* \brief Weighted mean and variance of 'value(i)' over the data points i with 'include(i)'. The variance is calculated
+		*		from the deviations from the mean: E[x^2] - E[x]^2 cancels when the mean is large relative to the spread
+		* \param num_data Number of data points
+		* \param weights Weights (nullptr if there are none)
+		* \param value Function that returns the value of data point i
+		* \param include Function that returns true if data point i is included
+		* \param[out] mean Weighted mean
+		* \param[out] var Weighted variance
+		*/
+		template <typename F_value, typename F_include>
+		void WeightedMeanAndVariance(const data_size_t num_data,
+			const double* weights,
+			F_value value,
+			F_include include,
+			double& mean,
+			double& var) const {
+			double sum_w = 0., sum_w_x = 0.;
+#pragma omp parallel for schedule(static) reduction(+:sum_w, sum_w_x)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				if (include(i)) {
+					const double w = (weights == nullptr) ? 1. : weights[i];
+					sum_w += w;
+					sum_w_x += w * value(i);
+				}
+			}
+			mean = sum_w_x / sum_w;
+			double sum_w_dev2 = 0.;
+#pragma omp parallel for schedule(static) reduction(+:sum_w_dev2)
+			for (data_size_t i = 0; i < num_data; ++i) {
+				if (include(i)) {
+					const double w = (weights == nullptr) ? 1. : weights[i];
+					const double dev = value(i) - mean;
+					sum_w_dev2 += w * dev * dev;
+				}
+			}
+			var = sum_w_dev2 / sum_w;
+		}
+
+		/*!
 		* \brief Returns the number of additional parameters
 		*/
 		int NumAuxPars() const {
@@ -7321,17 +7360,33 @@ namespace GPBoost {
 		template <class T_mat_1, typename std::enable_if <std::is_same<sp_mat_t, T_mat_1>::value ||
 			std::is_same<sp_mat_rm_t, T_mat_1>::value>::type* = nullptr >
 		void CalcChol(T_chol& chol_fact, const T_mat_1& psi, bool& chol_fact_pattern_analyzed) {
+			TryCalcChol<T_mat_1>(chol_fact, psi, chol_fact_pattern_analyzed);
+			CheckCholeskyFactorization(chol_fact, "CalcChol");
+		}
+		template <class T_mat_1, typename std::enable_if <std::is_same<den_mat_t, T_mat_1>::value>::type* = nullptr  >
+		void CalcChol(T_chol& chol_fact, const T_mat_1& psi, bool& chol_fact_pattern_analyzed) {
+			TryCalcChol<T_mat_1>(chol_fact, psi, chol_fact_pattern_analyzed);
+			CheckCholeskyFactorization(chol_fact, "CalcChol");
+		}
+
+		/*!
+		* \brief Cholesky factorization as in 'CalcChol', but a failure is reported by the return value instead of an error
+		* \return False if the factorization has failed (the matrix is not positive definite or contains non-finite values)
+		*/
+		template <class T_mat_1, typename std::enable_if <std::is_same<sp_mat_t, T_mat_1>::value ||
+			std::is_same<sp_mat_rm_t, T_mat_1>::value>::type* = nullptr >
+		bool TryCalcChol(T_chol& chol_fact, const T_mat_1& psi, bool& chol_fact_pattern_analyzed) {
 			if (!chol_fact_pattern_analyzed) {
 				chol_fact.analyzePattern(psi);
 				chol_fact_pattern_analyzed = true;
 			}
 			chol_fact.factorize(psi);
-			CheckCholeskyFactorization(chol_fact, "CalcChol");
+			return chol_fact.info() == Eigen::Success;
 		}
 		template <class T_mat_1, typename std::enable_if <std::is_same<den_mat_t, T_mat_1>::value>::type* = nullptr  >
-		void CalcChol(T_chol& chol_fact, const T_mat_1& psi, bool&) {
+		bool TryCalcChol(T_chol& chol_fact, const T_mat_1& psi, bool&) {
 			chol_fact.compute(psi);
-			CheckCholeskyFactorization(chol_fact, "CalcChol");
+			return chol_fact.info() == Eigen::Success;
 		}
 
 		// Initialize location parameter of log-likelihood for calculation of approx. marginal log-likelihood (objective function)

@@ -1325,6 +1325,27 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Step length cap of the coefficients of the lbfgs optimizers for a response with a large mean or with a variance of one ", {
+
+    # The lbfgs optimizers limit the step length of the coefficients with the mean and the variance of the response. The
+    #   variance was calculated as E[y^2] - E[y]^2, which cancels for a response with a large mean and a small spread: it
+    #   was zero for the response below, and with the initial slope of zero, the step length was limited to zero ("'step'
+    #   must be positive"). A response variance of one had the same effect for likelihoods with a log link, for which the
+    #   constant is |log(variance)| = 0
+    X_cap <- cbind(1, rep(0:1, each = 20))
+    y_cap <- 1e8 + rep(c(-1.25, -0.75, 0.75, 1.25), 10)# mean 1e8 and variance 1.0625 for both values of the covariate
+    capture.output(gp_model_cap <- fitGPModel(likelihood = "gaussian_heteroscedastic", y = y_cap, X = X_cap,
+                                              params = OPTIM_PARAMS_BFGS), file = "NUL")
+    expect_lt(sum(abs(as.vector(gp_model_cap$get_coef(std_err = FALSE)) - c(1e8, 0, log(1.0625), 0))), TOLERANCE_MEDIUM)
+    capture.output(gp_model_cap_re <- fitGPModel(group_data = rep(1:10, 4), likelihood = "gaussian_heteroscedastic",
+                                                 y = y_cap, X = X_cap, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    expect_true(is.finite(gp_model_cap_re$get_current_neg_log_likelihood()))
+    y_cap_pois <- rep(c(0, 2), 20)# mean one and variance one
+    capture.output(gp_model_cap_pois <- fitGPModel(group_data = rep(1:10, 4), likelihood = "poisson", y = y_cap_pois,
+                                                   X = X_cap, params = OPTIM_PARAMS_BFGS), file = "NUL")
+    expect_true(is.finite(gp_model_cap_pois$get_current_neg_log_likelihood()))
+  })
+
   test_that("Standardization of the covariates by the lbfgs optimizers does not change the model ", {
 
     # The standardization is a reparametrization only if the coefficients are transformed consistently. The

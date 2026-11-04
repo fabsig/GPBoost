@@ -78,7 +78,11 @@ namespace GPBoost {
 				diag_Wsqrt.array() = information_ll_.array().sqrt();
 				Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
 				Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
-				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt, chol_fact_pattern_analyzed_);//this is the bottleneck (for large data and sparse matrices)
+				if (!TryCalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt, chol_fact_pattern_analyzed_)) {//this is the bottleneck (for large data and sparse matrices)
+					SetNAOrInfFailedCholeskyModeFinding(__func__, "Cholesky factorization of I + W^(1/2) Sigma W^(1/2) failed in the mode update. ",
+						approx_marginal_ll, has_NA_or_Inf);
+					break;
+				}
 			}
 			// Calculate right hand side for mode update
 			rhs.array() = information_ll_.array() * mode_.array() + first_deriv_ll_.array();
@@ -137,7 +141,9 @@ namespace GPBoost {
 					Wsqrt_ssn = W_ssn.cwiseSqrt();
 					Id_plus_Wsqrt_Sigma_Wsqrt_ssn.setIdentity();
 					Id_plus_Wsqrt_Sigma_Wsqrt_ssn += (Wsqrt_ssn.asDiagonal() * (*Sigma) * Wsqrt_ssn.asDiagonal());
-					CalcChol<T_mat>(chol_fact_ssn, Id_plus_Wsqrt_Sigma_Wsqrt_ssn, chol_fact_ssn_pattern_analyzed);
+					if (!TryCalcChol<T_mat>(chol_fact_ssn, Id_plus_Wsqrt_Sigma_Wsqrt_ssn, chol_fact_ssn_pattern_analyzed)) {
+						return false;
+					}
 					W_ssn_prev = W_ssn;
 				}
 				const vec_t Sigma_rhs = (*Sigma) * rhs_H;
@@ -165,11 +171,16 @@ namespace GPBoost {
 				diag_Wsqrt.array() = information_ll_.array().sqrt();
 				Id_plus_Wsqrt_Sigma_Wsqrt.setIdentity();
 				Id_plus_Wsqrt_Sigma_Wsqrt += (diag_Wsqrt.asDiagonal() * (*Sigma) * diag_Wsqrt.asDiagonal());
-				CalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt, chol_fact_pattern_analyzed_);
+				if (!TryCalcChol<T_mat>(chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_, Id_plus_Wsqrt_Sigma_Wsqrt, chol_fact_pattern_analyzed_)) {
+					SetNAOrInfFailedCholeskyModeFinding(__func__, "Cholesky factorization of I + W^(1/2) Sigma W^(1/2) failed when "
+						"calculating the Laplace determinant. ", approx_marginal_ll, has_NA_or_Inf);
+				}
 			}
-			approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
-			mode_has_been_calculated_ = true;
-			na_or_inf_during_last_call_to_find_mode_ = false;
+			if (!has_NA_or_Inf) {
+				approx_marginal_ll -= ((T_mat)chol_fact_Id_plus_Wsqrt_Sigma_Wsqrt_.matrixL()).diagonal().array().log().sum();
+				mode_has_been_calculated_ = true;
+				na_or_inf_during_last_call_to_find_mode_ = false;
+			}
 		}
 		FinalizeModeFinding(it);
 		//Log::REInfo("FindModePostRandEffCalcMLLStable: finished after %d iterations ", it);//for debugging

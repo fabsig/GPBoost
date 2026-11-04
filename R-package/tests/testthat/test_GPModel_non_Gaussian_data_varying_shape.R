@@ -1186,6 +1186,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # The error of a prediction, which needs the mode, reports the failed factorization
     expect_error(predict(gp_model_t, y = y_t, cov_pars = c(1, 0.3), gp_coords_pred = coords_tail[1:2, ]),
                  "Cholesky factorization")
+    # The same for a dense GP: for almost identical locations and the error variance exp(-40), I + W^(1/2) Sigma W^(1/2)
+    #   is not numerically positive definite
+    gp_model_dense <- GPModel(gp_coords = matrix((0:9) * 1e-5, ncol = 1), cov_function = "gaussian",
+                              likelihood = "gaussian_heteroscedastic")
+    expect_true(is.nan(gp_model_dense$neg_log_likelihood(cov_pars = c(1, 1), y = 0:9, fixed_effects = c(rep(0, 10), rep(-40, 10)))))
+    expect_error(predict(gp_model_dense, y = 0:9, cov_pars = c(1, 1), gp_coords_pred = matrix(0.5, ncol = 1),
+                         offset = c(rep(0, 10), rep(-40, 10)), offset_pred = c(0, -40)),
+                 "Cholesky factorization")
   })
 
   test_that("test negative log-likelihood metric of the GPBoost algorithm for varying-shape and heteroscedastic likelihoods ", {

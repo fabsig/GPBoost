@@ -6365,12 +6365,19 @@ namespace GPBoost {
 				cov_lp_lag1_lp_change -= mean_lp_change * mean_lp_lag1;
 				const double max_lr_mu = max_change_mean / std::abs(mean_lp_change);
 				double max_lr_var = std::numeric_limits<double>::infinity();
-				if (var_lp_change > 0.) {// the variance of the change is zero up to rounding errors if only an intercept changes
+				// The variance of the change is zero up to rounding errors if only an intercept changes. A maximal change of the
+				//	variance that is not positive (e.g., for a constant response) gives no scale for it, and limiting the variance
+				//	with it would give a step length of zero
+				if (var_lp_change > 0. && max_change_var > 0.) {
 					max_lr_var = (std::abs(cov_lp_lag1_lp_change) +
 						std::sqrt(cov_lp_lag1_lp_change * cov_lp_lag1_lp_change + 4 * var_lp_change * max_change_var)) /
 						2 / var_lp_change;
 				}
-				max_lr = std::min({ max_lr, max_lr_mu, max_lr_var });
+				for (const double max_lr_igp : { max_lr_mu, max_lr_var }) {
+					if (max_lr_igp > 0. && max_lr_igp < max_lr) {// a step length of zero (e.g., after an underflow) is not a valid limit
+						max_lr = max_lr_igp;
+					}
+				}
 			}
 			return(max_lr);
 		}//end MaximalLearningRateCoef

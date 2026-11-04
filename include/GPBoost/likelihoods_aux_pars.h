@@ -1655,6 +1655,7 @@ namespace GPBoost {
 		double& C_sigma2,
 		const double* weights) const {
 		const double* weights_ptr = (weights != nullptr) ? weights : weights_;
+		const double* weights_if_any = has_weights_ ? weights_ptr : nullptr;
 		if (likelihood_type_ == "bernoulli_probit" || likelihood_type_ == "bernoulli_logit" ||
 			likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" ||
 			likelihood_type_ == "beta" || likelihood_type_ == "beta_binomial" || likelihood_type_ == "zoctn" ||
@@ -1668,36 +1669,20 @@ namespace GPBoost {
 			C_sigma2 = 1e99;
 		}
 		else if (IsHurdlePositive() || likelihood_type_ == "zero_censored_shifted_gamma") {
-			double sw = 0.0, mean = 0., sec_mom = 0.;
-#pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
-			for (data_size_t i = 0; i < num_data; ++i) {
-				if (y_data[i] > 0.) {
-					const double w = has_weights_ ? weights_ptr[i] : 1.0;
-					mean += w * y_data[i];
-					sec_mom += w * y_data[i] * y_data[i];
-					sw += w;
-				}
-			}
-			mean /= sw;
-			sec_mom /= sw;
+			double mean, var;
+			WeightedMeanAndVariance(num_data, weights_if_any, [&](data_size_t i) { return y_data[i]; },
+				[&](data_size_t i) { return y_data[i] > 0.; }, mean, var);
 			C_mu = std::abs(SafeLog(mean));
-			C_sigma2 = std::abs(SafeLog(sec_mom - mean * mean));
+			C_sigma2 = std::abs(SafeLog(var));
 		}
 		else if (likelihood_type_ == "poisson" || likelihood_type_ == "gamma" || IsTweedieConstantDispersion() || IsEGPDLikelihood() ||
 			likelihood_type_ == "negative_binomial" || likelihood_type_ == "negative_binomial_1" ||
 			likelihood_type_ == "lognormal" || IsZeroInflatedCount()) {
-			double sw = 0.0, mean = 0., sec_mom = 0;
-#pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
-			for (data_size_t i = 0; i < num_data; ++i) {
-				const double w = has_weights_ ? weights_ptr[i] : 1.0;
-				mean += w * y_data[i];
-				sec_mom += w * y_data[i] * y_data[i];
-				sw += w;
-			}
-			mean /= sw;
-			sec_mom /= sw;
+			double mean, var;
+			WeightedMeanAndVariance(num_data, weights_if_any, [&](data_size_t i) { return y_data[i]; },
+				[](data_size_t) { return true; }, mean, var);
 			C_mu = std::abs(SafeLog(mean));
-			C_sigma2 = std::abs(SafeLog(sec_mom - mean * mean));
+			C_sigma2 = std::abs(SafeLog(var));
 		}
 		else if (likelihood_type_ == "t") {
 			//use the median and MAD^2 as robust location and scale^2 parameters
@@ -1752,29 +1737,12 @@ namespace GPBoost {
 		else if (IsGaussianLikelihood() || IsGaussianHeteroscedastic() || IsZeroCensPowNorm() ||
 			likelihood_type_ == "asymmetric_laplace") {
 			// the heteroscedastic likelihoods: the first set of fixed effects is the mean / location as for the homoscedastic ones
-			double sw = 0.0, mean = 0., sec_mom = 0;
-			if (fixed_effects == nullptr) {
-#pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					const double w = has_weights_ ? weights_ptr[i] : 1.0;
-					mean += w * y_data[i];
-					sec_mom += w * y_data[i] * y_data[i];
-					sw += w;
-				}
-			}
-			else {
-#pragma omp parallel for schedule(static) reduction(+:mean, sec_mom, sw)
-				for (data_size_t i = 0; i < num_data; ++i) {
-					const double w = has_weights_ ? weights_ptr[i] : 1.0;
-					mean += w * (y_data[i] - fixed_effects[i]);
-					sec_mom += w * (y_data[i] - fixed_effects[i]) * (y_data[i] - fixed_effects[i]);
-					sw += w;
-				}
-			}
-			mean /= sw;
-			sec_mom /= sw;
+			double mean, var;
+			WeightedMeanAndVariance(num_data, weights_if_any,
+				[&](data_size_t i) { return (fixed_effects == nullptr) ? y_data[i] : y_data[i] - fixed_effects[i]; },
+				[](data_size_t) { return true; }, mean, var);
 			C_mu = std::abs(mean);
-			C_sigma2 = sec_mom - mean * mean;
+			C_sigma2 = var;
 		}//end "gaussian"|| IsGaussianHeteroscedastic() || IsZeroCensPowNorm() || likelihood_type_ == "asymmetric_laplace"
 		else {
 			NotSupportedForLikelihood(__func__);
