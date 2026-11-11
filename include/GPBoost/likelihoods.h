@@ -2162,6 +2162,20 @@ namespace GPBoost {
 			const double* weights = nullptr);
 
 		/*!
+		* \brief Limit initial values of additional likelihood parameters that come from an auxiliary model without the random
+		*		effects (see 'InitCoefAuxParsFromIidModel' in re_model.cpp). This model attributes the variability of the random
+		*		effects to the likelihood, and the sum of Gaussian random effects and heavy-tailed errors is closer to a normal
+		*		distribution than the errors. The degrees of freedom of a "t" likelihood of this model can thus be very large, and
+		*		there, the likelihood hardly depends on them and the optimization does not leave this region
+		* \param[out] aux_pars Additional likelihood parameters (on the scale of 'aux_pars_')
+		*/
+		void LimitInitialAuxParsFromModelWithoutRandomEffects(double* aux_pars) const {
+			if (likelihood_type_ == "t" && estimate_df_t_) {
+				aux_pars[1] = std::min(aux_pars[1], MAX_INITIAL_DF_T_);
+			}
+		}
+
+		/*!
 		* \brief Determine constants C_mu and C_sigma2 used for checking whether step sizes for linear regression coefficients are clearly too large.
 		*		They concern the first set of fixed effects, see 'FixedEffectsSetIsLogScaleParameter' for the other sets
 		* \param y_data Response variable data
@@ -8888,6 +8902,8 @@ namespace GPBoost {
 		bool can_use_first_deriv_log_like_for_pred_mean_ = true;
 		/*! \brief If true, the degrees of freedom (df) are also estimated for the "t" likelihood */
 		bool estimate_df_t_ = true;
+		/*! \brief Upper limit for initial degrees of freedom of the "t" likelihood from a model without random effects (see 'LimitInitialAuxParsFromModelWithoutRandomEffects') */
+		static constexpr double MAX_INITIAL_DF_T_ = 10.;
 		/*! \brief If true, a Gaussian likelihood is estimated using this file */
 		bool use_likelihoods_file_for_gaussian_ = false;
 		/*! \brief If true, the function 'CalcFirstDerivInformationLocPar_PerSample' has been called before */

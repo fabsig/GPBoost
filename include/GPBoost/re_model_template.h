@@ -3230,6 +3230,14 @@ namespace GPBoost {
 			return likelihood_[unique_clusters_[0]]->GetAuxPars();
 		}
 
+		/*!
+		* \brief Limit initial values of additional likelihood parameters that come from an auxiliary model without the random effects
+		* \param[out] aux_pars Additional likelihood parameters
+		*/
+		void LimitInitialAuxParsFromModelWithoutRandomEffects(double* aux_pars) const {
+			likelihood_.at(unique_clusters_[0])->LimitInitialAuxParsFromModelWithoutRandomEffects(aux_pars);
+		}
+
 		void WarnIfTweediePowerAtBoundary() const {
 			likelihood_.at(unique_clusters_[0])->WarnIfTweediePowerAtBoundary();
 		}

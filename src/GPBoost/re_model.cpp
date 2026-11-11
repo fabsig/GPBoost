@@ -540,7 +540,9 @@ namespace GPBoost {
 		coef_ = coef_iid;
 		if (!init_aux_pars_given_ && NumAuxPars() > 0 && re_model_iid->AuxParsHaveBeenSetOrEstimated()) {
 			CHECK(re_model_iid->NumAuxPars() == NumAuxPars());
-			SetAuxPars(re_model_iid->GetAuxPars());
+			std::vector<double> aux_pars_iid(re_model_iid->GetAuxPars(), re_model_iid->GetAuxPars() + NumAuxPars());
+			re_model->LimitInitialAuxParsFromModelWithoutRandomEffects(aux_pars_iid.data());
+			SetAuxPars(aux_pars_iid.data());
 		}
 	}
 

@@ -793,6 +793,30 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }# end loop inv_method in c("cholesky", "iterative")
   }) #end t-likelihood
 
+  test_that("t likelihood: initial degrees of freedom from the iid model ", {
+
+    # The initial auxiliary parameters come from an iid model, which attributes the variability of the GP to the
+    #   likelihood. On this smooth field with t3 errors, its degrees of freedom are about 78000. There, the likelihood
+    #   hardly depends on them, and the estimation stopped at about the same value (nll 211.3) instead of
+    #   df = 2.1 (nll 160.7). The initial degrees of freedom from the iid model are therefore at most 10
+    n_t <- 200
+    coords_t <- matrix(sim_rand_unif(n=n_t*2, init_c=0.31), ncol=2)
+    y_t <- sin(6 * coords_t[,1]) + cos(4 * coords_t[,2]) + 0.3 * qt(sim_rand_unif(n=n_t, init_c=0.47), df=3)
+    X_t <- matrix(1, n_t, 1)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_t, cov_function = "matern", cov_fct_shape = 1.5,
+                                           likelihood = "t", y = y_t, X = X_t, params = list(maxit = 0)), file='NUL')# returns the initial values
+    expect_equal(as.vector(gp_model$get_aux_pars())[2], 10)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_t, cov_function = "matern", cov_fct_shape = 1.5,
+                                           likelihood = "t", y = y_t, X = X_t), file='NUL')
+    expect_lt(abs(as.vector(gp_model$get_aux_pars())[2] - 2.08), 0.05)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - 160.68), 0.05)
+    # Initial degrees of freedom of the user are not limited
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_t, cov_function = "matern", cov_fct_shape = 1.5,
+                                           likelihood = "t", y = y_t, X = X_t,
+                                           params = list(maxit = 0, init_aux_pars = c(0.5, 1000))), file='NUL')
+    expect_equal(as.vector(gp_model$get_aux_pars())[2], 1000)
+  })
+
   test_that("gaussian_heteroscedastic_fixed_and_random likelihood", {
     params = OPTIM_PARAMS_BFGS
     init_cov_pars = c(1,mean(dist(coords))/3,0.1,mean(dist(coords))/3)
