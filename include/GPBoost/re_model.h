@@ -623,6 +623,12 @@ namespace GPBoost {
 		void GetInitAuxPars(double* aux_pars) const;
 
 		/*!
+		* \brief Set the additional likelihood parameters
+		* \param aux_pars Additional likelihood parameters on the original scale (in contrast to 'SetAuxPars')
+		*/
+		void SetAuxParsOriginalScale(const double* aux_pars);
+
+		/*!
 		* \brief Calculate test negative log-likelihood using adaptive GH quadrature
 		* \param y_test Test response variable
 		* \param pred_mean Predictive mean of latent random effects

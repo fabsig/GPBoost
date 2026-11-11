@@ -2870,9 +2870,13 @@ int GPB_EvalNegLogLikelihood(REModelHandle handle,
 	const double* y_data,
 	double* cov_pars,
 	const double* fixed_effects,
+	const double* aux_pars,
 	double* negll) {
 	API_BEGIN();
 	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	if (aux_pars != nullptr) {
+		ref_remodel->SetAuxParsOriginalScale(aux_pars);
+	}
 	ref_remodel->EvalNegLogLikelihood(y_data, cov_pars, negll[0], fixed_effects, true, false);
 	API_END();
 }

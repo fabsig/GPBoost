@@ -815,6 +815,28 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            likelihood = "t", y = y_t, X = X_t,
                                            params = list(maxit = 0, init_aux_pars = c(0.5, 1000))), file='NUL')
     expect_equal(as.vector(gp_model$get_aux_pars())[2], 1000)
+    # Initial values given with 'set_optim_params()' are kept by a later 'fit()' without them. They were
+    #   discarded, and the auxiliary parameters were then taken from the iid model
+    gp_model <- GPModel(gp_coords = coords_t, cov_function = "matern", cov_fct_shape = 1.5, likelihood = "t")
+    gp_model$set_optim_params(params = list(init_aux_pars = c(0.5, 1000)))
+    capture.output( fit(gp_model, y = y_t, X = X_t, params = list(maxit = 0)), file='NUL')
+    expect_equal(as.vector(gp_model$get_aux_pars()), c(0.5, 1000))
+    expect_equal(as.vector(gp_model$get_optim_params()$init_aux_pars), c(0.5, 1000))
+    # A likelihood evaluation sets the auxiliary parameters, but they do not become initial values
+    gp_model <- GPModel(gp_coords = coords_t, cov_function = "matern", cov_fct_shape = 1.5, likelihood = "t")
+    nll <- gp_model$neg_log_likelihood(cov_pars = c(1, 0.2), y = y_t, aux_pars = c(0.5, 1000))
+    expect_equal(as.vector(gp_model$get_aux_pars()), c(0.5, 1000))
+    expect_null(gp_model$get_optim_params()$init_aux_pars)
+    capture.output( fit(gp_model, y = y_t, X = X_t, params = list(maxit = 0)), file='NUL')
+    expect_equal(as.vector(gp_model$get_aux_pars())[2], 10)
+    # Initial values only apply to the likelihood for which they were given
+    gp_model <- GPModel(gp_coords = coords_t, cov_function = "matern", cov_fct_shape = 1.5, likelihood = "t")
+    gp_model$set_optim_params(params = list(init_aux_pars = c(0.5, 1000)))
+    gp_model$set_likelihood("t")
+    expect_equal(as.vector(gp_model$get_aux_pars()), c(0.5, 1000))
+    expect_equal(as.vector(gp_model$get_optim_params()$init_aux_pars), c(0.5, 1000))
+    gp_model$set_likelihood("gamma")
+    expect_null(gp_model$get_optim_params()$init_aux_pars)
   })
 
   test_that("gaussian_heteroscedastic_fixed_and_random likelihood", {

@@ -206,6 +206,7 @@ namespace GPBoost {
 				Log::REFatal("Cannot change likelihood after a model has been estimated ");
 			}
 		}
+		const string_t likelihood_before = GetLikelihood();
 		likelihood_ = likelihood;
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->SetLikelihood(likelihood);
@@ -218,6 +219,16 @@ namespace GPBoost {
 		else {
 			re_model_den_->SetLikelihood(likelihood);
 			num_cov_pars_ = re_model_den_->num_cov_par_;
+		}
+		// The likelihood has been initialized anew with its default auxiliary parameters. Initial values given
+		//	for them only apply to the same likelihood
+		if (init_aux_pars_given_) {
+			if (GetLikelihood() == likelihood_before && (int)init_aux_pars_.size() == NumAuxPars()) {
+				SetAuxParsOriginalScale(init_aux_pars_.data());
+			}
+			else {
+				init_aux_pars_given_ = false;
+			}
 		}
 	}
 
@@ -379,24 +390,11 @@ namespace GPBoost {
 			num_coef_ = num_covariates * num_sets_fixed_effects_;
 			init_coef_given_ = true;
 		}
-		// Initial aux_pars
+		// Initial aux_pars. As for the covariance parameters, previously given initial values are kept if none are given
 		if (init_aux_pars != nullptr) {
 			init_aux_pars_ = Eigen::Map<const vec_t>(init_aux_pars, NumAuxPars());
-			vec_t init_aux_pars_trans = init_aux_pars_;
-			if (matrix_format_ == "sp_mat_t") {
-				re_model_sp_->TransformAuxPars(init_aux_pars_.data(), init_aux_pars_trans.data());
-			}
-			else if (matrix_format_ == "sp_mat_rm_t") {
-				re_model_sp_rm_->TransformAuxPars(init_aux_pars_.data(), init_aux_pars_trans.data());
-			}
-			else {
-				re_model_den_->TransformAuxPars(init_aux_pars_.data(), init_aux_pars_trans.data());
-			}
-			SetAuxPars(init_aux_pars_trans.data());
+			SetAuxParsOriginalScale(init_aux_pars_.data());
 			init_aux_pars_given_ = true;
-		}
-		else {
-			init_aux_pars_given_ = false;
 		}
 		init_coef_aux_pars_from_iid_model_ = init_coef_aux_pars_from_iid_model;
 		// Logging level
@@ -1727,6 +1725,20 @@ namespace GPBoost {
 				aux_pars[j] = -1.;
 			}
 		}
+	}
+
+	void REModel::SetAuxParsOriginalScale(const double* aux_pars) {
+		vec_t aux_pars_trans(NumAuxPars());
+		if (matrix_format_ == "sp_mat_t") {
+			re_model_sp_->TransformAuxPars(aux_pars, aux_pars_trans.data());
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			re_model_sp_rm_->TransformAuxPars(aux_pars, aux_pars_trans.data());
+		}
+		else {
+			re_model_den_->TransformAuxPars(aux_pars, aux_pars_trans.data());
+		}
+		SetAuxPars(aux_pars_trans.data());
 	}
 
 	/*!

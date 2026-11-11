@@ -4971,7 +4971,7 @@ class GPModel(object):
 
                     - "t":
 
-                        t-distribution (e.g., for robust regression). The default approximation is Fisher-Laplace, i.e., the Fisher information is used instead of the observed Hessian in the Laplace approximation of the marginal likelihood.
+                        t-distribution (e.g., for robust regression). The default approximation is Fisher-Laplace, i.e., the Fisher information is used instead of the observed Hessian in the Laplace approximation of the marginal likelihood. For small data sets or data with little noise, this approximation can favor fits that interpolate the data, with df below 2 and a scale close to zero. The likelihood "t_fisher_laplace_combined" uses the Fisher information for finding the mode and the observed Hessian for the log-determinant (the usual Laplace approximation) and does not have this tendency. Use it with matrix_inversion_method = "cholesky", since the iterative methods require a nonnegative Hessian.
 
                     - "t_fix_df":
 
@@ -6710,8 +6710,13 @@ class GPModel(object):
                 raise ValueError("Length of 'fixed_effects' is not correct ")
             fixed_effects_c = fixed_effects.astype(np.float64)
             fixed_effects_c = fixed_effects_c.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+        aux_pars_c = ctypes.c_void_p()
         if aux_pars is not None:
-            self.set_optim_params({"init_aux_pars": aux_pars})
+            aux_pars = _format_check_1D_data(aux_pars, data_name="aux_pars", check_data_type=True,
+                                             check_must_be_int=False, convert_to_type=np.float64)
+            if aux_pars.shape[0] != self._get_num_aux_pars():
+                raise ValueError("'aux_pars' does not contain the correct number of parameters")
+            aux_pars_c = aux_pars.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
         negll = ctypes.c_double(0)
         _safe_call(_LIB.GPB_EvalNegLogLikelihood(
@@ -6719,6 +6724,7 @@ class GPModel(object):
             y_c,
             cov_pars_c,
             fixed_effects_c,
+            aux_pars_c,
             ctypes.byref(negll)))
 
         return negll.value

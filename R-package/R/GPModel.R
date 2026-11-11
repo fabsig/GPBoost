@@ -25,7 +25,7 @@
 #' \strong{Continuous response: y in (-inf, inf)}
 #' \itemize{
 #' \item{ "gaussian": Gaussian likelihood }
-#' \item{ "t": t-distribution (e.g., for robust regression). The default approximation is Fisher-Laplace, i.e., the Fisher information is used instead of the observed Hessian in the Laplace approximation of the marginal likelihood. }
+#' \item{ "t": t-distribution (e.g., for robust regression). The default approximation is Fisher-Laplace, i.e., the Fisher information is used instead of the observed Hessian in the Laplace approximation of the marginal likelihood. For small data sets or data with little noise, this approximation can favor fits that interpolate the data, with df below 2 and a scale close to zero. The likelihood "t_fisher_laplace_combined" uses the Fisher information for finding the mode and the observed Hessian for the log-determinant (the usual Laplace approximation) and does not have this tendency. Use it with \code{matrix_inversion_method = "cholesky"}, since the iterative methods require a nonnegative Hessian. }
 #' \item{ "t_fix_df": t-distribution with the degrees-of-freedom (df) held fixed and not estimated
 #' \itemize{ \item{ The degrees-of-freedom (df) can be set via the \code{likelihood_additional_param} parameter. The default is df = 2 }}
 #' }
@@ -1617,7 +1617,16 @@ gpb.GPModel <- R6::R6Class(
         }
       }# end fixed_effects
       if (!is.null(aux_pars)) {
-        self$set_optim_params(params = list(init_aux_pars = aux_pars))
+        if (!is.vector(aux_pars)) {
+          stop("GPModel.neg_log_likelihood: Can only use ", sQuote("vector"), " as ", sQuote("aux_pars"))
+        }
+        if (storage.mode(aux_pars) != "double") {
+          storage.mode(aux_pars) <- "double"
+        }
+        aux_pars <- as.vector(aux_pars)
+        if (length(aux_pars) != self$get_num_aux_pars()) {
+          stop("GPModel.neg_log_likelihood: Number of parameters in ", sQuote("aux_pars"), " is not correct")
+        }
       }
       # Allocate a fresh writable output buffer. Using the numeric literal `0.`
       # can share the same R scalar across calls; the C API mutates this buffer
@@ -1629,6 +1638,7 @@ gpb.GPModel <- R6::R6Class(
         , y
         , cov_pars
         , fixed_effects
+        , aux_pars
         , negll
       )
       return(negll)

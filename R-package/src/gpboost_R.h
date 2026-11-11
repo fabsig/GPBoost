@@ -820,6 +820,7 @@ GPBOOST_C_EXPORT SEXP GPB_OptimLinRegrCoefCovPar_R(
 * \param y_data Response variable data
 * \param cov_pars Values for covariance parameters of RE components
 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data). For Gaussian data, this is ignored
+* \param aux_pars Additional likelihood parameters. They become the current values of the model, but not initial values for its estimation. If NULL, the current values are used
 * \param[out] negll Negative log-likelihood
 * \return 0 when succeed, -1 when failure happens
 */
@@ -828,6 +829,7 @@ GPBOOST_C_EXPORT SEXP GPB_EvalNegLogLikelihood_R(
 	SEXP y_data,
 	SEXP cov_pars,
 	SEXP fixed_effects,
+	SEXP aux_pars,
 	SEXP negll
 );
 

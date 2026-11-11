@@ -1184,7 +1184,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     y_t <- rep(sqrt(6), n_tail)
     expect_true(is.nan(gp_model_t$neg_log_likelihood(cov_pars = c(1, 0.3), y = y_t, aux_pars = c(1, 2))))
     # The error of a prediction, which needs the mode, reports the failed factorization
-    expect_error(predict(gp_model_t, y = y_t, cov_pars = c(1, 0.3), gp_coords_pred = coords_tail[1:2, ]),
+    expect_error(capture.output(predict(gp_model_t, y = y_t, cov_pars = c(1, 0.3), gp_coords_pred = coords_tail[1:2, ]), file = "NUL"),
                  "Cholesky factorization")
     # The same for a dense GP: for almost identical locations and the error variance exp(-40), I + W^(1/2) Sigma W^(1/2)
     #   is not numerically positive definite
