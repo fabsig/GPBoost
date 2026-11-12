@@ -24,6 +24,7 @@ GPBoost Algorithm Training and Choosing Tuning Parameters
 
     train
     tune_pars_TPE_algorithm_optuna
+    tune_pars_SMAC
     grid_search_tune_parameters
     cv
 

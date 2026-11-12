@@ -265,6 +265,32 @@ opt_params <- gpb.grid.search.tune.parameters(param_grid = param_grid,
                                               nrounds = 1000,
                                               early_stopping_rounds = 5,
                                               eval = "l2")
+# Parameter tuning using an approximation of SMAC, a Bayesian optimization method with a random
+#   forest as surrogate model (requires the packages 'mlr3mbo', 'mlr3learners', and 'ranger')
+search_space <- list("learning_rate" = c(0.01, 1), "min_data_in_leaf" = c(1, 100),
+                     "num_leaves" = c(2, 1024), "lambda_l2" = c(0, 100))
+opt_params <- gpb.tune.pars.rf.bayesian.optimization(search_space = search_space,
+                                                     n_trials = 20,
+                                                     nfold = 4,
+                                                     data = dtrain,
+                                                     gp_model = gp_model,
+                                                     verbose_eval = 1,
+                                                     nrounds = 1000,
+                                                     early_stopping_rounds = 5,
+                                                     eval = "l2",
+                                                     cv_seed = 1)
+# Parameter tuning using Bayesian optimization with the 'mlrMBO' package
+#   (requires the packages 'mlrMBO', 'DiceKriging', 'rgenoud', and 'randomForest')
+opt_params <- gpb.tune.pars.bayesian.optimization(search_space = search_space,
+                                                  n_iter = 10,
+                                                  nfold = 4,
+                                                  data = dtrain,
+                                                  gp_model = gp_model,
+                                                  verbose_eval = 1,
+                                                  nrounds = 1000,
+                                                  early_stopping_rounds = 5,
+                                                  eval = "l2",
+                                                  cv_seed = 1)
 
 #--------------------Cross validation-------------------------
 # Create random effects model and dataset

@@ -134,38 +134,37 @@ plot(b1, pred$random_effect_mean, xlab="truth", ylab="predicted",
      main="Comparison of true and predicted random effects")
 
 # Define metric for parameter tuning and CV below
-# Can also use metric = "test_neg_log_likelihood" 
-# For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 metric = "mse"
 if (likelihood %in% c("bernoulli_probit","bernoulli_logit")) {
   metric = "binary_logloss"
 }
+# Can also use metric = "test_neg_log_likelihood"
+# For more options, see https://github.com/fabsig/GPBoost/blob/master/docs/Parameters.rst#metric-parameters
 
-#--------------------Choosing tuning parameters using Bayesian optimization and the 'mlrMBO' R package ----------------
-packakes_to_load <- c("mlrMBO", "DiceKriging", "rgenoud") # load required packages (non-standard way of loading to avoid CRAN warnings)
-for (package in packakes_to_load) do.call(require,list(package, character.only=TRUE))
-source("https://raw.githubusercontent.com/fabsig/GPBoost/master/helpers/R_package_tune_pars_bayesian_optimization.R")# Load required function
+#--------------------Choosing tuning parameters using an approximation of SMAC ----------------
+# 'gpb.tune.pars.rf.bayesian.optimization' is an approximation of SMAC (Sequential Model-based Algorithm
+#   Configuration), a Bayesian optimization method with a random forest as surrogate model, implemented with the
+#   'mlr3mbo' package. It is not the SMAC3 software, which is used in the Python package ('tune_pars_SMAC').
+#   SMAC performed best in a comparison of tuning methods for tree-boosting (Koster and Sigrist, 2026, arXiv:2602.05786)
+# Requires the packages 'mlr3mbo', 'mlr3learners', and 'ranger'
 # Define search space
 # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
-search_space <- list("learning_rate" = c(0.001, 10), 
+search_space <- list("learning_rate" = c(0.001, 10),
                      "min_data_in_leaf" = c(1, 1000),
-                     "max_depth" = c(-1, -1), # -1 means no depth limit as we tune 'num_leaves'. Can also additionally tune 'max_depth', e.g., "max_depth" = c(-1, 1, 2, 3, 5, 10)
+                     "max_depth" = c(-1, -1), # -1 means no depth limit as we tune 'num_leaves'. Can also additionally tune 'max_depth', e.g., "max_depth" = c(-1, 10)
                      "num_leaves" = c(2, 2^10),
                      "lambda_l2" = c(0, 100),
                      "max_bin" = c(63, min(n,10000)),
                      "feature_fraction" = c(0.5, 1),
                      "line_search_step_length" = c(TRUE, FALSE))
 gp_model <- GPModel(group_data = group, likelihood = likelihood)
-data_train <- gpb.Dataset(data = X, label = y)
-# Run parameter optimization using Bayesian optimization and k-fold CV 
-crit = makeMBOInfillCritCB() # other criterion options: makeMBOInfillCritEI()
-opt_params <- tune.pars.bayesian.optimization(search_space = search_space, n_iter = 100,
-                                              data = dataset, gp_model = gp_model,
-                                              nfold = 5, nrounds = 1000, early_stopping_rounds = 20,
-                                              metric = metric, crit = crit,
-                                              cv_seed = 4, verbose_eval = 1)
-print(paste0("Best parameters: ", paste0(unlist(lapply(seq_along(opt_params$best_params), 
-                                                       function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params, 
+# Run parameter optimization using the approximation of SMAC and k-fold CV
+opt_params <- gpb.tune.pars.rf.bayesian.optimization(search_space = search_space, n_trials = 100,
+                                                     data = dataset, gp_model = gp_model,
+                                                     nfold = 5, nrounds = 1000, early_stopping_rounds = 20,
+                                                     metric = metric, cv_seed = 4, verbose_eval = 1)
+print(paste0("Best parameters: ", paste0(unlist(lapply(seq_along(opt_params$best_params),
+                                                       function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params,
                                                        n=names(opt_params$best_params))), collapse=", ")))
 print(paste0("Best number of iterations: ", opt_params$best_iter))
 print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
@@ -173,11 +172,33 @@ print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
 # Alternatively and faster: using manually defined validation data instead of cross-validation
 valid_tune_idx <- sample.int(length(y), as.integer(0.2*length(y))) # use 20% of the data as validation data
 folds <- list(valid_tune_idx)
-opt_params <- tune.pars.bayesian.optimization(search_space = search_space, n_iter = 100,
-                                              data = dataset, gp_model = gp_model,
-                                              folds = folds, nrounds = 1000, early_stopping_rounds = 20,
-                                              metric = metric, crit = crit, 
-                                              cv_seed = 4, verbose_eval = 1)
+opt_params <- gpb.tune.pars.rf.bayesian.optimization(search_space = search_space, n_trials = 100,
+                                                     data = dataset, gp_model = gp_model,
+                                                     folds = folds, nrounds = 1000, early_stopping_rounds = 20,
+                                                     metric = metric, cv_seed = 4, verbose_eval = 1)
+
+#--------------------Choosing tuning parameters using Bayesian optimization and the 'mlrMBO' R package ----------------
+# Requires the packages 'mlrMBO', 'DiceKriging', 'rgenoud', and 'randomForest'
+# The same 'search_space' as above is used
+# Run parameter optimization using Bayesian optimization and k-fold CV
+crit = mlrMBO::makeMBOInfillCritCB() # other criterion options: mlrMBO::makeMBOInfillCritEI()
+opt_params <- gpb.tune.pars.bayesian.optimization(search_space = search_space, n_iter = 100,
+                                                  data = dataset, gp_model = gp_model,
+                                                  nfold = 5, nrounds = 1000, early_stopping_rounds = 20,
+                                                  metric = metric, crit = crit,
+                                                  cv_seed = 4, verbose_eval = 1)
+print(paste0("Best parameters: ", paste0(unlist(lapply(seq_along(opt_params$best_params),
+                                                       function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params,
+                                                       n=names(opt_params$best_params))), collapse=", ")))
+print(paste0("Best number of iterations: ", opt_params$best_iter))
+print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
+
+# Alternatively and faster: using manually defined validation data instead of cross-validation
+opt_params <- gpb.tune.pars.bayesian.optimization(search_space = search_space, n_iter = 100,
+                                                  data = dataset, gp_model = gp_model,
+                                                  folds = folds, nrounds = 1000, early_stopping_rounds = 20,
+                                                  metric = metric, crit = crit,
+                                                  cv_seed = 4, verbose_eval = 1)
 
 #--------------------Choosing tuning parameters using random grid search----------------
 param_grid <- list("learning_rate" = c(0.001, 0.01, 0.1, 1, 10), 

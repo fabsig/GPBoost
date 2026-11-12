@@ -494,7 +494,7 @@ Options for the GPBoost algorithm
 
 Metrics for parameter tuning
 -----------------------------
-It is important that tuning parameters (= hyperparameters) for the tree-boosting part are chosen appropriately. There are no universal good "default" values for different data sets. See `below for a list of important tuning parameters <#tuning-parameters-aka-hyperparameters-for-the-tree-boosting-part>`__. Selecting tuning parameters can be done conveniently via the ``gpb.grid.search.tune.parameters`` function in the Python and R packages. 
+It is important that tuning parameters (= hyperparameters) for the tree-boosting part are chosen appropriately. There are no universal good "default" values for different data sets. See `below for a list of important tuning parameters <#tuning-parameters-aka-hyperparameters-for-the-tree-boosting-part>`__. Selecting tuning parameters can be done conveniently via the ``gpb.grid.search.tune.parameters`` function in the Python and R packages, or with Bayesian optimization: in Python with ``tune_pars_SMAC`` (SMAC, using the SMAC3 package) and ``tune_pars_TPE_algorithm_optuna`` (TPE algorithm, using the optuna package), and in R with ``gpb.tune.pars.rf.bayesian.optimization`` (an approximation of SMAC, using the mlr3mbo package) and ``gpb.tune.pars.bayesian.optimization`` (using the mlrMBO package). SMAC performed best in a comparison of tuning methods for tree-boosting by `Koster and Sigrist (2026) <https://arxiv.org/abs/2602.05786>`__. 
 
 The ``metric`` parameter (e.g., for the ``gpb.train``, ``gpboost``, and ``gpb.grid.search.tune.parameters`` functions in R and Python) specifies how prediction accuracy is measured on validation data. 
 

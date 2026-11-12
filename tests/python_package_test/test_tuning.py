@@ -1,0 +1,200 @@
+# coding: utf-8
+"""Tests of the functions for choosing tuning parameters with optuna (TPE) and SMAC."""
+import logging
+import os
+import subprocess
+import sys
+
+import numpy as np
+import pytest
+from sklearn.model_selection import KFold
+
+import gpboost as gpb
+from gpboost.engine import _parse_tuning_search_space, _tuning_deterministic_params
+
+
+def _simulate_data(n=200, seed=1):
+    rng = np.random.default_rng(seed)
+    X = rng.uniform(size=(n, 2))
+    group = np.repeat(np.arange(20), n // 20)
+    b = rng.normal(scale=0.5, size=20)
+    y = np.sin(4 * X[:, 0]) + X[:, 1] + b[group] + rng.normal(scale=0.3, size=n)
+    return X, y, group
+
+
+def _folds(n):
+    idx = np.arange(n)
+    return [(idx[idx % 2 == 0], idx[idx % 2 == 1]), (idx[idx % 2 == 1], idx[idx % 2 == 0])]
+
+
+def _cv_best_score(params, X, y, folds, metric, gp_model=None, higher_better=False):
+    # The same parameters for the construction of the histograms as in the tuning functions
+    params = dict(params, verbose=-1, force_col_wise=True, deterministic=True)
+    cvbst = gpb.cv(params=params, train_set=gpb.Dataset(X, y), gp_model=gp_model, num_boost_round=50,
+                   early_stopping_rounds=5, folds=folds, metric=metric, verbose_eval=False, show_stdv=False)
+    scores = cvbst[list(cvbst.keys())[0]]
+    return np.max(scores) if higher_better else np.min(scores)
+
+
+def test_parse_tuning_search_space():
+    parsed = _parse_tuning_search_space({'learning_rate': [0.001, 1], 'lambda_l2': [0, 100], 'reg_alpha': [1, 10],
+                                         'num_leaves': [2, 1024], 'max_depth': [-1, 10],
+                                         'feature_fraction': [0.5, 1], 'line_search_step_length': [True, False]})
+    assert parsed['learning_rate'] == ('float', 0.001, 1, True)
+    assert parsed['lambda_l2'] == ('float', 1e-8, 100, True)
+    assert parsed['reg_alpha'] == ('float', 1, 10, True)
+    assert parsed['num_leaves'] == ('int', 2, 1024, True)
+    assert parsed['max_depth'] == ('int', -1, 10, False)
+    assert parsed['feature_fraction'] == ('float', 0.5, 1, False)
+    assert parsed['line_search_step_length'] == ('categorical', True, False, False)
+    with pytest.raises(ValueError, match="lower bound >= 0"):
+        _parse_tuning_search_space({'lambda_l1': [-1, 10]})
+    with pytest.raises(ValueError, match="upper bound > 0"):
+        _parse_tuning_search_space({'lambda_l2': [0, 0]})
+    with pytest.raises(ValueError, match="positive bounds"):
+        _parse_tuning_search_space({'learning_rate': [0, 1]})
+    with pytest.raises(ValueError, match="Unknown parameter"):
+        _parse_tuning_search_space({'not_a_parameter': [0, 1]})
+    with pytest.raises(ValueError, match="length 2"):
+        _parse_tuning_search_space({'learning_rate': [0.1, 0.5, 1]})
+    # Parameters on a logarithmic scale for which 0 is a valid value
+    parsed = _parse_tuning_search_space({'min_gain_to_split': [0, 1], 'min_sum_hessian_in_leaf': [0, 10],
+                                         'min_data_in_leaf': [0, 50], 'min_child_samples': [5, 50]})
+    assert parsed['min_gain_to_split'] == ('float', 1e-8, 1, True)
+    assert parsed['min_sum_hessian_in_leaf'] == ('float', 1e-8, 10, True)
+    assert parsed['min_data_in_leaf'] == ('int', 1, 50, True)
+    assert parsed['min_child_samples'] == ('int', 5, 50, True)
+    with pytest.raises(ValueError, match="lower bound >= 0"):
+        _parse_tuning_search_space({'min_data_in_leaf': [-1, 50]})
+    with pytest.raises(ValueError, match="positive bounds"):
+        _parse_tuning_search_space({'num_leaves': [0, 1024]})
+    with pytest.raises(ValueError, match="not larger than the upper bound"):
+        _parse_tuning_search_space({'feature_fraction': [1, 0.5]})
+
+
+def test_tuning_deterministic_params():
+    assert _tuning_deterministic_params({}) == {'force_col_wise': True, 'deterministic': True}
+    # Parameters given by the user are not changed
+    assert _tuning_deterministic_params({'force_row_wise': True}) == {'force_row_wise': True, 'deterministic': True}
+    assert _tuning_deterministic_params({'force_col_wise': False, 'deterministic': False}) == \
+        {'force_col_wise': False, 'deterministic': False}
+    assert _tuning_deterministic_params({}, {'force_row_wise': [True, False]}) == {'deterministic': True}
+
+
+def test_tune_pars_TPE_algorithm_optuna():
+    X, y, _ = _simulate_data()
+    search_space = {'learning_rate': [0.01, 1], 'lambda_l2': [0, 100], 'min_data_in_leaf': [1, 50]}
+    folds = _folds(len(y))
+    opt_params = gpb.tune_pars_TPE_algorithm_optuna(search_space=search_space, n_trials=6, X=X, y=y,
+                                                    max_num_boost_round=50, early_stopping_rounds=5,
+                                                    folds=folds, metric='mse', params={'verbose': -1},
+                                                    tpe_seed=1, verbose_eval=0)
+    best_params = opt_params['best_params']
+    assert 0.01 <= best_params['learning_rate'] <= 1
+    assert 1e-8 <= best_params['lambda_l2'] <= 100
+    assert 1 <= best_params['min_data_in_leaf'] <= 50
+    assert opt_params['best_iter'] >= 1
+    best_score = _cv_best_score(best_params, X, y, folds, 'mse')
+    assert abs(opt_params['best_score'][0] - best_score) < 1e-10
+    # Folds given as a generator are used in every trial, and so are scikit-learn splitters
+    opt_params_gen = gpb.tune_pars_TPE_algorithm_optuna(search_space=search_space, n_trials=6, X=X, y=y,
+                                                        max_num_boost_round=50, early_stopping_rounds=5,
+                                                        folds=(fold for fold in folds), metric='mse',
+                                                        params={'verbose': -1}, tpe_seed=1, verbose_eval=0)
+    assert opt_params_gen['best_params'] == best_params
+    opt_params_kfold = gpb.tune_pars_TPE_algorithm_optuna(search_space=search_space, n_trials=2, X=X, y=y,
+                                                          max_num_boost_round=50, early_stopping_rounds=5,
+                                                          folds=KFold(n_splits=2, shuffle=True, random_state=1),
+                                                          metric='mse', params={'verbose': -1}, tpe_seed=1,
+                                                          verbose_eval=0)
+    assert opt_params_kfold['best_iter'] >= 1
+
+
+def test_tune_pars_SMAC_gpboost(capsys):
+    pytest.importorskip("smac")
+    X, y, group = _simulate_data()
+    folds = _folds(len(y))
+    search_space = {'learning_rate': [0.01, 1], 'lambda_l2': [0, 100], 'min_data_in_leaf': [1, 50],
+                    'max_depth': [-1, -1], 'line_search_step_length': [True, False]}
+    root_logger = logging.getLogger()
+    root_handlers, root_level = list(root_logger.handlers), root_logger.level
+    gp_model = gpb.GPModel(group_data=group, likelihood='gaussian')
+    opt_params = gpb.tune_pars_SMAC(search_space=search_space, n_trials=8, X=X, y=y, gp_model=gp_model,
+                                    max_num_boost_round=50, early_stopping_rounds=5, folds=folds, metric='mse',
+                                    params={'verbose': -1}, smac_seed=1, verbose_eval=0)
+    assert capsys.readouterr().out == ''
+    assert root_logger.handlers == root_handlers and root_logger.level == root_level
+    best_params = opt_params['best_params']
+    assert set(best_params) == set(search_space)
+    assert best_params['max_depth'] == -1
+    assert 0.01 <= best_params['learning_rate'] <= 1
+    assert 1e-8 <= best_params['lambda_l2'] <= 100
+    assert 1 <= best_params['min_data_in_leaf'] <= 50 and isinstance(best_params['min_data_in_leaf'], int)
+    assert isinstance(best_params['line_search_step_length'], bool)
+    assert opt_params['best_iter'] >= 1
+    # The order in which OpenMP adds up the partial sums of the threads can change the last digits
+    gp_model = gpb.GPModel(group_data=group, likelihood='gaussian')
+    best_score = _cv_best_score(best_params, X, y, folds, 'mse', gp_model=gp_model)
+    assert abs(opt_params['best_score'] - best_score) < 1e-8
+
+
+_SMAC_TRIALS_SCRIPT = """
+import numpy as np
+import gpboost as gpb
+rng = np.random.default_rng(1)
+X = rng.uniform(size=(200, 2))
+y = np.sin(4 * X[:, 0]) + X[:, 1] + rng.normal(scale=0.3, size=200)
+idx = np.arange(200)
+folds = [(idx[idx % 2 == 0], idx[idx % 2 == 1]), (idx[idx % 2 == 1], idx[idx % 2 == 0])]
+gpb.tune_pars_SMAC(search_space={'learning_rate': [0.01, 1], 'min_data_in_leaf': [1, 50], 'lambda_l2': [0, 100],
+                                 'line_search_step_length': [True, False]},
+                   n_trials=16, X=X, y=y, max_num_boost_round=20, early_stopping_rounds=5, folds=folds,
+                   metric='mse', params={'verbose': -1}, smac_seed=1, verbose_eval=1)
+"""
+
+
+def test_tune_pars_SMAC_reproducible():
+    pytest.importorskip("smac")
+    from ConfigSpace import Configuration
+    configuration_hash = Configuration.__hash__
+    X, y, _ = _simulate_data()
+    gpb.tune_pars_SMAC(search_space={'learning_rate': [0.01, 1]}, n_trials=2, X=X, y=y, max_num_boost_round=10,
+                       folds=_folds(len(y)), metric='mse', params={'verbose': -1}, verbose_eval=0)
+    assert Configuration.__hash__ is configuration_hash
+    # The proposals of SMAC do not depend on the hash randomization of Python
+    trials = []
+    for hash_seed in ["1", "2"]:
+        env = dict(os.environ, PYTHONHASHSEED=hash_seed, PYTHONPATH=os.pathsep.join(sys.path))
+        output = subprocess.run([sys.executable, "-c", _SMAC_TRIALS_SCRIPT], env=env, capture_output=True,
+                                text=True, check=True).stdout
+        trials.append([line for line in output.splitlines() if line.startswith("Trial")])
+    assert len(trials[0]) == 16
+    assert trials[0] == trials[1]
+
+
+def test_tune_pars_SMAC_higher_better_and_failed_trials(capsys):
+    pytest.importorskip("smac")
+    X, y, _ = _simulate_data()
+    y_binary = (y > np.median(y)).astype(float)
+    folds = _folds(len(y))
+    # bagging_fraction > 1 is invalid. With this seed, the first trial of the initial design fails before any valid
+    # score is known, and the second one is valid
+    search_space = {'learning_rate': [0.01, 1], 'bagging_fraction': [0.5, 1.5]}
+    params = {'objective': 'binary', 'bagging_freq': 1, 'verbose': -1}
+    opt_params = gpb.tune_pars_SMAC(search_space=search_space, n_trials=10, X=X, y=y_binary,
+                                    max_num_boost_round=50, early_stopping_rounds=5, folds=folds, metric='auc',
+                                    params=params, smac_seed=3, verbose_eval=1)
+    output = [line for line in capsys.readouterr().out.splitlines()
+              if line.startswith(("Trial", "An error occurred", "*****"))]
+    assert output[0].startswith("Trial 1 of 10") and output[1].startswith("An error occurred")
+    assert output[2].startswith("Trial 2 of 10") and output[3].startswith("***** New best test score")
+    assert any(line.startswith("Trial 10 of 10") for line in output)
+    best_params = opt_params['best_params']
+    assert best_params['bagging_fraction'] <= 1
+    best_score = _cv_best_score(dict(params, **best_params), X, y_binary, folds, 'auc', higher_better=True)
+    assert abs(opt_params['best_score'] - best_score) < 1e-10
+    # No valid trial at all
+    with pytest.raises(ValueError, match="Did not find any valid parameter combination"):
+        gpb.tune_pars_SMAC(search_space={'learning_rate': [0.01, 1], 'bagging_fraction': [1.5, 3]}, n_trials=3,
+                           X=X, y=y_binary, max_num_boost_round=10, folds=folds, metric='auc', params=params,
+                           verbose_eval=0)

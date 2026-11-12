@@ -971,6 +971,11 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #' The list has the following format:
 #'  list("best_params" = best_params, "best_iter" = best_iter, "best_score" = best_score)
 #'  If return_all_combinations is TRUE, then the list contains an additional entry 'all_combinations'
+#' @details The parameters \code{force_col_wise = TRUE} and \code{deterministic = TRUE} are used unless
+#' \code{params}, \code{param_grid}, or \code{...} contain \code{force_col_wise}, \code{force_row_wise}, or
+#' \code{deterministic}, respectively. Without \code{force_col_wise} and \code{force_row_wise}, the histograms of
+#' the trees are constructed column-wise or row-wise depending on a time measurement, so that the score of a
+#' parameter combination can differ slightly between runs.
 #'
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
@@ -1062,6 +1067,7 @@ gpb.grid.search.tune.parameters <- function(param_grid
   if (is.null(params)) {
     params <- list()
   }
+  params <- gpb.tuning.deterministic.params(params, other_params = list(param_grid, list(...)))
   for (param in names(param_grid)) {
     if (!is.vector(param_grid[[param]])) {
       stop(paste0("gpb.grid.search.tune.parameters: Candidate parameters in param_grid need to be given as vectors for every parameter. Found other format for ", param))

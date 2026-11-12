@@ -196,6 +196,28 @@ opt_params = gpb.tune_pars_TPE_algorithm_optuna(search_space=search_space, n_tri
                                                 folds=folds, metric=metric,
                                                 cv_seed=4, tpe_seed=1, verbose_eval=1)
 
+#--------------------Choosing tuning parameters using SMAC----------------
+# SMAC is a Bayesian optimization method with a random forest as surrogate model. It requires the 'smac'
+#   package (SMAC3), which can be installed with 'pip install smac'
+# The same 'search_space' as for the TPE algorithm above is used
+gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+# Run parameter optimization using SMAC and k-fold CV
+opt_params = gpb.tune_pars_SMAC(search_space=search_space, n_trials=100,
+                                X=X, y=y, gp_model=gp_model,
+                                max_num_boost_round=1000, early_stopping_rounds=20,
+                                nfold=5, metric=metric,
+                                cv_seed=4, smac_seed=1, verbose_eval=1)
+print("Best parameters: " + str(opt_params['best_params']))
+print("Best number of iterations: " + str(opt_params['best_iter']))
+print("Best score: " + str(opt_params['best_score']))
+
+# Alternatively and faster: using manually defined validation data instead of cross-validation
+opt_params = gpb.tune_pars_SMAC(search_space=search_space, n_trials=100,
+                                X=X, y=y, gp_model=gp_model,
+                                max_num_boost_round=1000, early_stopping_rounds=20,
+                                folds=folds, metric=metric,
+                                cv_seed=4, smac_seed=1, verbose_eval=1)
+
 #--------------------Choosing tuning parameters using random grid search----------------
 # Define parameter search grid
 # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range

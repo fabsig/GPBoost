@@ -8,6 +8,10 @@ Licensed under the Apache License Version 2.0 See LICENSE file in the project ro
 """
 import collections
 import copy
+import logging
+import shutil
+import tempfile
+import zlib
 from operator import attrgetter
 
 import numpy as np
@@ -1064,6 +1068,13 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
         {'best_params': best_params, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
         If return_all_combinations is True, then the dictionary contains an additional entry 'all_combinations'
 
+    Notes
+    -----
+    The parameters ``force_col_wise=True`` and ``deterministic=True`` are used unless ``params`` or ``param_grid``
+    contain 'force_col_wise', 'force_row_wise', or 'deterministic', respectively. Without 'force_col_wise' and
+    'force_row_wise', the histograms of the trees are constructed column-wise or row-wise depending on a time
+    measurement, so that the score of a parameter combination can differ slightly between runs.
+
     Example
     -------
     >>> # Define parameter search grid
@@ -1149,6 +1160,7 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
         param_grid[param] = _format_check_1D_data(param_grid[param],
                                                   data_name=param, check_data_type=False,
                                                   check_must_be_int=False, convert_to_type=None)
+    _tuning_deterministic_params(params, param_grid)
     higher_better = False
     if metric is not None:
         if isinstance(metric, str):
@@ -1251,6 +1263,139 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
     else:
         return {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score}
 
+
+_TUNING_PARAMS_FLOAT_LOG = ['learning_rate', 'shrinkage_rate']
+# Parameters on a logarithmic scale for which 0 is a valid value. Since a logarithmic scale excludes 0, a lower
+# bound of 0 is replaced by 1e-8, which practically has the same effect
+_TUNING_PARAMS_FLOAT_LOG_ZERO = ['lambda_l2', 'reg_lambda', 'lambda',
+                                 'lambda_l1', 'reg_alpha',
+                                 'min_gain_to_split', 'min_split_gain',
+                                 'min_sum_hessian_in_leaf', 'min_sum_hessian_per_leaf', 'min_sum_hessian',
+                                 'min_hessian', 'min_child_weight']
+_TUNING_PARAMS_FLOAT = ['bagging_fraction', 'sub_row', 'subsample', 'bagging',
+                        'feature_fraction', 'sub_feature', 'colsample_bytree',
+                        'cat_l2',
+                        'cat_smooth']
+_TUNING_PARAMS_INT_LOG = ['num_leaves', 'num_leaf', 'max_leaves', 'max_leaf',
+                          'max_bin']
+# Integer parameters on a logarithmic scale for which 0 is a valid value. A lower bound of 0 is replaced by 1
+_TUNING_PARAMS_INT_LOG_ZERO = ['min_data_in_leaf', 'min_data_per_leaf', 'min_data', 'min_child_samples']
+_TUNING_PARAMS_INT = ['max_depth']
+_TUNING_PARAMS_CATEGORICAL = ['line_search_step_length']
+
+
+def _parse_tuning_search_space(search_space):
+    """Determine the type, the bounds, and the scale of every parameter in a search space for tuning parameters.
+
+    Returns a dict that maps every parameter to a tuple (kind, lower, upper, log), where kind is 'float', 'int',
+    or 'categorical'. For a categorical parameter, lower and upper are its two values.
+    """
+    if not isinstance(search_space, dict):
+        raise ValueError("'search_space' must be a dictionary")
+    parsed = {}
+    for param, bounds in search_space.items():
+        if len(bounds) != 2:
+            raise ValueError(f"search_space['{param}'] must have length 2")
+        lower, upper = bounds
+        if param in _TUNING_PARAMS_FLOAT_LOG_ZERO + _TUNING_PARAMS_INT_LOG_ZERO:
+            if lower < 0 or upper <= 0:
+                raise ValueError(f"search_space['{param}'] must have a lower bound >= 0 and an upper bound > 0")
+            if param in _TUNING_PARAMS_FLOAT_LOG_ZERO:
+                parsed[param] = ('float', max(lower, 1e-8), upper, True)
+            else:
+                parsed[param] = ('int', max(lower, 1), upper, True)
+        elif param in _TUNING_PARAMS_FLOAT_LOG + _TUNING_PARAMS_INT_LOG:
+            if lower <= 0 or upper <= 0:
+                raise ValueError(f"search_space['{param}'] must have positive bounds since '{param}' is "
+                                 "searched on a logarithmic scale")
+            parsed[param] = ('float' if param in _TUNING_PARAMS_FLOAT_LOG else 'int', lower, upper, True)
+        elif param in _TUNING_PARAMS_FLOAT:
+            parsed[param] = ('float', lower, upper, False)
+        elif param in _TUNING_PARAMS_INT:
+            parsed[param] = ('int', lower, upper, False)
+        elif param in _TUNING_PARAMS_CATEGORICAL:
+            parsed[param] = ('categorical', lower, upper, False)
+        else:
+            raise ValueError(f"Unknown parameter '{param}'")
+        kind, lower, upper, _ = parsed[param]
+        if kind != 'categorical' and lower > upper:
+            raise ValueError(f"search_space['{param}'] must have a lower bound that is not larger than the upper bound")
+    return parsed
+
+
+def _tuning_deterministic_params(params, *other_params):
+    """Add the parameters that make the score of a parameter combination reproducible to 'params'.
+
+    The parameters are not changed if they are given by the user in 'params' or in one of the dicts in
+    'other_params'. Without 'force_col_wise' or 'force_row_wise', the histograms of the trees are constructed
+    column-wise or row-wise, depending on which is faster in a time measurement; the two give slightly different
+    scores. The column-wise construction is also independent of the number of threads. 'deterministic' sums the
+    initial score of the boosting sequentially.
+    """
+    given = set(params).union(*other_params)
+    if 'force_col_wise' not in given and 'force_row_wise' not in given:
+        params['force_col_wise'] = True
+    if 'deterministic' not in given:
+        params['deterministic'] = True
+    return params
+
+
+def _deterministic_configuration_hash(configuration):
+    """Hash of a ConfigSpace configuration that does not depend on the hash randomization of Python."""
+    return zlib.crc32(repr(configuration).encode())
+
+
+def _tuning_metric_higher_better(metric, feval):
+    """Return the metric and feval as lists and whether higher values of the first metric are better."""
+    metric_higher_better = False
+    if metric is not None:
+        if isinstance(metric, str):
+            metric = [metric]
+        if metric[0].startswith(('auc', 'ndcg@', 'map@', 'average_precision')):
+            metric_higher_better = True
+    elif feval is not None:
+        if callable(feval):
+            feval = [feval]
+        _, _, metric_higher_better = feval[0](np.array([0]), Dataset(np.array([0]), np.array([0])))
+    return metric, feval, metric_higher_better
+
+
+def _check_tuning_folds(folds, y):
+    """Check the indices of user-provided folds and return them as a list so that they can be used in every trial."""
+    if folds is None or hasattr(folds, 'split'):
+        return folds
+    folds = list(folds)
+    num_data = len(y)
+    for train_idx, test_idx in folds:
+        if np.max(train_idx) >= num_data or np.max(test_idx) >= num_data:
+            raise ValueError("Index out of bound. "
+                             "Maximum index in train_idx and test_idx should be less than num_data ({})"
+                             .format(num_data))
+        if np.min(train_idx) < 0 or np.min(test_idx) < 0:
+            raise ValueError("Index out of bound. "
+                             "Minimum index in train_idx and test_idx should be greater than or equal to 0")
+    return folds
+
+
+def _tuning_cv_score(params, X, y, gp_model, max_num_boost_round, early_stopping_rounds, folds, nfold, cv_seed,
+                     metric, feval, verbose_eval_cv, use_gp_model_for_validation, train_gp_model_cov_pars,
+                     categorical_feature, metric_higher_better):
+    """Run cross-validation for one parameter combination and return its best score and number of iterations."""
+    data_bst = Dataset(data=X, label=y)
+    cvbst = cv(params=params, train_set=data_bst, gp_model=gp_model,
+               use_gp_model_for_validation=use_gp_model_for_validation,
+               train_gp_model_cov_pars=train_gp_model_cov_pars,
+               num_boost_round=max_num_boost_round,
+               early_stopping_rounds=early_stopping_rounds,
+               folds=folds, nfold=nfold, verbose_eval=verbose_eval_cv, show_stdv=False,
+               seed=cv_seed, metric=metric, feval=feval,
+               categorical_feature=categorical_feature)
+    scores = cvbst[list(cvbst.keys())[0]]
+    if metric_higher_better:
+        return np.max(scores), int(np.argmax(scores)) + 1
+    return np.min(scores), int(np.argmin(scores)) + 1
+
+
 def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None,
                                 max_num_boost_round=1000, early_stopping_rounds=None,
                                 metric=None, folds=None, nfold=5,
@@ -1268,7 +1413,7 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
         'parameter_name': [lower, upper].
         The parameters 'learning_rate', 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', 'lambda_l2',
         'num_leaves', 'min_data_in_leaf', and 'max_bin' (and their aliases) are sampled on a logarithmic scale,
-        all other parameters on a linear scale. A lower bound of 0 for 'lambda_l1' and 'lambda_l2' is replaced by 1e-8.
+        all other parameters on a linear scale. A lower bound of 0 is replaced by 1e-8 for 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', and 'lambda_l2' and by 1 for 'min_data_in_leaf'.
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     n_trials: int
         The number of trials for the TPESampler.
@@ -1356,13 +1501,21 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
         Large values could be memory consuming. Consider using consecutive integers starting from zero.
         All negative values in categorical features will be treated as missing values.
         The output cannot be monotonically constrained with respect to a categorical feature.
-        
+
     Returns
     -------
     return : dict
         Dictionary with the best parameter combination and score
         The dictionary has the following format:
         {'best_params': best_params, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
+
+    Notes
+    -----
+    The parameters ``force_col_wise=True`` and ``deterministic=True`` are used unless ``params`` contains
+    'force_col_wise', 'force_row_wise', or 'deterministic', respectively. Without 'force_col_wise' and
+    'force_row_wise', the histograms of the trees are constructed column-wise or row-wise depending on a time
+    measurement, so that the score of a parameter combination can differ slightly between runs, and the TPE algorithm
+    can then choose other parameter combinations.
 
     Example
     -------
@@ -1405,104 +1558,49 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
     :Authors:
         Fabio Sigrist
     """
-    if not isinstance(search_space, dict):
-        raise ValueError("'search_space' must be a dictionary")
     if not isinstance(n_trials, int) or n_trials <= 0:
         raise ValueError("'n_trials' must be a positive integer")
-    if folds is not None:
-        for train_idx, test_idx in folds:
-            num_data = len(y)
-            if np.max(train_idx) >= num_data or np.max(test_idx) >= num_data:
-                raise ValueError("Index out of bound. "
-                                "Maximum index in train_idx and test_idx should be less than num_data ({})"
-                                .format(num_data))
-            if np.min(train_idx) < 0 or np.min(test_idx) < 0:
-                raise ValueError("Index out of bound. "
-                                "Minimum index in train_idx and test_idx should be greater than or equal to 0")
-        
+    parsed_search_space = _parse_tuning_search_space(search_space)
+    folds = _check_tuning_folds(folds, y)
     if params is None:
         params = {}
     else:
         params = copy.deepcopy(params)
-    search_space = copy.deepcopy(search_space)
-    metric_higher_better = False
-    if metric is not None:
-        if isinstance(metric, str):
-            metric = [metric]
-        if metric[0].startswith(('auc', 'ndcg@', 'map@', 'average_precision')):
-            metric_higher_better = True
-    elif feval is not None:
-        if callable(feval):
-            feval = [feval]
-        PH1, PH2, metric_higher_better = feval[0](np.array([0]), Dataset(np.array([0]), np.array([0])))
+    _tuning_deterministic_params(params)
+    metric, feval, metric_higher_better = _tuning_metric_higher_better(metric, feval)
     best_score = -1e99 if metric_higher_better else 1e99
     best_iter = -1
     verbose_eval_cv = verbose_eval >= 2
 
     def objective_opt(trial):
-        nonlocal best_score, best_iter
         """Objective function for tuning parameter search with Optuna."""
-        # Parse parameters
+        nonlocal best_score, best_iter
         params_loc = {}
-        for param in search_space:
-            if len(search_space[param]) != 2:
-                raise ValueError(f"search_space['{param}'] must have length 2")
-            if param in ['learning_rate', 'shrinkage_rate',
-                         'min_gain_to_split', 'min_split_gain',
-                         'min_sum_hessian_in_leaf', 'min_sum_hessian_per_leaf', 'min_sum_hessian', 'min_hessian', 'min_child_weight']:
-                params_loc[param] = trial.suggest_float(param, search_space[param][0], search_space[param][1], log=True)
-            elif param in ['lambda_l2', 'reg_lambda', 'lambda',
-                           'lambda_l1', 'reg_alpha']:
-                # A logarithmic scale excludes 0, and 1e-8 is practically no regularization
-                lower, upper = search_space[param]
-                if lower < 0 or upper <= 0:
-                    raise ValueError(f"search_space['{param}'] must have a lower bound >= 0 and an upper bound > 0")
-                params_loc[param] = trial.suggest_float(param, max(lower, 1e-8), upper, log=True)
-            elif param in ['bagging_fraction', 'sub_row', 'subsample', 'bagging',
-                           'feature_fraction', 'sub_feature', 'colsample_bytree',
-                           'cat_l2',
-                           'cat_smooth']:
-                params_loc[param] = trial.suggest_float(param, search_space[param][0], search_space[param][1], log=False)
-            elif param in ['num_leaves', 'num_leaf', 'max_leaves', 'max_leaf',
-                           'min_data_in_leaf', 'min_data_per_leaf', 'min_data', 'min_child_samples',
-                           'max_bin']:
-                params_loc[param] = trial.suggest_int(param, search_space[param][0], search_space[param][1], log=True)
-            elif param in ['max_depth']:
-                params_loc[param] = trial.suggest_int(param, search_space[param][0], search_space[param][1], log=False)
-            elif param in ['line_search_step_length']:
-                params_loc[param] = trial.suggest_categorical(param, [search_space[param][0], search_space[param][1]])
-            else: 
-                raise ValueError(f"Unknown parameter '{param}'")
+        for param, (kind, lower, upper, log) in parsed_search_space.items():
+            if kind == 'float':
+                params_loc[param] = trial.suggest_float(param, lower, upper, log=log)
+            elif kind == 'int':
+                params_loc[param] = trial.suggest_int(param, lower, upper, log=log)
+            else:
+                params_loc[param] = trial.suggest_categorical(param, [lower, upper])
         params_loc.update({'verbose': verbose_train})
         params_loc.update(params)
 
         # Train the model
-        data_bst = Dataset(data=X, label=y)
         best_score_trial = -float('inf') if metric_higher_better else float('inf')
         try:
-            cvbst = cv(params=params_loc, train_set=data_bst, gp_model=gp_model, 
-                use_gp_model_for_validation=use_gp_model_for_validation,  
-                train_gp_model_cov_pars=train_gp_model_cov_pars,
-                num_boost_round=max_num_boost_round, 
-                early_stopping_rounds=early_stopping_rounds,
-                folds=folds, nfold=nfold, verbose_eval=verbose_eval_cv, show_stdv=False, 
-                seed=cv_seed, metric=metric, feval=feval,
-                categorical_feature=categorical_feature)
-            metric_name = list(cvbst.keys())[0]
-            best_score_trial = np.min(cvbst[metric_name])
-            best_iter_trial = np.argmin(cvbst[metric_name]) + 1
-            if metric_higher_better:
-                best_score_trial = np.max(cvbst[metric_name])
-                best_iter_trial = np.argmax(cvbst[metric_name]) + 1
-
+            best_score_trial, best_iter_trial = _tuning_cv_score(
+                params=params_loc, X=X, y=y, gp_model=gp_model, max_num_boost_round=max_num_boost_round,
+                early_stopping_rounds=early_stopping_rounds, folds=folds, nfold=nfold, cv_seed=cv_seed,
+                metric=metric, feval=feval, verbose_eval_cv=verbose_eval_cv,
+                use_gp_model_for_validation=use_gp_model_for_validation,
+                train_gp_model_cov_pars=train_gp_model_cov_pars, categorical_feature=categorical_feature,
+                metric_higher_better=metric_higher_better)
             # Save the best number of iterations
-            found_better_combination = False
             if metric_higher_better:
-                if best_score_trial > best_score:
-                    found_better_combination = True
+                found_better_combination = best_score_trial > best_score
             else:
-                if best_score_trial < best_score:
-                    found_better_combination = True
+                found_better_combination = best_score_trial < best_score
             if found_better_combination:
                 best_score = best_score_trial
                 best_iter = best_iter_trial
@@ -1518,3 +1616,304 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
          raise ValueError("Did not find any valid parameter combination. " \
          "Check the 'metric' (is it supported?), search space, and the data provided ")
     return {'best_params': study.best_trial.params, 'best_iter': best_iter, 'best_score': study.best_trial.values}
+
+
+def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
+                   max_num_boost_round=1000, early_stopping_rounds=None,
+                   metric=None, folds=None, nfold=5,
+                   cv_seed=0, smac_seed=0,
+                   params=None, verbose_train=0, verbose_eval=1,
+                   use_gp_model_for_validation=True, train_gp_model_cov_pars=True, feval=None,
+                   categorical_feature='auto'):
+    """Function for choosing tuning parameters using SMAC (Sequential Model-based Algorithm Configuration) implemented in the 'smac' package (SMAC3)
+
+    SMAC (Hutter et al., 2011) is a Bayesian optimization method with a random forest as surrogate model. This function
+    uses the hyperparameter optimization setup of SMAC3 (Lindauer et al., 2022): a Sobol initial design,
+    a random forest for the logarithm of the score, expected improvement as acquisition function, and a randomly chosen
+    parameter combination in 20% of the trials. Every parameter combination is evaluated once, since the
+    cross-validation folds are the same in every trial. In a comparison of tuning methods for tree-boosting
+    (Koster and Sigrist, 2026), SMAC performed best on average.
+
+    This function requires the package 'smac' (SMAC3), which can be installed with ``pip install smac``.
+
+    Parameters
+    ----------
+    search_space : dict
+        The range for every parameter over which a search is done.
+        The format for every entry of the dict must be
+        'parameter_name': [lower, upper].
+        The parameters 'learning_rate', 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', 'lambda_l2',
+        'num_leaves', 'min_data_in_leaf', and 'max_bin' (and their aliases) are sampled on a logarithmic scale,
+        all other parameters on a linear scale. A lower bound of 0 is replaced by 1e-8 for 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', and 'lambda_l2' and by 1 for 'min_data_in_leaf'.
+        A parameter with lower = upper is held fixed at this value.
+        See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
+    n_trials: int
+        The number of parameter combinations that are evaluated, including the initial design.
+    X : string, numpy array, pandas DataFrame, H2O DataTable's Frame, scipy.sparse or list of numpy arrays
+        Predictor variables data for creating a gpb.Dataset.
+        If string, it represents the path to txt file.
+    y : list, numpy 1-D array, pandas Series / one-column DataFrame or None, optional (default=None)
+        Response variable / label data.
+    gp_model : GPModel or None, optional (default=None)
+        GPModel object for the GPBoost algorithm
+    max_num_boost_round : int, optional (default=1000)
+        Maximal number of boosting iterations.
+    early_stopping_rounds : int or None, optional (default=None)
+        Activates early stopping. The ``metric`` needs to improve at least every
+        ``early_stopping_rounds`` round(s) to continue.
+    metric : string, list of strings or None, optional (default=None)
+        Evaluation metric to be monitored when doing parameter tuning.
+        If not None, the metric in ``params`` will be overridden.
+
+            - Default ="test_neg_log_likelihood" if there is a GPModel
+
+            - Non-exhaustive list of supported metrics: "test_neg_log_likelihood", "mse", "rmse", "mae", "crps_gaussian", "auc", "average_precision", "binary_logloss", "binary_error"
+
+            - See https://gpboost.readthedocs.io/en/latest/Parameters.html#metric-parameters for a complete list of valid metrics
+
+    folds : generator or iterator of (train_idx, test_idx) tuples, scikit-learn splitter object or None, optional (default=None)
+        If generator or iterator, it should yield the train and test indices for each fold.
+        If object, it should be one of the scikit-learn splitter classes
+        (https://scikit-learn.org/stable/modules/classes.html#splitter-classes)
+        and have ``split`` method.
+        This argument has highest priority over other data split arguments.
+    nfold : int, optional (default=5)
+        Number of folds in CV.
+    cv_seed : int, optional (default=0)
+        Seed used to generate folds if CV is used (passed to numpy.random.seed).
+    smac_seed : int, optional (default=0)
+        Seed of SMAC
+    params : dict, optional (default=None)
+        Other parameters not included in search_space.
+    verbose_train: int, optional (default=0)
+        Controls the level of verbosity of the tree-boosting part during estimation
+        < 0: Fatal, = 0: Error (Warning), = 1: Info, > 1: Debug
+    verbose_eval : int or None, optional (default=1)
+        Whether to display information on the progress of tuning parameter choice.
+        If None or 0, verbose is of.
+        If = 1, summary progress information is displayed for every trial of a parameter combination.
+        If >= 2, detailed progress is displayed at every boosting stage for every parameter combination,
+        and warnings of SMAC are shown.
+    use_gp_model_for_validation : bool, optional (default=True)
+        If True, the 'gp_model' (Gaussian process and/or random effects) is also used (in addition to the tree model)
+        for calculating predictions on the validation data. If False, the 'gp_model' (random effects part) is ignored
+        for making predictions and only the tree ensemble is used for making predictions for calculating the validation / test error.
+    train_gp_model_cov_pars : bool, optional (default=True)
+        If True, the covariance parameters of the 'gp_model' (Gaussian process and/or random effects) are estimated
+        in every boosting iterations, otherwise the 'gp_model' parameters are not estimated. In the latter case, you
+        need to either estimate them beforehand or provide values via the 'init_cov_pars' parameter when creating
+        the 'gp_model'
+    feval : callable, list of callable functions or None, optional (default=None)
+        Customized evaluation function.
+        If more than one evaluation function is provided, only the first evaluation function will be used to choose tuning parameters
+        Each evaluation function should accept two parameters: preds, train_data,
+        and return (eval_name, eval_result, is_higher_better) or list of such tuples.
+
+            preds : list or numpy 1-D array
+                The predicted values.
+            train_data : Dataset
+                The training dataset.
+            eval_name : string
+                The name of evaluation function (without whitespaces).
+            eval_result : float
+                The eval result.
+            is_higher_better : bool
+                Is eval result higher better, e.g. AUC is ``is_higher_better``.
+
+        For binary task, the preds is probability of positive class (or margin in case of specified ``fobj``).
+        For multi-class task, the preds is group by class_id first, then group by row_id.
+        If you want to get i-th row preds in j-th class, the access way is preds[j * num_data + i].
+        To ignore the default metric corresponding to the used objective,
+        set ``metric`` to the string ``"None"``.
+    categorical_feature : list of strings or int, or 'auto', optional (default="auto")
+        Categorical features.
+        If list of int, interpreted as indices.
+        If list of strings, interpreted as feature names (need to specify ``feature_name`` as well).
+        If 'auto' and data is pandas DataFrame, pandas unordered categorical columns are used.
+        All values in categorical features should be less than int32 max value (2147483647).
+        Large values could be memory consuming. Consider using consecutive integers starting from zero.
+        All negative values in categorical features will be treated as missing values.
+        The output cannot be monotonically constrained with respect to a categorical feature.
+
+    Returns
+    -------
+    return : dict
+        Dictionary with the best parameter combination and score
+        The dictionary has the following format:
+        {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score}
+
+    Notes
+    -----
+    A parameter combination for which the cross-validation fails or gives a score that is NaN or infinite gets
+    a score for SMAC that is worse than all valid scores, so that SMAC avoids similar parameter combinations.
+
+    The parameters ``force_col_wise=True`` and ``deterministic=True`` are used unless ``params`` contains
+    'force_col_wise', 'force_row_wise', or 'deterministic', respectively. Without 'force_col_wise' and
+    'force_row_wise', the histograms of the trees are constructed column-wise or row-wise depending on a time
+    measurement, so that the score of a parameter combination can differ slightly between runs, and SMAC can then
+    choose other parameter combinations.
+
+    The local search of SMAC3 iterates over a set of parameter combinations, whose order depends on the hash
+    randomization of Python. While this function runs, the hash of the parameter combinations of ConfigSpace is
+    therefore replaced by one that does not depend on it, so that the results for a given 'smac_seed' are
+    reproducible.
+
+    References
+    ----------
+    Hutter, F., Hoos, H. H., and Leyton-Brown, K. (2011). Sequential model-based optimization for general
+    algorithm configuration. In Learning and Intelligent Optimization (LION 5), pages 507-523.
+
+    Lindauer, M., Eggensperger, K., Feurer, M., Biedenkapp, A., Deng, D., Benjamins, C., Ruhkopf, T., Sass, R.,
+    and Hutter, F. (2022). SMAC3: A versatile Bayesian optimization package for hyperparameter optimization.
+    Journal of Machine Learning Research, 23(54):1-9.
+
+    Koster, F. J. and Sigrist, F. (2026). Selecting hyperparameters for tree-boosting. arXiv:2602.05786.
+
+    Example
+    -------
+    >>> # Define search space
+    >>> # Note: if the best combination found below is close to the bounday for a paramter, you might want to extend the corresponding range
+    >>> search_space = { 'learning_rate': [0.001, 10],
+    >>>   'min_data_in_leaf': [1, 1000],
+    >>>   'max_depth': [-1,-1], # -1 means no depth limit as we tune 'num_leaves'. Can also additionally tune 'max_depth', e.g., 'max_depth': [-1,10]
+    >>>   'num_leaves': [2, 1024],
+    >>>   'lambda_l2': [0, 100],
+    >>>   'max_bin': [63, np.min([10000,n])],
+    >>>   'line_search_step_length': [True, False] }
+    >>> metric = "mse" # Define metric
+    >>> if likelihood in ("bernoulli_probit", "bernoulli_logit"):
+    >>>   metric = "binary_logloss"
+    >>> gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+    >>> # Run parameter optimization using SMAC and 5-fold CV
+    >>> opt_params = gpb.tune_pars_SMAC(search_space=search_space, n_trials=100,
+    >>>                                 X=X, y=y, gp_model=gp_model,
+    >>>                                 max_num_boost_round=1000, early_stopping_rounds=20,
+    >>>                                 nfold=5, metric=metric,
+    >>>                                 cv_seed=4, smac_seed=1)
+    >>> print("Best parameters: " + str(opt_params['best_params']))
+    >>> print("Best number of iterations: " + str(opt_params['best_iter']))
+    >>> print("Best score: " + str(opt_params['best_score']))
+
+    :Authors:
+        Fabio Sigrist
+    """
+    try:
+        import joblib
+        from ConfigSpace import Categorical, Configuration, ConfigurationSpace, Float, Integer
+        from smac import HyperparameterOptimizationFacade, Scenario
+        from smac.runhistory.dataclasses import TrialValue
+    except ImportError as e:
+        raise ImportError("'tune_pars_SMAC' requires the package 'smac' (SMAC3), "
+                          "which can be installed with 'pip install smac'") from e
+    if not isinstance(n_trials, int) or n_trials <= 0:
+        raise ValueError("'n_trials' must be a positive integer")
+    parsed_search_space = _parse_tuning_search_space(search_space)
+    folds = _check_tuning_folds(folds, y)
+    if params is None:
+        params = {}
+    else:
+        params = copy.deepcopy(params)
+    _tuning_deterministic_params(params)
+    metric, feval, metric_higher_better = _tuning_metric_higher_better(metric, feval)
+    if verbose_eval is None:
+        verbose_eval = 0
+    verbose_eval_cv = verbose_eval >= 2
+
+    # Parameters with a single value are held fixed and not searched by SMAC
+    fixed_params = {}
+    hyperparameters = []
+    for param, (kind, lower, upper, log) in parsed_search_space.items():
+        if lower == upper:
+            fixed_params[param] = lower
+        elif kind == 'float':
+            hyperparameters.append(Float(param, (float(lower), float(upper)), log=log))
+        elif kind == 'int':
+            hyperparameters.append(Integer(param, (int(lower), int(upper)), log=log))
+        else:
+            hyperparameters.append(Categorical(param, [lower, upper]))
+    if len(hyperparameters) == 0:
+        raise ValueError("'search_space' contains no parameter with two different values")
+    configspace = ConfigurationSpace(seed=smac_seed)
+    configspace.add(hyperparameters)
+
+    best_score = None
+    best_iter = -1
+    best_params = None
+    # Scores of the valid trials in the form used by SMAC (lower is better)
+    valid_costs = []
+
+    def cost_of_failed_trial():
+        worst, best = max(valid_costs), min(valid_costs)
+        gap = worst - best if worst > best else max(abs(worst), 1.)
+        return worst + gap
+
+    # SMAC writes its run history to an output directory, and its default logging configures the root logger
+    # of Python. A temporary directory is used, and only the level of the logger of SMAC is changed.
+    output_directory = tempfile.mkdtemp(prefix='gpboost_smac_')
+    smac_logger = logging.getLogger('smac')
+    smac_logger_level = smac_logger.level
+    smac_logger.setLevel(logging.WARNING if verbose_eval >= 2 else logging.ERROR)
+    # The local search of SMAC3 iterates over a set of configurations, whose order depends on their hash. The hash of
+    # ConfigSpace is that of a string and thus depends on the hash randomization of Python
+    configuration_hash = Configuration.__hash__
+    Configuration.__hash__ = _deterministic_configuration_hash
+    try:
+        scenario = Scenario(configspace, deterministic=True, n_trials=n_trials, seed=smac_seed,
+                            output_directory=output_directory)
+        # The trials are evaluated below through the ask-and-tell interface, the target function is not called
+        smac = HyperparameterOptimizationFacade(scenario, lambda config, seed=0: 0., overwrite=True,
+                                                logging_level=False)
+        # Trials that fail before a valid score is known are told to SMAC once a valid score is known
+        failed_trials_pending = []
+        for trial_number in range(1, n_trials + 1):
+            # The random forest of SMAC predicts many small batches of parameter combinations with all cores, and
+            # starting the threads takes longer than the predictions. The sequential backend of joblib gives the
+            # same predictions in a fraction of the time.
+            with joblib.parallel_backend('sequential'):
+                trial_info = smac.ask()
+            params_trial = {param: value.item() if isinstance(value, np.generic) else value
+                            for param, value in trial_info.config.items()}
+            params_trial.update(fixed_params)
+            params_loc = dict(params_trial)
+            params_loc.update({'verbose': verbose_train})
+            params_loc.update(params)
+            if verbose_eval >= 1:
+                print("Trial " + str(trial_number) + " of " + str(n_trials) + " with the parameters: " +
+                      str(params_trial))
+            score = float('nan')
+            try:
+                score, best_iter_trial = _tuning_cv_score(
+                    params=params_loc, X=X, y=y, gp_model=gp_model, max_num_boost_round=max_num_boost_round,
+                    early_stopping_rounds=early_stopping_rounds, folds=folds, nfold=nfold, cv_seed=cv_seed,
+                    metric=metric, feval=feval, verbose_eval_cv=verbose_eval_cv,
+                    use_gp_model_for_validation=use_gp_model_for_validation,
+                    train_gp_model_cov_pars=train_gp_model_cov_pars, categorical_feature=categorical_feature,
+                    metric_higher_better=metric_higher_better)
+            except Exception as e:
+                if verbose_eval >= 1:
+                    print(f"An error occurred: {e}")
+            if np.isfinite(score):
+                valid_costs.append(-score if metric_higher_better else score)
+                smac.tell(trial_info, TrialValue(cost=valid_costs[-1]), save=False)
+                for trial_info_failed in failed_trials_pending:
+                    smac.tell(trial_info_failed, TrialValue(cost=cost_of_failed_trial()), save=False)
+                failed_trials_pending = []
+                if best_score is None or (score > best_score if metric_higher_better else score < best_score):
+                    best_score = float(score)
+                    best_iter = best_iter_trial
+                    best_params = params_trial
+                    if verbose_eval >= 1:
+                        print("***** New best test score (" + str(best_score) + ") found in trial " +
+                              str(trial_number) + " with " + str(best_iter) + " boosting iterations")
+            elif valid_costs:
+                smac.tell(trial_info, TrialValue(cost=cost_of_failed_trial()), save=False)
+            else:
+                failed_trials_pending.append(trial_info)
+    finally:
+        Configuration.__hash__ = configuration_hash
+        smac_logger.setLevel(smac_logger_level)
+        shutil.rmtree(output_directory, ignore_errors=True)
+    if best_score is None:
+        raise ValueError("Did not find any valid parameter combination. "
+                         "Check the 'metric' (is it supported?), search space, and the data provided ")
+    return {'best_params': best_params, 'best_iter': best_iter, 'best_score': best_score}

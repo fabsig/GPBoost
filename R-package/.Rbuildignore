@@ -14,7 +14,7 @@ AUTOCONF_UBUNTU_VERSION
 \.gitkeep$
 ^.*\.history
 ^Makefile$
-^.*\.o
+^.*\.o$
 ^.*\.out
 ^pkgdown$
 ^recreate-configure\.sh$

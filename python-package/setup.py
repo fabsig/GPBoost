@@ -427,6 +427,9 @@ if __name__ == "__main__":
               'optuna'
           ],
           extras_require={
+              'smac': [
+                  'smac',
+              ],
               'dask': [
                   'dask[array]>=2.0.0',
                   'dask[dataframe]>=2.0.0',

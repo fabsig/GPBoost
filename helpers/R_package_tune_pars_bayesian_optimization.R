@@ -1,4 +1,7 @@
 
+# In GPBoost versions newer than 1.8.0, this function is part of the R package as
+# 'gpb.tune.pars.bayesian.optimization'. This file is kept for older versions.
+
 # load required libraries
 library(mlrMBO)
 library(DiceKriging)

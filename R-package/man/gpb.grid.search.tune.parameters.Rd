@@ -139,6 +139,13 @@ The list has the following format:
 \description{
 Function that allows for choosing tuning parameters from a grid in a determinstic or random way using cross validation or validation data sets.
 }
+\details{
+The parameters \code{force_col_wise = TRUE} and \code{deterministic = TRUE} are used unless
+\code{params}, \code{param_grid}, or \code{...} contain \code{force_col_wise}, \code{force_row_wise}, or
+\code{deterministic}, respectively. Without \code{force_col_wise} and \code{force_row_wise}, the histograms of
+the trees are constructed column-wise or row-wise depending on a time measurement, so that the score of a
+parameter combination can differ slightly between runs.
+}
 \section{Early Stopping}{
 
 

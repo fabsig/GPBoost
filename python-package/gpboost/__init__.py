@@ -8,7 +8,7 @@ from .basic import Booster, Dataset, register_logger, GPModel, get_nested_catego
     tune_num_threads
 from .callback import (early_stopping, print_evaluation, record_evaluation,
                        reset_parameter)
-from .engine import cv, train, CVBooster, grid_search_tune_parameters, tune_pars_TPE_algorithm_optuna
+from .engine import cv, train, CVBooster, grid_search_tune_parameters, tune_pars_TPE_algorithm_optuna, tune_pars_SMAC
 
 import os
 
@@ -33,7 +33,7 @@ __all__ = ['Dataset', 'Booster', 'CVBooster', 'GPModel', 'get_nested_categories'
            'get_num_threads', 'set_num_threads',
            'get_default_num_threads', 'set_default_num_threads', 'tune_num_threads',
            'register_logger',
-           'train', 'cv', 'grid_search_tune_parameters', 'tune_pars_TPE_algorithm_optuna',
+           'train', 'cv', 'grid_search_tune_parameters', 'tune_pars_TPE_algorithm_optuna', 'tune_pars_SMAC',
            'GPBoostModel', 'GPBoostRegressor', 'GPBoostClassifier', 'GPBoostRanker',
            'print_evaluation', 'record_evaluation', 'reset_parameter', 'early_stopping',
            'plot_importance', 'plot_split_value_histogram', 'plot_metric', 'plot_tree', 'create_tree_digraph']
