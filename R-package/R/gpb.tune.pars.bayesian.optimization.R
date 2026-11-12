@@ -175,8 +175,11 @@ gpb.tuning.check.packages <- function(packages, fun_name) {
 #' The parameters 'learning_rate', 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', 'lambda_l2',
 #' 'num_leaves', 'min_data_in_leaf', and 'max_bin' (and their aliases) are searched on a logarithmic scale,
 #' all other parameters on a linear scale. A lower bound of 0 is replaced by 1e-8 for 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', and 'lambda_l2' and by 1 for 'min_data_in_leaf'.
+#' A parameter with lower = upper is held fixed at this value.
 #' See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
-#' @param n_iter Number of sequential Bayesian optimization steps after the initial design
+#' @param n_iter Number of sequential Bayesian optimization steps after the initial design. The initial design is
+#' the default of 'mlrMBO', a Latin hypercube design with 4 d parameter combinations, where d is the number of
+#' parameters that are searched
 #' @param params \code{list} with other parameters not included in \code{search_space}
 #' @param crit \code{MBOInfillCrit}. How should infill points be rated.
 #' See infillcrits in the 'mlrMBO' package for an overview of available infill criteria or implement a custom one via makeMBOInfillCrit.
@@ -275,12 +278,19 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
   }
   higher_better <- gpb.tuning.higher.better(metric = metric, eval = eval)
 
-  # Parameter set of 'ParamHelpers'. Parameters on a logarithmic scale are searched as their logarithm
-  # with the prefix 'log_'. The parameters are not combined with c(), since the S3 method c.ParamSet
-  # of 'paradox' replaces the one of 'ParamHelpers' when 'paradox' is loaded afterwards
+  # Parameter set of 'ParamHelpers'. Parameters with a single value are held fixed and not searched: the
+  # Gaussian process of 'mlrMBO' does not support a parameter without range, and it would enlarge the initial
+  # design. Parameters on a logarithmic scale are searched as their logarithm with the prefix 'log_'. The parameters
+  # are not combined with c(), since the S3 method c.ParamSet of 'paradox' replaces the one of 'ParamHelpers'
+  # when 'paradox' is loaded afterwards
+  fixed_params <- list()
   par_list <- list()
   for (param in names(parsed_search_space)) {
     spec <- parsed_search_space[[param]]
+    if (spec$lower == spec$upper) {
+      fixed_params[[param]] <- spec$lower
+      next
+    }
     if (spec$kind == "logical") {
       new_param <- ParamHelpers::makeLogicalParam(param)
     } else if (spec$log) {
@@ -292,6 +302,9 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
       new_param <- ParamHelpers::makeNumericParam(param, lower = spec$lower, upper = spec$upper)
     }
     par_list[[length(par_list) + 1L]] <- new_param
+  }
+  if (length(par_list) == 0L) {
+    stop(fun_name, ": 'search_space' contains no parameter with two different values")
   }
   par_set <- ParamHelpers::makeParamSet(params = par_list)
 
@@ -319,7 +332,7 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
         params_comb[[param]] <- params_trial[[param]]
       }
     }
-    params_comb <- params_comb[names(parsed_search_space)]
+    params_comb <- c(params_comb, fixed_params)[names(parsed_search_space)]
     params_loc <- params
     params_loc[names(params_comb)] <- params_comb
     if (verbose_eval >= 1L) {

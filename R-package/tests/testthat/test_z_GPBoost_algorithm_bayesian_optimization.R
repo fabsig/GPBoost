@@ -146,6 +146,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_error(gpb.tune.pars.rf.bayesian.optimization(search_space = list("learning_rate" = c(0, 1)),
                                                           n_trials = 3, data = gpb.Dataset(X, label = y)),
                    "positive bounds")
+      expect_error(gpb.tune.pars.rf.bayesian.optimization(search_space = list("max_depth" = c(-1, -1)),
+                                                          n_trials = 3, data = gpb.Dataset(X, label = y)),
+                   "no parameter with two different values")
     })
 
     test_that("Choosing tuning parameters with 'mlrMBO' in 'gpb.tune.pars.bayesian.optimization'", {
@@ -198,6 +201,28 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lte(opt_params$best_params$bagging_fraction, 1)
       best_score <- cv_best_score(c(params_binary, opt_params$best_params), label = y_binary, metric = "auc")
       expect_lt(abs(opt_params$best_score - best_score), TOLERANCE)
+
+      # A parameter with a single value is held fixed and not part of the initial design. The Gaussian process
+      # failed with such a parameter after the initial design ("Domains[,1] must be less than or equal to
+      # Domains[,2]")
+      capture.output(
+        messages <- capture_messages(
+          opt_params <- gpb.tune.pars.bayesian.optimization(search_space = list("learning_rate" = c(0.01, 1),
+                                                                                "max_depth" = c(-1, -1),
+                                                                                "min_data_in_leaf" = c(1, 50)),
+                                                            n_iter = 2, data = gpb.Dataset(X, label = y),
+                                                            params = list(verbose = -1), nrounds = 50,
+                                                            early_stopping_rounds = 5, folds = folds, metric = "mse",
+                                                            cv_seed = 1, verbose_eval = 1))
+        , file = "NUL")
+      expect_equal(sum(grepl("^Trial number", messages)), 4 * 2 + 2)
+      expect_equal(names(opt_params$best_params), c("learning_rate", "max_depth", "min_data_in_leaf"))
+      expect_equal(opt_params$best_params$max_depth, -1)
+      best_score <- cv_best_score(opt_params$best_params, label = y, metric = "mse")
+      expect_lt(abs(opt_params$best_score - best_score), TOLERANCE)
+      expect_error(gpb.tune.pars.bayesian.optimization(search_space = list("max_depth" = c(-1, -1)), n_iter = 2,
+                                                       data = gpb.Dataset(X, label = y)),
+                   "no parameter with two different values")
     })
 
   }

@@ -15,8 +15,10 @@ library(rgenoud)
 #' The parameters 'learning_rate', 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', 'lambda_l2',
 #' 'num_leaves', 'min_data_in_leaf', and 'max_bin' (and their aliases) are searched on a logarithmic scale,
 #' all other parameters on a linear scale. A lower bound of 0 for 'lambda_l1' and 'lambda_l2' is replaced by 1e-8.
+#' A parameter with lower = upper is held fixed at this value.
 #' See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
-#' @param n_iter Number of sequential Bayesian optimization steps
+#' @param n_iter Number of sequential Bayesian optimization steps after the initial design, which has
+#' 4 d parameter combinations, where d is the number of parameters that are searched
 #' @param params \code{list} with other parameters not included in \code{param_grid}
 #' @param crit \code{MBOInfillCrit}. How should infill points be rated. 
 #' See infillcrits in the 'mlrMBO' package for an overview of available infill criteria or implement a custom one via makeMBOInfillCrit. 
@@ -146,22 +148,22 @@ tune.pars.bayesian.optimization <- function(search_space
       if (search_space[[param]][1] <= 0 || search_space[[param]][2] <= 0) {
         stop(sprintf("found non-positive values in search_space['%s'], need to use values > 0 ", param))
       }
-      par.set <- c(par.set, makeParamSet(makeNumericParam(paste0("log_",param), lower = log(search_space[[param]][1]), 
-                                                          upper = log(search_space[[param]][2]))))# trafo = trafoLog(base=exp(1)) is not helpful
+      new_par <- makeNumericParam(paste0("log_",param), lower = log(search_space[[param]][1]),
+                                  upper = log(search_space[[param]][2]))# trafo = trafoLog(base=exp(1)) is not helpful
     } else if (param %in% c('lambda_l2', 'reg_lambda', 'lambda',
                             'lambda_l1', 'reg_alpha')) {
       # log-transform values; a logarithmic scale excludes 0, and 1e-8 is practically no regularization
       if (search_space[[param]][1] < 0 || search_space[[param]][2] <= 0) {
         stop(sprintf("search_space['%s'] must have a lower bound >= 0 and an upper bound > 0", param))
       }
-      par.set <- c(par.set, makeParamSet(makeNumericParam(paste0("log_",param), lower = log(max(search_space[[param]][1], 1e-8)),
-                                                          upper = log(search_space[[param]][2]))))
+      new_par <- makeNumericParam(paste0("log_",param), lower = log(max(search_space[[param]][1], 1e-8)),
+                                  upper = log(search_space[[param]][2]))
     } else if (param %in% c('bagging_fraction', 'sub_row', 'subsample', 'bagging',
                             'feature_fraction', 'sub_feature', 'colsample_bytree',
                             'cat_l2',
                             'cat_smooth')) {
-      par.set <- c(par.set, makeParamSet(makeNumericParam(param, lower = search_space[[param]][1], 
-                                                          upper = search_space[[param]][2])))
+      new_par <- makeNumericParam(param, lower = search_space[[param]][1],
+                                  upper = search_space[[param]][2])
     } else if (param %in% c('num_leaves', 'num_leaf', 'max_leaves', 'max_leaf',
                             'min_data_in_leaf', 'min_data_per_leaf', 'min_data', 'min_child_samples',
                             'max_bin')) {
@@ -169,18 +171,28 @@ tune.pars.bayesian.optimization <- function(search_space
       if (search_space[[param]][1] <= 0 || search_space[[param]][2] <= 0) {
         stop(sprintf("found non-positive values in search_space['%s'], need to use values > 0 ", param))
       }
-      par.set <- c(par.set, makeParamSet(makeNumericParam(paste0("log_",param), lower = log(search_space[[param]][1]), 
-                                                          upper = log(search_space[[param]][2]))))
+      new_par <- makeNumericParam(paste0("log_",param), lower = log(search_space[[param]][1]),
+                                  upper = log(search_space[[param]][2]))
     } else if (param %in% c('max_depth')) {
-      par.set <- c(par.set, makeParamSet(makeIntegerParam(param, lower = search_space[[param]][1], 
-                                                          upper = search_space[[param]][2])))
+      new_par <- makeIntegerParam(param, lower = search_space[[param]][1],
+                                  upper = search_space[[param]][2])
     } else if (param %in% c('line_search_step_length')) {
-      par.set <- c(par.set, makeParamSet(makeLogicalParam(param)))
+      new_par <- makeLogicalParam(param)
     } else {
       stop(sprintf("Unknown parameter '%s'", param))
     }
+    # A parameter with a single value is held fixed and not searched: the Gaussian process of 'mlrMBO' does
+    # not support a parameter without range, and it would enlarge the initial design
+    if (search_space[[param]][1] == search_space[[param]][2]) {
+      params[[param]] <- search_space[[param]][1]
+    } else {
+      par.set <- c(par.set, makeParamSet(new_par))
+    }
   }
-  
+  if (length(par.set$pars) == 0) {
+    stop("tune.pars.bayesian.optimization: 'search_space' contains no parameter with two different values")
+  }
+
   best_score <- 1E99
   if (higher_better) best_score <- -1E99
   worst_score <- best_score

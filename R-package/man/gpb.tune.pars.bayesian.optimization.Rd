@@ -31,9 +31,12 @@ The format for every entry of the list must be "parameter_name" = c(lower, upper
 The parameters 'learning_rate', 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', 'lambda_l2',
 'num_leaves', 'min_data_in_leaf', and 'max_bin' (and their aliases) are searched on a logarithmic scale,
 all other parameters on a linear scale. A lower bound of 0 is replaced by 1e-8 for 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', and 'lambda_l2' and by 1 for 'min_data_in_leaf'.
+A parameter with lower = upper is held fixed at this value.
 See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part}
 
-\item{n_iter}{Number of sequential Bayesian optimization steps after the initial design}
+\item{n_iter}{Number of sequential Bayesian optimization steps after the initial design. The initial design is
+the default of 'mlrMBO', a Latin hypercube design with 4 d parameter combinations, where d is the number of
+parameters that are searched}
 
 \item{data}{a \code{gpb.Dataset} object, used for training. Some functions, such as \code{\link{gpb.cv}},
 may allow you to pass other types of data like \code{matrix} and then separately supply
