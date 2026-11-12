@@ -7684,6 +7684,68 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief True if the preconditioner of the iterative methods is formulated with W^-1, i.e., if the conjugate gradient
+		*		algorithm and the stochastic Lanczos quadrature work with W^-1 + Sigma instead of Sigma^-1 + W. These are the
+		*		'pivoted_cholesky', 'fitc', and 'vecchia_response' preconditioners. They require a positive W: W^-1 does not
+		*		exist if W has zeros, and if W has k negative entries, W^-1 + Sigma has k negative eigenvalues, also when
+		*		Sigma^-1 + W is positive definite. All other preconditioners ('vadu', 'vifdu', 'incomplete_cholesky', 'ssor',
+		*		'diagonal', 'none') work with Sigma^-1 + W (or Sigma^-1 + Z^T W Z), which only has to be positive definite,
+		*		and they allow negative or zero entries of W
+		*/
+		bool PreconditionerRequiresPositiveInformation() const {
+			return cg_preconditioner_type_ == "pivoted_cholesky" || cg_preconditioner_type_ == "fitc" || cg_preconditioner_type_ == "vecchia_response";
+		}
+
+		/*! \brief Error message for negative values of W with a preconditioner that requires a positive W, see 'PreconditionerRequiresPositiveInformation()' */
+		string_t MessageNegativeInformationPreconditioner() const {
+			return "Negative values found in W (the diagonal Hessian or Fisher information of the negative log-likelihood). The '" +
+				cg_preconditioner_type_ + "' preconditioner is based on W^(-1) and requires W to be positive. The other preconditioners "
+				"(e.g., 'vadu' and 'vifdu') allow negative values ";
+		}
+
+		/*!
+		* \brief Diagonal matrix W of preconditioners that are calculated from Sigma^-1 + W (or Sigma^-1 + Z^T W Z) and W, i.e.,
+		*		of the 'vadu' preconditioner P = B^T (D^-1 + W) B, the 'vifdu' preconditioner, and the zero fill-in incomplete
+		*		Cholesky factorizations. This is the information unless it has negative values (observed Hessian). P then has
+		*		to be based on a nonnegative W, such that it is positive definite: the preconditioned conjugate gradient
+		*		algorithm and the stochastic Lanczos quadrature only require P to be positive definite, and, e.g., log|P| =
+		*		log|D^-1 + W| is known exactly. This W is the information that was used for finding the mode (e.g., the Fisher
+		*		information of a '_fisher_laplace_combined' likelihood) if it is available and nonnegative, and otherwise the
+		*		information with its negative entries set to zero. The latter is less smooth and, for the t likelihood and the
+		*		'vadu' preconditioner, resulted in condition numbers of P^-1 (Sigma^-1 + W) that were larger by factors between
+		*		6 and 110. All quantities that involve P (solves, random vectors with covariance P, control variates) use this W
+		*/
+		vec_t InformationForPreconditioner() const {
+			if (!HasNegativeValueInformationLogLik()) {
+				return information_ll_;
+			}
+			if (information_ll_mode_finding_.size() == information_ll_.size() && (information_ll_mode_finding_.array() >= 0.).all()) {
+				return information_ll_mode_finding_;
+			}
+			return information_ll_.cwiseMax(0.);
+		}
+
+		/*!
+		* \brief True if a vector has a non-positive or non-finite entry. For the diagonal of Sigma^-1 + W, this shows that the
+		*		matrix is not positive definite, which is a necessary condition that can be checked cheaply when W has negative
+		*		values (observed Hessian)
+		*/
+		static bool HasNonPositiveOrNonFiniteValue(const vec_t& v) {
+			return (v.array() <= 0.).any() || !v.allFinite();
+		}
+
+		/*!
+		* \brief True if a diagonal entry of Sigma^-1 + W = B^T D^-1 B + W of a Vecchia approximation is not positive, i.e., if the
+		*		matrix is not positive definite. This is only checked when W has negative values (observed Hessian)
+		*/
+		bool SigmaIPlusWVecchiaHasNonPositiveDiagonal() const {
+			if (!HasNegativeValueInformationLogLik()) {
+				return false;
+			}
+			return HasNonPositiveOrNonFiniteValue(sp_mat_rm_t(B_rm_.cwiseAbs2()).transpose() * D_inv_rm_.diagonal() + information_ll_);
+		}
+
+		/*!
 		* \brief Message '<caller>: <message>' followed by a recommendation of a Fisher-Laplace approximation if this is
 		*		available for the likelihood and an observed-Hessian Laplace approximation is currently used
 		*/
@@ -7783,6 +7845,7 @@ namespace GPBoost {
 		bool InitializeModeForModeFinding() {
 			ssn_alm_exact_subgradient_valid_ = false;//the stored subgradient belongs to the mode of the previous call
 			failed_cholesky_mode_finding_message_.clear();
+			information_ll_mode_finding_.resize(0);//belongs to the mode finding of the previous call, see 'InformationForPreconditioner()'
 			if (!mode_initialized_) {//Better (numerically more stable) to re-initialize mode to zero in every call
 				InitializeModeAvec();
 				return false;
@@ -9080,6 +9143,10 @@ namespace GPBoost {
 		chol_den_mat_t chol_fact_I_k_plus_Sigma_L_kt_W_Sigma_L_k_vecchia_;
 		/*! \brief Sigma_inv_plus_BtWB (P = B^T (D^(-1) + W) B): matrix that contains the product (D^(-1) + W) B */
 		sp_mat_rm_t D_inv_plus_W_B_rm_;
+		/*! \brief Information that was used for finding the mode (e.g., the Fisher information) if it is replaced by another one
+		*		(e.g., the observed Hessian) after the mode finding with iterative methods, see 'InformationForPreconditioner()'.
+		*		Empty otherwise */
+		vec_t information_ll_mode_finding_;
 		/*! \brief zero_infill_incomplete_cholesky (P = L^T L): sparse cholesky factor L of matrix L^T L =  B^T D^(-1) B + W*/
 		sp_mat_rm_t L_SigmaI_plus_W_rm_;
 		/*! \brief B of vecchia preconditioner */

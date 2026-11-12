@@ -80,7 +80,7 @@ Model specification parameters
 
       -  ``gaussian`` : Gaussian likelihood
 
-      -  ``t`` : t-distribution (e.g., for robust regression). The default approximation is Fisher-Laplace, i.e., the Fisher information is used instead of the observed Hessian in the Laplace approximation of the marginal likelihood. For small data sets or data with little noise, this approximation can favor fits that interpolate the data, with df below 2 and a scale close to zero. The likelihood ``t_fisher_laplace_combined`` uses the Fisher information for finding the mode and the observed Hessian for the log-determinant (the usual Laplace approximation) and does not have this tendency. Use it with ``matrix_inversion_method = "cholesky"``, since the iterative methods require a nonnegative Hessian.
+      -  ``t`` : t-distribution (e.g., for robust regression). The default approximation is Fisher-Laplace, i.e., the Fisher information is used instead of the observed Hessian in the Laplace approximation of the marginal likelihood. For small data sets or data with little noise, this approximation can favor fits that interpolate the data, with df below 2 and a scale close to zero. The likelihood ``t_fisher_laplace_combined`` uses the Fisher information for finding the mode and the observed Hessian for the log-determinant (the usual Laplace approximation) and does not have this tendency. Some iterative methods do not allow a negative Hessian. In this case, use ``matrix_inversion_method = "cholesky"``.
 
       -  ``t_fix_df`` : t-distribution with the degrees-of-freedom (df) held fixed and not estimated
 

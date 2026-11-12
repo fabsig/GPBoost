@@ -839,6 +839,203 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_null(gp_model$get_optim_params()$init_aux_pars)
   })
 
+  test_that("t_fisher_laplace_combined likelihood with the Vecchia approximation and iterative methods ", {
+
+    # The observed Hessian, which is used for the log-determinant, has negative values for large residuals. The
+    #   iterative methods stopped with an error in this case, also with the 'vadu' and 'incomplete_cholesky'
+    #   preconditioners, which only require Sigma^-1 + W to be positive definite. The preconditioners that are based
+    #   on W^-1 and posterior samples still require a nonnegative Hessian
+    n_t <- 200
+    coords_t <- matrix(sim_rand_unif(n=n_t*2, init_c=0.31), ncol=2)
+    y_t <- sin(6 * coords_t[,1]) + cos(4 * coords_t[,2]) + 0.3 * qt(sim_rand_unif(n=n_t, init_c=0.47), df=3)
+    X_t <- matrix(1, n_t, 1)
+    coords_pred_t <- matrix(sim_rand_unif(n=20, init_c=0.77), ncol=2)
+    cov_pars_eval <- c(1, 0.2)
+    aux_pars_eval <- c(0.1, 2)# a small scale: the observed Hessian is negative for many observations
+    new_model <- function(matrix_inversion_method, params = list()) {
+      gp_model <- GPModel(gp_coords = coords_t, cov_function = "matern", cov_fct_shape = 1.5, likelihood = "t_fisher_laplace_combined",
+                          gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none", matrix_inversion_method = matrix_inversion_method)
+      if (length(params) > 0) gp_model$set_optim_params(params = params)
+      gp_model
+    }
+    # Likelihood evaluation: the standard deviation of the stochastic estimate is about 0.7 ('vadu') and 0.1
+    #   ('incomplete_cholesky') for 1000 random vectors
+    gp_model_chol <- new_model("cholesky")
+    nll_chol <- gp_model_chol$neg_log_likelihood(cov_pars = cov_pars_eval, y = y_t, aux_pars = aux_pars_eval)
+    for (cg_preconditioner_type in c("vadu", "incomplete_cholesky")) {
+      gp_model_it <- new_model("iterative", list(cg_preconditioner_type = cg_preconditioner_type, num_rand_vec_trace = 1000))
+      nll_it <- gp_model_it$neg_log_likelihood(cov_pars = cov_pars_eval, y = y_t, aux_pars = aux_pars_eval)
+      expect_lt(abs(nll_it - nll_chol), 2)
+    }
+    # Estimation
+    capture.output( fit(gp_model_chol, y = y_t, X = X_t), file='NUL')
+    gp_model_it <- new_model("iterative")
+    capture.output( fit(gp_model_it, y = y_t, X = X_t), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model_it$get_cov_pars()) - as.vector(gp_model_chol$get_cov_pars()))), 0.1)
+    expect_lt(sum(abs(as.vector(gp_model_it$get_aux_pars()) - as.vector(gp_model_chol$get_aux_pars()))), 0.02)
+    expect_lt(abs(as.vector(gp_model_it$get_coef()) - as.vector(gp_model_chol$get_coef())), 0.02)
+    nll_chol_at_it_estimates <- new_model("cholesky")$neg_log_likelihood(cov_pars = as.vector(gp_model_it$get_cov_pars()),
+                                                                        y = y_t - as.vector(X_t %*% gp_model_it$get_coef()),
+                                                                        aux_pars = as.vector(gp_model_it$get_aux_pars()))
+    expect_lt(nll_chol_at_it_estimates - gp_model_chol$get_current_neg_log_likelihood(), 0.05)
+    # The observed Hessian of the negative log-likelihood at the mode of the estimated model has negative values
+    #   (50 of 200)
+    mode_chol <- as.vector(gp_model_chol$predict_training_data_random_effects(predict_var = FALSE))
+    resid_chol <- y_t - as.vector(X_t %*% gp_model_chol$get_coef()) - mode_chol
+    scale_chol <- gp_model_chol$get_aux_pars()[1]
+    df_chol <- gp_model_chol$get_aux_pars()[2]
+    neg_hess_chol <- (df_chol + 1) * (df_chol * scale_chol^2 - resid_chol^2) / (df_chol * scale_chol^2 + resid_chol^2)^2
+    expect_gt(sum(neg_hess_chol < 0), 20)
+    # Prediction: the predictive variances are estimated by simulation as the difference of two sample variances
+    gp_model_chol <- new_model("cholesky", list(init_aux_pars = aux_pars_eval))
+    pred_chol <- predict(gp_model_chol, y = y_t, gp_coords_pred = coords_pred_t, cov_pars = cov_pars_eval,
+                         predict_var = TRUE, predict_response = FALSE)
+    for (cg_preconditioner_type in c("vadu", "incomplete_cholesky")) {
+      gp_model_it <- new_model("iterative", list(cg_preconditioner_type = cg_preconditioner_type, init_aux_pars = aux_pars_eval))
+      gp_model_it$set_prediction_data(nsim_var_pred = 5000)
+      pred_it <- predict(gp_model_it, y = y_t, gp_coords_pred = coords_pred_t, cov_pars = cov_pars_eval,
+                         predict_var = TRUE, predict_response = FALSE)
+      expect_lt(max(abs(pred_it$mu - pred_chol$mu)), 0.01)
+      expect_lt(max(abs(pred_it$var / pred_chol$var - 1)), 0.06)
+      expect_error(predict(gp_model_it, y = y_t, gp_coords_pred = coords_pred_t, cov_pars = cov_pars_eval,
+                           sample_posterior = TRUE, num_post_samples = 10), "Posterior samples cannot be generated")
+    }
+    # The 'pivoted_cholesky' preconditioner is based on W^-1 and requires W to be positive: this also shows that W has
+    #   negative values at the mode
+    gp_model_it <- new_model("iterative", list(cg_preconditioner_type = "pivoted_cholesky"))
+    expect_error(gp_model_it$neg_log_likelihood(cov_pars = cov_pars_eval, y = y_t, aux_pars = aux_pars_eval),
+                 "requires W to be positive")
+  })
+
+  test_that("t_fisher_laplace_combined likelihood with the VIF approximation and iterative methods ", {
+
+    # The observed Hessian, which is used for the log-determinant, has negative values for large residuals. The
+    #   iterative methods stopped with an error in this case, also with the 'vifdu' and 'none' preconditioners, which
+    #   only require Sigma^-1 + W to be positive definite
+    n_t <- 200
+    coords_t <- matrix(sim_rand_unif(n=n_t*2, init_c=0.31), ncol=2)
+    y_t <- sin(6 * coords_t[,1]) + cos(4 * coords_t[,2]) + 0.3 * qt(sim_rand_unif(n=n_t, init_c=0.47), df=3)
+    X_t <- matrix(1, n_t, 1)
+    coords_pred_t <- matrix(sim_rand_unif(n=20, init_c=0.77), ncol=2)
+    cov_pars_eval <- c(1, 0.2)
+    aux_pars_eval <- c(0.1, 2)# a small scale: the observed Hessian is negative for many observations
+    new_model <- function(matrix_inversion_method, params = list()) {
+      gp_model <- GPModel(gp_coords = coords_t, cov_function = "matern", cov_fct_shape = 1.5, likelihood = "t_fisher_laplace_combined",
+                          gp_approx = "full_scale_vecchia", num_neighbors = 20, num_ind_points = 20, vecchia_ordering = "none",
+                          matrix_inversion_method = matrix_inversion_method)
+      if (length(params) > 0) gp_model$set_optim_params(params = params)
+      gp_model
+    }
+    # Likelihood evaluation and prediction: the standard deviation of the stochastic estimate of the likelihood is
+    #   about 0.4 for 1000 random vectors
+    gp_model_chol <- new_model("cholesky", list(init_aux_pars = aux_pars_eval))
+    nll_chol <- gp_model_chol$neg_log_likelihood(cov_pars = cov_pars_eval, y = y_t, aux_pars = aux_pars_eval)
+    pred_chol <- predict(gp_model_chol, y = y_t, gp_coords_pred = coords_pred_t, cov_pars = cov_pars_eval,
+                         predict_var = TRUE, predict_response = FALSE)
+    for (cg_preconditioner_type in c("vifdu", "none")) {
+      gp_model_it <- new_model("iterative", list(cg_preconditioner_type = cg_preconditioner_type, num_rand_vec_trace = 1000,
+                                                 init_aux_pars = aux_pars_eval))
+      nll_it <- gp_model_it$neg_log_likelihood(cov_pars = cov_pars_eval, y = y_t, aux_pars = aux_pars_eval)
+      expect_lt(abs(nll_it - nll_chol), 2)
+      gp_model_it$set_prediction_data(nsim_var_pred = 5000)
+      pred_it <- predict(gp_model_it, y = y_t, gp_coords_pred = coords_pred_t, cov_pars = cov_pars_eval,
+                         predict_var = TRUE, predict_response = FALSE)
+      expect_lt(max(abs(pred_it$mu - pred_chol$mu)), 0.01)
+      expect_lt(max(abs(pred_it$var / pred_chol$var - 1)), 0.06)
+      expect_error(predict(gp_model_it, y = y_t, gp_coords_pred = coords_pred_t, cov_pars = cov_pars_eval,
+                           sample_posterior = TRUE, num_post_samples = 10), "Posterior samples cannot be generated")
+    }
+    # Estimation: the estimates with the 'vifdu' preconditioner differ somewhat from the Cholesky estimates, and this
+    #   difference does not decrease with more random vectors. This also holds for the t likelihood with the Fisher
+    #   information, which is nonnegative (difference of the negative log-likelihoods of 0.09)
+    gp_model_chol <- new_model("cholesky")
+    capture.output( fit(gp_model_chol, y = y_t, X = X_t), file='NUL')
+    gp_model_it <- new_model("iterative", list(cg_preconditioner_type = "vifdu"))
+    capture.output( fit(gp_model_it, y = y_t, X = X_t), file='NUL')
+    nll_chol_at_it_estimates <- new_model("cholesky")$neg_log_likelihood(cov_pars = as.vector(gp_model_it$get_cov_pars()),
+                                                                        y = y_t - as.vector(X_t %*% gp_model_it$get_coef()),
+                                                                        aux_pars = as.vector(gp_model_it$get_aux_pars()))
+    expect_lt(nll_chol_at_it_estimates - gp_model_chol$get_current_neg_log_likelihood(), 0.5)
+    # The 'fitc' preconditioner is based on W^-1 and requires W to be positive: this also shows that W has negative
+    #   values at the mode
+    gp_model_it <- new_model("iterative", list(cg_preconditioner_type = "fitc", fitc_piv_chol_preconditioner_rank = 20))
+    expect_error(gp_model_it$neg_log_likelihood(cov_pars = cov_pars_eval, y = y_t, aux_pars = aux_pars_eval),
+                 "requires W to be positive")
+  })
+
+  test_that("t_fisher_laplace_combined likelihood with crossed grouped random effects and iterative methods ", {
+
+    n_g <- 500
+    group_g <- cbind(floor(sim_rand_unif(n=n_g, init_c=0.12) * 50), floor(sim_rand_unif(n=n_g, init_c=0.57) * 20))
+    b1_g <- qnorm(sim_rand_unif(n=50, init_c=0.23))
+    b2_g <- qnorm(sim_rand_unif(n=20, init_c=0.83))
+    y_g <- b1_g[group_g[,1] + 1] + 0.7 * b2_g[group_g[,2] + 1] + 0.3 * qt(sim_rand_unif(n=n_g, init_c=0.41), df=3)
+    X_g <- matrix(1, n_g, 1)
+    group_pred_g <- cbind(c(0:4, 100:104), c(0:4, 0:4))
+    cov_pars_eval <- c(1, 0.5)
+    new_model <- function(matrix_inversion_method, aux_pars, cg_preconditioner_type = NULL) {
+      gp_model <- GPModel(group_data = group_g, likelihood = "t_fisher_laplace_combined",
+                          matrix_inversion_method = matrix_inversion_method)
+      gp_model$set_optim_params(params = c(list(init_aux_pars = aux_pars),
+                                           if (!is.null(cg_preconditioner_type)) list(cg_preconditioner_type = cg_preconditioner_type)))
+      gp_model
+    }
+    # With iterative methods for grouped random effects, the observed Hessian was calculated after the mode finding
+    #   only together with the marginal likelihood. Predictions, which find the mode without calculating the marginal
+    #   likelihood, therefore used the Fisher information of the mode finding instead of the observed Hessian
+    aux_pars_eval <- c(1, 10)# the observed Hessian is positive for all observations and differs from the Fisher information
+    gp_model_chol <- new_model("cholesky", aux_pars_eval)
+    gp_model_it <- new_model("iterative", aux_pars_eval)
+    nll_chol <- gp_model_chol$neg_log_likelihood(cov_pars = cov_pars_eval, y = y_g, aux_pars = aux_pars_eval)
+    nll_it <- gp_model_it$neg_log_likelihood(cov_pars = cov_pars_eval, y = y_g, aux_pars = aux_pars_eval)
+    expect_lt(abs(nll_it - nll_chol), 0.5)
+    gp_model_it$set_prediction_data(nsim_var_pred = 5000)
+    pred_chol <- predict(gp_model_chol, y = y_g, group_data_pred = group_pred_g, cov_pars = cov_pars_eval,
+                         predict_var = TRUE, predict_response = FALSE)
+    pred_it <- predict(gp_model_it, y = y_g, group_data_pred = group_pred_g, cov_pars = cov_pars_eval,
+                       predict_var = TRUE, predict_response = FALSE)
+    expect_lt(max(abs(pred_it$mu - pred_chol$mu)), 0.01)
+    expect_lt(max(abs(pred_it$var / pred_chol$var - 1)), 0.02)
+    # With a small scale and few degrees of freedom, the observed Hessian has negative values. The iterative methods
+    #   for grouped random effects stopped with an error in this case, although they only require Sigma^-1 + Z^T W Z
+    #   to be positive definite. The predictive covariances are estimated as the difference of two sample covariances
+    aux_pars_eval <- c(0.2, 3)
+    gp_model_chol <- new_model("cholesky", aux_pars_eval)
+    nll_chol <- gp_model_chol$neg_log_likelihood(cov_pars = cov_pars_eval, y = y_g, aux_pars = aux_pars_eval)
+    mode_chol <- predict(gp_model_chol, y = y_g, group_data_pred = group_g, cov_pars = cov_pars_eval,
+                         predict_response = FALSE)$mu
+    resid_chol <- y_g - mode_chol
+    neg_hess_chol <- (aux_pars_eval[2] + 1) * (aux_pars_eval[2] * aux_pars_eval[1]^2 - resid_chol^2) /
+      (aux_pars_eval[2] * aux_pars_eval[1]^2 + resid_chol^2)^2
+    expect_gt(sum(neg_hess_chol < 0), 100)# 136 of 500
+    pred_chol <- predict(gp_model_chol, y = y_g, group_data_pred = group_pred_g, cov_pars = cov_pars_eval,
+                         predict_var = TRUE, predict_response = FALSE)
+    pred_cov_chol <- predict(gp_model_chol, y = y_g, group_data_pred = group_pred_g, cov_pars = cov_pars_eval,
+                             predict_cov_mat = TRUE, predict_response = FALSE)
+    # the stochastic estimate of the likelihood is less accurate for 'diagonal' and 'none' (differences up to 0.9)
+    for (cg_preconditioner_type in c("ssor", "incomplete_cholesky", "diagonal", "none")) {
+      gp_model_it <- new_model("iterative", aux_pars_eval, cg_preconditioner_type)
+      nll_it <- gp_model_it$neg_log_likelihood(cov_pars = cov_pars_eval, y = y_g, aux_pars = aux_pars_eval)
+      expect_lt(abs(nll_it - nll_chol), 2)
+      gp_model_it$set_prediction_data(nsim_var_pred = 5000)
+      pred_it <- predict(gp_model_it, y = y_g, group_data_pred = group_pred_g, cov_pars = cov_pars_eval,
+                         predict_var = TRUE, predict_response = FALSE)
+      expect_lt(max(abs(pred_it$mu - pred_chol$mu)), 0.01)
+      expect_lt(max(abs(pred_it$var / pred_chol$var - 1)), 0.03)
+      pred_cov_it <- predict(gp_model_it, y = y_g, group_data_pred = group_pred_g, cov_pars = cov_pars_eval,
+                             predict_cov_mat = TRUE, predict_response = FALSE)
+      expect_lt(max(abs(pred_cov_it$cov - pred_cov_chol$cov)), 0.01)
+    }
+    # Estimation: the observed Hessian has negative values at the estimates (77 of 500)
+    gp_model_chol <- GPModel(group_data = group_g, likelihood = "t_fisher_laplace_combined", matrix_inversion_method = "cholesky")
+    capture.output( fit(gp_model_chol, y = y_g, X = X_g), file='NUL')
+    gp_model_it <- GPModel(group_data = group_g, likelihood = "t_fisher_laplace_combined", matrix_inversion_method = "iterative")
+    capture.output( fit(gp_model_it, y = y_g, X = X_g), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model_it$get_cov_pars()) - as.vector(gp_model_chol$get_cov_pars()))), 0.02)
+    expect_lt(sum(abs(as.vector(gp_model_it$get_aux_pars()) - as.vector(gp_model_chol$get_aux_pars()))), 0.03)
+    expect_lt(abs(gp_model_it$get_current_neg_log_likelihood() - gp_model_chol$get_current_neg_log_likelihood()), 0.5)
+  })
+
   test_that("gaussian_heteroscedastic_fixed_and_random likelihood", {
     params = OPTIM_PARAMS_BFGS
     init_cov_pars = c(1,mean(dist(coords))/3,0.1,mean(dist(coords))/3)

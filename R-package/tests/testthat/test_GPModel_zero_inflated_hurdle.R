@@ -542,10 +542,12 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     }
   })
 
-  test_that("combined determinant attempts the mode and recommends full Fisher-Laplace when iterative W is incompatible", {
+  test_that("combined determinant with a negative observed Hessian and iterative methods for grouped REs", {
     # At large eta the ZIP observed information is negative at the zero observations. Very small random-effect variances
     # keep the complete Sigma^-1 + Z^T W Z matrix positive definite, so direct Cholesky remains valid. (A single positive
     # observation is included because an all-zero response is separately rejected up front for zero-inflated counts.)
+    # The iterative methods for grouped REs stopped with an error in this case, although they only require
+    # Sigma^-1 + Z^T W Z to be positive definite
     y0 <- c(rep(0L, 5), 1L)
     groups0 <- cbind(1:6, rep(1:2, 3))
     eta0 <- rep(log(10), 6)
@@ -562,14 +564,67 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
       zero_inflated_regression_negative_binomial_1 = list(aux = 0.6, fixed_effects = c(eta0, rep(0, length(y0))))
     )
     for (fam in names(cases)) {
-      iterative <- GPModel(group_data = groups0, likelihood = fam,
-                           matrix_inversion_method = "iterative")
       args <- list(cov_pars = c(1e-3, 1e-3), y = y0, fixed_effects = cases[[fam]]$fixed_effects)
       if (!is.null(cases[[fam]]$aux)) args$aux_pars <- cases[[fam]]$aux
-      expect_error(do.call(iterative$neg_log_likelihood, args),
-                   regexp = paste0("FindModePostRandEffCalcMLLGroupedRE: Negative values found in W.*",
-                                   fam, "_fisher_laplace"), info = fam)
+      direct <- GPModel(group_data = groups0, likelihood = fam, matrix_inversion_method = "cholesky")
+      nll_c <- do.call(direct$neg_log_likelihood, args)
+      for (cg_preconditioner_type in c("ssor", "incomplete_cholesky", "diagonal")) {
+        iterative <- GPModel(group_data = groups0, likelihood = fam, matrix_inversion_method = "iterative")
+        iterative$set_optim_params(params = c(it_par, list(cg_preconditioner_type = cg_preconditioner_type)))
+        nll_i <- do.call(iterative$neg_log_likelihood, args)
+        expect_equal(nll_i, nll_c, tolerance = TOL_MED, info = paste(fam, cg_preconditioner_type))
+      }
     }
+  })
+
+  test_that("zero-inflated Poisson with crossed grouped REs: iterative estimation with a negative observed Hessian", {
+    # The default (combined) approximation uses the observed Hessian for the log-determinant, which is negative at some
+    # zero observations. The iterative methods, the default for crossed grouped REs, stopped with an error in this case
+    y <- sim_y("zero_inflated_poisson", eta_true("zero_inflated_poisson", 0.7 * b1[group] + 0.5 * b2[group_crossed[, 2]]))
+    capture.output(gpc <- fitGPModel(group_data = group_crossed, likelihood = "zero_inflated_poisson", y = y, X = X,
+                                     matrix_inversion_method = "cholesky", params = list(maxit = 100, trace = FALSE)), file = "NUL")
+    capture.output(gpi <- fitGPModel(group_data = group_crossed, likelihood = "zero_inflated_poisson", y = y, X = X,
+                                     matrix_inversion_method = "iterative", params = list(maxit = 100, trace = FALSE)), file = "NUL")
+    expect_lt(sum(abs(as.numeric(gpi$get_cov_pars()) - as.numeric(gpc$get_cov_pars()))), 0.02)
+    expect_lt(abs(as.numeric(gpi$get_coef()) - as.numeric(gpc$get_coef())), 0.02)
+    expect_lt(abs(as.numeric(gpi$get_aux_pars()) - as.numeric(gpc$get_aux_pars())), 0.01)
+    expect_lt(abs(gpi$get_current_neg_log_likelihood() - gpc$get_current_neg_log_likelihood()), 0.1)
+  })
+
+  test_that("hurdle likelihood with zeros in W: full-scale Vecchia approximation with iterative methods", {
+    # W is zero at the zero observations of a hurdle likelihood. The 'vifdu' preconditioner works with Sigma^-1 + W
+    # and allows zeros in W, but the gradient and the predictive variances stopped with an error in this case
+    y <- sim_y("hurdle_gamma", eta_true("hurdle_gamma", gp_re))
+    new_model <- function(matrix_inversion_method, params = list()) {
+      gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "hurdle_gamma", gp_approx = "full_scale_vecchia",
+                          num_neighbors = 15L, num_ind_points = 30L, vecchia_ordering = "none", matrix_inversion_method = matrix_inversion_method)
+      if (length(params) > 0) gp_model$set_optim_params(params = params)
+      gp_model
+    }
+    nll_c <- new_model("cholesky")$neg_log_likelihood(cov_pars = c(1.0, 0.2), y = y, fixed_effects = rep(0.0, n), aux_pars = aux0("hurdle_gamma"))
+    nll_i <- new_model("iterative", c(it_par, list(cg_preconditioner_type = "vifdu")))$neg_log_likelihood(
+      cov_pars = c(1.0, 0.2), y = y, fixed_effects = rep(0.0, n), aux_pars = aux0("hurdle_gamma"))
+    expect_lt(abs(nll_i - nll_c), 2)
+    gpi <- new_model("iterative", c(it_par, list(cg_preconditioner_type = "vifdu")))
+    capture.output(fit(gpi, y = y, X = X, params = list(maxit = 100)), file = "NUL")
+    # The Cholesky decomposition uses W^-1 for the gradient of the full-scale Vecchia approximation, and the estimates
+    # of the Vecchia approximation serve as reference
+    gpv <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = "hurdle_gamma", y = y, X = X,
+                      gp_approx = "vecchia", num_neighbors = 15L, vecchia_ordering = "none", matrix_inversion_method = "cholesky",
+                      params = list(maxit = 100, trace = FALSE))
+    nll_c_at_it_estimates <- new_model("cholesky")$neg_log_likelihood(cov_pars = as.numeric(gpi$get_cov_pars()), y = y,
+      fixed_effects = rep(as.numeric(gpi$get_coef()), n), aux_pars = as.numeric(gpi$get_aux_pars()))
+    nll_c_at_vecchia_estimates <- new_model("cholesky")$neg_log_likelihood(cov_pars = as.numeric(gpv$get_cov_pars()), y = y,
+      fixed_effects = rep(as.numeric(gpv$get_coef()), n), aux_pars = as.numeric(gpv$get_aux_pars()))
+    expect_lt(nll_c_at_it_estimates - nll_c_at_vecchia_estimates, 0.1)
+    gpi$set_prediction_data(nsim_var_pred = 5000)
+    pred_i <- predict(gpi, gp_coords_pred = coords[1:5, ], X_pred = matrix(1.0, 5, 1), predict_var = TRUE, predict_response = FALSE)
+    gpc <- new_model("cholesky", list(init_aux_pars = as.numeric(gpi$get_aux_pars())))
+    pred_c <- predict(gpc, y = y, gp_coords_pred = coords[1:5, ], offset = rep(as.numeric(gpi$get_coef()), n),
+                      offset_pred = rep(as.numeric(gpi$get_coef()), 5), cov_pars = as.numeric(gpi$get_cov_pars()),
+                      predict_var = TRUE, predict_response = FALSE)
+    expect_lt(max(abs(pred_i$mu - pred_c$mu)), 1e-3)
+    expect_lt(max(abs(pred_i$var / pred_c$var - 1)), 0.08)
   })
 
   test_that("hurdle inputs are finite and no-zero samples have an interior start", {

@@ -266,7 +266,9 @@ namespace GPBoost {
 					num_cg_steps_last_ = num_cg_steps;
 				}
 				if (has_NA_or_Inf) {
-					approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
+					//'mode_update' has not (fully) been calculated and must not be used, and the marginal likelihood is not defined
+					approx_marginal_ll = std::numeric_limits<double>::quiet_NaN();
+					na_or_inf_during_last_call_to_find_mode_ = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
@@ -367,7 +369,42 @@ namespace GPBoost {
 			}
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par.data());//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			if (matrix_inversion_method_ == "iterative") {
-				if (calc_mll) {//calculate determinant term for approx_marginal_ll
+				if (information_changes_after_mode_finding_) {
+					//update with latest W, also when the marginal likelihood is not calculated, since predictions and gradients use
+					//	this W and the matrices and preconditioners calculated from it
+					information_ll_mode_finding_ = information_ll_;// see 'InformationForPreconditioner()'
+					CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
+					SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t((*SigmaI_ptr)) + sp_mat_rm_t((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
+					// If the observed Hessian W has negative values, Sigma^-1 + Z^T W Z is only positive definite if the mode is a
+					//	local maximum of the approximated posterior. Its diagonal then has to be positive, and the 'ssor' and
+					//	'diagonal' preconditioners, which are calculated from it, are positive definite
+					if (HasNegativeValueInformationLogLikOnDataScale() && HasNonPositiveOrNonFiniteValue(SigmaI_plus_ZtWZ_rm_.diagonal())) {
+						SetNAOrInfFailedCholeskyModeFinding(__func__, "Sigma^(-1) + Z^T W Z is not positive definite (it has a non-positive "
+							"diagonal entry) ", approx_marginal_ll, has_NA_or_Inf);
+					}
+					else if (cg_preconditioner_type_ == "incomplete_cholesky") {
+						if (HasNegativeValueInformationLogLik()) {
+							// a zero fill-in incomplete Cholesky factorization of Sigma^-1 + Z^T W Z can break down if W has negative
+							//	values, also if the matrix is positive definite
+							sp_mat_rm_t SigmaI_plus_ZtWZ_preconditioner_rm = sp_mat_rm_t((*SigmaI_ptr)) +
+								sp_mat_rm_t((*Zt_) * InformationForPreconditioner().asDiagonal() * (*Zt_).transpose());
+							ZeroFillInIncompleteCholeskyFactorization(SigmaI_plus_ZtWZ_preconditioner_rm, L_SigmaI_plus_ZtWZ_rm_);
+						}
+						else {
+							ZeroFillInIncompleteCholeskyFactorization(SigmaI_plus_ZtWZ_rm_, L_SigmaI_plus_ZtWZ_rm_);
+						}
+					}
+					else if (cg_preconditioner_type_ == "ssor") {
+						P_SSOR_D_inv_ = SigmaI_plus_ZtWZ_rm_.diagonal().cwiseInverse();
+						vec_t P_SSOR_D_inv_sqrt = P_SSOR_D_inv_.cwiseSqrt(); //need to store this, otherwise slow!
+						sp_mat_rm_t P_SSOR_L_rm = SigmaI_plus_ZtWZ_rm_.triangularView<Eigen::Lower>();
+						P_SSOR_L_D_sqrt_inv_rm_ = P_SSOR_L_rm * P_SSOR_D_inv_sqrt.asDiagonal();
+					}
+					else if (cg_preconditioner_type_ == "diagonal") {
+						SigmaI_plus_ZtWZ_inv_diag_ = SigmaI_plus_ZtWZ_rm_.diagonal().cwiseInverse();
+					}
+				}
+				if (calc_mll && !has_NA_or_Inf) {//calculate determinant term for approx_marginal_ll
 					//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
 					if (!saved_rand_vec_trace_) {
 						//Generate t (= num_rand_vec_trace_) random vectors
@@ -385,28 +422,6 @@ namespace GPBoost {
 					CHECK(rand_vec_trace_P_.cols() == num_rand_vec_trace_);
 					CHECK(rand_vec_trace_I_.rows() == dim_mode_);
 					CHECK(rand_vec_trace_P_.rows() == dim_mode_);
-					if (information_changes_after_mode_finding_) {
-						//upadate with latest W
-						CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
-						if (HasNegativeValueInformationLogLikOnDataScale()) {
-							LogFatalWithPotentialFisherLaplaceHint(__func__, "Negative values found in W (the diagonal Hessian or Fisher "
-								"information of the negative log-likelihood). Iterative evaluation of the Laplace determinant requires "
-								"nonnegative W ");
-						}
-						SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t((*SigmaI_ptr)) + sp_mat_rm_t((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
-						if (cg_preconditioner_type_ == "incomplete_cholesky") {
-							ZeroFillInIncompleteCholeskyFactorization(SigmaI_plus_ZtWZ_rm_, L_SigmaI_plus_ZtWZ_rm_);
-						}
-						else if (cg_preconditioner_type_ == "ssor") {
-							P_SSOR_D_inv_ = SigmaI_plus_ZtWZ_rm_.diagonal().cwiseInverse();
-							vec_t P_SSOR_D_inv_sqrt = P_SSOR_D_inv_.cwiseSqrt(); //need to store this, otherwise slow!
-							sp_mat_rm_t P_SSOR_L_rm = SigmaI_plus_ZtWZ_rm_.triangularView<Eigen::Lower>();
-							P_SSOR_L_D_sqrt_inv_rm_ = P_SSOR_L_rm * P_SSOR_D_inv_sqrt.asDiagonal();
-						}
-						else if (cg_preconditioner_type_ == "diagonal") {
-							SigmaI_plus_ZtWZ_inv_diag_ = SigmaI_plus_ZtWZ_rm_.diagonal().cwiseInverse();
-						}
-					}
 					//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
 					if (cg_preconditioner_type_ == "incomplete_cholesky") {
 #pragma omp parallel for schedule(static)   
@@ -440,6 +455,13 @@ namespace GPBoost {
 						cg_convergence_params_);
 					if (!has_NA_or_Inf) {
 						LogDetStochTridiag(Tdiags_PI_SigmaI_plus_ZtWZ, Tsubdiags_PI_SigmaI_plus_ZtWZ, log_det_SigmaI_plus_ZtWZ, dim_mode_, num_rand_vec_trace_);
+						// a non-positive eigenvalue of a Lanczos tridiagonal matrix shows that Sigma^-1 + Z^T W Z is not positive definite,
+						//	which can happen if W has negative values (observed Hessian) and the mode is not a local maximum
+						if (!std::isfinite(log_det_SigmaI_plus_ZtWZ)) {
+							has_NA_or_Inf = true;
+						}
+					}
+					if (!has_NA_or_Inf) {
 						approx_marginal_ll += 0.5 * (SigmaI.diagonal().array().log().sum() - log_det_SigmaI_plus_ZtWZ);
 						if (has_vecchia_gp) {
 							approx_marginal_ll += 0.5 * D_inv.diagonal().array().log().sum();
@@ -692,7 +714,7 @@ namespace GPBoost {
 				//Reduce max. number of iterations for the CG in first update
 				if (cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") {
 					if (it == 0 || information_changes_during_mode_finding_) {
-						W_D_inv = (information_ll_ + D_inv_rm_.diagonal());
+						W_D_inv = (InformationForPreconditioner() + D_inv_rm_.diagonal());
 						W_D_inv_inv = W_D_inv.cwiseInverse();
 						W_D_inv_sqrt = W_D_inv_inv.cwiseSqrt();
 						if (cg_preconditioner_type_ == "vifdu") {
@@ -749,8 +771,9 @@ namespace GPBoost {
 					mode_update = information_ll_inv.asDiagonal() * mode_update_part;
 				}
 				if (has_NA_or_Inf) {
-					//'mode_update' has not (fully) been calculated and must not be used below
-					approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
+					//'mode_update' has not (fully) been calculated and must not be used, and the marginal likelihood is not defined
+					approx_marginal_ll = std::numeric_limits<double>::quiet_NaN();
+					na_or_inf_during_last_call_to_find_mode_ = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
@@ -897,15 +920,31 @@ namespace GPBoost {
 			}
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			if (information_changes_after_mode_finding_) {
+				if (matrix_inversion_method_ == "iterative") {
+					information_ll_mode_finding_ = information_ll_;// see 'InformationForPreconditioner()'
+				}
 				CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
 			}
 			if (matrix_inversion_method_ == "iterative") {
-				if (HasNegativeValueInformationLogLikOnDataScale()) {
-					LogFatalWithPotentialFisherLaplaceHint(__func__, "Negative values found in W (the diagonal Hessian or Fisher "
-						"information of the negative log-likelihood). Iterative evaluation of the Laplace determinant requires "
-						"nonnegative W ");
+				// The preconditioners that work with Sigma^-1 + W and not with W^-1 can be used when the observed Hessian W has
+				//	negative values, see 'PreconditionerRequiresPositiveInformation()' and 'InformationForPreconditioner()'.
+				//	Sigma^-1 + W is then only positive definite if the mode is a local maximum of the approximated posterior
+				if (PreconditionerRequiresPositiveInformation() && HasNegativeValueInformationLogLikOnDataScale()) {
+					LogFatalWithPotentialFisherLaplaceHint(__func__, MessageNegativeInformationPreconditioner().c_str());
 				}
-				if (calc_mll) {//calculate determinant term for approx_marginal_ll
+				if (!PreconditionerRequiresPositiveInformation() && HasNegativeValueInformationLogLik()) {
+					// diag(Sigma^-1) = diag(B^T D^-1 B) - diag(B^T D^-1 B Sigma_nm sigma_woodbury^-1 Sigma_mn B^T D^-1 B)
+					den_mat_t L_inv_cross_cov_T_Bt_D_inv_B;
+					TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury,
+						Bt_D_inv_B_cross_cov.transpose(), L_inv_cross_cov_T_Bt_D_inv_B, false);
+					const vec_t diag_SigmaI_plus_W = sp_mat_rm_t(B_rm_.cwiseAbs2()).transpose() * D_inv_rm_.diagonal() -
+						L_inv_cross_cov_T_Bt_D_inv_B.colwise().squaredNorm().transpose() + information_ll_;
+					if (HasNonPositiveOrNonFiniteValue(diag_SigmaI_plus_W)) {
+						SetNAOrInfFailedCholeskyModeFinding(__func__, "Sigma^(-1) + W is not positive definite (it has a non-positive "
+							"diagonal entry) ", approx_marginal_ll, has_NA_or_Inf);
+					}
+				}
+				if (calc_mll && !has_NA_or_Inf) {//calculate determinant term for approx_marginal_ll
 					//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
 					if (!saved_rand_vec_trace_) {
 						rand_vec_trace_I2_.resize(dim_mode_, num_rand_vec_trace_);
@@ -936,14 +975,9 @@ namespace GPBoost {
 						}
 					}
 					if (cg_preconditioner_type_ == "vifdu") {
-						if (HasNegativeValueInformationLogLik()) {
-							LogFatalWithPotentialFisherLaplaceHint(__func__, "Negative values found in W (the diagonal Hessian or Fisher "
-								"information of the negative log-likelihood). Stochastic evaluation of the Laplace determinant with the "
-								"'vifdu' preconditioner requires the square root of W ");
-						}
-						// B^T * W^1/2 * rand_vec
+						// B^T * W^1/2 * rand_vec, W of the preconditioner, see 'InformationForPreconditioner()'
 						den_mat_t Bt_W_sqrt_rand_vec_trace(dim_mode_, num_rand_vec_trace_);
-						vec_t information_ll_sqrt = information_ll_.cwiseSqrt();
+						vec_t information_ll_sqrt = InformationForPreconditioner().cwiseSqrt();
 #pragma omp parallel for schedule(static)   
 						for (int i = 0; i < num_rand_vec_trace_; ++i) {
 							Bt_W_sqrt_rand_vec_trace.col(i) = B_rm_.transpose() * information_ll_sqrt.cwiseProduct(rand_vec_trace_I2_.col(i));
@@ -975,7 +1009,7 @@ namespace GPBoost {
 						rand_vec_trace_I_ = rand_vec_trace_I2_;
 					}
 					if (information_changes_after_mode_finding_) {
-						W_D_inv = (information_ll_ + D_inv_rm_.diagonal());
+						W_D_inv = (InformationForPreconditioner() + D_inv_rm_.diagonal());
 						W_D_inv_inv = W_D_inv.cwiseInverse();
 						W_D_inv_sqrt = W_D_inv_inv.cwiseSqrt();
 						if (cg_preconditioner_type_ == "vifdu") {
@@ -1164,7 +1198,9 @@ namespace GPBoost {
 					re_comps_cross_cov_cluster_i, cluster_i, re_model, rhs, mode_update, it == 0, calculate_preconditioners);
 				cg_runs_for_newton_step_ = false;
 				if (has_NA_or_Inf) {
-					approx_marginal_ll_new = std::numeric_limits<double>::quiet_NaN();
+					//'mode_update' has not (fully) been calculated and must not be used, and the marginal likelihood is not defined
+					approx_marginal_ll = std::numeric_limits<double>::quiet_NaN();
+					na_or_inf_during_last_call_to_find_mode_ = true;
 					Log::REDebug(NA_OR_INF_WARNING_);
 					break;
 				}
@@ -1321,15 +1357,23 @@ namespace GPBoost {
 			}
 			CalcFirstDerivLogLik(y_data, y_data_int, location_par_ptr);//first derivative is not used here anymore but since it is reused in gradient calculation and in prediction, we calculate it once more
 			if (information_changes_after_mode_finding_) {
+				if (matrix_inversion_method_ == "iterative") {
+					information_ll_mode_finding_ = information_ll_;// see 'InformationForPreconditioner()'
+				}
 				CalcInformationLogLik(y_data, y_data_int, location_par_ptr, false);
 			}
 			if (matrix_inversion_method_ == "iterative") {
-				if (HasNegativeValueInformationLogLikOnDataScale()) {
-					LogFatalWithPotentialFisherLaplaceHint(__func__, "Negative values found in W (the diagonal Hessian or Fisher "
-						"information of the negative log-likelihood). Iterative evaluation of the Laplace determinant requires "
-						"nonnegative W ");
+				// The preconditioners that work with Sigma^-1 + W and not with W^-1 can be used when the observed Hessian W has
+				//	negative values, see 'PreconditionerRequiresPositiveInformation()' and 'InformationForPreconditioner()'.
+				//	Sigma^-1 + W is then only positive definite if the mode is a local maximum of the approximated posterior
+				if (PreconditionerRequiresPositiveInformation() && HasNegativeValueInformationLogLikOnDataScale()) {
+					LogFatalWithPotentialFisherLaplaceHint(__func__, MessageNegativeInformationPreconditioner().c_str());
 				}
-				if (calc_mll) {//calculate determinant term for approx_marginal_ll
+				if (!PreconditionerRequiresPositiveInformation() && SigmaIPlusWVecchiaHasNonPositiveDiagonal()) {
+					SetNAOrInfFailedCholeskyModeFinding(__func__, "Sigma^(-1) + W is not positive definite (it has a non-positive "
+						"diagonal entry) ", approx_marginal_ll, has_NA_or_Inf);
+				}
+				if (calc_mll && !has_NA_or_Inf) {//calculate determinant term for approx_marginal_ll
 					//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
 					// The rank of the preconditioner can differ from 'fitc_piv_chol_preconditioner_rank_' since the method for
 					//	selecting the inducing points can determine their number itself (cover tree), and it can change when the
@@ -3065,17 +3109,18 @@ namespace GPBoost {
 		if (grad_information_wrt_mode_non_zero_) {
 			CalcFirstDerivInformationLocPar(y_data, y_data_int, location_par_ptr, deriv_information_diag_loc_par, deriv_information_diag_loc_par_data_scale);
 		}
-		vec_t W_D_inv = information_ll_ + D_inv_rm_.diagonal();
+		vec_t W_D_inv = InformationForPreconditioner() + D_inv_rm_.diagonal();// for the 'vifdu' preconditioner
 		vec_t W_D_inv_inv = W_D_inv.cwiseInverse();
 		vec_t d_mll_d_mode;
-		if (HasZeroValueInformationLogLik()) {
+		// the Cholesky decomposition and the 'fitc' preconditioner use W^-1
+		if ((matrix_inversion_method_ != "iterative" || PreconditionerRequiresPositiveInformation()) && HasZeroValueInformationLogLik()) {
 			Log::REFatal("CalcGradNegMargLikelihoodLaplaceApproxFSVA: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-				"This is not permitted when using the VIF approximation and gradient-based optimization ");
+				"This is not permitted when using the VIF approximation and gradient-based optimization with the Cholesky decomposition or the 'fitc' "
+				"preconditioner. Try using the 'vifdu' preconditioner ");
 		}
 		if (matrix_inversion_method_ == "iterative") {
-			if ((cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "fitc") && HasNegativeValueInformationLogLik()) {
-				Log::REFatal("CalcGradNegMargLikelihoodLaplaceApproxFSVA: Negative values found in W (the diagonal Hessian or Fisher information of the negative log-likelihood). "
-					"The stochastic gradient calculation with the '%s' preconditioner requires W to be nonnegative ", cg_preconditioner_type_.c_str());
+			if (PreconditionerRequiresPositiveInformation() && HasNegativeValueInformationLogLik()) {
+				Log::REFatal("CalcGradNegMargLikelihoodLaplaceApproxFSVA: %s", MessageNegativeInformationPreconditioner().c_str());
 			}
 			double c_opt;
 			sp_mat_rm_t SigmaI_rm = B_t_D_inv_rm_ * B_rm_;
@@ -3619,11 +3664,12 @@ namespace GPBoost {
 								if (cg_preconditioner_type_ == "vifdu") {
 									sp_mat_rm_t B_grad_rm = sp_mat_rm_t(B_grad[ipar]);
 									den_mat_t P_grad_PI_Z = SigmaI_deriv_sample_vec;
+									const vec_t information_preconditioner = InformationForPreconditioner();
 									//if (!(num_comps_total == 1 && ipar == 0)) {
 #pragma omp parallel for schedule(static)  
 									for (int ii = 0; ii < num_rand_vec_trace_; ii++) {
-										P_grad_PI_Z.col(ii) += B_grad_rm.transpose() * (information_ll_.cwiseProduct(B_rm_ * PI_Z.col(ii))) +
-											B_rm_.transpose() * (information_ll_.cwiseProduct(B_grad_rm * PI_Z.col(ii)));
+										P_grad_PI_Z.col(ii) += B_grad_rm.transpose() * (information_preconditioner.cwiseProduct(B_rm_ * PI_Z.col(ii))) +
+											B_rm_.transpose() * (information_preconditioner.cwiseProduct(B_grad_rm * PI_Z.col(ii)));
 									}
 									//}
 									den_mat_t D_inv_B_cross_cov_grad(dim_mode_, num_ip);
@@ -5136,7 +5182,14 @@ namespace GPBoost {
 					int n_pred = (int)pred_mean.size();
 					den_mat_t pred_cov_global = den_mat_t::Zero(n_pred, n_pred);
 					vec_t SigmaI_diag_sqrt = SigmaI.diagonal().cwiseSqrt();
-					sp_mat_rm_t Zt_W_sqrt_rm = sp_mat_rm_t((*Zt_) * information_ll_.cwiseSqrt().asDiagonal());
+					// If W has negative values (observed Hessian), the predictive covariance is estimated as the difference of two
+					//	sample covariances, see 'PredictLaplaceApproxVecchia()'
+					const bool information_has_negative_values = HasNegativeValueInformationLogLik();
+					sp_mat_rm_t Zt_W_sqrt_rm = sp_mat_rm_t((*Zt_) * information_ll_.cwiseMax(0.).cwiseSqrt().asDiagonal());
+					sp_mat_rm_t Zt_W_neg_sqrt_rm;
+					if (information_has_negative_values) {
+						Zt_W_neg_sqrt_rm = sp_mat_rm_t((*Zt_) * (-information_ll_).cwiseMax(0.).cwiseSqrt().asDiagonal());
+					}
 					// seeded at every call so that repeated predictions with the same model give the same result
 					cg_generator_ = RNG_t(seed_rand_vec_trace_);
 					int num_threads;
@@ -5188,6 +5241,21 @@ namespace GPBoost {
 							//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T W Z)^(-1) Z_p^T)
 							vec_t rand_vec_pred = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
 							pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
+							if (information_has_negative_values) {
+								//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T W Z)^(-1) Z^T W_- Z (Sigma^(-1) + Z^T W Z)^(-1) Z_p^T)
+								for (int j = 0; j < num_data_; j++) {
+									rand_vec_pred_I_2(j) = ndist(rng_local);
+								}
+								vec_t rand_vec_pred_W_neg = Zt_W_neg_sqrt_rm * rand_vec_pred_I_2;
+								CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_W_neg, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
+									true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
+									cg_convergence_params_pred_);
+								if (has_NA_or_Inf) {
+									na_inf_flag_3 = true;
+								}
+								vec_t rand_vec_pred_2 = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
+								pred_cov_private -= rand_vec_pred_2 * rand_vec_pred_2.transpose();
+							}
 						} //end for loop
 #pragma omp critical
 						{
@@ -5504,13 +5572,21 @@ namespace GPBoost {
 					pred_var_prec_diff = vec_t::Zero(num_pred);
 					pred_var_prec_prod = vec_t::Zero(num_pred);
 				}
-				if (HasNegativeValueInformationLogLik()) {
-					Log::REFatal("PredictLaplaceApproxFSVA: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-						"Cannot have negative values when using 'iterative' methods for predictive variances in Vecchia-Laplace approximations ");
+				// If W has negative values (observed Hessian), the predictive (co-)variances are estimated as the difference of two
+				//	sample (co-)variances, see 'PredictLaplaceApproxVecchia()'
+				const bool information_has_negative_values = HasNegativeValueInformationLogLik();
+				if (information_has_negative_values) {
+					if (PreconditionerRequiresPositiveInformation()) {
+						Log::REFatal("PredictLaplaceApproxFSVA: %s", MessageNegativeInformationPreconditioner().c_str());
+					}
+					if (num_post_samples > 0) {
+						Log::REFatal("PredictLaplaceApproxFSVA: Negative values found in the (diagonal) Hessian of the negative log-likelihood. "
+							"Posterior samples cannot be generated with 'iterative' methods in this case ");
+					}
 				}
-				if (HasZeroValueInformationLogLik()) {
+				if (PreconditionerRequiresPositiveInformation() && HasZeroValueInformationLogLik()) {
 					Log::REFatal("PredictLaplaceApproxFSVA: 0's found in W (the diagonal Hessian or Fisher information of the negative log-likelihood). "
-						"Predictive variance calculations with iterative methods require W to be invertible. Try using the Cholesky decomposition ");
+						"Predictive variance calculations with the '%s' preconditioner require W to be invertible. Try using the 'vifdu' preconditioner ", cg_preconditioner_type_.c_str());
 				}
 				const den_mat_t* cross_cov_preconditioner;
 				vec_t information_ll_inv;
@@ -5522,7 +5598,11 @@ namespace GPBoost {
 				else {
 					cross_cov_preconditioner = nullptr;
 				}
-				vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
+				vec_t W_diag_sqrt = information_ll_.cwiseMax(0.).cwiseSqrt();
+				vec_t W_neg_diag_sqrt;
+				if (information_has_negative_values) {
+					W_neg_diag_sqrt = (-information_ll_).cwiseMax(0.).cwiseSqrt();
+				}
 				sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * D_inv_rm_.cwiseSqrt();
 				if (CondObsOnly) {
 					cross_cov_pred_obs_pred_inv = B_po_cross_cov;
@@ -5613,7 +5693,7 @@ namespace GPBoost {
 				// chol_fact_sigma_woodbury_woodbury_ from all threads (a data race that intermittently corrupted the
 				// factorization -> Cholesky failure/segfault) and called the non-thread-safe Log::REFatal().
 				if ((cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") && std::max(nsim_var_pred_, num_post_samples) > 0) {
-					W_D_inv = (information_ll_ + D_inv_rm_.diagonal());
+					W_D_inv = (InformationForPreconditioner() + D_inv_rm_.diagonal());
 					W_D_inv_inv = W_D_inv.cwiseInverse();
 					den_mat_t B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov = W_D_inv_inv.cwiseSqrt().asDiagonal() * D_inv_B_cross_cov_;
 					sigma_woodbury_woodbury_ = sigma_woodbury - B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov.transpose() * B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov;
@@ -5725,6 +5805,41 @@ namespace GPBoost {
 						if (sample_posterior) {
 							if (i < num_post_samples) {
 								post_samples_id.col(i) += rand_vec_pred;
+							}
+						}
+						if (information_has_negative_values && i < nsim_var_pred_) {
+							//z_i ~ N(0, W_-): the sample (co-)variance of the corresponding predictions is subtracted, see above
+							for (int j = 0; j < dim_mode_; j++) {
+								rand_vec_pred_I_2(j) = ndist(rng_local);
+							}
+							vec_t rand_vec_pred_W_neg = W_neg_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
+							CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
+								chol_fact_sigma_woodbury_woodbury_, rand_vec_pred_W_neg, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf, cg_max_num_it_,
+								true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true,
+								cg_convergence_params_pred_);
+							if (has_NA_or_Inf) {
+								na_inf_flag_4 = true;
+							}
+							sigma_woodbury_vec = (*cross_cov) * chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * rand_vec_pred_SigmaI_plus_W_inv);
+							sigma_pred_sigma_inv_vec = cross_cov_pred_ip * chol_fact_sigma_ip.solve(Bt_D_inv_B_cross_cov.transpose() * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec));
+							sigmSigmaI_modechiSigmaI_mode = Bpo_rm * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec);
+							if (!CondObsOnly) {
+								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, sigmSigmaI_modechiSigmaI_mode, sigmSigmaI_modechiSigmaI_mode, false);
+							}
+							rand_vec_pred = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
+							if (calc_pred_cov) {
+								den_mat_t pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
+#pragma omp critical
+								{
+									pred_cov -= pred_cov_private;
+								}
+							}
+							if (calc_pred_var) {
+								vec_t pred_var_private = rand_vec_pred.cwiseProduct(rand_vec_pred);
+#pragma omp critical
+								{
+									pred_var -= pred_var_private;
+								}
 							}
 						}
 						// Implementation for Bekas approach
@@ -6015,11 +6130,26 @@ namespace GPBoost {
 				if (calc_pred_var) {
 					pred_var = vec_t::Zero(num_pred);
 				}
-				if (HasNegativeValueInformationLogLik()) {
-					Log::REFatal("PredictLaplaceApproxVecchia: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-						"Cannot have negative values when using 'iterative' methods for predictive variances in Vecchia-Laplace approximations ");
+				// If W has negative values (observed Hessian), random vectors with covariance Sigma^-1 + W cannot be generated
+				//	with W^(1/2). With W = W_+ - W_- (positive and negative part), (Sigma^-1 + W)^-1 is the difference of the
+				//	covariances of (Sigma^-1 + W)^-1 z_1 and (Sigma^-1 + W)^-1 z_2 for z_1 ~ N(0, Sigma^-1 + W_+) and z_2 ~ N(0, W_-),
+				//	and the predictive (co-)variances are estimated as the difference of the two sample (co-)variances. This
+				//	requires a preconditioner that works with Sigma^-1 + W, and it does not give samples from the approximate posterior
+				const bool information_has_negative_values = HasNegativeValueInformationLogLik();
+				if (information_has_negative_values) {
+					if (PreconditionerRequiresPositiveInformation()) {
+						Log::REFatal("PredictLaplaceApproxVecchia: %s", MessageNegativeInformationPreconditioner().c_str());
+					}
+					if (num_post_samples > 0) {
+						Log::REFatal("PredictLaplaceApproxVecchia: Negative values found in the (diagonal) Hessian of the negative log-likelihood. "
+							"Posterior samples cannot be generated with 'iterative' methods in this case ");
+					}
 				}
-				vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
+				vec_t W_diag_sqrt = information_ll_.cwiseMax(0.).cwiseSqrt();
+				vec_t W_neg_diag_sqrt;
+				if (information_has_negative_values) {
+					W_neg_diag_sqrt = (-information_ll_).cwiseMax(0.).cwiseSqrt();
+				}
 				sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * (D_inv_rm_.cwiseSqrt());
 				int num_threads;
 #ifdef _OPENMP
@@ -6092,6 +6222,32 @@ namespace GPBoost {
 						if (sample_posterior) {
 							if (i < num_post_samples) {
 								post_samples_id.col(i) += rand_vec_pred;
+							}
+						}
+						if (information_has_negative_values && i < nsim_var_pred_) {
+							//z_2 ~ N(0, W_-), see above
+							vec_t rand_vec_pred_W_neg(dim_mode_);
+							for (int j = 0; j < dim_mode_; j++) {
+								rand_vec_pred_W_neg(j) = W_neg_diag_sqrt[j] * ndist(rng_local);
+							}
+							vec_t rand_vec_pred_W_neg_SigmaI_plus_W_inv(dim_mode_);
+							bool has_NA_or_Inf_W_neg = false;
+							Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_W_neg, rand_vec_pred_W_neg_SigmaI_plus_W_inv, true, has_NA_or_Inf_W_neg, /*for_prediction=*/true);
+							if (has_NA_or_Inf_W_neg) {
+								na_inf_flag_5 = true;
+							}
+							if (num_sets_re_ > 1) {
+								rand_vec_pred_W_neg_SigmaI_plus_W_inv = rand_vec_pred_W_neg_SigmaI_plus_W_inv.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_).eval();
+							}
+							vec_t rand_vec_pred_2 = Bpo_rm * rand_vec_pred_W_neg_SigmaI_plus_W_inv;
+							if (!CondObsOnly) {
+								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, rand_vec_pred_2, rand_vec_pred_2, false);
+							}
+							if (calc_pred_cov) {
+								pred_cov_private -= rand_vec_pred_2 * rand_vec_pred_2.transpose();
+							}
+							if (calc_pred_var) {
+								pred_var_private -= rand_vec_pred_2.cwiseProduct(rand_vec_pred_2);
 							}
 						}
 					}//end for loop
@@ -6858,11 +7014,16 @@ namespace GPBoost {
 		if (matrix_inversion_method_ == "iterative") {
 			CHECK(num_sets_re_ == 1);
 			pred_var = vec_t::Zero(dim_mode_);
-			if (HasNegativeValueInformationLogLik()) {
-				Log::REFatal("CalcVarLaplaceApproxVecchia: Negative values found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-					"Cannot have negative values when using 'iterative' methods for predictive variances in Vecchia-Laplace approximations ");
+			// see 'PredictLaplaceApproxVecchia()' for the case that W has negative values
+			const bool information_has_negative_values = HasNegativeValueInformationLogLik();
+			if (information_has_negative_values && PreconditionerRequiresPositiveInformation()) {
+				Log::REFatal("CalcVarLaplaceApproxVecchia: %s", MessageNegativeInformationPreconditioner().c_str());
 			}
-			vec_t W_diag_sqrt = information_ll_.cwiseSqrt();
+			vec_t W_diag_sqrt = information_ll_.cwiseMax(0.).cwiseSqrt();
+			vec_t W_neg_diag_sqrt;
+			if (information_has_negative_values) {
+				W_neg_diag_sqrt = (-information_ll_).cwiseMax(0.).cwiseSqrt();
+			}
 			sp_mat_rm_t B_t_D_inv_sqrt_rm = B_rm_.transpose() * (D_inv_rm_.cwiseSqrt());
 			int num_threads;
 #ifdef _OPENMP
@@ -6908,6 +7069,19 @@ namespace GPBoost {
 						na_inf_flag_10 = true;
 					}
 					pred_var_private += rand_vec_pred_SigmaI_plus_W_inv.cwiseProduct(rand_vec_pred_SigmaI_plus_W_inv);
+					if (information_has_negative_values) {
+						vec_t rand_vec_pred_W_neg(dim_mode_);
+						for (int j = 0; j < dim_mode_; j++) {
+							rand_vec_pred_W_neg(j) = W_neg_diag_sqrt[j] * ndist(rng_local);
+						}
+						vec_t rand_vec_pred_W_neg_SigmaI_plus_W_inv(dim_mode_);
+						bool has_NA_or_Inf_W_neg = false;
+						Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_W_neg, rand_vec_pred_W_neg_SigmaI_plus_W_inv, true, has_NA_or_Inf_W_neg, /*for_prediction=*/true);
+						if (has_NA_or_Inf_W_neg) {
+							na_inf_flag_10 = true;
+						}
+						pred_var_private -= rand_vec_pred_W_neg_SigmaI_plus_W_inv.cwiseProduct(rand_vec_pred_W_neg_SigmaI_plus_W_inv);
+					}
 				}// end for loop
 #pragma omp critical
 				{
@@ -6966,6 +7140,13 @@ namespace GPBoost {
 		//	NA or Inf. The caller sets the log-likelihood to NA in that case anyway
 		if (!has_NA_or_Inf) {
 			LogDetStochTridiag(Tdiags_W_SigmaI, Tsubdiags_W_SigmaI, log_det_Sigma_W_plus_I, num_data, num_rand_vec_trace_);
+			// a non-positive eigenvalue of a Lanczos tridiagonal matrix shows that Sigma^-1 + W is not positive definite, which
+			//	can happen if W has negative values (observed Hessian) and the mode is not a local maximum
+			if (!std::isfinite(log_det_Sigma_W_plus_I)) {
+				has_NA_or_Inf = true;
+			}
+		}
+		if (!has_NA_or_Inf) {
 			if (cg_preconditioner_type_ == "fitc") {
 				log_det_Sigma_W_plus_I -= 2. * (((den_mat_t)chol_fact_sigma_ip_preconditioner.matrixL()).diagonal().array().log().sum());
 				log_det_Sigma_W_plus_I += information_ll_.array().log().sum();
@@ -7005,6 +7186,10 @@ namespace GPBoost {
 			if (calculate_preconditioners && HasNegativeValueInformationLogLik()) {
 				Log::REFatal("Inv_SigmaI_plus_ZtWZ_Vecchia_iterative: Negative values found in W (the diagonal Hessian or Fisher information of the negative log-likelihood). "
 					"The '%s' preconditioner is based on a positive-definite W^(-1) formulation. Try another preconditioner (e.g. 'vadu') or the Cholesky decomposition ", cg_preconditioner_type_.c_str());
+			}
+			if (calculate_preconditioners && HasZeroValueInformationLogLik()) {
+				Log::REFatal("Inv_SigmaI_plus_ZtWZ_Vecchia_iterative: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
+					"The '%s' preconditioner is based on W^(-1). Try another preconditioner (e.g. 'vadu') or the Cholesky decomposition ", cg_preconditioner_type_.c_str());
 			}
 			if ((information_ll_.array() > 1e10).any() && calculate_preconditioners) {
 				has_NA_or_Inf = true;// the inversion of the preconditioner with the Woodbury identity can be numerically unstable when information_ll_ is very large
@@ -7062,11 +7247,11 @@ namespace GPBoost {
 		else if (cg_preconditioner_type_ == "vadu" || cg_preconditioner_type_ == "incomplete_cholesky") {
 			if (calculate_preconditioners) {
 				if (cg_preconditioner_type_ == "vadu") {
-					D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + information_ll_).asDiagonal() * B_rm_;
+					D_inv_plus_W_B_rm_ = (D_inv_rm_.diagonal() + InformationForPreconditioner()).asDiagonal() * B_rm_;
 				}
 				else if (cg_preconditioner_type_ == "incomplete_cholesky") {
 					SigmaI_plus_W = SigmaI;
-					SigmaI_plus_W.diagonal().array() += information_ll_.array();
+					SigmaI_plus_W.diagonal().array() += InformationForPreconditioner().array();
 					ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
 				}
 			}//end calculate_preconditioners
@@ -7210,7 +7395,7 @@ namespace GPBoost {
 			//Get random vectors (z_1, ..., z_t) with Cov(z_i) = P:
 			if (cg_preconditioner_type_ == "vadu") {
 				//For P = B^T (D^(-1) + W) B: z_i = B^T (D^(-1) + W)^0.5 r_i, where r_i ~ N(0,I)
-				D_inv_plus_W_diag = D_inv_rm_.diagonal() + information_ll_;
+				D_inv_plus_W_diag = D_inv_rm_.diagonal() + InformationForPreconditioner();
 				sp_mat_rm_t B_t_D_inv_plus_W_sqrt_rm = B_rm_.transpose() * (D_inv_plus_W_diag).cwiseSqrt().asDiagonal();
 #pragma omp parallel for schedule(static)   
 				for (int i = 0; i < num_rand_vec_trace_; ++i) {
@@ -7223,7 +7408,7 @@ namespace GPBoost {
 				//Update P with latest W
 				if (information_changes_after_mode_finding_) {
 					SigmaI_plus_W = SigmaI;
-					SigmaI_plus_W.diagonal().array() += information_ll_.array();
+					SigmaI_plus_W.diagonal().array() += InformationForPreconditioner().array();
 					ReverseIncompleteCholeskyFactorization(SigmaI_plus_W, B, L_SigmaI_plus_W_rm_);
 				}
 				//For P = L^T L: z_i = L^T r_i, where r_i ~ N(0,I)
@@ -7241,6 +7426,11 @@ namespace GPBoost {
 			if (!has_NA_or_Inf) {
 				double ldet_PI_SigmaI_plus_W;
 				LogDetStochTridiag(Tdiags_PI_SigmaI_plus_W, Tsubdiags_PI_SigmaI_plus_W, ldet_PI_SigmaI_plus_W, num_data, num_rand_vec_trace_);
+				// A non-positive eigenvalue of a Lanczos tridiagonal matrix shows that Sigma^-1 + W is not positive definite,
+				//	which can happen if W has negative values (observed Hessian) and the mode is not a local maximum
+				if (!std::isfinite(ldet_PI_SigmaI_plus_W)) {
+					has_NA_or_Inf = true;
+				}
 				//log|Sigma W + I| = log|P^(-1) (Sigma^(-1) + W)| + log|P| + log|Sigma|
 				log_det_Sigma_W_plus_I = ldet_PI_SigmaI_plus_W - D_inv_rm_.diagonal().array().log().sum();
 				if (cg_preconditioner_type_ == "vadu") {
@@ -7395,8 +7585,10 @@ namespace GPBoost {
 			}
 			if (cg_preconditioner_type_ == "vadu") {
 				//variance reduction
-				//deterministic tr((D^(-1) + W)^(-1) dW/db_i)
-				D_inv_plus_W_inv_diag = (D_inv_rm_.diagonal() + information_ll_).cwiseInverse();
+				//deterministic tr((D^(-1) + W)^(-1) dW/db_i). The control variates are the stochastic estimates of tr(P^-1 M)
+				//	for M = B^T dW/db_i B (and dP/dtheta for the other parameters below), which are unbiased for any P, also if
+				//	the W in P is not the information but 'InformationForPreconditioner()'
+				D_inv_plus_W_inv_diag = (D_inv_rm_.diagonal() + InformationForPreconditioner()).cwiseInverse();
 				if (grad_information_wrt_mode_non_zero_) {
 					vec_t tr_D_inv_plus_W_inv_W_deriv = D_inv_plus_W_inv_diag.array() * deriv_information_diag_loc_par.array();
 					//stochastic tr(P^(-1) dP/db_i), where dP/db_i = B^T dW/db_i B
@@ -7479,7 +7671,7 @@ namespace GPBoost {
 					//deterministic tr((D^(-1) + W)^(-1) dD^(-1)/dtheta_j)
 					tr_D_inv_plus_W_inv_D_inv_deriv = -1 * (D_inv_plus_W_inv_diag.array() * D_inv_rm_.diagonal().array() * D_grad_j.diagonal().array() * D_inv_rm_.diagonal().array()).sum();
 					//stochastic tr(P^(-1) dP/dtheta_j)
-					sp_mat_rm_t Bt_W_Bgrad_rm = B_rm_.transpose() * information_ll_.asDiagonal() * B_grad_j;
+					sp_mat_rm_t Bt_W_Bgrad_rm = B_rm_.transpose() * InformationForPreconditioner().asDiagonal() * B_grad_j;
 					sp_mat_rm_t P_deriv_rm = SigmaI_deriv_rm + sp_mat_rm_t(Bt_W_Bgrad_rm.transpose()) + Bt_W_Bgrad_rm;
 					zt_PI_P_deriv_PI_z = ((PI_Z.cwiseProduct(P_deriv_rm * PI_Z)).colwise().sum()).transpose();
 					tr_PI_P_deriv = zt_PI_P_deriv_PI_z.mean();
