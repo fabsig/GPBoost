@@ -1264,8 +1264,11 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
     ----------
     search_space : dict
         The range for every parameter over which a search is done.
-        The format for every entry of the dict must be 
+        The format for every entry of the dict must be
         'parameter_name': [lower, upper].
+        The parameters 'learning_rate', 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', 'lambda_l2',
+        'num_leaves', 'min_data_in_leaf', and 'max_bin' (and their aliases) are sampled on a logarithmic scale,
+        all other parameters on a linear scale. A lower bound of 0 for 'lambda_l1' and 'lambda_l2' is replaced by 1e-8.
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     n_trials: int
         The number of trials for the TPESampler.
@@ -1449,8 +1452,13 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
                          'min_sum_hessian_in_leaf', 'min_sum_hessian_per_leaf', 'min_sum_hessian', 'min_hessian', 'min_child_weight']:
                 params_loc[param] = trial.suggest_float(param, search_space[param][0], search_space[param][1], log=True)
             elif param in ['lambda_l2', 'reg_lambda', 'lambda',
-                           'lambda_l1', 'reg_alpha',
-                           'bagging_fraction', 'sub_row', 'subsample', 'bagging',
+                           'lambda_l1', 'reg_alpha']:
+                # A logarithmic scale excludes 0, and 1e-8 is practically no regularization
+                lower, upper = search_space[param]
+                if lower < 0 or upper <= 0:
+                    raise ValueError(f"search_space['{param}'] must have a lower bound >= 0 and an upper bound > 0")
+                params_loc[param] = trial.suggest_float(param, max(lower, 1e-8), upper, log=True)
+            elif param in ['bagging_fraction', 'sub_row', 'subsample', 'bagging',
                            'feature_fraction', 'sub_feature', 'colsample_bytree',
                            'cat_l2',
                            'cat_smooth']:

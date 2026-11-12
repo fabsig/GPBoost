@@ -9,6 +9,9 @@ library(rgenoud)
 #' @description Function that allows for choosing tuning parameters from a grid in a deterministic or random way using cross validation or validation data sets.
 #' @param search_space \code{list} with ranges for every parameter over which a search is done. 
 #' The format for every entry of the list must be "parameter_name" = c(lower, upper).
+#' The parameters 'learning_rate', 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', 'lambda_l2',
+#' 'num_leaves', 'min_data_in_leaf', and 'max_bin' (and their aliases) are searched on a logarithmic scale,
+#' all other parameters on a linear scale. A lower bound of 0 for 'lambda_l1' and 'lambda_l2' is replaced by 1e-8.
 #' See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
 #' @param n_iter Number of sequential Bayesian optimization steps
 #' @param params \code{list} with other parameters not included in \code{param_grid}
@@ -143,8 +146,14 @@ tune.pars.bayesian.optimization <- function(search_space
       par.set <- c(par.set, makeParamSet(makeNumericParam(paste0("log_",param), lower = log(search_space[[param]][1]), 
                                                           upper = log(search_space[[param]][2]))))# trafo = trafoLog(base=exp(1)) is not helpful
     } else if (param %in% c('lambda_l2', 'reg_lambda', 'lambda',
-                            'lambda_l1', 'reg_alpha',
-                            'bagging_fraction', 'sub_row', 'subsample', 'bagging',
+                            'lambda_l1', 'reg_alpha')) {
+      # log-transform values; a logarithmic scale excludes 0, and 1e-8 is practically no regularization
+      if (search_space[[param]][1] < 0 || search_space[[param]][2] <= 0) {
+        stop(sprintf("search_space['%s'] must have a lower bound >= 0 and an upper bound > 0", param))
+      }
+      par.set <- c(par.set, makeParamSet(makeNumericParam(paste0("log_",param), lower = log(max(search_space[[param]][1], 1e-8)),
+                                                          upper = log(search_space[[param]][2]))))
+    } else if (param %in% c('bagging_fraction', 'sub_row', 'subsample', 'bagging',
                             'feature_fraction', 'sub_feature', 'colsample_bytree',
                             'cat_l2',
                             'cat_smooth')) {
@@ -191,12 +200,12 @@ tune.pars.bayesian.optimization <- function(search_space
         }
         if (param_name %in% c('learning_rate', 'shrinkage_rate',
                               'min_gain_to_split', 'min_split_gain',
-                              'min_sum_hessian_in_leaf', 'min_sum_hessian_per_leaf', 'min_sum_hessian', 'min_hessian', 'min_child_weight')) {
+                              'min_sum_hessian_in_leaf', 'min_sum_hessian_per_leaf', 'min_sum_hessian', 'min_hessian', 'min_child_weight',
+                              'lambda_l2', 'reg_lambda', 'lambda',
+                              'lambda_l1', 'reg_alpha')) {
           params_loc[[param_name]] <- exp(params_trial[[param]])
-          
-        } else if (param_name %in% c('lambda_l2', 'reg_lambda', 'lambda',
-                                     'lambda_l1', 'reg_alpha',
-                                     'bagging_fraction', 'sub_row', 'subsample', 'bagging',
+
+        } else if (param_name %in% c('bagging_fraction', 'sub_row', 'subsample', 'bagging',
                                      'feature_fraction', 'sub_feature', 'colsample_bytree',
                                      'cat_l2',
                                      'cat_smooth')) {
