@@ -278,15 +278,17 @@ namespace GPBoost {
 	/*!
 	* \brief Derivative of the inducing point covariance matrix with the jitter of 'JitterMultInducingPoints()': the jittered matrix
 	*		has the diagonal (1 + delta) diag(Sigma_m), and delta = JITTER_IP_ADAPTIVE_FACTOR * m * max(diag(Sigma_m)) depends on
-	*		the parameters if it is larger than the constant jitter
+	*		the parameters if it is larger than the constant jitter. The derivative has to include the jitter also if it is constant:
+	*		for an ill-conditioned Sigma_m, the derivatives of quantities such as Sigma_nm Sigma_m^-1 Sigma_mn otherwise differ
+	*		substantially from those of the factorized matrix
 	* \param sigma_ip Inducing point covariance matrix (without jitter)
-	* \param gauss_likelihood True for a Gaussian likelihood (otherwise, the derivative is not changed)
+	* \param gauss_likelihood True for a Gaussian likelihood (the jitter is constant otherwise)
 	* \param[in,out] sigma_ip_grad On input the derivative of 'sigma_ip' (without jitter), on output the derivative of the jittered matrix
 	*/
 	inline void JitterInducingPointsGrad(const den_mat_t& sigma_ip,
 		bool gauss_likelihood,
 		den_mat_t& sigma_ip_grad) {
-		if (!gauss_likelihood || sigma_ip.rows() == 0) {
+		if (sigma_ip.rows() == 0) {
 			return;
 		}
 		const double jitter_mult = JitterMultInducingPoints(sigma_ip, gauss_likelihood);

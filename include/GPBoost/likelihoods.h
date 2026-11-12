@@ -7742,7 +7742,24 @@ namespace GPBoost {
 			if (!HasNegativeValueInformationLogLik()) {
 				return false;
 			}
-			return HasNonPositiveOrNonFiniteValue(sp_mat_rm_t(B_rm_.cwiseAbs2()).transpose() * D_inv_rm_.diagonal() + information_ll_);
+			// 'D_inv_rm_.diagonal()' is copied, since a sparse-dense product would access its coefficients by reference
+			const vec_t D_inv_diag = D_inv_rm_.diagonal();
+			return HasNonPositiveOrNonFiniteValue(sp_mat_rm_t(B_rm_.cwiseAbs2()).transpose() * D_inv_diag + information_ll_);
+		}
+
+		/*!
+		* \brief (Sigma^-1 + W)^-1 v for the full-scale Vecchia approximation with the Cholesky decomposition. With K = B^T D^-1 B + W,
+		*		U = B^T D^-1 B Sigma_nm, and M = sigma_ip + Sigma_mn B^T D^-1 B Sigma_nm, it holds that Sigma^-1 + W = K - U M^-1 U^T, and
+		*		the Woodbury identity gives (Sigma^-1 + W)^-1 v = K^-1 v + K^-1 U (M - U^T K^-1 U)^-1 U^T K^-1 v. This does not require
+		*		W to be invertible
+		* \param SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov K^-1 U
+		* \param v Vector
+		*/
+		vec_t SigmaIPlusWInvVecFSVACholesky(const den_mat_t& SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov,
+			const vec_t& v) {
+			vec_t result = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(v);
+			result += SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov * chol_fact_sigma_woodbury_woodbury_.solve(SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov.transpose() * v);
+			return result;
 		}
 
 		/*!

@@ -945,9 +945,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_error(predict(gp_model_it, y = y_t, gp_coords_pred = coords_pred_t, cov_pars = cov_pars_eval,
                            sample_posterior = TRUE, num_post_samples = 10), "Posterior samples cannot be generated")
     }
-    # Estimation: the estimates with the 'vifdu' preconditioner differ somewhat from the Cholesky estimates, and this
-    #   difference does not decrease with more random vectors. This also holds for the t likelihood with the Fisher
-    #   information, which is nonnegative (difference of the negative log-likelihoods of 0.09)
+    # Estimation: the estimates with the 'vifdu' preconditioner differed from the Cholesky estimates (difference of the
+    #   negative log-likelihoods of 0.26, also for many random vectors), since the derivative of the inducing point
+    #   matrix did not contain its jitter, see the next test
     gp_model_chol <- new_model("cholesky")
     capture.output( fit(gp_model_chol, y = y_t, X = X_t), file='NUL')
     gp_model_it <- new_model("iterative", list(cg_preconditioner_type = "vifdu"))
@@ -955,12 +955,43 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll_chol_at_it_estimates <- new_model("cholesky")$neg_log_likelihood(cov_pars = as.vector(gp_model_it$get_cov_pars()),
                                                                         y = y_t - as.vector(X_t %*% gp_model_it$get_coef()),
                                                                         aux_pars = as.vector(gp_model_it$get_aux_pars()))
-    expect_lt(nll_chol_at_it_estimates - gp_model_chol$get_current_neg_log_likelihood(), 0.5)
+    expect_lt(nll_chol_at_it_estimates - gp_model_chol$get_current_neg_log_likelihood(), 0.05)
     # The 'fitc' preconditioner is based on W^-1 and requires W to be positive: this also shows that W has negative
     #   values at the mode
     gp_model_it <- new_model("iterative", list(cg_preconditioner_type = "fitc", fitc_piv_chol_preconditioner_rank = 20))
     expect_error(gp_model_it$neg_log_likelihood(cov_pars = cov_pars_eval, y = y_t, aux_pars = aux_pars_eval),
                  "requires W to be positive")
+  })
+
+  test_that("Gradient of the VIF approximation for a non-Gaussian likelihood with an ill-conditioned inducing point matrix ", {
+
+    # The inducing point matrix is factorized with a jitter on its diagonal, but its derivative did not contain this
+    #   jitter for non-Gaussian likelihoods. For an ill-conditioned inducing point matrix, this changed the derivative
+    #   with respect to the marginal variance (-18.20 instead of -18.02 here), and the control variates of the 'vifdu'
+    #   preconditioner were biased
+    n_t <- 200
+    coords_t <- matrix(sim_rand_unif(n=n_t*2, init_c=0.31), ncol=2)
+    y_t <- sin(6 * coords_t[,1]) + cos(4 * coords_t[,2]) + 0.3 * qt(sim_rand_unif(n=n_t, init_c=0.47), df=3)
+    y_t <- y_t - mean(y_t)
+    cov_pars_eval <- c(1.29, 1)# a long range: the inducing point matrix is ill-conditioned
+    aux_pars_eval <- c(0.29, 2.08)
+    new_model <- function(params = list()) {
+      gp_model <- GPModel(gp_coords = coords_t, cov_function = "matern", cov_fct_shape = 1.5, likelihood = "t",
+                          gp_approx = "full_scale_vecchia", num_neighbors = 20, num_ind_points = 20, vecchia_ordering = "none",
+                          matrix_inversion_method = "cholesky")
+      if (length(params) > 0) gp_model$set_optim_params(params = params)
+      gp_model
+    }
+    # The gradient is obtained from one gradient descent step with a small learning rate
+    lr <- 1e-6
+    gp_model <- new_model(list(optimizer_cov = "gradient_descent", maxit = 1, lr_cov = lr, use_nesterov_acc = FALSE,
+                               init_cov_pars = cov_pars_eval, init_aux_pars = aux_pars_eval))
+    capture.output( fit(gp_model, y = y_t), file='NUL')
+    grad_log_sigma2 <- (log(cov_pars_eval[1]) - log(gp_model$get_cov_pars()[1])) / lr
+    nll <- function(sigma2) new_model()$neg_log_likelihood(cov_pars = c(sigma2, cov_pars_eval[2]), y = y_t, aux_pars = aux_pars_eval)
+    h <- 1e-3
+    grad_log_sigma2_fd <- (nll(cov_pars_eval[1] * exp(h)) - nll(cov_pars_eval[1] * exp(-h))) / (2 * h)
+    expect_lt(abs(grad_log_sigma2 - grad_log_sigma2_fd), 0.02)
   })
 
   test_that("t_fisher_laplace_combined likelihood with crossed grouped random effects and iterative methods ", {
@@ -1958,7 +1989,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     coef_fsva_iter_vifdu <- as.vector(gp_model_fsva_iter_vifdu$get_coef(std_err = FALSE))
     # As for the iterative fit above, only the negative log-likelihood is compared to a hard-wired value,
     # and the solution is additionally checked through the exact (cholesky) negative log-likelihood
-    expect_lt(abs(gp_model_fsva_iter_vifdu$get_current_neg_log_likelihood() - 162.97099405), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(gp_model_fsva_iter_vifdu$get_current_neg_log_likelihood() - 162.97426996), TOLERANCE_NON_CONVEX)
     nll_fsva_vifdu_at_exact_ll <- gp_model_fsva_exact_ll$neg_log_likelihood(
       cov_pars = as.vector(gp_model_fsva_iter_vifdu$get_cov_pars()), y = y_het2,
       fixed_effects = as.vector(cbind(X_het2 %*% coef_fsva_iter_vifdu[1:2], X_het2 %*% coef_fsva_iter_vifdu[3:4])))

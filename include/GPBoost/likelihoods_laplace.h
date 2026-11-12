@@ -937,7 +937,8 @@ namespace GPBoost {
 					den_mat_t L_inv_cross_cov_T_Bt_D_inv_B;
 					TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury,
 						Bt_D_inv_B_cross_cov.transpose(), L_inv_cross_cov_T_Bt_D_inv_B, false);
-					const vec_t diag_SigmaI_plus_W = sp_mat_rm_t(B_rm_.cwiseAbs2()).transpose() * D_inv_rm_.diagonal() -
+					const vec_t D_inv_diag = D_inv_rm_.diagonal();// a copy, see 'SigmaIPlusWVecchiaHasNonPositiveDiagonal()'
+					const vec_t diag_SigmaI_plus_W = sp_mat_rm_t(B_rm_.cwiseAbs2()).transpose() * D_inv_diag -
 						L_inv_cross_cov_T_Bt_D_inv_B.colwise().squaredNorm().transpose() + information_ll_;
 					if (HasNonPositiveOrNonFiniteValue(diag_SigmaI_plus_W)) {
 						SetNAOrInfFailedCholeskyModeFinding(__func__, "Sigma^(-1) + W is not positive definite (it has a non-positive "
@@ -3112,11 +3113,10 @@ namespace GPBoost {
 		vec_t W_D_inv = InformationForPreconditioner() + D_inv_rm_.diagonal();// for the 'vifdu' preconditioner
 		vec_t W_D_inv_inv = W_D_inv.cwiseInverse();
 		vec_t d_mll_d_mode;
-		// the Cholesky decomposition and the 'fitc' preconditioner use W^-1
-		if ((matrix_inversion_method_ != "iterative" || PreconditionerRequiresPositiveInformation()) && HasZeroValueInformationLogLik()) {
+		if (matrix_inversion_method_ == "iterative" && PreconditionerRequiresPositiveInformation() && HasZeroValueInformationLogLik()) {
 			Log::REFatal("CalcGradNegMargLikelihoodLaplaceApproxFSVA: 0's found in the (diagonal) Hessian (or Fisher information) of the negative log-likelihood. "
-				"This is not permitted when using the VIF approximation and gradient-based optimization with the Cholesky decomposition or the 'fitc' "
-				"preconditioner. Try using the 'vifdu' preconditioner ");
+				"This is not permitted when using the VIF approximation and gradient-based optimization with the '%s' preconditioner. Try using the "
+				"'vifdu' preconditioner or the Cholesky decomposition ", cg_preconditioner_type_.c_str());
 		}
 		if (matrix_inversion_method_ == "iterative") {
 			if (PreconditionerRequiresPositiveInformation() && HasNegativeValueInformationLogLik()) {
@@ -3203,6 +3203,7 @@ namespace GPBoost {
 							if (estimate_cov_par_index[ipar] > 0) {
 								std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
 								den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
+								JitterInducingPointsGrad(*(re_comps_ip_cluster_i[j]->GetZSigmaZt()), false, sigma_ip_grad);// the factorization has the jitter of 'JitterMultInducingPoints()'
 								if (UseFirstCovParScalingShortcut((int)re_comps_ip_cluster_i.size(), ipar)) {
 									SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
 								}
@@ -3255,6 +3256,7 @@ namespace GPBoost {
 
 								std::shared_ptr<den_mat_t>  cross_cov_preconditioner_grad = re_comps_cross_cov_preconditioner_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
 								den_mat_t sigma_ip_preconditioner_grad = *(re_comps_ip_preconditioner_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
+								JitterInducingPointsGrad(*(re_comps_ip_preconditioner_cluster_i[j]->GetZSigmaZt()), false, sigma_ip_preconditioner_grad);// the factorization has the jitter of 'JitterMultInducingPoints()'
 								// Variance reduction
 								vec_t D_grad_diagonal = D_grad[ipar].diagonal();
 								vec_t D_diagonal = D_inv_rm_.diagonal().cwiseInverse();
@@ -3588,6 +3590,7 @@ namespace GPBoost {
 							if (estimate_cov_par_index[ipar] > 0) {
 								std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
 								den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
+								JitterInducingPointsGrad(*(re_comps_ip_cluster_i[j]->GetZSigmaZt()), false, sigma_ip_grad);// the factorization has the jitter of 'JitterMultInducingPoints()'
 								den_mat_t sigma_ip_inv_sigma_ip_grad = chol_fact_sigma_ip.solve(sigma_ip_grad);
 								if (UseFirstCovParScalingShortcut((int)re_comps_ip_cluster_i.size(), ipar)) {
 									SigmaI_deriv_rm = -B_rm_.transpose() * B_t_D_inv_rm_.transpose();//SigmaI_deriv = -SigmaI for variance parameters if there is only one GP
@@ -3946,16 +3949,6 @@ namespace GPBoost {
 				D_inv_B = D_inv * B;
 				SigmaI = B.transpose() * D_inv * B;
 				int par_count = 0;
-				den_mat_t sigma_resid_plus_W_inv_cross_cov = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(information_ll_.asDiagonal() * (*cross_cov));
-				den_mat_t sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov(dim_mode_, num_ip);
-#pragma omp parallel for schedule(static)   
-				for (int ii = 0; ii < num_ip; ++ii) {
-					sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov.col(ii) = B_t_D_inv_rm_ * (B_rm_ * sigma_resid_plus_W_inv_cross_cov.col(ii));
-				}
-				den_mat_t sigma_woodbury_2 = (sigma_ip_stable)+(*cross_cov).transpose() * sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov;
-				chol_den_mat_t chol_fact_sigma_woodbury_2;
-				chol_fact_sigma_woodbury_2.compute(sigma_woodbury_2);
-				CheckCholeskyFactorization(chol_fact_sigma_woodbury_2, "Laplace gradient Woodbury matrix");
 				int num_par = (int)B_grad.size();
 				CHECK(re_comps_ip_cluster_i.size() == 1);
 				for (int j = 0; j < (int)re_comps_ip_cluster_i.size(); ++j) {
@@ -3966,6 +3959,7 @@ namespace GPBoost {
 						if (estimate_cov_par_index[par_count] > 0 || ipar == 0) {
 							cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
 							sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
+							JitterInducingPointsGrad(*(re_comps_ip_cluster_i[j]->GetZSigmaZt()), false, sigma_ip_grad);// the factorization has the jitter of 'JitterMultInducingPoints()'
 							sigma_ip_inv_sigma_ip_grad = chol_fact_sigma_ip.solve(sigma_ip_grad);
 							// Calculate SigmaI_deriv
 							if (UseFirstCovParScalingShortcut((int)re_comps_ip_cluster_i.size(), ipar)) {
@@ -4004,12 +3998,7 @@ namespace GPBoost {
 							SigmaI_plus_W_inv_diag = (SigmaI_plus_W_inv.diagonal().array() + SigmaI_plus_W_inv_diag_part.array()).matrix();
 							if (grad_information_wrt_mode_non_zero_) {
 								d_mll_d_mode = 0.5 * (SigmaI_plus_W_inv_diag.array() * deriv_information_diag_loc_par.array()).matrix();
-								vec_t Sigma_d_mll_d_mode_part = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(d_mll_d_mode);
-								vec_t Sigma_d_mll_d_mode_part1 = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(Sigma_d_mll_d_mode_part);
-								vec_t Sigma_d_mll_d_mode = Sigma_d_mll_d_mode_part1 + (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * d_mll_d_mode));
-								vec_t W_Sigma_d_mll_d_mode = information_ll_.asDiagonal() * Sigma_d_mll_d_mode;
-								vec_t SigmaI_plus_W_inv_d_mll_d_mode_part = B_t_D_inv_rm_ * (B_rm_ * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(W_Sigma_d_mll_d_mode));
-								SigmaI_plus_W_inv_d_mll_d_mode = information_ll_.cwiseInverse().asDiagonal() * (SigmaI_plus_W_inv_d_mll_d_mode_part - sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov * chol_fact_sigma_woodbury_2.solve((*cross_cov).transpose() * SigmaI_plus_W_inv_d_mll_d_mode_part));
+								SigmaI_plus_W_inv_d_mll_d_mode = SigmaIPlusWInvVecFSVACholesky(SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov, d_mll_d_mode);
 							}
 						}//end if ipar == 0
 						if (estimate_cov_par_index[par_count] > 0) {
@@ -4053,8 +4042,9 @@ namespace GPBoost {
 			// Calcul
 			if (calc_F_grad || calc_aux_par_grad) {
 				if (!calc_cov_grad_internal) {
+					den_mat_t SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov;
 					if (calc_aux_par_grad || grad_information_wrt_mode_non_zero_ || (ExtraFEBlocksNeedSigmaIPlusWInvDiag() && calc_F_grad)) {
-						den_mat_t SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
+						SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(Bt_D_inv_B_cross_cov);
 						den_mat_t woodbury_SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov_t;
 						TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_woodbury_,
 							SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov.transpose(), woodbury_SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov_t, false);
@@ -4063,24 +4053,7 @@ namespace GPBoost {
 					}
 					if (grad_information_wrt_mode_non_zero_) {
 						d_mll_d_mode = 0.5 * (SigmaI_plus_W_inv_diag.array() * deriv_information_diag_loc_par.array()).matrix();
-
-						den_mat_t sigma_resid_plus_W_inv_cross_cov = chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(information_ll_.asDiagonal() * (*cross_cov));
-						den_mat_t sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov(dim_mode_, num_ip);
-#pragma omp parallel for schedule(static)   
-						for (int ii = 0; ii < num_ip; ++ii) {
-							sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov.col(ii) = B_t_D_inv_rm_ * (B_rm_ * sigma_resid_plus_W_inv_cross_cov.col(ii));
-						}
-						den_mat_t sigma_woodbury_2 = (sigma_ip_stable)+(*cross_cov).transpose() * sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov;
-						chol_den_mat_t chol_fact_sigma_woodbury_2;
-						chol_fact_sigma_woodbury_2.compute(sigma_woodbury_2);
-						CheckCholeskyFactorization(chol_fact_sigma_woodbury_2, "Laplace gradient Woodbury matrix");
-
-						vec_t Sigma_d_mll_d_mode_part = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(d_mll_d_mode);
-						vec_t Sigma_d_mll_d_mode_part1 = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(Sigma_d_mll_d_mode_part);
-						vec_t Sigma_d_mll_d_mode = Sigma_d_mll_d_mode_part1 + (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * d_mll_d_mode));
-						vec_t W_Sigma_d_mll_d_mode = information_ll_.asDiagonal() * Sigma_d_mll_d_mode;
-						vec_t SigmaI_plus_W_inv_d_mll_d_mode_part = B_t_D_inv_rm_ * (B_rm_ * chol_fact_SigmaI_plus_ZtWZ_vecchia_.solve(W_Sigma_d_mll_d_mode));
-						SigmaI_plus_W_inv_d_mll_d_mode = information_ll_.cwiseInverse().asDiagonal() * (SigmaI_plus_W_inv_d_mll_d_mode_part - sigma_resid_inv_sigma_resid_plus_W_inv_cross_cov * chol_fact_sigma_woodbury_2.solve((*cross_cov).transpose() * SigmaI_plus_W_inv_d_mll_d_mode_part));
+						SigmaI_plus_W_inv_d_mll_d_mode = SigmaIPlusWInvVecFSVACholesky(SigmaI_plus_W_inv_Bt_D_inv_B_cross_cov, d_mll_d_mode);
 					}
 				}
 				// Otherwise, the complete diagonal of (Sigma^-1 + W)^-1 has been calculated together with the gradient wrt the covariance parameters
@@ -4734,6 +4707,7 @@ namespace GPBoost {
 					if (estimate_cov_par_index[par_count] > 0) {
 						std::shared_ptr<den_mat_t> cross_cov_grad = re_comps_cross_cov_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.);
 						den_mat_t sigma_ip_grad = *(re_comps_ip_cluster_i[j]->GetZSigmaZtGrad(ipar, true, 0.));
+						JitterInducingPointsGrad(*(re_comps_ip_cluster_i[j]->GetZSigmaZt()), false, sigma_ip_grad);// the factorization has the jitter of 'JitterMultInducingPoints()'
 						den_mat_t sigma_ip_inv_sigma_ip_grad = chol_fact_sigma_ip.solve(sigma_ip_grad);
 						vec_t fitc_diag_grad = vec_t::Zero(dim_mode_);
 						if (re_comps_cross_cov_cluster_i[j]->VarianceOnDiagonal()) {
