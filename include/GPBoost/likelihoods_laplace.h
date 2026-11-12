@@ -5238,6 +5238,7 @@ namespace GPBoost {
 					} //end #pragma omp parallel
 					if (na_inf_flag_3) { Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!"); }
 					pred_cov_global /= nsim_var_pred_;
+					if (information_has_negative_values) ProjectCovarianceEstimateOnPSD(pred_cov_global, "PredictLaplaceApproxGroupedRE");
 					T_mat pred_cov_T_mat;
 					ConvertTo_T_mat_FromDense<T_mat>(pred_cov_global, pred_cov_T_mat);
 					pred_cov -= (T_mat)(Ztilde * Sigma * Ztilde.transpose()); //TODO: create and call AddPredCovMatrices only for new groups and remove this line.
@@ -5878,6 +5879,7 @@ namespace GPBoost {
 				if (na_inf_flag_4) { Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_); }
 				if (calc_pred_cov) {
 					pred_cov /= nsim_var_pred_;
+					if (information_has_negative_values) ProjectCovarianceEstimateOnPSD(pred_cov, "PredictLaplaceApproxFSVA");
 					// Deterministic part
 					if (CondObsOnly) {
 						pred_cov.diagonal().array() += Dp.array();
@@ -5911,6 +5913,7 @@ namespace GPBoost {
 				}
 				if (calc_pred_var) {
 					pred_var /= nsim_var_pred_;
+					if (information_has_negative_values) SetNegativeVarianceEstimatesToZero(pred_var, "PredictLaplaceApproxFSVA");
 					// Implementation for Bekas approach
 //						pred_var_prec /= nsim_var_pred_;
 //						pred_var_prec_prod /= nsim_var_pred_;
@@ -6238,6 +6241,7 @@ namespace GPBoost {
 				if (na_inf_flag_5) { Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_); }
 				if (calc_pred_cov) {
 					pred_cov /= nsim_var_pred_;
+					if (information_has_negative_values) ProjectCovarianceEstimateOnPSD(pred_cov, "PredictLaplaceApproxVecchia");
 					if (CondObsOnly) {
 						pred_cov.diagonal().array() += Dp.array();
 					}
@@ -6249,6 +6253,7 @@ namespace GPBoost {
 				}
 				if (calc_pred_var) {
 					pred_var /= nsim_var_pred_;
+					if (information_has_negative_values) SetNegativeVarianceEstimatesToZero(pred_var, "PredictLaplaceApproxVecchia");
 					if (CondObsOnly) {
 						pred_var += Dp;
 					}
@@ -7064,6 +7069,7 @@ namespace GPBoost {
 			}// end #pragma omp parallel
 			if (na_inf_flag_10) { Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_); }
 			pred_var /= nsim_var_pred_;
+			if (information_has_negative_values) SetNegativeVarianceEstimatesToZero(pred_var, "CalcVarLaplaceApproxVecchia");
 		} //end Version Simulation
 		else {
 			pred_var = SparseInverseEntries(chol_fact_SigmaI_plus_ZtWZ_vecchia_.CholFactMatrix(),

@@ -900,6 +900,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_error(predict(gp_model_it, y = y_t, gp_coords_pred = coords_pred_t, cov_pars = cov_pars_eval,
                            sample_posterior = TRUE, num_post_samples = 10), "Posterior samples cannot be generated")
     }
+    # With a single simulation, the estimates of the predictive variances (differences of two sample variances) are
+    #   negative for many prediction points: they are set to zero, and the estimated predictive covariance matrix is
+    #   projected onto the positive semidefinite matrices
+    coords_pred_many <- matrix(sim_rand_unif(n=200, init_c=0.77), ncol=2)
+    gp_model_it <- new_model("iterative", list(init_aux_pars = aux_pars_eval))
+    gp_model_it$set_prediction_data(nsim_var_pred = 1)
+    out <- capture.output( pred_it <- predict(gp_model_it, y = y_t, gp_coords_pred = coords_pred_many, cov_pars = cov_pars_eval,
+                                              predict_var = TRUE, predict_response = FALSE) )
+    expect_true(any(grepl("have been set to zero", out)))
+    expect_true(all(pred_it$var > 0))
+    out <- capture.output( pred_it <- predict(gp_model_it, y = y_t, gp_coords_pred = coords_pred_many[1:50, ], cov_pars = cov_pars_eval,
+                                              predict_cov_mat = TRUE, predict_response = FALSE) )
+    expect_true(any(grepl("projected onto the positive semidefinite matrices", out)))
+    expect_gt(min(eigen(pred_it$cov, symmetric = TRUE, only.values = TRUE)$values), 0)
     # The 'pivoted_cholesky' preconditioner is based on W^-1 and requires W to be positive: this also shows that W has
     #   negative values at the mode
     gp_model_it <- new_model("iterative", list(cg_preconditioner_type = "pivoted_cholesky"))
@@ -945,6 +959,20 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_error(predict(gp_model_it, y = y_t, gp_coords_pred = coords_pred_t, cov_pars = cov_pars_eval,
                            sample_posterior = TRUE, num_post_samples = 10), "Posterior samples cannot be generated")
     }
+    # With a single simulation, the estimates of the predictive variances (differences of two sample variances) are
+    #   negative for many prediction points: they are set to zero, and the estimated predictive covariance matrix is
+    #   projected onto the positive semidefinite matrices
+    coords_pred_many <- matrix(sim_rand_unif(n=200, init_c=0.77), ncol=2)
+    gp_model_it <- new_model("iterative", list(init_aux_pars = aux_pars_eval, cg_preconditioner_type = "vifdu"))
+    gp_model_it$set_prediction_data(nsim_var_pred = 1)
+    out <- capture.output( pred_it <- predict(gp_model_it, y = y_t, gp_coords_pred = coords_pred_many, cov_pars = cov_pars_eval,
+                                              predict_var = TRUE, predict_response = FALSE) )
+    expect_true(any(grepl("have been set to zero", out)))
+    expect_true(all(pred_it$var > 0))
+    out <- capture.output( pred_it <- predict(gp_model_it, y = y_t, gp_coords_pred = coords_pred_many[1:50, ], cov_pars = cov_pars_eval,
+                                              predict_cov_mat = TRUE, predict_response = FALSE) )
+    expect_true(any(grepl("projected onto the positive semidefinite matrices", out)))
+    expect_gt(min(eigen(pred_it$cov, symmetric = TRUE, only.values = TRUE)$values), 0)
     # Estimation: the estimates with the 'vifdu' preconditioner differed from the Cholesky estimates (difference of the
     #   negative log-likelihoods of 0.26, also for many random vectors), since the derivative of the inducing point
     #   matrix did not contain its jitter, see the next test
@@ -1057,6 +1085,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                              predict_cov_mat = TRUE, predict_response = FALSE)
       expect_lt(max(abs(pred_cov_it$cov - pred_cov_chol$cov)), 0.01)
     }
+    # With a single simulation, the estimated predictive covariance matrix (a difference of two sample covariance
+    #   matrices) is projected onto the positive semidefinite matrices
+    group_pred_many <- cbind(c(0:49, 0:49), rep(0:19, 5))
+    gp_model_it <- new_model("iterative", aux_pars_eval)
+    gp_model_it$set_prediction_data(nsim_var_pred = 1)
+    out <- capture.output( pred_cov_it <- predict(gp_model_it, y = y_g, group_data_pred = group_pred_many, cov_pars = cov_pars_eval,
+                                                  predict_cov_mat = TRUE, predict_response = FALSE) )
+    expect_true(any(grepl("projected onto the positive semidefinite matrices", out)))
+    expect_gt(min(eigen(as.matrix(pred_cov_it$cov), symmetric = TRUE, only.values = TRUE)$values), -1e-10)
     # Estimation: the observed Hessian has negative values at the estimates (77 of 500)
     gp_model_chol <- GPModel(group_data = group_g, likelihood = "t_fisher_laplace_combined", matrix_inversion_method = "cholesky")
     capture.output( fit(gp_model_chol, y = y_g, X = X_g), file='NUL')

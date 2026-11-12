@@ -7748,6 +7748,48 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief Set negative values of a simulation-based estimate of the diagonal of a positive semidefinite matrix, e.g., of the
+		*		part A (Sigma^-1 + W)^-1 A^T of the predictive variances, to zero. If W has negative values (observed Hessian), the
+		*		estimate is the difference of two sample variances and can be negative for a small number of simulations
+		* \param[in,out] var_est Estimated diagonal
+		* \param caller Name of the calling function
+		*/
+		void SetNegativeVarianceEstimatesToZero(vec_t& var_est,
+			const char* caller) const {
+			const int num_negative = (int)(var_est.array() < 0.).count();
+			if (num_negative > 0) {
+				var_est = var_est.cwiseMax(0.);
+				Log::REWarning("%s: %d of %d simulation-based estimates of predictive variances were negative and have been set to zero. "
+					"These estimates are differences of two sample variances since the Hessian of the negative log-likelihood has "
+					"negative values. Consider increasing 'nsim_var_pred' ", caller, num_negative, (int)var_est.size());
+			}
+		}//end SetNegativeVarianceEstimatesToZero
+
+		/*!
+		* \brief Set negative eigenvalues of a simulation-based estimate of a positive semidefinite matrix, e.g., of the part
+		*		A (Sigma^-1 + W)^-1 A^T of a predictive covariance matrix, to zero. This gives the closest positive semidefinite
+		*		matrix in the Frobenius norm. If W has negative values (observed Hessian), the estimate is the difference of two
+		*		sample covariance matrices and is usually not positive semidefinite. A warning is given if diagonal entries are
+		*		negative, see 'SetNegativeVarianceEstimatesToZero()'
+		* \param[in,out] cov_est Estimated matrix (symmetric)
+		* \param caller Name of the calling function
+		*/
+		void ProjectCovarianceEstimateOnPSD(den_mat_t& cov_est,
+			const char* caller) const {
+			const int num_negative_diag = (int)(cov_est.diagonal().array() < 0.).count();
+			Eigen::SelfAdjointEigenSolver<den_mat_t> eigen_solver(cov_est);
+			if (eigen_solver.info() == Eigen::Success && eigen_solver.eigenvalues().minCoeff() < 0.) {
+				cov_est = eigen_solver.eigenvectors() * eigen_solver.eigenvalues().cwiseMax(0.).asDiagonal() * eigen_solver.eigenvectors().transpose();
+			}
+			if (num_negative_diag > 0) {
+				Log::REWarning("%s: %d of %d simulation-based estimates of predictive variances were negative, and the estimated "
+					"predictive covariance matrix has been projected onto the positive semidefinite matrices. These estimates are "
+					"differences of two sample covariances since the Hessian of the negative log-likelihood has negative values. "
+					"Consider increasing 'nsim_var_pred' ", caller, num_negative_diag, (int)cov_est.rows());
+			}
+		}//end ProjectCovarianceEstimateOnPSD
+
+		/*!
 		* \brief (Sigma^-1 + W)^-1 v for the full-scale Vecchia approximation with the Cholesky decomposition. With K = B^T D^-1 B + W,
 		*		U = B^T D^-1 B Sigma_nm, and M = sigma_ip + Sigma_mn B^T D^-1 B Sigma_nm, it holds that Sigma^-1 + W = K - U M^-1 U^T, and
 		*		the Woodbury identity gives (Sigma^-1 + W)^-1 v = K^-1 v + K^-1 U (M - U^T K^-1 U)^-1 U^T K^-1 v. This does not require
