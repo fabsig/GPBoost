@@ -1605,7 +1605,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model_fitc <- fitGPModel(gp_coords = time_0, cov_function = "hurst", cov_fct_order = 2, likelihood = "poisson", y = y_pois_0,
                                                 matrix_inversion_method = "cholesky", gp_approx = "fitc", num_ind_points = n - 1,
                                                 ind_points_selection = "random") , file='NUL')
-    expect_lt(sum(abs(gp_model_fitc$get_cov_pars()-gp_model$get_cov_pars())),TOLERANCE_MEDIUM)
+    # The covariance parameters are compared relatively: the likelihood is flat in the variance (about 17), and the two
+    #   fits stop at variances that differ by about 1e-3 with negative log-likelihoods that differ by about 1e-6
+    expect_lt(sum(abs(gp_model_fitc$get_cov_pars()-gp_model$get_cov_pars()) / gp_model$get_cov_pars()),TOLERANCE_MEDIUM)
     expect_lt(abs(gp_model_fitc$get_current_neg_log_likelihood()-gp_model$get_current_neg_log_likelihood()),TOLERANCE_MEDIUM)
 
     # Methods that use centroids ('kmeans++', 'cover_tree', 'space_time_kmeans++') can place an inducing point at the origin also if no

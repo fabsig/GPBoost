@@ -752,7 +752,6 @@ namespace GPBoost {
 		}
 		//atomic: written and read concurrently in the parallel loops below
 		std::atomic<bool> has_duplicates(false);
-		int dim_coords = (int)coords.cols();
 		//Sort along the sum of the coordinates or, if the sums hardly vary, along another direction (not for the GPU, which uses the sums)
 		std::vector<double> coords_sum;
 		const double bound_factor = ProjectCoordinatesNeighborSearch(coords, !GPU_use, coords_sum);
@@ -848,7 +847,7 @@ namespace GPBoost {
 						//the GPU function takes a 'bool&', so a temporary is passed and written back
 						bool has_duplicates_gpu = has_duplicates.load(std::memory_order_relaxed);
 						success = find_nearest_neighbors_Vecchia_fast_GPU(coords, num_data, num_neighbors, num_close_neighbors,
-							start_at, end_search_at, dim_coords, sort_sum, sort_inv_sum, coords_sum, neighbors, dist_obs_neighbors, save_distances, has_duplicates_gpu,
+							start_at, end_search_at, (int)coords.cols(), sort_sum, sort_inv_sum, coords_sum, neighbors, dist_obs_neighbors, save_distances, has_duplicates_gpu,
 							check_has_duplicates);
 						has_duplicates.store(has_duplicates_gpu, std::memory_order_relaxed);
 					}

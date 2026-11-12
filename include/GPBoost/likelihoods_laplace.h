@@ -416,7 +416,7 @@ namespace GPBoost {
 						rand_vec_trace_P_.resize(dim_mode_, num_rand_vec_trace_);
 						SigmaI_plus_ZtWZ_inv_RV_.resize(dim_mode_, num_rand_vec_trace_);
 					}
-					double log_det_SigmaI_plus_ZtWZ;
+					double log_det_SigmaI_plus_ZtWZ = 0.;
 					//Stochastic Lanczos quadrature
 					CHECK(rand_vec_trace_I_.cols() == num_rand_vec_trace_);
 					CHECK(rand_vec_trace_P_.cols() == num_rand_vec_trace_);
