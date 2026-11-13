@@ -47,6 +47,7 @@ NeedsCompilation: yes
 Biarch: true
 Suggests: 
     bbotk,
+    DiceKriging,
     lgr,
     mlr3learners,
     mlr3mbo,
@@ -54,7 +55,9 @@ Suggests:
     paradox,
     ParamHelpers,
     processx,
+    randomForest,
     ranger,
+    rgenoud,
     smoof,
     testthat
 Depends: 

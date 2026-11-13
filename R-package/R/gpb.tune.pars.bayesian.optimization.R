@@ -205,7 +205,8 @@ gpb.tuning.check.packages <- function(packages, fun_name) {
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' \donttest{
 #' if (requireNamespace("mlrMBO", quietly = TRUE) && requireNamespace("DiceKriging", quietly = TRUE) &&
-#'     requireNamespace("rgenoud", quietly = TRUE) && requireNamespace("randomForest", quietly = TRUE)) {
+#'     requireNamespace("rgenoud", quietly = TRUE) &&
+#'     requireNamespace("randomForest", quietly = TRUE)) {
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
 #' n <- length(y)
@@ -229,8 +230,9 @@ gpb.tuning.check.packages <- function(packages, fun_name) {
 #' # Run parameter optimization using Bayesian optimization and 5-fold CV
 #' opt_params <- gpb.tune.pars.bayesian.optimization(search_space = search_space, n_iter = 100,
 #'                                                   data = data_train, gp_model = gp_model,
-#'                                                   nfold = 5, nrounds = 1000, early_stopping_rounds = 20,
-#'                                                   metric = metric, cv_seed = 4, verbose_eval = 1)
+#'                                                   nfold = 5, nrounds = 1000,
+#'                                                   early_stopping_rounds = 20, metric = metric,
+#'                                                   cv_seed = 4, verbose_eval = 1)
 #' print(paste0("Best parameters: ",
 #'              paste0(unlist(lapply(seq_along(opt_params$best_params),
 #'                                   function(y, n, i) { paste0(n[[i]],": ", y[[i]]) },
@@ -499,7 +501,8 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
 #' @examples
 #' # See https://github.com/fabsig/GPBoost/tree/master/R-package for more examples
 #' \donttest{
-#' if (requireNamespace("mlr3mbo", quietly = TRUE) && requireNamespace("mlr3learners", quietly = TRUE) &&
+#' if (requireNamespace("mlr3mbo", quietly = TRUE) &&
+#'     requireNamespace("mlr3learners", quietly = TRUE) &&
 #'     requireNamespace("ranger", quietly = TRUE)) {
 #' library(gpboost)
 #' data(GPBoost_data, package = "gpboost")
@@ -524,8 +527,9 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
 #' # Run parameter optimization using the approximation of SMAC and 5-fold CV
 #' opt_params <- gpb.tune.pars.rf.bayesian.optimization(search_space = search_space, n_trials = 100,
 #'                                                      data = data_train, gp_model = gp_model,
-#'                                                      nfold = 5, nrounds = 1000, early_stopping_rounds = 20,
-#'                                                      metric = metric, cv_seed = 4, verbose_eval = 1)
+#'                                                      nfold = 5, nrounds = 1000,
+#'                                                      early_stopping_rounds = 20, metric = metric,
+#'                                                      cv_seed = 4, verbose_eval = 1)
 #' print(paste0("Best parameters: ",
 #'              paste0(unlist(lapply(seq_along(opt_params$best_params),
 #'                                   function(y, n, i) { paste0(n[[i]],": ", y[[i]]) },
