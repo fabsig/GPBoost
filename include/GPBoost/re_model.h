@@ -310,13 +310,17 @@ namespace GPBoost {
 		* \param fixed_effects (only used for non-Gaussian data) Fixed effects component of location parameter
 		* \param InitializeModeCovMat (only used for non-Gaussian data) If true, posterior mode is initialized to 0 and the covariance matrix is calculated. Otherwise, existing values are used
 		* \param CalcModePostRandEff_already_done (only used for non-Gaussian data) If true, it is assumed that the posterior mode of the random effects has already been calculated
+		* \param aux_pars Additional likelihood parameters on the original scale (nullptr if the current ones are used). They remain
+		*		the current auxiliary parameters (e.g., for predictions), but they are not the initial values of a later estimation,
+		*		see 'RestoreAuxParsBeforeEvaluation()'
 		*/
 		void EvalNegLogLikelihood(const double* y_data,
 			double* cov_pars,
 			double& negll,
 			const double* fixed_effects,
 			bool InitializeModeCovMat,
-			bool CalcModePostRandEff_already_done);
+			bool CalcModePostRandEff_already_done,
+			const double* aux_pars = nullptr);
 
 		/*!
 		* \brief Get the current value of the negative log-likelihood
@@ -629,6 +633,17 @@ namespace GPBoost {
 		void SetAuxParsOriginalScale(const double* aux_pars);
 
 		/*!
+		* \brief Restore the auxiliary parameters that were current before they were changed by a likelihood evaluation with
+		*		given auxiliary parameters, see 'EvalNegLogLikelihood()'. This is done at the beginning of an estimation, so that it
+		*		starts from the same values as without the evaluation: the given initial values, the estimates of a previous
+		*		estimation, or the defaults (which are then still replaced by initial values found from the data)
+		*/
+		void RestoreAuxParsBeforeEvaluation();
+
+		/*! \brief Current auxiliary parameters on the scale of 'SetAuxPars()' */
+		const double* GetAuxParsInternalScale();
+
+		/*!
 		* \brief Calculate test negative log-likelihood using adaptive GH quadrature
 		* \param y_test Test response variable
 		* \param pred_mean Predictive mean of latent random effects
@@ -690,6 +705,12 @@ namespace GPBoost {
 		// Variables for additional parameters for non-Gaussian likelihoods
 		vec_t init_aux_pars_; // Additional parameters for non-Gaussian likelihoods
 		bool init_aux_pars_given_ = false;
+		/*! \brief True if the auxiliary parameters have been changed by a likelihood evaluation, see 'RestoreAuxParsBeforeEvaluation()' */
+		bool aux_pars_changed_by_evaluation_ = false;
+		/*! \brief Auxiliary parameters (on the scale of 'SetAuxPars()') before they were changed by a likelihood evaluation */
+		vec_t aux_pars_before_evaluation_;
+		/*! \brief Whether the auxiliary parameters counted as set before they were changed by a likelihood evaluation */
+		bool aux_pars_have_been_set_before_evaluation_ = false;
 		vec_t std_dev_aux_pars_;
 		bool std_dev_aux_pars_calculated_ = false;
 		bool init_coef_aux_pars_from_iid_model_ = false;

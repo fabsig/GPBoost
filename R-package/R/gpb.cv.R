@@ -1073,29 +1073,6 @@ gpb.grid.search.tune.parameters <- function(param_grid
       stop(paste0("gpb.grid.search.tune.parameters: Candidate parameters in param_grid need to be given as vectors for every parameter. Found other format for ", param))
     }
   }
-  # Higher better?
-  higher_better = FALSE
-  if (is.null(metric)) {
-    eval_copy <- eval
-    if (!is.null(eval_copy)) {
-      if (!is.list(eval_copy)) {
-        eval_copy <- list(eval_copy)
-      }
-      if (is.function(eval_copy[[1]])) {
-        dummy_data <- gpb.Dataset(data=matrix(c(0,1)),label=c(0,1))
-        dummy_data$construct()
-        higher_better <- eval_copy[[1]](0,dummy_data)$higher_better
-      } else {
-        if (any(startsWith(eval_copy[[1]], c('auc', 'ndcg@', 'map@', 'average_precision')))){
-          higher_better <- TRUE
-        }
-      }
-    } 
-  } else {
-    if (any(startsWith(metric, c('auc', 'ndcg@', 'map@', 'average_precision')))){
-      higher_better <- TRUE
-    }
-  }
   # Determine combinations of parameter values that should be tried out
   grid_size <- get.grid.size(param_grid)
   if (is.null(num_try_random)) {
@@ -1120,8 +1097,9 @@ gpb.grid.search.tune.parameters <- function(param_grid
   if (return_all_combinations) {
     all_combinations <- list()
   }
-  best_score <- 1E99
-  if (higher_better) best_score <- -1E99
+  # Whether higher scores are better is determined in every cross-validation from its first metric, see
+  # 'gpb.tuning.record.higher.better()'
+  best_score <- NA_real_
   best_params <- list()
   best_iter <- nrounds
   counter_num_comb <- 1
@@ -1142,6 +1120,7 @@ gpb.grid.search.tune.parameters <- function(param_grid
     if (!is.null(cv_seed)) {
       set.seed(cv_seed)
     }
+    record <- new.env(parent = emptyenv())
     cvbst <- gpb.cv(params = params
                     , data = data
                     , gp_model = gp_model
@@ -1164,21 +1143,15 @@ gpb.grid.search.tune.parameters <- function(param_grid
                     , init_model = init_model
                     , colnames = colnames
                     , categorical_feature = categorical_feature
-                    , callbacks = callbacks
+                    , callbacks = c(callbacks, list(gpb.tuning.record.higher.better(record)))
                     , delete_boosters_folds = TRUE
                     , ...
     )
-    if (!is.na(cvbst$best_score)) {
-      if (higher_better) {
-        if (cvbst$best_score > best_score) {
-          current_score_is_better <- TRUE
-          has_found_better_score <- TRUE
-        }
-      } else {
-        if (cvbst$best_score < best_score) {
-          current_score_is_better <- TRUE
-          has_found_better_score <- TRUE
-        }
+    if (is.finite(cvbst$best_score)) {
+      if (is.na(best_score) || (isTRUE(record$higher_better) && cvbst$best_score > best_score) ||
+          (!isTRUE(record$higher_better) && cvbst$best_score < best_score)) {
+        current_score_is_better <- TRUE
+        has_found_better_score <- TRUE
       }
     }
     if (current_score_is_better) {

@@ -6671,7 +6671,8 @@ class GPModel(object):
             A vector with fixed effects, e.g., containing a linear predictor.
             The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.
         aux_pars : numpy array or pandas DataFrame, optional (default = None)
-            Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None)
+            Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative binomial likelihood) (can be None).
+            They are the current values of the model afterwards (e.g., for predictions), but not initial values for a later estimation
 
         Returns
         -------

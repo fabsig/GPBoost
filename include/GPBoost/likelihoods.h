@@ -2278,6 +2278,11 @@ namespace GPBoost {
 			return(aux_pars_have_been_set_);
 		}
 
+		/*! \brief Set whether the auxiliary parameters count as set, e.g., when default values that have been changed temporarily are restored */
+		void SetAuxParsHaveBeenSet(bool aux_pars_have_been_set) {
+			aux_pars_have_been_set_ = aux_pars_have_been_set;
+		}
+
 		/*!
 		* \brief Find the mode of the posterior of the latent random effects using Newton's method and calculate the approximative marginal log-likelihood..
 		*       Calculations are done using a numerically stable variant based on factorizing ("inverting") B = (Id + Wsqrt * Z*Sigma*Zt * Wsqrt).
@@ -7766,28 +7771,103 @@ namespace GPBoost {
 		}//end SetNegativeVarianceEstimatesToZero
 
 		/*!
-		* \brief Set negative eigenvalues of a simulation-based estimate of a positive semidefinite matrix, e.g., of the part
-		*		A (Sigma^-1 + W)^-1 A^T of a predictive covariance matrix, to zero. This gives the closest positive semidefinite
-		*		matrix in the Frobenius norm. If W has negative values (observed Hessian), the estimate is the difference of two
-		*		sample covariance matrices and is usually not positive semidefinite. A warning is given if diagonal entries are
-		*		negative, see 'SetNegativeVarianceEstimatesToZero()'
-		* \param[in,out] cov_est Estimated matrix (symmetric)
+		* \brief Simulation-based estimate C = (Y_1 Y_1^T - Y_2 Y_2^T) / nsim of a positive semidefinite matrix, e.g., of the part
+		*		A (Sigma^-1 + W)^-1 A^T of a predictive covariance matrix if W has negative values (observed Hessian), projected
+		*		onto the positive semidefinite matrices. The estimate is the difference of two sample covariance matrices and is
+		*		usually not positive semidefinite. Its negative eigenvalues are set to zero, which gives the closest positive
+		*		semidefinite matrix in the Frobenius norm. C has rank at most 2 nsim. If it has more rows, the eigendecomposition
+		*		is calculated in the column space of Y = [Y_1, Y_2]: with Y = Q R and S = diag(I, -I), C = Q (R S R^T) Q^T / nsim,
+		*		and only R S R^T has to be decomposed. A warning is given if diagonal entries of C are negative, see
+		*		'SetNegativeVarianceEstimatesToZero()'
+		* \param sim_pos Simulated vectors Y_1 (in the columns)
+		* \param sim_neg Simulated vectors Y_2 (in the columns), with the same dimensions as 'sim_pos'
+		* \param[out] cov_est Projected estimate
 		* \param caller Name of the calling function
 		*/
-		void ProjectCovarianceEstimateOnPSD(den_mat_t& cov_est,
+		void CovarianceEstimateDifferenceProjectedOnPSD(const den_mat_t& sim_pos,
+			const den_mat_t& sim_neg,
+			den_mat_t& cov_est,
 			const char* caller) const {
-			const int num_negative_diag = (int)(cov_est.diagonal().array() < 0.).count();
-			Eigen::SelfAdjointEigenSolver<den_mat_t> eigen_solver(cov_est);
-			if (eigen_solver.info() == Eigen::Success && eigen_solver.eigenvalues().minCoeff() < 0.) {
-				cov_est = eigen_solver.eigenvectors() * eigen_solver.eigenvalues().cwiseMax(0.).asDiagonal() * eigen_solver.eigenvectors().transpose();
+			CHECK(sim_pos.rows() == sim_neg.rows() && sim_pos.cols() == sim_neg.cols());
+			const int dim = (int)sim_pos.rows();
+			const int nsim = (int)sim_pos.cols();
+			const int num_negative_diag = (int)((sim_pos.rowwise().squaredNorm() - sim_neg.rowwise().squaredNorm()).array() < 0.).count();
+			if (dim <= 2 * nsim) {
+				cov_est = (sim_pos * sim_pos.transpose() - sim_neg * sim_neg.transpose()) / (double)nsim;
+				Eigen::SelfAdjointEigenSolver<den_mat_t> eigen_solver(cov_est);
+				if (eigen_solver.info() == Eigen::Success && eigen_solver.eigenvalues().minCoeff() < 0.) {
+					cov_est = eigen_solver.eigenvectors() * eigen_solver.eigenvalues().cwiseMax(0.).asDiagonal() * eigen_solver.eigenvectors().transpose();
+				}
+			}
+			else {
+				den_mat_t Y(dim, 2 * nsim);
+				Y << sim_pos, sim_neg;
+				Eigen::HouseholderQR<den_mat_t> qr(Y);
+				const den_mat_t R = qr.matrixQR().topRows(2 * nsim).triangularView<Eigen::Upper>();
+				den_mat_t R_S = R;
+				R_S.rightCols(nsim) *= -1.;
+				const den_mat_t R_S_Rt = R_S * R.transpose() / (double)nsim;
+				Eigen::SelfAdjointEigenSolver<den_mat_t> eigen_solver(R_S_Rt);
+				if (eigen_solver.info() != Eigen::Success) {
+					Log::REFatal("%s: The eigendecomposition for the simulation-based estimate of the predictive covariance matrix failed ", caller);
+				}
+				// Eigenvectors of C with positive eigenvalues, scaled with the square roots of the eigenvalues
+				const vec_t eigenvalues_pos = eigen_solver.eigenvalues().cwiseMax(0.);
+				const den_mat_t Q = qr.householderQ() * den_mat_t::Identity(dim, 2 * nsim);
+				const den_mat_t Q_V_sqrt_lambda = Q * (eigen_solver.eigenvectors() * eigenvalues_pos.cwiseSqrt().asDiagonal());
+				cov_est = Q_V_sqrt_lambda * Q_V_sqrt_lambda.transpose();
 			}
 			if (num_negative_diag > 0) {
 				Log::REWarning("%s: %d of %d simulation-based estimates of predictive variances were negative, and the estimated "
 					"predictive covariance matrix has been projected onto the positive semidefinite matrices. These estimates are "
 					"differences of two sample covariances since the Hessian of the negative log-likelihood has negative values. "
-					"Consider increasing 'nsim_var_pred' ", caller, num_negative_diag, (int)cov_est.rows());
+					"Consider increasing 'nsim_var_pred' ", caller, num_negative_diag, dim);
 			}
-		}//end ProjectCovarianceEstimateOnPSD
+		}//end CovarianceEstimateDifferenceProjectedOnPSD
+
+		/*!
+		* \brief Message for a matrix Sigma^-1 + W (or Sigma^-1 + Z^T W Z) that the conjugate gradient algorithm has found not to be
+		*		positive definite. This is checked when W has negative values (observed Hessian)
+		*/
+		static const char* MessageNotPositiveDefiniteCG() {
+			return "Sigma^(-1) + W is not positive definite: the conjugate gradient algorithm has found a direction of non-positive "
+				"curvature or non-finite values. W (the Hessian of the negative log-likelihood) has negative values, and the mode "
+				"is then not necessarily a local maximum of the approximate posterior ";
+		}
+
+		/*!
+		* \brief Standard normal random vector of length 'dim_mode_' for checking with the conjugate gradient algorithm whether
+		*		Sigma^-1 + W is positive definite. It is generated with its own random number generator with a fixed seed, so
+		*		that the other random vectors (e.g., of the stochastic Lanczos quadrature) do not change
+		*/
+		vec_t RandomVectorPositiveDefinitenessCheck() const {
+			RNG_t rng(seed_rand_vec_trace_);
+			std::normal_distribution<double> ndist(0., 1.);
+			vec_t rand_vec(dim_mode_);
+			for (int i = 0; i < dim_mode_; ++i) {
+				rand_vec[i] = ndist(rng);
+			}
+			return rand_vec;
+		}
+
+		/*!
+		* \brief Handle NA or Inf found by the conjugate gradient algorithm when simulating predictive (co-)variances or posterior
+		*		samples. If W has negative values (observed Hessian), this shows that Sigma^-1 + W is not positive definite (or
+		*		contains non-finite values), and the predictive (co-)variances of the Laplace approximation are not defined. This is
+		*		an error then, also since negative variance estimates are otherwise set to zero, see 'SetNegativeVarianceEstimatesToZero()'
+		* \param na_or_inf_found True if NA or Inf has been found
+		* \param caller Name of the calling function
+		*/
+		void HandleNAOrInfCGSimulation(bool na_or_inf_found,
+			const char* caller) const {
+			if (!na_or_inf_found) {
+				return;
+			}
+			if (HasNegativeValueInformationLogLikOnDataScale()) {
+				LogFatalWithPotentialFisherLaplaceHint(caller, MessageNotPositiveDefiniteCG());
+			}
+			Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_);
+		}
 
 		/*!
 		* \brief (Sigma^-1 + W)^-1 v for the full-scale Vecchia approximation with the Cholesky decomposition. With K = B^T D^-1 B + W,

@@ -4133,7 +4133,8 @@ set_prediction_data.GPModel <- function(gp_model
 #' @param cov_pars A \code{vector} with \code{numeric} elements. 
 #' Covariance parameters of Gaussian process and  random effects
 #' @param aux_pars A \code{vector} with \code{numeric} elements. 
-#' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood)
+#' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood).
+#' They are the current values of the model afterwards (e.g., for predictions), but not initial values for a later estimation
 #' @inheritParams GPModel_shared_params
 #' @param fixed_effects A \code{numeric} \code{vector} with fixed effects, e.g., containing a linear predictor. 
 #' The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.
@@ -4167,7 +4168,8 @@ neg_log_likelihood <- function(gp_model
 #' @param cov_pars A \code{vector} with \code{numeric} elements. 
 #' Covariance parameters of Gaussian process and  random effects
 #' @param aux_pars A \code{vector} with \code{numeric} elements. 
-#' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood)
+#' Additional parameters for non-Gaussian likelihoods (e.g., shape parameter of a gamma or negative_binomial likelihood).
+#' They are the current values of the model afterwards (e.g., for predictions), but not initial values for a later estimation
 #' @inheritParams GPModel_shared_params
 #' @param fixed_effects A \code{numeric} \code{vector} with fixed effects, e.g., containing a linear predictor. 
 #' The length of this vector needs to equal the number of training data points times the number of fixed-effect sets.

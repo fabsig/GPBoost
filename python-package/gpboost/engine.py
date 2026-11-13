@@ -1130,16 +1130,8 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
             train_set_not_constructed = copy.deepcopy(train_set)
 
     if folds is not None:
-        for train_idx, test_idx in folds:
-            train_set = train_set.construct()
-            num_data = train_set.num_data()
-            if np.max(train_idx) >= num_data or np.max(test_idx) >= num_data:
-                raise ValueError("Index out of bound. "
-                                "Maximum index in train_idx and test_idx should be less than num_data ({})"
-                                .format(num_data))
-            if np.min(train_idx) < 0 or np.min(test_idx) < 0:
-                raise ValueError("Index out of bound. "
-                                "Minimum index in train_idx and test_idx should be greater than or equal to 0")
+        train_set = train_set.construct()
+        folds = _check_tuning_folds(folds, train_set.get_label(), group=train_set.get_group())
 
     # Check correct format
     if not isinstance(param_grid, dict):
@@ -1161,16 +1153,6 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
                                                   data_name=param, check_data_type=False,
                                                   check_must_be_int=False, convert_to_type=None)
     _tuning_deterministic_params(params, param_grid)
-    higher_better = False
-    if metric is not None:
-        if isinstance(metric, str):
-            metric = [metric]
-        if metric[0].startswith(('auc', 'ndcg@', 'map@', 'average_precision')):
-            higher_better = True
-    elif feval is not None:
-        if callable(feval):
-            feval = [feval]
-        PH1, PH2, higher_better = feval[0](np.array([0]), Dataset(np.array([0]), np.array([0])))
     # Determine combinations of parameter values that should be tried out
     grid_size = _get_grid_size(param_grid)
     if num_try_random is not None:
@@ -1190,11 +1172,9 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
         verbose_eval_cv = True
     if return_all_combinations:
         all_combinations = {}
-    best_score = 1e99
-    current_score = 1e99
-    if higher_better:
-        best_score = -1e99
-        current_score = -1e99
+    # Whether higher scores are better is determined in every cross-validation from its first metric, see
+    # '_record_first_metric_higher_better()'
+    best_score = None
     best_params = {}
     best_num_boost_round = num_boost_round
     counter_num_comb = 1
@@ -1209,7 +1189,12 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
         if 'max_bin' in param_grid:
             train_set = copy.deepcopy(train_set_not_constructed)
         current_score_is_better = False
+        current_score = None
+        current_num_boost_round = None
         try:
+            higher_better_record = []
+            callbacks_comb = list(callbacks) if callbacks is not None else []
+            callbacks_comb.append(_record_first_metric_higher_better(higher_better_record))
             cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round, gp_model=gp_model,
                        use_gp_model_for_validation=use_gp_model_for_validation,
                        train_gp_model_cov_pars=train_gp_model_cov_pars,
@@ -1217,26 +1202,26 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
                        metric=metric, fobj=fobj, feval=feval, init_model=init_model,
                        feature_name=feature_name, categorical_feature=categorical_feature,
                        early_stopping_rounds=early_stopping_rounds, fpreproc=fpreproc,
-                       verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks,
+                       verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks_comb,
                        eval_train_metric=False, return_cvbooster=False)
+            higher_better = higher_better_record[0]
+            scores = cvbst[next(iter(cvbst))]
             if higher_better:
-                current_score = np.max(cvbst[next(iter(cvbst))])
-                if current_score > best_score:
-                    current_score_is_better = True
+                current_score = np.max(scores)
+                current_num_boost_round = int(np.argmax(scores)) + 1
             else:
-                current_score = np.min(cvbst[next(iter(cvbst))])
-                if current_score < best_score:
-                    current_score_is_better = True
+                current_score = np.min(scores)
+                current_num_boost_round = int(np.argmin(scores)) + 1
+            if np.isfinite(current_score) and (best_score is None or
+                                               (current_score > best_score if higher_better else current_score < best_score)):
+                current_score_is_better = True
         except Exception as err: # Note: this is typically not called anymore since gpv.cv() now already contains a tryCatch statement
             print("Error for parameter combination " + str(counter_num_comb) +
                     " of " + str(len(try_param_combs)) + ": " + str(param_comb))
         if current_score_is_better:
             best_score = current_score
             best_params = param_comb
-            if higher_better:
-                best_num_boost_round = np.argmax(cvbst[next(iter(cvbst))]) + 1
-            else:
-                best_num_boost_round = np.argmin(cvbst[next(iter(cvbst))]) + 1
+            best_num_boost_round = current_num_boost_round
             if verbose_eval >= 1:
                 metric_name = list(cvbst.keys())[0]
                 metric_name = metric_name.split('-mean', 1)[0]
@@ -1247,13 +1232,9 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
                 print(best_params_print)
         counter_num_comb = counter_num_comb + 1
         if return_all_combinations:
-            if higher_better:
-                best_num_boost_round = np.argmax(cvbst[next(iter(cvbst))]) + 1
-            else:
-                best_num_boost_round = np.argmin(cvbst[next(iter(cvbst))]) + 1
-            all_combinations[param_comb_number] = {'params': param_comb, 'num_boost_round': best_num_boost_round,
+            all_combinations[param_comb_number] = {'params': param_comb, 'num_boost_round': current_num_boost_round,
                                                    'score': current_score}
-    if best_num_boost_round < 0 or best_score == (1e99 if not higher_better else -1e99):
+    if best_score is None:
         raise ValueError("Did not find any valid parameter combination. " \
         "Check the 'metric' (is it supported?), search space, and the data provided ")
         
@@ -1345,27 +1326,25 @@ def _deterministic_configuration_hash(configuration):
     return zlib.crc32(repr(configuration).encode())
 
 
-def _tuning_metric_higher_better(metric, feval):
-    """Return the metric and feval as lists and whether higher values of the first metric are better."""
-    metric_higher_better = False
-    if metric is not None:
-        if isinstance(metric, str):
-            metric = [metric]
-        if metric[0].startswith(('auc', 'ndcg@', 'map@', 'average_precision')):
-            metric_higher_better = True
-    elif feval is not None:
-        if callable(feval):
-            feval = [feval]
-        _, _, metric_higher_better = feval[0](np.array([0]), Dataset(np.array([0]), np.array([0])))
-    return metric, feval, metric_higher_better
+def _check_tuning_folds(folds, y, group=None):
+    """Return user-provided folds as a list of (train_idx, test_idx) tuples so that every trial uses the same folds.
 
-
-def _check_tuning_folds(folds, y):
-    """Check the indices of user-provided folds and return them as a list so that they can be used in every trial."""
-    if folds is None or hasattr(folds, 'split'):
+    A generator can only be iterated over once, and a scikit-learn splitter can give other folds when it is called
+    again, e.g., a shuffled splitter whose 'random_state' is None or a 'RandomState' instance. A splitter is therefore
+    called once here. 'group' is the group information of the dataset (e.g., for ranking), which is passed to the
+    splitter as in 'cv()'.
+    """
+    if folds is None:
         return folds
-    folds = list(folds)
     num_data = len(y)
+    if hasattr(folds, 'split'):
+        if group is not None:
+            group = np.asarray(group, dtype=np.int32)
+            flatted_group = np.repeat(range(len(group)), repeats=group)
+            folds = folds.split(X=np.zeros(num_data), y=np.asarray(y), groups=flatted_group)
+        else:
+            folds = folds.split(X=np.zeros(num_data), y=np.asarray(y))
+    folds = list(folds)
     for train_idx, test_idx in folds:
         if np.max(train_idx) >= num_data or np.max(test_idx) >= num_data:
             raise ValueError("Index out of bound. "
@@ -1377,11 +1356,28 @@ def _check_tuning_folds(folds, y):
     return folds
 
 
+def _record_first_metric_higher_better(record):
+    """Callback for 'cv()' that records in the list 'record' whether higher values of the first metric are better.
+
+    This is the metric whose scores are the first entry of the result of 'cv()' and which early stopping uses. Its
+    direction accounts for metrics given in 'params' (with aliases), the default metric of the objective, and the
+    'is_higher_better' value of a custom evaluation function.
+    """
+    def _callback(env):
+        if not record and env.evaluation_result_list:
+            record.append(bool(env.evaluation_result_list[0][3]))
+    return _callback
+
+
 def _tuning_cv_score(params, X, y, gp_model, max_num_boost_round, early_stopping_rounds, folds, nfold, cv_seed,
                      metric, feval, verbose_eval_cv, use_gp_model_for_validation, train_gp_model_cov_pars,
-                     categorical_feature, metric_higher_better):
-    """Run cross-validation for one parameter combination and return its best score and number of iterations."""
+                     categorical_feature):
+    """Run cross-validation for one parameter combination.
+
+    Returns the best score, its number of iterations, and whether higher scores are better.
+    """
     data_bst = Dataset(data=X, label=y)
+    higher_better = []
     cvbst = cv(params=params, train_set=data_bst, gp_model=gp_model,
                use_gp_model_for_validation=use_gp_model_for_validation,
                train_gp_model_cov_pars=train_gp_model_cov_pars,
@@ -1389,11 +1385,12 @@ def _tuning_cv_score(params, X, y, gp_model, max_num_boost_round, early_stopping
                early_stopping_rounds=early_stopping_rounds,
                folds=folds, nfold=nfold, verbose_eval=verbose_eval_cv, show_stdv=False,
                seed=cv_seed, metric=metric, feval=feval,
-               categorical_feature=categorical_feature)
+               categorical_feature=categorical_feature,
+               callbacks=[_record_first_metric_higher_better(higher_better)])
     scores = cvbst[list(cvbst.keys())[0]]
-    if metric_higher_better:
-        return np.max(scores), int(np.argmax(scores)) + 1
-    return np.min(scores), int(np.argmin(scores)) + 1
+    if higher_better[0]:
+        return np.max(scores), int(np.argmax(scores)) + 1, True
+    return np.min(scores), int(np.argmin(scores)) + 1, False
 
 
 def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None,
@@ -1567,14 +1564,16 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
     else:
         params = copy.deepcopy(params)
     _tuning_deterministic_params(params)
-    metric, feval, metric_higher_better = _tuning_metric_higher_better(metric, feval)
-    best_score = -1e99 if metric_higher_better else 1e99
+    # Whether higher scores are better is known after the first cross-validation. Optuna therefore minimizes the cost,
+    # which is the negative score if higher scores are better
+    metric_higher_better = None
+    best_score = None
     best_iter = -1
     verbose_eval_cv = verbose_eval >= 2
 
     def objective_opt(trial):
         """Objective function for tuning parameter search with Optuna."""
-        nonlocal best_score, best_iter
+        nonlocal best_score, best_iter, metric_higher_better
         params_loc = {}
         for param, (kind, lower, upper, log) in parsed_search_space.items():
             if kind == 'float':
@@ -1587,35 +1586,32 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
         params_loc.update(params)
 
         # Train the model
-        best_score_trial = -float('inf') if metric_higher_better else float('inf')
+        cost = float('inf')
         try:
-            best_score_trial, best_iter_trial = _tuning_cv_score(
+            score, best_iter_trial, metric_higher_better = _tuning_cv_score(
                 params=params_loc, X=X, y=y, gp_model=gp_model, max_num_boost_round=max_num_boost_round,
                 early_stopping_rounds=early_stopping_rounds, folds=folds, nfold=nfold, cv_seed=cv_seed,
                 metric=metric, feval=feval, verbose_eval_cv=verbose_eval_cv,
                 use_gp_model_for_validation=use_gp_model_for_validation,
-                train_gp_model_cov_pars=train_gp_model_cov_pars, categorical_feature=categorical_feature,
-                metric_higher_better=metric_higher_better)
-            # Save the best number of iterations
-            if metric_higher_better:
-                found_better_combination = best_score_trial > best_score
-            else:
-                found_better_combination = best_score_trial < best_score
-            if found_better_combination:
-                best_score = best_score_trial
-                best_iter = best_iter_trial
+                train_gp_model_cov_pars=train_gp_model_cov_pars, categorical_feature=categorical_feature)
+            if np.isfinite(score):
+                cost = -score if metric_higher_better else score
+                # Save the best number of iterations
+                if best_score is None or (score > best_score if metric_higher_better else score < best_score):
+                    best_score = score
+                    best_iter = best_iter_trial
         except Exception as e:
             print(f"An error occurred: {e}")
 
-        return best_score_trial
-    
-    direction = 'maximize' if metric_higher_better else 'minimize'
-    study = optuna.create_study(direction=direction, sampler=optuna.samplers.TPESampler(seed=tpe_seed))
+        return cost
+
+    study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=tpe_seed))
     study.optimize(objective_opt, n_trials=n_trials)
-    if best_iter < 0 or best_score == (1e99 if not metric_higher_better else -1e99):
+    if best_score is None:
          raise ValueError("Did not find any valid parameter combination. " \
          "Check the 'metric' (is it supported?), search space, and the data provided ")
-    return {'best_params': study.best_trial.params, 'best_iter': best_iter, 'best_score': study.best_trial.values}
+    best_score_values = [-value if metric_higher_better else value for value in study.best_trial.values]
+    return {'best_params': study.best_trial.params, 'best_iter': best_iter, 'best_score': best_score_values}
 
 
 def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
@@ -1648,7 +1644,8 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
         A parameter with lower = upper is held fixed at this value.
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     n_trials: int
-        The number of parameter combinations that are evaluated, including the initial design.
+        The number of parameter combinations that are evaluated, including the initial design. The search stops
+        earlier if a finite search space (e.g., of integer and logical parameters) has been exhausted.
     X : string, numpy array, pandas DataFrame, H2O DataTable's Frame, scipy.sparse or list of numpy arrays
         Predictor variables data for creating a gpb.Dataset.
         If string, it represents the path to txt file.
@@ -1801,6 +1798,7 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
         import joblib
         from ConfigSpace import Categorical, Configuration, ConfigurationSpace, Float, Integer
         from smac import HyperparameterOptimizationFacade, Scenario
+        from smac.main.exceptions import ConfigurationSpaceExhaustedException
         from smac.runhistory.dataclasses import TrialValue
     except ImportError as e:
         raise ImportError("'tune_pars_SMAC' requires the package 'smac' (SMAC3), "
@@ -1814,7 +1812,9 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
     else:
         params = copy.deepcopy(params)
     _tuning_deterministic_params(params)
-    metric, feval, metric_higher_better = _tuning_metric_higher_better(metric, feval)
+    # Whether higher scores are better is known after the first cross-validation. SMAC minimizes the cost, which is the
+    # negative score if higher scores are better
+    metric_higher_better = None
     if verbose_eval is None:
         verbose_eval = 0
     verbose_eval_cv = verbose_eval >= 2
@@ -1869,8 +1869,16 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
             # The random forest of SMAC predicts many small batches of parameter combinations with all cores, and
             # starting the threads takes longer than the predictions. The sequential backend of joblib gives the
             # same predictions in a fraction of the time.
-            with joblib.parallel_backend('sequential'):
-                trial_info = smac.ask()
+            try:
+                with joblib.parallel_backend('sequential'):
+                    trial_info = smac.ask()
+            except ConfigurationSpaceExhaustedException:
+                # SMAC has found no parameter combination that has not been evaluated yet, i.e., a finite search space
+                # has (almost certainly) been exhausted
+                if verbose_eval >= 1:
+                    print("SMAC has found no further parameter combination that has not been evaluated. The search is "
+                          "stopped after " + str(trial_number - 1) + " trials")
+                break
             params_trial = {param: value.item() if isinstance(value, np.generic) else value
                             for param, value in trial_info.config.items()}
             params_trial.update(fixed_params)
@@ -1882,13 +1890,12 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
                       str(params_trial))
             score = float('nan')
             try:
-                score, best_iter_trial = _tuning_cv_score(
+                score, best_iter_trial, metric_higher_better = _tuning_cv_score(
                     params=params_loc, X=X, y=y, gp_model=gp_model, max_num_boost_round=max_num_boost_round,
                     early_stopping_rounds=early_stopping_rounds, folds=folds, nfold=nfold, cv_seed=cv_seed,
                     metric=metric, feval=feval, verbose_eval_cv=verbose_eval_cv,
                     use_gp_model_for_validation=use_gp_model_for_validation,
-                    train_gp_model_cov_pars=train_gp_model_cov_pars, categorical_feature=categorical_feature,
-                    metric_higher_better=metric_higher_better)
+                    train_gp_model_cov_pars=train_gp_model_cov_pars, categorical_feature=categorical_feature)
             except Exception as e:
                 if verbose_eval >= 1:
                     print(f"An error occurred: {e}")

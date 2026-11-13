@@ -21,6 +21,15 @@ using LightGBM::Log;
 namespace GPBoost {
 
 	namespace {
+		/*!
+		* \brief True if h^T A h is positive for a search direction h of the conjugate gradient algorithm. For a symmetric matrix A,
+		*		a non-positive (or non-finite) value shows that A is not positive definite. This can happen for Sigma^-1 + W if W has
+		*		negative values (observed Hessian) and the mode is not a local maximum of the approximate posterior
+		*/
+		inline bool HasPositiveCurvature(double h_A_h) {
+			return h_A_h > 0. && std::isfinite(h_A_h);
+		}
+
 		/*! \brief Writes the number of conjugate gradient steps that have been carried out and whether the algorithm has converged to 'num_cg_steps' and 'cg_converged' (if not nullptr) when the function returns */
 		struct CGStepsReporter {
 			CGStepsReporter(int* num_cg_steps, bool* cg_converged) : num_cg_steps_(num_cg_steps), cg_converged_(cg_converged) {}
@@ -140,8 +149,13 @@ namespace GPBoost {
 		for (int j = 0; j < p; ++j) {
 			cg_steps_reporter.num_steps = j + 1;
 			v = apply_A(h);
+			const double h_A_h = h.transpose() * v;
+			if (!HasPositiveCurvature(h_A_h)) {
+				NA_or_Inf_found = true;
+				return;
+			}
 			a = r.transpose() * z;
-			a /= h.transpose() * v;
+			a /= h_A_h;
 			u += a * h;
 			r_old = r;
 			r -= a * v;
@@ -800,8 +814,13 @@ namespace GPBoost {
 			//Parentheses are necessery for performance, otherwise EIGEN does the operation wrongly from left to right
 			B_t_D_inv_B_vec = B_t_D_inv_rm * (B_rm * h);
 			v = B_t_D_inv_B_vec + diag_W.cwiseProduct(h) - B_t_D_inv_rm * (B_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * B_t_D_inv_B_vec)));
+			const double h_A_h = h.transpose() * v;
+			if (!HasPositiveCurvature(h_A_h)) {
+				NA_or_Inf_found = true;
+				return;
+			}
 			a = r.transpose() * z;
-			a /= h.transpose() * v;
+			a /= h_A_h;
 			u += a * h;
 			r_old = r;
 			r -= a * v;
@@ -1708,8 +1727,14 @@ namespace GPBoost {
 		h = z;
 		for (int j = 0; j < p; ++j) {
 			v = SigmaI_plus_ZtWZ_rm * h;
+			const double h_A_h = h.transpose() * v;
+			if (!HasPositiveCurvature(h_A_h)) {
+				NA_or_Inf_found = true;
+				num_cg_steps = j + 1;
+				return;
+			}
 			a = r.transpose() * z;
-			a /= h.transpose() * v;
+			a /= h_A_h;
 			u += a * h;
 			r_old = r;
 			r -= a * v;
@@ -2093,6 +2118,23 @@ namespace GPBoost {
 					V.col(i).setZero();
 				}
 			}
+			vec_t h_A_h(t);
+			if (conv.NeedsMasking()) {
+#pragma omp parallel for schedule(static)
+				for (int i = 0; i < t; ++i) {
+					h_A_h(i) = conv.IsActive(i) ? H.col(i).dot(V.col(i)) : 1.;
+				}
+			}
+			else {
+				h_A_h = H.cwiseProduct(V).transpose() * v1;
+			}
+			for (int i = 0; i < t; ++i) {
+				if (conv.IsActive(i) && !HasPositiveCurvature(h_A_h(i))) {
+					NA_or_Inf_found = true;
+					conv.FinalizeIterations(j);
+					return;
+				}
+			}
 			a_old = a;
 			R_old = R;
 			if (conv.NeedsMasking()) {
@@ -2102,13 +2144,13 @@ namespace GPBoost {
 						a(i) = 0.;
 						continue;
 					}
-					a(i) = R.col(i).dot(Z.col(i)) / H.col(i).dot(V.col(i));
+					a(i) = R.col(i).dot(Z.col(i)) / h_A_h(i);
 					U.col(i) += a(i) * H.col(i);
 					R.col(i) -= a(i) * V.col(i);
 				}
 			}
 			else {
-				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
+				a = (R.cwiseProduct(Z).transpose() * v1).array() * h_A_h.array().inverse();
 				U += H * a.asDiagonal();
 				R -= V * a.asDiagonal();
 			}

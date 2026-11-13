@@ -84,35 +84,29 @@ gpb.tuning.deterministic.params <- function(params, other_params = list()) {
   return(params)
 }
 
-# Whether higher values of the metric are better
-gpb.tuning.higher.better <- function(metric, eval) {
-  higher_better <- FALSE
-  if (is.null(metric)) {
-    if (!is.null(eval)) {
-      if (!is.list(eval)) {
-        eval <- list(eval)
-      }
-      if (is.function(eval[[1L]])) {
-        dummy_data <- gpb.Dataset(data = matrix(c(0, 1)), label = c(0, 1))
-        dummy_data$construct()
-        higher_better <- eval[[1L]](0, dummy_data)$higher_better
-      } else if (any(startsWith(eval[[1L]], c("auc", "ndcg@", "map@", "average_precision")))) {
-        higher_better <- TRUE
-      }
+# Callback for gpb.cv that records in the environment 'record' (as 'higher_better') whether higher values of the
+# first metric are better. This is the metric of the best score of gpb.cv and of early stopping. Its direction
+# accounts for metrics given in 'params' (with aliases), the default metric of the objective, and the
+# 'higher_better' value of a custom evaluation function
+gpb.tuning.record.higher.better <- function(record) {
+  callback <- function(env) {
+    if (is.null(record$higher_better) && length(env$eval_list) > 0L) {
+      record$higher_better <- isTRUE(env$eval_list[[1L]]$higher_better[1L])
     }
-  } else if (any(startsWith(metric, c("auc", "ndcg@", "map@", "average_precision")))) {
-    higher_better <- TRUE
   }
-  return(higher_better)
+  attr(callback, "call") <- match.call()
+  attr(callback, "name") <- "gpb.tuning.record.higher.better"
+  return(callback)
 }
 
 # Runs cross-validation for one parameter combination and returns the best score, the corresponding
-# number of boosting iterations, and the name of the metric. If 'cv_seed' is given, the folds are generated
+# number of boosting iterations, the name of the metric, and whether higher scores are better (NULL if this is
+# not known since the cross-validation has failed). If 'cv_seed' is given, the folds are generated
 # with this seed in every trial, and the state of the random number generator is restored afterwards so
 # that the random numbers of the optimizer are not affected
 gpb.tuning.cv.score <- function(params, data, gp_model, nrounds, early_stopping_rounds, folds, nfold,
                                 metric, eval, cv_seed, verbose_cv, use_gp_model_for_validation,
-                                train_gp_model_cov_pars, categorical_feature, ...) {
+                                train_gp_model_cov_pars, categorical_feature, callbacks = list(), ...) {
   if (!is.null(cv_seed)) {
     if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
       saved_seed <- get(".Random.seed", envir = globalenv(), inherits = FALSE)
@@ -120,14 +114,16 @@ gpb.tuning.cv.score <- function(params, data, gp_model, nrounds, early_stopping_
     }
     set.seed(cv_seed)
   }
+  record <- new.env(parent = emptyenv())
   cvbst <- gpb.cv(data = data, gp_model = gp_model, params = params, nrounds = nrounds,
                   early_stopping_rounds = early_stopping_rounds, folds = folds, nfold = nfold,
                   metric = metric, eval = eval, verbose = verbose_cv,
                   use_gp_model_for_validation = use_gp_model_for_validation,
                   train_gp_model_cov_pars = train_gp_model_cov_pars,
-                  categorical_feature = categorical_feature, delete_boosters_folds = TRUE, ...)
+                  categorical_feature = categorical_feature, delete_boosters_folds = TRUE,
+                  callbacks = c(callbacks, list(gpb.tuning.record.higher.better(record))), ...)
   return(list(score = cvbst$best_score, best_iter = cvbst$best_iter,
-              metric_name = names(cvbst$record_evals$valid)))
+              metric_name = names(cvbst$record_evals$valid), higher_better = record$higher_better))
 }
 
 gpb.tuning.params.to.string <- function(params) {
@@ -278,7 +274,9 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
   if (!is.null(cv_seed)) {
     set.seed(cv_seed)
   }
-  higher_better <- gpb.tuning.higher.better(metric = metric, eval = eval)
+  # Whether higher scores are better is known after the first cross-validation. 'mlrMBO' therefore minimizes the
+  # cost, which is the negative score if higher scores are better
+  higher_better <- NULL
 
   # Parameter set of 'ParamHelpers'. Parameters with a single value are held fixed and not searched: the
   # Gaussian process of 'mlrMBO' does not support a parameter without range, and it would enlarge the initial
@@ -310,9 +308,10 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
   }
   par_set <- ParamHelpers::makeParamSet(params = par_list)
 
-  best_score <- if (higher_better) -1E99 else 1E99
-  worst_score_init <- best_score
-  worst_score <- worst_score_init
+  best_score <- NA_real_
+  best_cost <- 1E99
+  worst_cost_init <- 1E99
+  worst_cost <- worst_cost_init
   has_found_nonNA_score <- FALSE
   has_found_two_nonNA_scores <- FALSE
   best_params <- list()
@@ -354,57 +353,44 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
         }
         NULL
       })
+    if (!is.null(cv_result$higher_better)) {
+      higher_better <<- cv_result$higher_better
+    }
+    sign_cost <- if (isTRUE(higher_better)) -1 else 1
     score <- if (is.null(cv_result)) NA_real_ else cv_result$score
     current_score_is_better <- FALSE
     if (is.na(score) || is.infinite(score)) {
-      # Impute the score of a failed trial with a score that is worse than all valid scores
-      score <- worst_score_init
+      # Impute the cost of a failed trial with a cost that is worse than all valid costs
+      cost <- worst_cost_init
       if (has_found_two_nonNA_scores) {
-        score <- if (higher_better) worst_score - (best_score - worst_score) else worst_score + (worst_score - best_score)
+        cost <- worst_cost + (worst_cost - best_cost)
       } else if (has_found_nonNA_score) {
-        score <- if (higher_better) worst_score - abs(worst_score) else worst_score + abs(worst_score)
+        cost <- worst_cost + abs(worst_cost)
       }
       if (has_found_nonNA_score) {
-        warning(paste0("Found NA or Inf score in trial ", counter_num_comb, ". This was imputed with ", score))
+        warning(paste0("Found NA or Inf score in trial ", counter_num_comb, ". This was imputed with ", sign_cost * cost))
       }
     } else {
-      score_capped <- FALSE
-      if (higher_better) {
-        current_score_is_better <- score > best_score
-        # Cap very bad scores so that they do not dominate the surrogate model
-        if (has_found_two_nonNA_scores) {
-          if (score < (worst_score - 10 * (best_score - worst_score))) {
-            score <- worst_score - 10 * (best_score - worst_score)
-            score_capped <- TRUE
-          }
-        } else if (has_found_nonNA_score) {
-          if (score < (worst_score - 10 * abs(worst_score))) {
-            score <- worst_score - 10 * abs(worst_score)
-            score_capped <- TRUE
-          }
+      cost <- sign_cost * score
+      current_score_is_better <- cost < best_cost
+      # Cap very bad scores so that they do not dominate the surrogate model
+      cost_capped <- FALSE
+      if (has_found_two_nonNA_scores) {
+        if (cost > (worst_cost + 10 * (worst_cost - best_cost))) {
+          cost <- worst_cost + 10 * (worst_cost - best_cost)
+          cost_capped <- TRUE
         }
-        if (score < worst_score || worst_score == worst_score_init) {
-          worst_score <<- score
-        }
-      } else {
-        current_score_is_better <- score < best_score
-        if (has_found_two_nonNA_scores) {
-          if (score > (worst_score + 10 * (worst_score - best_score))) {
-            score <- worst_score + 10 * (worst_score - best_score)
-            score_capped <- TRUE
-          }
-        } else if (has_found_nonNA_score) {
-          if (score > (worst_score + 10 * abs(worst_score))) {
-            score <- worst_score + 10 * abs(worst_score)
-            score_capped <- TRUE
-          }
-        }
-        if (score > worst_score || worst_score == worst_score_init) {
-          worst_score <<- score
+      } else if (has_found_nonNA_score) {
+        if (cost > (worst_cost + 10 * abs(worst_cost))) {
+          cost <- worst_cost + 10 * abs(worst_cost)
+          cost_capped <- TRUE
         }
       }
-      if (score_capped) {
-        warning(paste0("Found very bad score in trial ", counter_num_comb, ". This was replaced with ", score))
+      if (cost > worst_cost || worst_cost == worst_cost_init) {
+        worst_cost <<- cost
+      }
+      if (cost_capped) {
+        warning(paste0("Found very bad score in trial ", counter_num_comb, ". This was replaced with ", sign_cost * cost))
       }
       if (has_found_nonNA_score) {
         has_found_two_nonNA_scores <<- TRUE
@@ -412,6 +398,7 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
       has_found_nonNA_score <<- TRUE
     }
     if (current_score_is_better) {
+      best_cost <<- cost
       best_score <<- score
       best_iter <<- cv_result$best_iter
       best_params <<- params_comb
@@ -422,11 +409,11 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
       }
     }
     counter_num_comb <<- counter_num_comb + 1L
-    return(score)
+    return(cost)
   }
 
   obj_fun <- smoof::makeSingleObjectiveFunction(name = "gpboost_cv", fn = objective_fun, par.set = par_set,
-                                                minimize = !higher_better)
+                                                minimize = TRUE)
   control <- mlrMBO::makeMBOControl()
   control <- mlrMBO::setMBOControlTermination(control, iters = n_iter)
   if (is.null(crit)) {
@@ -576,7 +563,9 @@ gpb.tune.pars.rf.bayesian.optimization <- function(search_space
   if (!is.null(cv_seed)) {
     set.seed(cv_seed)
   }
-  higher_better <- gpb.tuning.higher.better(metric = metric, eval = eval)
+  # Whether higher scores are better is known after the first cross-validation. 'mlr3mbo' therefore minimizes the
+  # cost 'score_for_optimizer', which is the negative score if higher scores are better
+  higher_better <- NULL
 
   # Search space of 'paradox'. Parameters with a single value are held fixed and not searched
   fixed_params <- list()
@@ -597,7 +586,7 @@ gpb.tune.pars.rf.bayesian.optimization <- function(search_space
     stop(fun_name, ": 'search_space' contains no parameter with two different values")
   }
   domain <- do.call(paradox::ps, domain_params)
-  codomain <- paradox::ps(score_for_optimizer = paradox::p_dbl(tags = if (higher_better) "maximize" else "minimize"))
+  codomain <- paradox::ps(score_for_optimizer = paradox::p_dbl(tags = "minimize"))
 
   best_score <- NA_real_
   counter_num_comb <- 1L
@@ -623,12 +612,16 @@ gpb.tune.pars.rf.bayesian.optimization <- function(search_space
         NULL
       })
     counter_num_comb <<- counter_num_comb + 1L
-    if (is.null(cv_result) || !is.finite(cv_result$score)) {
-      # Replaced by a score that is worse than all valid scores in 'impute_callback' below
-      return(list(score_for_optimizer = if (higher_better) -Inf else Inf, score = NA_real_, best_iter = NA_real_))
+    if (!is.null(cv_result$higher_better)) {
+      higher_better <<- cv_result$higher_better
     }
-    if (is.na(best_score) || (higher_better && cv_result$score > best_score) ||
-        (!higher_better && cv_result$score < best_score)) {
+    if (is.null(cv_result) || !is.finite(cv_result$score)) {
+      # Replaced by a cost that is worse than all valid costs in 'impute_callback' below
+      return(list(score_for_optimizer = Inf, score = NA_real_, best_iter = NA_real_))
+    }
+    cost <- if (isTRUE(higher_better)) -cv_result$score else cv_result$score
+    if (is.na(best_score) || (isTRUE(higher_better) && cv_result$score > best_score) ||
+        (!isTRUE(higher_better) && cv_result$score < best_score)) {
       best_score <<- cv_result$score
       if (verbose_eval >= 1L) {
         message(paste0("***** New best test score (", cv_result$metric_name, " = ", cv_result$score,
@@ -636,14 +629,14 @@ gpb.tune.pars.rf.bayesian.optimization <- function(search_space
                        gpb.tuning.params.to.string(c(params_comb, list(nrounds = cv_result$best_iter)))))
       }
     }
-    return(list(score_for_optimizer = cv_result$score, score = cv_result$score,
+    return(list(score_for_optimizer = cost, score = cv_result$score,
                 best_iter = as.numeric(cv_result$best_iter)))
   }
   objective <- bbotk::ObjectiveRFun$new(fun = objective_fun, domain = domain, codomain = codomain,
                                         check_values = FALSE)
 
-  # Failed trials get a score that is worse than all valid scores. This is recalculated after every evaluation,
-  # since the range of the valid scores changes. As long as there is no valid score, the failed trials get
+  # Failed trials get a cost that is worse than all valid costs. This is recalculated after every evaluation,
+  # since the range of the valid costs changes. As long as there is no valid score, the failed trials get
   # the placeholder 0, since 'bbotk' requires a finite result
   impute_callback <- bbotk::callback_batch(
     "gpboost.impute_failed_trials",
@@ -653,15 +646,13 @@ gpb.tune.pars.rf.bayesian.optimization <- function(search_space
       if (!any(valid)) {
         data.table::set(archive_data, j = "score_for_optimizer", value = 0)
       } else if (!all(valid)) {
-        valid_scores <- archive_data$score[valid]
-        worst <- if (higher_better) min(valid_scores) else max(valid_scores)
-        best <- if (higher_better) max(valid_scores) else min(valid_scores)
-        gap <- abs(worst - best)
+        valid_costs <- archive_data$score_for_optimizer[valid]
+        worst <- max(valid_costs)
+        gap <- worst - min(valid_costs)
         if (gap == 0) {
           gap <- max(abs(worst), 1)
         }
-        data.table::set(archive_data, i = which(!valid), j = "score_for_optimizer",
-                        value = if (higher_better) worst - gap else worst + gap)
+        data.table::set(archive_data, i = which(!valid), j = "score_for_optimizer", value = worst + gap)
       }
     })
   instance <- bbotk::oi(objective = objective, terminator = bbotk::trm("evals", n_evals = n_trials),
@@ -698,7 +689,7 @@ gpb.tune.pars.rf.bayesian.optimization <- function(search_space
     warning("Found no parameter combination with a score that is not NA or Inf ")
     return(list(best_params = list(), best_iter = nrounds, best_score = NA_real_))
   }
-  best_row <- valid[if (higher_better) which.max(archive_data$score[valid]) else which.min(archive_data$score[valid])]
+  best_row <- valid[which.min(archive_data$score_for_optimizer[valid])]
   best_params <- c(archive_data$x_domain[[best_row]], fixed_params)[names(parsed_search_space)]
   return(list(best_params = best_params, best_iter = as.integer(archive_data$best_iter[best_row]),
               best_score = archive_data$score[best_row]))

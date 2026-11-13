@@ -3252,6 +3252,12 @@ namespace GPBoost {
 			}
 		}
 
+		void SetAuxParsHaveBeenSet(bool aux_pars_have_been_set) {
+			for (const auto& cluster_i : unique_clusters_) {
+				likelihood_[cluster_i]->SetAuxParsHaveBeenSet(aux_pars_have_been_set);
+			}
+		}
+
 		void GetNamesAuxPars(string_t& name) {
 			likelihood_[unique_clusters_[0]]->GetNamesAuxPars(name);
 		}

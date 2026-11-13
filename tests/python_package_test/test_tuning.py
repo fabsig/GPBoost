@@ -198,3 +198,133 @@ def test_tune_pars_SMAC_higher_better_and_failed_trials(capsys):
         gpb.tune_pars_SMAC(search_space={'learning_rate': [0.01, 1], 'bagging_fraction': [1.5, 3]}, n_trials=3,
                            X=X, y=y_binary, max_num_boost_round=10, folds=folds, metric='auc', params=params,
                            verbose_eval=0)
+
+
+def _binary_data():
+    X, y, _ = _simulate_data()
+    return X, (y > np.median(y)).astype(float), _folds(len(y))
+
+
+def _agreement(pred, data):
+    return "agreement", float(np.mean((pred > 0.5) == data.get_label())), True
+
+
+_TUNING_ARGS_BINARY = dict(search_space={'learning_rate': [0.05, 0.5]}, max_num_boost_round=50,
+                           early_stopping_rounds=5, verbose_eval=0)
+
+
+def test_tuning_metric_direction():
+    # Whether higher scores are better is taken from the first metric of the cross-validation. AUC given in 'params'
+    # was minimized, and so was a custom metric with 'is_higher_better' = True when the built-in metric was disabled
+    X, y_binary, folds = _binary_data()
+    params = {'objective': 'binary', 'verbose': -1}
+    args = dict(_TUNING_ARGS_BINARY, n_trials=2, X=X, y=y_binary, folds=folds, tpe_seed=1)
+    opt_params_metric = gpb.tune_pars_TPE_algorithm_optuna(**args, params=params, metric='auc')
+    opt_params_in_params = gpb.tune_pars_TPE_algorithm_optuna(**args, params=dict(params, metric='auc'))
+    assert opt_params_in_params == opt_params_metric
+    best_score = _cv_best_score(dict(params, **opt_params_metric['best_params']), X, y_binary, folds, 'auc',
+                                higher_better=True)
+    assert abs(opt_params_metric['best_score'][0] - best_score) < 1e-10
+    opt_params_feval = gpb.tune_pars_TPE_algorithm_optuna(**args, params=params, metric='None', feval=_agreement)
+    cvbst = gpb.cv(params=dict(params, force_col_wise=True, deterministic=True, **opt_params_feval['best_params']),
+                   train_set=gpb.Dataset(X, y_binary), num_boost_round=50, early_stopping_rounds=5, folds=folds,
+                   metric='None', feval=_agreement, verbose_eval=False)
+    assert abs(opt_params_feval['best_score'][0] - np.max(cvbst['agreement-mean'])) < 1e-10
+    assert opt_params_feval['best_iter'] == int(np.argmax(cvbst['agreement-mean'])) + 1
+    # Grid search
+    grid_args = dict(param_grid={'learning_rate': [0.1]}, train_set=gpb.Dataset(X, y_binary), num_boost_round=50,
+                     early_stopping_rounds=5, folds=folds, verbose_eval=0)
+    opt_params_grid = gpb.grid_search_tune_parameters(**grid_args, params=dict(params, metric='auc'))
+    best_score = _cv_best_score(dict(params, learning_rate=0.1), X, y_binary, folds, 'auc', higher_better=True)
+    assert abs(opt_params_grid['best_score'] - best_score) < 1e-10
+    assert opt_params_grid == gpb.grid_search_tune_parameters(**grid_args, params=params, metric='auc')
+
+
+def test_tune_pars_SMAC_metric_direction():
+    pytest.importorskip("smac")
+    X, y_binary, folds = _binary_data()
+    params = {'objective': 'binary', 'verbose': -1}
+    args = dict(_TUNING_ARGS_BINARY, n_trials=1, X=X, y=y_binary, folds=folds, smac_seed=7)
+    opt_params_metric = gpb.tune_pars_SMAC(**args, params=params, metric='auc')
+    opt_params_in_params = gpb.tune_pars_SMAC(**args, params=dict(params, metric='auc'))
+    assert opt_params_in_params == opt_params_metric
+    best_score = _cv_best_score(dict(params, **opt_params_metric['best_params']), X, y_binary, folds, 'auc',
+                                higher_better=True)
+    assert abs(opt_params_metric['best_score'] - best_score) < 1e-10
+
+
+def test_grid_search_return_all_combinations():
+    # 'best_iter' was the number of iterations of the last parameter combination when all combinations were returned
+    X, y, _ = _simulate_data()
+    opt_params = gpb.grid_search_tune_parameters(param_grid={'learning_rate': [0.3, 0.01]}, train_set=gpb.Dataset(X, y),
+                                                 num_boost_round=30, folds=_folds(len(y)), params={'verbose': -1},
+                                                 metric='mse', verbose_eval=0, return_all_combinations=True)
+    all_combinations = opt_params['all_combinations']
+    assert all_combinations[0]['num_boost_round'] != all_combinations[1]['num_boost_round']
+    best = min(all_combinations.values(), key=lambda combination: combination['score'])
+    assert opt_params['best_params'] == best['params'] and opt_params['best_score'] == best['score']
+    assert opt_params['best_iter'] == best['num_boost_round']
+
+
+def test_tune_pars_SMAC_finite_search_space(capsys):
+    pytest.importorskip("smac")
+    # SMAC stops when it has evaluated the two parameter combinations of the search space. This raised an error
+    X, y_binary, folds = _binary_data()
+    params = {'objective': 'binary', 'verbose': -1}
+    opt_params = gpb.tune_pars_SMAC(search_space={'max_depth': [1, 2]}, n_trials=4, X=X, y=y_binary,
+                                    max_num_boost_round=50, early_stopping_rounds=5, folds=folds, params=params,
+                                    metric='auc', verbose_eval=1)
+    output = capsys.readouterr().out
+    assert "Trial 2 of 4" in output and "Trial 3 of 4" not in output
+    assert "SMAC has found no further parameter combination" in output
+    scores = {max_depth: _cv_best_score(dict(params, max_depth=max_depth), X, y_binary, folds, 'auc',
+                                        higher_better=True) for max_depth in [1, 2]}
+    assert opt_params['best_params']['max_depth'] == max(scores, key=scores.get)
+    assert abs(opt_params['best_score'] - max(scores.values())) < 1e-10
+
+
+class _ShuffledKFold(KFold):
+    """KFold with shuffling whose random state changes with every call of 'split()'."""
+
+    def __init__(self):
+        super().__init__(n_splits=2, shuffle=True, random_state=np.random.RandomState(4))
+        self.num_calls = 0
+
+    def split(self, *args, **kwargs):
+        self.num_calls += 1
+        return super().split(*args, **kwargs)
+
+
+_TUNING_ARGS_MSE = dict(search_space={'learning_rate': [0.01, 1]}, n_trials=3, max_num_boost_round=50,
+                        early_stopping_rounds=5, metric='mse', params={'verbose': -1}, verbose_eval=0)
+
+
+def test_tuning_splitter_folds():
+    # A splitter is called once, so that every trial uses the same folds. It was called in every trial, and a
+    # shuffled splitter with a 'RandomState' instance gave other folds each time
+    X, y, _ = _simulate_data()
+    folds_first_call = list(_ShuffledKFold().split(np.zeros(len(y)), y))
+    splitter = _ShuffledKFold()
+    opt_params = gpb.tune_pars_TPE_algorithm_optuna(**_TUNING_ARGS_MSE, X=X, y=y, folds=splitter, tpe_seed=1)
+    assert splitter.num_calls == 1
+    best_score = _cv_best_score(opt_params['best_params'], X, y, folds_first_call, 'mse')
+    assert abs(opt_params['best_score'][0] - best_score) < 1e-10
+    splitter = _ShuffledKFold()
+    opt_params = gpb.grid_search_tune_parameters(param_grid={'learning_rate': [0.01, 0.1, 1]},
+                                                 train_set=gpb.Dataset(X, y), num_boost_round=50,
+                                                 early_stopping_rounds=5, folds=splitter, metric='mse',
+                                                 params={'verbose': -1}, verbose_eval=0)
+    assert splitter.num_calls == 1
+    best_score = _cv_best_score(opt_params['best_params'], X, y, folds_first_call, 'mse')
+    assert abs(opt_params['best_score'] - best_score) < 1e-10
+
+
+def test_tune_pars_SMAC_splitter_folds():
+    pytest.importorskip("smac")
+    X, y, _ = _simulate_data()
+    folds_first_call = list(_ShuffledKFold().split(np.zeros(len(y)), y))
+    splitter = _ShuffledKFold()
+    opt_params = gpb.tune_pars_SMAC(**_TUNING_ARGS_MSE, X=X, y=y, folds=splitter, smac_seed=1)
+    assert splitter.num_calls == 1
+    best_score = _cv_best_score(opt_params['best_params'], X, y, folds_first_call, 'mse')
+    assert abs(opt_params['best_score'] - best_score) < 1e-10

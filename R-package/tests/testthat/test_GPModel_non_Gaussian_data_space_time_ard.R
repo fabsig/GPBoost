@@ -829,6 +829,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_null(gp_model$get_optim_params()$init_aux_pars)
     capture.output( fit(gp_model, y = y_t, X = X_t, params = list(maxit = 0)), file='NUL')
     expect_equal(as.vector(gp_model$get_aux_pars())[2], 10)
+    # A fit after a likelihood evaluation starts from the same auxiliary parameters as without the evaluation. It
+    #   started from those of the evaluation, also when initial values were given
+    gp_model <- GPModel(gp_coords = coords_t, cov_function = "matern", cov_fct_shape = 1.5, likelihood = "t")
+    gp_model$set_optim_params(params = list(init_aux_pars = c(0.5, 10)))
+    nll <- gp_model$neg_log_likelihood(cov_pars = c(1, 0.2), y = y_t, aux_pars = c(2, 4))
+    expect_equal(as.vector(gp_model$get_aux_pars()), c(2, 4))
+    capture.output( fit(gp_model, y = y_t, X = X_t, params = list(maxit = 0)), file='NUL')
+    expect_equal(as.vector(gp_model$get_aux_pars()), c(0.5, 10))
+    aux_pars_fit <- list()
+    for (evaluate in c(FALSE, TRUE)) {
+      gp_model <- GPModel(gp_coords = coords_t, cov_function = "matern", cov_fct_shape = 1.5, likelihood = "t")
+      if (evaluate) nll <- gp_model$neg_log_likelihood(cov_pars = c(1, 0.2), y = y_t, aux_pars = c(2, 4))
+      capture.output( fit(gp_model, y = y_t, X = X_t, params = list(maxit = 0, init_coef_aux_pars_from_iid_model = FALSE)), file='NUL')
+      aux_pars_fit[[length(aux_pars_fit) + 1]] <- as.vector(gp_model$get_aux_pars())
+    }
+    expect_equal(aux_pars_fit[[2]], aux_pars_fit[[1]])
     # Initial values only apply to the likelihood for which they were given
     gp_model <- GPModel(gp_coords = coords_t, cov_function = "matern", cov_fct_shape = 1.5, likelihood = "t")
     gp_model$set_optim_params(params = list(init_aux_pars = c(0.5, 1000)))
@@ -919,6 +935,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model_it <- new_model("iterative", list(cg_preconditioner_type = "pivoted_cholesky"))
     expect_error(gp_model_it$neg_log_likelihood(cov_pars = cov_pars_eval, y = y_t, aux_pars = aux_pars_eval),
                  "requires W to be positive")
+    # Sigma^-1 + W can have a positive diagonal without being positive definite: here, it has the eigenvalues -0.07 and
+    #   4.92 (two locations with two observations each). The iterative methods returned predictive variances of almost
+    #   zero (negative estimates were set to zero), while the Cholesky factorization fails
+    coords_saddle <- matrix(rep(c(0, 0.01), each = 2), ncol = 1)
+    y_saddle <- rep(c(-3, 3), 2)
+    for (matrix_inversion_method in c("cholesky", "iterative")) {
+      gp_model <- GPModel(gp_coords = coords_saddle, cov_function = "exponential", likelihood = "t_fisher_laplace_combined",
+                          gp_approx = "vecchia", num_neighbors = 1, vecchia_ordering = "none",
+                          matrix_inversion_method = matrix_inversion_method)
+      gp_model$set_optim_params(params = list(init_aux_pars = c(1, 3)))
+      expected_message <- if (matrix_inversion_method == "iterative") "direction of non-positive curvature" else "not positive definite"
+      expect_error(predict(gp_model, y = y_saddle, gp_coords_pred = coords_saddle[c(1, 3), , drop = FALSE], cov_pars = c(2, 0.1),
+                           predict_var = TRUE, predict_response = FALSE), expected_message)
+      expect_error(predict(gp_model, y = y_saddle, gp_coords_pred = coords_saddle[c(1, 3), , drop = FALSE], cov_pars = c(2, 0.1),
+                           predict_response = FALSE), expected_message)
+    }
   })
 
   test_that("t_fisher_laplace_combined likelihood with the VIF approximation and iterative methods ", {
@@ -1102,6 +1134,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model_it$get_cov_pars()) - as.vector(gp_model_chol$get_cov_pars()))), 0.02)
     expect_lt(sum(abs(as.vector(gp_model_it$get_aux_pars()) - as.vector(gp_model_chol$get_aux_pars()))), 0.03)
     expect_lt(abs(gp_model_it$get_current_neg_log_likelihood() - gp_model_chol$get_current_neg_log_likelihood()), 0.5)
+    # Sigma^-1 + Z^T W Z can have a positive diagonal without being positive definite: two cells of a crossed design
+    #   are outliers with negative W, and they are coupled through the random effects. The iterative methods returned
+    #   predictive variances, while the Cholesky factorization fails
+    group_saddle <- cbind(c(1, 1, 2, 2), c(1, 2, 1, 2))
+    for (matrix_inversion_method in c("cholesky", "iterative")) {
+      gp_model <- GPModel(group_data = group_saddle, likelihood = "t_fisher_laplace_combined",
+                          matrix_inversion_method = matrix_inversion_method)
+      gp_model$set_optim_params(params = list(init_aux_pars = c(1, 3)))
+      expected_message <- if (matrix_inversion_method == "iterative") "direction of non-positive curvature" else "not positive definite"
+      expect_error(predict(gp_model, y = c(0, 4, 4, 0), group_data_pred = group_saddle[1:2, ], cov_pars = c(10, 10),
+                           predict_var = TRUE, predict_response = FALSE), expected_message)
+    }
   })
 
   test_that("gaussian_heteroscedastic_fixed_and_random likelihood", {

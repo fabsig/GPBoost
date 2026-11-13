@@ -222,6 +222,7 @@ namespace GPBoost {
 		}
 		// The likelihood has been initialized anew with its default auxiliary parameters. Initial values given
 		//	for them only apply to the same likelihood
+		aux_pars_changed_by_evaluation_ = false;
 		if (init_aux_pars_given_) {
 			if (GetLikelihood() == likelihood_before && (int)init_aux_pars_.size() == NumAuxPars()) {
 				SetAuxParsOriginalScale(init_aux_pars_.data());
@@ -395,6 +396,7 @@ namespace GPBoost {
 			init_aux_pars_ = Eigen::Map<const vec_t>(init_aux_pars, NumAuxPars());
 			SetAuxParsOriginalScale(init_aux_pars_.data());
 			init_aux_pars_given_ = true;
+			aux_pars_changed_by_evaluation_ = false;
 		}
 		init_coef_aux_pars_from_iid_model_ = init_coef_aux_pars_from_iid_model;
 		// Logging level
@@ -549,6 +551,7 @@ namespace GPBoost {
 		bool called_in_GPBoost_algorithm,
 		bool reuse_learning_rates_from_previous_call) {
 		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
+		RestoreAuxParsBeforeEvaluation();
 		if (y_data != nullptr) {
 			InitializeCovParsIfNotDefined(y_data, fixed_effects);
 			// Note: y_data can be null_ptr for non-Gaussian data. For non-Gaussian data, the function 'InitializeCovParsIfNotDefined' is called in 'SetY'
@@ -615,6 +618,7 @@ namespace GPBoost {
 		int num_covariates,
 		const double* fixed_effects) {
 		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
+		RestoreAuxParsBeforeEvaluation();
 		InitializeCovParsIfNotDefined(y_data, fixed_effects, covariate_data, num_covariates);
 		double* init_coef_ptr;
 		num_covariates_ = num_covariates;
@@ -705,6 +709,7 @@ namespace GPBoost {
 
 	void REModel::FindInitialValueBoosting(const double* fixed_effects) {
 		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
+		RestoreAuxParsBeforeEvaluation();
 		CHECK(cov_pars_initialized_);
 		// The homoscedastic model for the initial covariance parameters is estimated here and not in 'InitializeCovParsIfNotDefined()',
 		//	since it accounts for an offset of the mean (initial score), which is only known now
@@ -846,8 +851,17 @@ namespace GPBoost {
 		double& negll,
 		const double* fixed_effects,
 		bool InitializeModeCovMat,
-		bool CalcModePostRandEff_already_done) {
+		bool CalcModePostRandEff_already_done,
+		const double* aux_pars) {
 		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
+		if (aux_pars != nullptr) {
+			if (!aux_pars_changed_by_evaluation_) {
+				aux_pars_before_evaluation_ = Eigen::Map<const vec_t>(GetAuxParsInternalScale(), NumAuxPars());
+				aux_pars_have_been_set_before_evaluation_ = AuxParsHaveBeenSetOrEstimated();
+				aux_pars_changed_by_evaluation_ = true;
+			}
+			SetAuxParsOriginalScale(aux_pars);
+		}
 		vec_t cov_pars_trafo;
 		if (cov_pars == nullptr) {
 			if (y_data != nullptr) {
@@ -1739,6 +1753,35 @@ namespace GPBoost {
 			re_model_den_->TransformAuxPars(aux_pars, aux_pars_trans.data());
 		}
 		SetAuxPars(aux_pars_trans.data());
+	}
+
+	const double* REModel::GetAuxParsInternalScale() {
+		if (matrix_format_ == "sp_mat_t") {
+			return re_model_sp_->GetAuxPars();
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			return re_model_sp_rm_->GetAuxPars();
+		}
+		else {
+			return re_model_den_->GetAuxPars();
+		}
+	}
+
+	void REModel::RestoreAuxParsBeforeEvaluation() {
+		if (!aux_pars_changed_by_evaluation_) {
+			return;
+		}
+		aux_pars_changed_by_evaluation_ = false;
+		SetAuxPars(aux_pars_before_evaluation_.data());
+		if (matrix_format_ == "sp_mat_t") {
+			re_model_sp_->SetAuxParsHaveBeenSet(aux_pars_have_been_set_before_evaluation_);
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			re_model_sp_rm_->SetAuxParsHaveBeenSet(aux_pars_have_been_set_before_evaluation_);
+		}
+		else {
+			re_model_den_->SetAuxParsHaveBeenSet(aux_pars_have_been_set_before_evaluation_);
+		}
 	}
 
 	/*!

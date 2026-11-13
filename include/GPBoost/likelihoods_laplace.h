@@ -404,6 +404,20 @@ namespace GPBoost {
 						SigmaI_plus_ZtWZ_inv_diag_ = SigmaI_plus_ZtWZ_rm_.diagonal().cwiseInverse();
 					}
 				}
+				// A positive diagonal does not imply that Sigma^-1 + Z^T W Z is positive definite. The stochastic Lanczos quadrature for
+				//	the marginal likelihood shows this, and otherwise (e.g., for predictions) it is checked with the conjugate gradient
+				//	algorithm, as the Cholesky factorization of the 'cholesky' method does
+				if (!calc_mll && !has_NA_or_Inf && HasNegativeValueInformationLogLikOnDataScale()) {
+					vec_t SigmaI_plus_ZtWZ_inv_rand_vec(dim_mode_);
+					bool not_positive_definite = false;
+					int num_cg_steps_check;
+					CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, RandomVectorPositiveDefinitenessCheck(), SigmaI_plus_ZtWZ_inv_rand_vec, not_positive_definite,
+						cg_max_num_it_, cg_delta_conv_pred_, true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_,
+						P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_check, cg_convergence_params_pred_);
+					if (not_positive_definite) {
+						SetNAOrInfFailedCholeskyModeFinding(__func__, MessageNotPositiveDefiniteCG(), approx_marginal_ll, has_NA_or_Inf);
+					}
+				}
 				if (calc_mll && !has_NA_or_Inf) {//calculate determinant term for approx_marginal_ll
 					//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
 					if (!saved_rand_vec_trace_) {
@@ -944,6 +958,19 @@ namespace GPBoost {
 						SetNAOrInfFailedCholeskyModeFinding(__func__, "Sigma^(-1) + W is not positive definite (it has a non-positive "
 							"diagonal entry) ", approx_marginal_ll, has_NA_or_Inf);
 					}
+					// A positive diagonal does not imply that Sigma^-1 + W is positive definite. The stochastic Lanczos quadrature for
+					//	the marginal likelihood shows this, and otherwise (e.g., for predictions) it is checked with the conjugate
+					//	gradient algorithm, as the Cholesky factorization of the 'cholesky' method does
+					if (!calc_mll && !has_NA_or_Inf) {
+						vec_t SigmaI_plus_W_inv_rand_vec(dim_mode_);
+						bool not_positive_definite = false;
+						CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
+							chol_fact_sigma_woodbury_woodbury, RandomVectorPositiveDefinitenessCheck(), SigmaI_plus_W_inv_rand_vec, not_positive_definite,
+							cg_max_num_it_, true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true, cg_convergence_params_pred_);
+						if (not_positive_definite) {
+							SetNAOrInfFailedCholeskyModeFinding(__func__, MessageNotPositiveDefiniteCG(), approx_marginal_ll, has_NA_or_Inf);
+						}
+					}
 				}
 				if (calc_mll && !has_NA_or_Inf) {//calculate determinant term for approx_marginal_ll
 					//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
@@ -1373,6 +1400,18 @@ namespace GPBoost {
 				if (!PreconditionerRequiresPositiveInformation() && SigmaIPlusWVecchiaHasNonPositiveDiagonal()) {
 					SetNAOrInfFailedCholeskyModeFinding(__func__, "Sigma^(-1) + W is not positive definite (it has a non-positive "
 						"diagonal entry) ", approx_marginal_ll, has_NA_or_Inf);
+				}
+				// A positive diagonal does not imply that Sigma^-1 + W is positive definite. The stochastic Lanczos quadrature for the
+				//	marginal likelihood shows this, and otherwise (e.g., for predictions) it is checked with the conjugate gradient
+				//	algorithm, as the Cholesky factorization of the 'cholesky' method does
+				if (!calc_mll && !has_NA_or_Inf && HasNegativeValueInformationLogLik()) {
+					vec_t SigmaI_plus_W_inv_rand_vec(dim_mode_);
+					bool not_positive_definite = false;
+					Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, RandomVectorPositiveDefinitenessCheck(),
+						SigmaI_plus_W_inv_rand_vec, true, not_positive_definite, /*for_prediction=*/true);
+					if (not_positive_definite) {
+						SetNAOrInfFailedCholeskyModeFinding(__func__, MessageNotPositiveDefiniteCG(), approx_marginal_ll, has_NA_or_Inf);
+					}
 				}
 				if (calc_mll && !has_NA_or_Inf) {//calculate determinant term for approx_marginal_ll
 					//Generate random vectors (r_1, r_2, r_3, ...) with Cov(r_i) = I
@@ -5115,7 +5154,7 @@ namespace GPBoost {
 							}
 						}
 					} //end #pragma omp parallel
-					if (na_inf_flag_1) { Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_); }
+					HandleNAOrInfCGSimulation(na_inf_flag_1, __func__);
 					pred_var_global /= nsim_var_pred_;
 					pred_var += pred_var_global;
 					//Variance reduction
@@ -5179,6 +5218,12 @@ namespace GPBoost {
 						parallel_rngs.push_back(RNG_t(seed_local));
 					}
 					bool na_inf_flag_3 = false;
+					// If W has negative values, the simulated vectors are stored, see 'CovarianceEstimateDifferenceProjectedOnPSD()'
+					den_mat_t sim_pred_cov_pos, sim_pred_cov_neg;
+					if (information_has_negative_values) {
+						sim_pred_cov_pos.resize(n_pred, nsim_var_pred_);
+						sim_pred_cov_neg.resize(n_pred, nsim_var_pred_);
+					}
 #pragma omp parallel
 					{
 						int thread_nb;
@@ -5188,7 +5233,10 @@ namespace GPBoost {
 						thread_nb = 0;
 #endif
 						RNG_t rng_local = parallel_rngs[thread_nb];
-						den_mat_t pred_cov_private = den_mat_t::Zero(n_pred, n_pred);
+						den_mat_t pred_cov_private;
+						if (!information_has_negative_values) {
+							pred_cov_private = den_mat_t::Zero(n_pred, n_pred);
+						}
 #pragma omp for reduction(||:na_inf_flag_3)
 						for (int i = 0; i < nsim_var_pred_; ++i) {
 							//z_i ~ N(0,I)
@@ -5214,7 +5262,12 @@ namespace GPBoost {
 							}
 							//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T W Z)^(-1) Z_p^T)
 							vec_t rand_vec_pred = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
-							pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
+							if (information_has_negative_values) {
+								sim_pred_cov_pos.col(i) = rand_vec_pred;
+							}
+							else {
+								pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
+							}
 							if (information_has_negative_values) {
 								//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T W Z)^(-1) Z^T W_- Z (Sigma^(-1) + Z^T W Z)^(-1) Z_p^T)
 								for (int j = 0; j < num_data_; j++) {
@@ -5227,18 +5280,24 @@ namespace GPBoost {
 								if (has_NA_or_Inf) {
 									na_inf_flag_3 = true;
 								}
-								vec_t rand_vec_pred_2 = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
-								pred_cov_private -= rand_vec_pred_2 * rand_vec_pred_2.transpose();
+								sim_pred_cov_neg.col(i) = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
 							}
 						} //end for loop
+						if (!information_has_negative_values) {
 #pragma omp critical
-						{
-							pred_cov_global += pred_cov_private;
+							{
+								pred_cov_global += pred_cov_private;
+							}
 						}
 					} //end #pragma omp parallel
+					HandleNAOrInfCGSimulation(na_inf_flag_3, __func__);
 					if (na_inf_flag_3) { Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!"); }
-					pred_cov_global /= nsim_var_pred_;
-					if (information_has_negative_values) ProjectCovarianceEstimateOnPSD(pred_cov_global, "PredictLaplaceApproxGroupedRE");
+					if (information_has_negative_values) {
+						CovarianceEstimateDifferenceProjectedOnPSD(sim_pred_cov_pos, sim_pred_cov_neg, pred_cov_global, "PredictLaplaceApproxGroupedRE");
+					}
+					else {
+						pred_cov_global /= nsim_var_pred_;
+					}
 					T_mat pred_cov_T_mat;
 					ConvertTo_T_mat_FromDense<T_mat>(pred_cov_global, pred_cov_T_mat);
 					pred_cov -= (T_mat)(Ztilde * Sigma * Ztilde.transpose()); //TODO: create and call AddPredCovMatrices only for new groups and remove this line.
@@ -5690,6 +5749,14 @@ namespace GPBoost {
 					parallel_rngs.push_back(RNG_t(seed_local));
 				}
 				bool na_inf_flag_4 = false;
+				// If W has negative values, the simulated vectors are stored for the predictive covariance matrix, see
+				//	'CovarianceEstimateDifferenceProjectedOnPSD()'
+				const bool store_sim_pred_cov = calc_pred_cov && information_has_negative_values;
+				den_mat_t sim_pred_cov_pos, sim_pred_cov_neg;
+				if (store_sim_pred_cov) {
+					sim_pred_cov_pos.resize(num_pred, nsim_var_pred_);
+					sim_pred_cov_neg.resize(num_pred, nsim_var_pred_);
+				}
 #pragma omp parallel
 				{
 					int thread_nb;
@@ -5761,10 +5828,15 @@ namespace GPBoost {
 						vec_t rand_vec_pred = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
 						if (calc_pred_cov) {
 							if (i < nsim_var_pred_) {
-								den_mat_t pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
+								if (store_sim_pred_cov) {
+									sim_pred_cov_pos.col(i) = rand_vec_pred;
+								}
+								else {
+									den_mat_t pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
 #pragma omp critical
-								{
-									pred_cov += pred_cov_private;
+									{
+										pred_cov += pred_cov_private;
+									}
 								}
 							}
 						}
@@ -5803,11 +5875,7 @@ namespace GPBoost {
 							}
 							rand_vec_pred = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
 							if (calc_pred_cov) {
-								den_mat_t pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
-#pragma omp critical
-								{
-									pred_cov -= pred_cov_private;
-								}
+								sim_pred_cov_neg.col(i) = rand_vec_pred;
 							}
 							if (calc_pred_var) {
 								vec_t pred_var_private = rand_vec_pred.cwiseProduct(rand_vec_pred);
@@ -5876,10 +5944,14 @@ namespace GPBoost {
 //							}
 					}
 				}
-				if (na_inf_flag_4) { Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_); }
+				HandleNAOrInfCGSimulation(na_inf_flag_4, __func__);
 				if (calc_pred_cov) {
-					pred_cov /= nsim_var_pred_;
-					if (information_has_negative_values) ProjectCovarianceEstimateOnPSD(pred_cov, "PredictLaplaceApproxFSVA");
+					if (store_sim_pred_cov) {
+						CovarianceEstimateDifferenceProjectedOnPSD(sim_pred_cov_pos, sim_pred_cov_neg, pred_cov, "PredictLaplaceApproxFSVA");
+					}
+					else {
+						pred_cov /= nsim_var_pred_;
+					}
 					// Deterministic part
 					if (CondObsOnly) {
 						pred_cov.diagonal().array() += Dp.array();
@@ -6143,6 +6215,14 @@ namespace GPBoost {
 					parallel_rngs.push_back(RNG_t(seed_local));
 				}
 				bool na_inf_flag_5 = false;
+				// If W has negative values, the simulated vectors are stored for the predictive covariance matrix, see
+				//	'CovarianceEstimateDifferenceProjectedOnPSD()'
+				const bool store_sim_pred_cov = calc_pred_cov && information_has_negative_values;
+				den_mat_t sim_pred_cov_pos, sim_pred_cov_neg;
+				if (store_sim_pred_cov) {
+					sim_pred_cov_pos.resize(num_pred, nsim_var_pred_);
+					sim_pred_cov_neg.resize(num_pred, nsim_var_pred_);
+				}
 #pragma omp parallel
 				{
 					int thread_nb;
@@ -6153,7 +6233,7 @@ namespace GPBoost {
 #endif
 					RNG_t rng_local = parallel_rngs[thread_nb];
 					den_mat_t pred_cov_private;
-					if (calc_pred_cov) {
+					if (calc_pred_cov && !store_sim_pred_cov) {
 						pred_cov_private = den_mat_t::Zero(num_pred, num_pred);
 					}
 					vec_t pred_var_private;
@@ -6188,7 +6268,12 @@ namespace GPBoost {
 						}
 						if (calc_pred_cov) {
 							if (i < nsim_var_pred_) {
-								pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
+								if (store_sim_pred_cov) {
+									sim_pred_cov_pos.col(i) = rand_vec_pred;
+								}
+								else {
+									pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
+								}
 							}
 						}
 						if (calc_pred_var) {
@@ -6221,7 +6306,7 @@ namespace GPBoost {
 								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, rand_vec_pred_2, rand_vec_pred_2, false);
 							}
 							if (calc_pred_cov) {
-								pred_cov_private -= rand_vec_pred_2 * rand_vec_pred_2.transpose();
+								sim_pred_cov_neg.col(i) = rand_vec_pred_2;
 							}
 							if (calc_pred_var) {
 								pred_var_private -= rand_vec_pred_2.cwiseProduct(rand_vec_pred_2);
@@ -6230,7 +6315,7 @@ namespace GPBoost {
 					}//end for loop
 #pragma omp critical
 					{
-						if (calc_pred_cov) {
+						if (calc_pred_cov && !store_sim_pred_cov) {
 							pred_cov += pred_cov_private;
 						}
 						if (calc_pred_var) {
@@ -6238,10 +6323,14 @@ namespace GPBoost {
 						}
 					}
 				} // end #pragma omp parallel
-				if (na_inf_flag_5) { Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_); }
+				HandleNAOrInfCGSimulation(na_inf_flag_5, __func__);
 				if (calc_pred_cov) {
-					pred_cov /= nsim_var_pred_;
-					if (information_has_negative_values) ProjectCovarianceEstimateOnPSD(pred_cov, "PredictLaplaceApproxVecchia");
+					if (store_sim_pred_cov) {
+						CovarianceEstimateDifferenceProjectedOnPSD(sim_pred_cov_pos, sim_pred_cov_neg, pred_cov, "PredictLaplaceApproxVecchia");
+					}
+					else {
+						pred_cov /= nsim_var_pred_;
+					}
 					if (CondObsOnly) {
 						pred_cov.diagonal().array() += Dp.array();
 					}
@@ -6455,7 +6544,7 @@ namespace GPBoost {
 					rand_vec_sim_post_.col(i) = rand_vec_pred_SigmaI_plus_ZtWZ_inv;
 				}//end parallel loop
 			}
-			if (na_inf_flag_6) { Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_); }
+			HandleNAOrInfCGSimulation(na_inf_flag_6, __func__);
 //				//alernative version with multiple memory allocation
 //#pragma omp parallel for schedule(static)
 //				for (int i = 0; i < num_rand_vec_sim_post_; ++i) {
@@ -6570,7 +6659,7 @@ namespace GPBoost {
 				}
 				rand_vec_sim_post_.col(i) = rand_vec_pred_SigmaI_plus_W_inv;
 			}//end parallel loop
-			if (na_inf_flag_7) { Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_); }
+			HandleNAOrInfCGSimulation(na_inf_flag_7, __func__);
 		}//end matrix_inversion_method_ == "iterative"
 		SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
 		rand_vec_sim_post_calculated_ = true;
@@ -6682,7 +6771,7 @@ namespace GPBoost {
 				}
 				rand_vec_sim_post_.col(i) = rand_vec_pred_SigmaI_plus_W_inv;
 			}//end parallel loop
-			if (na_inf_flag_8) { Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_); }
+			HandleNAOrInfCGSimulation(na_inf_flag_8, __func__);
 		}//end matrix_inversion_method_ == "iterative"
 		SamplePosterior_LaplaceApprox_ScaleCovariance_AddMean();
 		rand_vec_sim_post_calculated_ = true;
@@ -6945,7 +7034,7 @@ namespace GPBoost {
 					}
 				}
 			} //end #pragma omp parallel
-			if (na_inf_flag_9) { Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_); }
+			HandleNAOrInfCGSimulation(na_inf_flag_9, __func__);
 			pred_var /= nsim_var_pred_;
 			//Variance reduction
 			if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
@@ -7067,7 +7156,7 @@ namespace GPBoost {
 					pred_var += pred_var_private;
 				}
 			}// end #pragma omp parallel
-			if (na_inf_flag_10) { Log::REDebug(CG_NA_OR_INF_WARNING_SAMPLE_POSTERIOR_); }
+			HandleNAOrInfCGSimulation(na_inf_flag_10, __func__);
 			pred_var /= nsim_var_pred_;
 			if (information_has_negative_values) SetNegativeVarianceEstimatesToZero(pred_var, "CalcVarLaplaceApproxVecchia");
 		} //end Version Simulation

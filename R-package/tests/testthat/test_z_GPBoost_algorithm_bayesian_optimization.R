@@ -77,6 +77,36 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                    list(deterministic = TRUE))
     })
 
+    test_that("Direction of the metric in 'gpb.grid.search.tune.parameters'", {
+
+      # Whether higher scores are better is taken from the first metric of the cross-validation. A metric given in
+      #   'params' was minimized when higher values are better, and so was a custom metric with 'higher_better' = TRUE
+      #   when the built-in metric was disabled
+      params_auc <- list(objective = "binary", verbose = -1)
+      param_grid <- list("learning_rate" = c(0.01, 0.5))
+      grid_search <- function(params, ...) {
+        gpb.grid.search.tune.parameters(param_grid = param_grid, data = gpb.Dataset(X, label = y_binary), params = params,
+                                        nrounds = 50, early_stopping_rounds = 5, folds = folds, verbose_eval = 0, ...)
+      }
+      auc_scores <- sapply(param_grid$learning_rate, function(learning_rate) {
+        cv_best_score(c(params_auc, list(learning_rate = learning_rate)), label = y_binary, metric = "auc")
+      })
+      opt_params_metric <- grid_search(params_auc, metric = "auc")
+      expect_lt(abs(opt_params_metric$best_score - max(auc_scores)), TOLERANCE)
+      expect_equal(grid_search(c(params_auc, list(metric = "auc"))), opt_params_metric)
+      agreement <- function(preds, dtrain) {
+        return(list(name = "agreement", value = mean((preds > 0.5) == getinfo(dtrain, "label")), higher_better = TRUE))
+      }
+      agreement_scores <- sapply(param_grid$learning_rate, function(learning_rate) {
+        cvbst <- gpb.cv(params = c(params_auc, list(learning_rate = learning_rate, force_col_wise = TRUE, deterministic = TRUE)),
+                        data = gpb.Dataset(X, label = y_binary), nrounds = 50, early_stopping_rounds = 5, folds = folds,
+                        metric = "None", eval = agreement, verbose = 0)
+        max(unlist(cvbst$record_evals$valid$agreement$eval))
+      })
+      opt_params_eval <- grid_search(params_auc, metric = "None", eval = agreement)
+      expect_lt(abs(opt_params_eval$best_score - max(agreement_scores)), TOLERANCE)
+    })
+
     test_that("Choosing tuning parameters with the approximation of SMAC in 'gpb.tune.pars.rf.bayesian.optimization'", {
 
       # 'mlr3' and 'mlr' (used by 'gpb.tune.pars.bayesian.optimization') warn when they are loaded in the same session
@@ -123,6 +153,17 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_true(any(grepl("Error in trial number", messages)))
       expect_lte(opt_params$best_params$bagging_fraction, 1)
       best_score <- cv_best_score(c(params_binary, opt_params$best_params), label = y_binary, metric = "auc")
+      expect_lt(abs(opt_params$best_score - best_score), TOLERANCE)
+      # A metric given in 'params' gives the same result. It was minimized when higher values are better
+      tune_auc <- function(params, ...) {
+        gpb.tune.pars.rf.bayesian.optimization(search_space = list("learning_rate" = c(0.01, 1)), n_trials = 4,
+                                               data = gpb.Dataset(X, label = y_binary), params = params, nrounds = 50,
+                                               early_stopping_rounds = 5, folds = folds, cv_seed = 2, verbose_eval = 0, ...)
+      }
+      params_auc <- list(objective = "binary", verbose = -1)
+      opt_params <- tune_auc(params_auc, metric = "auc")
+      expect_equal(tune_auc(c(params_auc, list(metric = "auc"))), opt_params)
+      best_score <- cv_best_score(c(params_auc, opt_params$best_params), label = y_binary, metric = "auc")
       expect_lt(abs(opt_params$best_score - best_score), TOLERANCE)
       # No valid trial at all
       capture.output(
@@ -200,6 +241,17 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         , file = "NUL")
       expect_lte(opt_params$best_params$bagging_fraction, 1)
       best_score <- cv_best_score(c(params_binary, opt_params$best_params), label = y_binary, metric = "auc")
+      expect_lt(abs(opt_params$best_score - best_score), TOLERANCE)
+      # A metric given in 'params' gives the same result. It was minimized when higher values are better
+      tune_auc <- function(params, ...) {
+        gpb.tune.pars.bayesian.optimization(search_space = list("learning_rate" = c(0.01, 1)), n_iter = 1,
+                                            data = gpb.Dataset(X, label = y_binary), params = params, nrounds = 50,
+                                            early_stopping_rounds = 5, folds = folds, cv_seed = 1, verbose_eval = 0, ...)
+      }
+      params_auc <- list(objective = "binary", verbose = -1)
+      opt_params <- tune_auc(params_auc, metric = "auc")
+      expect_equal(tune_auc(c(params_auc, list(metric = "auc"))), opt_params)
+      best_score <- cv_best_score(c(params_auc, opt_params$best_params), label = y_binary, metric = "auc")
       expect_lt(abs(opt_params$best_score - best_score), TOLERANCE)
 
       # A parameter with a single value is held fixed and not part of the initial design. The Gaussian process
