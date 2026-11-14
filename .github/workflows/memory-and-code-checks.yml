@@ -341,7 +341,14 @@ jobs:
       # a sanitizer in a test file that passed, which lands in '.Rout', is not seen by it at all.
       # The verdict is therefore formed in the step below, from the whole check directory.
       # The containers set 'OMP_THREAD_LIMIT=2', as CRAN does; this is deliberately not raised, it
-      # makes the reports more reproducible
+      # makes the reports more reproducible.
+      # The valgrind container additionally runs with 'OMP_NUM_THREADS=1'. Valgrind executes all
+      # threads of a process one after the other, so a second OpenMP thread does not shorten the
+      # run, while its waiting at every synchronization point is simulated as well. In November 2026
+      # this made the tests about four times slower than with a single thread, and nine files no
+      # longer finished within the time limit of a job. The code that is only executed with several
+      # threads is still covered by the ASan runs, which keep two threads, and the tests that set
+      # the number of threads explicitly use two threads under valgrind as well
       - name: Run the check in the ${{ matrix.name }} container
         env:
           NAME: ${{ matrix.id }}
@@ -360,6 +367,7 @@ jobs:
                 echo "::error::CHECK_ARGS for the valgrind container does not contain --use-valgrind"
                 exit 1
               fi
+              opts=(-e OMP_NUM_THREADS=1)
               ;;
             *)
               opts=(-e ASAN_OPTIONS=detect_leaks=0 -e UBSAN_OPTIONS=print_stacktrace=1)
@@ -606,10 +614,17 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
-      # the rchk container is used here simply because it contains a clang; 'libomp-14-dev' supplies
-      # the 'omp.h' of clang's OpenMP runtime, which the image does not have, and '-w /check' is
-      # needed because the script changes into the directory of its own parent
+      # the rchk container is used here simply because it contains a clang; 'libomp-<version>-dev'
+      # supplies the 'omp.h' of clang's OpenMP runtime, which the image does not have. Its version
+      # has to be the one of the clang in the image and is therefore taken from that clang, since
+      # it changes when the image moves to a newer Ubuntu release. The error output of apt is kept
+      # so that a package that cannot be installed shows up in the log. '-w /check' is needed
+      # because the script changes into the directory of its own parent
       - name: Compile with clang and the warning options of the helper script
         run: |
-          docker run --rm -v "${PWD}:/check" -w /check ghcr.io/r-hub/containers/rchk \
-            sh -c "apt-get update -qq && apt-get install -y -qq libomp-14-dev > /dev/null 2>&1 && CXX=clang++ sh helpers/check_compiler_warnings.sh"
+          docker run --rm -v "${PWD}:/check" -w /check -e DEBIAN_FRONTEND=noninteractive \
+            ghcr.io/r-hub/containers/rchk sh -c '
+            clang_major=$(clang++ -dumpversion | cut -d. -f1) &&
+            apt-get update -qq &&
+            apt-get install -y -qq "libomp-${clang_major}-dev" > /dev/null &&
+            CXX=clang++ sh helpers/check_compiler_warnings.sh'

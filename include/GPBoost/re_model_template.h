@@ -4675,6 +4675,7 @@ namespace GPBoost {
 			}
 			// Restores the response data of the model when 'Predict' is left, also if an error is thrown
 			struct RestoreResponseAfterPriorSampling {
+				explicit RestoreResponseAfterPriorSampling(REModelTemplate<T_mat, T_chol>& model_in) : model(model_in) {}
 				REModelTemplate<T_mat, T_chol>& model;
 				bool active = false;
 				std::map<data_size_t, vec_t> y, Zty, y_aux;
@@ -4696,7 +4697,7 @@ namespace GPBoost {
 						}
 					}
 				}
-			} restore_response{ *this };
+			} restore_response(*this);
 			vec_t y_zero_dummy;
 			if (sample_prior) {
 				if (predict_cov_mat || predict_var) {
