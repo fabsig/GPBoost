@@ -1753,7 +1753,9 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
     The local search of SMAC3 iterates over a set of parameter combinations, whose order depends on the hash
     randomization of Python. While this function runs, the hash of the parameter combinations of ConfigSpace is
     therefore replaced by one that does not depend on it, so that the results for a given 'smac_seed' are
-    reproducible.
+    reproducible. Exceptions are differences in the last digits of the scores that arise when several threads
+    add up partial sums in an order that varies between runs, which happens, e.g., on Linux with GCC; SMAC can
+    then choose other parameter combinations after some trials.
 
     References
     ----------

@@ -138,9 +138,19 @@ def test_tune_pars_SMAC_gpboost(capsys):
     assert abs(opt_params['best_score'] - best_score) < 1e-8
 
 
+# The last digits of a cross-validation score can differ between processes, since the threads add up their
+# partial sums in the order in which they finish (observed on Linux with GCC), and the proposals of SMAC then
+# differ after some trials. The script therefore replaces the cross-validation by a fixed function of the
+# parameters, so that only the proposals of SMAC are compared
 _SMAC_TRIALS_SCRIPT = """
 import numpy as np
 import gpboost as gpb
+import gpboost.engine
+def _score_of_parameters(params, **kwargs):
+    score = ((np.log10(params['learning_rate']) + 1) ** 2 + ((params['min_data_in_leaf'] - 20) / 30) ** 2
+             + np.log10(params['lambda_l2']) / 10 + 0.1 * params['line_search_step_length'])
+    return score, 1, False
+gpboost.engine._tuning_cv_score = _score_of_parameters
 rng = np.random.default_rng(1)
 X = rng.uniform(size=(200, 2))
 y = np.sin(4 * X[:, 0]) + X[:, 1] + rng.normal(scale=0.3, size=200)
