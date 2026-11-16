@@ -362,6 +362,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         vecchia_ordering = "none"), file='NUL')
     capture.output( nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll_gneiting_fixed_nu,y=y), file='NUL')
     expect_lt(abs(nll-nll_exact),TOLERANCE_STRICT)
+    # Default initial values: alpha in the interior of (0,1], since the temporal covariance is analytic for alpha = 1
+    # (an almost singular covariance matrix and a huge gradient for time series that are long compared to their time step),
+    # and a such that 1 + a * |u|^(2 * alpha) = 20^(2 / d) at half the median temporal distance u
+    capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting",
+                                           y = y, X = X, params = list(maxit = 0)), file='NUL')
+    init_cov_pars <- as.vector(gp_model$get_optim_params()$init_cov_pars)
+    expect_equal(init_cov_pars[5], 0.5)
+    expect_lt(abs(init_cov_pars[3] - (20 - 1) / (median(dist(time)) / 2)), TOLERANCE_STRICT)
 
     if (!SKIP_BESSEL_COV_TESTS) {
       cov_pars_nll_gneiting <- c(0.1,1,0.2,2,0.5,1.5,0.5,2)

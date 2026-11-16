@@ -1787,9 +1787,9 @@ namespace GPBoost {
 				}//end matern_space_time
 				else if (cov_fct_type_ == "space_time_gneiting") {//pars Parameter in the following order : sigma2, a, c, alpha, nu, beta, delta
 					int dim_space = (int)coords.cols() - 1;
-					pars[1] = (std::pow(20., 2. / dim_space) - 1.) / (med_dist_time * med_dist_time) * 4.;//a, temporal range such that correlation at 0.05 at half the median distance
+					pars[3] = 0.5;//alpha, in the interior since the temporal covariance is analytic for alpha = 1, which can make the covariance matrix almost singular
+					pars[1] = (std::pow(20., 2. / dim_space) - 1.) / std::pow(med_dist_time / 2., 2. * pars[3]);//a, temporal range such that 1 + a * |u|^(2 * alpha) = 20^(2 / d) at half the median distance
 					pars[2] = 2. * 4.7 / med_dist_space;//c, range such that correlation at 0.05 at half the median distance
-					pars[3] = 1.;//alpha
 					pars[4] = 1.5;//nu -> matern 1.5
 					pars[5] = 1.;//beta
 					pars[6] = 1;//delta
