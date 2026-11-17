@@ -882,6 +882,71 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(max(abs(pred_os$response_mean - pred_os_loaded$response_mean)), 1E-10)
     unlink(file_os)
   })
+
+  test_that("Feature names with special characters can be used, dumped, saved, and loaded", {
+
+    # Feature names used to be rejected if they contained any of the characters " , : [ ] { }, and a
+    # backslash produced invalid JSON in gpb.dump(). Spaces and line breaks are the separators of the
+    # text model format and are replaced with '_'
+    feature_names_fn <- c("a,b", "a:b", "x[1]", "{x}", "\"quoted\"", "C:\\temp", "two\nlines", "x y")
+    expected_names_fn <- c("a,b", "a:b", "x[1]", "{x}", "\"quoted\"", "C:\\temp", "two_lines", "x_y")
+    n_fn <- 200L
+    p_fn <- length(feature_names_fn)
+    set.seed(3)# the test compares names and predictions with each other, it does not use hard-wired values
+    X_fn <- matrix(runif(n_fn * p_fn), ncol = p_fn)
+    colnames(X_fn) <- feature_names_fn
+    group_fn <- rep(1:20, each = n_fn / 20L)
+    y_fn <- as.vector(X_fn %*% seq_len(p_fn)) + rnorm(20)[group_fn] + rnorm(n_fn, sd = 0.1)
+    params_fn <- list(objective = "regression_l2", learning_rate = 0.1, min_data_in_leaf = 5L, verbose = -1L)
+    names_of_dump <- function(booster) {
+      json_model <- gpb.dump(booster)
+      expect_true(RJSONIO::isValidJSON(json_model, asText = TRUE))
+      parsed_model <- RJSONIO::fromJSON(content = json_model, simplify = FALSE)
+      expect_true(all(names(parsed_model$feature_infos) %in% expected_names_fn))
+      expect_gt(length(parsed_model$feature_importances), 0L)
+      expect_true(all(names(parsed_model$feature_importances) %in% expected_names_fn))
+      unlist(parsed_model$feature_names)
+    }
+
+    # Boosting without a gp_model
+    dtrain_fn <- gpb.Dataset(data = X_fn, label = y_fn)
+    expect_output(bst_fn <- gpb.train(data = dtrain_fn, nrounds = 5L, params = params_fn, verbose = 0),
+                  regexp = "whitespaces in feature_names")
+    expect_identical(colnames(dtrain_fn), expected_names_fn)
+    expect_identical(names_of_dump(bst_fn), expected_names_fn)
+    imp_fn <- gpb.importance(bst_fn)
+    expect_gt(nrow(imp_fn), 0L)
+    expect_true(all(imp_fn$Feature %in% expected_names_fn))
+    split_features_fn <- stats::na.omit(gpb.model.dt.tree(bst_fn)$split_feature)
+    expect_gt(length(split_features_fn), 0L)
+    expect_true(all(split_features_fn %in% expected_names_fn))
+    pred_fn <- predict(bst_fn, X_fn)
+    model_file_fn <- tempfile(fileext = ".model")
+    gpb.save(bst_fn, model_file_fn)
+    bst_fn_file <- gpb.load(filename = model_file_fn)
+    unlink(model_file_fn)
+    expect_identical(names_of_dump(bst_fn_file), expected_names_fn)
+    expect_identical(predict(bst_fn_file, X_fn), pred_fn)
+    bst_fn_str <- gpb.load(model_str = bst_fn$save_model_to_string())
+    expect_identical(names_of_dump(bst_fn_str), expected_names_fn)
+    expect_identical(predict(bst_fn_str, X_fn), pred_fn)
+
+    # Boosting with a gp_model, whose model file is a JSON file that contains the booster as a string
+    dtrain_fn_gp <- gpb.Dataset(data = X_fn, label = y_fn)
+    gp_model_fn <- GPModel(group_data = group_fn, likelihood = "gaussian")
+    expect_output(bst_fn_gp <- gpb.train(data = dtrain_fn_gp, gp_model = gp_model_fn, nrounds = 5L,
+                                         params = params_fn, verbose = 0),
+                  regexp = "whitespaces in feature_names")
+    expect_identical(names_of_dump(bst_fn_gp), expected_names_fn)
+    pred_fn_gp <- predict(bst_fn_gp, data = X_fn, group_data_pred = group_fn, predict_var = FALSE)
+    file_fn_gp <- tempfile(fileext = ".json")
+    gpb.save(bst_fn_gp, filename = file_fn_gp, save_raw_data = TRUE)
+    bst_fn_gp_loaded <- gpb.load(filename = file_fn_gp)
+    unlink(file_fn_gp)
+    expect_identical(names_of_dump(bst_fn_gp_loaded), expected_names_fn)
+    pred_fn_gp_loaded <- predict(bst_fn_gp_loaded, data = X_fn, group_data_pred = group_fn, predict_var = FALSE)
+    expect_lt(max(abs(pred_fn_gp$response_mean - pred_fn_gp_loaded$response_mean)), 1E-10)
+  })
 } else {
   Sys.sleep(30)
 

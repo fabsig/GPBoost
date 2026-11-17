@@ -899,22 +899,34 @@ static T SafeLog(T x) {
   }
 }
 
-inline bool CheckAllowedJSON(const std::string& s) {
-  unsigned char char_code;
+/*!
+* \brief Escape a string such that it can be written between the quotes of a JSON string
+*/
+inline std::string EscapeJSONString(const std::string& s) {
+  static const char hex_digits[] = "0123456789abcdef";
+  std::string ret;
+  ret.reserve(s.size());
   for (auto c : s) {
-    char_code = static_cast<unsigned char>(c);
-    if (char_code == 34      // "
-        || char_code == 44   // ,
-        || char_code == 58   // :
-        || char_code == 91   // [
-        || char_code == 93   // ]
-        || char_code == 123  // {
-        || char_code == 125  // }
-        ) {
-      return false;
+    const unsigned char char_code = static_cast<unsigned char>(c);
+    switch (c) {
+      case '"': ret += "\\\""; break;
+      case '\\': ret += "\\\\"; break;
+      case '\b': ret += "\\b"; break;
+      case '\f': ret += "\\f"; break;
+      case '\n': ret += "\\n"; break;
+      case '\r': ret += "\\r"; break;
+      case '\t': ret += "\\t"; break;
+      default:
+        if (char_code < 0x20) {
+          ret += "\\u00";
+          ret += hex_digits[char_code >> 4];
+          ret += hex_digits[char_code & 0xF];
+        } else {
+          ret += c;
+        }
     }
   }
-  return true;
+  return ret;
 }
 
 inline int RoundInt(double x) {

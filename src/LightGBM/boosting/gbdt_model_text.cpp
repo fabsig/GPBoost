@@ -35,8 +35,14 @@ namespace LightGBM {
 
 		str_buf << "\"average_output\":" << (average_output_ ? "true" : "false") << ",\n";
 
-		str_buf << "\"feature_names\":[\"" << CommonC::Join(feature_names_, "\",\"")
-			<< "\"]," << '\n';
+		str_buf << "\"feature_names\":[";
+		for (size_t i = 0; i < feature_names_.size(); ++i) {
+			if (i > 0) {
+				str_buf << ",";
+			}
+			str_buf << "\"" << Common::EscapeJSONString(feature_names_[i]) << "\"";
+		}
+		str_buf << "]," << '\n';
 
 		str_buf << "\"monotone_constraints\":["
 			<< CommonC::Join(monotone_constraints_, ",") << "]," << '\n';
@@ -72,7 +78,7 @@ namespace LightGBM {
 			if (!first_obj) {
 				str_buf << ",";
 			}
-			str_buf << "\"" << feature_names_[i] << "\":";
+			str_buf << "\"" << Common::EscapeJSONString(feature_names_[i]) << "\":";
 			str_buf << json_str_buf.str();
 			first_obj = false;
 		}
@@ -114,7 +120,7 @@ namespace LightGBM {
 			if (i > 0) {
 				str_buf << ",";
 			}
-			str_buf << "\"" << pairs[i].second << "\":" << std::to_string(pairs[i].first);
+			str_buf << "\"" << Common::EscapeJSONString(pairs[i].second) << "\":" << std::to_string(pairs[i].first);
 		}
 		str_buf << "}" << '\n';
 

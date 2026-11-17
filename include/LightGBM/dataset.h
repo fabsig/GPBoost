@@ -609,16 +609,15 @@ class Dataset {
     }
     feature_names_ = std::vector<std::string>(feature_names);
     std::unordered_set<std::string> feature_name_set;
-    // replace ' ' in feature_names with '_'
+    // spaces separate the feature names and line breaks the lines of the text model format, so both are replaced
+    // with '_'. All other characters are allowed: the JSON dump of a model escapes them where necessary
     bool spaceInFeatureName = false;
     for (auto& feature_name : feature_names_) {
-      // check json
-      if (!Common::CheckAllowedJSON(feature_name)) {
-        Log::Fatal("Do not support special JSON characters in feature name.");
-      }
-      if (feature_name.find(' ') != std::string::npos) {
-        spaceInFeatureName = true;
-        std::replace(feature_name.begin(), feature_name.end(), ' ', '_');
+      for (auto& c : feature_name) {
+        if (c == ' ' || c == '\n' || c == '\r') {
+          spaceInFeatureName = true;
+          c = '_';
+        }
       }
       if (feature_name_set.count(feature_name) > 0) {
         Log::Fatal("Feature (%s) appears more than one time.", feature_name.c_str());
