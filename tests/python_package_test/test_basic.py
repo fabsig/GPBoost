@@ -445,3 +445,41 @@ def test_load_legacy_zero_inflated_gamma_is_refused():
     # the one of 'hurdle_gamma' is the mean of the positive part -> such a model must not be loaded silently
     with pytest.raises(ValueError, match="zero_inflated_gamma"):
         gpb.GPModel(model_dict={"likelihood": "zero_inflated_gamma", "gp_approx": "none"})
+
+
+def test_feature_names_with_special_characters(tmp_path):
+    # A Dataset replaces spaces and line breaks in feature names with '_' and accepts all other characters.
+    # Dataset.feature_name used to keep the names as given, while get_feature_name() and the Booster returned
+    # the stored names, and names longer than 254 bytes raised a BufferError in get_feature_name()
+    pd = pytest.importorskip("pandas")
+    long_name = "long" * 100
+    names = ["a,b", "a:b", "x[1]", "{x}", '"quoted"', "C:\\temp", "tab\there", "two\nlines", "cat x", long_name]
+    expected = ["a,b", "a:b", "x[1]", "{x}", '"quoted"', "C:\\temp", "tab\there", "two_lines", "cat_x", long_name]
+    rng = np.random.default_rng(3)
+    X = rng.uniform(size=(200, len(names)))
+    X[:, 8] = rng.integers(0, 4, size=200)
+    df = pd.DataFrame(X, columns=names)
+    y = X @ np.arange(1, len(names) + 1) + rng.normal(scale=0.1, size=200)
+    params = {"objective": "regression_l2", "min_data_in_leaf": 5, "verbose": -1}
+    # categorical features can be given by the original or the stored names, also for a separately
+    # created validation set, which takes the names of the constructed training set
+    for categorical_feature in (["cat x"], ["cat_x"]):
+        train_set = gpb.Dataset(df, y, categorical_feature=categorical_feature, free_raw_data=False).construct()
+        assert train_set.feature_name == expected
+        assert train_set.get_feature_name() == expected
+        valid_set = gpb.Dataset(df, y, free_raw_data=False)
+        bst = gpb.train(params, train_set, num_boost_round=5, valid_sets=[valid_set])
+        assert valid_set.feature_name == expected
+        assert bst.feature_name() == expected
+        model_dump = bst.dump_model()
+        assert model_dump["feature_names"] == expected
+        assert len(model_dump["feature_infos"]["cat_x"]["values"]) > 0  # only categorical features have values
+    pred = bst.predict(df)
+    model_file = tmp_path / "model.txt"
+    bst.save_model(str(model_file))
+    for bst_loaded in (gpb.Booster(model_str=bst.model_to_string()), gpb.Booster(model_file=str(model_file))):
+        assert bst_loaded.feature_name() == expected
+        assert bst_loaded.dump_model()["feature_names"] == expected
+        np.testing.assert_array_equal(bst_loaded.predict(df), pred)
+    dataset_names_set_later = gpb.Dataset(X, y).construct().set_feature_name(names)
+    assert dataset_names_set_later.feature_name == expected

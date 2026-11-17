@@ -664,6 +664,7 @@ namespace LightGBM {
 		// alias = has_header
 		// desc = set this to ``true`` if input data has header
 		// desc = **Note**: works only in case of loading data directly from file
+		// desc = **Note**: the header is split at tabs and commas, so the column names in a data file cannot contain these characters. Feature names that are set for a ``Dataset`` in R or Python can contain commas
 		bool header = false;
 
 		// type = int or string

@@ -125,7 +125,8 @@ Dataset <- R6::R6Class(
         # Check for character name
         if (is.character(private$categorical_feature)) {
 
-            cate_indices <- as.list(match(private$categorical_feature, private$colnames) - 1L)
+            cate_indices <- as.list(match(gpb.normalize.feature.names(private$categorical_feature),
+                                          gpb.normalize.feature.names(private$colnames)) - 1L)
 
             # Provided indices, but some indices are not existing?
             if (sum(is.na(cate_indices)) > 0L) {

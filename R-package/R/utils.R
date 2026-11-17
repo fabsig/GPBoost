@@ -59,6 +59,13 @@ gpb.params2str <- function(params) {
   
 }
 
+# Feature names in the form in which a Dataset and a model store them: spaces and line breaks separate the
+# feature names and the lines of the text model format, so the C++ library replaces them with '_'. Names
+# given by the user are compared in this form, so that both the original and the stored names can be used
+gpb.normalize.feature.names <- function(feature_names) {
+  return(gsub(pattern = "[ \n\r]", replacement = "_", x = feature_names))
+}
+
 gpb.check_interaction_constraints <- function(params, column_names) {
   
   # Convert interaction constraints to feature numbers
@@ -78,7 +85,8 @@ gpb.check_interaction_constraints <- function(params, column_names) {
       # Check for character name
       if (is.character(constraint)) {
         
-        constraint_indices <- as.integer(match(constraint, column_names) - 1L)
+        constraint_indices <- as.integer(match(gpb.normalize.feature.names(constraint),
+                                               gpb.normalize.feature.names(column_names)) - 1L)
         
         # Provided indices, but some indices are not existing?
         if (sum(is.na(constraint_indices)) > 0L) {

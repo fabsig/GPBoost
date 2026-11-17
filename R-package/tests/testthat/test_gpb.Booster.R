@@ -947,6 +947,32 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     pred_fn_gp_loaded <- predict(bst_fn_gp_loaded, data = X_fn, group_data_pred = group_fn, predict_var = FALSE)
     expect_lt(max(abs(pred_fn_gp$response_mean - pred_fn_gp_loaded$response_mean)), 1E-10)
   })
+
+  test_that("Categorical features and interaction constraints can be given by names with spaces or line breaks", {
+
+    # A Dataset replaces spaces and line breaks in feature names with '_'. The names in categorical_feature and
+    # interaction_constraints used to be compared with these stored names whenever a Dataset was constructed with
+    # the names of an already constructed reference, e.g., a separately created validation set, and were not found
+    set.seed(5)# the test checks names, it does not use hard-wired values
+    n_nf <- 200L
+    X_nf <- cbind(sample(0:3, n_nf, replace = TRUE), runif(n_nf), runif(n_nf))
+    colnames(X_nf) <- c("cat x", "two\nlines", "z")
+    y_nf <- X_nf[, 1] + X_nf[, 2] + X_nf[, 3] + rnorm(n_nf, sd = 0.1)
+    params_nf <- list(objective = "regression_l2", min_data_in_leaf = 5L, verbose = -1L,
+                      interaction_constraints = list(c("cat x", "two_lines"), "z"))
+    for (categorical_feature_nf in c("cat x", "cat_x")) {
+      dtrain_nf <- gpb.Dataset(X_nf, label = y_nf, categorical_feature = categorical_feature_nf)
+      dvalid_nf <- gpb.Dataset(X_nf, label = y_nf)
+      expect_output(bst_nf <- gpb.train(data = dtrain_nf, valids = list(valid = dvalid_nf), nrounds = 2L,
+                                        params = params_nf, verbose = 0),
+                    regexp = "whitespaces in feature_names")
+      expect_identical(colnames(dvalid_nf), c("cat_x", "two_lines", "z"))
+      parsed_model_nf <- RJSONIO::fromJSON(content = gpb.dump(bst_nf), simplify = FALSE)
+      # only categorical features have a list of values
+      expect_gt(length(parsed_model_nf$feature_infos[["cat_x"]]$values), 0L)
+      expect_length(parsed_model_nf$feature_infos[["z"]]$values, 0L)
+    }
+  })
 } else {
   Sys.sleep(30)
 

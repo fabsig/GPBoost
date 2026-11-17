@@ -1217,6 +1217,42 @@ def _get_bad_pandas_dtypes_int(dtypes):
     return bad_indices
 
 
+def _normalize_feature_name(name):
+    """Return a feature name in the form in which a Dataset and a model store it.
+
+    Spaces and line breaks separate the feature names and the lines of the text model format, so
+    ``Dataset::set_feature_names()`` of the C++ library replaces them with '_'. Names given by the
+    user are compared in this form, so that both the original and the stored names can be used.
+    """
+    if not isinstance(name, str):
+        return name
+    return name.replace(' ', '_').replace('\n', '_').replace('\r', '_')
+
+
+def _get_feature_names_from_c_api(c_api_function, handle, num_feature):
+    """Get the feature names of a Dataset or a Booster from the C API, whatever their length."""
+    buffer_size = 255
+    for _ in range(2):
+        out_len = ctypes.c_int(0)
+        required_buffer_size = ctypes.c_size_t(0)
+        string_buffers = [ctypes.create_string_buffer(buffer_size) for _ in range(num_feature)]
+        ptr_string_buffers = (ctypes.c_char_p * num_feature)(*map(ctypes.addressof, string_buffers))
+        _safe_call(c_api_function(
+            handle,
+            ctypes.c_int(num_feature),
+            ctypes.byref(out_len),
+            ctypes.c_size_t(buffer_size),
+            ctypes.byref(required_buffer_size),
+            ptr_string_buffers))
+        if num_feature != out_len.value:
+            raise ValueError("Length of feature names doesn't equal with num_feature")
+        if required_buffer_size.value <= buffer_size:
+            return [string_buffers[i].value.decode('utf-8') for i in range(num_feature)]
+        buffer_size = required_buffer_size.value
+    raise BufferError("Allocated feature name buffer size ({}) was inferior to the needed size ({})."
+                      .format(buffer_size, required_buffer_size.value))
+
+
 def _data_from_pandas(data, feature_name, categorical_feature, pandas_categorical):
     if isinstance(data, pd_DataFrame):
         if len(data.shape) != 2 or data.shape[0] < 1:
@@ -1887,6 +1923,7 @@ class Dataset:
         feature_name : list of strings or 'auto', optional (default="auto")
             Feature names.
             If 'auto' and data is pandas DataFrame, data columns names are used.
+            Spaces and line breaks in the names are replaced with '_'.
         categorical_feature : list of strings or int, or 'auto', optional (default="auto")
             Categorical features.
             If list of int, interpreted as indices.
@@ -2037,10 +2074,10 @@ class Dataset:
             categorical_indices = set()
             feature_dict = {}
             if feature_name is not None:
-                feature_dict = {name: i for i, name in enumerate(feature_name)}
+                feature_dict = {_normalize_feature_name(name): i for i, name in enumerate(feature_name)}
             for name in categorical_feature:
-                if isinstance(name, str) and name in feature_dict:
-                    categorical_indices.add(feature_dict[name])
+                if isinstance(name, str) and _normalize_feature_name(name) in feature_dict:
+                    categorical_indices.add(feature_dict[_normalize_feature_name(name)])
                 elif isinstance(name, int):
                     categorical_indices.add(name)
                 else:
@@ -2597,7 +2634,7 @@ class Dataset:
         Parameters
         ----------
         feature_name : list of strings
-            Feature names.
+            Feature names. Spaces and line breaks in the names are replaced with '_'.
 
         Returns
         -------
@@ -2615,6 +2652,8 @@ class Dataset:
                 self.handle,
                 c_array(ctypes.c_char_p, c_feature_name),
                 ctypes.c_int(len(feature_name))))
+            # the names as the Dataset stores them, see _normalize_feature_name()
+            self.feature_name = self.get_feature_name()
         return self
 
     def set_label(self, label):
@@ -2712,27 +2751,7 @@ class Dataset:
         """
         if self.handle is None:
             raise GPBoostError("Cannot get feature_name before construct dataset")
-        num_feature = self.num_feature()
-        tmp_out_len = ctypes.c_int(0)
-        reserved_string_buffer_size = 255
-        required_string_buffer_size = ctypes.c_size_t(0)
-        string_buffers = [ctypes.create_string_buffer(reserved_string_buffer_size) for i in range(num_feature)]
-        ptr_string_buffers = (ctypes.c_char_p * num_feature)(*map(ctypes.addressof, string_buffers))
-        _safe_call(_LIB.LGBM_DatasetGetFeatureNames(
-            self.handle,
-            ctypes.c_int(num_feature),
-            ctypes.byref(tmp_out_len),
-            ctypes.c_size_t(reserved_string_buffer_size),
-            ctypes.byref(required_string_buffer_size),
-            ptr_string_buffers))
-        if num_feature != tmp_out_len.value:
-            raise ValueError("Length of feature names doesn't equal with num_feature")
-        if reserved_string_buffer_size < required_string_buffer_size.value:
-            raise BufferError(
-                "Allocated feature name buffer size ({}) was inferior to the needed size ({})."
-                .format(reserved_string_buffer_size, required_string_buffer_size.value)
-            )
-        return [string_buffers[i].value.decode('utf-8') for i in range(num_feature)]
+        return _get_feature_names_from_c_api(_LIB.LGBM_DatasetGetFeatureNames, self.handle, self.num_feature())
 
     def get_label(self):
         """Get the label of the Dataset.
@@ -4607,28 +4626,7 @@ class Booster:
         result : list
             List with names of features.
         """
-        num_feature = self.num_feature()
-        # Get name of features
-        tmp_out_len = ctypes.c_int(0)
-        reserved_string_buffer_size = 255
-        required_string_buffer_size = ctypes.c_size_t(0)
-        string_buffers = [ctypes.create_string_buffer(reserved_string_buffer_size) for i in range(num_feature)]
-        ptr_string_buffers = (ctypes.c_char_p * num_feature)(*map(ctypes.addressof, string_buffers))
-        _safe_call(_LIB.LGBM_BoosterGetFeatureNames(
-            self.handle,
-            ctypes.c_int(num_feature),
-            ctypes.byref(tmp_out_len),
-            ctypes.c_size_t(reserved_string_buffer_size),
-            ctypes.byref(required_string_buffer_size),
-            ptr_string_buffers))
-        if num_feature != tmp_out_len.value:
-            raise ValueError("Length of feature names doesn't equal with num_feature")
-        if reserved_string_buffer_size < required_string_buffer_size.value:
-            raise BufferError(
-                "Allocated feature name buffer size ({}) was inferior to the needed size ({})."
-                .format(reserved_string_buffer_size, required_string_buffer_size.value)
-            )
-        return [string_buffers[i].value.decode('utf-8') for i in range(num_feature)]
+        return _get_feature_names_from_c_api(_LIB.LGBM_BoosterGetFeatureNames, self.handle, self.num_feature())
 
     def feature_importance(self, importance_type='split', iteration=None):
         """Get feature importances.

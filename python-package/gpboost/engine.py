@@ -132,6 +132,7 @@ def train(params, train_set, num_boost_round=100,
     feature_name : list of strings or 'auto', optional (default="auto")
         Feature names.
         If 'auto' and data is pandas DataFrame, data columns names are used.
+        Spaces and line breaks in the names are replaced with '_'.
     categorical_feature : list of strings or int, or 'auto', optional (default="auto")
         Categorical features.
         If list of int, interpreted as indices.
@@ -698,6 +699,7 @@ def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_ro
     feature_name : list of strings or 'auto', optional (default="auto")
         Feature names.
         If 'auto' and data is pandas DataFrame, data columns names are used.
+        Spaces and line breaks in the names are replaced with '_'.
     categorical_feature : list of strings or int, or 'auto', optional (default="auto")
         Categorical features.
         If list of int, interpreted as indices.
@@ -1033,6 +1035,7 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
     feature_name : list of strings or 'auto', optional (default="auto")
         Feature names.
         If 'auto' and data is pandas DataFrame, data columns names are used.
+        Spaces and line breaks in the names are replaced with '_'.
     categorical_feature : list of strings or int, or 'auto', optional (default="auto")
         Categorical features.
         If list of int, interpreted as indices.

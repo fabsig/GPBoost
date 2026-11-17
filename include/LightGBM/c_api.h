@@ -282,6 +282,8 @@ GPBOOST_C_EXPORT int LGBM_DatasetGetSubset(const DatasetHandle handle,
 
 /*!
  * \brief Save feature names to dataset.
+ * \note Spaces and line breaks in the names are replaced with ``_``. The names should be UTF-8 encoded,
+ *       as they are written unchanged into the JSON dump of a model.
  * \param handle Handle of dataset
  * \param feature_names Feature names
  * \param num_feature_names Number of feature names

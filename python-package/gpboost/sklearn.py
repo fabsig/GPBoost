@@ -456,6 +456,7 @@ class GPBoostModel(_GPBoostModelBase):
         feature_name : list of strings or 'auto', optional (default='auto')
             Feature names.
             If 'auto' and data is pandas DataFrame, data columns names are used.
+            Spaces and line breaks in the names are replaced with '_'.
         categorical_feature : list of strings or int, or 'auto', optional (default='auto')
             Categorical features.
             If list of int, interpreted as indices.

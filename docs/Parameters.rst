@@ -728,6 +728,8 @@ Dataset Parameters
 
    -  **Note**: works only in case of loading data directly from file
 
+   -  **Note**: the header is split at tabs and commas, so the column names in a data file cannot contain these characters. Feature names that are set for a ``Dataset`` in R or Python can contain commas
+
 -  ``label_column`` :raw-html:`<a id="label_column" title="Permalink to this parameter" href="#label_column">&#x1F517;&#xFE0E;</a>`, default = ``""``, type = int or string, aliases: ``label``
 
    -  used to specify the label column
