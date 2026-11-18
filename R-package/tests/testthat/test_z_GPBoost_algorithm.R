@@ -640,13 +640,13 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         gp_model <- GPModel(group_data = group_train, likelihood = likelihood)
         set_prediction_data(gp_model, group_data_pred = group_test)
         bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 100, params = params_lik,
-                         valids = valids, early_stopping_rounds = 5,
+                         valids = valids, early_stopping_rounds = 5, verbose = 0,
                          use_gp_model_for_validation = TRUE, metric = "test_neg_log_likelihood")
         expect_lt(bst$best_iter, bst$current_iter())
         # The same parameters and predictions as when training stops at the best iteration
         gp_model_best <- GPModel(group_data = group_train, likelihood = likelihood)
         bst_best <- gpb.train(data = dtrain, gp_model = gp_model_best, nrounds = bst$best_iter,
-                              params = params_lik)
+                              params = params_lik, verbose = 0)
         expect_lt(sum(abs(gp_model$get_cov_pars() - gp_model_best$get_cov_pars())), TOLERANCE_STRICT)
         if (likelihood == "gamma") {
           expect_lt(sum(abs(gp_model$get_aux_pars() - gp_model_best$get_aux_pars())), TOLERANCE_STRICT)
@@ -660,7 +660,40 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
           nll <- 0.5 * mean((y_test - pred$response_mean)^2 / pred$response_var + log(pred$response_var * 2 * pi))
           expect_lt(abs(bst$best_score - nll), TOLERANCE_STRICT)
         }
+        # The models of the folds of a cross-validation use the best iteration as well
+        folds <- list(seq(1, ntrain, by = 2), seq(2, ntrain, by = 2))
+        cvbst <- gpb.cv(params = params_lik, data = gpb.Dataset(data = X_train, label = y_train),
+                        gp_model = GPModel(group_data = group_train, likelihood = likelihood),
+                        nrounds = 100, folds = folds, early_stopping_rounds = 5,
+                        use_gp_model_for_validation = TRUE, metric = "test_neg_log_likelihood", verbose = 0)
+        expect_lt(cvbst$best_iter, cvbst$boosters[[1]]$booster$current_iter())
+        cvbst_best <- gpb.cv(params = params_lik, data = gpb.Dataset(data = X_train, label = y_train),
+                             gp_model = GPModel(group_data = group_train, likelihood = likelihood),
+                             nrounds = cvbst$best_iter, folds = folds,
+                             use_gp_model_for_validation = TRUE, metric = "test_neg_log_likelihood", verbose = 0)
+        for (k in seq_along(folds)) {
+          fold_bst <- cvbst$boosters[[k]]$booster
+          fold_bst_best <- cvbst_best$boosters[[k]]$booster
+          expect_equal(fold_bst$best_iter, cvbst$best_iter)
+          expect_equal(fold_bst_best$best_iter, -1L)
+          expect_lt(sum(abs(fold_bst$.__enclos_env__$private$gp_model$get_cov_pars() -
+                              fold_bst_best$.__enclos_env__$private$gp_model$get_cov_pars())), TOLERANCE_STRICT)
+          pred <- predict(fold_bst, data = X_train[folds[[k]], ], group_data_pred = group_train[folds[[k]]],
+                          pred_latent = FALSE, predict_var = TRUE)
+          pred_best <- predict(fold_bst_best, data = X_train[folds[[k]], ], group_data_pred = group_train[folds[[k]]],
+                               pred_latent = FALSE, predict_var = TRUE)
+          expect_lt(sum(abs(pred$response_mean - pred_best$response_mean)), TOLERANCE_STRICT)
+          expect_lt(sum(abs(pred$response_var - pred_best$response_var)), TOLERANCE_STRICT)
+        }
       }
+      # Without early stopping, all iterations are used, also when there are validation data
+      gp_model <- GPModel(group_data = group_train, likelihood = likelihood)
+      set_prediction_data(gp_model, group_data_pred = group_test)
+      bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20, params = params_lik, verbose = 0,
+                       valids = valids, use_gp_model_for_validation = TRUE, metric = "test_neg_log_likelihood")
+      expect_equal(bst$best_iter, -1L)
+      test_scores <- unlist(bst$record_evals[["test"]][[1]][["eval"]])
+      expect_equal(bst$best_score, test_scores[[20]])
     })
 
   }

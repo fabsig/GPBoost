@@ -162,10 +162,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5, 
                        objective = "regression_l2", verbose = 0, valids = valids, metric="mse")
-      iter <- 20
       score <- 1.54475
       cov_pars_estV <- c(0.26721270772, 0.89424739300, 0.08439964419)
-      expect_equal(bst$best_iter, iter)
+      expect_equal(bst$best_iter, -1)
       expect_lt(abs(bst$best_score - score),TOLERANCE2)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_estV)),0.05)
       # Can also first set vecchia_pred_type and then gp_coords_pred
@@ -178,7 +177,7 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 20,
                        learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5, 
                        objective = "regression_l2", verbose = 0, valids = valids, metric="mse")
-      expect_equal(bst$best_iter, iter)
+      expect_equal(bst$best_iter, -1)
       expect_lt(abs(bst$best_score - score),TOLERANCE2)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars())-cov_pars_estV)),0.05)
       

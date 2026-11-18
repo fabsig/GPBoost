@@ -730,6 +730,12 @@ def test_early_stopping_sets_the_parameters_of_the_best_iteration(likelihood):
                            early_stopping_rounds=early_stopping_rounds, return_cvbooster=True)
         cvboosters.append(cv_result["cvbooster"])
     assert 0 < cvboosters[0].best_iteration < cvboosters[0].boosters[0].current_iteration()
-    for booster, booster_best in zip(cvboosters[0].boosters, cvboosters[1].boosters):
+    for (_, test_idx), booster, booster_best in zip(folds, cvboosters[0].boosters, cvboosters[1].boosters):
+        assert booster.best_iteration == cvboosters[0].best_iteration
+        assert booster_best.best_iteration <= 0
         np.testing.assert_allclose(np.asarray(booster.gp_model.get_cov_pars()),
                                    np.asarray(booster_best.gp_model.get_cov_pars()), rtol=1e-8)
+        pred = booster.predict(data=x[test_idx], group_data_pred=group[test_idx], predict_var=True)
+        pred_best = booster_best.predict(data=x[test_idx], group_data_pred=group[test_idx], predict_var=True)
+        np.testing.assert_allclose(pred["response_mean"], pred_best["response_mean"], rtol=1e-6)
+        np.testing.assert_allclose(pred["response_var"], pred_best["response_var"], rtol=1e-6)

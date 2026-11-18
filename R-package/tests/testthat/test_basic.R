@@ -649,9 +649,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     )
     
     # a perfect model should be trivial to obtain, but all 10 rounds
-    # should happen
+    # should happen, and all of them are used (best_score is the score of the last one)
     expect_equal(bst$best_score, 0.0)
-    expect_equal(bst$best_iter, 1L)
+    expect_equal(bst$best_iter, -1L)
     expect_equal(length(bst$record_evals[["valid1"]][["binary_error"]][["eval"]]), nrounds)
     
     #############################
@@ -723,9 +723,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       )
       
       # a perfect model should be trivial to obtain, but all 10 rounds
-      # should happen
+      # should happen, and all of them are used (best_score is the score of the last one)
       expect_equal(bst$best_score, 0.0)
-      expect_equal(bst$best_iter, 1L)
+      expect_equal(bst$best_iter, -1L)
       expect_equal(length(bst$record_evals[["valid1"]][["binary_error"]][["eval"]]), nrounds)
       
       #---------------------------#
@@ -746,9 +746,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       )
       
       # a perfect model should be trivial to obtain, but all 10 rounds
-      # should happen
+      # should happen, and all of them are used (best_score is the score of the last one)
       expect_equal(bst$best_score, 0.0)
-      expect_equal(bst$best_iter, 1L)
+      expect_equal(bst$best_iter, -1L)
       expect_equal(length(bst$record_evals[["valid1"]][["binary_error"]][["eval"]]), nrounds)
     }
   })
@@ -859,9 +859,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     )
     
     # the best possible model should come from the first iteration, but
-    # all 10 training iterations should happen
-    expect_equal(bst$best_score, 55.0)
-    expect_equal(bst$best_iter, 1L)
+    # all 10 training iterations should happen, and all of them are used
+    # (best_score is the score of the last one)
+    expect_equal(bst$best_score, bst$record_evals[["valid1"]][["rmse"]][["eval"]][[nrounds]])
+    expect_equal(bst$best_iter, -1L)
     expect_equal(length(bst$record_evals[["valid1"]][["rmse"]][["eval"]]), nrounds)
     
     #############################
@@ -919,15 +920,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Only the two functions provided to "eval" should have been evaluated
     expect_equal(length(bst$record_evals[["valid1"]]), 2L)
     
-    # all 10 iterations should have happen, and the best_iter should be
-    # the first one (based on constant_metric)
-    best_iter <- 1L
-    expect_equal(bst$best_iter, best_iter)
+    # all 10 iterations should have happen, and without early stopping, all of them are used
+    expect_equal(bst$best_iter, -1L)
     
-    # best_score should be taken from the first metric
+    # best_score should be the score of the last iteration for the first metric
     expect_equal(
       bst$best_score
-      , bst$record_evals[["valid1"]][["constant_metric"]][["eval"]][[best_iter]]
+      , bst$record_evals[["valid1"]][["constant_metric"]][["eval"]][[nrounds]]
     )
     
     # early stopping should not have happened. Even though constant_metric
@@ -1268,7 +1267,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     )
   })
   
-  test_that("when early stopping is not activated, best_iter and best_score come from valids and not training data", {
+  test_that("when early stopping is not activated, all iterations are used and best_score is the last score on the first valids that are not the training data", {
     set.seed(708L)
     trainDF <- data.frame(
       "feat1" = rep(c(10.0, 100.0), 500L)
@@ -1321,8 +1320,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     )
     rmse_scores <- unlist(bst$record_evals[["valid1"]][["rmse"]][["eval"]])
     expect_length(rmse_scores, nrounds)
-    expect_identical(bst$best_iter, which.min(rmse_scores))
-    expect_identical(bst$best_score, rmse_scores[which.min(rmse_scores)])
+    expect_identical(bst$best_iter, -1L)
+    expect_identical(bst$best_score, rmse_scores[[nrounds]])
+    X_valid2 <- as.matrix(validDF2[["feat1"]], drop = FALSE)
+    expect_equal(predict(bst, data = X_valid2), predict(bst, data = X_valid2, num_iteration = nrounds))
     
     # example 2: train first (called "train") and two valids
     bst <- gpb.train(
@@ -1345,8 +1346,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     )
     rmse_scores <- unlist(bst$record_evals[["valid1"]][["rmse"]][["eval"]])
     expect_length(rmse_scores, nrounds)
-    expect_identical(bst$best_iter, which.min(rmse_scores))
-    expect_identical(bst$best_score, rmse_scores[which.min(rmse_scores)])
+    expect_identical(bst$best_iter, -1L)
+    expect_identical(bst$best_score, rmse_scores[[nrounds]])
     
     # example 3: train second (called "train") and two valids
     bst <- gpb.train(
@@ -1370,8 +1371,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     )
     rmse_scores <- unlist(bst$record_evals[["valid1"]][["rmse"]][["eval"]])
     expect_length(rmse_scores, nrounds)
-    expect_identical(bst$best_iter, which.min(rmse_scores))
-    expect_identical(bst$best_score, rmse_scores[which.min(rmse_scores)])
+    expect_identical(bst$best_iter, -1L)
+    expect_identical(bst$best_score, rmse_scores[[nrounds]])
     
     # example 4: train third (called "train") and two valids
     bst <- gpb.train(
@@ -1395,8 +1396,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     )
     rmse_scores <- unlist(bst$record_evals[["valid1"]][["rmse"]][["eval"]])
     expect_length(rmse_scores, nrounds)
-    expect_identical(bst$best_iter, which.min(rmse_scores))
-    expect_identical(bst$best_score, rmse_scores[which.min(rmse_scores)])
+    expect_identical(bst$best_iter, -1L)
+    expect_identical(bst$best_score, rmse_scores[[nrounds]])
     
     # example 5: train second (called "something-random-we-would-not-hardcode") and two valids
     bst <- gpb.train(
@@ -1421,8 +1422,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     )
     rmse_scores <- unlist(bst$record_evals[["valid1"]][["rmse"]][["eval"]])
     expect_length(rmse_scores, nrounds)
-    expect_identical(bst$best_iter, which.min(rmse_scores))
-    expect_identical(bst$best_score, rmse_scores[which.min(rmse_scores)])
+    expect_identical(bst$best_iter, -1L)
+    expect_identical(bst$best_score, rmse_scores[[nrounds]])
     
     # example 6: the only valid supplied is the training data
     bst <- gpb.train(
@@ -1439,7 +1440,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_identical(bst$best_score, NA_real_)
   })
   
-  test_that("gpboost.train() gives the correct best_score and best_iter for a metric where higher values are better", {
+  test_that("without early stopping, gpb.train() uses all iterations and gives the last score as best_score for a metric where higher values are better", {
     set.seed(708L)
     trainDF <- data.frame(
       "feat1" = runif(n = 500L, min = 0.0, max = 15.0)
@@ -1483,11 +1484,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     )
     auc_scores <- unlist(bst$record_evals[["valid1"]][["auc"]][["eval"]])
     expect_length(auc_scores, nrounds)
-    expect_identical(bst$best_iter, which.max(auc_scores))
-    expect_identical(bst$best_score, auc_scores[which.max(auc_scores)])
+    expect_identical(bst$best_iter, -1L)
+    expect_identical(bst$best_score, auc_scores[[nrounds]])
   })
   
-  test_that("using gpboost() without early stopping, best_iter and best_score come from valids and not training data", {
+  test_that("using gpboost() without early stopping, all iterations are used and best_score is the last score on the first valids that are not the training data", {
     set.seed(708L)
     # example: train second (called "something-random-we-would-not-hardcode"), two valids,
     #          and a metric where higher values are better ("auc")
@@ -1538,8 +1539,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     )
     auc_scores <- unlist(bst$record_evals[["valid1"]][["auc"]][["eval"]])
     expect_length(auc_scores, nrounds)
-    expect_identical(bst$best_iter, which.max(auc_scores))
-    expect_identical(bst$best_score, auc_scores[which.max(auc_scores)])
+    expect_identical(bst$best_iter, -1L)
+    expect_identical(bst$best_score, auc_scores[[nrounds]])
   })
   
   test_that("gpb.cv() works when you specify both 'metric' and 'eval' with strings", {

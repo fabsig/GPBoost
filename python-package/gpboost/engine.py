@@ -731,6 +731,8 @@ def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_ro
         The score of the metric is calculated again after each training step, so there is some impact on performance.
     return_cvbooster : bool, optional (default=False)
         Whether to return Booster models trained on each fold through ``CVBooster``.
+        With early stopping, these models use the best iteration for prediction, and the covariance parameters (and
+        auxiliary likelihood parameters) of their ``gp_model`` are set to their values after the best iteration.
     metrics : string, list of strings or None, discontinued (default=None)
         This is discontinued. Use the renamed equivalent argument 'metric' instead
 
@@ -876,6 +878,8 @@ def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_ro
                                         evaluation_result_list=res))
         except callback.EarlyStopException as earlyStopException:
             cvfolds.best_iteration = earlyStopException.best_iteration + 1
+            for bst in cvfolds.boosters:
+                bst.best_iteration = cvfolds.best_iteration
             for k in results:
                 results[k] = results[k][:cvfolds.best_iteration]
             break
