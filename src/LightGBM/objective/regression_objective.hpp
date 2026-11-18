@@ -200,6 +200,20 @@ namespace LightGBM {
 			}
 		}//end GetGradients
 
+		void GetGradientsGivenGPModelPars(const double* score, score_t* gradients) const override {
+			CHECK(has_gp_model_);
+			if (re_model_->GaussLikelihood()) {
+#pragma omp parallel for schedule(static)
+				for (data_size_t i = 0; i < num_data_; ++i) {
+					gradients[i] = static_cast<score_t>(score[i] - label_[i]);
+				}
+				re_model_->CalcGradient(gradients, nullptr, true);
+			}
+			else {
+				re_model_->CalcGradient(gradients, score, true);// calc_cov_factor = true since the mode depends on the score
+			}
+		}
+
 		const char* GetName() const override {
 			return "regression";
 		}

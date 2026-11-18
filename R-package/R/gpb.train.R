@@ -501,15 +501,18 @@ gpb.train <- function(params = list(),
         }
         booster$best_iter <- unname(.find_best(scores))
         booster$best_score <- scores[[booster$best_iter]]
+      } else if (isTRUE(booster$best_iter > 0L) && booster$best_iter <= length(scores)) {
+        # The best iteration has been set by an early stopping callback in 'callbacks'
+        booster$best_score <- scores[[booster$best_iter]]
       } else {
         booster$best_score <- scores[[length(scores)]]
       }
     }
   }
 
-  # With early stopping, the trees after the best iteration are not used for prediction, and neither are the
-  #   covariance parameters estimated in these iterations
-  if (!is.null(gp_model) && using_early_stopping && isTRUE(booster$best_iter > 0L)) {
+  # With early stopping (also by a callback in 'callbacks'), the trees after the best iteration are not used for
+  #   prediction, and neither are the covariance parameters estimated in these iterations
+  if (!is.null(gp_model) && isTRUE(booster$best_iter > 0L)) {
     booster$set_gp_model_pars_of_iteration(booster$best_iter)
   }
 

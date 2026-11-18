@@ -13,6 +13,7 @@ import os
 import time
 import warnings
 from collections import OrderedDict
+from contextlib import contextmanager
 from copy import deepcopy
 from functools import wraps
 from logging import Logger
@@ -1395,6 +1396,20 @@ def _format_check_1D_data(data, data_name="data", check_data_type=True, check_mu
     # The data are passed to C++ by a pointer to their first element, which requires contiguous memory
     #   (a column of a two-dimensional array, e.g., is not contiguous)
     return np.ascontiguousarray(data)
+
+
+def _gp_model_pars_of_iteration_from_saved_data(save_data):
+    """Covariance and auxiliary parameters of the gp_model after every saved iteration (one row per iteration) of a
+    model saved with the raw data, or None if they have not been saved."""
+    pars = save_data.get("gp_model_pars_of_iteration")
+    if pars is None or save_data.get("raw_data") is None:
+        return None
+    num_iter = int(pars["num_iterations"])
+    cov_pars = np.atleast_1d(np.asarray(pars["cov_pars"], dtype=np.float64)).reshape((num_iter, -1))
+    aux_pars = None
+    if pars.get("aux_pars") is not None and np.size(pars["aux_pars"]) > 0:
+        aux_pars = np.atleast_1d(np.asarray(pars["aux_pars"], dtype=np.float64)).reshape((num_iter, -1))
+    return cov_pars, aux_pars
 
 
 def _dump_pandas_categorical(pandas_categorical, file_name=None):
@@ -3050,6 +3065,7 @@ class Booster:
         self.residual_loaded_from_file = None
         self.label_loaded_from_file = None
         self.fixed_effect_train_loaded_from_file = None
+        self._gp_model_pars_of_iteration_loaded = None
         self.gp_model_prediction_data_loaded_from_file = False
         self.is_mean_scale_regression = False
         params = {} if params is None else deepcopy(params)
@@ -3178,6 +3194,7 @@ class Booster:
                 self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
                 self.gp_model._set_used_in_gpboost_algorithm()
                 self.gp_model.model_fitted = False
+                self._gp_model_pars_of_iteration_loaded = _gp_model_pars_of_iteration_from_saved_data(save_data)
             else:  # has no gp_model
                 out_num_iterations = ctypes.c_int(0)
                 self.handle = ctypes.c_void_p()
@@ -3217,6 +3234,7 @@ class Booster:
                 self.gp_model = GPModel(model_dict=save_data['gp_model_str'])
                 self.gp_model._set_used_in_gpboost_algorithm()
                 self.gp_model.model_fitted = False
+                self._gp_model_pars_of_iteration_loaded = _gp_model_pars_of_iteration_from_saved_data(save_data)
             else:  # has no gp_model
                 self.model_from_string(model_str, not silent)
         else:
@@ -3238,11 +3256,19 @@ class Booster:
         except AttributeError:
             pass
 
+    def _num_iteration_to_serialize(self):
+        """Number of iterations saved when the Booster is copied or pickled: all iterations, or, with a gp_model, the
+        best iteration if it exists, as the saved gp_model and its training data belong to one iteration.
+        """
+        if self.has_gp_model and self.best_iteration > 0:
+            return self.best_iteration
+        return -1
+
     def __copy__(self):
         return self.__deepcopy__(None)
 
     def __deepcopy__(self, _):
-        model_str = self.model_to_string(num_iteration=-1)
+        model_str = self.model_to_string(num_iteration=self._num_iteration_to_serialize())
         booster = Booster(model_str=model_str)
         return booster
 
@@ -3252,7 +3278,7 @@ class Booster:
         this.pop('train_set', None)
         this.pop('valid_sets', None)
         if handle is not None:
-            this["handle"] = self.model_to_string(num_iteration=-1)
+            this["handle"] = self.model_to_string(num_iteration=self._num_iteration_to_serialize())
         this.pop('gp_model', None)
         return this
 
@@ -3699,6 +3725,104 @@ class Booster:
             self.__is_predicted_cur_iter = [False for _ in range(self.__num_dataset)]
         return self
 
+    def _get_gp_model_pars_iteration(self):
+        """Get the number of iterations of the model whose covariance and auxiliary parameters are currently set in
+        the gp_model, or -1 if the parameters of the iterations are not available (e.g., for a model loaded from a file).
+        """
+        out_iteration = ctypes.c_int(-1)
+        if self.has_gp_model:
+            _safe_call(_LIB.LGBM_GPBoosterGetGPModelParsIteration(
+                self.handle,
+                ctypes.byref(out_iteration)))
+        return out_iteration.value
+
+    def _num_iteration_of_trees(self, num_iteration):
+        """Number of iterations whose trees are used for a given ``num_iteration`` (None or <= 0 means all)."""
+        num_iter_trees = self.current_iteration()
+        if num_iteration is not None and 0 < num_iteration < num_iter_trees:
+            num_iter_trees = num_iteration
+        return num_iter_trees
+
+    def _has_raw_training_data(self):
+        train_set = getattr(self, 'train_set', None)
+        return train_set is not None and getattr(train_set, 'data', None) is not None
+
+    @contextmanager
+    def _gp_model_pars_for_trees(self, start_iteration, num_iteration):
+        """Set the covariance and auxiliary parameters of the gp_model temporarily to their values after the
+        iteration whose trees are used, if these are available (for a Booster trained in the current session or
+        loaded from a model saved with the raw data).
+
+        Parameters
+        ----------
+        start_iteration : int
+            Start index of the iterations whose trees are used. If > 0, the parameters are not changed.
+        num_iteration : int or None
+            Number of iterations whose trees are used. If None or <= 0, all iterations are used.
+        """
+        restore = None
+        if self.has_gp_model and start_iteration <= 0:
+            num_iter_trees = self._num_iteration_of_trees(num_iteration)
+            pars_iter = self._get_gp_model_pars_iteration()
+            pars_loaded = getattr(self, '_gp_model_pars_of_iteration_loaded', None)
+            if pars_iter > 0:
+                if num_iter_trees != pars_iter:
+                    self._set_gp_model_pars_of_iteration(num_iter_trees)
+                    if self._get_gp_model_pars_iteration() == num_iter_trees:
+                        def restore():
+                            self._set_gp_model_pars_of_iteration(pars_iter)
+            elif (pars_loaded is not None and self._has_raw_training_data() and
+                  pars_loaded[0].shape[0] == self.current_iteration() and num_iter_trees != pars_loaded[0].shape[0]):
+                # A loaded gp_model uses the covariance parameters 'cov_pars_loaded_from_file' for prediction
+                cov_pars_loaded, aux_pars_loaded = pars_loaded
+                cov_pars_before = self.gp_model.cov_pars_loaded_from_file
+                self.gp_model.cov_pars_loaded_from_file = cov_pars_loaded[num_iter_trees - 1]
+                if aux_pars_loaded is not None:
+                    self.gp_model.set_optim_params(params={"init_aux_pars": aux_pars_loaded[num_iter_trees - 1]})
+
+                def restore():
+                    self.gp_model.cov_pars_loaded_from_file = cov_pars_before
+                    if aux_pars_loaded is not None:
+                        self.gp_model.set_optim_params(params={"init_aux_pars": aux_pars_loaded[-1]})
+        try:
+            yield
+        finally:
+            if restore is not None:
+                restore()
+
+    def _gp_model_pars_of_iterations(self, start_iteration, num_iteration):
+        """Covariance and auxiliary parameters of the gp_model after every saved iteration (one iteration after the
+        other), or None if these are not available."""
+        if not self.has_gp_model or start_iteration > 0:
+            return None
+        num_iter_trees = self._num_iteration_of_trees(num_iteration)
+        has_aux_pars = self.gp_model._get_num_aux_pars() > 0
+        pars_iter = self._get_gp_model_pars_iteration()
+        if pars_iter > 0:
+            cov_pars, aux_pars = [], []
+            try:
+                for k in range(1, num_iter_trees + 1):
+                    self._set_gp_model_pars_of_iteration(k)
+                    if self._get_gp_model_pars_iteration() != k:
+                        return None
+                    cov_pars.append(np.asarray(self.gp_model.get_cov_pars(format_pandas=False), dtype=np.float64).ravel())
+                    if has_aux_pars:
+                        aux_pars.append(np.asarray(self.gp_model.get_aux_pars(format_pandas=False), dtype=np.float64).ravel())
+            finally:
+                self._set_gp_model_pars_of_iteration(pars_iter)
+            cov_pars = np.concatenate(cov_pars)
+            aux_pars = np.concatenate(aux_pars) if has_aux_pars else None
+        else:
+            pars_loaded = getattr(self, '_gp_model_pars_of_iteration_loaded', None)
+            if pars_loaded is None or pars_loaded[0].shape[0] != self.current_iteration():
+                return None
+            cov_pars = pars_loaded[0][:num_iter_trees].ravel()
+            aux_pars = pars_loaded[1][:num_iter_trees].ravel() if has_aux_pars else None
+        pars_of_iterations = {"num_iterations": num_iter_trees, "cov_pars": cov_pars.tolist()}
+        if has_aux_pars:
+            pars_of_iterations["aux_pars"] = aux_pars.tolist()
+        return pars_of_iterations
+
     def current_iteration(self):
         """Get the index of the current iteration.
 
@@ -3897,6 +4021,10 @@ class Booster:
             Index of the iteration that should be saved.
             If None, if the best iteration exists, it is saved; otherwise, all iterations are saved.
             If <= 0, all iterations are saved.
+            If there is a ``gp_model``, its saved covariance parameters (and auxiliary likelihood parameters) are
+            those after the last saved iteration, if these are available (for a Booster trained in the current
+            session or loaded from a model saved with ``save_raw_data=True``, and ``start_iteration`` <= 0);
+            otherwise, the current parameters of the ``gp_model`` are saved.
         start_iteration : int, optional (default=0)
             Start index of the iteration that should be saved.
         importance_type : string, optional (default="split")
@@ -3906,6 +4034,8 @@ class Booster:
         save_raw_data : bool (default=False)
             If true, the raw data (predictor / covariate data) for the Booster is also saved.
             Enable this option if you want to change 'start_iteration' or 'num_iteration' at prediction time after loading.
+            If there is a ``gp_model``, its covariance parameters (and auxiliary likelihood parameters) after every
+            saved iteration are then also saved, so that a prediction with ``num_iteration`` uses those of this iteration.
         **kwargs
             Other parameters for the prediction function.
             This is only used when there is a gp_model and when save_raw_data=False.
@@ -4005,6 +4135,10 @@ class Booster:
             Index of the iteration that should be saved.
             If None, if the best iteration exists, it is saved; otherwise, all iterations are saved.
             If <= 0, all iterations are saved.
+            If there is a ``gp_model``, its saved covariance parameters (and auxiliary likelihood parameters) are
+            those after the last saved iteration, if these are available (for a Booster trained in the current
+            session or loaded from a model saved with ``save_raw_data=True``, and ``start_iteration`` <= 0);
+            otherwise, the current parameters of the ``gp_model`` are saved.
         start_iteration : int, optional (default=0)
             Start index of the iteration that should be saved.
         importance_type : string, optional (default="split")
@@ -4014,6 +4148,8 @@ class Booster:
         save_raw_data : bool (default=False)
             If true, the raw data (predictor / covariate data) for the Booster is also saved.
             Enable this option if you want to change 'start_iteration' or 'num_iteration' at prediction time after loading.
+            If there is a ``gp_model``, its covariance parameters (and auxiliary likelihood parameters) after every
+            saved iteration are then also saved, so that a prediction with ``num_iteration`` uses those of this iteration.
         **kwargs
             Other parameters for the prediction function.
             This is only used when there is a gp_model and when save_raw_data=False.
@@ -4061,7 +4197,9 @@ class Booster:
             save_data = {}
             save_data['has_gp_model'] = 1
             save_data['booster_str'] = booster_str
-            save_data['gp_model_str'] = self.gp_model.model_to_dict(include_response_data=False)
+            # The saved covariance parameters are those of the iteration whose trees are saved (if available)
+            with self._gp_model_pars_for_trees(start_iteration, num_iteration):
+                save_data['gp_model_str'] = self.gp_model.model_to_dict(include_response_data=False)
             if save_raw_data:
                 save_data['raw_data'] = {}
                 save_data['raw_data']['data'] = self.train_set.data
@@ -4069,6 +4207,11 @@ class Booster:
                 # The offset supplied as 'init_score' to the training Dataset is not part of the tree ensemble
                 #   and thus has to be saved separately
                 save_data['raw_data']['init_score'] = self.train_set.init_score
+                # The parameters of all saved iterations, so that a loaded model uses those of the iteration whose
+                #   trees are used
+                pars_of_iterations = self._gp_model_pars_of_iterations(start_iteration, num_iteration)
+                if pars_of_iterations is not None:
+                    save_data['gp_model_pars_of_iteration'] = pars_of_iterations
             else:
                 predictor = self._to_predictor(deepcopy(kwargs))
                 fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
@@ -4159,6 +4302,12 @@ class Booster:
             Start index of the iteration used for the training fixed effects.
         num_iteration : int or None, optional (default=None)
             Total number of iterations used for the training fixed effects.
+            If None, if the best iteration exists and start_iteration <= 0, the best iteration is used;
+            otherwise, all iterations from ``start_iteration`` are used.
+            If there is a ``gp_model``, its covariance parameters (and auxiliary likelihood parameters) are those
+            after the last iteration used, if these are available (for a Booster trained in the current session or
+            loaded from a model saved with ``save_raw_data=True``, and ``start_iteration`` <= 0); otherwise, the
+            current parameters of the ``gp_model`` are used.
         data_has_header : bool, optional (default=False)
             Whether the training data has a header. Used only if the data is a string.
         **kwargs
@@ -4193,8 +4342,9 @@ class Booster:
         if self.train_set.init_score is not None:
             fixed_effect_train = fixed_effect_train + self.train_set.init_score
 
-        return self.gp_model.predict_training_data_random_effects(predict_var=predict_var,
-                                                                  offset=fixed_effect_train)
+        with self._gp_model_pars_for_trees(start_iteration, num_iteration):
+            return self.gp_model.predict_training_data_random_effects(predict_var=predict_var,
+                                                                      offset=fixed_effect_train)
 
     def predict(self, data, start_iteration=0, num_iteration=None,
                 pred_latent=False, pred_leaf=False, pred_contrib=False,
@@ -4220,6 +4370,10 @@ class Booster:
             If None, if the best iteration exists and start_iteration <= 0, the best iteration is used;
             otherwise, all iterations from ``start_iteration`` are used (no limits).
             If <= 0, all iterations from ``start_iteration`` are used (no limits).
+            If there is a ``gp_model``, its covariance parameters (and auxiliary likelihood parameters) are those
+            after the last iteration used, if these are available (for a Booster trained in the current session or
+            loaded from a model saved with ``save_raw_data=True``, and ``start_iteration`` <= 0); otherwise, the
+            current parameters of the ``gp_model`` are used.
         pred_latent : bool, optional (default=False)
             If True latent variables, both fixed effects (tree-ensemble) and random effects (gp_model) are predicted.
             Otherwise, the response variable (label) is predicted. Depending on how the argument 'pred_latent' is set,
@@ -4414,17 +4568,18 @@ class Booster:
                     residual = self.train_set.label - fixed_effect_train
                 # Note: we need to provide the response variable y as this was not saved
                 #   in the gp_model ("in C++") for Gaussian data but was overwritten during training
-                random_effect_pred = self.gp_model.predict(y=residual,
-                                                           group_data_pred=group_data_pred,
-                                                           group_rand_coef_data_pred=group_rand_coef_data_pred,
-                                                           gp_coords_pred=gp_coords_pred,
-                                                           gp_rand_coef_data_pred=gp_rand_coef_data_pred,
-                                                           cluster_ids_pred=cluster_ids_pred,
-                                                           predict_cov_mat=predict_cov_mat,
-                                                           predict_var=predict_var,
-                                                           sample_posterior=sample_posterior, num_post_samples=num_post_samples, 
-                                                           cov_pars=cov_pars,
-                                                           predict_response=(not pred_latent))
+                with self._gp_model_pars_for_trees(start_iteration, num_iteration):
+                    random_effect_pred = self.gp_model.predict(y=residual,
+                                                               group_data_pred=group_data_pred,
+                                                               group_rand_coef_data_pred=group_rand_coef_data_pred,
+                                                               gp_coords_pred=gp_coords_pred,
+                                                               gp_rand_coef_data_pred=gp_rand_coef_data_pred,
+                                                               cluster_ids_pred=cluster_ids_pred,
+                                                               predict_cov_mat=predict_cov_mat,
+                                                               predict_var=predict_var,
+                                                               sample_posterior=sample_posterior, num_post_samples=num_post_samples, 
+                                                               cov_pars=cov_pars,
+                                                               predict_response=(not pred_latent))
                 fixed_effect = predictor.predict(data=data, start_iteration=start_iteration,
                                                  num_iteration=num_iteration, raw_score=True, pred_leaf=pred_leaf,
                                                  pred_contrib=False, data_has_header=data_has_header,
@@ -4497,18 +4652,19 @@ class Booster:
                     # Note: we don't need to provide the response variable y as this is saved
                     #   in the gp_model ("in C++") for non-Gaussian data. y is only not NULL when
                     #   the model was loaded from a file
-                    random_effect_pred = self.gp_model.predict(group_data_pred=group_data_pred,
-                                                               group_rand_coef_data_pred=group_rand_coef_data_pred,
-                                                               gp_coords_pred=gp_coords_pred,
-                                                               gp_rand_coef_data_pred=gp_rand_coef_data_pred,
-                                                               cluster_ids_pred=cluster_ids_pred,
-                                                               predict_cov_mat=predict_cov_mat,
-                                                               predict_var=predict_var,
-                                                               sample_posterior=sample_posterior, num_post_samples=num_post_samples, 
-                                                               cov_pars=cov_pars,
-                                                               predict_response=False,
-                                                               offset=fixed_effect_train,
-                                                               y=y)
+                    with self._gp_model_pars_for_trees(start_iteration, num_iteration):
+                        random_effect_pred = self.gp_model.predict(group_data_pred=group_data_pred,
+                                                                   group_rand_coef_data_pred=group_rand_coef_data_pred,
+                                                                   gp_coords_pred=gp_coords_pred,
+                                                                   gp_rand_coef_data_pred=gp_rand_coef_data_pred,
+                                                                   cluster_ids_pred=cluster_ids_pred,
+                                                                   predict_cov_mat=predict_cov_mat,
+                                                                   predict_var=predict_var,
+                                                                   sample_posterior=sample_posterior, num_post_samples=num_post_samples, 
+                                                                   cov_pars=cov_pars,
+                                                                   predict_response=False,
+                                                                   offset=fixed_effect_train,
+                                                                   y=y)
                     if len(fixed_effect) != len(random_effect_pred['mu']):
                         warnings.warn("Number of data points in fixed effect (tree ensemble) and random effect "
                                       "are not equal")
@@ -4531,19 +4687,20 @@ class Booster:
                         if len(fixed_effect) != len(offset_pred):
                             raise GPBoostError("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
                         fixed_effect += offset_pred
-                    pred_resp = self.gp_model.predict(group_data_pred=group_data_pred,
-                                                      group_rand_coef_data_pred=group_rand_coef_data_pred,
-                                                      gp_coords_pred=gp_coords_pred,
-                                                      gp_rand_coef_data_pred=gp_rand_coef_data_pred,
-                                                      cluster_ids_pred=cluster_ids_pred,
-                                                      predict_cov_mat=predict_cov_mat,
-                                                      predict_var=predict_var,
-                                                      sample_posterior=sample_posterior, num_post_samples=num_post_samples, 
-                                                      cov_pars=cov_pars,
-                                                      predict_response=True,
-                                                      offset=fixed_effect_train,
-                                                      offset_pred=fixed_effect,
-                                                      y=y)
+                    with self._gp_model_pars_for_trees(start_iteration, num_iteration):
+                        pred_resp = self.gp_model.predict(group_data_pred=group_data_pred,
+                                                          group_rand_coef_data_pred=group_rand_coef_data_pred,
+                                                          gp_coords_pred=gp_coords_pred,
+                                                          gp_rand_coef_data_pred=gp_rand_coef_data_pred,
+                                                          cluster_ids_pred=cluster_ids_pred,
+                                                          predict_cov_mat=predict_cov_mat,
+                                                          predict_var=predict_var,
+                                                          sample_posterior=sample_posterior, num_post_samples=num_post_samples, 
+                                                          cov_pars=cov_pars,
+                                                          predict_response=True,
+                                                          offset=fixed_effect_train,
+                                                          offset_pred=fixed_effect,
+                                                          y=y)
                     response_mean = pred_resp['mu']
                     response_var = pred_resp['var']
                     if sample_posterior:

@@ -150,6 +150,16 @@ namespace LightGBM {
 			const double* new_score,
 			double& lr) const;//used only for "regression" loss
 
+		/*!
+		* \brief Calculate the gradients as 'GetGradients()' does, but with the current covariance and auxiliary parameters of the
+		*		GP model instead of estimating them (only used when has_gp_model_ == true)
+		* \param score Current score
+		* \param[out] gradients Gradients
+		*/
+		virtual void GetGradientsGivenGPModelPars(const double*, score_t*) const {
+			Log::Fatal("GetGradientsGivenGPModelPars is not implemented for the objective '%s' ", GetName());
+		}
+
 	protected:
 		///*! \brief Gaussian process model */
 		REModel* re_model_;

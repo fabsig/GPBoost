@@ -27,7 +27,11 @@ If NULL or <= 0, starts from the first iteration.}
 Limit number of iterations in the prediction.
 If NULL, if the best iteration exists and start_iteration is NULL or <= 0, the
 best iteration is used; otherwise, all iterations from start_iteration are used.
-If <= 0, all iterations from start_iteration are used (no limits).}
+If <= 0, all iterations from start_iteration are used (no limits).
+If there is a \code{gp_model}, its covariance parameters (and auxiliary likelihood
+parameters) are those after the last iteration used, if these are available (for a model
+trained in the current session or loaded from a file saved with save_raw_data = TRUE, and
+start_iteration NULL or <= 0); otherwise, the current parameters of the \code{gp_model} are used.}
 
 \item{pred_latent}{If TRUE latent variables, both fixed effects (tree-ensemble) 
 and random effects (\code{gp_model}) are predicted. Otherwise, the response variable 

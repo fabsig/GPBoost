@@ -396,6 +396,17 @@ GPBOOST_C_EXPORT SEXP LGBM_GPBoosterSetGPModelParsOfIteration_R(
 );
 
 /*!
+* \brief Get the number of iterations of the model whose covariance and auxiliary parameters are currently set in the GP model
+* \param handle handle
+* \param out Number of iterations, or -1 if the booster has no GP model or if these parameters are not available
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT SEXP LGBM_GPBoosterGetGPModelParsIteration_R(
+	SEXP handle,
+	SEXP out
+);
+
+/*!
 * \brief Get iteration of current boosting rounds
 * \param out iteration of boosting rounds
 * \return 0 when succeed, -1 when failure happens

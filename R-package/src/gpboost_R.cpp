@@ -531,6 +531,16 @@ SEXP LGBM_GPBoosterSetGPModelParsOfIteration_R(SEXP handle,
 	return R_NilValue;
 }
 
+SEXP LGBM_GPBoosterGetGPModelParsIteration_R(SEXP handle,
+	SEXP out) {
+	int out_iteration;
+	R_API_BEGIN();
+	CHECK_CALL(LGBM_GPBoosterGetGPModelParsIteration(R_ExternalPtrAddr(handle), &out_iteration));
+	INTEGER(out)[0] = out_iteration;
+	R_API_END();
+	return R_NilValue;
+}
+
 SEXP LGBM_BoosterGetCurrentIteration_R(SEXP handle,
 	SEXP out) {
 	int out_iteration;
@@ -1531,6 +1541,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"LGBM_BoosterUpdateOneIterCustom_R", (DL_FUNC)&LGBM_BoosterUpdateOneIterCustom_R, 4},
   {"LGBM_BoosterRollbackOneIter_R"    , (DL_FUNC)&LGBM_BoosterRollbackOneIter_R    , 1},
   {"LGBM_GPBoosterSetGPModelParsOfIteration_R", (DL_FUNC)&LGBM_GPBoosterSetGPModelParsOfIteration_R, 2},
+  {"LGBM_GPBoosterGetGPModelParsIteration_R", (DL_FUNC)&LGBM_GPBoosterGetGPModelParsIteration_R, 2},
   {"LGBM_BoosterGetCurrentIteration_R", (DL_FUNC)&LGBM_BoosterGetCurrentIteration_R, 2},
   {"LGBM_BoosterGetUpperBoundValue_R" , (DL_FUNC)&LGBM_BoosterGetUpperBoundValue_R , 2},
   {"LGBM_BoosterGetLowerBoundValue_R" , (DL_FUNC)&LGBM_BoosterGetLowerBoundValue_R , 2},

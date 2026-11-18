@@ -10,7 +10,9 @@ bit-wise across compilers and would turn every rebuild into a golden update.
 The model classes covered are chosen so that the sparse Cholesky paths are
 exercised as well: crossed grouped random effects, tapering, FITC and Vecchia.
 """
+import copy
 import json
+import pickle
 
 import numpy as np
 import pytest
@@ -798,3 +800,97 @@ def test_early_stopping_sets_the_parameters_of_the_best_iteration(likelihood):
         pred_best = booster_best.predict(data=x[test_idx], group_data_pred=group[test_idx], predict_var=True)
         np.testing.assert_allclose(pred["response_mean"], pred_best["response_mean"], rtol=1e-6)
         np.testing.assert_allclose(pred["response_var"], pred_best["response_var"], rtol=1e-6)
+
+
+@pytest.mark.parametrize("likelihood", ["gaussian", "gamma"])
+def test_gp_model_pars_of_the_iteration_of_the_trees(likelihood):
+    # Predictions, saved models, evaluations after training, and continued training use the covariance and auxiliary
+    # parameters of the iteration of the trees, also when early stopping has set those of the best iteration
+    rng = np.random.default_rng(4)
+    n, n_groups = 600, 30
+    group = np.repeat(np.arange(n_groups), n // n_groups)
+    x = rng.uniform(size=(n, 2))
+    eta = np.sin(3 * x[:, 0]) + rng.normal(scale=0.7, size=n_groups)[group]
+    if likelihood == "gaussian":
+        y = eta + rng.normal(scale=0.5, size=n)
+    else:
+        y = rng.gamma(shape=2., scale=np.exp(eta) / 2.)
+    tr, va = np.arange(0, n, 2), np.arange(1, n, 2)
+    params = {"learning_rate": 0.5, "max_depth": 6, "min_data_in_leaf": 5, "verbose": -1,
+              "metric": "test_neg_log_likelihood"}
+    if likelihood == "gaussian":
+        params["objective"] = "regression_l2"
+    train_set = gpb.Dataset(x[tr], y[tr], free_raw_data=False)
+    gp_model = gpb.GPModel(group_data=group[tr], likelihood=likelihood)
+    gp_model.set_prediction_data(group_data_pred=group[va])
+    evals_result = {}
+    bst = gpb.train(params=params, train_set=train_set, gp_model=gp_model, num_boost_round=100,
+                    valid_sets=gpb.Dataset(x[va], y[va], reference=train_set), early_stopping_rounds=5,
+                    evals_result=evals_result, verbose_eval=False)
+    num_iter = bst.current_iteration()
+    assert 0 < bst.best_iteration < num_iter
+    cov_pars_best = np.asarray(gp_model.get_cov_pars())
+    pred_best = bst.predict(data=x[va], group_data_pred=group[va], predict_var=True)
+
+    def assert_same_as_best():
+        np.testing.assert_allclose(np.asarray(gp_model.get_cov_pars()), cov_pars_best, rtol=1e-8)
+        pred = bst.predict(data=x[va], group_data_pred=group[va], predict_var=True)
+        np.testing.assert_allclose(pred["response_mean"], pred_best["response_mean"], rtol=1e-6)
+        np.testing.assert_allclose(pred["response_var"], pred_best["response_var"], rtol=1e-6)
+
+    def assert_same_predictions(booster, booster_ref, num_iteration=None):
+        pred = booster.predict(data=x[va], group_data_pred=group[va], predict_var=True, num_iteration=num_iteration)
+        pred_ref = booster_ref.predict(data=x[va], group_data_pred=group[va], predict_var=True)
+        np.testing.assert_allclose(pred["response_mean"], pred_ref["response_mean"], rtol=1e-6)
+        np.testing.assert_allclose(pred["response_var"], pred_ref["response_var"], rtol=1e-6)
+
+    gp_model_all = gpb.GPModel(group_data=group[tr], likelihood=likelihood)
+    bst_all = gpb.train(params=params, train_set=train_set, gp_model=gp_model_all, num_boost_round=num_iter)
+    # Predictions with all iterations are those of the model trained for all iterations
+    assert_same_predictions(bst, bst_all, num_iteration=num_iter)
+    assert_same_as_best()
+    if likelihood != "gaussian":
+        re_all = bst_all.predict_training_data_random_effects(predict_var=True)
+        re = bst.predict_training_data_random_effects(predict_var=True, num_iteration=num_iter)
+        np.testing.assert_allclose(np.asarray(re), np.asarray(re_all), rtol=1e-6)
+        assert_same_as_best()
+    # A model saved with all iterations has the parameters of the last iteration
+    bst_loaded = gpb.Booster(model_str=bst.model_to_string(num_iteration=num_iter))
+    np.testing.assert_allclose(np.asarray(bst_loaded.gp_model.get_cov_pars()),
+                               np.asarray(gp_model_all.get_cov_pars()), rtol=1e-8)
+    if likelihood == "gamma":
+        np.testing.assert_allclose(np.asarray(bst_loaded.gp_model.get_aux_pars()),
+                                   np.asarray(gp_model_all.get_aux_pars()), rtol=1e-8)
+    assert_same_predictions(bst_loaded, bst_all)
+    assert_same_as_best()
+    # A model saved with the raw data has the parameters of all iterations, also when it is saved again after loading
+    bst_loaded = gpb.Booster(model_str=bst.model_to_string(num_iteration=-1, save_raw_data=True))
+    bst_loaded = gpb.Booster(model_str=bst_loaded.model_to_string(save_raw_data=True))
+    for num_iteration in (bst.best_iteration, num_iter - 1, num_iter):
+        pred = bst.predict(data=x[va], group_data_pred=group[va], predict_var=True, num_iteration=num_iteration)
+        pred_loaded = bst_loaded.predict(data=x[va], group_data_pred=group[va], predict_var=True,
+                                         num_iteration=num_iteration)
+        np.testing.assert_allclose(pred_loaded["response_mean"], pred["response_mean"], rtol=1e-6)
+        np.testing.assert_allclose(pred_loaded["response_var"], pred["response_var"], rtol=1e-6)
+    np.testing.assert_allclose(np.asarray(bst_loaded.gp_model.get_cov_pars()),
+                               np.asarray(gp_model_all.get_cov_pars()), rtol=1e-8)
+    assert_same_as_best()
+    # A copied or pickled model has the trees and the parameters of the best iteration
+    for bst_copy in (copy.deepcopy(bst), pickle.loads(pickle.dumps(bst))):
+        assert bst_copy.current_iteration() == bst.best_iteration
+        np.testing.assert_allclose(np.asarray(bst_copy.gp_model.get_cov_pars()), cov_pars_best, rtol=1e-8)
+        pred = bst_copy.predict(data=x[va], group_data_pred=group[va], predict_var=True)
+        np.testing.assert_allclose(pred["response_mean"], pred_best["response_mean"], rtol=1e-6)
+        np.testing.assert_allclose(pred["response_var"], pred_best["response_var"], rtol=1e-6)
+    # The evaluation after training is that of the last iteration
+    eval_valid = bst.eval_valid()
+    assert eval_valid[0][2] == pytest.approx(evals_result["valid_0"]["test_neg_log_likelihood"][num_iter - 1],
+                                             rel=1e-8)
+    assert_same_as_best()
+    # Training continues from the last iteration
+    bst.update()
+    gp_model_all1 = gpb.GPModel(group_data=group[tr], likelihood=likelihood)
+    bst_all1 = gpb.train(params=params, train_set=train_set, gp_model=gp_model_all1, num_boost_round=num_iter + 1)
+    np.testing.assert_allclose(np.asarray(gp_model.get_cov_pars()), np.asarray(gp_model_all1.get_cov_pars()),
+                               rtol=1e-8)
+    assert_same_predictions(bst, bst_all1, num_iteration=num_iter + 1)

@@ -1825,6 +1825,13 @@ int LGBM_GPBoosterSetGPModelParsOfIteration(BoosterHandle handle,
 	API_END();
 }
 
+int LGBM_GPBoosterGetGPModelParsIteration(BoosterHandle handle, int* out_iteration) {
+	API_BEGIN();
+	Booster* ref_booster = reinterpret_cast<Booster*>(handle);
+	*out_iteration = ref_booster->GetBoosting()->GetGPModelParsIteration();
+	API_END();
+}
+
 int LGBM_BoosterGetCurrentIteration(BoosterHandle handle, int* out_iteration) {
 	API_BEGIN();
 	Booster* ref_booster = reinterpret_cast<Booster*>(handle);

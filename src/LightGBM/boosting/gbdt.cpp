@@ -60,6 +60,7 @@ namespace LightGBM {
 		}
 		iter_ = 0;
 		gp_model_pars_of_iteration_.clear();
+		gp_model_pars_iteration_ = 0;
 		num_iteration_for_pred_ = 0;
 		max_feature_idx_ = 0;
 		num_class_ = config->num_class;
@@ -412,6 +413,11 @@ namespace LightGBM {
 	bool GBDT::TrainOneIter(const score_t* gradients, const score_t* hessians) {
 		Log::Debug("Boosting iteration number: %d", iter_);
 		Common::FunctionTimer fun_timer("GBDT::TrainOneIter", global_timer);
+		// Training continues from the parameters of the current iteration, also when the parameters of an earlier iteration have
+		//	been set (e.g., after early stopping or a rollback); the gradients of the GP model then also have to be calculated anew
+		if (SetGPModelToCurrentIteration(gradients_.data())) {
+			gp_model_pars_iteration_ = GetCurrentIteration();
+		}
 		std::vector<double> init_scores(num_tree_per_iteration_, 0.0);
 		// boosting first
 		if (gradients == nullptr || hessians == nullptr) {
@@ -570,19 +576,46 @@ namespace LightGBM {
 			const size_t num_iteration = static_cast<size_t>(GetCurrentIteration());
 			gp_model_pars_of_iteration_.resize(num_iteration);
 			gp_model_pars_of_iteration_[num_iteration - 1] = objective_function_->GetGPModel()->GetCovAuxPars();
+			gp_model_pars_iteration_ = static_cast<int>(num_iteration);
 		}
 		return false;
 	}
 
-	void GBDT::SetGPModelParsOfIteration(int num_iteration) {
+	bool GBDT::SetGPModelParsOfIteration(int num_iteration) {
 		if (objective_function_ == nullptr || !objective_function_->HasGPModel()) {
-			return;
+			return false;
 		}
 		if (num_iteration <= 0 || num_iteration > GetCurrentIteration() ||
-			num_iteration > static_cast<int>(gp_model_pars_of_iteration_.size())) {
-			return;
+			num_iteration > static_cast<int>(gp_model_pars_of_iteration_.size()) ||
+			gp_model_pars_of_iteration_[num_iteration - 1].empty()) {
+			return false;
 		}
 		objective_function_->GetGPModel()->SetCovAuxPars(gp_model_pars_of_iteration_[num_iteration - 1]);
+		gp_model_pars_iteration_ = num_iteration;
+		return true;
+	}
+
+	int GBDT::GetGPModelParsIteration() const {
+		if (objective_function_ == nullptr || !objective_function_->HasGPModel() || gp_model_pars_of_iteration_.empty()) {
+			return -1;
+		}
+		return gp_model_pars_iteration_;
+	}
+
+	bool GBDT::SetGPModelToCurrentIteration(score_t* gradients) const {
+		if (objective_function_ == nullptr || !objective_function_->HasGPModel()) {
+			return false;
+		}
+		const int num_iteration = GetCurrentIteration();
+		if (num_iteration <= 0 || num_iteration == gp_model_pars_iteration_ ||
+			num_iteration > static_cast<int>(gp_model_pars_of_iteration_.size()) ||
+			gp_model_pars_of_iteration_[num_iteration - 1].empty()) {
+			return false;
+		}
+		objective_function_->GetGPModel()->SetCovAuxPars(gp_model_pars_of_iteration_[num_iteration - 1]);
+		// The mode or the factorization of the GP model can belong to other parameters or another score (e.g., after predictions)
+		objective_function_->GetGradientsGivenGPModelPars(train_score_updater_->score(), gradients);
+		return true;
 	}
 
 	void GBDT::RollbackOneIter() {
@@ -709,23 +742,46 @@ namespace LightGBM {
 	/*! \brief Get eval result */
 	std::vector<double> GBDT::GetEvalAt(int data_idx) const {
 		CHECK(data_idx >= 0 && data_idx <= static_cast<int>(valid_score_updater_.size()));
+		// The scores of the training and validation data are those of the current iteration. If the parameters of the GP model are
+		//	those of an earlier iteration (e.g., after early stopping), the metrics are evaluated with the parameters of the current
+		//	iteration, and the parameters are set back afterwards
+		const bool has_metrics = data_idx == 0 ? !training_metrics_.empty() : !valid_metrics_[data_idx - 1].empty();
+		std::vector<double> gp_model_pars_before;
+		bool gp_model_pars_changed = false;
+		if (has_metrics && objective_function_ != nullptr && objective_function_->HasGPModel() &&
+			gp_model_pars_iteration_ != GetCurrentIteration()) {
+			gp_model_pars_before = objective_function_->GetGPModel()->GetCovAuxPars();
+			std::vector<score_t> gradients(static_cast<size_t>(num_data_) * num_tree_per_iteration_);
+			gp_model_pars_changed = SetGPModelToCurrentIteration(gradients.data());
+		}
 		std::vector<double> ret;
-		if (data_idx == 0) {
-			for (auto& sub_metric : training_metrics_) {
-				auto scores = EvalOneMetric(sub_metric, train_score_updater_->score());
-				for (auto score : scores) {
-					ret.push_back(score);
+		try {
+			if (data_idx == 0) {
+				for (auto& sub_metric : training_metrics_) {
+					auto scores = EvalOneMetric(sub_metric, train_score_updater_->score());
+					for (auto score : scores) {
+						ret.push_back(score);
+					}
+				}
+			}
+			else {
+				auto used_idx = data_idx - 1;
+				for (size_t j = 0; j < valid_metrics_[used_idx].size(); ++j) {
+					auto test_scores = EvalOneMetric(valid_metrics_[used_idx][j], valid_score_updater_[used_idx]->score());
+					for (auto score : test_scores) {
+						ret.push_back(score);
+					}
 				}
 			}
 		}
-		else {
-			auto used_idx = data_idx - 1;
-			for (size_t j = 0; j < valid_metrics_[used_idx].size(); ++j) {
-				auto test_scores = EvalOneMetric(valid_metrics_[used_idx][j], valid_score_updater_[used_idx]->score());
-				for (auto score : test_scores) {
-					ret.push_back(score);
-				}
+		catch (...) {
+			if (gp_model_pars_changed) {
+				objective_function_->GetGPModel()->SetCovAuxPars(gp_model_pars_before);
 			}
+			throw;
+		}
+		if (gp_model_pars_changed) {
+			objective_function_->GetGPModel()->SetCovAuxPars(gp_model_pars_before);
 		}
 		return ret;
 	}

@@ -20,10 +20,16 @@ If NULL or <= 0, starts from the first iteration.}
 Limit number of iterations in the prediction.
 If NULL, if the best iteration exists and start_iteration is NULL or <= 0, the
 best iteration is used; otherwise, all iterations from start_iteration are used.
-If <= 0, all iterations from start_iteration are used (no limits).}
+If <= 0, all iterations from start_iteration are used (no limits).
+If there is a \code{gp_model}, its saved covariance parameters (and auxiliary likelihood
+parameters) are those after the last saved iteration, if these are available (for a model
+trained in the current session or loaded from a file saved with save_raw_data = TRUE, and
+start_iteration NULL or <= 0); otherwise, the current parameters of the \code{gp_model} are saved.}
 
 \item{save_raw_data}{If TRUE, the raw data (predictor / covariate data) for the Booster is also saved.
-Enable this option if you want to change \code{start_iteration} or \code{num_iteration} at prediction time after loading.}
+Enable this option if you want to change \code{start_iteration} or \code{num_iteration} at prediction time after loading.
+If there is a \code{gp_model}, its covariance parameters (and auxiliary likelihood parameters) after every
+saved iteration are then also saved, so that a prediction with \code{num_iteration} uses those of this iteration.}
 
 \item{...}{Additional named arguments passed to the \code{predict()} method of
 the \code{gpb.Booster} object passed to \code{object}. 

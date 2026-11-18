@@ -2,6 +2,22 @@
 # Modified work Copyright (c) 2020 - 2026 Fabio Sigrist. All rights reserved.
 # Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 
+# Covariance and auxiliary parameters of the gp_model after every saved iteration (one row per iteration) of a model
+#   saved with the raw data, or NULL if they have not been saved
+gpb.gp.model.pars.of.iteration <- function(save_data) {
+  pars <- save_data[["gp_model_pars_of_iteration"]]
+  if (is.null(pars) || is.null(save_data[["raw_data"]])) {
+    return(NULL)
+  }
+  num_iter <- as.integer(pars[["num_iterations"]])
+  cov_pars <- matrix(as.numeric(unlist(pars[["cov_pars"]])), nrow = num_iter, byrow = TRUE)
+  aux_pars <- NULL
+  if (length(unlist(pars[["aux_pars"]])) > 0L) {
+    aux_pars <- matrix(as.numeric(unlist(pars[["aux_pars"]])), nrow = num_iter, byrow = TRUE)
+  }
+  return(list(cov_pars = cov_pars, aux_pars = aux_pars))
+}
+
 #' @importFrom R6 R6Class
 Booster <- R6::R6Class(
   # Class for boosting model in GPBoost
@@ -153,6 +169,7 @@ Booster <- R6::R6Class(
           private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
           private$gp_model$set_used_in_gpboost_algorithm()
           private$gp_model$.__enclos_env__$private$model_fitted <- FALSE
+          private$gp_model_pars_of_iteration_loaded_from_file <- gpb.gp.model.pars.of.iteration(save_data)
           
         } else { # has no gp_model
           
@@ -214,6 +231,7 @@ Booster <- R6::R6Class(
           private$gp_model <- gpb.GPModel$new(model_list = save_data[["gp_model_str"]])
           private$gp_model$set_used_in_gpboost_algorithm()
           private$gp_model$.__enclos_env__$private$model_fitted <- FALSE
+          private$gp_model_pars_of_iteration_loaded_from_file <- gpb.gp.model.pars.of.iteration(save_data)
           
         } else { # has no gp_model
           
@@ -661,6 +679,11 @@ Booster <- R6::R6Class(
           stop("Cannot save to file or string when " , sQuote("free_raw_data = TRUE"), ".",
                " Set ", sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
         }
+        # The saved covariance parameters are those of the iteration whose trees are saved (if available)
+        restore_gp_model_pars <- private$set_gp_model_pars_for_trees(start_iteration, num_iteration)
+        if (!is.null(restore_gp_model_pars)) {
+          on.exit(restore_gp_model_pars(), add = TRUE)
+        }
         save_data <- list()
         save_data[["has_gp_model"]] <- 1L
         save_data[["booster_str"]] <- bst_model_str
@@ -681,6 +704,8 @@ Booster <- R6::R6Class(
               save_data[["raw_data"]][["data"]] <- as.vector(save_data[["raw_data"]][["data"]])
             }
           }
+          # The parameters of all saved iterations, so that a loaded model uses those of the iteration whose trees are used
+          save_data[["gp_model_pars_of_iteration"]] <- private$gp_model_pars_of_iterations(start_iteration, num_iteration)
           
         } else {# do not save raw_data
           
@@ -763,6 +788,17 @@ Booster <- R6::R6Class(
       if (is.null(private$train_set$.__enclos_env__$private$raw_data)) {
         stop("predict_training_data_random_effects.gpb.Booster: cannot calculate training fixed effects. Set ",
              sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
+      }
+      # As in 'predict', the best iteration is used by default
+      if (is.null(num_iteration)) {
+        num_iteration <- self$best_iter
+      }
+      if (is.null(start_iteration)) {
+        start_iteration <- 0L
+      }
+      restore_gp_model_pars <- private$set_gp_model_pars_for_trees(start_iteration, num_iteration)
+      if (!is.null(restore_gp_model_pars)) {
+        on.exit(restore_gp_model_pars(), add = TRUE)
       }
 
       predictor <- Predictor$new(
@@ -884,6 +920,12 @@ Booster <- R6::R6Class(
       
       if (private$has_gp_model & !predcontrib & !ignore_gp_model) {
         
+        # The covariance parameters are those of the iteration whose trees are used (if available)
+        restore_gp_model_pars <- private$set_gp_model_pars_for_trees(start_iteration, num_iteration)
+        if (!is.null(restore_gp_model_pars)) {
+          on.exit(restore_gp_model_pars(), add = TRUE)
+        }
+
         if (is.null(private$train_set$.__enclos_env__$private$raw_data) & 
             !private$gp_model_prediction_data_loaded_from_file) {
           stop("predict: cannot make predictions for random effects.
@@ -1213,6 +1255,7 @@ Booster <- R6::R6Class(
     residual_loaded_from_file = NULL,
     label_loaded_from_file = NULL,
     fixed_effect_train_loaded_from_file = NULL,
+    gp_model_pars_of_iteration_loaded_from_file = NULL,
     gp_model_prediction_data_loaded_from_file = FALSE,
     valid_sets = list(),
     name_valid_sets = list(),
@@ -1237,6 +1280,116 @@ Booster <- R6::R6Class(
       return(invisible(NULL))
     },
     
+    # Number of iterations of the model whose covariance and auxiliary parameters are currently set in the gp_model, or -1
+    #   if the parameters of the iterations are not available (e.g., for a model loaded from a file)
+    gp_model_pars_iteration = function() {
+
+      pars_iter <- integer(1L)
+      .Call(
+        LGBM_GPBoosterGetGPModelParsIteration_R
+        , private$handle
+        , pars_iter
+      )
+      return(pars_iter)
+
+    },
+
+    # Number of iterations whose trees are used for a given 'num_iteration' (NULL or <= 0 means all iterations)
+    num_iteration_of_trees = function(num_iteration) {
+
+      num_iter_trees <- self$current_iter()
+      if (!is.null(num_iteration) && num_iteration > 0L && num_iteration < num_iter_trees) {
+        num_iter_trees <- as.integer(num_iteration)
+      }
+      return(num_iter_trees)
+
+    },
+
+    # Set the covariance and auxiliary parameters of the gp_model to their values after the iteration whose trees are used,
+    #   if these are available (for a model trained in the current session or loaded from a file saved with the raw data).
+    #   Returns a function that sets them back, or NULL if nothing has been changed
+    set_gp_model_pars_for_trees = function(start_iteration, num_iteration) {
+
+      if (!isTRUE(private$has_gp_model) || (!is.null(start_iteration) && start_iteration > 0L)) {
+        return(NULL)
+      }
+      num_iter_trees <- private$num_iteration_of_trees(num_iteration)
+      pars_iter <- private$gp_model_pars_iteration()
+      if (pars_iter > 0L) {
+        if (num_iter_trees == pars_iter) {
+          return(NULL)
+        }
+        self$set_gp_model_pars_of_iteration(num_iter_trees)
+        if (private$gp_model_pars_iteration() != num_iter_trees) {
+          return(NULL)
+        }
+        return(function() self$set_gp_model_pars_of_iteration(pars_iter))
+      }
+      pars_loaded <- private$gp_model_pars_of_iteration_loaded_from_file
+      if (is.null(pars_loaded) || is.null(private$train_set$.__enclos_env__$private$raw_data) ||
+          nrow(pars_loaded$cov_pars) != self$current_iter() || num_iter_trees == nrow(pars_loaded$cov_pars)) {
+        return(NULL)
+      }
+      # A loaded gp_model uses the covariance parameters 'cov_pars_loaded_from_file' for prediction
+      gp_model_private <- private$gp_model$.__enclos_env__$private
+      cov_pars_before <- gp_model_private$cov_pars_loaded_from_file
+      gp_model_private$cov_pars_loaded_from_file <- pars_loaded$cov_pars[num_iter_trees, ]
+      if (!is.null(pars_loaded$aux_pars)) {
+        private$gp_model$set_optim_params(params = list(init_aux_pars = pars_loaded$aux_pars[num_iter_trees, ]))
+      }
+      return(function() {
+        gp_model_private$cov_pars_loaded_from_file <- cov_pars_before
+        if (!is.null(pars_loaded$aux_pars)) {
+          private$gp_model$set_optim_params(params = list(init_aux_pars = pars_loaded$aux_pars[nrow(pars_loaded$aux_pars), ]))
+        }
+      })
+
+    },
+
+    # Covariance and auxiliary parameters of the gp_model after every saved iteration (one iteration after the other), or
+    #   NULL if these are not available
+    gp_model_pars_of_iterations = function(start_iteration, num_iteration) {
+
+      if (!isTRUE(private$has_gp_model) || (!is.null(start_iteration) && start_iteration > 0L)) {
+        return(NULL)
+      }
+      num_iter_trees <- private$num_iteration_of_trees(num_iteration)
+      has_aux_pars <- private$gp_model$get_num_aux_pars() > 0L
+      pars_iter <- private$gp_model_pars_iteration()
+      if (pars_iter > 0L) {
+        on.exit(self$set_gp_model_pars_of_iteration(pars_iter), add = TRUE)
+        cov_pars <- vector("list", num_iter_trees)
+        aux_pars <- vector("list", num_iter_trees)
+        for (k in seq_len(num_iter_trees)) {
+          self$set_gp_model_pars_of_iteration(k)
+          if (private$gp_model_pars_iteration() != k) {
+            return(NULL)
+          }
+          cov_pars[[k]] <- as.vector(private$gp_model$get_cov_pars())
+          if (has_aux_pars) {
+            aux_pars[[k]] <- as.vector(private$gp_model$get_aux_pars())
+          }
+        }
+        cov_pars <- unlist(cov_pars)
+        aux_pars <- unlist(aux_pars)
+      } else {
+        pars_loaded <- private$gp_model_pars_of_iteration_loaded_from_file
+        if (is.null(pars_loaded) || nrow(pars_loaded$cov_pars) != self$current_iter()) {
+          return(NULL)
+        }
+        cov_pars <- as.vector(t(pars_loaded$cov_pars[seq_len(num_iter_trees), , drop = FALSE]))
+        if (has_aux_pars) {
+          aux_pars <- as.vector(t(pars_loaded$aux_pars[seq_len(num_iter_trees), , drop = FALSE]))
+        }
+      }
+      pars_of_iterations <- list(num_iterations = num_iter_trees, cov_pars = cov_pars)
+      if (has_aux_pars) {
+        pars_of_iterations[["aux_pars"]] <- aux_pars
+      }
+      return(pars_of_iterations)
+
+    },
+
     # Predict data
     inner_predict = function(idx) {
       
@@ -1439,6 +1592,10 @@ Booster <- R6::R6Class(
 #'                      If NULL, if the best iteration exists and start_iteration is NULL or <= 0, the
 #'                      best iteration is used; otherwise, all iterations from start_iteration are used.
 #'                      If <= 0, all iterations from start_iteration are used (no limits).
+#'                      If there is a \code{gp_model}, its covariance parameters (and auxiliary likelihood
+#'                      parameters) are those after the last iteration used, if these are available (for a model
+#'                      trained in the current session or loaded from a file saved with save_raw_data = TRUE, and
+#'                      start_iteration NULL or <= 0); otherwise, the current parameters of the \code{gp_model} are used.
 #' @param pred_latent  If TRUE latent variables, both fixed effects (tree-ensemble) 
 #' and random effects (\code{gp_model}) are predicted. Otherwise, the response variable 
 #' (label) is predicted. Depending on how the argument 'pred_latent' is set,
@@ -1696,8 +1853,14 @@ gpb.load <- function(filename = NULL, model_str = NULL) {
 #'                      If NULL, if the best iteration exists and start_iteration is NULL or <= 0, the
 #'                      best iteration is used; otherwise, all iterations from start_iteration are used.
 #'                      If <= 0, all iterations from start_iteration are used (no limits).
+#'                      If there is a \code{gp_model}, its saved covariance parameters (and auxiliary likelihood
+#'                      parameters) are those after the last saved iteration, if these are available (for a model
+#'                      trained in the current session or loaded from a file saved with save_raw_data = TRUE, and
+#'                      start_iteration NULL or <= 0); otherwise, the current parameters of the \code{gp_model} are saved.
 #' @param save_raw_data If TRUE, the raw data (predictor / covariate data) for the Booster is also saved.
 #' Enable this option if you want to change \code{start_iteration} or \code{num_iteration} at prediction time after loading.
+#' If there is a \code{gp_model}, its covariance parameters (and auxiliary likelihood parameters) after every
+#' saved iteration are then also saved, so that a prediction with \code{num_iteration} uses those of this iteration.
 #' @param ... Additional named arguments passed to the \code{predict()} method of
 #'            the \code{gpb.Booster} object passed to \code{object}. 
 #'            This is only used when there is a gp_model and when save_raw_data=FALSE

@@ -581,6 +581,18 @@ GPBOOST_C_EXPORT int LGBM_GPBoosterSetGPModelParsOfIteration(BoosterHandle handl
                                                              int num_iteration);
 
 /*!
+ * \brief Get the number of boosting iterations of the model whose covariance and auxiliary parameters are currently set in
+ *        the GP model of a booster. Training and the evaluation of metrics use the parameters of the current iteration,
+ *        also when the parameters of another iteration have been set.
+ * \param handle Handle of booster
+ * \param[out] out_iteration Number of iterations, or -1 if the booster has no GP model or if the parameters of its
+ *             iterations are not available (e.g., for a booster loaded from a file)
+ * \return 0 when succeed, -1 when failure happens
+ */
+GPBOOST_C_EXPORT int LGBM_GPBoosterGetGPModelParsIteration(BoosterHandle handle,
+                                                           int* out_iteration);
+
+/*!
  * \brief Get index of the current boosting iteration.
  * \param handle Handle of booster
  * \param[out] out_iteration Index of the current boosting iteration
@@ -1737,6 +1749,8 @@ GPBOOST_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
 *			   num_data_pred * K (predictive means, not if sample_prior==true)
 *			   + num_data_pred * num_data_pred (if predict_cov_mat==true) or num_data_pred * K (if predict_var==true)
 *			   + num_data_pred * num_post_samples (if sample_posterior==true) + num_data * num_prior_samples (if sample_prior==true)
+*		 Compatibility: up to version 1.8.0, only the first block was returned (K = 1 also if predict_response==false). Clients
+*			   that allocate out_predict for these likelihoods have to be adapted, as out_predict has no length argument
 * \param handle Handle of REModel
 * \param y_data Response variable for observed data
 * \param num_data_pred Number of data points for which predictions are made

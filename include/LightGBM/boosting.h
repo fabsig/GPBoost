@@ -98,8 +98,15 @@ class LIGHTGBM_EXPORT Boosting {
   * \brief Set the covariance and auxiliary parameters of the GP model to their values after a boosting iteration (nothing is done
   *        if there is no GP model or if the values of this iteration are not available)
   * \param num_iteration Number of iterations of the model whose parameters are set
+  * \return True if the parameters have been set
   */
-  virtual void SetGPModelParsOfIteration(int num_iteration) = 0;
+  virtual bool SetGPModelParsOfIteration(int num_iteration) = 0;
+
+  /*!
+  * \brief Number of iterations of the model whose covariance and auxiliary parameters are currently set in the GP model, or -1 if
+  *        there is no GP model or if the parameters of the iterations are not available (e.g., for a model loaded from a file)
+  */
+  virtual int GetGPModelParsIteration() const = 0;
 
   /*!
   * \brief Get evaluation result at data_idx data

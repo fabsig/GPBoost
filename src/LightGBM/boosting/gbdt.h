@@ -160,8 +160,14 @@ class GBDT : public GBDTBase {
   /*!
   * \brief Set the covariance and auxiliary parameters of the GP model to their values after a boosting iteration
   * \param num_iteration Number of iterations of the model whose parameters are set
+  * \return True if the parameters have been set
   */
-  void SetGPModelParsOfIteration(int num_iteration) override;
+  bool SetGPModelParsOfIteration(int num_iteration) override;
+
+  /*!
+  * \brief Number of iterations of the model whose covariance and auxiliary parameters are currently set in the GP model (-1 if not available)
+  */
+  int GetGPModelParsIteration() const override;
 
   /*!
   * \brief Can use early stopping for prediction or not
@@ -456,6 +462,15 @@ class GBDT : public GBDTBase {
   virtual void Boosting();
 
   /*!
+  * \brief If the covariance and auxiliary parameters of the GP model are not those of the current iteration (e.g., after early
+  *        stopping), set them to those of the current iteration and calculate the GP model for the current training score anew
+  *        (mode or factorization and gradient), without estimating its parameters
+  * \param[out] gradients Gradients with respect to the training score (length num_data_ * num_tree_per_iteration_)
+  * \return True if the parameters have been changed
+  */
+  bool SetGPModelToCurrentIteration(score_t* gradients) const;
+
+  /*!
   * \brief updating score after tree was trained
   * \param tree Trained tree of this iteration
   * \param cur_tree_id Current tree for multiclass training
@@ -580,6 +595,8 @@ class GBDT : public GBDTBase {
   /*! \brief Covariance and auxiliary parameters of the GP model (see 'REModel::GetCovAuxPars()') after every boosting iteration of the
   *     current training; entry i belongs to the model with i + 1 iterations (only used if objective_function_->HasGPModel()==true) */
   std::vector<std::vector<double>> gp_model_pars_of_iteration_;
+  /*! \brief Number of iterations of the model whose parameters are currently set in the GP model (see 'gp_model_pars_of_iteration_') */
+  int gp_model_pars_iteration_ = 0;
 };
 
 }  // namespace LightGBM
