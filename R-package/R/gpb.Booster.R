@@ -455,6 +455,25 @@ Booster <- R6::R6Class(
       
     },
     
+    # Set the covariance and auxiliary parameters of the gp_model to their values after an iteration
+    #   of the current training (e.g., the best iteration of early stopping)
+    set_gp_model_pars_of_iteration = function(num_iteration) {
+      
+      if (isTRUE(private$has_gp_model)) {
+        .Call(
+          LGBM_GPBoosterSetGPModelParsOfIteration_R
+          , private$handle
+          , as.integer(num_iteration)
+        )
+        for (i in seq_along(private$is_predicted_cur_iter)) {
+          private$is_predicted_cur_iter[[i]] <- FALSE
+        }
+      }
+      
+      return(invisible(self))
+      
+    },
+    
     # Get current iteration
     current_iter = function() {
       

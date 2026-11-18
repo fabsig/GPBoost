@@ -703,6 +703,13 @@ gpb.cv <- function(params = list()
     
   }
   
+  # With early stopping, the covariance parameters of the models of the folds are those of the best iteration, see 'gpb.train'
+  if (!is.null(gp_model) && using_early_stopping && !delete_boosters_folds && isTRUE(cv_booster$best_iter > 0L)) {
+    for (fd in cv_booster$boosters) {
+      fd$booster$set_gp_model_pars_of_iteration(cv_booster$best_iter)
+    }
+  }
+  
   if (reset_data) {
     lapply(cv_booster$boosters, function(fd) {
       # Store temporarily model data elsewhere

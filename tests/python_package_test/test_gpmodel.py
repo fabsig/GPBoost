@@ -664,3 +664,72 @@ def test_tweedie_log_likelihood_for_a_small_dispersion():
     nll = gp_model.neg_log_likelihood(cov_pars=np.array([1e-20]), y=y, fixed_effects=np.log(y),
                                       aux_pars=np.array([1e-7, 1.5]))
     assert nll == pytest.approx(-21.39091231387951, abs=1e-5)
+
+
+def test_non_contiguous_one_dimensional_arrays():
+    # A column of a two-dimensional array is not contiguous in memory: its elements are passed, not the elements
+    # that follow the first one in memory
+    group, y = _sim_grouped()
+    data = np.column_stack([np.arange(len(y)), y, -y])
+    assert not data[:, 1].flags.c_contiguous
+    gp_model = gpb.GPModel(group_data=group, likelihood="gaussian")
+    gp_model.fit(y=data[:, 1])
+    gp_model_contiguous = gpb.GPModel(group_data=group, likelihood="gaussian")
+    gp_model_contiguous.fit(y=y.copy())
+    np.testing.assert_array_equal(np.asarray(gp_model.get_cov_pars()), np.asarray(gp_model_contiguous.get_cov_pars()))
+    cov_pars = np.array([[0.3, 0.], [0.5, 0.]])[:, 0]
+    assert not cov_pars.flags.c_contiguous
+    assert gp_model.neg_log_likelihood(cov_pars=cov_pars, y=data[:, 1]) == \
+        gp_model.neg_log_likelihood(cov_pars=np.array([0.3, 0.5]), y=y.copy())
+
+
+@pytest.mark.parametrize("likelihood", ["gaussian", "gamma"])
+def test_early_stopping_sets_the_parameters_of_the_best_iteration(likelihood):
+    # After early stopping, the covariance and auxiliary parameters of the gp_model are those of the best iteration,
+    # as are the trees used for prediction, i.e., the same as with num_boost_round = best_iteration
+    rng = np.random.default_rng(4)
+    n, n_groups = 600, 30
+    group = np.repeat(np.arange(n_groups), n // n_groups)
+    x = rng.uniform(size=(n, 2))
+    eta = np.sin(3 * x[:, 0]) + rng.normal(scale=0.7, size=n_groups)[group]
+    if likelihood == "gaussian":
+        y = eta + rng.normal(scale=0.5, size=n)
+    else:
+        y = rng.gamma(shape=2., scale=np.exp(eta) / 2.)
+    tr, va = np.arange(0, n, 2), np.arange(1, n, 2)
+    params = {"learning_rate": 0.5, "max_depth": 6, "min_data_in_leaf": 5, "verbose": -1}
+    if likelihood == "gaussian":
+        params["objective"] = "regression_l2"
+    train_set = gpb.Dataset(x[tr], y[tr], free_raw_data=False)
+    gp_model = gpb.GPModel(group_data=group[tr], likelihood=likelihood)
+    gp_model.set_prediction_data(group_data_pred=group[va])
+    bst = gpb.train(params=params, train_set=train_set, gp_model=gp_model, num_boost_round=100,
+                    valid_sets=gpb.Dataset(x[va], y[va], reference=train_set), early_stopping_rounds=5,
+                    verbose_eval=False)
+    assert 0 < bst.best_iteration < bst.current_iteration()
+    gp_model_best = gpb.GPModel(group_data=group[tr], likelihood=likelihood)
+    bst_best = gpb.train(params=params, train_set=train_set, gp_model=gp_model_best,
+                         num_boost_round=bst.best_iteration)
+    np.testing.assert_allclose(np.asarray(gp_model.get_cov_pars()), np.asarray(gp_model_best.get_cov_pars()),
+                               rtol=1e-8)
+    if likelihood == "gamma":
+        np.testing.assert_allclose(np.asarray(gp_model.get_aux_pars()), np.asarray(gp_model_best.get_aux_pars()),
+                                   rtol=1e-8)
+    pred = bst.predict(data=x[va], group_data_pred=group[va], predict_var=True)
+    pred_best = bst_best.predict(data=x[va], group_data_pred=group[va], predict_var=True)
+    np.testing.assert_allclose(pred["response_mean"], pred_best["response_mean"], rtol=1e-6)
+    np.testing.assert_allclose(pred["response_var"], pred_best["response_var"], rtol=1e-6)
+    # The models of the folds of a cross-validation have the parameters of the best iteration as well
+    folds = [(tr, va), (va, tr)]
+    cvboosters = []
+    for num_boost_round, early_stopping_rounds in ((100, 5), (None, None)):
+        if num_boost_round is None:
+            num_boost_round = cvboosters[0].best_iteration
+        cv_result = gpb.cv(params=params, train_set=gpb.Dataset(x, y), num_boost_round=num_boost_round,
+                           gp_model=gpb.GPModel(group_data=group, likelihood=likelihood), folds=folds,
+                           early_stopping_rounds=early_stopping_rounds, return_cvbooster=True)
+        cvboosters.append(cv_result["cvbooster"])
+    assert 0 < cvboosters[0].best_iteration < cvboosters[0].boosters[0].current_iteration()
+    for booster, booster_best in zip(cvboosters[0].boosters, cvboosters[1].boosters):
+        np.testing.assert_allclose(np.asarray(booster.gp_model.get_cov_pars()),
+                                   np.asarray(booster_best.gp_model.get_cov_pars()), rtol=1e-8)

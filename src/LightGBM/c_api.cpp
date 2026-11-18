@@ -465,6 +465,11 @@ yamc::shared_lock<yamc::alternate::shared_mutex> lock(&mtx);
 				boosting_->RollbackOneIter();
 		}
 
+		void SetGPModelParsOfIteration(int num_iteration) {
+			UNIQUE_LOCK(mutex_)
+				boosting_->SetGPModelParsOfIteration(num_iteration);
+		}
+
 		void SetSingleRowPredictor(int start_iteration, int num_iteration, int predict_type, const Config& config) {
 			UNIQUE_LOCK(mutex_)
 				if (single_row_predictor_[predict_type].get() == nullptr ||
@@ -1809,6 +1814,14 @@ int LGBM_BoosterRollbackOneIter(BoosterHandle handle) {
 	API_BEGIN();
 	Booster* ref_booster = reinterpret_cast<Booster*>(handle);
 	ref_booster->RollbackOneIter();
+	API_END();
+}
+
+int LGBM_GPBoosterSetGPModelParsOfIteration(BoosterHandle handle,
+	int num_iteration) {
+	API_BEGIN();
+	Booster* ref_booster = reinterpret_cast<Booster*>(handle);
+	ref_booster->SetGPModelParsOfIteration(num_iteration);
 	API_END();
 }
 

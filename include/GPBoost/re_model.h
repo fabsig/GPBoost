@@ -644,6 +644,19 @@ namespace GPBoost {
 		const double* GetAuxParsInternalScale();
 
 		/*!
+		* \brief Current covariance parameters followed by the auxiliary parameters, both on their internal scales, so that
+		*		they can be restored later with 'SetCovAuxPars()' (empty if the covariance parameters have not been initialized)
+		*/
+		std::vector<double> GetCovAuxPars();
+
+		/*!
+		* \brief Set the covariance and the auxiliary parameters to values obtained from 'GetCovAuxPars()'. The covariance
+		*		matrix is factorized anew for the next prediction
+		* \param pars Covariance parameters followed by the auxiliary parameters (nothing is done if this is empty)
+		*/
+		void SetCovAuxPars(const std::vector<double>& pars);
+
+		/*!
 		* \brief Calculate test negative log-likelihood using adaptive GH quadrature
 		* \param y_test Test response variable
 		* \param pred_mean Predictive mean of latent random effects

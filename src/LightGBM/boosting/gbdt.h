@@ -158,6 +158,12 @@ class GBDT : public GBDTBase {
   int GetCurrentIteration() const override { return static_cast<int>(models_.size()) / num_tree_per_iteration_; }
 
   /*!
+  * \brief Set the covariance and auxiliary parameters of the GP model to their values after a boosting iteration
+  * \param num_iteration Number of iterations of the model whose parameters are set
+  */
+  void SetGPModelParsOfIteration(int num_iteration) override;
+
+  /*!
   * \brief Can use early stopping for prediction or not
   * \return True if cannot use early stopping for prediction
   */
@@ -571,6 +577,9 @@ class GBDT : public GBDTBase {
   int momentum_offset_ = 0;
   /*! \brief If true, a Newton update step is done for the tree leaves after the gradient step (only releveant for GPBoost algorithm, i.e. if objective_function_->HasGPModel()==true) */
   bool leaves_newton_update_ = false;
+  /*! \brief Covariance and auxiliary parameters of the GP model (see 'REModel::GetCovAuxPars()') after every boosting iteration of the
+  *     current training; entry i belongs to the model with i + 1 iterations (only used if objective_function_->HasGPModel()==true) */
+  std::vector<std::vector<double>> gp_model_pars_of_iteration_;
 };
 
 }  // namespace LightGBM

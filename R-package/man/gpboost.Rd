@@ -120,7 +120,10 @@ and one metric. When this parameter is non-null,
 training will stop if the evaluation of any metric on any validation set
 fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
 If training stops early, the returned model will have attribute \code{best_iter}
-set to the iteration number of the best iteration.}
+set to the iteration number of the best iteration.
+If there is a \code{gp_model}, its covariance parameters (and auxiliary likelihood
+parameters) are set to their values after the best iteration, i.e., to the values
+obtained with \code{nrounds = best_iter}.}
 
 \item{init_model}{path of model file of \code{gpb.Booster} object, will continue training from this model}
 

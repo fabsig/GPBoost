@@ -1767,6 +1767,34 @@ namespace GPBoost {
 		}
 	}
 
+	std::vector<double> REModel::GetCovAuxPars() {
+		std::vector<double> pars;
+		if (!cov_pars_initialized_ || (int)cov_pars_.size() != num_cov_pars_) {
+			return pars;
+		}
+		pars.assign(cov_pars_.data(), cov_pars_.data() + num_cov_pars_);
+		const int num_aux_pars = NumAuxPars();
+		if (num_aux_pars > 0) {
+			const double* aux_pars = GetAuxParsInternalScale();
+			pars.insert(pars.end(), aux_pars, aux_pars + num_aux_pars);
+		}
+		return pars;
+	}
+
+	void REModel::SetCovAuxPars(const std::vector<double>& pars) {
+		if (pars.empty()) {
+			return;
+		}
+		const int num_aux_pars = NumAuxPars();
+		CHECK((int)pars.size() == num_cov_pars_ + num_aux_pars);
+		cov_pars_ = Eigen::Map<const vec_t>(pars.data(), num_cov_pars_);
+		if (num_aux_pars > 0) {
+			SetAuxPars(pars.data() + num_cov_pars_);
+		}
+		covariance_matrix_has_been_factorized_ = false;
+		std_dev_cov_pars_calculated_ = false;
+	}
+
 	void REModel::RestoreAuxParsBeforeEvaluation() {
 		if (!aux_pars_changed_by_evaluation_) {
 			return;

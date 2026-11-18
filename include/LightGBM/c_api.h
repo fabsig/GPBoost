@@ -570,6 +570,17 @@ GPBOOST_C_EXPORT int LGBM_BoosterUpdateOneIterCustom(BoosterHandle handle,
 GPBOOST_C_EXPORT int LGBM_BoosterRollbackOneIter(BoosterHandle handle);
 
 /*!
+ * \brief Set the covariance and auxiliary parameters of the GP model of a booster to their values after a boosting iteration
+ *        of the current training (e.g., the best iteration of early stopping). Nothing is done if the booster has no GP
+ *        model or if the values of this iteration are not available.
+ * \param handle Handle of booster
+ * \param num_iteration Number of iterations of the model whose parameters are set
+ * \return 0 when succeed, -1 when failure happens
+ */
+GPBOOST_C_EXPORT int LGBM_GPBoosterSetGPModelParsOfIteration(BoosterHandle handle,
+                                                             int num_iteration);
+
+/*!
  * \brief Get index of the current boosting iteration.
  * \param handle Handle of booster
  * \param[out] out_iteration Index of the current boosting iteration

@@ -21,6 +21,9 @@
 #'                              fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
 #'                              If training stops early, the returned model will have attribute \code{best_iter}
 #'                              set to the iteration number of the best iteration.
+#'                              If there is a \code{gp_model}, its covariance parameters (and auxiliary likelihood
+#'                              parameters) are set to their values after the best iteration, i.e., to the values
+#'                              obtained with \code{nrounds = best_iter}.
 #' @param metric Evaluation metric to be monitored when doing CV and parameter tuning. 
 #' Can be a \code{character} string or vector of \code{character} strings.
 #' If not NULL, the metric in \code{params} will be overridden.

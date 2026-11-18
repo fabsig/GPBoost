@@ -50,7 +50,10 @@ and one metric. When this parameter is non-null,
 training will stop if the evaluation of any metric on any validation set
 fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
 If training stops early, the returned model will have attribute \code{best_iter}
-set to the iteration number of the best iteration.}
+set to the iteration number of the best iteration.
+If there is a \code{gp_model}, its covariance parameters (and auxiliary likelihood
+parameters) are set to their values after the best iteration, i.e., to the values
+obtained with \code{nrounds = best_iter}.}
 
 \item{folds}{(\code{list}) This provides the possibility to use a list of pre-defined CV folds
 (each element must be a vector of test fold's indices). When \code{folds} are supplied,

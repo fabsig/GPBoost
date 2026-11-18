@@ -151,6 +151,8 @@ def train(params, train_set, num_boost_round=100,
         To check only the first metric, set the ``first_metric_only`` parameter to ``True`` in ``params``.
         The index of iteration that has the best performance will be saved in the ``best_iteration`` field
         if early stopping logic is enabled by setting ``early_stopping_rounds``.
+        If there is a ``gp_model``, its covariance parameters (and auxiliary likelihood parameters) are set to
+        their values after the best iteration, i.e., to the values obtained with ``num_boost_round = best_iteration``.
     evals_result: dict or None, optional (default=None)
         This dictionary used to store all evaluation results of all the items in ``valid_sets``.
         .. rubric:: Example
@@ -377,6 +379,10 @@ def train(params, train_set, num_boost_round=100,
             evaluation_result_list = earlyStopException.best_score
             break
 
+    if gp_model is not None and booster.best_iteration > 0:
+        # The trees after the best iteration are not used for prediction, and neither are the covariance parameters
+        #   estimated in these iterations
+        booster._set_gp_model_pars_of_iteration(booster.best_iteration)
     booster.best_score = collections.defaultdict(collections.OrderedDict)
     for dataset_name, eval_name, score, _ in evaluation_result_list:
         booster.best_score[dataset_name][eval_name] = score
@@ -875,6 +881,9 @@ def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_ro
             break
 
     if return_cvbooster:
+        if gp_model is not None and cvfolds.best_iteration > 0:
+            for booster in cvfolds.boosters:
+                booster._set_gp_model_pars_of_iteration(cvfolds.best_iteration)
         results['cvbooster'] = cvfolds
 
     return dict(results)

@@ -609,6 +609,60 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       }
     })
 
+    test_that("Early stopping sets the parameters of the gp_model to those of the best iteration", {
+
+      ntrain <- ntest <- 500
+      n <- ntrain + ntest
+      sim_data <- sim_friedman3(n=n, n_irrelevant=5)
+      m <- 50
+      group <- rep(1,ntrain)
+      for(i in 1:m) group[((i-1)*ntrain/m+1):(i*ntrain/m)] <- i
+      group <- c(group, group)
+      b1 <- sqrt(0.5) * qnorm(sim_rand_unif(n=m, init_c=0.542))
+      eta <- sim_data$f / 4 + b1[group]
+      X_train <- sim_data$X[1:ntrain,]
+      X_test <- sim_data$X[1:ntest + ntrain,]
+      group_train <- group[1:ntrain]
+      group_test <- group[1:ntest + ntrain]
+      params_bst <- list(learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5, verbose = 0)
+      for (likelihood in c("gaussian", "gamma")) {
+        params_lik <- params_bst
+        if (likelihood == "gaussian") {
+          y <- eta + 0.5 * qnorm(sim_rand_unif(n=n, init_c=0.756))
+          params_lik$objective <- "regression_l2"
+        } else {
+          y <- qgamma(sim_rand_unif(n=n, init_c=0.756), scale = exp(eta) / 2, shape = 2)
+        }
+        y_train <- y[1:ntrain]
+        y_test <- y[1:ntest + ntrain]
+        dtrain <- gpb.Dataset(data = X_train, label = y_train)
+        valids <- list(test = gpb.Dataset.create.valid(dtrain, data = X_test, label = y_test))
+        gp_model <- GPModel(group_data = group_train, likelihood = likelihood)
+        set_prediction_data(gp_model, group_data_pred = group_test)
+        bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 100, params = params_lik,
+                         valids = valids, early_stopping_rounds = 5,
+                         use_gp_model_for_validation = TRUE, metric = "test_neg_log_likelihood")
+        expect_lt(bst$best_iter, bst$current_iter())
+        # The same parameters and predictions as when training stops at the best iteration
+        gp_model_best <- GPModel(group_data = group_train, likelihood = likelihood)
+        bst_best <- gpb.train(data = dtrain, gp_model = gp_model_best, nrounds = bst$best_iter,
+                              params = params_lik)
+        expect_lt(sum(abs(gp_model$get_cov_pars() - gp_model_best$get_cov_pars())), TOLERANCE_STRICT)
+        if (likelihood == "gamma") {
+          expect_lt(sum(abs(gp_model$get_aux_pars() - gp_model_best$get_aux_pars())), TOLERANCE_STRICT)
+        }
+        pred <- predict(bst, data = X_test, group_data_pred = group_test, pred_latent = FALSE, predict_var = TRUE)
+        pred_best <- predict(bst_best, data = X_test, group_data_pred = group_test, pred_latent = FALSE, predict_var = TRUE)
+        expect_lt(sum(abs(pred$response_mean - pred_best$response_mean)), TOLERANCE_STRICT)
+        expect_lt(sum(abs(pred$response_var - pred_best$response_var)), TOLERANCE_STRICT)
+        if (likelihood == "gaussian") {
+          # The validation score of the best iteration is the score of the predictions of the returned model
+          nll <- 0.5 * mean((y_test - pred$response_mean)^2 / pred$response_var + log(pred$response_var * 2 * pi))
+          expect_lt(abs(bst$best_score - nll), TOLERANCE_STRICT)
+        }
+      }
+    })
+
   }
   
 }

@@ -1392,7 +1392,9 @@ def _format_check_1D_data(data, data_name="data", check_data_type=True, check_mu
     if convert_to_type is not None:
         if data.dtype != convert_to_type:
             data = data.astype(convert_to_type)
-    return data
+    # The data are passed to C++ by a pointer to their first element, which requires contiguous memory
+    #   (a column of a two-dimensional array, e.g., is not contiguous)
+    return np.ascontiguousarray(data)
 
 
 def _dump_pandas_categorical(pandas_categorical, file_name=None):
@@ -3674,6 +3676,27 @@ class Booster:
         _safe_call(_LIB.LGBM_BoosterRollbackOneIter(
             self.handle))
         self.__is_predicted_cur_iter = [False for _ in range(self.__num_dataset)]
+        return self
+
+    def _set_gp_model_pars_of_iteration(self, num_iteration):
+        """Set the covariance and auxiliary parameters of the gp_model to their values after an iteration of the
+        current training (e.g., the best iteration of early stopping).
+
+        Parameters
+        ----------
+        num_iteration : int
+            Number of boosting iterations of the model whose parameters are set.
+
+        Returns
+        -------
+        self : Booster
+            Booster whose gp_model has the parameters of this iteration.
+        """
+        if self.has_gp_model:
+            _safe_call(_LIB.LGBM_GPBoosterSetGPModelParsOfIteration(
+                self.handle,
+                ctypes.c_int(num_iteration)))
+            self.__is_predicted_cur_iter = [False for _ in range(self.__num_dataset)]
         return self
 
     def current_iteration(self):

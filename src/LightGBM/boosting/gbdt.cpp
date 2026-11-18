@@ -59,6 +59,7 @@ namespace LightGBM {
 			CHECK_EQ(static_cast<size_t>(train_data_->num_total_features()), config->feature_contri.size());
 		}
 		iter_ = 0;
+		gp_model_pars_of_iteration_.clear();
 		num_iteration_for_pred_ = 0;
 		max_feature_idx_ = 0;
 		num_class_ = config->num_class;
@@ -563,7 +564,25 @@ namespace LightGBM {
 		}
 
 		++iter_;
+		if (objective_function_ != nullptr && objective_function_->HasGPModel()) {
+			// The parameters of the GP model are estimated in every iteration, see 'Boosting()', and are kept for every
+			//	number of iterations so that they can be set to those of the iteration used for prediction (e.g., after early stopping)
+			const size_t num_iteration = static_cast<size_t>(GetCurrentIteration());
+			gp_model_pars_of_iteration_.resize(num_iteration);
+			gp_model_pars_of_iteration_[num_iteration - 1] = objective_function_->GetGPModel()->GetCovAuxPars();
+		}
 		return false;
+	}
+
+	void GBDT::SetGPModelParsOfIteration(int num_iteration) {
+		if (objective_function_ == nullptr || !objective_function_->HasGPModel()) {
+			return;
+		}
+		if (num_iteration <= 0 || num_iteration > GetCurrentIteration() ||
+			num_iteration > static_cast<int>(gp_model_pars_of_iteration_.size())) {
+			return;
+		}
+		objective_function_->GetGPModel()->SetCovAuxPars(gp_model_pars_of_iteration_[num_iteration - 1]);
 	}
 
 	void GBDT::RollbackOneIter() {

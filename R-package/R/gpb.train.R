@@ -506,6 +506,12 @@ gpb.train <- function(params = list(),
     booster$best_score <- booster$record_evals[[first_valid_name]][[first_metric]][[.EVAL_KEY()]][[booster$best_iter]]
   }
 
+  # With early stopping, the trees after the best iteration are not used for prediction, and neither are the
+  #   covariance parameters estimated in these iterations
+  if (!is.null(gp_model) && using_early_stopping && isTRUE(booster$best_iter > 0L)) {
+    booster$set_gp_model_pars_of_iteration(booster$best_iter)
+  }
+
   # Check for booster model conversion to predictor model
   if (reset_data) {
 
