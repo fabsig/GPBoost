@@ -3736,6 +3736,15 @@ class Booster:
                 ctypes.byref(out_iteration)))
         return out_iteration.value
 
+    def _num_iteration_or_default(self, num_iteration, start_iteration):
+        """Default of ``num_iteration``: the best iteration if it exists and the trees start at the first iteration,
+        otherwise all iterations."""
+        if num_iteration is not None:
+            return num_iteration
+        if start_iteration <= 0:
+            return self.best_iteration
+        return -1
+
     def _num_iteration_of_trees(self, num_iteration):
         """Number of iterations whose trees are used for a given ``num_iteration`` (None or <= 0 means all)."""
         num_iter_trees = self.current_iteration()
@@ -4019,7 +4028,8 @@ class Booster:
             Filename to save Booster.
         num_iteration : int or None, optional (default=None)
             Index of the iteration that should be saved.
-            If None, if the best iteration exists, it is saved; otherwise, all iterations are saved.
+            If None, if the best iteration exists and ``start_iteration`` <= 0, the best iteration is saved;
+            otherwise, all iterations from ``start_iteration`` are saved.
             If <= 0, all iterations are saved.
             If there is a ``gp_model``, its saved covariance parameters (and auxiliary likelihood parameters) are
             those after the last saved iteration, if these are available (for a Booster trained in the current
@@ -4045,8 +4055,7 @@ class Booster:
         self : Booster and attached GPModel
             Returns self. After loading, the GPModel can be accessed via the 'gp_model' attribute.
         """
-        if num_iteration is None:
-            num_iteration = self.best_iteration
+        num_iteration = self._num_iteration_or_default(num_iteration, start_iteration)
 
         # Saving with gp_model
         if self.has_gp_model:
@@ -4133,7 +4142,8 @@ class Booster:
         ----------
         num_iteration : int or None, optional (default=None)
             Index of the iteration that should be saved.
-            If None, if the best iteration exists, it is saved; otherwise, all iterations are saved.
+            If None, if the best iteration exists and ``start_iteration`` <= 0, the best iteration is saved;
+            otherwise, all iterations from ``start_iteration`` are saved.
             If <= 0, all iterations are saved.
             If there is a ``gp_model``, its saved covariance parameters (and auxiliary likelihood parameters) are
             those after the last saved iteration, if these are available (for a Booster trained in the current
@@ -4159,8 +4169,7 @@ class Booster:
         str_repr : string
             String representation of Booster and GPmodel.
         """
-        if num_iteration is None:
-            num_iteration = self.best_iteration
+        num_iteration = self._num_iteration_or_default(num_iteration, start_iteration)
         importance_type_int = FEATURE_IMPORTANCE_TYPE_MAPPER[importance_type]
         buffer_len = 1 << 20
         tmp_out_len = ctypes.c_int64(0)
@@ -4327,11 +4336,7 @@ class Booster:
                                "Set 'free_raw_data = False' when you construct the Dataset")
 
         predictor = self._to_predictor(deepcopy(kwargs))
-        if num_iteration is None:
-            if start_iteration <= 0:
-                num_iteration = self.best_iteration
-            else:
-                num_iteration = -1
+        num_iteration = self._num_iteration_or_default(num_iteration, start_iteration)
         fixed_effect_train = predictor.predict(self.train_set.data, start_iteration=start_iteration,
                                                num_iteration=num_iteration, raw_score=True,
                                                pred_leaf=False, pred_contrib=False,
@@ -4525,11 +4530,7 @@ class Booster:
             elif data.shape[1] != num_features_train:
                 raise ValueError("Prediction features are incompatible with the fitted fidelity-specific mean")
         predictor = self._to_predictor(deepcopy(kwargs))
-        if num_iteration is None:
-            if start_iteration <= 0:
-                num_iteration = self.best_iteration
-            else:
-                num_iteration = -1
+        num_iteration = self._num_iteration_or_default(num_iteration, start_iteration)
         if self.has_gp_model and not pred_contrib and not ignore_gp_model:
             random_effect_mean = None
             pred_var_cov = None

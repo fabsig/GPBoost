@@ -480,8 +480,9 @@ gpb.train <- function(params = list(),
   non_train_valid_names <- names(valids)[!(names(valids) == train_data_name)]
   first_valid_name <- non_train_valid_names[1L]
 
-  # The best iteration and its score for the first metric on the first validation data. Without early stopping,
-  #   all iterations are used for prediction (best_iter = -1), and best_score is the score of the last iteration
+  # The best iteration and its score for the first metric on the first validation data, also when another metric
+  #   stops the training. Without early stopping, all iterations are used for prediction (best_iter = -1), and
+  #   best_score is the score of the last iteration
   if (record && length(non_train_valid_names) > 0L && is.na(env$best_score)) {
 
     # when using a custom eval function, the metric name is returned from the
@@ -494,7 +495,8 @@ gpb.train <- function(params = list(),
 
     scores <- unlist(booster$record_evals[[first_valid_name]][[first_metric]][[.EVAL_KEY()]])
     if (length(scores) > 0L) {
-      if (using_early_stopping) {
+      if (using_early_stopping || isTRUE(env$met_early_stop)) {
+        # 'env$met_early_stop' is set by an early stopping callback, also by one in 'callbacks'
         .find_best <- which.min
         if (isTRUE(env$eval_list[[1L]]$higher_better[1L])) {
           .find_best <- which.max
@@ -502,7 +504,7 @@ gpb.train <- function(params = list(),
         booster$best_iter <- unname(.find_best(scores))
         booster$best_score <- scores[[booster$best_iter]]
       } else if (isTRUE(booster$best_iter > 0L) && booster$best_iter <= length(scores)) {
-        # The best iteration has been set by an early stopping callback in 'callbacks'
+        # The best iteration has been set by another callback in 'callbacks'
         booster$best_score <- scores[[booster$best_iter]]
       } else {
         booster$best_score <- scores[[length(scores)]]

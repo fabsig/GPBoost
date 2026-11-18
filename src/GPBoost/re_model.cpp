@@ -383,6 +383,7 @@ namespace GPBoost {
 			cov_pars_initialized_ = true;
 			init_cov_pars_provided_ = true;
 			covariance_matrix_has_been_factorized_ = false;
+			boosting_state_is_current_ = false;
 		}
 		// Initial linear regression coefficients
 		if (init_coef != nullptr) {
@@ -397,6 +398,7 @@ namespace GPBoost {
 			SetAuxParsOriginalScale(init_aux_pars_.data());
 			init_aux_pars_given_ = true;
 			aux_pars_changed_by_evaluation_ = false;
+			boosting_state_is_current_ = false;
 		}
 		init_coef_aux_pars_from_iid_model_ = init_coef_aux_pars_from_iid_model;
 		// Logging level
@@ -551,6 +553,7 @@ namespace GPBoost {
 		bool called_in_GPBoost_algorithm,
 		bool reuse_learning_rates_from_previous_call) {
 		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
+		boosting_state_is_current_ = false;
 		RestoreAuxParsBeforeEvaluation();
 		if (y_data != nullptr) {
 			InitializeCovParsIfNotDefined(y_data, fixed_effects);
@@ -618,6 +621,7 @@ namespace GPBoost {
 		int num_covariates,
 		const double* fixed_effects) {
 		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
+		boosting_state_is_current_ = false;
 		RestoreAuxParsBeforeEvaluation();
 		InitializeCovParsIfNotDefined(y_data, fixed_effects, covariate_data, num_covariates);
 		double* init_coef_ptr;
@@ -854,6 +858,9 @@ namespace GPBoost {
 		bool CalcModePostRandEff_already_done,
 		const double* aux_pars) {
 		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
+		if (y_data != nullptr || cov_pars != nullptr || aux_pars != nullptr) {
+			boosting_state_is_current_ = false;
+		}
 		if (aux_pars != nullptr) {
 			if (!aux_pars_changed_by_evaluation_) {
 				aux_pars_before_evaluation_ = Eigen::Map<const vec_t>(GetAuxParsInternalScale(), NumAuxPars());
@@ -928,6 +935,7 @@ namespace GPBoost {
 		else {
 			re_model_den_->CalcGradientF(y, fixed_effects, calc_cov_factor, cov_pars_);
 		}
+		boosting_state_is_current_ = true;
 	}
 
 	void REModel::SetY(const double* y) const {
@@ -1271,6 +1279,9 @@ namespace GPBoost {
 		if (suppress_calc_cov_factor) {
 			calc_cov_factor = false;
 		}
+		else {
+			boosting_state_is_current_ = false;
+		}
 		if (matrix_format_ == "sp_mat_t") {
 			re_model_sp_->ResetCGStatisticsLikelihoods();
 			re_model_sp_->Predict(cov_pars_pred_trans.data(),
@@ -1357,6 +1368,7 @@ namespace GPBoost {
 		const double* fixed_effects,
 		bool calc_var) {
 		ParallelThreadsScope threads_scope(num_parallel_threads_);//see the comment in the definition of 'ParallelThreadsScope' in utils.h
+		boosting_state_is_current_ = false;
 		bool calc_cov_factor = true;
 		vec_t cov_pars_pred_trans;
 		if (cov_pars_pred != nullptr) {
@@ -1793,6 +1805,11 @@ namespace GPBoost {
 		}
 		covariance_matrix_has_been_factorized_ = false;
 		std_dev_cov_pars_calculated_ = false;
+		boosting_state_is_current_ = false;
+	}
+
+	bool REModel::BoostingStateIsCurrent() const {
+		return boosting_state_is_current_;
 	}
 
 	void REModel::RestoreAuxParsBeforeEvaluation() {

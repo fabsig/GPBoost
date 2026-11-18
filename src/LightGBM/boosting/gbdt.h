@@ -462,13 +462,18 @@ class GBDT : public GBDTBase {
   virtual void Boosting();
 
   /*!
-  * \brief If the covariance and auxiliary parameters of the GP model are not those of the current iteration (e.g., after early
-  *        stopping), set them to those of the current iteration and calculate the GP model for the current training score anew
-  *        (mode or factorization and gradient), without estimating its parameters
-  * \param[out] gradients Gradients with respect to the training score (length num_data_ * num_tree_per_iteration_)
-  * \return True if the parameters have been changed
+  * \brief True if the parameters of the GP model of the current iteration are available and the GP model differs from it: either
+  *        the parameters of another iteration are set (e.g., after early stopping), or the GP model has been calculated for other
+  *        values since the last iteration (e.g., for a prediction)
   */
-  bool SetGPModelToCurrentIteration(score_t* gradients) const;
+  bool GPModelDiffersFromCurrentIteration() const;
+
+  /*!
+  * \brief Set the covariance and auxiliary parameters of the GP model to those of the current iteration and calculate the GP model
+  *        for the current training score anew (mode or factorization and gradient), without estimating its parameters
+  * \param[out] gradients Gradients with respect to the training score (length num_data_ * num_tree_per_iteration_)
+  */
+  void SetGPModelToCurrentIteration(score_t* gradients) const;
 
   /*!
   * \brief updating score after tree was trained

@@ -46,7 +46,7 @@ Predictor <- R6::R6Class(
     # Get current iteration
     current_iter = function() {
 
-      cur_iter <- 0L
+      cur_iter <- integer(1L)
       .Call(
         LGBM_BoosterGetCurrentIteration_R
         , private$handle
@@ -109,7 +109,7 @@ Predictor <- R6::R6Class(
         # Not a file, we need to predict from R object
         num_row <- nrow(data)
 
-        npred <- 0L
+        npred <- integer(1L)
 
         # Check number of predictions to do
         .Call(

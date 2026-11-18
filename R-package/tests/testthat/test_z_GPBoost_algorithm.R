@@ -624,7 +624,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       X_test <- sim_data$X[1:ntest + ntrain,]
       group_train <- group[1:ntrain]
       group_test <- group[1:ntest + ntrain]
-      params_bst <- list(learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5, verbose = 0)
+      # These tests compare models of different trainings. LightGBM otherwise chooses row-wise or column-wise histograms
+      #   by timing both, which can change the splits slightly
+      params_bst <- list(learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5, verbose = 0, force_col_wise = TRUE)
       for (likelihood in c("gaussian", "gamma")) {
         params_lik <- params_bst
         if (likelihood == "gaussian") {
@@ -711,7 +713,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       X_test <- sim_data$X[1:ntest + ntrain,]
       group_train <- group[1:ntrain]
       group_test <- group[1:ntest + ntrain]
-      params_bst <- list(learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5, verbose = 0)
+      # These tests compare models of different trainings. LightGBM otherwise chooses row-wise or column-wise histograms
+      #   by timing both, which can change the splits slightly
+      params_bst <- list(learning_rate = 0.05, max_depth = 6, min_data_in_leaf = 5, verbose = 0, force_col_wise = TRUE)
       folds <- list(seq(1, ntrain, by = 2), seq(2, ntrain, by = 2))
       for (likelihood in c("gaussian", "gamma")) {
         params_lik <- params_bst
@@ -788,10 +792,30 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         expect_lt(sum(abs(bst_loaded$.__enclos_env__$private$gp_model$get_cov_pars() - gp_model_all$get_cov_pars())),
                   TOLERANCE_STRICT)
         expect_same_as_best()
-        # The evaluation after training is that of the last iteration
+        # The evaluation after training is that of the last iteration, also after predictions with other iterations
         test_scores <- unlist(bst$record_evals[["test"]][[1]][["eval"]])
         expect_lt(abs(bst$eval_valid()[[1L]]$value - test_scores[[num_iter]]), TOLERANCE_STRICT)
+        pred <- predict(bst, data = X_test, group_data_pred = group_test, num_iteration = 2L,
+                        pred_latent = FALSE, predict_var = TRUE)
+        expect_lt(abs(bst$eval_valid()[[1L]]$value - test_scores[[num_iter]]), TOLERANCE_STRICT)
         expect_same_as_best()
+        expect_lt(abs(bst$eval_valid()[[1L]]$value - test_scores[[num_iter]]), TOLERANCE_STRICT)
+        gp_model_no_es <- GPModel(group_data = group_train, likelihood = likelihood)
+        set_prediction_data(gp_model_no_es, group_data_pred = group_test)
+        bst_no_es <- gpb.train(data = dtrain, gp_model = gp_model_no_es, nrounds = 10, params = params_lik,
+                               valids = valids, verbose = 0, use_gp_model_for_validation = TRUE,
+                               metric = "test_neg_log_likelihood")
+        test_scores_no_es <- unlist(bst_no_es$record_evals[["test"]][[1]][["eval"]])
+        for (num_iteration in c(2L, 10L)) {
+          pred <- predict(bst_no_es, data = X_test, group_data_pred = group_test, num_iteration = num_iteration,
+                          pred_latent = FALSE, predict_var = TRUE)
+          expect_lt(abs(bst_no_es$eval_valid()[[1L]]$value - test_scores_no_es[[10L]]), TOLERANCE_STRICT)
+        }
+        # Without 'num_iteration', all trees from 'start_iteration' are used if 'start_iteration' > 0
+        pred <- predict(bst, data = X_test, start_iteration = 2L, ignore_gp_model = TRUE, pred_latent = TRUE)
+        pred_all_trees <- predict(bst, data = X_test, start_iteration = 2L, num_iteration = -1L,
+                                  ignore_gp_model = TRUE, pred_latent = TRUE)
+        expect_equal(pred, pred_all_trees)
         # Training continues from the last iteration
         bst$update()
         gp_model_all1 <- GPModel(group_data = group_train, likelihood = likelihood)
@@ -828,6 +852,74 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
           expect_equal(fold_bst_cb$best_iter, cvbst$best_iter)
           expect_lt(sum(abs(fold_bst_cb$.__enclos_env__$private$gp_model$get_cov_pars() -
                               fold_bst$.__enclos_env__$private$gp_model$get_cov_pars())), TOLERANCE_STRICT)
+        }
+        # With several metrics, the best iteration is the one of the first metric on the first validation data, also
+        #   when another metric stops the training
+        expect_best_iter_of_first_metric <- function(model, evals) {
+          scores <- unlist(evals[[1L]][["eval"]])
+          expect_equal(model$best_iter, which.min(scores))
+          expect_equal(model$best_score, min(scores))
+        }
+        metrics <- c("test_neg_log_likelihood", "mse")
+        gp_model_2m <- GPModel(group_data = group_train, likelihood = likelihood)
+        set_prediction_data(gp_model_2m, group_data_pred = group_test)
+        bst_2m <- gpb.train(data = dtrain, gp_model = gp_model_2m, nrounds = 100, params = params_lik,
+                            valids = valids, early_stopping_rounds = 5, verbose = 0,
+                            use_gp_model_for_validation = TRUE, metric = metrics)
+        expect_best_iter_of_first_metric(bst_2m, bst_2m$record_evals[["test"]])
+        gp_model_2m <- GPModel(group_data = group_train, likelihood = likelihood)
+        set_prediction_data(gp_model_2m, group_data_pred = group_test)
+        cb_es <- gpboost:::cb.early.stop(stopping_rounds = 5, first_metric_only = FALSE, verbose = FALSE)
+        bst_2m_cb <- gpb.train(data = dtrain, gp_model = gp_model_2m, nrounds = 100, params = params_lik,
+                               valids = valids, callbacks = list(cb_es), verbose = 0,
+                               use_gp_model_for_validation = TRUE, metric = metrics)
+        expect_equal(bst_2m_cb$best_iter, bst_2m$best_iter)
+        expect_equal(bst_2m_cb$best_score, bst_2m$best_score)
+        cvbst_2m <- gpb.cv(params = params_lik, data = gpb.Dataset(data = X_train, label = y_train),
+                           gp_model = GPModel(group_data = group_train, likelihood = likelihood),
+                           nrounds = 100, folds = folds, early_stopping_rounds = 5,
+                           use_gp_model_for_validation = TRUE, metric = metrics, verbose = 0)
+        expect_best_iter_of_first_metric(cvbst_2m, cvbst_2m$record_evals[["valid"]])
+      }
+    })
+
+    test_that("Iterations without a split do not change the parameters of the gp_model", {
+
+      # The iterations stop when no split has a gain of at least 'min_gain_to_split'. 'Boosting()' estimates the
+      #   parameters in these iterations as well, also before the tree with Nesterov acceleration. In the settings
+      #   below, no later iteration finds a split again (with Nesterov acceleration, this happens for the gamma
+      #   likelihood, as the momentum changes the scores)
+      n <- 500
+      m <- 50
+      group <- rep(1:m, each = n / m)
+      x <- matrix(sim_rand_unif(n = n, init_c = 0.4211), ncol = 1)
+      b <- sqrt(0.5) * qnorm(sim_rand_unif(n = m, init_c = 0.542))
+      eta <- 2 * (x[, 1] > 0.5) + b[group]
+      settings <- list(list(likelihood = "gaussian", nesterov = TRUE, min_gain = 100),
+                       list(likelihood = "gamma", nesterov = FALSE, min_gain = 1))
+      for (setting in settings) {
+        if (setting$likelihood == "gaussian") {
+          y <- eta + 0.5 * qnorm(sim_rand_unif(n = n, init_c = 0.756))
+        } else {
+          y <- qgamma(sim_rand_unif(n = n, init_c = 0.756), scale = exp(eta) / 2, shape = 2)
+        }
+        params <- list(learning_rate = 0.5, max_depth = 1, min_data_in_leaf = 20, min_gain_to_split = setting$min_gain,
+                       use_nesterov_acc = setting$nesterov, verbose = 0, force_col_wise = TRUE)
+        if (setting$likelihood == "gaussian") {
+          params$objective <- "regression_l2"
+        }
+        gp_model <- GPModel(group_data = group, likelihood = setting$likelihood)
+        bst <- gpb.train(data = gpb.Dataset(data = x, label = y), gp_model = gp_model, nrounds = 30,
+                         params = params, verbose = 0)
+        num_iter <- bst$current_iter()
+        expect_lt(num_iter, 30)
+        gp_model_iter <- GPModel(group_data = group, likelihood = setting$likelihood)
+        bst_iter <- gpb.train(data = gpb.Dataset(data = x, label = y), gp_model = gp_model_iter, nrounds = num_iter,
+                              params = params, verbose = 0)
+        expect_equal(bst_iter$current_iter(), num_iter)
+        expect_lt(sum(abs(gp_model$get_cov_pars() - gp_model_iter$get_cov_pars())), TOLERANCE_STRICT)
+        if (setting$likelihood == "gamma") {
+          expect_lt(sum(abs(gp_model$get_aux_pars() - gp_model_iter$get_aux_pars())), TOLERANCE_STRICT)
         }
       }
     })

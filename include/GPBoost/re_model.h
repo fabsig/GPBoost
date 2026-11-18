@@ -661,6 +661,13 @@ namespace GPBoost {
 		void SetCovAuxPars(const std::vector<double>& pars);
 
 		/*!
+		* \brief True if the factorization (or the mode) and the response variable of the model are those that 'CalcGradient()'
+		*		calculated in the GPBoost algorithm for the current parameters, i.e., if they have not been changed since then (e.g.,
+		*		by a prediction, a likelihood evaluation, or new parameters)
+		*/
+		bool BoostingStateIsCurrent() const;
+
+		/*!
 		* \brief Calculate test negative log-likelihood using adaptive GH quadrature
 		* \param y_test Test response variable
 		* \param pred_mean Predictive mean of latent random effects
@@ -704,6 +711,7 @@ namespace GPBoost {
 		bool cov_pars_initialized_ = false; //This is true if InitializeCovParsIfNotDefined() has been called
 		bool covariance_matrix_has_been_factorized_ = false; //If true, the covariance matrix Psi has been factorized for the cov_pars_ (either through OptimCovPar/OptimLinRegrCoefCovPar or EvalNegLogLikelihood) and will not be factorized anew when making predictions in Predict
 		bool init_cov_pars_provided_ = false;
+		bool boosting_state_is_current_ = false; //See 'BoostingStateIsCurrent()'
 		bool cov_pars_have_been_provided_for_prediction_ = false; //This is true if Predict() has been called once with cov_pars_pred != nullptr (saved in order to determine whether covariance matrix needs to be factorized again or not)
 		vec_t std_dev_cov_pars_;
 		bool std_dev_cov_pars_calculated_ = false;

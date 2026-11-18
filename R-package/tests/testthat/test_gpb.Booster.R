@@ -326,7 +326,25 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_true(is.na(bst$best_score))
     expect_true(all(bst$predict(agaricus.train$data) == 0.5))
   })
-  
+
+  test_that("Values returned by current_iter() and dim() are not changed by later calls", {
+    data(agaricus.train, package = "gpboost")
+    dtrain <- gpb.Dataset(agaricus.train$data, label = agaricus.train$label)
+    dsmall <- gpb.Dataset(agaricus.train$data[1:100, 1:10], label = agaricus.train$label[1:100])
+    dsmall$construct()
+    params <- list(objective = "binary", num_leaves = 4L, verbose = -1L)
+    bst_2 <- gpb.train(params = params, data = dtrain, nrounds = 2L, verbose = 0)
+    bst_5 <- gpb.train(params = params, data = dtrain, nrounds = 5L, verbose = 0)
+    num_iter_2 <- bst_2$current_iter()
+    num_iter_5 <- bst_5$current_iter()
+    expect_equal(num_iter_2, 2L)
+    expect_equal(num_iter_5, 5L)
+    dim_train <- dim(dtrain)
+    dim_small <- dim(dsmall)
+    expect_equal(dim_train, dim(agaricus.train$data))
+    expect_equal(dim_small, c(100L, 10L))
+  })
+
   test_that("Creating a Booster from a Dataset with an existing predictor should work", {
     set.seed(708L)
     data(agaricus.train, package = "gpboost")

@@ -758,7 +758,9 @@ def test_early_stopping_sets_the_parameters_of_the_best_iteration(likelihood):
     else:
         y = rng.gamma(shape=2., scale=np.exp(eta) / 2.)
     tr, va = np.arange(0, n, 2), np.arange(1, n, 2)
-    params = {"learning_rate": 0.5, "max_depth": 6, "min_data_in_leaf": 5, "verbose": -1}
+    # Models of different trainings are compared: LightGBM otherwise chooses row-wise or column-wise histograms by timing
+    #   both, which can change the splits slightly
+    params = {"learning_rate": 0.5, "max_depth": 6, "min_data_in_leaf": 5, "verbose": -1, "force_col_wise": True}
     if likelihood == "gaussian":
         params["objective"] = "regression_l2"
     train_set = gpb.Dataset(x[tr], y[tr], free_raw_data=False)
@@ -816,7 +818,7 @@ def test_gp_model_pars_of_the_iteration_of_the_trees(likelihood):
     else:
         y = rng.gamma(shape=2., scale=np.exp(eta) / 2.)
     tr, va = np.arange(0, n, 2), np.arange(1, n, 2)
-    params = {"learning_rate": 0.5, "max_depth": 6, "min_data_in_leaf": 5, "verbose": -1,
+    params = {"learning_rate": 0.5, "max_depth": 6, "min_data_in_leaf": 5, "verbose": -1, "force_col_wise": True,
               "metric": "test_neg_log_likelihood"}
     if likelihood == "gaussian":
         params["objective"] = "regression_l2"
@@ -882,11 +884,23 @@ def test_gp_model_pars_of_the_iteration_of_the_trees(likelihood):
         pred = bst_copy.predict(data=x[va], group_data_pred=group[va], predict_var=True)
         np.testing.assert_allclose(pred["response_mean"], pred_best["response_mean"], rtol=1e-6)
         np.testing.assert_allclose(pred["response_var"], pred_best["response_var"], rtol=1e-6)
-    # The evaluation after training is that of the last iteration
-    eval_valid = bst.eval_valid()
-    assert eval_valid[0][2] == pytest.approx(evals_result["valid_0"]["test_neg_log_likelihood"][num_iter - 1],
-                                             rel=1e-8)
+    # The evaluation after training is that of the last iteration, also after predictions with other iterations
+    nll_last = evals_result["valid_0"]["test_neg_log_likelihood"][num_iter - 1]
+    assert bst.eval_valid()[0][2] == pytest.approx(nll_last, rel=1e-8)
+    bst.predict(data=x[va], group_data_pred=group[va], predict_var=True, num_iteration=2)
+    assert bst.eval_valid()[0][2] == pytest.approx(nll_last, rel=1e-8)
     assert_same_as_best()
+    assert bst.eval_valid()[0][2] == pytest.approx(nll_last, rel=1e-8)
+    gp_model_no_es = gpb.GPModel(group_data=group[tr], likelihood=likelihood)
+    gp_model_no_es.set_prediction_data(group_data_pred=group[va])
+    evals_result_no_es = {}
+    bst_no_es = gpb.train(params=params, train_set=train_set, gp_model=gp_model_no_es, num_boost_round=5,
+                          valid_sets=gpb.Dataset(x[va], y[va], reference=train_set), evals_result=evals_result_no_es,
+                          verbose_eval=False)
+    nll_last_no_es = evals_result_no_es["valid_0"]["test_neg_log_likelihood"][-1]
+    for num_iteration in (2, 5):
+        bst_no_es.predict(data=x[va], group_data_pred=group[va], predict_var=True, num_iteration=num_iteration)
+        assert bst_no_es.eval_valid()[0][2] == pytest.approx(nll_last_no_es, rel=1e-8)
     # Training continues from the last iteration
     bst.update()
     gp_model_all1 = gpb.GPModel(group_data=group[tr], likelihood=likelihood)

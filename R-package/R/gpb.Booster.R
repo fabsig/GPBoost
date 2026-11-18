@@ -495,7 +495,7 @@ Booster <- R6::R6Class(
     # Get current iteration
     current_iter = function() {
       
-      cur_iter <- 0L
+      cur_iter <- integer(1L)
       .Call(
         LGBM_BoosterGetCurrentIteration_R
         , private$handle
@@ -508,7 +508,7 @@ Booster <- R6::R6Class(
     # Get upper bound
     upper_bound = function() {
       
-      upper_bound <- 0.0
+      upper_bound <- numeric(1L)
       .Call(
         LGBM_BoosterGetUpperBoundValue_R
         , private$handle
@@ -521,7 +521,7 @@ Booster <- R6::R6Class(
     # Get lower bound
     lower_bound = function() {
       
-      lower_bound <- 0.0
+      lower_bound <- numeric(1L)
       .Call(
         LGBM_BoosterGetLowerBoundValue_R
         , private$handle
@@ -618,14 +618,10 @@ Booster <- R6::R6Class(
     save_model = function(filename, start_iteration = NULL, num_iteration = NULL,
                           feature_importance_type = 0L, save_raw_data = FALSE, ...) {
       
-      # Check if number of iteration is non existent
-      if (is.null(num_iteration)) {
-        num_iteration <- self$best_iter
-      }
-      # Check if start iteration is non existent
       if (is.null(start_iteration)) {
         start_iteration <- 0L
       }
+      num_iteration <- private$num_iteration_or_default(num_iteration, start_iteration)
       
       # Save gp_model
       if (private$has_gp_model) {
@@ -656,14 +652,10 @@ Booster <- R6::R6Class(
     save_model_to_string = function(start_iteration = NULL, num_iteration = NULL,
                                     feature_importance_type = 0L, save_raw_data = FALSE, ...) {
       
-      # Check if number of iteration is non existent
-      if (is.null(num_iteration)) {
-        num_iteration <- self$best_iter
-      }
-      # Check if start iteration is non existent
       if (is.null(start_iteration)) {
         start_iteration <- 0L
       }
+      num_iteration <- private$num_iteration_or_default(num_iteration, start_iteration)
       
       bst_model_str <- .Call(
         LGBM_BoosterSaveModelToString_R
@@ -789,13 +781,10 @@ Booster <- R6::R6Class(
         stop("predict_training_data_random_effects.gpb.Booster: cannot calculate training fixed effects. Set ",
              sQuote("free_raw_data = FALSE"), " when you construct the gpb.Dataset")
       }
-      # As in 'predict', the best iteration is used by default
-      if (is.null(num_iteration)) {
-        num_iteration <- self$best_iter
-      }
       if (is.null(start_iteration)) {
         start_iteration <- 0L
       }
+      num_iteration <- private$num_iteration_or_default(num_iteration, start_iteration)
       restore_gp_model_pars <- private$set_gp_model_pars_for_trees(start_iteration, num_iteration)
       if (!is.null(restore_gp_model_pars)) {
         on.exit(restore_gp_model_pars(), add = TRUE)
@@ -871,14 +860,10 @@ Booster <- R6::R6Class(
              Use the function 'set_prediction_data' to specify this")
       }
       
-      # Check if number of iteration is non existent
-      if (is.null(num_iteration)) {
-        num_iteration <- self$best_iter
-      }
-      # Check if start iteration is non existent
       if (is.null(start_iteration)) {
         start_iteration <- 0L
       }
+      num_iteration <- private$num_iteration_or_default(num_iteration, start_iteration)
       
       # Predict on new data
       params <- list(...)
@@ -1294,6 +1279,20 @@ Booster <- R6::R6Class(
 
     },
 
+    # Default of 'num_iteration': the best iteration if it exists and the trees start at the first iteration, otherwise
+    #   all iterations
+    num_iteration_or_default = function(num_iteration, start_iteration) {
+
+      if (!is.null(num_iteration)) {
+        return(num_iteration)
+      }
+      if (start_iteration <= 0L) {
+        return(self$best_iter)
+      }
+      return(-1L)
+
+    },
+
     # Number of iterations whose trees are used for a given 'num_iteration' (NULL or <= 0 means all iterations)
     num_iteration_of_trees = function(num_iteration) {
 
@@ -1410,7 +1409,7 @@ Booster <- R6::R6Class(
       if (is.null(private$predict_buffer[[data_name]])) {
         
         # Store predictions
-        npred <- 0L
+        npred <- integer(1L)
         .Call(
           LGBM_BoosterGetNumPredict_R
           , private$handle

@@ -1702,12 +1702,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                            vecchia_ordering = "none", y = data_seq$y, X = X_seq), file='NUL')
     nll_default <- gp_model$get_current_neg_log_likelihood()
     expect_lt(nll_default, gp_model_hom$get_current_neg_log_likelihood() + 1)
-    # Cholesky factorizations are used by default for this likelihood
+    # Cholesky factorizations are used by default for this likelihood. With libgomp and more than two threads, the
+    #   order of the OpenMP reductions varies between runs, and two identical fits differed by a relative 9e-6 on
+    #   Linux CI; iterative methods give a relative difference of 3e-2
     capture.output( gp_model <- fitGPModel(gp_coords = data_seq$coords, cov_function = "matern", cov_fct_shape = 1.5,
                                            likelihood = likelihood, gp_approx = "vecchia", num_neighbors = 10,
                                            vecchia_ordering = "none", matrix_inversion_method = "cholesky",
                                            y = data_seq$y, X = X_seq), file='NUL')
-    expect_equal(nll_default, gp_model$get_current_neg_log_likelihood())
+    expect_equal(nll_default, gp_model$get_current_neg_log_likelihood(), tolerance = 1e-4)
   })
 
   test_that("Initial coefficients from an iid model for gaussian_heteroscedastic_fixed_and_random ", {

@@ -310,8 +310,8 @@ Dataset <- R6::R6Class(
       # Check for handle
       if (!gpb.is.null.handle(x = private$handle)) {
 
-        num_row <- 0L
-        num_col <- 0L
+        num_row <- integer(1L)
+        num_col <- integer(1L)
 
         # Get numeric data and numeric features
         .Call(
@@ -424,7 +424,7 @@ Dataset <- R6::R6Class(
         }
 
         # Get field size of info
-        info_len <- 0L
+        info_len <- integer(1L)
         .Call(
           LGBM_DatasetGetFieldSize_R
           , private$handle
