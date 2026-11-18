@@ -3253,17 +3253,14 @@ namespace GPBoost {
 		/*!
 		* \brief Calculate test negative log-likelihood using adaptive GH quadrature
 		* \param y_test Test response variable
-		* \param pred_mean Predictive mean of latent random effects
-		* \param pred_var Predictive variances of latent random effects
+		* \param pred_mean Predictive means of the location parameter blocks (num_data x num_sets_fixed_effects_, column-major)
+		* \param pred_var Predictive variances of the location parameter blocks (num_data x num_sets_fixed_effects_, column-major)
 		* \param num_data Number of data points
-		* \param extra_location_par Values of the additional fixed-effects-only location parameter blocks at the test points
-		*		(num_data x (num_sets_fixed_effects_ - 1), column-major; only for likelihoods with such blocks, see 'SupportsTestLogLikExtraBlocks')
 		*/
 		inline double TestNegLogLikelihoodAdaptiveGHQuadrature(const label_t* y_test,
 			const double* pred_mean,
 			const double* pred_var,
-			const data_size_t num_data,
-			const double* extra_location_par = nullptr) const;
+			const data_size_t num_data) const;
 
 		/*!
 		* \brief Find the mode of the integrand p(y | x) * N(x; pred_mean, pred_var) of the adaptive GH quadrature, starting from the
@@ -3303,14 +3300,42 @@ namespace GPBoost {
 			bool& evaluation_failure) const;
 
 		/*!
+		* \brief Logarithm of the integral of p(y | x) * N(x; pred_mean, pred_var) over x using adaptive GH quadrature with nodes
+		*		around the mode of the integrand, or log p(y | pred_mean) if pred_var is zero
+		* \param log_dens Log-density log p(y | x) as a function of x
+		* \param first_deriv Its first derivative wrt x
+		* \param information Its negative second derivative wrt x
+		* \param pred_mean Predictive mean
+		* \param pred_var Predictive variance
+		* \param[out] evaluation_failure True if the log-density is NaN or +inf at a node (a numerical failure)
+		*/
+		template <typename LogDens, typename FirstDeriv, typename Information>
+		inline double LogPredictiveDensityAdaptiveGHQuadrature(LogDens log_dens,
+			FirstDeriv first_deriv,
+			Information information,
+			double pred_mean,
+			double pred_var,
+			bool& evaluation_failure) const;
+
+		/*!
 		* \brief Calculate the test negative log-likelihood using adaptive GH quadrature for likelihoods with additional
 		*		fixed-effects-only location parameter blocks, see 'TestNegLogLikelihoodAdaptiveGHQuadrature'
 		*/
 		inline double TestNegLogLikelihoodAdaptiveGHQuadratureExtraBlocks(const label_t* y_test,
 			const double* pred_mean,
 			const double* pred_var,
-			const data_size_t num_data,
-			const double* extra_location_par) const;
+			const data_size_t num_data) const;
+
+		/*!
+		* \brief Calculate the test negative log-likelihood for 'gaussian_heteroscedastic_fixed_and_random', see
+		*		'TestNegLogLikelihoodAdaptiveGHQuadrature'. The mean f and the log-variance g are independent under the
+		*		(Fisher-)Laplace approximation. The integral over f is N(y; mean of f, variance of f + exp(g)), and the one over g
+		*		is calculated using adaptive GH quadrature
+		*/
+		inline double TestNegLogLikelihoodGaussianHeteroscedasticFixedAndRandom(const label_t* y_test,
+			const double* pred_mean,
+			const double* pred_var,
+			const data_size_t num_data) const;
 
 		static string_t ParseLikelihoodAlias(const string_t& likelihood) {
 			if (likelihood == string_t("binary_probit")) {

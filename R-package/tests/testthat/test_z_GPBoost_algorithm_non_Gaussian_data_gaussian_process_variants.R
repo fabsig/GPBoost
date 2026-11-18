@@ -188,7 +188,52 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                                        gp_model = gp_model, nrounds = 1, train_gp_model_cov_pars = FALSE, verbose = 0), file='NUL')
       expect_lt(max(abs(as.vector(gp_model$get_cov_pars()) / c(cov_pars_hom[2:3], 0.01, cov_pars_hom[3]) - 1)), TOLERANCE)
     })
-    
+
+    test_that("GPBoost algorithm with 'gaussian_heteroscedastic_fixed_and_random': test negative log-likelihood metric", {
+
+      # The metric on validation data is compared with an independent calculation from the latent predictions: for
+      #   every validation point, the integral of N(y; mean, variance of the mean + exp(g)) over the predictive
+      #   distribution of the log-error variance g. The covariance parameters are fixed at the values of the
+      #   simulation, so that the predictive variances of g are clearly positive (an estimated variance of the
+      #   Gaussian process of g is almost zero for these data)
+      n <- 300
+      X <- matrix(sim_rand_unif(n=n*2, init_c=0.41), ncol=2)
+      coords <- matrix(sim_rand_unif(n=n*2, init_c=0.63), ncol=2)
+      D <- as.matrix(dist(coords))
+      C <- t(chol(exp(-D/0.2) + diag(1E-10,n)))
+      b_mean <- as.vector(C %*% qnorm(sim_rand_unif(n=n, init_c=0.987864)))
+      b_log_var <- sqrt(0.5) * as.vector(C %*% qnorm(sim_rand_unif(n=n, init_c=0.3172)))
+      log_var <- -1 + X[,2] + b_log_var
+      y <- 2 * X[,1] + b_mean + exp(log_var / 2) * qnorm(sim_rand_unif(n=n, init_c=0.52574))
+      tr <- seq(1, n, by = 2)
+      va <- seq(2, n, by = 2)
+      dtrain <- gpb.Dataset(data = X[tr,], label = y[tr])
+      dvalid <- gpb.Dataset.create.valid(dtrain, data = X[va,], label = y[va])
+      gp_model <- GPModel(gp_coords = coords[tr,], cov_function = "exponential",
+                          likelihood = "gaussian_heteroscedastic_fixed_and_random", gp_approx = "vecchia",
+                          num_neighbors = 10, vecchia_ordering = "none")
+      gp_model$set_optim_params(params = list(init_cov_pars = c(1, 0.2, 0.5, 0.2)))
+      gp_model$set_prediction_data(gp_coords_pred = coords[va,])
+      nrounds <- 3
+      capture.output( bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = nrounds, learning_rate = 0.1,
+                                       max_depth = 2, min_data_in_leaf = 5, valids = list(valid = dvalid),
+                                       train_gp_model_cov_pars = FALSE, verbose = 0, deterministic = TRUE), file='NUL')
+      metric <- unlist(bst$record_evals$valid$test_neg_log_likelihood$eval)[nrounds]
+      pred <- predict(bst, data = X[va,], gp_coords_pred = coords[va,], predict_var = TRUE,
+                      pred_latent = TRUE, num_iteration = nrounds)
+      mean_mean <- pred$fixed_effect + pred$random_effect_mean
+      mean_log_var <- pred$fixed_effect_scale + pred$random_effect_mean_scale
+      sd_log_var <- sqrt(pred$random_effect_cov_scale)
+      expect_true(all(sd_log_var > 0.4))
+      reference <- mean(sapply(seq_along(va), function(i) {
+        integrand <- function(g) dnorm(y[va][i], mean_mean[i], sqrt(pred$random_effect_cov[i] + exp(g))) *
+          dnorm(g, mean_log_var[i], sd_log_var[i])
+        -log(integrate(integrand, mean_log_var[i] - 12 * sd_log_var[i], mean_log_var[i] + 12 * sd_log_var[i],
+                       rel.tol = 1e-10)$value)
+      }))
+      expect_lt(abs(metric - reference), 1e-6)
+    })
+
     if (Sys.getenv("GPBOOST_ADDITIONAL_SLOW_TESTS") == "GPBOOST_ADDITIONAL_SLOW_TESTS") {
       # slow test 
       test_that("GPBoost algorithm with Gaussian process model and 'gaussian_heteroscedastic_fixed_and_random' likelihood", {

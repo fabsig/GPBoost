@@ -767,17 +767,41 @@ namespace GPBoost {
 	}//end LogIntegralAdaptiveGHQuadrature
 
 	template <typename T_mat, typename T_chol>
+	template <typename LogDens, typename FirstDeriv, typename Information>
+	inline double Likelihood<T_mat, T_chol>::LogPredictiveDensityAdaptiveGHQuadrature(LogDens log_dens,
+		FirstDeriv first_deriv,
+		Information information,
+		double pred_mean,
+		double pred_var,
+		bool& evaluation_failure) const {
+		if (LatentVarIsZero(pred_var)) {
+			const double log_dens_at_mean = log_dens(pred_mean);
+			evaluation_failure = std::isnan(log_dens_at_mean) || log_dens_at_mean == std::numeric_limits<double>::infinity();
+			return log_dens_at_mean;
+		}
+		// The mode of the integrand and the curvature there determine the placement of the nodes. A negative observed
+		//	information (e.g., for zero-inflated counts at zero) is replaced by 0
+		const double sigma2_inv = 1. / pred_var;
+		double information_at_mode;
+		const double mode_integrand = FindModeIntegrandAdaptiveGHQuadrature(log_dens, first_deriv, information,
+			pred_mean, pred_var, information_at_mode);
+		const double sqrt2_sigma_hat = M_SQRT2 / std::sqrt(information_at_mode + sigma2_inv);
+		return LogIntegralAdaptiveGHQuadrature(log_dens, mode_integrand, sqrt2_sigma_hat, pred_mean, std::sqrt(sigma2_inv), evaluation_failure);
+	}//end LogPredictiveDensityAdaptiveGHQuadrature
+
+	template <typename T_mat, typename T_chol>
 	inline double Likelihood<T_mat, T_chol>::TestNegLogLikelihoodAdaptiveGHQuadrature(const label_t* y_test,
 		const double* pred_mean,
 		const double* pred_var,
-		const data_size_t num_data,
-		const double* extra_location_par) const {
+		const data_size_t num_data) const {
+		if (likelihood_type_ == "gaussian_heteroscedastic_fixed_and_random") {
+			return TestNegLogLikelihoodGaussianHeteroscedasticFixedAndRandom(y_test, pred_mean, pred_var, num_data);
+		}
 		if (num_sets_fixed_effects_ > 1) {
 			if (!SupportsTestLogLikExtraBlocks()) {
 				Log::REFatal("The test negative log-likelihood is currently not implemented for likelihood = '%s' ", likelihood_type_.c_str());
 			}
-			CHECK(extra_location_par != nullptr);
-			return TestNegLogLikelihoodAdaptiveGHQuadratureExtraBlocks(y_test, pred_mean, pred_var, num_data, extra_location_par);
+			return TestNegLogLikelihoodAdaptiveGHQuadratureExtraBlocks(y_test, pred_mean, pred_var, num_data);
 		}
 		double ll = 0.;
 		bool na_inf_flag_11 = false;
@@ -857,8 +881,7 @@ namespace GPBoost {
 	inline double Likelihood<T_mat, T_chol>::TestNegLogLikelihoodAdaptiveGHQuadratureExtraBlocks(const label_t* y_test,
 		const double* pred_mean,
 		const double* pred_var,
-		const data_size_t num_data,
-		const double* extra_location_par) const {
+		const data_size_t num_data) const {
 		const int num_extra = num_sets_fixed_effects_ - 1;
 		CHECK(num_extra >= 1 && num_extra <= 2);
 		const bool tweedie = IsTweedieVaryingDispersion();
@@ -870,9 +893,10 @@ namespace GPBoost {
 		for (data_size_t i = 0; i < num_data; ++i) {
 			const double y = static_cast<double>(y_test[i]);
 			const int y_int = int_label ? static_cast<int>(y_test[i]) : 1;
+			// The additional blocks have zero predictive variances, i.e., they are given by their predictive means
 			double extra[2] = { 0., 0. };
 			for (int k = 0; k < num_extra; ++k) {
-				extra[k] = extra_location_par[i + (data_size_t)k * num_data];
+				extra[k] = pred_mean[i + (data_size_t)(k + 1) * num_data];
 			}
 			auto log_dens = [&](double x) { return LogLikOneSampleExtraBlocks(y, y_int, x, extra, !tweedie); };
 			// The part of the Tweedie density that does not depend on eta is evaluated once. It is the marginal density of y
@@ -891,24 +915,10 @@ namespace GPBoost {
 			// Numerical evaluation failures set the test negative log-likelihood to +inf, i.e., the worst possible value,
 			//	instead of using a wrong finite value
 			bool node_failure;
-			double log_integral;
-			if (LatentVarIsZero(pred_var[i])) {
-				log_integral = log_dens(pred_mean[i]);
-				node_failure = std::isnan(log_integral) || log_integral == std::numeric_limits<double>::infinity();
-			}
-			else {
-				// Mode of the integrand p(y | eta, extra) * N(eta; pred_mean, pred_var) and the curvature there, which determine the
-				//	placement of the nodes. A negative observed information (e.g., for zero-inflated counts at zero) is replaced by 0
-				const double sigma2_inv = 1. / pred_var[i];
-				const double sqrt_sigma2_inv = std::sqrt(sigma2_inv);
-				double information_at_mode;
-				const double mode_integrand = FindModeIntegrandAdaptiveGHQuadrature(log_dens,
-					[&](double x) { return FirstDerivLogLikOneSampleExtraBlocks(y, y_int, x, extra); },
-					[&](double x) { return InformationLogLikOneSampleExtraBlocks(y, y_int, x, extra); },
-					pred_mean[i], pred_var[i], information_at_mode);
-				const double sqrt2_sigma_hat = M_SQRT2 / std::sqrt(information_at_mode + sigma2_inv);
-				log_integral = LogIntegralAdaptiveGHQuadrature(log_dens, mode_integrand, sqrt2_sigma_hat, pred_mean[i], sqrt_sigma2_inv, node_failure);
-			}
+			const double log_integral = LogPredictiveDensityAdaptiveGHQuadrature(log_dens,
+				[&](double x) { return FirstDerivLogLikOneSampleExtraBlocks(y, y_int, x, extra); },
+				[&](double x) { return InformationLogLikOneSampleExtraBlocks(y, y_int, x, extra); },
+				pred_mean[i], pred_var[i], node_failure);
 			if (node_failure) {
 				evaluation_failure = true;
 				ll += -std::numeric_limits<double>::infinity();
@@ -921,6 +931,51 @@ namespace GPBoost {
 		}
 		return -ll;
 	}//end TestNegLogLikelihoodAdaptiveGHQuadratureExtraBlocks
+
+	template <typename T_mat, typename T_chol>
+	inline double Likelihood<T_mat, T_chol>::TestNegLogLikelihoodGaussianHeteroscedasticFixedAndRandom(const label_t* y_test,
+		const double* pred_mean,
+		const double* pred_var,
+		const data_size_t num_data) const {
+		double ll = 0.;
+		bool evaluation_failure = false;
+#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll) reduction(||:evaluation_failure)
+		for (data_size_t i = 0; i < num_data; ++i) {
+			const double var_mean = pred_var[i];
+			const double resid = static_cast<double>(y_test[i]) - pred_mean[i];
+			const double resid2 = resid * resid;
+			// Log-density of y given the log-variance g after integrating out the mean, and its derivatives wrt g
+			auto log_dens = [&](double g) {
+				const double var_y = var_mean + std::exp(g);
+				return -M_LOGSQRT2PI - 0.5 * std::log(var_y) - 0.5 * resid2 / var_y;
+			};
+			auto first_deriv = [&](double g) {
+				const double exp_g = std::exp(g);
+				const double var_y = var_mean + exp_g;
+				return 0.5 * exp_g * (resid2 - var_y) / (var_y * var_y);
+			};
+			auto information = [&](double g) {
+				const double exp_g = std::exp(g);
+				const double var_y = var_mean + exp_g;
+				const double excess = resid2 - var_y;
+				return -0.5 * exp_g / (var_y * var_y) * (excess - exp_g - 2. * exp_g * excess / var_y);
+			};
+			// Numerical evaluation failures set the test negative log-likelihood to +inf, see 'TestNegLogLikelihoodAdaptiveGHQuadrature'
+			bool node_failure;
+			const double log_integral = LogPredictiveDensityAdaptiveGHQuadrature(log_dens, first_deriv, information,
+				pred_mean[i + num_data], pred_var[i + num_data], node_failure);
+			if (node_failure) {
+				evaluation_failure = true;
+				ll += -std::numeric_limits<double>::infinity();
+				continue;
+			}
+			ll += log_integral;
+		}
+		if (evaluation_failure) {
+			Log::REWarning("The density could not be evaluated numerically for at least one test point, the test negative log-likelihood is set to +inf ");
+		}
+		return -ll;
+	}//end TestNegLogLikelihoodGaussianHeteroscedasticFixedAndRandom
 
 	template <typename T_mat, typename T_chol>
 	double Likelihood<T_mat, T_chol>::TransformToResponseScale(const double value) const {

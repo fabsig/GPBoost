@@ -670,17 +670,14 @@ namespace GPBoost {
 		/*!
 		* \brief Calculate test negative log-likelihood using adaptive GH quadrature
 		* \param y_test Test response variable
-		* \param pred_mean Predictive mean of latent random effects
-		* \param pred_var Predictive variances of latent random effects
+		* \param pred_mean Predictive means of the location parameter blocks (num_data x number of sets of fixed effects, column-major)
+		* \param pred_var Predictive variances of the location parameter blocks (num_data x number of sets of fixed effects, column-major)
 		* \param num_data Number of data points
-		* \param extra_location_par Values of the additional fixed-effects-only location parameter blocks at the test points
-		*		(num_data x (number of sets of fixed effects - 1), column-major; nullptr if there are none)
 		*/
 		double TestNegLogLikelihoodAdaptiveGHQuadrature(const label_t* y_test,
 			const double* pred_mean,
 			const double* pred_var,
-			const data_size_t num_data,
-			const double* extra_location_par = nullptr);
+			const data_size_t num_data);
 
 	private:
 

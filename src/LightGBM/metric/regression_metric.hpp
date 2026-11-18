@@ -419,9 +419,6 @@ namespace LightGBM {
 					Log::Fatal("The metric '%s' can only be used when "
 						"'use_gp_model_for_validation == true' for non-Gaussian likelihoods ", name_[0].c_str());
 				}
-				if (re_model->GetNumSetsFixedEffects() > 1 && re_model->GetNumSetsRE() > 1) {
-					Log::Fatal("The metric '%s' can currently not be used for the likelihood '%s' ", name_[0].c_str(), (re_model->GetLikelihood()).c_str());
-				}
 			}
 			double sum_loss = 0.;
 			if (objective->HasGPModel() && objective->UseGPModelForValidation()) {
@@ -463,11 +460,9 @@ namespace LightGBM {
 					// Note that the re_model already has the updated training score (= F_t)
 					//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
 					//	We thus don't provide this here (see the above nullptr). This also implies
-					//	that the Laplace approximation (in particular the mode) is note calculated again
-					// For likelihoods with additional location parameter blocks related to fixed effects only (e.g., a log-dispersion),
-					//	the scores of these blocks follow the first block in 'score' and are passed as their values at the test points
-					const double* extra_location_par = re_model->GetNumSetsFixedEffects() > 1 ? score + num_data_ : nullptr;
-					sum_loss = re_model->TestNegLogLikelihoodAdaptiveGHQuadrature(label_, re_pred.data(), re_pred.data() + num_data_ * num_blocks, num_data_, extra_location_par);
+					//	that the Laplace approximation (in particular the mode) is note calculated again.
+					//	The scores of additional location parameter blocks follow the first block in 'score' and are included in their predictive means
+					sum_loss = re_model->TestNegLogLikelihoodAdaptiveGHQuadrature(label_, re_pred.data(), re_pred.data() + num_data_ * num_blocks, num_data_);
 				}//end non-Gaussian data
 			}//end if (objective->HasGPModel()) && objective->UseGPModelForValidation())
 			else {//re_model inexistent or not used for calculating validation loss for Gaussian likelihoods
