@@ -49,6 +49,7 @@ may allow you to pass other types of data like \code{matrix} and then separately
 and one metric. When this parameter is non-null,
 training will stop if the evaluation of any metric on any validation set
 fails to improve for \code{early_stopping_rounds} consecutive boosting rounds.
+The training data are not used for early stopping if there are other validation data.
 If training stops early, the returned model will have attribute \code{best_iter}
 set to the iteration number of the best iteration, which is used for prediction
 (also by the models of the folds of \code{gpb.cv}). This is the best iteration of the first

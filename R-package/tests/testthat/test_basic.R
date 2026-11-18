@@ -1009,6 +1009,48 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     
   })
   
+  test_that("gpb.train() does not use the training data for early stopping if there are other validation data", {
+    set.seed(708L)
+    dtrain <- gpb.Dataset(data = matrix(rnorm(100L), ncol = 1L), label = rnorm(100L))
+    dvalid <- gpb.Dataset.create.valid(dtrain, data = matrix(rnorm(50L), ncol = 1L), label = rnorm(50L))
+    early_stopping_rounds <- 3L
+    # The training loss decreases in every iteration and thus never stops the training
+    bst <- gpb.train(
+      params = list(objective = "regression", metric = "l2", first_metric_only = TRUE, min_data_in_leaf = 5L)
+      , data = dtrain
+      , nrounds = 50L
+      , valids = list("train" = dtrain, "valid1" = dvalid)
+      , early_stopping_rounds = early_stopping_rounds
+      , verbose = 0
+    )
+    valid_scores <- unlist(bst$record_evals[["valid1"]][["l2"]][["eval"]])
+    expect_equal(bst$best_iter, which.min(valid_scores))
+    expect_equal(bst$current_iter(), bst$best_iter + early_stopping_rounds)
+  })
+
+  test_that("gpb.cv() does not use a best iteration in the models of the folds if an error stops the training", {
+    set.seed(708L)
+    dtrain <- gpb.Dataset(data = matrix(rnorm(100L), ncol = 1L), label = rnorm(100L))
+    stop_in_iteration_3 <- function(env) {
+      if (env$iteration == 3L) {
+        stop("error in iteration 3")
+      }
+    }
+    attr(stop_in_iteration_3, "name") <- "stop_in_iteration_3"
+    suppressMessages(
+      cvbst <- gpb.cv(
+        params = list(objective = "regression", metric = "l2", min_data_in_leaf = 5L)
+        , data = dtrain
+        , nrounds = 10L
+        , nfold = 2L
+        , callbacks = list(stop_in_iteration_3)
+        , verbose = 0
+      )
+    )
+    expect_equal(cvbst$boosters[[1L]]$booster$current_iter(), 3L)
+    expect_equal(cvbst$boosters[[1L]]$booster$best_iter, -1L)
+  })
+
   test_that("If first_metric_only is TRUE, gpb.train() decides to stop early based on only the first metric", {
     set.seed(708L)
     nrounds <- 10L

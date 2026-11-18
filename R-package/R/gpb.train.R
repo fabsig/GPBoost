@@ -391,12 +391,17 @@ gpb.train <- function(params = list(),
 
   # If user supplied early_stopping_rounds, add the early stopping callback
   if (using_early_stopping) {
+    train_data_name_valids <- NULL
+    if (valid_contain_train) {
+      train_data_name_valids <- train_data_name
+    }
     callbacks <- add.cb(
       cb_list = callbacks
       , cb = cb.early.stop(
         stopping_rounds = early_stopping_rounds
         , first_metric_only = isTRUE(params[["first_metric_only"]])
         , verbose = verbose
+        , train_data_name = train_data_name_valids
       )
     )
   }

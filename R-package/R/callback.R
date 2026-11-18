@@ -271,13 +271,14 @@ cb.record.evaluation <- function() {
 
 }
 
-cb.early.stop <- function(stopping_rounds, first_metric_only, verbose) {
+cb.early.stop <- function(stopping_rounds, first_metric_only, verbose, train_data_name = NULL) {
 
   factor_to_bigger_better <- NULL
   best_iter <- NULL
   best_score <- NULL
   best_msg <- NULL
   eval_len <- NULL
+  evals_to_check <- NULL
 
   # Initialization function
   init <- function(env) {
@@ -319,6 +320,17 @@ cb.early.stop <- function(stopping_rounds, first_metric_only, verbose) {
 
     }
 
+    # The training data are not used for early stopping if there are other validation data. By default, any metric
+    #   can trigger early stopping. This can be disabled with 'first_metric_only = TRUE'
+    is_train_data <- vapply(env$eval_list, function(ev) identical(ev$data_name, train_data_name), logical(1L))
+    evals_to_check <<- seq_len(eval_len)
+    if (!all(is_train_data)) {
+      evals_to_check <<- evals_to_check[!is_train_data]
+    }
+    if (isTRUE(first_metric_only)) {
+      evals_to_check <<- evals_to_check[1L]
+    }
+
     return(invisible(NULL))
 
   }
@@ -333,14 +345,6 @@ cb.early.stop <- function(stopping_rounds, first_metric_only, verbose) {
 
     # Store iteration
     cur_iter <- env$iteration
-
-    # By default, any metric can trigger early stopping. This can be disabled
-    # with 'first_metric_only = TRUE'
-    if (isTRUE(first_metric_only)) {
-      evals_to_check <- 1L
-    } else {
-      evals_to_check <- seq_len(eval_len)
-    }
 
     # Loop through evaluation
     for (i in evals_to_check) {

@@ -708,7 +708,7 @@ Booster <- R6::R6Class(
                                                   , rawscore = TRUE
                                                   , predleaf = FALSE
                                                   , predcontrib = FALSE
-                                                  , header = header
+                                                  , header = FALSE
                                                   , reshape = FALSE )
           # Note: 'predictor$predict()' only returns the sum of the trees. The offset supplied as
           #   'init_score' to gpb.Dataset() for the training data is not part of the tree ensemble and needs to be added back here
