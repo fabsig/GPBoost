@@ -4309,6 +4309,13 @@ class Booster:
                 result['posterior_samples'] : numpy array
                     Samples from the posterior of the latent variable including both fixed effects and random effects
                     (only if 'sample_posterior' is True)
+                result['fixed_effect_scale'], result['random_effect_mean_scale'], result['random_effect_cov_scale'] : numpy arrays
+                    (and analogously with the suffixes '_zero', '_shape', and '_dispersion'): only for likelihoods with
+                    several parameters that are modeled with a predictor, e.g., the log-error variance for
+                    "gaussian_heteroscedastic". The same as the entries above for these additional parameters, with the
+                    predictive variances in 'random_effect_cov_scale' etc. (only if 'predict_var' is True). The suffixes
+                    are those of the names of the corresponding coefficients of a GPModel. The entries without a suffix
+                    refer to the first parameter (e.g., the mean)
 
             If there is no gp_model or 'pred_contrib' or 'ignore_gp_model' are True, the result contains
             predictions from the tree-booster only.
@@ -4375,6 +4382,11 @@ class Booster:
             response_mean = None
             response_var = None
             posterior_samples = None
+            # Latent predictions of the additional location parameter blocks of likelihoods with several parameters
+            extra_suffixes = self.gp_model.extra_fe_block_suffixes
+            fixed_effect_extra = [None] * len(extra_suffixes)
+            random_effect_mean_extra = [None] * len(extra_suffixes)
+            pred_var_extra = [None] * len(extra_suffixes)
             has_raw_data = False
             if hasattr(self, 'train_set'):
                 if hasattr(self.train_set, 'data'):
@@ -4467,12 +4479,17 @@ class Booster:
                                                  is_reshape=False)
                 if pred_latent:
                     if self.gp_model.num_sets_fe > 1:
+                        num_sets_fe = self.gp_model.num_sets_fe
                         if offset_pred is not None and len(fixed_effect) != len(offset_pred):
                             raise GPBoostError("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
-                        npred = len(fixed_effect) // self.gp_model.num_sets_fe
-                        fixed_effect = fixed_effect[::self.gp_model.num_sets_fe] # take only predictions for the first block (the mean)
+                        npred = len(fixed_effect) // num_sets_fe
+                        # The tree ensemble predictions of the location parameter blocks alternate
+                        fixed_effect_blocks = [fixed_effect[k::num_sets_fe].copy() for k in range(num_sets_fe)]
                         if offset_pred is not None:
-                            fixed_effect += offset_pred[:npred]
+                            for k in range(num_sets_fe):
+                                fixed_effect_blocks[k] += offset_pred[(npred * k):(npred * (k + 1))]
+                        fixed_effect = fixed_effect_blocks[0]
+                        fixed_effect_extra = fixed_effect_blocks[1:]
                     elif offset_pred is not None:
                         if len(fixed_effect) != len(offset_pred):
                             raise GPBoostError("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
@@ -4500,6 +4517,10 @@ class Booster:
                         pred_var_cov = random_effect_pred['cov']
                     elif predict_var:
                         pred_var_cov = random_effect_pred['var']
+                    for k, suffix in enumerate(extra_suffixes):
+                        random_effect_mean_extra[k] = random_effect_pred['mu' + suffix]
+                        if predict_var:
+                            pred_var_extra[k] = random_effect_pred['var' + suffix]
                     if sample_posterior:
                         posterior_samples = random_effect_pred['posterior_samples'] + fixed_effect[:, np.newaxis]
                 else:  # predict response variable (not pred_latent)
@@ -4528,13 +4549,18 @@ class Booster:
                     if sample_posterior:
                         posterior_samples = pred_resp['posterior_samples']
                     fixed_effect = None
-            return {"fixed_effect": fixed_effect,
-                    "random_effect_mean": random_effect_mean,
-                    "random_effect_cov": pred_var_cov,
-                    "response_mean": response_mean,
-                    "response_var": response_var,
-                    "posterior_samples": posterior_samples
-                    } # end GPBoost prediction        
+            result = {"fixed_effect": fixed_effect,
+                      "random_effect_mean": random_effect_mean,
+                      "random_effect_cov": pred_var_cov,
+                      "response_mean": response_mean,
+                      "response_var": response_var,
+                      "posterior_samples": posterior_samples
+                      }
+            for k, suffix in enumerate(extra_suffixes):
+                result["fixed_effect" + suffix] = fixed_effect_extra[k]
+                result["random_effect_mean" + suffix] = random_effect_mean_extra[k]
+                result["random_effect_cov" + suffix] = pred_var_extra[k]
+            return result # end GPBoost prediction
         elif self.is_mean_scale_regression:
             preds = predictor.predict(data=data, start_iteration=start_iteration, num_iteration=num_iteration,
                                      raw_score=pred_latent, pred_leaf=pred_leaf, pred_contrib=pred_contrib,
@@ -7430,21 +7456,41 @@ class GPModel(object):
 
         Returns
         -------
-        result : a dict with three entries having numpy arrays as values
+        result : a dict with the following entries having numpy arrays as values
 
-            - 'mu' (first entry):
+            - 'mu':
 
                 Predictive (=posterior) mean. For (generalized) linear mixed effects models,
                 i.e., models with a linear regression term, this consists of the sum of
-                fixed effects and random effects predictions
+                fixed effects and random effects predictions. This is None if 'sample_prior=True'
 
-            - 'cov' (second entry):
+            - 'cov':
 
                 Predictive (=posterior) covariance matrix. This is None if 'predict_cov_mat=False'
 
-            - 'var' (third entry):
+            - 'var':
 
                 Predictive (=posterior) variances. This is None if 'predict_var=False'
+
+            - 'posterior_samples':
+
+                A matrix with samples from the posterior in its columns. This is None if 'sample_posterior=False'
+
+            - 'prior_samples':
+
+                A matrix with samples from the prior at the training data locations in its columns.
+                This is None if 'sample_prior=False'
+
+            - 'mu_scale', 'var_scale' (and analogously with the suffixes '_zero', '_shape', and '_dispersion'):
+
+                Only for likelihoods with several parameters that are modeled with a predictor, e.g., the log-error
+                variance for "gaussian_heteroscedastic". The suffixes are those of the names of the corresponding
+                regression coefficients. If 'predict_response=False', these are the predictive means and variances of
+                the latent predictors of these additional parameters, and 'mu', 'cov', 'var', and 'posterior_samples'
+                refer to the first parameter (e.g., the mean). Otherwise, they are None. 'var_scale' etc. are None if
+                'predict_var=False'. The variances are zero for parameters with fixed effects only (all of these
+                likelihoods except "gaussian_heteroscedastic_fixed_and_random"), as 'var' also does not include the
+                uncertainty in the fixed effects
 
         Example
         -------
@@ -7651,11 +7697,13 @@ class GPModel(object):
             offset_pred = offset_pred.astype(np.float64)
             offset_pred_c = offset_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
+        # Number of location parameter blocks with predictive means and variances on the output
+        num_blocks = 1 if predict_response else self.num_sets_fe
         size_allocate = 0
         if not sample_prior:
-            size_allocate = size_allocate + num_data_pred
+            size_allocate = size_allocate + num_data_pred * num_blocks
         if predict_var:
-            size_allocate = size_allocate + num_data_pred
+            size_allocate = size_allocate + num_data_pred * num_blocks
         elif predict_cov_mat:
             size_allocate = size_allocate + num_data_pred * num_data_pred
         if sample_posterior:
@@ -7687,27 +7735,40 @@ class GPModel(object):
             offset_c,
             offset_pred_c))
 
+        # The means of all blocks, followed by the covariance matrix of the first block or the variances of all blocks,
+        # and the samples
         pred_mean = None
         pred_cov_mat = None
         pred_var = None
         posterior_samples = None
         prior_samples = None
+        num_extra_blocks = len(self.extra_fe_block_suffixes)
+        pred_mean_extra = [None] * num_extra_blocks
+        pred_var_extra = [None] * num_extra_blocks
         idx_start_post_sample = 0
         if not sample_prior:
             pred_mean = preds[0:num_data_pred]
-            idx_start_post_sample = idx_start_post_sample + num_data_pred
+            for k in range(1, num_blocks):
+                pred_mean_extra[k - 1] = preds[(num_data_pred * k):(num_data_pred * (k + 1))]
+            idx_start_post_sample = idx_start_post_sample + num_data_pred * num_blocks
         if predict_var:
-            pred_var = preds[num_data_pred:(2 * num_data_pred)]
-            idx_start_post_sample = idx_start_post_sample + num_data_pred
+            pred_var = preds[idx_start_post_sample:(idx_start_post_sample + num_data_pred)]
+            for k in range(1, num_blocks):
+                pred_var_extra[k - 1] = preds[(idx_start_post_sample + num_data_pred * k):(idx_start_post_sample + num_data_pred * (k + 1))]
+            idx_start_post_sample = idx_start_post_sample + num_data_pred * num_blocks
         elif predict_cov_mat:
-            pred_cov_mat = preds[num_data_pred:(num_data_pred * (num_data_pred + 1))].reshape((num_data_pred, num_data_pred))
+            pred_cov_mat = preds[idx_start_post_sample:(idx_start_post_sample + num_data_pred * num_data_pred)].reshape((num_data_pred, num_data_pred))
             idx_start_post_sample = idx_start_post_sample + num_data_pred * num_data_pred
         if sample_posterior:
             posterior_samples = preds[idx_start_post_sample : idx_start_post_sample + num_data_pred * num_post_samples].reshape((num_data_pred, num_post_samples), order="F")
             idx_start_post_sample = idx_start_post_sample + num_data_pred * num_post_samples
         if sample_prior:
             prior_samples = preds[idx_start_post_sample : idx_start_post_sample + self.num_data * num_prior_samples].reshape((self.num_data, num_prior_samples), order="F")
-        return {"mu": pred_mean, "cov"  : pred_cov_mat, "var": pred_var, "posterior_samples": posterior_samples, "prior_samples": prior_samples}
+        result = {"mu": pred_mean, "cov"  : pred_cov_mat, "var": pred_var, "posterior_samples": posterior_samples, "prior_samples": prior_samples}
+        for k, suffix in enumerate(self.extra_fe_block_suffixes):
+            result["mu" + suffix] = pred_mean_extra[k]
+            result["var" + suffix] = pred_var_extra[k]
+        return result
 
     def set_prediction_data(self,
                             vecchia_pred_type=None,

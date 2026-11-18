@@ -115,6 +115,12 @@ whether there is a \code{gp_model} or not
       \item { result["random_effect_cov"] are the predictive covariances or variances of the \code{gp_model}
   (only if 'predict_var' or 'predict_cov' is TRUE) }
      \item { result["posterior_samples"] samples of the posterior latent variable including both the fixed effects and the \code{gp_model} (if 'sample_posterior' is TRUE) }
+     \item { result["fixed_effect_scale"], result["random_effect_mean_scale"], result["random_effect_cov_scale"]
+  (and analogously with the suffixes "_zero", "_shape", and "_dispersion"): only for likelihoods with several parameters
+  that are modeled with a predictor, e.g., the log-error variance for "gaussian_heteroscedastic". The same as the entries above
+  for these additional parameters, with the predictive variances in "random_effect_cov_scale" etc. (only if 'predict_var' is TRUE).
+  The suffixes are those of the names of the corresponding coefficients of a \code{GPModel}.
+  The entries without a suffix refer to the first parameter (e.g., the mean) }
   }
   }
   }

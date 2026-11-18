@@ -454,7 +454,9 @@ namespace LightGBM {
 
 				}//end Gaussian data
 				else {//non-Gaussian data
-					std::vector<double> re_pred(num_data_ * 2); // the first num_data_ are the predictive means followed by num_data_ predictive variances
+					// The predictive means of all location parameter blocks (num_data_ each) are followed by their predictive variances
+					const int num_blocks = re_model->GetNumSetsFixedEffects();
+					std::vector<double> re_pred(num_data_ * 2 * num_blocks);
 					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, false, false, false, 0, 0,
 						nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 						true, nullptr, score, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
@@ -465,7 +467,7 @@ namespace LightGBM {
 					// For likelihoods with additional location parameter blocks related to fixed effects only (e.g., a log-dispersion),
 					//	the scores of these blocks follow the first block in 'score' and are passed as their values at the test points
 					const double* extra_location_par = re_model->GetNumSetsFixedEffects() > 1 ? score + num_data_ : nullptr;
-					sum_loss = re_model->TestNegLogLikelihoodAdaptiveGHQuadrature(label_, re_pred.data(), re_pred.data() + num_data_, num_data_, extra_location_par);
+					sum_loss = re_model->TestNegLogLikelihoodAdaptiveGHQuadrature(label_, re_pred.data(), re_pred.data() + num_data_ * num_blocks, num_data_, extra_location_par);
 				}//end non-Gaussian data
 			}//end if (objective->HasGPModel()) && objective->UseGPModelForValidation())
 			else {//re_model inexistent or not used for calculating validation loss for Gaussian likelihoods

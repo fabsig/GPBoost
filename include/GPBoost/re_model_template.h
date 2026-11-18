@@ -3960,6 +3960,55 @@ namespace GPBoost {
 		}//end SetPredictionData
 
 		/*!
+		* \brief Number of location parameter blocks whose predictions are written on the output of 'Predict': all blocks
+		*		(num_sets_fixed_effects_) for the latent location parameters, and one block for the response variable
+		* \param predict_response If true, the response variable is predicted, otherwise the latent location parameters
+		*/
+		int NumBlocksPredOutput(bool predict_response) const {
+			return(predict_response ? 1 : num_sets_fixed_effects_);
+		}
+
+		/*!
+		* \brief Calculate the predictive means and variances of the location parameter blocks that are related to fixed
+		*		effects only (blocks num_sets_re_, ..., num_sets_fixed_effects_ - 1, e.g., the log-error variance for
+		*		'gaussian_heteroscedastic'). These blocks are deterministic given the fixed effects, i.e., their predictive
+		*		variances are zero
+		* \param cluster_i Index / label of the cluster for which predictions are made
+		* \param num_data_pred Total number of prediction points (over all clusters)
+		* \param data_indices_per_cluster_pred Keys: labels of independent clusters, values: vectors with indices of the prediction points of every cluster
+		* \param num_data_per_cluster_pred Keys: labels of independent clusters, values: number of prediction points per cluster
+		* \param mu Linear regression predictor (only used if 'has_covariates_')
+		* \param fixed_effects_pred Externally provided fixed effects for the prediction points
+		* \param[out] mean_pred_id Predictive means of the location parameter blocks of this cluster
+		* \param[out] var_pred_id Predictive variances of the location parameter blocks of this cluster
+		*/
+		void PredictFixedEffectsOnlyBlocks(data_size_t cluster_i,
+			data_size_t num_data_pred,
+			std::map<data_size_t, std::vector<int>>& data_indices_per_cluster_pred,
+			std::map<data_size_t, int>& num_data_per_cluster_pred,
+			const vec_t& mu,
+			const double* fixed_effects_pred,
+			std::map<int, vec_t>& mean_pred_id,
+			std::map<int, vec_t>& var_pred_id) const {
+			for (int igp = num_sets_re_; igp < num_sets_fixed_effects_; ++igp) {
+				mean_pred_id[igp] = vec_t::Zero(num_data_per_cluster_pred[cluster_i]);
+				var_pred_id[igp] = vec_t::Zero(num_data_per_cluster_pred[cluster_i]);
+				if (fixed_effects_pred != nullptr) {
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+						mean_pred_id[igp][i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
+					}
+				}
+				if (has_covariates_) {
+#pragma omp parallel for schedule(static)
+					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+						mean_pred_id[igp][i] += mu[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
+					}
+				}
+			}
+		}//end PredictFixedEffectsOnlyBlocks
+
+		/*!
 		* \brief Calculate predictions for a cluster ('cluster_ids_pred') for which there is no observed data.
 		*		The predictive distribution of the latent random effects / GPs is then their prior, and everything
 		*		is calculated from the prediction data of this cluster only. In particular, none of the containers
@@ -4465,73 +4514,55 @@ namespace GPBoost {
 					cov_mat_pred_id = psi;
 				}
 			}//end loop over num_sets_re_
+			if (num_sets_fixed_effects_ > num_sets_re_) {
+				PredictFixedEffectsOnlyBlocks(cluster_i, num_data_pred, data_indices_per_cluster_pred, num_data_per_cluster_pred,
+					mu, fixed_effects_pred, mean_pred_id, var_pred_id);
+			}
 			// Transform to response scale for non-Gaussian likelihoods if needed
 			if (!gauss_likelihood_ && predict_response) {
-				if (num_sets_fixed_effects_ > num_sets_re_) {
-					// Additional location parameter blocks related to fixed effects only (e.g., the log-error variance for 'gaussian_heteroscedastic')
-					// are deterministic given the fixed effects (there are no random effects / GPs for these blocks)
-					for (int igp = num_sets_re_; igp < num_sets_fixed_effects_; ++igp) {
-						mean_pred_id[igp] = vec_t::Zero(num_data_per_cluster_pred[cluster_i]);
-						var_pred_id[igp] = vec_t::Zero(num_data_per_cluster_pred[cluster_i]);
-						if (fixed_effects_pred != nullptr) {
-#pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-								mean_pred_id[igp][i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
-							}
-						}
-						if (has_covariates_) {
-#pragma omp parallel for schedule(static)
-							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-								mean_pred_id[igp][i] += mu[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
-							}
-						}
-					}
-				}
 				likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id[0], var_pred_id[0], mean_pred_id[1], var_pred_id[1], predict_var, mean_pred_id[2]);
 			}
-			// Write on output
+			// Write on output: the means of all blocks, followed by the covariance matrix of the first block or the variances of all blocks
+			const int num_blocks_out = NumBlocksPredOutput(predict_response);
+			for (int igp = 0; igp < num_blocks_out; ++igp) {
 #pragma omp parallel for schedule(static)
-			for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-				out_predict[data_indices_per_cluster_pred[cluster_i][i]] = mean_pred_id[0][i];
+				for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+					out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp] = mean_pred_id[igp][i];
+				}
 			}
-			// Write covariance / variance on output
-			if (!predict_response || gauss_likelihood_) {//this is not done if predict_response==true for non-Gaussian likelihoods 
-				if (predict_cov_mat) {
+			if (predict_cov_mat && (!predict_response || gauss_likelihood_)) {
 #pragma omp parallel for schedule(static)
-					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
-						for (int j = 0; j < num_data_per_cluster_pred[cluster_i]; ++j) {//row index
-							out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred] = cov_mat_pred_id.coeff(j, i);
-						}
+				for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
+					for (int j = 0; j < num_data_per_cluster_pred[cluster_i]; ++j) {//row index
+						out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred * num_blocks_out] = cov_mat_pred_id.coeff(j, i);
 					}
-				}//end predict_cov_mat
-				if (predict_var) {
-#pragma omp parallel for schedule(static)
-					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-						out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred] = var_pred_id[0][i];
-					}
-				}//end predict_var
-			}//end !predict_response || gauss_likelihood_
-			else { // predict_response && !gauss_likelihood_
-				if (predict_var) {
+				}
+			}//end predict_cov_mat
+			if (predict_var) {
+				for (int igp = 0; igp < num_blocks_out; ++igp) {
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-						out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred] = var_pred_id[0][i];
+						out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * (num_blocks_out + igp)] = var_pred_id[igp][i];
 					}
-				}//end predict_var
-			}//end write covariance / variance on output
+				}
+			}//end predict_var
 
 		}//end PredictNewCluster
 
 		/*!
 		* \brief Make predictions: calculate conditional mean and variances or covariance matrix
-		*		 Note: You should pre-allocate memory for out_predict
-		*			   Its length is equal to num_data_pred if only the conditional mean is predicted (predict_cov_mat==false && predict_var==false)
-		*			   or num_data_pred * (1 + num_data_pred) if the predictive covariance matrix is also calculated (predict_cov_mat==true)
-		*			   or num_data_pred * 2 if predictive variances are also calculated (predict_var==true)
+		*		 Note: You should pre-allocate memory for out_predict. With K = 'NumBlocksPredOutput(predict_response)' (the number
+		*			   of location parameter blocks if predict_response==false, otherwise 1), its length is
+		*			   num_data_pred * K (predictive means, not if sample_prior==true)
+		*			   + num_data_pred * num_data_pred (if predict_cov_mat==true) or num_data_pred * K (if predict_var==true)
+		*			   + num_data_pred * num_post_samples (if sample_posterior==true) + num_data_ * num_prior_samples (if sample_prior==true)
 		* \param cov_pars_pred Covariance parameters of components
 		* \param y_obs Response variable for observed data
 		* \param num_data_pred Number of data points for which predictions are made
-		* \param[out] out_predict Predictive/conditional mean at prediciton points followed by the predictive covariance matrix in column-major format (if predict_cov_mat==true) or the predictive variances (if predict_var==true)
+		* \param[out] out_predict Predictive/conditional means at prediction points of the K blocks (one block after the other) followed by
+		*				the predictive covariance matrix of the first block in column-major format (if predict_cov_mat==true) or the predictive
+		*				variances of the K blocks (if predict_var==true), followed by the posterior samples of the first block (if sample_posterior==true)
+		*				or the prior samples (if sample_prior==true), see above for the lengths
 		* \param calc_cov_factor If true, the covariance matrix of the observed data is factorized otherwise a previously done factorization is used (default=true)
 		* \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 		* \param predict_var If true, the predictive/conditional variances are calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
@@ -4776,6 +4807,7 @@ namespace GPBoost {
 				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false, sample_prior);
 			}
 			bool predict_var_or_response = predict_var || (!gauss_likelihood_ && predict_response && likelihood_[unique_clusters_[0]]->NeedPredLatentVarForResponseMean()); //variance needs to be available for response prediction for most non-Gaussian likelihoods
+			const int num_blocks_out = NumBlocksPredOutput(predict_response);
 			// Loop over different clusters to calculate predictions
 			for (const auto& cluster_i : unique_clusters_pred) {				
 				if (std::find(unique_clusters_.begin(), unique_clusters_.end(), cluster_i) == unique_clusters_.end()) {
@@ -4865,7 +4897,8 @@ namespace GPBoost {
 					den_mat_t prior_samples_id;// sample from prior
 					std::map<int, sp_mat_t> Bpo, Bp; // used only if gp_approx_ == "vecchia" && !gauss_likelihood_
 					std::map<int, vec_t> Dp;
-					int num_gp_pred = predict_var_or_response ? num_sets_re_ : 1;
+					// The latent location parameters are predicted for all sets of random effects / GPs
+					int num_gp_pred = (predict_var_or_response || !predict_response) ? num_sets_re_ : 1;
 					// Calculate predictions
 					if (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") {
 						// Factors of the process whose prior is sampled. They are kept separate from 'B_rm_' and 'D_inv_rm_',
@@ -5245,6 +5278,10 @@ namespace GPBoost {
 						const vec_t& mu_loc = mean_pred_id.at(0);
 						post_samples_id.colwise() += mu_loc;
 					}
+					if (num_sets_fixed_effects_ > num_sets_re_) {
+						PredictFixedEffectsOnlyBlocks(cluster_i, num_data_pred, data_indices_per_cluster_pred, num_data_per_cluster_pred,
+							mu, fixed_effects_pred, mean_pred_id, var_pred_id);
+					}
 					if (!gauss_likelihood_ && predict_response) {
 						if (sample_posterior) {
 							Log::REFatal("Posterior sampling for the option 'predict_response' is currently not yet implemented for this likelihood, set predict_response = false");
@@ -5252,53 +5289,36 @@ namespace GPBoost {
 						if (sample_prior) {
 							Log::REFatal("Prior sampling for the option 'predict_response' is currently not yet implemented for this likelihood, set predict_response = false");
 						}
-						if (num_sets_fixed_effects_ > num_sets_re_) {
-							// Additional location parameter blocks related to fixed effects only (e.g., the log-error variance for 'gaussian_heteroscedastic')
-							// are deterministic given the fixed effects (no random effect / GP posterior uncertainty)
-							for (int igp = num_sets_re_; igp < num_sets_fixed_effects_; ++igp) {
-								mean_pred_id[igp] = vec_t::Zero(num_data_per_cluster_pred[cluster_i]);
-								var_pred_id[igp] = vec_t::Zero(num_data_per_cluster_pred[cluster_i]);
-								if (fixed_effects_pred != nullptr) {
-#pragma omp parallel for schedule(static)
-									for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-										mean_pred_id[igp][i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
-									}
-								}
-								if (has_covariates_) {
-#pragma omp parallel for schedule(static)
-									for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-										mean_pred_id[igp][i] += mu[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
-									}
-								}
-							}
-						}
 						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id[0], var_pred_id[0], mean_pred_id[1], var_pred_id[1], predict_var, mean_pred_id[2]);
 					}
-					// Write on output
+					// Write on output: the means of all blocks, followed by the covariance matrix of the first block or the variances of all blocks
 					int idx_start_post_sample = 0;
 					if (!sample_prior) {
-						idx_start_post_sample += num_data_pred;
+						idx_start_post_sample += num_data_pred * num_blocks_out;
+						for (int igp = 0; igp < num_blocks_out; ++igp) {
 #pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-							out_predict[data_indices_per_cluster_pred[cluster_i][i]] = mean_pred_id[0][i];
+							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+								out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp] = mean_pred_id[igp][i];
+							}
 						}
 					}
-					// Write covariance / variance on output
 					if (predict_cov_mat) {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
 							for (int j = 0; j < num_data_per_cluster_pred[cluster_i]; ++j) {//row index
-								out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred] = cov_mat_pred_id.coeff(j, i);
+								out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred * num_blocks_out] = cov_mat_pred_id.coeff(j, i);
 							}
 						}
 						idx_start_post_sample += num_data_pred * num_data_pred;
 					}//end predict_cov_mat
 					if (predict_var) {
+						for (int igp = 0; igp < num_blocks_out; ++igp) {
 #pragma omp parallel for schedule(static)
-						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-							out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred] = var_pred_id[0][i];
+							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
+								out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * (num_blocks_out + igp)] = var_pred_id[igp][i];
+							}
 						}
-						idx_start_post_sample += num_data_pred;
+						idx_start_post_sample += num_data_pred * num_blocks_out;
 					}//end predict_var
 					if (sample_posterior) {
 						CHECK(post_samples_id.cols() == num_post_samples);
@@ -5333,7 +5353,7 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
 								for (int j = 0; j < num_data_per_cluster_pred[cluster_j]; ++j) {//row index
-									out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_j][j] + num_data_pred] = 0.;
+									out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_j][j] + num_data_pred * num_blocks_out] = 0.;
 								}
 							}
 						}

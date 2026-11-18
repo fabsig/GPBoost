@@ -1731,14 +1731,19 @@ GPBOOST_C_EXPORT int GPB_SetPredictionData(REModelHandle handle,
 
 /*!
 * \brief Make predictions: calculate conditional mean and variances or covariance matrix
-*		 Note: You should pre-allocate memory for out_predict
-*			   Its length is equal to num_data_pred if only the conditional mean is predicted (predict_cov_mat==false && predict_var==false)
-*			   or num_data_pred * (1 + num_data_pred) if the predictive covariance matrix is also calculated (predict_cov_mat==true)
-*			   or num_data_pred * 2 if predictive variances are also calculated (predict_var==true)
+*		 Note: You should pre-allocate memory for out_predict. Let K be the number of location parameter blocks of the
+*			   likelihood (e.g., 2 for "gaussian_heteroscedastic": the mean and the log-error variance) if predict_response==false
+*			   and K = 1 otherwise. The length of out_predict is
+*			   num_data_pred * K (predictive means, not if sample_prior==true)
+*			   + num_data_pred * num_data_pred (if predict_cov_mat==true) or num_data_pred * K (if predict_var==true)
+*			   + num_data_pred * num_post_samples (if sample_posterior==true) + num_data * num_prior_samples (if sample_prior==true)
 * \param handle Handle of REModel
 * \param y_data Response variable for observed data
 * \param num_data_pred Number of data points for which predictions are made
-* \param[out] out_predict Predictive mean at prediction points followed by the predictive covariance matrix in column-major format (if predict_cov_mat==true) or the predictive variances (if predict_var==true)
+* \param[out] out_predict Predictive means at prediction points of the K blocks (one block after the other) followed by
+*				the predictive covariance matrix of the first block in column-major format (if predict_cov_mat==true) or the predictive
+*				variances of the K blocks (if predict_var==true), followed by the posterior samples of the first block (if sample_posterior==true)
+*				or the prior samples (if sample_prior==true), see above for the lengths
 * \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 * \param predict_var If true, the predictive/conditional variances are calculated (default=false) (predict_var and predict_cov_mat cannot be both true)
 * \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects

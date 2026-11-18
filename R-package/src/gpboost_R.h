@@ -1048,10 +1048,7 @@ GPBOOST_C_EXPORT SEXP GPB_SetPredictionData_R(
 
 /*!
 * \brief Make predictions: calculate conditional mean and variances or covariance matrix
-*		 Note: You should pre-allocate memory for out_predict
-*			   Its length is equal to num_data_pred if only the conditional mean is predicted (predict_cov_mat==false && predict_var==false)
-*			   or num_data_pred * (1 + num_data_pred) if the predictive covariance matrix is also calculated (predict_cov_mat==true)
-*			   or num_data_pred * 2 if predictive variances are also calculated (predict_var==true)
+*		 Note: You should pre-allocate memory for out_predict, see 'GPB_PredictREModel' in c_api.h for its length and layout
 * \param handle Handle of REModel
 * \param y_data Response variable for observed data
 * \param num_data_pred Number of data points for which predictions are made
@@ -1072,7 +1069,7 @@ GPBOOST_C_EXPORT SEXP GPB_SetPredictionData_R(
 * \param use_saved_data If true previusly set data on groups, coordinates, and covariates are used and some arguments of this function are ignored
 * \param fixed_effects Fixed effects component of location parameter for observed data (only used for non-Gaussian data)
 * \param fixed_effects_pred Fixed effects component of location parameter for predicted data (only used for non-Gaussian data)
-* \param[out] out_predict Predictive/conditional mean at prediciton points followed by the predictive covariance matrix in column-major format (if predict_cov_mat==true) or the predictive variances (if predict_var==true)
+* \param[out] out_predict Predictive/conditional means at prediction points, followed by the predictive covariance matrix in column-major format (if predict_cov_mat==true) or the predictive variances (if predict_var==true) and the samples, see 'GPB_PredictREModel' in c_api.h
 * \return 0 when succeed, -1 when failure happens
 */
 GPBOOST_C_EXPORT SEXP GPB_PredictREModel_R(

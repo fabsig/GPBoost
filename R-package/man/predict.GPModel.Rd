@@ -84,15 +84,27 @@ This is discontinued here. Use the function 'set_prediction_data' to specify thi
 \item{...}{(not used, ignore this, simply here that there is no CRAN warning)}
 }
 \value{
-Predictions from a \code{GPModel}. A list with three entries is returned:
+Predictions from a \code{GPModel}. A list with the following entries is returned:
 \itemize{
-\item{ "mu" (first entry): predictive (=posterior) mean. For (generalized) linear mixed
-effects models, i.e., models with a linear regression term, this consists of the sum of 
-fixed effects and random effects predictions }
-\item{ "cov" (second entry): predictive (=posterior) covariance matrix. 
-This is NULL if 'predict_cov_mat=FALSE'  }
-\item{ "var" (third entry) : predictive (=posterior) variances. 
-This is NULL if 'predict_var=FALSE'  }
+\item{ "mu": predictive (=posterior) mean. For (generalized) linear mixed
+effects models, i.e., models with a linear regression term, this consists of the sum of
+fixed effects and random effects predictions. This is NA if 'sample_prior=TRUE' }
+\item{ "cov": predictive (=posterior) covariance matrix.
+This is NA if 'predict_cov_mat=FALSE'  }
+\item{ "var": predictive (=posterior) variances.
+This is NA if 'predict_var=FALSE'  }
+\item{ "posterior_samples": a matrix with samples from the posterior in its columns.
+This is NA if 'sample_posterior=FALSE'  }
+\item{ "prior_samples": a matrix with samples from the prior at the training data locations in its columns.
+This is NA if 'sample_prior=FALSE'  }
+\item{ "mu_scale", "var_scale" (and analogously with the suffixes "_zero", "_shape", and "_dispersion"): only for likelihoods
+with several parameters that are modeled with a predictor, e.g., the log-error variance for "gaussian_heteroscedastic".
+The suffixes are those of the names of the corresponding regression coefficients. If 'predict_response=FALSE',
+these are the predictive means and variances of the latent predictors of these additional parameters,
+and "mu", "cov", "var", and "posterior_samples" refer to the first parameter (e.g., the mean). Otherwise, they are NA.
+"var_scale" etc. are NA if 'predict_var=FALSE'. The variances are zero for parameters with fixed effects only
+(all of these likelihoods except "gaussian_heteroscedastic_fixed_and_random"), as "var" also does not include
+the uncertainty in the fixed effects }
 }
 }
 \description{

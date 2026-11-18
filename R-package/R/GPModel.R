@@ -2401,13 +2401,18 @@ gpb.GPModel <- R6::R6Class(
                " used for the tree ensemble.")
         }
       }# end offset_pred
+      # Number of location parameter blocks with predictive means and variances on the output
+      num_blocks <- 1L
+      if (!predict_response) {
+        num_blocks <- private$num_sets_fe
+      }
       # Pre-allocate empty vector
       size_allocate <- 0
       if (!sample_prior) {
-        size_allocate <- size_allocate + num_data_pred
+        size_allocate <- size_allocate + num_data_pred * num_blocks
       }
       if (predict_var) {
-        size_allocate <- size_allocate + num_data_pred
+        size_allocate <- size_allocate + num_data_pred * num_blocks
       } else if (predict_cov_mat) {
         size_allocate <- size_allocate + num_data_pred * num_data_pred
       }
@@ -2442,22 +2447,32 @@ gpb.GPModel <- R6::R6Class(
         , offset_pred
         , preds
       )
-      # Process C++ output
+      # Process C++ output: the means of all blocks, followed by the covariance matrix of the first
+      #   block or the variances of all blocks, and the samples
       pred_mean <- NA
       pred_cov_mat <- NA
       pred_var <- NA
       posterior_samples <- NA
       prior_samples <- NA
+      num_extra_blocks <- length(private$extra_fe_block_suffixes)
+      pred_mean_extra <- rep(list(NA), num_extra_blocks)
+      pred_var_extra <- rep(list(NA), num_extra_blocks)
       idx_start_post_sample <- 0
       if (!sample_prior) {
         pred_mean <- preds[1:num_data_pred]
-        idx_start_post_sample <- idx_start_post_sample + num_data_pred
+        for (k in seq_len(num_blocks - 1L)) {
+          pred_mean_extra[[k]] <- preds[1:num_data_pred + num_data_pred * k]
+        }
+        idx_start_post_sample <- idx_start_post_sample + num_data_pred * num_blocks
       }
       if (predict_var) {
-        pred_var <- preds[1:num_data_pred + num_data_pred]
-        idx_start_post_sample <- idx_start_post_sample + num_data_pred
+        pred_var <- preds[1:num_data_pred + idx_start_post_sample]
+        for (k in seq_len(num_blocks - 1L)) {
+          pred_var_extra[[k]] <- preds[1:num_data_pred + idx_start_post_sample + num_data_pred * k]
+        }
+        idx_start_post_sample <- idx_start_post_sample + num_data_pred * num_blocks
       } else if (predict_cov_mat) {
-        pred_cov_mat <- matrix(preds[1:(num_data_pred^2) + num_data_pred],ncol=num_data_pred)
+        pred_cov_mat <- matrix(preds[1:(num_data_pred^2) + idx_start_post_sample],ncol=num_data_pred)
         idx_start_post_sample <- idx_start_post_sample + num_data_pred^2
       }
       if (sample_posterior) {
@@ -2467,7 +2482,12 @@ gpb.GPModel <- R6::R6Class(
       if (sample_prior) {
         prior_samples <- matrix(preds[1:(private$num_data*num_prior_samples) + idx_start_post_sample], ncol=num_prior_samples)
       }
-      return(list(mu=pred_mean,cov=pred_cov_mat,var=pred_var,posterior_samples=posterior_samples,prior_samples=prior_samples))
+      result <- list(mu=pred_mean,cov=pred_cov_mat,var=pred_var,posterior_samples=posterior_samples,prior_samples=prior_samples)
+      for (k in seq_len(num_extra_blocks)) {
+        result[[paste0("mu", private$extra_fe_block_suffixes[k])]] <- pred_mean_extra[[k]]
+        result[[paste0("var", private$extra_fe_block_suffixes[k])]] <- pred_var_extra[[k]]
+      }
+      return(result)
     },
     
     predict_training_data_random_effects = function(predict_var = FALSE,
@@ -3787,15 +3807,27 @@ summary.GPModel <- function(object, std_err = TRUE, ...){
 #' @param vecchia_pred_type A \code{string} specifying the type of Vecchia approximation used for making predictions.
 #' This is discontinued here. Use the function 'set_prediction_data' to specify this
 #'
-#' @return Predictions from a \code{GPModel}. A list with three entries is returned:
+#' @return Predictions from a \code{GPModel}. A list with the following entries is returned:
 #' \itemize{
-#' \item{ "mu" (first entry): predictive (=posterior) mean. For (generalized) linear mixed
-#' effects models, i.e., models with a linear regression term, this consists of the sum of 
-#' fixed effects and random effects predictions }
-#' \item{ "cov" (second entry): predictive (=posterior) covariance matrix. 
-#' This is NULL if 'predict_cov_mat=FALSE'  }
-#' \item{ "var" (third entry) : predictive (=posterior) variances. 
-#' This is NULL if 'predict_var=FALSE'  }
+#' \item{ "mu": predictive (=posterior) mean. For (generalized) linear mixed
+#' effects models, i.e., models with a linear regression term, this consists of the sum of
+#' fixed effects and random effects predictions. This is NA if 'sample_prior=TRUE' }
+#' \item{ "cov": predictive (=posterior) covariance matrix.
+#' This is NA if 'predict_cov_mat=FALSE'  }
+#' \item{ "var": predictive (=posterior) variances.
+#' This is NA if 'predict_var=FALSE'  }
+#' \item{ "posterior_samples": a matrix with samples from the posterior in its columns.
+#' This is NA if 'sample_posterior=FALSE'  }
+#' \item{ "prior_samples": a matrix with samples from the prior at the training data locations in its columns.
+#' This is NA if 'sample_prior=FALSE'  }
+#' \item{ "mu_scale", "var_scale" (and analogously with the suffixes "_zero", "_shape", and "_dispersion"): only for likelihoods
+#' with several parameters that are modeled with a predictor, e.g., the log-error variance for "gaussian_heteroscedastic".
+#' The suffixes are those of the names of the corresponding regression coefficients. If 'predict_response=FALSE',
+#' these are the predictive means and variances of the latent predictors of these additional parameters,
+#' and "mu", "cov", "var", and "posterior_samples" refer to the first parameter (e.g., the mean). Otherwise, they are NA.
+#' "var_scale" etc. are NA if 'predict_var=FALSE'. The variances are zero for parameters with fixed effects only
+#' (all of these likelihoods except "gaussian_heteroscedastic_fixed_and_random"), as "var" also does not include
+#' the uncertainty in the fixed effects }
 #' }
 #'
 #' @examples

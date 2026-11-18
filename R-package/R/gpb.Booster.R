@@ -901,7 +901,12 @@ Booster <- R6::R6Class(
         response_mean <- NA
         response_var <- NA
         posterior_samples <- NA
-        
+        # Latent predictions of the additional location parameter blocks of likelihoods with several parameters
+        extra_suffixes <- private$gp_model$.__enclos_env__$private$extra_fe_block_suffixes
+        fixed_effect_extra <- rep(list(NA), length(extra_suffixes))
+        random_effect_mean_extra <- rep(list(NA), length(extra_suffixes))
+        pred_var_extra <- rep(list(NA), length(extra_suffixes))
+
         if(private$gp_model$get_likelihood_name() == "gaussian" & 
            private$gp_model$.__enclos_env__$private$gp_approx != "vecchia_latent"){
           
@@ -1035,7 +1040,7 @@ Booster <- R6::R6Class(
                                             , reshape = FALSE )
           
           if (pred_latent) {
-            
+
             nsf <- private$gp_model$.__enclos_env__$private$num_sets_fe
             if (nsf > 1) {
               np <- length(fixed_effect) / nsf
@@ -1044,9 +1049,14 @@ Booster <- R6::R6Class(
                   stop("Number of data points in fixed effect (tree ensemble) and 'offset_pred' are not equal")
                 }
               }
-              fixed_effect <- fixed_effect[(1:np)*nsf - nsf + 1] # take only predictions for the first block (the mean)
+              # The tree ensemble predictions of the location parameter blocks alternate, row k = block k
+              fixed_effect_blocks <- matrix(fixed_effect, nrow = nsf)
               if (!is.null(offset_pred)) {
-                fixed_effect <- fixed_effect + offset_pred[1:np]
+                fixed_effect_blocks <- fixed_effect_blocks + matrix(offset_pred, nrow = nsf, byrow = TRUE)
+              }
+              fixed_effect <- fixed_effect_blocks[1, ]
+              for (k in seq_len(nsf - 1L)) {
+                fixed_effect_extra[[k]] <- fixed_effect_blocks[k + 1L, ]
               }
             } else if (!is.null(offset_pred)) {
               if (length(fixed_effect) != length(offset_pred)){
@@ -1083,10 +1093,16 @@ Booster <- R6::R6Class(
             } else if(predict_var){
               pred_var_cov <- random_effect_pred$var
             }
+            for (k in seq_along(extra_suffixes)) {
+              random_effect_mean_extra[[k]] <- random_effect_pred[[paste0("mu", extra_suffixes[k])]]
+              if (predict_var) {
+                pred_var_extra[[k]] <- random_effect_pred[[paste0("var", extra_suffixes[k])]]
+              }
+            }
             if (sample_posterior) {
               posterior_samples <- sweep(random_effect_pred$posterior_samples, 1L, fixed_effect, "+")
             }
-            
+
           }# end pred_latent
           else {# predict response variable for non-Gaussian data
             nsf <- private$gp_model$.__enclos_env__$private$num_sets_fe
@@ -1127,13 +1143,19 @@ Booster <- R6::R6Class(
           
         }# end non-Gaussian data
         
-        return(list(fixed_effect = fixed_effect,
-                    random_effect_mean = random_effect_mean,
-                    random_effect_cov = pred_var_cov,
-                    response_mean = response_mean,
-                    response_var = response_var,
-                    posterior_samples = posterior_samples))
-        
+        result <- list(fixed_effect = fixed_effect,
+                       random_effect_mean = random_effect_mean,
+                       random_effect_cov = pred_var_cov,
+                       response_mean = response_mean,
+                       response_var = response_var,
+                       posterior_samples = posterior_samples)
+        for (k in seq_along(extra_suffixes)) {
+          result[[paste0("fixed_effect", extra_suffixes[k])]] <- fixed_effect_extra[[k]]
+          result[[paste0("random_effect_mean", extra_suffixes[k])]] <- random_effect_mean_extra[[k]]
+          result[[paste0("random_effect_cov", extra_suffixes[k])]] <- pred_var_extra[[k]]
+        }
+        return(result)
+
       }# end GPBoost prediction
       else if (private$is_mean_scale_regression) {
         preds <- predictor$predict(data = data, start_iteration = start_iteration
@@ -1460,6 +1482,12 @@ Booster <- R6::R6Class(
 #'       \item { result["random_effect_cov"] are the predictive covariances or variances of the \code{gp_model}
 #'   (only if 'predict_var' or 'predict_cov' is TRUE) }
 #'      \item { result["posterior_samples"] samples of the posterior latent variable including both the fixed effects and the \code{gp_model} (if 'sample_posterior' is TRUE) }
+#'      \item { result["fixed_effect_scale"], result["random_effect_mean_scale"], result["random_effect_cov_scale"]
+#'   (and analogously with the suffixes "_zero", "_shape", and "_dispersion"): only for likelihoods with several parameters
+#'   that are modeled with a predictor, e.g., the log-error variance for "gaussian_heteroscedastic". The same as the entries above
+#'   for these additional parameters, with the predictive variances in "random_effect_cov_scale" etc. (only if 'predict_var' is TRUE).
+#'   The suffixes are those of the names of the corresponding coefficients of a \code{GPModel}.
+#'   The entries without a suffix refer to the first parameter (e.g., the mean) }
 #'   }
 #'   }
 #'   }

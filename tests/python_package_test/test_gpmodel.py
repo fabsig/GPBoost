@@ -387,6 +387,65 @@ def test_init_coef_covers_all_fixed_effects_predictors(likelihood, num_sets_fe):
                                init_coef, rtol=1e-10)
 
 
+@pytest.mark.parametrize("likelihood,suffix", [("gamma_varying_shape", "_shape"),
+                                               ("gaussian_heteroscedastic", "_scale")])
+def test_latent_predictions_of_all_fixed_effects_predictors(likelihood, suffix):
+    # The latent predictions of the second fixed effects predictor carry the suffix of its coefficients. It has
+    # no random effects, so its predictive variances are zero
+    group, X, ys = _sim_several_fe_predictors()
+    init_coef = np.array([0.1, -0.2, 0.3, -0.4])
+    gp_model = gpb.GPModel(group_data=group, likelihood=likelihood)
+    gp_model.fit(y=ys[likelihood], X=X, params={"maxit": 0, "init_coef": init_coef,
+                                                "init_coef_aux_pars_from_iid_model": False, "trace": False})
+    group_test = np.array([0, 1, 999])  # the last group is not in the training data
+    X_test = np.column_stack((np.ones(3), np.array([0.1, 0.4, 0.8])))
+    pred = gp_model.predict(group_data_pred=group_test, X_pred=X_test, predict_var=True, predict_response=False)
+    assert pred["mu"].shape == (3,)
+    np.testing.assert_allclose(pred["mu" + suffix], X_test @ init_coef[2:], rtol=1e-10, atol=1e-12)
+    np.testing.assert_array_equal(pred["var" + suffix], np.zeros(3))
+    pred_mean = gp_model.predict(group_data_pred=group_test, X_pred=X_test, predict_response=False)
+    np.testing.assert_allclose(pred_mean["mu"], pred["mu"], rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(pred_mean["mu" + suffix], pred["mu" + suffix], rtol=1e-10, atol=1e-12)
+    assert pred_mean["var" + suffix] is None
+    pred_cov = gp_model.predict(group_data_pred=group_test, X_pred=X_test, predict_cov_mat=True, predict_response=False)
+    np.testing.assert_allclose(np.diag(pred_cov["cov"]), pred["var"], rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(pred_cov["mu" + suffix], pred["mu" + suffix], rtol=1e-10, atol=1e-12)
+    pred_resp = gp_model.predict(group_data_pred=group_test, X_pred=X_test, predict_var=True, predict_response=True)
+    assert pred_resp["mu" + suffix] is None
+    if likelihood == "gaussian_heteroscedastic":
+        np.testing.assert_allclose(pred_resp["var"], pred["var"] + np.exp(pred["mu" + suffix]), rtol=1e-10)
+
+
+def test_latent_predictions_of_all_tree_ensembles():
+    # For "gaussian_heteroscedastic", a second tree ensemble predicts the log-error variance
+    group, X, ys = _sim_several_fe_predictors()
+    gp_model = gpb.GPModel(group_data=group, likelihood="gaussian_heteroscedastic")
+    gp_model.set_optim_params(params={"maxit": 20, "trace": False})
+    data_train = gpb.Dataset(X[:, 1:].copy(), ys["gaussian_heteroscedastic"], free_raw_data=False)
+    bst = gpb.train(params={"learning_rate": 0.1, "max_depth": 2, "min_data_in_leaf": 5, "verbose": -1},
+                    train_set=data_train, gp_model=gp_model, num_boost_round=5)
+    group_test = np.array([0, 1, 999])
+    X_test = np.array([[0.1], [0.4], [0.8]])
+    pred = bst.predict(data=X_test, group_data_pred=group_test, predict_var=True, pred_latent=True)
+    trees = bst.predict(data=X_test, pred_latent=True, ignore_gp_model=True)
+    np.testing.assert_allclose(pred["fixed_effect"], trees[:, 0], rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(pred["fixed_effect_scale"], trees[:, 1], rtol=1e-10, atol=1e-12)
+    np.testing.assert_array_equal(pred["random_effect_mean_scale"], np.zeros(3))
+    np.testing.assert_array_equal(pred["random_effect_cov_scale"], np.zeros(3))
+    pred_resp = bst.predict(data=X_test, group_data_pred=group_test, predict_var=True, pred_latent=False)
+    np.testing.assert_allclose(pred_resp["response_mean"], pred["fixed_effect"] + pred["random_effect_mean"],
+                               rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(pred_resp["response_var"],
+                               pred["random_effect_cov"] + np.exp(pred["fixed_effect_scale"]), rtol=1e-10)
+    assert pred_resp["fixed_effect_scale"] is None
+    offset_pred = np.array([0.1, 0.2, 0.3, -0.2, 0., 0.4])
+    pred_offset = bst.predict(data=X_test, group_data_pred=group_test, offset_pred=offset_pred, pred_latent=True)
+    np.testing.assert_allclose(pred_offset["fixed_effect"], pred["fixed_effect"] + offset_pred[:3], rtol=1e-10)
+    np.testing.assert_allclose(pred_offset["fixed_effect_scale"], pred["fixed_effect_scale"] + offset_pred[3:],
+                               rtol=1e-10)
+    assert pred_offset["random_effect_cov_scale"] is None
+
+
 def test_init_coef_before_covariate_data_is_known():
     # The number of covariates is derived from the length of 'init_coef' and the number of
     # fixed effects predictors

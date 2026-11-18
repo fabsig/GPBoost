@@ -1399,12 +1399,45 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                              predict_var = TRUE, predict_response = FALSE), file = 'NUL')
           expect_lt(sum(abs(pred_pv$mu - exact_1_pv$mu)), tol_mu_pv)
           expect_lt(sum(abs(as.vector(pred_pv$var) - exact_1_pv$var)), tol_pv)
+          expect_lt(sum(abs(pred_pv$mu_scale - exact_2_pv$mu)), tol_mu_pv)
+          expect_lt(sum(abs(pred_pv$var_scale - exact_2_pv$var)), tol_pv)
+          capture.output( pred_mean_pv <- predict(gp_model_pv, y = y_pv, gp_coords_pred = coord_test_pv,
+                                                  predict_var = FALSE, predict_response = FALSE), file = 'NUL')
+          expect_lt(sum(abs(pred_mean_pv$mu - exact_1_pv$mu)), tol_mu_pv)
+          expect_lt(sum(abs(pred_mean_pv$mu_scale - exact_2_pv$mu)), tol_mu_pv)
+          expect_true(is.na(pred_mean_pv$var_scale))
           capture.output( pred_resp_pv <- predict(gp_model_pv, y = y_pv, gp_coords_pred = coord_test_pv,
                                                   predict_var = TRUE, predict_response = TRUE), file = 'NUL')
           expect_lt(sum(abs(as.vector(pred_resp_pv$var) - var_resp_exact_pv)), tol_pv)
+          expect_true(is.na(pred_resp_pv$mu_scale))
+          expect_true(is.na(pred_resp_pv$var_scale))
         }
       }
     }
+  })
+
+  test_that("Latent predictions of both Gaussian processes of gaussian_heteroscedastic_fixed_and_random for a new cluster ", {
+    n_nc <- 100
+    coords_nc <- cbind(sim_rand_unif(n = n_nc, init_c = 0.21), sim_rand_unif(n = n_nc, init_c = 0.43))
+    y_nc <- qnorm(sim_rand_unif(n = n_nc, init_c = 0.65))
+    cov_pars_nc <- c(1, 0.2, 0.5, 0.3)
+    gp_model_nc <- GPModel(gp_coords = coords_nc, cov_function = "exponential", gp_approx = "vecchia", num_neighbors = 20,
+                           cluster_ids = rep(1:2, each = n_nc / 2), likelihood = "gaussian_heteroscedastic_fixed_and_random")
+    coords_pred_nc <- rbind(coords_nc[1:2, ], cbind(c(0.3, 0.4), c(0.6, 0.7)))
+    offset_pred_nc <- c(0.1, 0.2, 0.3, 0.4, -1, -0.5, 0, 0.5)
+    capture.output( pred_nc <- predict(gp_model_nc, y = y_nc, cov_pars = cov_pars_nc, gp_coords_pred = coords_pred_nc,
+                                       cluster_ids_pred = c(1, 2, 3, 3), offset = rep(0, 2 * n_nc), offset_pred = offset_pred_nc,
+                                       predict_var = TRUE, predict_response = FALSE), file = 'NUL')
+    # the third cluster has no training data, i.e. the prior of the two Gaussian processes
+    expect_lt(sum(abs(pred_nc$mu[3:4] - offset_pred_nc[3:4])), TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_nc$var[3:4] - cov_pars_nc[1])), TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_nc$mu_scale[3:4] - offset_pred_nc[7:8])), TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_nc$var_scale[3:4] - cov_pars_nc[3])), TOLERANCE_STRICT)
+    expect_true(all(pred_nc$var_scale[1:2] < cov_pars_nc[3]))
+    capture.output( pred_resp_nc <- predict(gp_model_nc, y = y_nc, cov_pars = cov_pars_nc, gp_coords_pred = coords_pred_nc,
+                                            cluster_ids_pred = c(1, 2, 3, 3), offset = rep(0, 2 * n_nc), offset_pred = offset_pred_nc,
+                                            predict_var = TRUE, predict_response = TRUE), file = 'NUL')
+    expect_lt(sum(abs(pred_resp_nc$var - (pred_nc$var + exp(pred_nc$mu_scale + pred_nc$var_scale / 2)))), TOLERANCE_STRICT)
   })
 
   test_that("gaussian_heteroscedastic_fixed_and_random likelihood with duplicate locations: gradient wrt the coefficients ", {
@@ -1809,6 +1842,37 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_var_het <- c(0.69153035, 1.04948914, 2.06871225)
     expect_lt(sum(abs(pred_het$mu - expected_mu_het)), TOLERANCE_MEDIUM)
     expect_lt(sum(abs(pred_het$var - expected_var_het)), TOLERANCE_MEDIUM)
+    expect_true(is.na(pred_het$mu_scale))
+    # Latent predictions of both parameters: the log-error variance is deterministic given the coefficients, and
+    #   the response variance is the variance of the mean plus the error variance
+    pred_het_latent <- predict(gp_model_het, y = y_het, group_data_pred = group_test_het, X_pred = X_test_het,
+                               predict_var = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred_het_latent$mu - expected_mu_het)), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred_het_latent$mu_scale - as.vector(X_test_het %*% coef_het[3:4]))), TOLERANCE_STRICT)
+    expect_equal(pred_het_latent$var_scale, rep(0, 3))
+    expect_lt(sum(abs(pred_het_latent$var + exp(pred_het_latent$mu_scale) - pred_het$var)), TOLERANCE_STRICT)
+    pred_het_latent_cov <- predict(gp_model_het, y = y_het, group_data_pred = group_test_het, X_pred = X_test_het,
+                                   predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(diag(pred_het_latent_cov$cov) - pred_het_latent$var)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_het_latent_cov$mu_scale - pred_het_latent$mu_scale)), TOLERANCE_STRICT)
+    expect_true(is.na(pred_het_latent_cov$var_scale))
+    # A cluster without training data has the prior of the random effects
+    gp_model_het_cl <- GPModel(group_data = group_het, cluster_ids = rep(1:2, each = n_het / 2),
+                               likelihood = "gaussian_heteroscedastic")
+    offset_pred_cl <- c(0.1, 0.2, 0.3, -0.5, 0, 0.5)
+    pred_het_cl <- predict(gp_model_het_cl, y = y_het, cov_pars = cov_pars_given_het, offset = fixed_effects_given_het,
+                           group_data_pred = c(1, 3, 11), cluster_ids_pred = c(1, 3, 3), offset_pred = offset_pred_cl,
+                           predict_var = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(pred_het_cl$mu[2:3] - offset_pred_cl[2:3])), TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_het_cl$var[2:3] - cov_pars_given_het)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_het_cl$mu_scale - offset_pred_cl[4:6])), TOLERANCE_STRICT)
+    expect_equal(pred_het_cl$var_scale, rep(0, 3))
+    pred_het_cl_cov <- predict(gp_model_het_cl, y = y_het, cov_pars = cov_pars_given_het, offset = fixed_effects_given_het,
+                               group_data_pred = c(1, 3, 11), cluster_ids_pred = c(1, 3, 3), offset_pred = offset_pred_cl,
+                               predict_cov_mat = TRUE, predict_response = FALSE)
+    expect_lt(sum(abs(diag(pred_het_cl_cov$cov) - pred_het_cl$var)), TOLERANCE_STRICT)
+    expect_equal(pred_het_cl_cov$cov[1, 2:3], c(0, 0))
+    expect_lt(sum(abs(pred_het_cl_cov$mu_scale - offset_pred_cl[4:6])), TOLERANCE_STRICT)
     X_zero_het <- matrix(0, nrow = n_het, ncol = ncol(X_het))
     re_pred_train_het <- predict_training_data_random_effects(gp_model_het)
     expected_re_pred_train_het <- c(0.41793918, 0.11415140, -0.09157617, -0.06884991, 0.53482262,
@@ -1852,6 +1916,27 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expected_response_var_boost <- c(1.43766912, 1.43641997, 1.58325054)
     expect_lt(sum(abs(pred_het_boost$response_mean - expected_response_mean_boost)), TOLERANCE_MEDIUM)
     expect_lt(sum(abs(pred_het_boost$response_var - expected_response_var_boost)), TOLERANCE_MEDIUM)
+    # Latent predictions of both parameters: the second tree ensemble predicts the log-error variance
+    pred_het_boost_latent <- predict(bst_het, data = X_het[1:3, 2, drop = FALSE], group_data_pred = group_test_het,
+                                     predict_var = TRUE, pred_latent = TRUE)
+    trees_het <- predict(bst_het, data = X_het[1:3, 2, drop = FALSE], pred_latent = TRUE, ignore_gp_model = TRUE)
+    expect_lt(sum(abs(pred_het_boost_latent$fixed_effect - trees_het[c(1, 3, 5)])), TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_het_boost_latent$fixed_effect_scale - trees_het[c(2, 4, 6)])), TOLERANCE_STRICT)
+    expect_equal(pred_het_boost_latent$random_effect_mean_scale, rep(0, 3))
+    expect_equal(pred_het_boost_latent$random_effect_cov_scale, rep(0, 3))
+    expect_lt(sum(abs(pred_het_boost_latent$fixed_effect + pred_het_boost_latent$random_effect_mean -
+                        pred_het_boost$response_mean)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_het_boost_latent$random_effect_cov + exp(pred_het_boost_latent$fixed_effect_scale) -
+                        pred_het_boost$response_var)), TOLERANCE_STRICT)
+    offset_pred_boost <- c(0.1, 0.2, 0.3, -0.2, 0, 0.4)
+    pred_het_boost_offset <- predict(bst_het, data = X_het[1:3, 2, drop = FALSE], group_data_pred = group_test_het,
+                                     offset_pred = offset_pred_boost, pred_latent = TRUE)
+    expect_lt(sum(abs(pred_het_boost_offset$fixed_effect - pred_het_boost_latent$fixed_effect - offset_pred_boost[1:3])),
+              TOLERANCE_STRICT)
+    expect_lt(sum(abs(pred_het_boost_offset$fixed_effect_scale - pred_het_boost_latent$fixed_effect_scale -
+                        offset_pred_boost[4:6])), TOLERANCE_STRICT)
+    expect_true(is.na(pred_het_boost_offset$random_effect_cov_scale))
+    expect_true(is.na(pred_het_boost$fixed_effect_scale))
     expect_error(predict_training_data_random_effects(gp_model_het_boost),
                  "predict_training_data_random_effects\\(bst\\)")
     re_pred_train_boost <- predict_training_data_random_effects(bst_het)

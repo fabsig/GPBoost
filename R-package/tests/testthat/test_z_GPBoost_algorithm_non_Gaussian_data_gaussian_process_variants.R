@@ -256,10 +256,16 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
         # the predictive variances are simulation-based and vary with the number of threads by about 0.001
         expect_lt(sum(abs(tail(pred$random_effect_cov, n=4)-c(0.10213093, 0.09556879, 0.09591550, 0.10173293))),relax_tolerance_stoch(0.05))
         # Predict response
+        pred_latent <- pred
         pred <- predict(bst, data = X_test, gp_coords_pred = coords_test,
                         predict_var = TRUE, pred_latent = FALSE)
         expect_lt(sum(abs(tail(pred$response_mean, n=4)-c(0.9276366, 0.5174019, 0.7283017, 0.6616905))),relax_tolerance_stoch(1))
         expect_lt(sum(abs(tail(pred$response_var, n=4)-c(0.2857612, 0.2487550, 0.3031877, 0.2444298))),relax_tolerance_stoch(0.3))
+        # The response variance is the variance of the mean plus the expected error variance, whose log is the sum of
+        #   the second tree ensemble and the Gaussian process of the log-error variance
+        expect_lt(max(abs(pred_latent$fixed_effect + pred_latent$random_effect_mean - pred$response_mean)), TOLERANCE_STRICT)
+        expect_lt(max(abs(pred_latent$random_effect_cov + exp(pred_latent$fixed_effect_scale + pred_latent$random_effect_mean_scale +
+                                                                pred_latent$random_effect_cov_scale / 2) - pred$response_var)), TOLERANCE_STRICT)
         
         # Parameter tuning
         if (!identical(Sys.info()[["sysname"]], "Darwin")) {# these tests fail on Mac OS
