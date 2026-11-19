@@ -997,9 +997,12 @@ namespace GPBoost {
 			log_scale = std::max(log_scale, log_integrand(mode));
 		}
 		// With one mode, GH quadrature is accurate if the integrand is negligible where the log integrand is convex. There, the
-		//	integrand is largest at the boundaries
+		//	integrand is largest at the boundaries. The nodes are placed around the mode found here: the search for the mode in
+		//	'LogPredictiveDensityAdaptiveGHQuadrature' can step far beyond it (e.g., where exp(g)^2 overflows) for an observation
+		//	far in the tail
 		if (modes.size() == 1 && std::max(log_integrand(points[0]), log_integrand(points[1])) < log_scale + std::log(1e-10)) {
-			return LogPredictiveDensityAdaptiveGHQuadrature(log_dens, first_deriv, information, mean_g, var_g, evaluation_failure);
+			const double sqrt2_sigma_hat = M_SQRT2 / std::sqrt(information(modes[0]) + 1. / var_g);
+			return LogIntegralAdaptiveGHQuadrature(log_dens, modes[0], sqrt2_sigma_hat, mean_g, 1. / sd_g, evaluation_failure);
 		}
 		// Otherwise, e.g., with two modes for an observation far in the tail of its predictive distribution, GH quadrature around one
 		//	mode can miss much of the mass. The breakpoints are the critical points and points around the modes (at multiples of the

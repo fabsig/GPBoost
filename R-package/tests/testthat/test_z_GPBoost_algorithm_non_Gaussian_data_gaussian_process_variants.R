@@ -234,20 +234,21 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs(metric - reference), 1e-6)
     })
 
-    test_that("GPBoost algorithm with 'gaussian_heteroscedastic_fixed_and_random': test negative log-likelihood metric with two modes", {
+    test_that("GPBoost algorithm with 'gaussian_heteroscedastic_fixed_and_random': test negative log-likelihood metric in the tails", {
 
       # For an observation far in the tail of its predictive distribution, the integrand over the log-error variance g
-      #   can have two modes of a similar size (first setting) or a mode far away from the predictive mean of g that
-      #   contains almost all of the mass (second setting). The validation data are in a new cluster, so that the
-      #   predictive variances of the mean and of g are the marginal variances 1 and var_g, and their offsets cancel
-      #   the trees, so that the predictive means of the mean and of g are 0 and mean_g
+      #   can have two modes of a similar size (first setting), or a mode far away from the predictive mean of g that
+      #   contains almost all of the mass, with a second mode (second setting) or without (third setting). The validation
+      #   data are in a new cluster, so that the predictive variances of the mean and of g are the marginal variances 1
+      #   and var_g, and their offsets cancel the trees, so that the predictive means of the mean and of g are 0 and mean_g
       n <- 40
       nv <- 12
       coords <- matrix((1:n - 1) / (n - 1), ncol = 1)
       coords_valid <- matrix((1:nv - 1) / (nv - 1), ncol = 1)
       y <- sin(3 * coords[, 1]) + 0.5 * qnorm(sim_rand_unif(n = n, init_c = 0.123))
       dtrain <- gpb.Dataset(data = coords, label = y)
-      settings <- list(list(resid = 10, mean_g = -5, var_g = 0.5), list(resid = 20, mean_g = -10, var_g = 1))
+      settings <- list(list(resid = 10, mean_g = -5, var_g = 0.5), list(resid = 20, mean_g = -10, var_g = 1),
+                       list(resid = 500, mean_g = -10, var_g = 1))
       for (setting in settings) {
         gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", cluster_ids = rep(0, n),
                             likelihood = "gaussian_heteroscedastic_fixed_and_random", gp_approx = "vecchia",
