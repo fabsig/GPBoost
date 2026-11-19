@@ -399,14 +399,20 @@ jobs:
           docker run "${opts[@]}" "${IMAGE}" r-check && status=0 || status=$?
           # 'r-check' installs the dependencies of the package before it runs the check, and that
           # download fails from time to time ("Failed to download ps ... error in pak subprocess").
-          # Such a run is repeated, but only when '00check.log' does not exist yet, i.e. when
-          # 'R CMD check' had not started: a check that did run is never repeated, a valgrind shard
-          # takes hours and would not fit into the job a second time
-          if [ "${status}" -ne 0 ] && [ ! -f gpboost.Rcheck/00check.log ]; then
-            echo "::warning::the check did not start, repeating it once"
+          # Such a run is repeated up to three times, but only when '00check.log' does not exist
+          # yet, i.e. when 'R CMD check' had not started: a check that did run is never repeated, a
+          # valgrind shard takes hours and would not fit into the job a second time. The pause
+          # before a repetition grows, because a repetition right after the failure can fail in the
+          # same way (a binary of the GitHub mirror of CRAN that the other shards downloaded)
+          for pause in 60 120 240; do
+            if [ "${status}" -eq 0 ] || [ -f gpboost.Rcheck/00check.log ]; then
+              break
+            fi
+            echo "::warning::the check did not start, repeating it in ${pause} seconds"
+            sleep "${pause}"
             rm -rf gpboost.Rcheck
             docker run "${opts[@]}" "${IMAGE}" r-check && status=0 || status=$?
-          fi
+          done
           echo "r-check exited with ${status}"
 
       # The sanitizers write nothing when they find nothing, so "Status: OK" only means that the
