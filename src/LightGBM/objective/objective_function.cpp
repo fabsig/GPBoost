@@ -153,6 +153,7 @@ namespace LightGBM {
 		train_gp_model_cov_pars_ = train_gp_model_cov_pars;
 		use_gp_model_for_validation_ = use_gp_model_for_validation;
 		if (!(re_model_->GaussLikelihood())) {
+			label_gp_model_ = label;
 			re_model_->SetY(label);
 			re_model_->InitializeCovParsIfNotDefined(nullptr, nullptr);
 			likelihood_type_ = re_model_->GetLikelihood();

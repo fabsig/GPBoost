@@ -234,6 +234,46 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs(metric - reference), 1e-6)
     })
 
+    test_that("GPBoost algorithm with 'gaussian_heteroscedastic_fixed_and_random': test negative log-likelihood metric with two modes", {
+
+      # For an observation far in the tail of its predictive distribution, the integrand over the log-error variance g
+      #   can have two modes of a similar size (first setting) or a mode far away from the predictive mean of g that
+      #   contains almost all of the mass (second setting). The validation data are in a new cluster, so that the
+      #   predictive variances of the mean and of g are the marginal variances 1 and var_g, and their offsets cancel
+      #   the trees, so that the predictive means of the mean and of g are 0 and mean_g
+      n <- 40
+      nv <- 12
+      coords <- matrix((1:n - 1) / (n - 1), ncol = 1)
+      coords_valid <- matrix((1:nv - 1) / (nv - 1), ncol = 1)
+      y <- sin(3 * coords[, 1]) + 0.5 * qnorm(sim_rand_unif(n = n, init_c = 0.123))
+      dtrain <- gpb.Dataset(data = coords, label = y)
+      settings <- list(list(resid = 10, mean_g = -5, var_g = 0.5), list(resid = 20, mean_g = -10, var_g = 1))
+      for (setting in settings) {
+        gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", cluster_ids = rep(0, n),
+                            likelihood = "gaussian_heteroscedastic_fixed_and_random", gp_approx = "vecchia",
+                            num_neighbors = 5, vecchia_ordering = "none")
+        gp_model$set_optim_params(params = list(init_cov_pars = c(1, 0.2, setting$var_g, 0.2)))
+        gp_model$set_prediction_data(gp_coords_pred = coords_valid, cluster_ids_pred = rep(1, nv))
+        capture.output( bst <- gpb.train(data = dtrain, gp_model = gp_model, nrounds = 1, learning_rate = 0.1,
+                                         max_depth = 2, min_data_in_leaf = 5, train_gp_model_cov_pars = FALSE,
+                                         metric = "test_neg_log_likelihood", verbose = 0), file='NUL')
+        trees <- predict(bst, data = coords_valid, ignore_gp_model = TRUE, pred_latent = TRUE, reshape = TRUE)
+        dvalid <- gpb.Dataset.create.valid(dtrain, data = coords_valid, label = rep(setting$resid, nv),
+                                           init_score = c(-trees[, 1], setting$mean_g - trees[, 2]))
+        bst$add_valid(data = dvalid, name = "valid")
+        metric <- bst$eval_valid()[[1L]]$value
+        # Reference: the integral over pieces of length 1, scaled by the largest value of the integrand on a grid
+        log_integrand <- function(g) dnorm(setting$resid, 0, sqrt(1 + exp(g)), log = TRUE) +
+          dnorm(g, setting$mean_g, sqrt(setting$var_g), log = TRUE)
+        log_max <- max(log_integrand(seq(-40, 40, by = 0.01)))
+        integral <- sum(sapply(-40:39, function(a) {
+          integrate(function(g) exp(log_integrand(g) - log_max), a, a + 1, rel.tol = 1e-10, abs.tol = 1e-14)$value
+        }))
+        reference <- -log_max - log(integral)
+        expect_lt(abs(metric - reference), 1e-6)
+      }
+    })
+
     if (Sys.getenv("GPBOOST_ADDITIONAL_SLOW_TESTS") == "GPBOOST_ADDITIONAL_SLOW_TESTS") {
       # slow test 
       test_that("GPBoost algorithm with Gaussian process model and 'gaussian_heteroscedastic_fixed_and_random' likelihood", {

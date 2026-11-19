@@ -924,6 +924,64 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       }
     })
 
+    test_that("The gp_model of the current iteration is restored after a rollback, a first iteration without a split, and a likelihood evaluation", {
+
+      n <- 500
+      m <- 50
+      group <- rep(1:m, each = n / m)
+      x <- matrix(sim_rand_unif(n = 2 * n, init_c = 0.4211), ncol = 2)
+      b <- sqrt(0.5) * qnorm(sim_rand_unif(n = m, init_c = 0.542))
+      eta <- sin(3 * x[, 1]) + b[group]
+      tr <- seq(1, n, by = 2)
+      va <- seq(2, n, by = 2)
+      for (likelihood in c("gaussian", "gamma")) {
+        params <- list(learning_rate = 0.2, max_depth = 2, min_data_in_leaf = 5, verbose = 0, force_col_wise = TRUE)
+        if (likelihood == "gaussian") {
+          y <- eta + 0.5 * qnorm(sim_rand_unif(n = n, init_c = 0.756))
+          params$objective <- "regression_l2"
+        } else {
+          y <- qgamma(sim_rand_unif(n = n, init_c = 0.756), scale = exp(eta) / 2, shape = 2)
+        }
+        train_booster <- function(params) {
+          dtrain <- gpb.Dataset(data = x[tr, ], label = y[tr])
+          valids <- list(test = gpb.Dataset.create.valid(dtrain, data = x[va, ], label = y[va]))
+          gp_model <- GPModel(group_data = group[tr], likelihood = likelihood)
+          set_prediction_data(gp_model, group_data_pred = group[va])
+          gpb.train(data = dtrain, gp_model = gp_model, nrounds = 5, params = params, valids = valids, verbose = 0,
+                    use_gp_model_for_validation = TRUE, metric = "test_neg_log_likelihood")
+        }
+        # Training after a rollback is the same with and without a prediction and an evaluation before the next iteration
+        bst <- train_booster(params)
+        bst_ref <- train_booster(params)
+        bst$rollback_one_iter()
+        bst_ref$rollback_one_iter()
+        predict(bst, data = x[va, ], group_data_pred = group[va], pred_latent = FALSE)
+        bst$eval_valid()
+        bst$update()
+        bst_ref$update()
+        pred <- predict(bst, data = x[va, ], group_data_pred = group[va], pred_latent = FALSE)
+        pred_ref <- predict(bst_ref, data = x[va, ], group_data_pred = group[va], pred_latent = FALSE)
+        expect_lt(sum(abs(pred$response_mean - pred_ref$response_mean)), TOLERANCE_STRICT)
+        # A prediction does not change the evaluation if the first iteration has no split and its constant trees are kept
+        params_no_split <- params
+        params_no_split$min_gain_to_split <- 1e12
+        bst <- train_booster(params_no_split)
+        expect_equal(bst$current_iter(), 1L)
+        eval_before <- bst$eval_valid()[[1L]]$value
+        predict(bst, data = x[va, ], group_data_pred = group[va], pred_latent = FALSE, predict_var = TRUE)
+        expect_lt(abs(bst$eval_valid()[[1L]]$value - eval_before), TOLERANCE_STRICT)
+        # An evaluation of the likelihood for other response data does not change the response data of the boosting
+        if (likelihood == "gamma") {
+          bst <- train_booster(params)
+          eval_before <- bst$eval_valid()[[1L]]$value
+          gp_model <- bst$.__enclos_env__$private$gp_model
+          fixed_effects <- predict(bst, data = x[tr, ], ignore_gp_model = TRUE, pred_latent = TRUE)
+          gp_model$neg_log_likelihood(cov_pars = gp_model$get_cov_pars(), y = 3 * y[tr], fixed_effects = fixed_effects)
+          expect_lt(abs(bst$eval_valid()[[1L]]$value - eval_before), TOLERANCE_STRICT)
+        }
+      }
+    })
+
   }
   
 }

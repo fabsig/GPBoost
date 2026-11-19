@@ -509,24 +509,20 @@ namespace LightGBM {
 			else {
 				// only add default score one-time
 				if (models_.size() < static_cast<size_t>(num_tree_per_iteration_)) {
-					double output = 0.0;
-					if (!class_need_train_[cur_tree_id]) {
-						if (objective_function_ != nullptr) {
-							if (cur_tree_id == 0) {
-								objective_function_->FindInitScoreGP(train_score_updater_->score());
-							}
-							output = objective_function_->BoostFromScore(cur_tree_id);
+					// 'BoostFromAverage()' has added the initial score to the training and validation scores if it is not zero
+					double output = init_scores[cur_tree_id];
+					if (!class_need_train_[cur_tree_id] && output == 0. && objective_function_ != nullptr) {
+						if (cur_tree_id == 0) {
+							objective_function_->FindInitScoreGP(train_score_updater_->score());
+						}
+						output = objective_function_->BoostFromScore(cur_tree_id);
+						// updates scores
+						train_score_updater_->AddScore(output, cur_tree_id);
+						for (auto& score_updater : valid_score_updater_) {
+							score_updater->AddScore(output, cur_tree_id);
 						}
 					}
-					else {
-						output = init_scores[cur_tree_id];
-					}
 					new_tree->AsConstantTree(output);
-					// updates scores
-					train_score_updater_->AddScore(output, cur_tree_id);
-					for (auto& score_updater : valid_score_updater_) {
-						score_updater->AddScore(output, cur_tree_id);
-					}
 				}
 			}
 			// Calculate residual variance if needed
@@ -568,11 +564,15 @@ namespace LightGBM {
 				}
 			}
 			if (objective_function_ != nullptr && objective_function_->HasGPModel()) {
-				// 'Boosting()' has estimated the parameters of the GP model anew, although no iteration has been added
-				gp_model_pars_iteration_ = -1;
-				if (GPModelDiffersFromCurrentIteration()) {
+				// 'Boosting()' has estimated the parameters of the GP model anew for the training score of the current iteration, although
+				//	no iteration has been added. They become the parameters of the current iteration if it has none yet (e.g., the constant
+				//	trees of a first iteration without a split, which are kept), and the GP model is set back to the current iteration otherwise
+				if (HasGPModelParsOfIteration(GetCurrentIteration())) {
 					SetGPModelToCurrentIteration(gradients_.data());
 					gp_model_pars_iteration_ = GetCurrentIteration();
+				}
+				else {
+					SaveGPModelParsOfCurrentIteration();
 				}
 			}
 			return true;
@@ -582,21 +582,26 @@ namespace LightGBM {
 		if (objective_function_ != nullptr && objective_function_->HasGPModel()) {
 			// The parameters of the GP model are estimated in every iteration, see 'Boosting()', and are kept for every
 			//	number of iterations so that they can be set to those of the iteration used for prediction (e.g., after early stopping)
-			const size_t num_iteration = static_cast<size_t>(GetCurrentIteration());
-			gp_model_pars_of_iteration_.resize(num_iteration);
-			gp_model_pars_of_iteration_[num_iteration - 1] = objective_function_->GetGPModel()->GetCovAuxPars();
-			gp_model_pars_iteration_ = static_cast<int>(num_iteration);
+			SaveGPModelParsOfCurrentIteration();
 		}
 		return false;
 	}
 
+	bool GBDT::HasGPModelParsOfIteration(int num_iteration) const {
+		return objective_function_ != nullptr && objective_function_->HasGPModel() && num_iteration > 0 &&
+			num_iteration <= static_cast<int>(gp_model_pars_of_iteration_.size()) &&
+			!gp_model_pars_of_iteration_[num_iteration - 1].empty();
+	}
+
+	void GBDT::SaveGPModelParsOfCurrentIteration() {
+		const int num_iteration = GetCurrentIteration();
+		gp_model_pars_of_iteration_.resize(static_cast<size_t>(num_iteration));
+		gp_model_pars_of_iteration_[num_iteration - 1] = objective_function_->GetGPModel()->GetCovAuxPars();
+		gp_model_pars_iteration_ = num_iteration;
+	}
+
 	bool GBDT::SetGPModelParsOfIteration(int num_iteration) {
-		if (objective_function_ == nullptr || !objective_function_->HasGPModel()) {
-			return false;
-		}
-		if (num_iteration <= 0 || num_iteration > GetCurrentIteration() ||
-			num_iteration > static_cast<int>(gp_model_pars_of_iteration_.size()) ||
-			gp_model_pars_of_iteration_[num_iteration - 1].empty()) {
+		if (num_iteration > GetCurrentIteration() || !HasGPModelParsOfIteration(num_iteration)) {
 			return false;
 		}
 		objective_function_->GetGPModel()->SetCovAuxPars(gp_model_pars_of_iteration_[num_iteration - 1]);
@@ -612,12 +617,8 @@ namespace LightGBM {
 	}
 
 	bool GBDT::GPModelDiffersFromCurrentIteration() const {
-		if (objective_function_ == nullptr || !objective_function_->HasGPModel()) {
-			return false;
-		}
 		const int num_iteration = GetCurrentIteration();
-		if (num_iteration <= 0 || num_iteration > static_cast<int>(gp_model_pars_of_iteration_.size()) ||
-			gp_model_pars_of_iteration_[num_iteration - 1].empty()) {
+		if (!HasGPModelParsOfIteration(num_iteration)) {
 			return false;
 		}
 		return num_iteration != gp_model_pars_iteration_ || !objective_function_->GetGPModel()->BoostingStateIsCurrent();
@@ -644,6 +645,11 @@ namespace LightGBM {
 			models_.pop_back();
 		}
 		--iter_;
+		// The GP model and the gradients belong to the removed iteration
+		if (HasGPModelParsOfIteration(GetCurrentIteration())) {
+			SetGPModelToCurrentIteration(gradients_.data());
+			gp_model_pars_iteration_ = GetCurrentIteration();
+		}
 	}
 
 	bool GBDT::EvalAndCheckEarlyStopping() {

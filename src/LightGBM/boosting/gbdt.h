@@ -469,6 +469,16 @@ class GBDT : public GBDTBase {
   bool GPModelDiffersFromCurrentIteration() const;
 
   /*!
+  * \brief True if the covariance and auxiliary parameters of the GP model of the model with num_iteration iterations are available
+  */
+  bool HasGPModelParsOfIteration(int num_iteration) const;
+
+  /*!
+  * \brief Keep the current covariance and auxiliary parameters of the GP model as those of the current iteration
+  */
+  void SaveGPModelParsOfCurrentIteration();
+
+  /*!
   * \brief Set the covariance and auxiliary parameters of the GP model to those of the current iteration and calculate the GP model
   *        for the current training score anew (mode or factorization and gradient), without estimating its parameters
   * \param[out] gradients Gradients with respect to the training score (length num_data_ * num_tree_per_iteration_)
@@ -598,7 +608,8 @@ class GBDT : public GBDTBase {
   /*! \brief If true, a Newton update step is done for the tree leaves after the gradient step (only releveant for GPBoost algorithm, i.e. if objective_function_->HasGPModel()==true) */
   bool leaves_newton_update_ = false;
   /*! \brief Covariance and auxiliary parameters of the GP model (see 'REModel::GetCovAuxPars()') after every boosting iteration of the
-  *     current training; entry i belongs to the model with i + 1 iterations (only used if objective_function_->HasGPModel()==true) */
+  *     current training; entry i belongs to the model with i + 1 iterations and is empty for the iterations of an initial model
+  *     (only used if objective_function_->HasGPModel()==true) */
   std::vector<std::vector<double>> gp_model_pars_of_iteration_;
   /*! \brief Number of iterations of the model whose parameters are currently set in the GP model (see 'gp_model_pars_of_iteration_') */
   int gp_model_pars_iteration_ = 0;

@@ -1028,6 +1028,24 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(bst$current_iter(), bst$best_iter + early_stopping_rounds)
   })
 
+  test_that("The training scores after a first iteration without a split are the predictions of its constant tree", {
+    set.seed(708L)
+    x <- matrix(rnorm(100L), ncol = 1L)
+    # A binary label without positive values is not trained
+    settings <- list(list(objective = "regression", label = 3 + rnorm(100L)),
+                     list(objective = "binary", label = rep(0, 100L)))
+    for (setting in settings) {
+      bst <- gpb.train(
+        params = list(objective = setting$objective, min_gain_to_split = 1e12)
+        , data = gpb.Dataset(data = x, label = setting$label)
+        , nrounds = 3L
+        , verbose = -1
+      )
+      expect_equal(bst$current_iter(), 1L)
+      expect_equal(bst$.__enclos_env__$private$inner_predict(1L), predict(bst, x), tolerance = 1e-6)
+    }
+  })
+
   test_that("gpb.cv() does not use a best iteration in the models of the folds if an error stops the training", {
     set.seed(708L)
     dtrain <- gpb.Dataset(data = matrix(rnorm(100L), ncol = 1L), label = rnorm(100L))
@@ -1037,18 +1055,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
     }
     attr(stop_in_iteration_3, "name") <- "stop_in_iteration_3"
-    suppressMessages(
-      cvbst <- gpb.cv(
-        params = list(objective = "regression", metric = "l2", min_data_in_leaf = 5L)
-        , data = dtrain
-        , nrounds = 10L
-        , nfold = 2L
-        , callbacks = list(stop_in_iteration_3)
-        , verbose = 0
+    # Also with early stopping that has not stopped the training before the error
+    for (early_stopping_rounds in list(NULL, 10L)) {
+      suppressMessages(
+        cvbst <- gpb.cv(
+          params = list(objective = "regression", metric = "l2", min_data_in_leaf = 5L)
+          , data = dtrain
+          , nrounds = 10L
+          , nfold = 2L
+          , early_stopping_rounds = early_stopping_rounds
+          , callbacks = list(stop_in_iteration_3)
+          , verbose = 0
+        )
       )
-    )
-    expect_equal(cvbst$boosters[[1L]]$booster$current_iter(), 3L)
-    expect_equal(cvbst$boosters[[1L]]$booster$best_iter, -1L)
+      expect_equal(cvbst$boosters[[1L]]$booster$current_iter(), 3L)
+      expect_equal(cvbst$boosters[[1L]]$booster$best_iter, -1L)
+    }
   })
 
   test_that("If first_metric_only is TRUE, gpb.train() decides to stop early based on only the first metric", {

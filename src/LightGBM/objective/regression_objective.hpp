@@ -210,6 +210,8 @@ namespace LightGBM {
 				re_model_->CalcGradient(gradients, nullptr, true);
 			}
 			else {
+				// The response variable of the GP model can have been changed, e.g., by an evaluation of the likelihood for other data
+				re_model_->SetY(label_gp_model_);
 				re_model_->CalcGradient(gradients, score, true);// calc_cov_factor = true since the mode depends on the score
 			}
 		}

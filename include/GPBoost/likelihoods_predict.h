@@ -941,28 +941,10 @@ namespace GPBoost {
 		bool evaluation_failure = false;
 #pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll) reduction(||:evaluation_failure)
 		for (data_size_t i = 0; i < num_data; ++i) {
-			const double var_mean = pred_var[i];
 			const double resid = static_cast<double>(y_test[i]) - pred_mean[i];
-			const double resid2 = resid * resid;
-			// Log-density of y given the log-variance g after integrating out the mean, and its derivatives wrt g
-			auto log_dens = [&](double g) {
-				const double var_y = var_mean + std::exp(g);
-				return -M_LOGSQRT2PI - 0.5 * std::log(var_y) - 0.5 * resid2 / var_y;
-			};
-			auto first_deriv = [&](double g) {
-				const double exp_g = std::exp(g);
-				const double var_y = var_mean + exp_g;
-				return 0.5 * exp_g * (resid2 - var_y) / (var_y * var_y);
-			};
-			auto information = [&](double g) {
-				const double exp_g = std::exp(g);
-				const double var_y = var_mean + exp_g;
-				const double excess = resid2 - var_y;
-				return -0.5 * exp_g / (var_y * var_y) * (excess - exp_g - 2. * exp_g * excess / var_y);
-			};
 			// Numerical evaluation failures set the test negative log-likelihood to +inf, see 'TestNegLogLikelihoodAdaptiveGHQuadrature'
 			bool node_failure;
-			const double log_integral = LogPredictiveDensityAdaptiveGHQuadrature(log_dens, first_deriv, information,
+			const double log_integral = LogPredictiveDensityGaussianHeteroscedastic(resid * resid, pred_var[i],
 				pred_mean[i + num_data], pred_var[i + num_data], node_failure);
 			if (node_failure) {
 				evaluation_failure = true;
@@ -976,6 +958,231 @@ namespace GPBoost {
 		}
 		return -ll;
 	}//end TestNegLogLikelihoodGaussianHeteroscedasticFixedAndRandom
+
+	template <typename T_mat, typename T_chol>
+	inline double Likelihood<T_mat, T_chol>::LogPredictiveDensityGaussianHeteroscedastic(double resid2,
+		double var_mean,
+		double mean_g,
+		double var_g,
+		bool& evaluation_failure) const {
+		// Log-density of y given the log-variance g after integrating out the mean, and its derivatives wrt g
+		auto log_dens = [&](double g) {
+			const double var_y = var_mean + std::exp(g);
+			return -M_LOGSQRT2PI - 0.5 * std::log(var_y) - 0.5 * resid2 / var_y;
+		};
+		auto first_deriv = [&](double g) {
+			const double exp_g = std::exp(g);
+			const double var_y = var_mean + exp_g;
+			return 0.5 * exp_g * (resid2 - var_y) / (var_y * var_y);
+		};
+		auto information = [&](double g) {
+			const double exp_g = std::exp(g);
+			const double var_y = var_mean + exp_g;
+			const double excess = resid2 - var_y;
+			return -0.5 * exp_g / (var_y * var_y) * (excess - exp_g - 2. * exp_g * excess / var_y);
+		};
+		std::vector<double> modes, points;
+		if (LatentVarIsZero(var_g) ||
+			!FindCriticalPointsIntegrandGaussianHeteroscedastic(resid2, var_mean, mean_g, var_g, first_deriv, modes, points)) {
+			return LogPredictiveDensityAdaptiveGHQuadrature(log_dens, first_deriv, information, mean_g, var_g, evaluation_failure);
+		}
+		const double sd_g = std::sqrt(var_g);
+		const double log_normalizing_constant = M_LOGSQRT2PI + std::log(sd_g);
+		auto log_integrand = [&](double g) {
+			const double z = (g - mean_g) / sd_g;
+			return log_dens(g) - 0.5 * z * z - log_normalizing_constant;
+		};
+		double log_scale = -std::numeric_limits<double>::infinity();
+		for (const double mode : modes) {
+			log_scale = std::max(log_scale, log_integrand(mode));
+		}
+		// With one mode, GH quadrature is accurate if the integrand is negligible where the log integrand is convex. There, the
+		//	integrand is largest at the boundaries
+		if (modes.size() == 1 && std::max(log_integrand(points[0]), log_integrand(points[1])) < log_scale + std::log(1e-10)) {
+			return LogPredictiveDensityAdaptiveGHQuadrature(log_dens, first_deriv, information, mean_g, var_g, evaluation_failure);
+		}
+		// Otherwise, e.g., with two modes for an observation far in the tail of its predictive distribution, GH quadrature around one
+		//	mode can miss much of the mass. The breakpoints are the critical points and points around the modes (at multiples of the
+		//	standard deviation of the Gaussian approximation at each mode), so that no interval between them contains a mode.
+		//	The modes lie between mean_g and the log-variance that maximizes the density of y. Below the smaller and above the larger
+		//	of the two, the density of y given g increases and decreases, respectively, so that the integrand decreases at least as
+		//	fast as N(g; mean_g, var_g) away from them. It is negligible more than 10 standard deviations of g beyond them
+		const double g_max_dens_y = std::log(resid2 - var_mean);
+		const double lower = std::min(mean_g, g_max_dens_y) - 10. * sd_g;
+		const double upper = std::max(mean_g, g_max_dens_y) + 10. * sd_g;
+		for (const double mode : modes) {
+			const double sd_mode = 1. / std::sqrt(information(mode) + 1. / var_g);
+			for (const double k : { -8., -2., 2., 8. }) {
+				points.push_back(mode + k * sd_mode);
+			}
+			points.push_back(mode);
+		}
+		std::vector<double> breakpoints = { lower, upper };
+		for (const double x : points) {
+			if (x > lower && x < upper) {
+				breakpoints.push_back(x);
+			}
+		}
+		std::sort(breakpoints.begin(), breakpoints.end());
+		return LogIntegralAdaptiveGaussKronrod(log_integrand, breakpoints, log_scale, evaluation_failure);
+	}//end LogPredictiveDensityGaussianHeteroscedastic
+
+	template <typename T_mat, typename T_chol>
+	template <typename FirstDeriv>
+	inline bool Likelihood<T_mat, T_chol>::FindCriticalPointsIntegrandGaussianHeteroscedastic(double resid2,
+		double var_mean,
+		double mean_g,
+		double var_g,
+		FirstDeriv first_deriv,
+		std::vector<double>& modes,
+		std::vector<double>& points) const {
+		// With s = exp(g) and D = resid2 - var_mean, the log-density l(g) = log N(y; mean of f, var_mean + s) increases for s < D and
+		//	decreases for s > D, and l''(g) = s * (D * var_mean - (D + 2 * var_mean) * s) / (2 * (var_mean + s)^3). The log integrand
+		//	h(g) = l(g) + log N(g; mean_g, var_g) is thus concave if D <= 0. Otherwise, h is convex where the cubic
+		//	P(s) = (var_mean + s)^3 - var_g * s * (D * var_mean - (D + 2 * var_mean) * s) / 2 is negative, which is an interval (s1, s2)
+		//	or empty. h' decreases below log(s1), increases between log(s1) and log(s2), and decreases above log(s2). h has a mode
+		//	below log(s1) if h'(log(s1)) < 0 and one above log(s2) if h'(log(s2)) > 0
+		const double D = resid2 - var_mean;
+		if (D <= 0.) {
+			return false;
+		}
+		const double K = D + 2. * var_mean;
+		auto cubic = [&](double log_s) {
+			const double s = std::exp(log_s);
+			const double var_y = var_mean + s;
+			return var_y * var_y * var_y - 0.5 * var_g * s * (D * var_mean - K * s);
+		};
+		// P has its minimum for s > 0 at the positive root of P'(s) = 3 * s^2 + b * s + c, which exists only if c < 0
+		const double b = 6. * var_mean + var_g * K;
+		const double c = 3. * var_mean * var_mean - 0.5 * var_g * D * var_mean;
+		if (c >= 0.) {
+			return false;
+		}
+		// numerically stable form of the positive root
+		const double log_s_min = std::log(-2. * c / (b + std::sqrt(b * b - 12. * c)));
+		if (cubic(log_s_min) >= 0.) {
+			return false;
+		}
+		// P > 0 for s <= 2 * var_mean^2 / (var_g * D) and for s >= D * var_mean / K
+		const double log_s1 = RootBisection(cubic, std::log(2. * var_mean * var_mean / (var_g * D)), log_s_min);
+		const double log_s2 = RootBisection(cubic, log_s_min, std::log(D * var_mean / K));
+		auto deriv_log_integrand = [&](double g) { return first_deriv(g) - (g - mean_g) / var_g; };
+		const bool mode_below_s1 = deriv_log_integrand(log_s1) < 0.;
+		const bool mode_above_s2 = deriv_log_integrand(log_s2) > 0.;
+		// h' > 0 below min(mean_g, log(D)) and h' < 0 above max(mean_g, log(D))
+		const double log_D = std::log(D);
+		modes.clear();
+		points = { log_s1, log_s2 };
+		if (mode_below_s1) {
+			modes.push_back(RootBisection(deriv_log_integrand, std::min(mean_g, log_D), log_s1));
+		}
+		if (mode_above_s2) {
+			modes.push_back(RootBisection(deriv_log_integrand, log_s2, std::max(mean_g, log_D)));
+		}
+		if (mode_below_s1 && mode_above_s2) {
+			points.push_back(RootBisection(deriv_log_integrand, log_s1, log_s2));
+		}
+		// no mode only if h' is not finite
+		return !modes.empty();
+	}//end FindCriticalPointsIntegrandGaussianHeteroscedastic
+
+	template <typename T_mat, typename T_chol>
+	template <typename LogIntegrand>
+	inline double Likelihood<T_mat, T_chol>::LogIntegralAdaptiveGaussKronrod(LogIntegrand log_integrand,
+		const std::vector<double>& breakpoints,
+		double log_scale,
+		bool& evaluation_failure) const {
+		// Nodes in [0, 1] and weights of the 15-point Kronrod rule on [-1, 1], and the weights of the embedded 7-point Gauss rule,
+		//	whose nodes are those with odd index (Piessens et al., 1983, QUADPACK)
+		static const double nodes[8] = { 0.991455371120812639206854697526329, 0.949107912342758524526189684047851,
+			0.864864423359769072789712788640926, 0.741531185599394439863864773280788, 0.586087235467691130294144845693013,
+			0.405845151377397166906606412076961, 0.207784955007898467600689403773245, 0. };
+		static const double weights_kronrod[8] = { 0.022935322010529224963732008058970, 0.063092092629978553290700663189204,
+			0.104790010322250183839876322541518, 0.140653259715525918745189590510238, 0.169004726639267902826583426598550,
+			0.190350578064785409913256402421014, 0.204432940075298892414161999234649, 0.209482141084727828012999174891714 };
+		static const double weights_gauss[4] = { 0.129484966168869693270611432679082, 0.279705391489276667901467771423780,
+			0.381830050505118944950369775488975, 0.417959183673469387755102040816327 };
+		struct Interval {
+			double lower;
+			double upper;
+			double integral;
+			double error;
+		};
+		evaluation_failure = false;
+		auto integrand = [&](double x) {
+			const double log_value = log_integrand(x);
+			if (std::isnan(log_value) || log_value == std::numeric_limits<double>::infinity()) {
+				evaluation_failure = true;
+			}
+			return std::exp(log_value - log_scale);
+		};
+		auto integrate = [&](double lower, double upper) {
+			const double center = 0.5 * (lower + upper);
+			const double half_length = 0.5 * (upper - lower);
+			const double integrand_center = integrand(center);
+			double kronrod = weights_kronrod[7] * integrand_center;
+			double gauss = weights_gauss[3] * integrand_center;
+			for (int j = 0; j < 7; ++j) {
+				const double sum_pair = integrand(center - half_length * nodes[j]) + integrand(center + half_length * nodes[j]);
+				kronrod += weights_kronrod[j] * sum_pair;
+				if (j % 2 == 1) {
+					gauss += weights_gauss[j / 2] * sum_pair;
+				}
+			}
+			return Interval{ lower, upper, half_length * kronrod, half_length * std::abs(kronrod - gauss) };
+		};
+		std::vector<Interval> intervals;
+		for (size_t k = 0; k + 1 < breakpoints.size(); ++k) {
+			intervals.push_back(integrate(breakpoints[k], breakpoints[k + 1]));
+		}
+		const int max_num_bisections = 1000;
+		double integral = 0.;
+		for (int it = 0; it <= max_num_bisections; ++it) {
+			integral = 0.;
+			double error = 0.;
+			size_t largest_error = 0;
+			for (size_t k = 0; k < intervals.size(); ++k) {
+				integral += intervals[k].integral;
+				error += intervals[k].error;
+				if (intervals[k].error > intervals[largest_error].error) {
+					largest_error = k;
+				}
+			}
+			if (evaluation_failure) {
+				return std::numeric_limits<double>::quiet_NaN();
+			}
+			if (error <= 1e-10 * integral || it == max_num_bisections) {
+				break;
+			}
+			const Interval bisected = intervals[largest_error];
+			const double mid = 0.5 * (bisected.lower + bisected.upper);
+			intervals[largest_error] = integrate(bisected.lower, mid);
+			intervals.push_back(integrate(mid, bisected.upper));
+		}
+		return log_scale + std::log(integral);
+	}//end LogIntegralAdaptiveGaussKronrod
+
+	template <typename T_mat, typename T_chol>
+	template <typename Function>
+	inline double Likelihood<T_mat, T_chol>::RootBisection(Function function,
+		double lower,
+		double upper) {
+		const bool positive_at_lower = function(lower) > 0.;
+		for (int it = 0; it < 200; ++it) {
+			const double mid = 0.5 * (lower + upper);
+			// no representable number between lower and upper
+			if (mid <= lower || mid >= upper) {
+				break;
+			}
+			if ((function(mid) > 0.) == positive_at_lower) {
+				lower = mid;
+			}
+			else {
+				upper = mid;
+			}
+		}
+		return 0.5 * (lower + upper);
+	}//end RootBisection
 
 	template <typename T_mat, typename T_chol>
 	double Likelihood<T_mat, T_chol>::TransformToResponseScale(const double value) const {

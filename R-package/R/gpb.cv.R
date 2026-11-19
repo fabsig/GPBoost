@@ -708,7 +708,7 @@ gpb.cv <- function(params = list()
   
   # With early stopping (also by a callback in 'callbacks'), the models of the folds use the best iteration for
   #   prediction, and the covariance parameters of their gp_model are those of the best iteration, see 'gpb.train'
-  if ((using_early_stopping || (isTRUE(env$met_early_stop) && !stopped_by_error)) && !delete_boosters_folds &&
+  if ((using_early_stopping || isTRUE(env$met_early_stop)) && !stopped_by_error && !delete_boosters_folds &&
       isTRUE(cv_booster$best_iter > 0L)) {
     for (fd in cv_booster$boosters) {
       fd$booster$best_iter <- cv_booster$best_iter

@@ -174,6 +174,8 @@ namespace LightGBM {
 		bool reuse_learning_rates_gp_model_ = true;//currently only properly initialized for "regression" loss
 		/*! \brief Number of fixed effects sets, i.e., the numer of trees per iteration (>1 e.g. for heteroscedastic models) */
 		int num_sets_fixed_effects_ = 1;
+		/*! \brief Response variable of a GP model with a non-Gaussian likelihood, i.e., the label of the training data */
+		const label_t* label_gp_model_ = nullptr;
 
 	};
 

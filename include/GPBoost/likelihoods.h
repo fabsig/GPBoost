@@ -3330,12 +3330,74 @@ namespace GPBoost {
 		* \brief Calculate the test negative log-likelihood for 'gaussian_heteroscedastic_fixed_and_random', see
 		*		'TestNegLogLikelihoodAdaptiveGHQuadrature'. The mean f and the log-variance g are independent under the
 		*		(Fisher-)Laplace approximation. The integral over f is N(y; mean of f, variance of f + exp(g)), and the one over g
-		*		is calculated using adaptive GH quadrature
+		*		is calculated in 'LogPredictiveDensityGaussianHeteroscedastic'
 		*/
 		inline double TestNegLogLikelihoodGaussianHeteroscedasticFixedAndRandom(const label_t* y_test,
 			const double* pred_mean,
 			const double* pred_var,
 			const data_size_t num_data) const;
+
+		/*!
+		* \brief Logarithm of the integral of N(y; mean of f, var_mean + exp(g)) * N(g; mean_g, var_g) over the log-variance g, using
+		*		adaptive GH quadrature if the log integrand is concave where the integrand is not negligible, and adaptive
+		*		Gauss-Kronrod quadrature otherwise (e.g., if the integrand has two modes)
+		* \param resid2 Squared difference between y and the predictive mean of f
+		* \param var_mean Predictive variance of f
+		* \param mean_g Predictive mean of g
+		* \param var_g Predictive variance of g
+		* \param[out] evaluation_failure True if the integrand is NaN or +inf at a node (a numerical failure)
+		*/
+		inline double LogPredictiveDensityGaussianHeteroscedastic(double resid2,
+			double var_mean,
+			double mean_g,
+			double var_g,
+			bool& evaluation_failure) const;
+
+		/*!
+		* \brief Find the modes of the log integrand of 'LogPredictiveDensityGaussianHeteroscedastic' as a function of g and the
+		*		boundaries of the interval where it is convex, if it is not concave
+		* \param resid2 Squared difference between y and the predictive mean of f
+		* \param var_mean Predictive variance of f
+		* \param mean_g Predictive mean of g
+		* \param var_g Predictive variance of g (positive)
+		* \param first_deriv First derivative of log N(y; mean of f, var_mean + exp(g)) wrt g
+		* \param[out] modes The one or two modes (in increasing order)
+		* \param[out] points The boundaries of the interval where the log integrand is convex, followed by the minimum between the
+		*		modes if there are two
+		* \return False if the log integrand is concave or its derivative is not finite (then, the outputs are not used)
+		*/
+		template <typename FirstDeriv>
+		inline bool FindCriticalPointsIntegrandGaussianHeteroscedastic(double resid2,
+			double var_mean,
+			double mean_g,
+			double var_g,
+			FirstDeriv first_deriv,
+			std::vector<double>& modes,
+			std::vector<double>& points) const;
+
+		/*!
+		* \brief Logarithm of the integral of exp(log_integrand(x)) over [breakpoints.front(), breakpoints.back()] using adaptive
+		*		Gauss-Kronrod (7-15) quadrature: starting with the intervals between the breakpoints, the interval with the largest
+		*		error estimate is bisected until the sum of the error estimates is at most 1e-10 times the integral
+		* \param log_integrand Logarithm of the integrand
+		* \param breakpoints Sorted breakpoints (e.g., the modes of the integrand)
+		* \param log_scale Logarithm of a value of the order of the largest value of the integrand (e.g., at the largest mode)
+		* \param[out] evaluation_failure True if log_integrand is NaN or +inf at a node (a numerical failure)
+		* \return Logarithm of the integral (NaN if evaluation_failure)
+		*/
+		template <typename LogIntegrand>
+		inline double LogIntegralAdaptiveGaussKronrod(LogIntegrand log_integrand,
+			const std::vector<double>& breakpoints,
+			double log_scale,
+			bool& evaluation_failure) const;
+
+		/*!
+		* \brief Root of a function on [lower, upper] using bisection, where the function has different signs at lower and upper
+		*/
+		template <typename Function>
+		static double RootBisection(Function function,
+			double lower,
+			double upper);
 
 		static string_t ParseLikelihoodAlias(const string_t& likelihood) {
 			if (likelihood == string_t("binary_probit")) {

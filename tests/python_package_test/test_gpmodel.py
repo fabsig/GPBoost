@@ -773,11 +773,13 @@ def test_early_stopping_sets_the_parameters_of_the_best_iteration(likelihood):
     gp_model_best = gpb.GPModel(group_data=group[tr], likelihood=likelihood)
     bst_best = gpb.train(params=params, train_set=train_set, gp_model=gp_model_best,
                          num_boost_round=bst.best_iteration)
+    # The parameters of separately trained models can differ slightly since OpenMP reductions can add the sums of
+    #   the threads in a different order (e.g., by 1e-8 for the gamma likelihood on macOS)
     np.testing.assert_allclose(np.asarray(gp_model.get_cov_pars()), np.asarray(gp_model_best.get_cov_pars()),
-                               rtol=1e-8)
+                               rtol=1e-6)
     if likelihood == "gamma":
         np.testing.assert_allclose(np.asarray(gp_model.get_aux_pars()), np.asarray(gp_model_best.get_aux_pars()),
-                                   rtol=1e-8)
+                                   rtol=1e-6)
     pred = bst.predict(data=x[va], group_data_pred=group[va], predict_var=True)
     pred_best = bst_best.predict(data=x[va], group_data_pred=group[va], predict_var=True)
     np.testing.assert_allclose(pred["response_mean"], pred_best["response_mean"], rtol=1e-6)
@@ -797,7 +799,7 @@ def test_early_stopping_sets_the_parameters_of_the_best_iteration(likelihood):
         assert booster.best_iteration == cvboosters[0].best_iteration
         assert booster_best.best_iteration <= 0
         np.testing.assert_allclose(np.asarray(booster.gp_model.get_cov_pars()),
-                                   np.asarray(booster_best.gp_model.get_cov_pars()), rtol=1e-8)
+                                   np.asarray(booster_best.gp_model.get_cov_pars()), rtol=1e-6)
         pred = booster.predict(data=x[test_idx], group_data_pred=group[test_idx], predict_var=True)
         pred_best = booster_best.predict(data=x[test_idx], group_data_pred=group[test_idx], predict_var=True)
         np.testing.assert_allclose(pred["response_mean"], pred_best["response_mean"], rtol=1e-6)
@@ -846,6 +848,8 @@ def test_gp_model_pars_of_the_iteration_of_the_trees(likelihood):
         np.testing.assert_allclose(pred["response_mean"], pred_ref["response_mean"], rtol=1e-6)
         np.testing.assert_allclose(pred["response_var"], pred_ref["response_var"], rtol=1e-6)
 
+    # The parameters of separately trained models can differ slightly since OpenMP reductions can add the sums of
+    #   the threads in a different order (e.g., by 1e-8 for the gamma likelihood on macOS)
     gp_model_all = gpb.GPModel(group_data=group[tr], likelihood=likelihood)
     bst_all = gpb.train(params=params, train_set=train_set, gp_model=gp_model_all, num_boost_round=num_iter)
     # Predictions with all iterations are those of the model trained for all iterations
@@ -859,10 +863,10 @@ def test_gp_model_pars_of_the_iteration_of_the_trees(likelihood):
     # A model saved with all iterations has the parameters of the last iteration
     bst_loaded = gpb.Booster(model_str=bst.model_to_string(num_iteration=num_iter))
     np.testing.assert_allclose(np.asarray(bst_loaded.gp_model.get_cov_pars()),
-                               np.asarray(gp_model_all.get_cov_pars()), rtol=1e-8)
+                               np.asarray(gp_model_all.get_cov_pars()), rtol=1e-6)
     if likelihood == "gamma":
         np.testing.assert_allclose(np.asarray(bst_loaded.gp_model.get_aux_pars()),
-                                   np.asarray(gp_model_all.get_aux_pars()), rtol=1e-8)
+                                   np.asarray(gp_model_all.get_aux_pars()), rtol=1e-6)
     assert_same_predictions(bst_loaded, bst_all)
     assert_same_as_best()
     # A model saved with the raw data has the parameters of all iterations, also when it is saved again after loading
@@ -875,7 +879,7 @@ def test_gp_model_pars_of_the_iteration_of_the_trees(likelihood):
         np.testing.assert_allclose(pred_loaded["response_mean"], pred["response_mean"], rtol=1e-6)
         np.testing.assert_allclose(pred_loaded["response_var"], pred["response_var"], rtol=1e-6)
     np.testing.assert_allclose(np.asarray(bst_loaded.gp_model.get_cov_pars()),
-                               np.asarray(gp_model_all.get_cov_pars()), rtol=1e-8)
+                               np.asarray(gp_model_all.get_cov_pars()), rtol=1e-6)
     assert_same_as_best()
     # A copied or pickled model has the trees and the parameters of the best iteration
     for bst_copy in (copy.deepcopy(bst), pickle.loads(pickle.dumps(bst))):
@@ -906,5 +910,5 @@ def test_gp_model_pars_of_the_iteration_of_the_trees(likelihood):
     gp_model_all1 = gpb.GPModel(group_data=group[tr], likelihood=likelihood)
     bst_all1 = gpb.train(params=params, train_set=train_set, gp_model=gp_model_all1, num_boost_round=num_iter + 1)
     np.testing.assert_allclose(np.asarray(gp_model.get_cov_pars()), np.asarray(gp_model_all1.get_cov_pars()),
-                               rtol=1e-8)
+                               rtol=1e-6)
     assert_same_predictions(bst, bst_all1, num_iteration=num_iter + 1)
