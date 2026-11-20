@@ -780,8 +780,12 @@ def test_early_stopping_sets_the_parameters_of_the_best_iteration(likelihood):
     if likelihood == "gamma":
         np.testing.assert_allclose(np.asarray(gp_model.get_aux_pars()), np.asarray(gp_model_best.get_aux_pars()),
                                    rtol=1e-6)
-    pred = bst.predict(data=x[va], group_data_pred=group[va], predict_var=True)
-    pred_best = bst_best.predict(data=x[va], group_data_pred=group[va], predict_var=True)
+    # The predictions of separately trained models are compared at the training inputs: splits on different features
+    #   can divide the training data in the same way and thus have the same gain, and the rounding of the gradients
+    #   then decides which one is chosen (e.g., for the gamma likelihood with three threads), which changes the
+    #   predictions at other inputs only
+    pred = bst.predict(data=x[tr], group_data_pred=group[tr], predict_var=True)
+    pred_best = bst_best.predict(data=x[tr], group_data_pred=group[tr], predict_var=True)
     np.testing.assert_allclose(pred["response_mean"], pred_best["response_mean"], rtol=1e-6)
     np.testing.assert_allclose(pred["response_var"], pred_best["response_var"], rtol=1e-6)
     # The models of the folds of a cross-validation have the parameters of the best iteration as well
@@ -795,13 +799,13 @@ def test_early_stopping_sets_the_parameters_of_the_best_iteration(likelihood):
                            early_stopping_rounds=early_stopping_rounds, return_cvbooster=True)
         cvboosters.append(cv_result["cvbooster"])
     assert 0 < cvboosters[0].best_iteration < cvboosters[0].boosters[0].current_iteration()
-    for (_, test_idx), booster, booster_best in zip(folds, cvboosters[0].boosters, cvboosters[1].boosters):
+    for (train_idx, _), booster, booster_best in zip(folds, cvboosters[0].boosters, cvboosters[1].boosters):
         assert booster.best_iteration == cvboosters[0].best_iteration
         assert booster_best.best_iteration <= 0
         np.testing.assert_allclose(np.asarray(booster.gp_model.get_cov_pars()),
                                    np.asarray(booster_best.gp_model.get_cov_pars()), rtol=1e-6)
-        pred = booster.predict(data=x[test_idx], group_data_pred=group[test_idx], predict_var=True)
-        pred_best = booster_best.predict(data=x[test_idx], group_data_pred=group[test_idx], predict_var=True)
+        pred = booster.predict(data=x[train_idx], group_data_pred=group[train_idx], predict_var=True)
+        pred_best = booster_best.predict(data=x[train_idx], group_data_pred=group[train_idx], predict_var=True)
         np.testing.assert_allclose(pred["response_mean"], pred_best["response_mean"], rtol=1e-6)
         np.testing.assert_allclose(pred["response_var"], pred_best["response_var"], rtol=1e-6)
 
@@ -842,9 +846,11 @@ def test_gp_model_pars_of_the_iteration_of_the_trees(likelihood):
         np.testing.assert_allclose(pred["response_mean"], pred_best["response_mean"], rtol=1e-6)
         np.testing.assert_allclose(pred["response_var"], pred_best["response_var"], rtol=1e-6)
 
+    # Separately trained models are compared at the training inputs, see
+    #   test_early_stopping_sets_the_parameters_of_the_best_iteration
     def assert_same_predictions(booster, booster_ref, num_iteration=None):
-        pred = booster.predict(data=x[va], group_data_pred=group[va], predict_var=True, num_iteration=num_iteration)
-        pred_ref = booster_ref.predict(data=x[va], group_data_pred=group[va], predict_var=True)
+        pred = booster.predict(data=x[tr], group_data_pred=group[tr], predict_var=True, num_iteration=num_iteration)
+        pred_ref = booster_ref.predict(data=x[tr], group_data_pred=group[tr], predict_var=True)
         np.testing.assert_allclose(pred["response_mean"], pred_ref["response_mean"], rtol=1e-6)
         np.testing.assert_allclose(pred["response_var"], pred_ref["response_var"], rtol=1e-6)
 
