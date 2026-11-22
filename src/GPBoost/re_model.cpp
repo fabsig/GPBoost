@@ -614,6 +614,11 @@ namespace GPBoost {
 		std_dev_cov_pars_calculated_ = false;
 		std_dev_coef_calculated_ = false;
 		std_dev_aux_pars_calculated_ = false;
+		if (!called_in_GPBoost_algorithm) {
+			if (matrix_format_ == "sp_mat_t") re_model_sp_->WarnIfTweediePowerAtBoundary();
+			else if (matrix_format_ == "sp_mat_rm_t") re_model_sp_rm_->WarnIfTweediePowerAtBoundary();
+			else re_model_den_->WarnIfTweediePowerAtBoundary();
+		}
 	}//end OptimCovPar
 
 	void REModel::OptimLinRegrCoefCovPar(const double* y_data,
@@ -709,6 +714,9 @@ namespace GPBoost {
 		std_dev_cov_pars_calculated_ = false;
 		std_dev_coef_calculated_ = false;
 		std_dev_aux_pars_calculated_ = false;
+		if (matrix_format_ == "sp_mat_t") re_model_sp_->WarnIfTweediePowerAtBoundary();
+		else if (matrix_format_ == "sp_mat_rm_t") re_model_sp_rm_->WarnIfTweediePowerAtBoundary();
+		else re_model_den_->WarnIfTweediePowerAtBoundary();
 	}//end OptimLinRegrCoefCovPar
 
 	void REModel::FindInitialValueBoosting(const double* fixed_effects) {

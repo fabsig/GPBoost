@@ -5239,11 +5239,11 @@ class GPModel(object):
 
                     - "tweedie":
 
-                        Compound Poisson--Gamma Tweedie likelihood with a log link, variance phi * mu**p, and 1.01 < p < 1.99. Both phi and p are estimated.
+                        Compound Poisson--Gamma Tweedie likelihood with a log link, variance phi * mu**p, and 1.001 < p < 1.999. Both phi and p are estimated.
 
                     - "tweedie_fixed_p":
 
-                        The same Tweedie likelihood with p fixed through 'likelihood_additional_param'; only phi is estimated. The fixed power is mandatory and must satisfy 1.01 < p < 1.99.
+                        The same Tweedie likelihood with p fixed through 'likelihood_additional_param'; only phi is estimated. The fixed power is mandatory and must satisfy 1.001 < p < 1.999.
 
                     - "tweedie_joint", "tweedie_joint_fixed_p":
 

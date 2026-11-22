@@ -34,7 +34,7 @@
 *         "hurdle_regression_gamma_varying_shape" (no auxiliary parameter, 3 blocks: eta, structural-zero logit, log(shape))
 *
 * For "tweedie" and "tweedie_fixed_p", Y follows a compound Poisson--Gamma Tweedie law:
-*       - mu = exp(location_par), Var(Y | location_par) = phi * mu^p, 1.01 < p < 1.99
+*       - mu = exp(location_par), Var(Y | location_par) = phi * mu^p, 1.001 < p < 1.999
 *       - aux_pars_[0] = phi; aux_pars_[1] is a positive transformed power for "tweedie"
 *         and the fixed power on its original scale for "tweedie_fixed_p"
 *   The Tweedie variants below use the same mean model and the same power parameterization:
@@ -1060,8 +1060,12 @@ namespace GPBoost {
 		void WarnIfTweediePowerAtBoundary() const {
 			if (!IsTweedieEstimatedPower() || tweedie_boundary_warning_issued_) return;
 			const auto power = TransformTweediePowerFromQ(aux_pars_[TweediePowerIndex()], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_);
-			if (power.p - TWEEDIE_POWER_LOWER_ < 1e-3 || TWEEDIE_POWER_UPPER_ - power.p < 1e-3) {
-				Log::REWarning("The Tweedie power optimizer saturated near the configured boundary (%g, %g), p = %g and dp/dtheta = %g. The estimate may be boundary-sensitive. Inspect a 'tweedie_fixed_p' likelihood and, if appropriate, use 'poisson' (if p close to 1) or 'gamma' (if p close to 2) likelihoods ", TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_, power.p, power.dp_dtheta);
+			const bool near_lower = power.p - TWEEDIE_POWER_LOWER_ < TWEEDIE_POWER_BOUNDARY_TOL_;
+			const bool near_upper = TWEEDIE_POWER_UPPER_ - power.p < TWEEDIE_POWER_BOUNDARY_TOL_;
+			if (near_lower || near_upper) {
+				Log::REWarning("The estimated Tweedie power p = %g is close to the %s bound %g of the supported range (%g, %g). The data are close to a %s distribution, and the Tweedie estimates may be boundary-sensitive. Consider likelihood = '%s' instead, or compare fits with likelihood = 'tweedie_fixed_p' ",
+					power.p, near_lower ? "lower" : "upper", near_lower ? TWEEDIE_POWER_LOWER_ : TWEEDIE_POWER_UPPER_,
+					TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_, near_lower ? "Poisson" : "gamma", near_lower ? "poisson" : "gamma");
 				tweedie_boundary_warning_issued_ = true;
 			}
 		}
@@ -9081,8 +9085,10 @@ namespace GPBoost {
 		string_t regression_base_type_ = "gaussian";
 		string_t egpd_base_type_ = "gaussian";
 		EGPDVariant egpd_variant_ = EGPDVariant::kGPD;
-		static constexpr double TWEEDIE_POWER_LOWER_ = 1.01;
-		static constexpr double TWEEDIE_POWER_UPPER_ = 1.99;
+		static constexpr double TWEEDIE_POWER_LOWER_ = 1.001;
+		static constexpr double TWEEDIE_POWER_UPPER_ = 1.999;
+		/*! \brief An estimated power closer than this to a bound of (TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_) gives a warning */
+		static constexpr double TWEEDIE_POWER_BOUNDARY_TOL_ = 1e-3;
 		double tweedie_sum_d_log_a_rho_ = 0.;
 		double tweedie_sum_d_log_a_theta_ = 0.;
 		// Snapshot of (phi, p) that the cached normalizer aggregates above correspond to; used to verify cache freshness in CalcGradNegLogLikAuxPars.

@@ -84,8 +84,8 @@ alongside the mean-model coefficients (with the suffix "_shape"). See also the c
 
 \strong{Non-negative continuous / semicontinuous response: y in [0, inf) with point mass at 0}
 \itemize{
-\item{ "tweedie": Compound Poisson--Gamma Tweedie likelihood with a log link, variance phi * mu^p, and 1.01 < p < 1.99. The dispersion phi and power p are estimated }
-\item{ "tweedie_fixed_p": The same Tweedie likelihood with p fixed through \code{likelihood_additional_param}; only phi is estimated. The fixed power must satisfy 1.01 < p < 1.99 }
+\item{ "tweedie": Compound Poisson--Gamma Tweedie likelihood with a log link, variance phi * mu^p, and 1.001 < p < 1.999. The dispersion phi and power p are estimated }
+\item{ "tweedie_fixed_p": The same Tweedie likelihood with p fixed through \code{likelihood_additional_param}; only phi is estimated. The fixed power must satisfy 1.001 < p < 1.999 }
 \item{ "tweedie_joint", "tweedie_joint_fixed_p": The same Tweedie model, but the observed number of events (e.g., claims) N, given in the first
 column of \code{additional_likelihood_data}, is used jointly with the aggregate response y. The likelihood is the joint density of (y, N) of the
 compound Poisson--Gamma representation, N ~ Poisson(mu^(2-p) / (phi * (2-p))) and y | N = n ~ Gamma(n * (2-p) / (p-1), scale = phi * (p-1) * mu^(p-1)),
@@ -421,7 +421,7 @@ If \code{likelihood_additional_param = NULL}, the following default and mandator
 \itemize{
 \item{ df = 2 for likelihood = "t_fix_df" }
 \item{ No default is used for likelihood = "asymmetric_laplace"; a quantile strictly between 0 and 1 is required }
-\item{ No default is used for the Tweedie likelihoods with a fixed power ("tweedie_fixed_p" and the other "_fixed_p" variants); a power strictly between 1.01 and 1.99 is required }
+\item{ No default is used for the Tweedie likelihoods with a fixed power ("tweedie_fixed_p" and the other "_fixed_p" variants); a power strictly between 1.001 and 1.999 is required }
 }}
 
 \item{fidelity_specific_mean}{A \code{logical}. For an \code{ar1_mf_<base>} covariance,
