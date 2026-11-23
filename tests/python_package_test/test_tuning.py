@@ -36,17 +36,44 @@ def _cv_best_score(params, X, y, folds, metric, gp_model=None, higher_better=Fal
     return np.max(scores) if higher_better else np.min(scores)
 
 
+def _simulate_spatial_data(n=200, seed=2):
+    rng = np.random.default_rng(seed)
+    coords = rng.uniform(size=(n, 2))
+    X = rng.uniform(size=(n, 2))
+    dist = np.sqrt(((coords[:, None, :] - coords[None, :, :]) ** 2).sum(axis=2))
+    b = np.linalg.cholesky(np.exp(-dist / 0.2) + 1e-10 * np.eye(n)) @ rng.normal(size=n)
+    y = np.sin(4 * X[:, 0]) + X[:, 1] + b + rng.normal(scale=0.3, size=n)
+    return X, y, coords
+
+
+def _spatial_gp_model(coords, cov_function='matern', cov_fct_shape=2.5):
+    gp_model = gpb.GPModel(gp_coords=coords, cov_function=cov_function, cov_fct_shape=cov_fct_shape,
+                           gp_approx='vecchia', num_neighbors=10, vecchia_ordering='random', seed=1)
+    gp_model.set_prediction_data(vecchia_pred_type='order_obs_first_cond_obs_only', num_neighbors_pred=10)
+    return gp_model
+
+
+def _cv_score_of_best_params(best_params, best_iter, X, y, coords, folds):
+    """Score of 'cv()' after 'best_iter' iterations with the parameters of the booster and the GP model chosen by a
+    tuning function."""
+    params = dict(best_params, verbose=-1, force_col_wise=True, deterministic=True)
+    gp_model_params = {param: params.pop(param) for param in ['cov_fct_shape', 'cov_function'] if param in params}
+    cvbst = gpb.cv(params=params, train_set=gpb.Dataset(X, y), gp_model=_spatial_gp_model(coords, **gp_model_params),
+                   num_boost_round=best_iter, folds=folds, metric='test_neg_log_likelihood', verbose_eval=False)
+    return cvbst[list(cvbst.keys())[0]][-1]
+
+
 def test_parse_tuning_search_space():
     parsed = _parse_tuning_search_space({'learning_rate': [0.001, 1], 'lambda_l2': [0, 100], 'reg_alpha': [1, 10],
                                          'num_leaves': [2, 1024], 'max_depth': [-1, 10],
                                          'feature_fraction': [0.5, 1], 'line_search_step_length': [True, False]})
-    assert parsed['learning_rate'] == ('float', 0.001, 1, True)
-    assert parsed['lambda_l2'] == ('float', 1e-8, 100, True)
-    assert parsed['reg_alpha'] == ('float', 1, 10, True)
-    assert parsed['num_leaves'] == ('int', 2, 1024, True)
-    assert parsed['max_depth'] == ('int', -1, 10, False)
-    assert parsed['feature_fraction'] == ('float', 0.5, 1, False)
-    assert parsed['line_search_step_length'] == ('categorical', True, False, False)
+    assert parsed['learning_rate'] == {'kind': 'float', 'lower': 0.001, 'upper': 1, 'log': True}
+    assert parsed['lambda_l2'] == {'kind': 'float', 'lower': 1e-8, 'upper': 100, 'log': True}
+    assert parsed['reg_alpha'] == {'kind': 'float', 'lower': 1, 'upper': 10, 'log': True}
+    assert parsed['num_leaves'] == {'kind': 'int', 'lower': 2, 'upper': 1024, 'log': True}
+    assert parsed['max_depth'] == {'kind': 'int', 'lower': -1, 'upper': 10, 'log': False}
+    assert parsed['feature_fraction'] == {'kind': 'float', 'lower': 0.5, 'upper': 1, 'log': False}
+    assert parsed['line_search_step_length'] == {'kind': 'categorical', 'values': [True, False]}
     with pytest.raises(ValueError, match="lower bound >= 0"):
         _parse_tuning_search_space({'lambda_l1': [-1, 10]})
     with pytest.raises(ValueError, match="upper bound > 0"):
@@ -60,16 +87,53 @@ def test_parse_tuning_search_space():
     # Parameters on a logarithmic scale for which 0 is a valid value
     parsed = _parse_tuning_search_space({'min_gain_to_split': [0, 1], 'min_sum_hessian_in_leaf': [0, 10],
                                          'min_data_in_leaf': [0, 50], 'min_child_samples': [5, 50]})
-    assert parsed['min_gain_to_split'] == ('float', 1e-8, 1, True)
-    assert parsed['min_sum_hessian_in_leaf'] == ('float', 1e-8, 10, True)
-    assert parsed['min_data_in_leaf'] == ('int', 1, 50, True)
-    assert parsed['min_child_samples'] == ('int', 5, 50, True)
+    assert parsed['min_gain_to_split'] == {'kind': 'float', 'lower': 1e-8, 'upper': 1, 'log': True}
+    assert parsed['min_sum_hessian_in_leaf'] == {'kind': 'float', 'lower': 1e-8, 'upper': 10, 'log': True}
+    assert parsed['min_data_in_leaf'] == {'kind': 'int', 'lower': 1, 'upper': 50, 'log': True}
+    assert parsed['min_child_samples'] == {'kind': 'int', 'lower': 5, 'upper': 50, 'log': True}
     with pytest.raises(ValueError, match="lower bound >= 0"):
         _parse_tuning_search_space({'min_data_in_leaf': [-1, 50]})
     with pytest.raises(ValueError, match="positive bounds"):
         _parse_tuning_search_space({'num_leaves': [0, 1024]})
     with pytest.raises(ValueError, match="not larger than the upper bound"):
         _parse_tuning_search_space({'feature_fraction': [1, 0.5]})
+
+
+def test_parse_tuning_search_space_values():
+    # Sets of numbers are sorted, and numpy numbers are converted to Python numbers
+    parsed = _parse_tuning_search_space({'cov_fct_shape': {'values': [2.5, 0.5, np.float64(1.5)]},
+                                         'cov_function': {'values': ['matern', 'gaussian']},
+                                         'line_search_step_length': {'values': [True, False]},
+                                         'max_depth': {'values': [5, -1]}, 'learning_rate': {'values': [0.1]},
+                                         'cov_fct_order': [1, 2]})
+    assert parsed['cov_fct_shape'] == {'kind': 'ordinal', 'values': [0.5, 1.5, 2.5]}
+    assert type(parsed['cov_fct_shape']['values'][1]) is float
+    assert parsed['cov_function'] == {'kind': 'categorical', 'values': ['matern', 'gaussian']}
+    assert parsed['line_search_step_length'] == {'kind': 'categorical', 'values': [True, False]}
+    assert parsed['max_depth'] == {'kind': 'ordinal', 'values': [-1, 5]}
+    assert parsed['learning_rate'] == {'kind': 'ordinal', 'values': [0.1]}
+    assert parsed['cov_fct_order'] == {'kind': 'int', 'lower': 1, 'upper': 2, 'log': False}
+    # A list of two numbers is a range
+    assert _parse_tuning_search_space({'cov_fct_shape': [0.5, 2.5]})['cov_fct_shape'] == \
+        {'kind': 'float', 'lower': 0.5, 'upper': 2.5, 'log': False}
+    with pytest.raises(ValueError, match=r"must be a list \[lower, upper\] or a dictionary \{'values'"):
+        _parse_tuning_search_space({'cov_fct_shape': {'value': [0.5, 1.5]}})
+    with pytest.raises(ValueError, match="at least one value"):
+        _parse_tuning_search_space({'cov_fct_shape': {'values': []}})
+    with pytest.raises(ValueError, match="must not contain a value twice"):
+        _parse_tuning_search_space({'cov_fct_shape': {'values': [0.5, 1.5, 0.5]}})
+    with pytest.raises(ValueError, match=r"search_space\['cov_function'\] must be a set of values"):
+        _parse_tuning_search_space({'cov_function': ['matern', 'gaussian']})
+    with pytest.raises(ValueError, match="Unknown parameter 'num_neighbors'"):
+        _parse_tuning_search_space({'num_neighbors': {'values': [10, 20]}})
+    # Parameters of the GP model require a GP model
+    X, y, _ = _simulate_data()
+    with pytest.raises(ValueError, match="'cov_fct_shape' is a parameter of the GP model and can only be tuned with"):
+        gpb.tune_pars_TPE_algorithm_optuna(search_space={'cov_fct_shape': {'values': [0.5, 1.5]}}, n_trials=1, X=X,
+                                           y=y)
+    with pytest.raises(ValueError, match="'cov_function' is a parameter of the GP model and can only be tuned with"):
+        gpb.grid_search_tune_parameters(param_grid={'cov_function': ['matern', 'gaussian']},
+                                        train_set=gpb.Dataset(X, y))
 
 
 def test_tuning_deterministic_params():
@@ -138,6 +202,68 @@ def test_tune_pars_SMAC_gpboost(capsys):
     assert abs(opt_params['best_score'] - best_score) < 1e-8
 
 
+def test_tune_pars_SMAC_gp_model_params():
+    pytest.importorskip("smac")
+    X, y, coords = _simulate_spatial_data()
+    folds = _folds(len(y))
+    # The smoothness of 'gp_model' is not in the search space, so that the scores show whether the GP models of the
+    # folds use the smoothness of the trials
+    gp_model = _spatial_gp_model(coords, cov_fct_shape=2.5)
+    args = dict(n_trials=6, X=X, y=y, gp_model=gp_model, max_num_boost_round=50, early_stopping_rounds=5,
+                folds=folds, metric='test_neg_log_likelihood', params={'verbose': -1}, smac_seed=1, verbose_eval=0)
+    opt_params = gpb.tune_pars_SMAC(search_space={'learning_rate': [0.01, 1], 'min_data_in_leaf': [1, 50],
+                                                  'cov_fct_shape': {'values': [0.5, 1.5]}}, **args)
+    best_params = opt_params['best_params']
+    assert best_params['cov_fct_shape'] in [0.5, 1.5]
+    assert gp_model.cov_fct_shape == 2.5
+    best_score = _cv_score_of_best_params(best_params, opt_params['best_iter'], X, y, coords, folds)
+    assert abs(opt_params['best_score'] - best_score) < 1e-8
+    # A parameter of the GP model with the single value of 'gp_model' is held fixed and gives the same trials as
+    # without it
+    search_space = {'learning_rate': [0.01, 1], 'min_data_in_leaf': [1, 50]}
+    opt_params = gpb.tune_pars_SMAC(search_space=search_space, **args)
+    opt_params_fixed = gpb.tune_pars_SMAC(search_space=dict(search_space, cov_fct_shape={'values': [2.5]}), **args)
+    assert opt_params_fixed['best_params'] == dict(opt_params['best_params'], cov_fct_shape=2.5)
+    assert opt_params_fixed['best_iter'] == opt_params['best_iter']
+    assert abs(opt_params_fixed['best_score'] - opt_params['best_score']) < 1e-8
+
+
+def test_tuning_gp_model_params():
+    X, y, coords = _simulate_spatial_data()
+    folds = _folds(len(y))
+    gp_model = _spatial_gp_model(coords, cov_fct_shape=2.5)
+    opt_params = gpb.tune_pars_TPE_algorithm_optuna(search_space={'learning_rate': [0.05, 0.5],
+                                                                  'cov_fct_shape': {'values': [0.5, 1.5]}},
+                                                    n_trials=3, X=X, y=y, gp_model=gp_model, max_num_boost_round=50,
+                                                    early_stopping_rounds=5, folds=folds,
+                                                    metric='test_neg_log_likelihood', params={'verbose': -1},
+                                                    tpe_seed=1, verbose_eval=0)
+    best_params = opt_params['best_params']
+    assert best_params['cov_fct_shape'] in [0.5, 1.5]
+    assert gp_model.cov_fct_shape == 2.5
+    best_score = _cv_score_of_best_params(best_params, opt_params['best_iter'], X, y, coords, folds)
+    assert abs(opt_params['best_score'][0] - best_score) < 1e-8
+    # Grid search, also over the covariance function
+    opt_params = gpb.grid_search_tune_parameters(param_grid={'cov_fct_shape': [0.5, 1.5],
+                                                             'cov_function': ['matern', 'exponential']},
+                                                 train_set=gpb.Dataset(X, y), gp_model=gp_model,
+                                                 params={'learning_rate': 0.1, 'verbose': -1}, num_boost_round=50,
+                                                 early_stopping_rounds=5, folds=folds,
+                                                 metric='test_neg_log_likelihood', verbose_eval=0,
+                                                 return_all_combinations=True)
+    assert gp_model.cov_fct_shape == 2.5 and gp_model.cov_function == 'matern'
+    all_combinations = opt_params['all_combinations'].values()
+    assert len(all_combinations) == 4
+    for combination in all_combinations:
+        score = _cv_score_of_best_params(dict(combination['params'], learning_rate=0.1),
+                                         combination['num_boost_round'], X, y, coords, folds)
+        assert abs(combination['score'] - score) < 1e-8
+    # The exponential covariance function does not depend on the smoothness
+    scores_exponential = [combination['score'] for combination in all_combinations
+                          if combination['params']['cov_function'] == 'exponential']
+    assert abs(scores_exponential[0] - scores_exponential[1]) < 1e-8
+
+
 # The last digits of a cross-validation score can differ between processes, since the threads add up their
 # partial sums in the order in which they finish (observed on Linux with GCC), and the proposals of SMAC then
 # differ after some trials. The script therefore replaces the cross-validation by a fixed function of the
@@ -146,9 +272,10 @@ _SMAC_TRIALS_SCRIPT = """
 import numpy as np
 import gpboost as gpb
 import gpboost.engine
-def _score_of_parameters(params, **kwargs):
+def _score_of_parameters(params, gp_model_params, **kwargs):
     score = ((np.log10(params['learning_rate']) + 1) ** 2 + ((params['min_data_in_leaf'] - 20) / 30) ** 2
-             + np.log10(params['lambda_l2']) / 10 + 0.1 * params['line_search_step_length'])
+             + np.log10(params['lambda_l2']) / 10 + 0.1 * params['line_search_step_length']
+             + 0.1 * abs(gp_model_params['cov_fct_shape'] - 1.5))
     return score, 1, False
 gpboost.engine._tuning_cv_score = _score_of_parameters
 rng = np.random.default_rng(1)
@@ -156,10 +283,12 @@ X = rng.uniform(size=(200, 2))
 y = np.sin(4 * X[:, 0]) + X[:, 1] + rng.normal(scale=0.3, size=200)
 idx = np.arange(200)
 folds = [(idx[idx % 2 == 0], idx[idx % 2 == 1]), (idx[idx % 2 == 1], idx[idx % 2 == 0])]
+gp_model = gpb.GPModel(gp_coords=rng.uniform(size=(200, 2)), cov_function='matern', cov_fct_shape=1.5)
 gpb.tune_pars_SMAC(search_space={'learning_rate': [0.01, 1], 'min_data_in_leaf': [1, 50], 'lambda_l2': [0, 100],
-                                 'line_search_step_length': [True, False]},
-                   n_trials=16, X=X, y=y, max_num_boost_round=20, early_stopping_rounds=5, folds=folds,
-                   metric='mse', params={'verbose': -1}, smac_seed=1, verbose_eval=1)
+                                 'line_search_step_length': [True, False],
+                                 'cov_fct_shape': {'values': [0.5, 1.5, 2.5]}},
+                   n_trials=16, X=X, y=y, gp_model=gp_model, max_num_boost_round=20, early_stopping_rounds=5,
+                   folds=folds, metric='mse', params={'verbose': -1}, smac_seed=1, verbose_eval=1)
 """
 
 

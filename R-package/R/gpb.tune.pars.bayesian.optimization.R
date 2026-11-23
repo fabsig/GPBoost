@@ -12,29 +12,71 @@ gpb.tuning.params.float.log.zero <- c("lambda_l2", "reg_lambda", "lambda",
 gpb.tuning.params.float <- c("bagging_fraction", "sub_row", "subsample", "bagging",
                              "feature_fraction", "sub_feature", "colsample_bytree",
                              "cat_l2",
-                             "cat_smooth")
+                             "cat_smooth",
+                             "cov_fct_shape")
 gpb.tuning.params.int.log <- c("num_leaves", "num_leaf", "max_leaves", "max_leaf",
                                "max_bin")
 # Integer parameters on a logarithmic scale for which 0 is a valid value. A lower bound of 0 is replaced by 1
 gpb.tuning.params.int.log.zero <- c("min_data_in_leaf", "min_data_per_leaf", "min_data", "min_child_samples")
-gpb.tuning.params.int <- c("max_depth")
+gpb.tuning.params.int <- c("max_depth", "cov_fct_order")
+# Logical parameters whose two values can also be given as c(TRUE, FALSE) instead of list(values = c(TRUE, FALSE))
 gpb.tuning.params.logical <- c("line_search_step_length")
+# Parameters that can only be given as a set of values
+gpb.tuning.params.values.only <- c("cov_function")
+# Parameters of the GP model. The GP models of the cross-validation folds are constructed with the values of a
+# parameter combination and with all other settings of 'gp_model'
+gpb.tuning.gp.model.params <- c("cov_fct_shape", "cov_fct_order", "cov_function")
 
-# Determines the type, the bounds, and the scale of every parameter in a search space.
-# Returns a list with an entry list(kind, lower, upper, log) for every parameter, where kind is
-# "float", "int", or "logical"
+# Determines the type, the range or the values, and the scale of every parameter in a search space.
+# Returns a list with an entry for every parameter. A range c(lower, upper) gives list(kind, lower, upper, log),
+# where kind is "float" or "int". A set of values list(values = c(...)) gives list(kind, values), where kind is
+# "logical" for logical values, "ordinal" for numbers, which are then sorted, and "categorical" otherwise
 gpb.tuning.parse.search.space <- function(search_space, fun_name) {
   if (!is.list(search_space) || is.null(names(search_space)) || any(names(search_space) == "")) {
     stop(fun_name, ": 'search_space' needs to be a named list")
   }
+  known_params <- c(gpb.tuning.params.float.log, gpb.tuning.params.float.log.zero, gpb.tuning.params.float,
+                    gpb.tuning.params.int.log, gpb.tuning.params.int.log.zero, gpb.tuning.params.int,
+                    gpb.tuning.params.logical, gpb.tuning.params.values.only)
   parsed <- list()
   for (param in names(search_space)) {
+    if (!(param %in% known_params)) {
+      stop(sprintf("%s: Unknown parameter '%s'", fun_name, param))
+    }
     bounds <- search_space[[param]]
+    if (is.list(bounds)) {
+      if (!identical(names(bounds), "values")) {
+        stop(sprintf(paste0("%s: search_space['%s'] must be a vector c(lower, upper) or a list ",
+                            "list(values = c(...)) with a vector of values"), fun_name, param))
+      }
+      values <- bounds$values
+      if (!is.atomic(values) || length(values) == 0L) {
+        stop(sprintf("%s: search_space['%s']$values must be a vector with at least one value", fun_name, param))
+      }
+      if (anyDuplicated(values) > 0L) {
+        stop(sprintf("%s: search_space['%s']$values must not contain a value twice", fun_name, param))
+      }
+      if (is.logical(values)) {
+        parsed[[param]] <- list(kind = "logical", values = values)
+      } else if (is.numeric(values)) {
+        parsed[[param]] <- list(kind = "ordinal", values = sort(values))
+      } else {
+        parsed[[param]] <- list(kind = "categorical", values = values)
+      }
+      next
+    }
+    if (param %in% gpb.tuning.params.values.only) {
+      stop(sprintf("%s: search_space['%s'] must be a set of values list(values = c(...))", fun_name, param))
+    }
     if (length(bounds) != 2L) {
       stop(sprintf("%s: search_space['%s'] must have length 2", fun_name, param))
     }
     lower <- bounds[1L]
     upper <- bounds[2L]
+    if (param %in% gpb.tuning.params.logical) {
+      parsed[[param]] <- list(kind = "logical", values = unique(as.logical(bounds)))
+      next
+    }
     if (param %in% c(gpb.tuning.params.float.log.zero, gpb.tuning.params.int.log.zero)) {
       if (lower < 0 || upper <= 0) {
         stop(sprintf("%s: search_space['%s'] must have a lower bound >= 0 and an upper bound > 0", fun_name, param))
@@ -53,19 +95,42 @@ gpb.tuning.parse.search.space <- function(search_space, fun_name) {
       parsed[[param]] <- list(kind = kind, lower = lower, upper = upper, log = TRUE)
     } else if (param %in% gpb.tuning.params.float) {
       parsed[[param]] <- list(kind = "float", lower = lower, upper = upper, log = FALSE)
-    } else if (param %in% gpb.tuning.params.int) {
-      parsed[[param]] <- list(kind = "int", lower = lower, upper = upper, log = FALSE)
-    } else if (param %in% gpb.tuning.params.logical) {
-      parsed[[param]] <- list(kind = "logical", lower = as.logical(lower), upper = as.logical(upper), log = FALSE)
     } else {
-      stop(sprintf("%s: Unknown parameter '%s'", fun_name, param))
+      parsed[[param]] <- list(kind = "int", lower = lower, upper = upper, log = FALSE)
     }
-    if (parsed[[param]]$kind != "logical" && parsed[[param]]$lower > parsed[[param]]$upper) {
+    if (parsed[[param]]$lower > parsed[[param]]$upper) {
       stop(sprintf("%s: search_space['%s'] must have a lower bound that is not larger than the upper bound",
                    fun_name, param))
     }
   }
   return(parsed)
+}
+
+# Stops if parameters of the GP model are tuned without a GP model
+gpb.tuning.check.gp.model.params <- function(params, gp_model, fun_name) {
+  gp_model_params <- intersect(names(params), gpb.tuning.gp.model.params)
+  if (length(gp_model_params) > 0L && is.null(gp_model)) {
+    stop(sprintf("%s: '%s' is a parameter of the GP model and can only be tuned with a 'gp_model'",
+                 fun_name, gp_model_params[1L]))
+  }
+}
+
+# Splits a parameter combination into the parameters of the booster and those of the GP model
+gpb.tuning.split.gp.model.params <- function(params) {
+  is_gp_model_param <- names(params) %in% gpb.tuning.gp.model.params
+  return(list(booster = params[!is_gp_model_param], gp_model = params[is_gp_model_param]))
+}
+
+# Sets parameters of 'gp_model' and returns their previous values. gpb.cv constructs the GP models of the folds with
+# these fields of 'gp_model', which are only used for this during the cross-validation
+gpb.tuning.set.gp.model.params <- function(gp_model, gp_model_params) {
+  if (length(gp_model_params) == 0L) {
+    return(list())
+  }
+  private <- gp_model$.__enclos_env__$private
+  previous_values <- mget(names(gp_model_params), envir = private)
+  list2env(gp_model_params, envir = private)
+  return(previous_values)
 }
 
 # Adds the parameters that make the score of a parameter combination reproducible, unless they are given by the user
@@ -101,11 +166,12 @@ gpb.tuning.record.higher.better <- function(record) {
 
 # Runs cross-validation for one parameter combination and returns the best score, the corresponding
 # number of boosting iterations, the name of the metric, and whether higher scores are better (NULL if this is
-# not known since the cross-validation has failed). If 'cv_seed' is given, the folds are generated
-# with this seed in every trial, and the state of the random number generator is restored afterwards so
-# that the random numbers of the optimizer are not affected
-gpb.tuning.cv.score <- function(params, data, gp_model, nrounds, early_stopping_rounds, folds, nfold,
-                                metric, eval, cv_seed, verbose_cv, use_gp_model_for_validation,
+# not known since the cross-validation has failed). 'params' are the parameters of the booster, and 'gp_model_params'
+# are parameters of the GP model that replace those of 'gp_model' in the GP models of the folds. If 'cv_seed' is
+# given, the folds are generated with this seed in every trial, and the state of the random number generator is
+# restored afterwards so that the random numbers of the optimizer are not affected
+gpb.tuning.cv.score <- function(params, data, gp_model, gp_model_params, nrounds, early_stopping_rounds, folds,
+                                nfold, metric, eval, cv_seed, verbose_cv, use_gp_model_for_validation,
                                 train_gp_model_cov_pars, categorical_feature, callbacks = list(), ...) {
   if (!is.null(cv_seed)) {
     if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
@@ -114,6 +180,8 @@ gpb.tuning.cv.score <- function(params, data, gp_model, nrounds, early_stopping_
     }
     set.seed(cv_seed)
   }
+  previous_gp_model_params <- gpb.tuning.set.gp.model.params(gp_model, gp_model_params)
+  on.exit(gpb.tuning.set.gp.model.params(gp_model, previous_gp_model_params), add = TRUE)
   record <- new.env(parent = emptyenv())
   cvbst <- gpb.cv(data = data, gp_model = gp_model, params = params, nrounds = nrounds,
                   early_stopping_rounds = early_stopping_rounds, folds = folds, nfold = nfold,
@@ -161,17 +229,29 @@ gpb.tuning.check.packages <- function(packages, fun_name) {
 #' @description Function for choosing tuning parameters using Bayesian optimization (model-based optimization)
 #' as implemented in the \code{mbo} function of the 'mlrMBO' package, using cross-validation or validation data sets.
 #' With the default settings of 'mlrMBO', the surrogate model is a Gaussian process (kriging) if all parameters
-#' in the search space are numeric and a random forest if the search space contains the logical parameter
-#' \code{line_search_step_length}, and the next parameter combination is chosen with a (lower) confidence bound.
+#' in the search space are numeric and a random forest if the search space contains a logical parameter, such as
+#' \code{line_search_step_length}, or a categorical parameter, such as \code{cov_function}, and the next parameter
+#' combination is chosen with a (lower) confidence bound.
 #' This function requires the packages 'mlrMBO', 'ParamHelpers', and 'smoof', and, for the default surrogate models
 #' of 'mlrMBO', the packages 'DiceKriging' and 'rgenoud' (Gaussian process) and 'randomForest'
 #' (random forest). For an approximation of SMAC, see \code{\link{gpb.tune.pars.rf.bayesian.optimization}}.
-#' @param search_space \code{list} with ranges for every parameter over which a search is done.
-#' The format for every entry of the list must be "parameter_name" = c(lower, upper).
+#' @param search_space \code{list} with the range or the set of values for every parameter over which a search is done.
+#' Every entry of the list is either "parameter_name" = c(lower, upper) for a range or
+#' "parameter_name" = list(values = c(value_1, value_2, ...)) for a set of values. A set of numbers is searched as
+#' the index of a value, i.e., as a numeric parameter, and other sets are logical or categorical.
 #' The parameters 'learning_rate', 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', 'lambda_l2',
 #' 'num_leaves', 'min_data_in_leaf', and 'max_bin' (and their aliases) are searched on a logarithmic scale,
 #' all other parameters on a linear scale. A lower bound of 0 is replaced by 1e-8 for 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', and 'lambda_l2' and by 1 for 'min_data_in_leaf'.
-#' A parameter with lower = upper is held fixed at this value.
+#' A parameter with lower = upper or with a single value is held fixed at this value.
+#' The two values of 'line_search_step_length' can also be given as c(TRUE, FALSE).
+#' Besides parameters of the tree-boosting part, \code{search_space} can contain the parameters 'cov_fct_shape',
+#' 'cov_fct_order', and 'cov_function' of the GP model, e.g., "cov_fct_shape" = list(values = c(0.5, 1.5, 2.5)) for
+#' the smoothness of a Matern covariance function. 'cov_fct_shape' can also be given as a range, e.g., c(0.5, 2.5),
+#' but a smoothness other than 0.5, 1.5, and 2.5 requires Bessel functions, which are slower to evaluate and not
+#' provided by all compilers (e.g., clang on macOS, where such trials fail). 'cov_function' can only be given as a
+#' set of values. In every trial, the GP models of the cross-validation folds are constructed with the values of
+#' these parameters and with all other settings of \code{gp_model}. \code{gp_model} keeps its own values of these
+#' parameters.
 #' See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
 #' @param n_iter Number of sequential Bayesian optimization steps after the initial design. The initial design is
 #' the default of 'mlrMBO', a Latin hypercube design with 4 d parameter combinations, where d is the number of
@@ -186,6 +266,8 @@ gpb.tuning.check.packages <- function(packages, fun_name) {
 #' @return         A \code{list} with the best parameter combination and score
 #' The list has the following format:
 #'  list("best_params" = best_params, "best_iter" = best_iter, "best_score" = best_score)
+#'  \code{best_params} also contains the chosen values of the parameters of the GP model in \code{search_space}.
+#'  They are arguments of \code{GPModel} and not parameters of the booster.
 #' @details The random numbers of the optimization are drawn from the random number generator of R.
 #' If \code{cv_seed} is given, \code{set.seed(cv_seed)} is called at the beginning, and the cross-validation folds
 #' are the same in every trial. A parameter combination for which the cross-validation fails or gives a score that
@@ -262,6 +344,7 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
   fun_name <- "gpb.tune.pars.bayesian.optimization"
   gpb.tuning.check.packages(c("mlrMBO", "ParamHelpers", "smoof"), fun_name = fun_name)
   parsed_search_space <- gpb.tuning.parse.search.space(search_space, fun_name = fun_name)
+  gpb.tuning.check.gp.model.params(parsed_search_space, gp_model = gp_model, fun_name = fun_name)
   if (!is.numeric(n_iter) || length(n_iter) != 1L || n_iter <= 0) {
     stop(fun_name, ": 'n_iter' needs to be a positive integer")
   }
@@ -280,19 +363,29 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
 
   # Parameter set of 'ParamHelpers'. Parameters with a single value are held fixed and not searched: the
   # Gaussian process of 'mlrMBO' does not support a parameter without range, and it would enlarge the initial
-  # design. Parameters on a logarithmic scale are searched as their logarithm with the prefix 'log_'. The parameters
-  # are not combined with c(), since the S3 method c.ParamSet of 'paradox' replaces the one of 'ParamHelpers'
-  # when 'paradox' is loaded afterwards
+  # design. Parameters on a logarithmic scale are searched as their logarithm with the prefix 'log_'. A set of numbers
+  # is searched as the index of a value, so that the Gaussian process can be used if there is no logical or
+  # categorical parameter. The parameters are not combined with c(), since the S3 method c.ParamSet of 'paradox'
+  # replaces the one of 'ParamHelpers' when 'paradox' is loaded afterwards
   fixed_params <- list()
   par_list <- list()
   for (param in names(parsed_search_space)) {
     spec <- parsed_search_space[[param]]
-    if (spec$lower == spec$upper) {
+    if (spec$kind %in% c("logical", "ordinal", "categorical")) {
+      if (length(spec$values) == 1L) {
+        fixed_params[[param]] <- spec$values
+        next
+      }
+    } else if (spec$lower == spec$upper) {
       fixed_params[[param]] <- spec$lower
       next
     }
     if (spec$kind == "logical") {
       new_param <- ParamHelpers::makeLogicalParam(param)
+    } else if (spec$kind == "ordinal") {
+      new_param <- ParamHelpers::makeIntegerParam(param, lower = 1L, upper = length(spec$values))
+    } else if (spec$kind == "categorical") {
+      new_param <- ParamHelpers::makeDiscreteParam(param, values = spec$values)
     } else if (spec$log) {
       new_param <- ParamHelpers::makeNumericParam(paste0("log_", param), lower = log(spec$lower),
                                                   upper = log(spec$upper))
@@ -329,19 +422,23 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
         }
       } else if (parsed_search_space[[param]]$kind == "logical") {
         params_comb[[param]] <- as.logical(params_trial[[param]])
+      } else if (parsed_search_space[[param]]$kind == "ordinal") {
+        params_comb[[param]] <- parsed_search_space[[param]]$values[params_trial[[param]]]
       } else {
         params_comb[[param]] <- params_trial[[param]]
       }
     }
     params_comb <- c(params_comb, fixed_params)[names(parsed_search_space)]
+    params_split <- gpb.tuning.split.gp.model.params(params_comb)
     params_loc <- params
-    params_loc[names(params_comb)] <- params_comb
+    params_loc[names(params_split$booster)] <- params_split$booster
     if (verbose_eval >= 1L) {
       message(paste0("Trial number ", counter_num_comb, " with the parameters: ",
                      gpb.tuning.params.to.string(params_comb)))
     }
     cv_result <- tryCatch(
-      gpb.tuning.cv.score(params = params_loc, data = data, gp_model = gp_model, nrounds = nrounds,
+      gpb.tuning.cv.score(params = params_loc, data = data, gp_model = gp_model,
+                          gp_model_params = params_split$gp_model, nrounds = nrounds,
                           early_stopping_rounds = early_stopping_rounds, folds = folds, nfold = nfold,
                           metric = metric, eval = eval, cv_seed = cv_seed, verbose_cv = verbose_cv,
                           use_gp_model_for_validation = use_gp_model_for_validation,
@@ -445,12 +542,24 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
 #' of total variance for the uncertainty), not the random forest of SMAC3 with 10 trees.
 #' In a comparison of tuning methods for tree-boosting (Koster and Sigrist, 2026), SMAC performed best on average.
 #' This function requires the packages 'mlr3mbo', 'mlr3learners', 'ranger', 'bbotk', 'paradox', and 'lgr'.
-#' @param search_space \code{list} with ranges for every parameter over which a search is done.
-#' The format for every entry of the list must be "parameter_name" = c(lower, upper).
+#' @param search_space \code{list} with the range or the set of values for every parameter over which a search is done.
+#' Every entry of the list is either "parameter_name" = c(lower, upper) for a range or
+#' "parameter_name" = list(values = c(value_1, value_2, ...)) for a set of values. A set of numbers is searched as
+#' the index of a value, so that the random forest uses the order of the values, and other sets are logical or
+#' categorical.
 #' The parameters 'learning_rate', 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', 'lambda_l2',
 #' 'num_leaves', 'min_data_in_leaf', and 'max_bin' (and their aliases) are searched on a logarithmic scale,
 #' all other parameters on a linear scale. A lower bound of 0 is replaced by 1e-8 for 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', and 'lambda_l2' and by 1 for 'min_data_in_leaf'.
-#' A parameter with lower = upper is held fixed at this value.
+#' A parameter with lower = upper or with a single value is held fixed at this value.
+#' The two values of 'line_search_step_length' can also be given as c(TRUE, FALSE).
+#' Besides parameters of the tree-boosting part, \code{search_space} can contain the parameters 'cov_fct_shape',
+#' 'cov_fct_order', and 'cov_function' of the GP model, e.g., "cov_fct_shape" = list(values = c(0.5, 1.5, 2.5)) for
+#' the smoothness of a Matern covariance function. 'cov_fct_shape' can also be given as a range, e.g., c(0.5, 2.5),
+#' but a smoothness other than 0.5, 1.5, and 2.5 requires Bessel functions, which are slower to evaluate and not
+#' provided by all compilers (e.g., clang on macOS, where such trials fail). 'cov_function' can only be given as a
+#' set of values. In every trial, the GP models of the cross-validation folds are constructed with the values of
+#' these parameters and with all other settings of \code{gp_model}. \code{gp_model} keeps its own values of these
+#' parameters.
 #' See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
 #' @param n_trials Number of parameter combinations that are evaluated, including the initial design
 #' @param params \code{list} with other parameters not included in \code{search_space}
@@ -464,6 +573,8 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
 #' @return         A \code{list} with the best parameter combination and score
 #' The list has the following format:
 #'  list("best_params" = best_params, "best_iter" = best_iter, "best_score" = best_score)
+#'  \code{best_params} also contains the chosen values of the parameters of the GP model in \code{search_space}.
+#'  They are arguments of \code{GPModel} and not parameters of the booster.
 #' @details The random numbers of the optimization are drawn from the random number generator of R.
 #' If \code{cv_seed} is given, \code{set.seed(cv_seed)} is called at the beginning, and the cross-validation folds
 #' are the same in every trial. A parameter combination for which the cross-validation fails or gives a score that
@@ -550,6 +661,7 @@ gpb.tune.pars.rf.bayesian.optimization <- function(search_space
   gpb.tuning.check.packages(c("mlr3mbo", "mlr3learners", "ranger", "bbotk", "paradox", "lgr"),
                             fun_name = fun_name)
   parsed_search_space <- gpb.tuning.parse.search.space(search_space, fun_name = fun_name)
+  gpb.tuning.check.gp.model.params(parsed_search_space, gp_model = gp_model, fun_name = fun_name)
   if (!is.numeric(n_trials) || length(n_trials) != 1L || n_trials < 1) {
     stop(fun_name, ": 'n_trials' needs to be a positive integer")
   }
@@ -567,19 +679,33 @@ gpb.tune.pars.rf.bayesian.optimization <- function(search_space
   # cost 'score_for_optimizer', which is the negative score if higher scores are better
   higher_better <- NULL
 
-  # Search space of 'paradox'. Parameters with a single value are held fixed and not searched
+  # Search space of 'paradox'. Parameters with a single value are held fixed and not searched. A set of numbers is
+  # searched as the index of a value, which the transformation of the parameter replaces by the value
   fixed_params <- list()
   domain_params <- list()
   for (param in names(parsed_search_space)) {
     spec <- parsed_search_space[[param]]
-    if (spec$lower == spec$upper) {
+    if (spec$kind %in% c("logical", "ordinal", "categorical")) {
+      if (length(spec$values) == 1L) {
+        fixed_params[[param]] <- spec$values
+      } else if (spec$kind == "logical") {
+        domain_params[[param]] <- paradox::p_lgl()
+      } else if (spec$kind == "ordinal") {
+        # local() so that the transformation keeps the values of this parameter and not of the last 'spec'
+        domain_params[[param]] <- paradox::p_int(lower = 1L, upper = length(spec$values),
+                                                 trafo = local({
+                                                   values <- spec$values
+                                                   function(x) values[x]
+                                                 }))
+      } else {
+        domain_params[[param]] <- paradox::p_fct(levels = spec$values)
+      }
+    } else if (spec$lower == spec$upper) {
       fixed_params[[param]] <- spec$lower
     } else if (spec$kind == "float") {
       domain_params[[param]] <- paradox::p_dbl(lower = spec$lower, upper = spec$upper, logscale = spec$log)
-    } else if (spec$kind == "int") {
-      domain_params[[param]] <- paradox::p_int(lower = spec$lower, upper = spec$upper, logscale = spec$log)
     } else {
-      domain_params[[param]] <- paradox::p_lgl()
+      domain_params[[param]] <- paradox::p_int(lower = spec$lower, upper = spec$upper, logscale = spec$log)
     }
   }
   if (length(domain_params) == 0L) {
@@ -592,14 +718,16 @@ gpb.tune.pars.rf.bayesian.optimization <- function(search_space
   counter_num_comb <- 1L
   objective_fun <- function(xs) {
     params_comb <- c(xs, fixed_params)[names(parsed_search_space)]
+    params_split <- gpb.tuning.split.gp.model.params(params_comb)
     params_loc <- params
-    params_loc[names(params_comb)] <- params_comb
+    params_loc[names(params_split$booster)] <- params_split$booster
     if (verbose_eval >= 1L) {
       message(paste0("Trial number ", counter_num_comb, " of ", n_trials, " with the parameters: ",
                      gpb.tuning.params.to.string(params_comb)))
     }
     cv_result <- tryCatch(
-      gpb.tuning.cv.score(params = params_loc, data = data, gp_model = gp_model, nrounds = nrounds,
+      gpb.tuning.cv.score(params = params_loc, data = data, gp_model = gp_model,
+                          gp_model_params = params_split$gp_model, nrounds = nrounds,
                           early_stopping_rounds = early_stopping_rounds, folds = folds, nfold = nfold,
                           metric = metric, eval = eval, cv_seed = cv_seed, verbose_cv = verbose_cv,
                           use_gp_model_for_validation = use_gp_model_for_validation,

@@ -591,9 +591,45 @@ plt.show()
 """
 Carefully choosing tuning parameters is important.
 See the above demo code for grouped random effects on how this can be done.
-You just have to replace the gp_model. E.g.,    
+You just have to replace the gp_model. E.g.,
 gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5, likelihood=likelihood)
+In addition, the covariance function 'cov_function' and the smoothness 'cov_fct_shape' of a Matern covariance
+function can be chosen together with the tuning parameters of the tree-boosting part, as shown in the following for SMAC
 """
+search_space = { 'learning_rate': [0.001, 10],
+                'min_data_in_leaf': [1, 1000],
+                'max_depth': [-1,-1],
+                'num_leaves': [2, 1024],
+                'lambda_l2': [0, 100],
+                'max_bin': [63, np.min([10000,ntrain])],
+                'feature_fraction': [0.5, 1],
+                'line_search_step_length': [True, False],
+                'cov_function': {'values': ['matern', 'gaussian']}, # a set of values instead of a range [lower, upper]
+                'cov_fct_shape': {'values': [0.5, 1.5, 2.5]} }
+# 'gaussian' is the limit of 'matern' for an infinite smoothness and ignores 'cov_fct_shape'.
+# 'cov_fct_shape' can also be a continuous range, e.g., 'cov_fct_shape': [0.5, 2.5], but a smoothness other than
+#   0.5, 1.5, and 2.5 requires Bessel functions, which are slower to evaluate and not provided by all compilers
+#   (e.g., clang on macOS)
+# In every trial, the GP models of the cross-validation folds use the covariance function and the smoothness
+#   of the trial and all other settings of 'gp_model' (e.g., the Vecchia approximation)
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function="matern", cov_fct_shape=1.5,
+                       likelihood=likelihood, gp_approx="vecchia")
+opt_params = gpb.tune_pars_SMAC(search_space=search_space, n_trials=100,
+                                X=X_train, y=y_train, gp_model=gp_model,
+                                max_num_boost_round=1000, early_stopping_rounds=20,
+                                nfold=4, metric="test_neg_log_likelihood",
+                                cv_seed=4, smac_seed=1, verbose_eval=1)
+print("Best parameters: " + str(opt_params['best_params']))
+print("Best number of iterations: " + str(opt_params['best_iter']))
+print("Best score: " + str(opt_params['best_score']))
+# The chosen covariance function and smoothness are parameters of the GP model and not of the booster
+best_params = dict(opt_params['best_params'])
+cov_function = best_params.pop('cov_function')
+cov_fct_shape = best_params.pop('cov_fct_shape')
+gp_model = gpb.GPModel(gp_coords=coords_train, cov_function=cov_function, cov_fct_shape=cov_fct_shape,
+                       likelihood=likelihood, gp_approx="vecchia")
+bst = gpb.train(params=best_params, train_set=gpb.Dataset(X_train, y_train), gp_model=gp_model,
+                num_boost_round=opt_params['best_iter'])
 
 #--------------------Model interpretation----------------
 """

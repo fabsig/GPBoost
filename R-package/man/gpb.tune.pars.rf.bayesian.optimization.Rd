@@ -25,12 +25,24 @@ gpb.tune.pars.rf.bayesian.optimization(
 )
 }
 \arguments{
-\item{search_space}{\code{list} with ranges for every parameter over which a search is done.
-The format for every entry of the list must be "parameter_name" = c(lower, upper).
+\item{search_space}{\code{list} with the range or the set of values for every parameter over which a search is done.
+Every entry of the list is either "parameter_name" = c(lower, upper) for a range or
+"parameter_name" = list(values = c(value_1, value_2, ...)) for a set of values. A set of numbers is searched as
+the index of a value, so that the random forest uses the order of the values, and other sets are logical or
+categorical.
 The parameters 'learning_rate', 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', 'lambda_l2',
 'num_leaves', 'min_data_in_leaf', and 'max_bin' (and their aliases) are searched on a logarithmic scale,
 all other parameters on a linear scale. A lower bound of 0 is replaced by 1e-8 for 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', and 'lambda_l2' and by 1 for 'min_data_in_leaf'.
-A parameter with lower = upper is held fixed at this value.
+A parameter with lower = upper or with a single value is held fixed at this value.
+The two values of 'line_search_step_length' can also be given as c(TRUE, FALSE).
+Besides parameters of the tree-boosting part, \code{search_space} can contain the parameters 'cov_fct_shape',
+'cov_fct_order', and 'cov_function' of the GP model, e.g., "cov_fct_shape" = list(values = c(0.5, 1.5, 2.5)) for
+the smoothness of a Matern covariance function. 'cov_fct_shape' can also be given as a range, e.g., c(0.5, 2.5),
+but a smoothness other than 0.5, 1.5, and 2.5 requires Bessel functions, which are slower to evaluate and not
+provided by all compilers (e.g., clang on macOS, where such trials fail). 'cov_function' can only be given as a
+set of values. In every trial, the GP models of the cross-validation folds are constructed with the values of
+these parameters and with all other settings of \code{gp_model}. \code{gp_model} keeps its own values of these
+parameters.
 See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part}
 
 \item{n_trials}{Number of parameter combinations that are evaluated, including the initial design}
@@ -142,6 +154,8 @@ names or an integer vector with the indices of the features (e.g.
 A \code{list} with the best parameter combination and score
 The list has the following format:
  list("best_params" = best_params, "best_iter" = best_iter, "best_score" = best_score)
+ \code{best_params} also contains the chosen values of the parameters of the GP model in \code{search_space}.
+ They are arguments of \code{GPModel} and not parameters of the booster.
 }
 \description{
 Function for choosing tuning parameters using an approximation of SMAC (Sequential Model-based

@@ -7,8 +7,10 @@ Modified work Copyright (c) 2020 - 2024 Fabio Sigrist. All rights reserved.
 Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 """
 import collections
+import contextlib
 import copy
 import logging
+import numbers
 import shutil
 import tempfile
 import zlib
@@ -956,6 +958,12 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
     ----------
     param_grid : dict
         Candidate parameters defining the grid over which a search is done.
+        Besides parameters of the tree-boosting part, 'param_grid' can contain the parameters 'cov_fct_shape',
+        'cov_fct_order', and 'cov_function' of the GP model, e.g., 'cov_fct_shape': [0.5, 1.5, 2.5] for the smoothness
+        of a Matern covariance function. A smoothness other than 0.5, 1.5, and 2.5 requires Bessel functions, which
+        are slower to evaluate and not provided by all compilers (e.g., clang on macOS). For every parameter
+        combination, the GP models of the cross-validation folds are constructed with the values of these parameters
+        and with all other settings of 'gp_model'. 'gp_model' keeps its own values of these parameters.
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     train_set : Dataset
         Data to be trained on.
@@ -1081,8 +1089,10 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
     return : dict
         Dictionary with the best parameter combination and score
         The dictionary has the following format:
-        {'best_params': best_params, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
+        {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score}
         If return_all_combinations is True, then the dictionary contains an additional entry 'all_combinations'
+        'best_params' also contains the chosen values of the parameters of the GP model in 'param_grid'. They are
+        arguments of 'GPModel()' and not parameters of the booster.
 
     Notes
     -----
@@ -1152,6 +1162,7 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
     # Check correct format
     if not isinstance(param_grid, dict):
         raise ValueError("param_grid needs to be a dict")
+    _check_tuning_gp_model_params(param_grid, gp_model)
     if verbose_eval is None:
         verbose_eval = 0
     else:
@@ -1163,8 +1174,11 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
         params = copy.deepcopy(params)
     param_grid = copy.deepcopy(param_grid)
     for param in param_grid:
-        if is_numeric(param_grid[param]):
+        if is_numeric(param_grid[param]) or isinstance(param_grid[param], str):
             param_grid[param] = [param_grid[param]]
+        if isinstance(param_grid[param], list) and all(isinstance(value, str) for value in param_grid[param]):
+            # '_format_check_1D_data()' accepts lists of numbers only, e.g., not the names in 'cov_function'
+            param_grid[param] = np.array(param_grid[param])
         param_grid[param] = _format_check_1D_data(param_grid[param],
                                                   data_name=param, check_data_type=False,
                                                   check_must_be_int=False, convert_to_type=None)
@@ -1197,8 +1211,8 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
 
     for param_comb_number in try_param_combs:
         param_comb = _get_param_combination(param_comb_number=param_comb_number, param_grid=param_grid)
-        for param in param_comb:
-            params[param] = param_comb[param]
+        booster_params, gp_model_params = _split_gp_model_params(param_comb)
+        params.update(booster_params)
         if verbose_eval >= 1:
             print("Trying parameter combination " + str(counter_num_comb) +
                   " of " + str(len(try_param_combs)) + ": " + str(param_comb))
@@ -1211,15 +1225,16 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
             higher_better_record = []
             callbacks_comb = list(callbacks) if callbacks is not None else []
             callbacks_comb.append(_record_first_metric_higher_better(higher_better_record))
-            cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round, gp_model=gp_model,
-                       use_gp_model_for_validation=use_gp_model_for_validation,
-                       train_gp_model_cov_pars=train_gp_model_cov_pars,
-                       folds=folds, nfold=nfold, stratified=stratified, shuffle=shuffle,
-                       metric=metric, fobj=fobj, feval=feval, init_model=init_model,
-                       feature_name=feature_name, categorical_feature=categorical_feature,
-                       early_stopping_rounds=early_stopping_rounds, fpreproc=fpreproc,
-                       verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks_comb,
-                       eval_train_metric=False, return_cvbooster=False)
+            with _gp_model_params_set(gp_model, gp_model_params):
+                cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round, gp_model=gp_model,
+                           use_gp_model_for_validation=use_gp_model_for_validation,
+                           train_gp_model_cov_pars=train_gp_model_cov_pars,
+                           folds=folds, nfold=nfold, stratified=stratified, shuffle=shuffle,
+                           metric=metric, fobj=fobj, feval=feval, init_model=init_model,
+                           feature_name=feature_name, categorical_feature=categorical_feature,
+                           early_stopping_rounds=early_stopping_rounds, fpreproc=fpreproc,
+                           verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks_comb,
+                           eval_train_metric=False, return_cvbooster=False)
             higher_better = higher_better_record[0]
             scores = cvbst[next(iter(cvbst))]
             if higher_better:
@@ -1272,52 +1287,113 @@ _TUNING_PARAMS_FLOAT_LOG_ZERO = ['lambda_l2', 'reg_lambda', 'lambda',
 _TUNING_PARAMS_FLOAT = ['bagging_fraction', 'sub_row', 'subsample', 'bagging',
                         'feature_fraction', 'sub_feature', 'colsample_bytree',
                         'cat_l2',
-                        'cat_smooth']
+                        'cat_smooth',
+                        'cov_fct_shape']
 _TUNING_PARAMS_INT_LOG = ['num_leaves', 'num_leaf', 'max_leaves', 'max_leaf',
                           'max_bin']
 # Integer parameters on a logarithmic scale for which 0 is a valid value. A lower bound of 0 is replaced by 1
 _TUNING_PARAMS_INT_LOG_ZERO = ['min_data_in_leaf', 'min_data_per_leaf', 'min_data', 'min_child_samples']
-_TUNING_PARAMS_INT = ['max_depth']
-_TUNING_PARAMS_CATEGORICAL = ['line_search_step_length']
+_TUNING_PARAMS_INT = ['max_depth', 'cov_fct_order']
+# Parameters whose two values can also be given as a list [value_1, value_2] instead of {'values': [...]}
+_TUNING_PARAMS_TWO_VALUES = ['line_search_step_length']
+# Parameters that can only be given as a set of values
+_TUNING_PARAMS_VALUES_ONLY = ['cov_function']
+# Parameters of the GP model. The GP models of the cross-validation folds are constructed with the values of a
+# parameter combination and with all other settings of 'gp_model'
+_TUNING_GP_MODEL_PARAMS = ['cov_fct_shape', 'cov_fct_order', 'cov_function']
 
 
 def _parse_tuning_search_space(search_space):
-    """Determine the type, the bounds, and the scale of every parameter in a search space for tuning parameters.
+    """Determine the type, the range or the values, and the scale of every parameter in a search space for tuning
+    parameters.
 
-    Returns a dict that maps every parameter to a tuple (kind, lower, upper, log), where kind is 'float', 'int',
-    or 'categorical'. For a categorical parameter, lower and upper are its two values.
+    Returns a dict that maps every parameter to a dict with the entry 'kind'. A range [lower, upper] has the kind
+    'float' or 'int' and the entries 'lower', 'upper', and 'log' (logarithmic scale). A set of values
+    {'values': [...]} has the kind 'ordinal' if all values are numbers, which are then sorted, and 'categorical'
+    otherwise, and the entry 'values'.
     """
     if not isinstance(search_space, dict):
         raise ValueError("'search_space' must be a dictionary")
+    known_params = (_TUNING_PARAMS_FLOAT_LOG + _TUNING_PARAMS_FLOAT_LOG_ZERO + _TUNING_PARAMS_FLOAT +
+                    _TUNING_PARAMS_INT_LOG + _TUNING_PARAMS_INT_LOG_ZERO + _TUNING_PARAMS_INT +
+                    _TUNING_PARAMS_TWO_VALUES + _TUNING_PARAMS_VALUES_ONLY)
     parsed = {}
-    for param, bounds in search_space.items():
-        if len(bounds) != 2:
+    for param, spec in search_space.items():
+        if param not in known_params:
+            raise ValueError(f"Unknown parameter '{param}'")
+        if isinstance(spec, dict):
+            if list(spec) != ['values']:
+                raise ValueError(f"search_space['{param}'] must be a list [lower, upper] or a dictionary "
+                                 "{'values': [...]} with a list of values")
+            values = [value.item() if isinstance(value, np.generic) else value for value in spec['values']]
+            if len(values) == 0:
+                raise ValueError(f"search_space['{param}']['values'] must contain at least one value")
+            if len(set(values)) != len(values):
+                raise ValueError(f"search_space['{param}']['values'] must not contain a value twice")
+            if all(isinstance(value, numbers.Real) and not isinstance(value, bool) for value in values):
+                parsed[param] = {'kind': 'ordinal', 'values': sorted(values)}
+            else:
+                parsed[param] = {'kind': 'categorical', 'values': values}
+            continue
+        if param in _TUNING_PARAMS_VALUES_ONLY:
+            raise ValueError(f"search_space['{param}'] must be a set of values {{'values': [...]}}")
+        if len(spec) != 2:
             raise ValueError(f"search_space['{param}'] must have length 2")
-        lower, upper = bounds
+        lower, upper = spec
+        if param in _TUNING_PARAMS_TWO_VALUES:
+            parsed[param] = {'kind': 'categorical', 'values': [lower] if lower == upper else [lower, upper]}
+            continue
         if param in _TUNING_PARAMS_FLOAT_LOG_ZERO + _TUNING_PARAMS_INT_LOG_ZERO:
             if lower < 0 or upper <= 0:
                 raise ValueError(f"search_space['{param}'] must have a lower bound >= 0 and an upper bound > 0")
             if param in _TUNING_PARAMS_FLOAT_LOG_ZERO:
-                parsed[param] = ('float', max(lower, 1e-8), upper, True)
+                parsed[param] = {'kind': 'float', 'lower': max(lower, 1e-8), 'upper': upper, 'log': True}
             else:
-                parsed[param] = ('int', max(lower, 1), upper, True)
+                parsed[param] = {'kind': 'int', 'lower': max(lower, 1), 'upper': upper, 'log': True}
         elif param in _TUNING_PARAMS_FLOAT_LOG + _TUNING_PARAMS_INT_LOG:
             if lower <= 0 or upper <= 0:
                 raise ValueError(f"search_space['{param}'] must have positive bounds since '{param}' is "
                                  "searched on a logarithmic scale")
-            parsed[param] = ('float' if param in _TUNING_PARAMS_FLOAT_LOG else 'int', lower, upper, True)
+            kind = 'float' if param in _TUNING_PARAMS_FLOAT_LOG else 'int'
+            parsed[param] = {'kind': kind, 'lower': lower, 'upper': upper, 'log': True}
         elif param in _TUNING_PARAMS_FLOAT:
-            parsed[param] = ('float', lower, upper, False)
-        elif param in _TUNING_PARAMS_INT:
-            parsed[param] = ('int', lower, upper, False)
-        elif param in _TUNING_PARAMS_CATEGORICAL:
-            parsed[param] = ('categorical', lower, upper, False)
+            parsed[param] = {'kind': 'float', 'lower': lower, 'upper': upper, 'log': False}
         else:
-            raise ValueError(f"Unknown parameter '{param}'")
-        kind, lower, upper, _ = parsed[param]
-        if kind != 'categorical' and lower > upper:
+            parsed[param] = {'kind': 'int', 'lower': lower, 'upper': upper, 'log': False}
+        if parsed[param]['lower'] > parsed[param]['upper']:
             raise ValueError(f"search_space['{param}'] must have a lower bound that is not larger than the upper bound")
     return parsed
+
+
+def _check_tuning_gp_model_params(params, gp_model):
+    """Raise an error if parameters of the GP model are tuned without a GP model."""
+    for param in params:
+        if param in _TUNING_GP_MODEL_PARAMS and gp_model is None:
+            raise ValueError(f"'{param}' is a parameter of the GP model and can only be tuned with a 'gp_model'")
+
+
+def _split_gp_model_params(params):
+    """Split a parameter combination into the parameters of the booster and those of the GP model."""
+    booster_params = {param: value for param, value in params.items() if param not in _TUNING_GP_MODEL_PARAMS}
+    gp_model_params = {param: value for param, value in params.items() if param in _TUNING_GP_MODEL_PARAMS}
+    return booster_params, gp_model_params
+
+
+@contextlib.contextmanager
+def _gp_model_params_set(gp_model, gp_model_params):
+    """Set parameters of 'gp_model' and restore their values afterwards.
+
+    'cv()' constructs the GP models of the folds with the attributes of 'gp_model', which are only used for this
+    during the cross-validation.
+    """
+    original_values = {param: getattr(gp_model, param) for param in gp_model_params}
+    for param, value in gp_model_params.items():
+        setattr(gp_model, param, value)
+    try:
+        yield
+    finally:
+        for param, value in original_values.items():
+            setattr(gp_model, param, value)
 
 
 def _tuning_deterministic_params(params, *other_params):
@@ -1385,24 +1461,27 @@ def _record_first_metric_higher_better(record):
     return _callback
 
 
-def _tuning_cv_score(params, X, y, gp_model, max_num_boost_round, early_stopping_rounds, folds, nfold, cv_seed,
-                     metric, feval, verbose_eval_cv, use_gp_model_for_validation, train_gp_model_cov_pars,
-                     categorical_feature):
+def _tuning_cv_score(params, X, y, gp_model, gp_model_params, max_num_boost_round, early_stopping_rounds, folds,
+                     nfold, cv_seed, metric, feval, verbose_eval_cv, use_gp_model_for_validation,
+                     train_gp_model_cov_pars, categorical_feature):
     """Run cross-validation for one parameter combination.
 
-    Returns the best score, its number of iterations, and whether higher scores are better.
+    'params' are the parameters of the booster, and 'gp_model_params' are parameters of the GP model that replace those
+    of 'gp_model' in the GP models of the folds. Returns the best score, its number of iterations, and whether higher
+    scores are better.
     """
     data_bst = Dataset(data=X, label=y)
     higher_better = []
-    cvbst = cv(params=params, train_set=data_bst, gp_model=gp_model,
-               use_gp_model_for_validation=use_gp_model_for_validation,
-               train_gp_model_cov_pars=train_gp_model_cov_pars,
-               num_boost_round=max_num_boost_round,
-               early_stopping_rounds=early_stopping_rounds,
-               folds=folds, nfold=nfold, verbose_eval=verbose_eval_cv, show_stdv=False,
-               seed=cv_seed, metric=metric, feval=feval,
-               categorical_feature=categorical_feature,
-               callbacks=[_record_first_metric_higher_better(higher_better)])
+    with _gp_model_params_set(gp_model, gp_model_params):
+        cvbst = cv(params=params, train_set=data_bst, gp_model=gp_model,
+                   use_gp_model_for_validation=use_gp_model_for_validation,
+                   train_gp_model_cov_pars=train_gp_model_cov_pars,
+                   num_boost_round=max_num_boost_round,
+                   early_stopping_rounds=early_stopping_rounds,
+                   folds=folds, nfold=nfold, verbose_eval=verbose_eval_cv, show_stdv=False,
+                   seed=cv_seed, metric=metric, feval=feval,
+                   categorical_feature=categorical_feature,
+                   callbacks=[_record_first_metric_higher_better(higher_better)])
     scores = cvbst[list(cvbst.keys())[0]]
     if higher_better[0]:
         return np.max(scores), int(np.argmax(scores)) + 1, True
@@ -1421,12 +1500,21 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
     Parameters
     ----------
     search_space : dict
-        The range for every parameter over which a search is done.
-        The format for every entry of the dict must be
-        'parameter_name': [lower, upper].
+        The range or the set of values for every parameter over which a search is done.
+        Every entry of the dict is either 'parameter_name': [lower, upper] for a range or
+        'parameter_name': {'values': [value_1, value_2, ...]} for a set of values.
         The parameters 'learning_rate', 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', 'lambda_l2',
         'num_leaves', 'min_data_in_leaf', and 'max_bin' (and their aliases) are sampled on a logarithmic scale,
         all other parameters on a linear scale. A lower bound of 0 is replaced by 1e-8 for 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', and 'lambda_l2' and by 1 for 'min_data_in_leaf'.
+        The two values of 'line_search_step_length' can also be given as a list [True, False].
+        Besides parameters of the tree-boosting part, 'search_space' can contain the parameters 'cov_fct_shape',
+        'cov_fct_order', and 'cov_function' of the GP model, e.g., 'cov_fct_shape': {'values': [0.5, 1.5, 2.5]} for
+        the smoothness of a Matern covariance function. 'cov_fct_shape' can also be given as a range, e.g.,
+        [0.5, 2.5], but a smoothness other than 0.5, 1.5, and 2.5 requires Bessel functions, which are slower to
+        evaluate and not provided by all compilers (e.g., clang on macOS, where such trials fail). 'cov_function' can
+        only be given as a set of values. In every trial, the GP models of the cross-validation folds are constructed
+        with the values of these parameters and with all other settings of 'gp_model'. 'gp_model' keeps its own
+        values of these parameters.
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     n_trials: int
         The number of trials for the TPESampler.
@@ -1520,7 +1608,9 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
     return : dict
         Dictionary with the best parameter combination and score
         The dictionary has the following format:
-        {'best_params': best_params, 'best_num_boost_round': best_num_boost_round, 'best_score': best_score}
+        {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score}
+        'best_params' also contains the chosen values of the parameters of the GP model in 'search_space'. They are
+        arguments of 'GPModel()' and not parameters of the booster.
 
     Notes
     -----
@@ -1574,6 +1664,7 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
     if not isinstance(n_trials, int) or n_trials <= 0:
         raise ValueError("'n_trials' must be a positive integer")
     parsed_search_space = _parse_tuning_search_space(search_space)
+    _check_tuning_gp_model_params(parsed_search_space, gp_model)
     folds = _check_tuning_folds(folds, y)
     if params is None:
         params = {}
@@ -1590,14 +1681,15 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
     def objective_opt(trial):
         """Objective function for tuning parameter search with Optuna."""
         nonlocal best_score, best_iter, metric_higher_better
-        params_loc = {}
-        for param, (kind, lower, upper, log) in parsed_search_space.items():
-            if kind == 'float':
-                params_loc[param] = trial.suggest_float(param, lower, upper, log=log)
-            elif kind == 'int':
-                params_loc[param] = trial.suggest_int(param, lower, upper, log=log)
+        params_trial = {}
+        for param, spec in parsed_search_space.items():
+            if spec['kind'] == 'float':
+                params_trial[param] = trial.suggest_float(param, spec['lower'], spec['upper'], log=spec['log'])
+            elif spec['kind'] == 'int':
+                params_trial[param] = trial.suggest_int(param, spec['lower'], spec['upper'], log=spec['log'])
             else:
-                params_loc[param] = trial.suggest_categorical(param, [lower, upper])
+                params_trial[param] = trial.suggest_categorical(param, spec['values'])
+        params_loc, gp_model_params = _split_gp_model_params(params_trial)
         params_loc.update({'verbose': verbose_train})
         params_loc.update(params)
 
@@ -1605,7 +1697,8 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
         cost = float('inf')
         try:
             score, best_iter_trial, metric_higher_better = _tuning_cv_score(
-                params=params_loc, X=X, y=y, gp_model=gp_model, max_num_boost_round=max_num_boost_round,
+                params=params_loc, X=X, y=y, gp_model=gp_model, gp_model_params=gp_model_params,
+                max_num_boost_round=max_num_boost_round,
                 early_stopping_rounds=early_stopping_rounds, folds=folds, nfold=nfold, cv_seed=cv_seed,
                 metric=metric, feval=feval, verbose_eval_cv=verbose_eval_cv,
                 use_gp_model_for_validation=use_gp_model_for_validation,
@@ -1651,13 +1744,23 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
     Parameters
     ----------
     search_space : dict
-        The range for every parameter over which a search is done.
-        The format for every entry of the dict must be
-        'parameter_name': [lower, upper].
+        The range or the set of values for every parameter over which a search is done.
+        Every entry of the dict is either 'parameter_name': [lower, upper] for a range or
+        'parameter_name': {'values': [value_1, value_2, ...]} for a set of values. A set of numbers is ordered, i.e.,
+        the random forest of SMAC uses the order of the values, and other sets are categorical.
         The parameters 'learning_rate', 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', 'lambda_l2',
         'num_leaves', 'min_data_in_leaf', and 'max_bin' (and their aliases) are sampled on a logarithmic scale,
         all other parameters on a linear scale. A lower bound of 0 is replaced by 1e-8 for 'min_gain_to_split', 'min_sum_hessian_in_leaf', 'lambda_l1', and 'lambda_l2' and by 1 for 'min_data_in_leaf'.
-        A parameter with lower = upper is held fixed at this value.
+        A parameter with lower = upper or with a single value is held fixed at this value.
+        The two values of 'line_search_step_length' can also be given as a list [True, False].
+        Besides parameters of the tree-boosting part, 'search_space' can contain the parameters 'cov_fct_shape',
+        'cov_fct_order', and 'cov_function' of the GP model, e.g., 'cov_fct_shape': {'values': [0.5, 1.5, 2.5]} for
+        the smoothness of a Matern covariance function. 'cov_fct_shape' can also be given as a range, e.g.,
+        [0.5, 2.5], but a smoothness other than 0.5, 1.5, and 2.5 requires Bessel functions, which are slower to
+        evaluate and not provided by all compilers (e.g., clang on macOS, where such trials fail). 'cov_function' can
+        only be given as a set of values. In every trial, the GP models of the cross-validation folds are constructed
+        with the values of these parameters and with all other settings of 'gp_model'. 'gp_model' keeps its own
+        values of these parameters.
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     n_trials: int
         The number of parameter combinations that are evaluated, including the initial design. The search stops
@@ -1754,6 +1857,8 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
         Dictionary with the best parameter combination and score
         The dictionary has the following format:
         {'best_params': best_params, 'best_iter': best_num_boost_round, 'best_score': best_score}
+        'best_params' also contains the chosen values of the parameters of the GP model in 'search_space'. They are
+        arguments of 'GPModel()' and not parameters of the booster.
 
     Notes
     -----
@@ -1824,6 +1929,7 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
     if not isinstance(n_trials, int) or n_trials <= 0:
         raise ValueError("'n_trials' must be a positive integer")
     parsed_search_space = _parse_tuning_search_space(search_space)
+    _check_tuning_gp_model_params(parsed_search_space, gp_model)
     folds = _check_tuning_folds(folds, y)
     if params is None:
         params = {}
@@ -1840,15 +1946,18 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
     # Parameters with a single value are held fixed and not searched by SMAC
     fixed_params = {}
     hyperparameters = []
-    for param, (kind, lower, upper, log) in parsed_search_space.items():
-        if lower == upper:
-            fixed_params[param] = lower
-        elif kind == 'float':
-            hyperparameters.append(Float(param, (float(lower), float(upper)), log=log))
-        elif kind == 'int':
-            hyperparameters.append(Integer(param, (int(lower), int(upper)), log=log))
+    for param, spec in parsed_search_space.items():
+        if spec['kind'] in ('ordinal', 'categorical'):
+            if len(spec['values']) == 1:
+                fixed_params[param] = spec['values'][0]
+            else:
+                hyperparameters.append(Categorical(param, spec['values'], ordered=spec['kind'] == 'ordinal'))
+        elif spec['lower'] == spec['upper']:
+            fixed_params[param] = spec['lower']
+        elif spec['kind'] == 'float':
+            hyperparameters.append(Float(param, (float(spec['lower']), float(spec['upper'])), log=spec['log']))
         else:
-            hyperparameters.append(Categorical(param, [lower, upper]))
+            hyperparameters.append(Integer(param, (int(spec['lower']), int(spec['upper'])), log=spec['log']))
     if len(hyperparameters) == 0:
         raise ValueError("'search_space' contains no parameter with two different values")
     configspace = ConfigurationSpace(seed=smac_seed)
@@ -1900,7 +2009,7 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
             params_trial = {param: value.item() if isinstance(value, np.generic) else value
                             for param, value in trial_info.config.items()}
             params_trial.update(fixed_params)
-            params_loc = dict(params_trial)
+            params_loc, gp_model_params = _split_gp_model_params(params_trial)
             params_loc.update({'verbose': verbose_train})
             params_loc.update(params)
             if verbose_eval >= 1:
@@ -1909,7 +2018,8 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
             score = float('nan')
             try:
                 score, best_iter_trial, metric_higher_better = _tuning_cv_score(
-                    params=params_loc, X=X, y=y, gp_model=gp_model, max_num_boost_round=max_num_boost_round,
+                    params=params_loc, X=X, y=y, gp_model=gp_model, gp_model_params=gp_model_params,
+                    max_num_boost_round=max_num_boost_round,
                     early_stopping_rounds=early_stopping_rounds, folds=folds, nfold=nfold, cv_seed=cv_seed,
                     metric=metric, feval=feval, verbose_eval_cv=verbose_eval_cv,
                     use_gp_model_for_validation=use_gp_model_for_validation,

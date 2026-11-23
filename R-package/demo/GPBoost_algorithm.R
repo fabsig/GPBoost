@@ -550,8 +550,47 @@ par(mfrow=c(1,1))
 #--------------------Choosing tuning parameters----------------
 # Carefully choosing tuning parameters is important.
 # See the above demo code for grouped random effects on how this can be done.
-# You just have to replace the gp_model. E.g.,    
+# You just have to replace the gp_model. E.g.,
 # gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5, likelihood = likelihood)
+# In addition, the covariance function 'cov_function' and the smoothness 'cov_fct_shape' of a Matern covariance
+#   function can be chosen together with the tuning parameters of the tree-boosting part, as shown in the following
+#   for the approximation of SMAC
+search_space <- list("learning_rate" = c(0.001, 10),
+                     "min_data_in_leaf" = c(1, 1000),
+                     "max_depth" = c(-1, -1),
+                     "num_leaves" = c(2, 2^10),
+                     "lambda_l2" = c(0, 100),
+                     "max_bin" = c(63, min(ntrain,10000)),
+                     "feature_fraction" = c(0.5, 1),
+                     "line_search_step_length" = c(TRUE, FALSE),
+                     "cov_function" = list(values = c("matern", "gaussian")), # a set of values instead of a range c(lower, upper)
+                     "cov_fct_shape" = list(values = c(0.5, 1.5, 2.5)))
+# 'gaussian' is the limit of 'matern' for an infinite smoothness and ignores 'cov_fct_shape'.
+# 'cov_fct_shape' can also be a continuous range, e.g., "cov_fct_shape" = c(0.5, 2.5), but a smoothness other than
+#   0.5, 1.5, and 2.5 requires Bessel functions, which are slower to evaluate and not provided by all compilers
+#   (e.g., clang on macOS)
+# In every trial, the GP models of the cross-validation folds use the covariance function and the smoothness
+#   of the trial and all other settings of 'gp_model' (e.g., the Vecchia approximation)
+gp_model <- GPModel(gp_coords = coords_train, cov_function = "matern", cov_fct_shape = 1.5,
+                    likelihood = likelihood, gp_approx = "vecchia")
+opt_params <- gpb.tune.pars.rf.bayesian.optimization(search_space = search_space, n_trials = 100,
+                                                     data = gpb.Dataset(data = X_train, label = y_train),
+                                                     gp_model = gp_model, nfold = 4, nrounds = 1000,
+                                                     early_stopping_rounds = 20, metric = "test_neg_log_likelihood",
+                                                     cv_seed = 4, verbose_eval = 1)
+print(paste0("Best parameters: ", paste0(unlist(lapply(seq_along(opt_params$best_params),
+                                                       function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=opt_params$best_params,
+                                                       n=names(opt_params$best_params))), collapse=", ")))
+print(paste0("Best number of iterations: ", opt_params$best_iter))
+print(paste0("Best score: ", round(opt_params$best_score, digits=3)))
+# The chosen covariance function and smoothness are parameters of the GP model and not of the booster
+best_params <- opt_params$best_params
+gp_model <- GPModel(gp_coords = coords_train, cov_function = best_params$cov_function,
+                    cov_fct_shape = best_params$cov_fct_shape, likelihood = likelihood, gp_approx = "vecchia")
+best_params$cov_function <- NULL
+best_params$cov_fct_shape <- NULL
+bst <- gpb.train(data = gpb.Dataset(data = X_train, label = y_train), gp_model = gp_model,
+                 nrounds = opt_params$best_iter, params = best_params, verbose = 0)
 
 #--------------------Model interpretation----------------
 # See the above demo code for grouped random effects on how this can be done.

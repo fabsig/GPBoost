@@ -968,7 +968,13 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #' @name gpb.grid.search.tune.parameters
 #' @title Function for choosing tuning parameters
 #' @description Function that allows for choosing tuning parameters from a grid in a determinstic or random way using cross validation or validation data sets.
-#' @param param_grid \code{list} with candidate parameters defining the grid over which a search is done
+#' @param param_grid \code{list} with candidate parameters defining the grid over which a search is done.
+#' Besides parameters of the tree-boosting part, \code{param_grid} can contain the parameters 'cov_fct_shape',
+#' 'cov_fct_order', and 'cov_function' of the GP model, e.g., "cov_fct_shape" = c(0.5, 1.5, 2.5) for the smoothness
+#' of a Matern covariance function. A smoothness other than 0.5, 1.5, and 2.5 requires Bessel functions, which are
+#' slower to evaluate and not provided by all compilers (e.g., clang on macOS). For every parameter combination, the
+#' GP models of the cross-validation folds are constructed with the values of these parameters and with all other
+#' settings of \code{gp_model}. \code{gp_model} keeps its own values of these parameters
 #' @param params \code{list} with other parameters not included in \code{param_grid}
 #' @param num_try_random \code{integer} with number of random trial on parameter grid. If NULL, a deterministic search is done
 #' @param label Vector of labels, used if \code{data} is not an \code{\link{gpb.Dataset}}
@@ -985,7 +991,9 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #' @return         A \code{list} with the best parameter combination and score
 #' The list has the following format:
 #'  list("best_params" = best_params, "best_iter" = best_iter, "best_score" = best_score)
-#'  If return_all_combinations is TRUE, then the list contains an additional entry 'all_combinations'
+#'  If return_all_combinations is TRUE, then the list contains an additional entry 'all_combinations'.
+#'  \code{best_params} also contains the chosen values of the parameters of the GP model in \code{param_grid}.
+#'  They are arguments of \code{GPModel} and not parameters of the booster.
 #' @details The parameters \code{force_col_wise = TRUE} and \code{deterministic = TRUE} are used unless
 #' \code{params}, \code{param_grid}, or \code{...} contain \code{force_col_wise}, \code{force_row_wise}, or
 #' \code{deterministic}, respectively. Without \code{force_col_wise} and \code{force_row_wise}, the histograms of
@@ -1074,6 +1082,7 @@ gpb.grid.search.tune.parameters <- function(param_grid
   if (!is.list(param_grid)) {
     stop("gpb.grid.search.tune.parameters: param_grid needs to be a list")
   }
+  gpb.tuning.check.gp.model.params(param_grid, gp_model = gp_model, fun_name = "gpb.grid.search.tune.parameters")
   if (is.null(verbose_eval)) {
     verbose_eval = 0
   } else {
@@ -1122,9 +1131,8 @@ gpb.grid.search.tune.parameters <- function(param_grid
   for (param_comb_number in try_param_combs) {
     param_comb = get.param.combination(param_comb_number=param_comb_number,
                                        param_grid=param_grid)
-    for (param in names(param_comb)) {
-      params[[param]] <- param_comb[[param]]
-    }
+    params_split <- gpb.tuning.split.gp.model.params(param_comb)
+    params[names(params_split$booster)] <- params_split$booster
     param_comb_str <- lapply(seq_along(param_comb), function(y, n, i) { paste0(n[[i]],": ", y[[i]]) }, y=param_comb, n=names(param_comb))
     param_comb_str <- paste0(unlist(param_comb_str), collapse=", ")
     if (verbose_eval >= 1L) {
@@ -1136,32 +1144,33 @@ gpb.grid.search.tune.parameters <- function(param_grid
       set.seed(cv_seed)
     }
     record <- new.env(parent = emptyenv())
-    cvbst <- gpb.cv(params = params
-                    , data = data
-                    , gp_model = gp_model
-                    , nrounds = nrounds
-                    , early_stopping_rounds = early_stopping_rounds
-                    , folds = folds
-                    , nfold = nfold
-                    , metric = metric
-                    , use_gp_model_for_validation = use_gp_model_for_validation
-                    , train_gp_model_cov_pars = train_gp_model_cov_pars
-                    , label = label
-                    , weight = weight
-                    , obj = obj
-                    , eval = eval
-                    , verbose = verbose_cv
-                    , record = TRUE
-                    , eval_freq = 1L
-                    , showsd = FALSE
-                    , stratified = stratified
-                    , init_model = init_model
-                    , colnames = colnames
-                    , categorical_feature = categorical_feature
-                    , callbacks = c(callbacks, list(gpb.tuning.record.higher.better(record)))
-                    , delete_boosters_folds = TRUE
-                    , ...
-    )
+    previous_gp_model_params <- gpb.tuning.set.gp.model.params(gp_model, params_split$gp_model)
+    cvbst <- tryCatch(gpb.cv(params = params
+                             , data = data
+                             , gp_model = gp_model
+                             , nrounds = nrounds
+                             , early_stopping_rounds = early_stopping_rounds
+                             , folds = folds
+                             , nfold = nfold
+                             , metric = metric
+                             , use_gp_model_for_validation = use_gp_model_for_validation
+                             , train_gp_model_cov_pars = train_gp_model_cov_pars
+                             , label = label
+                             , weight = weight
+                             , obj = obj
+                             , eval = eval
+                             , verbose = verbose_cv
+                             , record = TRUE
+                             , eval_freq = 1L
+                             , showsd = FALSE
+                             , stratified = stratified
+                             , init_model = init_model
+                             , colnames = colnames
+                             , categorical_feature = categorical_feature
+                             , callbacks = c(callbacks, list(gpb.tuning.record.higher.better(record)))
+                             , delete_boosters_folds = TRUE
+                             , ...
+    ), finally = gpb.tuning.set.gp.model.params(gp_model, previous_gp_model_params))
     if (is.finite(cvbst$best_score)) {
       if (is.na(best_score) || (isTRUE(record$higher_better) && cvbst$best_score > best_score) ||
           (!isTRUE(record$higher_better) && cvbst$best_score < best_score)) {

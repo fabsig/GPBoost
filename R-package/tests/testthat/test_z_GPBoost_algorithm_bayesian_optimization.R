@@ -50,6 +50,30 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_equal(best_params$max_depth, -1)
       expect_true(is.logical(best_params$line_search_step_length))
     }
+    # Spatial data for choosing parameters of the GP model
+    coords <- matrix(sim_rand_unif(2*n, init_c=0.6342817), ncol=2)
+    b_spatial <- t(chol(exp(-as.matrix(dist(coords)) / 0.2) + 1e-10 * diag(n))) %*%
+      qnorm(sim_rand_unif(n, init_c=0.2716403))
+    y_spatial <- as.numeric(sin(4*X[,1]) + X[,2] + b_spatial + 0.3 * qnorm(sim_rand_unif(n, init_c=0.7419375)))
+    spatial_gp_model <- function(cov_function = "matern", cov_fct_shape = 2.5) {
+      gp_model <- GPModel(gp_coords = coords, cov_function = cov_function, cov_fct_shape = cov_fct_shape,
+                          gp_approx = "vecchia", num_neighbors = 10, vecchia_ordering = "random", seed = 1)
+      gp_model$set_prediction_data(vecchia_pred_type = "order_obs_first_cond_obs_only", num_neighbors_pred = 10)
+      return(gp_model)
+    }
+    # Score of gpb.cv after 'best_iter' iterations with the parameters of the booster and the GP model chosen by a
+    # tuning function
+    cv_score_of_best_params <- function(best_params, best_iter) {
+      is_gp_model_param <- names(best_params) %in% c("cov_fct_shape", "cov_function")
+      params <- c(best_params[!is_gp_model_param], list(verbose = -1, force_col_wise = TRUE, deterministic = TRUE))
+      cvbst <- gpb.cv(params = params, data = gpb.Dataset(X, label = y_spatial),
+                      gp_model = do.call(spatial_gp_model, best_params[is_gp_model_param]), nrounds = best_iter,
+                      folds = folds, metric = "test_neg_log_likelihood", verbose = 0)
+      return(cvbst$record_evals$valid$test_neg_log_likelihood$eval[[best_iter]])
+    }
+    gp_model_field <- function(gp_model, name) {
+      return(gp_model$.__enclos_env__$private[[name]])
+    }
 
     test_that("Search spaces and parameters of the tuning functions", {
 
@@ -66,6 +90,35 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                    "positive bounds")
       expect_error(gpboost:::gpb.tuning.parse.search.space(list("feature_fraction" = c(1, 0.5)), fun_name = "test"),
                    "not larger than the upper bound")
+      # Sets of values, which are sorted if they are numbers, and parameters of the GP model
+      parse_search_space <- function(search_space) {
+        return(gpboost:::gpb.tuning.parse.search.space(search_space, fun_name = "test"))
+      }
+      parsed <- parse_search_space(list("cov_fct_shape" = list(values = c(2.5, 0.5, 1.5)),
+                                        "cov_function" = list(values = c("matern", "gaussian")),
+                                        "line_search_step_length" = c(TRUE, FALSE),
+                                        "max_depth" = list(values = c(5, -1)), "cov_fct_order" = c(1, 2)))
+      expect_equal(parsed$cov_fct_shape, list(kind = "ordinal", values = c(0.5, 1.5, 2.5)))
+      expect_equal(parsed$cov_function, list(kind = "categorical", values = c("matern", "gaussian")))
+      expect_equal(parsed$line_search_step_length, list(kind = "logical", values = c(TRUE, FALSE)))
+      expect_equal(parsed$max_depth, list(kind = "ordinal", values = c(-1, 5)))
+      expect_equal(parsed$cov_fct_order, list(kind = "int", lower = 1, upper = 2, log = FALSE))
+      # A vector of two numbers is a range
+      expect_equal(parse_search_space(list("cov_fct_shape" = c(0.5, 2.5)))$cov_fct_shape,
+                   list(kind = "float", lower = 0.5, upper = 2.5, log = FALSE))
+      expect_error(parse_search_space(list("cov_fct_shape" = list(value = c(0.5, 1.5)))),
+                   "must be a vector c\\(lower, upper\\) or a list list\\(values")
+      expect_error(parse_search_space(list("cov_fct_shape" = list(values = numeric(0)))), "at least one value")
+      expect_error(parse_search_space(list("cov_fct_shape" = list(values = c(0.5, 1.5, 0.5)))),
+                   "must not contain a value twice")
+      expect_error(parse_search_space(list("cov_function" = c("matern", "gaussian"))),
+                   "search_space\\['cov_function'\\] must be a set of values")
+      expect_error(parse_search_space(list("num_neighbors" = list(values = c(10, 20)))),
+                   "Unknown parameter 'num_neighbors'")
+      # Parameters of the GP model require a GP model
+      expect_error(gpb.grid.search.tune.parameters(param_grid = list("cov_fct_shape" = c(0.5, 1.5)),
+                                                   data = gpb.Dataset(X, label = y)),
+                   "'cov_fct_shape' is a parameter of the GP model and can only be tuned with a 'gp_model'")
 
       deterministic_params <- gpboost:::gpb.tuning.deterministic.params
       expect_equal(deterministic_params(list(), list(list())), list(force_col_wise = TRUE, deterministic = TRUE))
@@ -105,6 +158,32 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       })
       opt_params_eval <- grid_search(params_auc, metric = "None", eval = agreement)
       expect_lt(abs(opt_params_eval$best_score - max(agreement_scores)), TOLERANCE)
+    })
+
+    test_that("Parameters of the GP model in 'gpb.grid.search.tune.parameters'", {
+
+      # The smoothness of 'gp_model' is not in the grid, so that the scores show whether the GP models of the folds use
+      #   the smoothness of the parameter combinations
+      gp_model <- spatial_gp_model(cov_fct_shape = 2.5)
+      opt_params <- gpb.grid.search.tune.parameters(param_grid = list("cov_fct_shape" = c(0.5, 1.5),
+                                                                      "cov_function" = c("matern", "exponential")),
+                                                    data = gpb.Dataset(X, label = y_spatial), gp_model = gp_model,
+                                                    params = list(learning_rate = 0.1, verbose = -1), nrounds = 50,
+                                                    early_stopping_rounds = 5, folds = folds,
+                                                    metric = "test_neg_log_likelihood", verbose_eval = 0,
+                                                    return_all_combinations = TRUE)
+      expect_equal(gp_model_field(gp_model, "cov_fct_shape"), 2.5)
+      expect_equal(gp_model_field(gp_model, "cov_function"), "matern")
+      expect_length(opt_params$all_combinations, 4L)
+      for (combination in opt_params$all_combinations) {
+        score <- cv_score_of_best_params(c(combination$params, list(learning_rate = 0.1)), combination$nrounds)
+        expect_lt(abs(combination$score - score), TOLERANCE)
+      }
+      expect_true(opt_params$best_params$cov_fct_shape %in% c(0.5, 1.5))
+      # The exponential covariance function does not depend on the smoothness
+      scores_exponential <- sapply(Filter(function(combination) combination$params$cov_function == "exponential",
+                                          opt_params$all_combinations), function(combination) combination$score)
+      expect_lt(abs(scores_exponential[1] - scores_exponential[2]), TOLERANCE)
     })
 
     test_that("Choosing tuning parameters with the approximation of SMAC in 'gpb.tune.pars.rf.bayesian.optimization'", {
@@ -176,6 +255,34 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
           "Found no parameter combination")
         , file = "NUL")
       expect_true(is.na(opt_params$best_score))
+
+      # Parameters of the GP model. The smoothness of 'gp_model' is not in the search space, so that the scores show
+      #   whether the GP models of the folds use the smoothness of the trials
+      gp_model <- spatial_gp_model(cov_fct_shape = 2.5)
+      tune_spatial <- function(search_space) {
+        # GPBoost warns about an almost constant GP in trials whose trees fit the data closely
+        capture.output(
+          opt_params <- gpb.tune.pars.rf.bayesian.optimization(search_space = search_space, n_trials = 6,
+                                                               data = gpb.Dataset(X, label = y_spatial),
+                                                               gp_model = gp_model, params = list(verbose = -1),
+                                                               nrounds = 50, early_stopping_rounds = 5,
+                                                               folds = folds, metric = "test_neg_log_likelihood",
+                                                               cv_seed = 1, verbose_eval = 0)
+          , file = "NUL")
+        return(opt_params)
+      }
+      search_space_spatial <- list("learning_rate" = c(0.01, 1), "min_data_in_leaf" = c(1, 50))
+      opt_params <- tune_spatial(c(search_space_spatial, list("cov_fct_shape" = list(values = c(0.5, 1.5)))))
+      expect_true(opt_params$best_params$cov_fct_shape %in% c(0.5, 1.5))
+      expect_equal(gp_model_field(gp_model, "cov_fct_shape"), 2.5)
+      best_score <- cv_score_of_best_params(opt_params$best_params, opt_params$best_iter)
+      expect_lt(abs(opt_params$best_score - best_score), TOLERANCE)
+      # A parameter of the GP model with the single value of 'gp_model' is held fixed and gives the same trials as
+      #   without it
+      opt_params <- tune_spatial(search_space_spatial)
+      opt_params_fixed <- tune_spatial(c(search_space_spatial, list("cov_fct_shape" = list(values = 2.5))))
+      expect_equal(opt_params_fixed, list(best_params = c(opt_params$best_params, list(cov_fct_shape = 2.5)),
+                                          best_iter = opt_params$best_iter, best_score = opt_params$best_score))
 
       # Invalid search spaces
       expect_error(gpb.tune.pars.rf.bayesian.optimization(search_space = list("not_a_parameter" = c(0, 1)),
@@ -275,6 +382,22 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_error(gpb.tune.pars.bayesian.optimization(search_space = list("max_depth" = c(-1, -1)), n_iter = 2,
                                                        data = gpb.Dataset(X, label = y)),
                    "no parameter with two different values")
+
+      # Parameters of the GP model. A set of numbers is searched as the index of a value, so that the surrogate model
+      #   is a Gaussian process. The smoothness of 'gp_model' is not in the search space, so that the scores show
+      #   whether the GP models of the folds use the smoothness of the trials
+      gp_model <- spatial_gp_model(cov_fct_shape = 2.5)
+      opt_params <- gpb.tune.pars.bayesian.optimization(search_space = list("learning_rate" = c(0.01, 1),
+                                                                            "cov_fct_shape" = list(values = c(0.5, 1.5))),
+                                                        n_iter = 2, data = gpb.Dataset(X, label = y_spatial),
+                                                        gp_model = gp_model, params = list(verbose = -1),
+                                                        nrounds = 50, early_stopping_rounds = 5, folds = folds,
+                                                        metric = "test_neg_log_likelihood", cv_seed = 1,
+                                                        verbose_eval = 0)
+      expect_true(opt_params$best_params$cov_fct_shape %in% c(0.5, 1.5))
+      expect_equal(gp_model_field(gp_model, "cov_fct_shape"), 2.5)
+      best_score <- cv_score_of_best_params(opt_params$best_params, opt_params$best_iter)
+      expect_lt(abs(opt_params$best_score - best_score), TOLERANCE)
     })
 
   }
