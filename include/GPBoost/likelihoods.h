@@ -34,7 +34,7 @@
 *         "hurdle_regression_gamma_varying_shape" (no auxiliary parameter, 3 blocks: eta, structural-zero logit, log(shape))
 *
 * For "tweedie" and "tweedie_fixed_p", Y follows a compound Poisson--Gamma Tweedie law:
-*       - mu = exp(location_par), Var(Y | location_par) = phi * mu^p, 1.01 < p < 1.99
+*       - mu = exp(location_par), Var(Y | location_par) = phi * mu^p, 1.001 < p < 1.999
 *       - aux_pars_[0] = phi; aux_pars_[1] is a positive transformed power for "tweedie"
 *         and the fixed power on its original scale for "tweedie_fixed_p"
 *   The Tweedie variants below use the same mean model and the same power parameterization:
@@ -1059,9 +1059,24 @@ namespace GPBoost {
 
 		void WarnIfTweediePowerAtBoundary() const {
 			if (!IsTweedieEstimatedPower() || tweedie_boundary_warning_issued_) return;
-			const auto power = TransformTweediePowerFromQ(aux_pars_[TweediePowerIndex()], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_);
-			if (power.p - TWEEDIE_POWER_LOWER_ < 1e-3 || TWEEDIE_POWER_UPPER_ - power.p < 1e-3) {
-				Log::REWarning("The Tweedie power optimizer saturated near the configured boundary (%g, %g), p = %g and dp/dtheta = %g. The estimate may be boundary-sensitive. Inspect a 'tweedie_fixed_p' likelihood and, if appropriate, use 'poisson' (if p close to 1) or 'gamma' (if p close to 2) likelihoods ", TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_, power.p, power.dp_dtheta);
+			const double p = TransformTweediePowerFromQ(aux_pars_[TweediePowerIndex()], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_).p;
+			const string_t fixed_p_likelihood = likelihood_type_ + "_fixed_p";
+			if (p - TWEEDIE_POWER_LOWER_ < TWEEDIE_POWER_BOUNDARY_TOL_) {
+				Log::REWarning("The estimated Tweedie power p = %g is close to the lower bound %g of the supported range (%g, %g), where the Tweedie distribution approaches a scaled Poisson distribution. For count data, consider likelihood = 'poisson', or compare fits with likelihood = '%s' ",
+					p, TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_, fixed_p_likelihood.c_str());
+				tweedie_boundary_warning_issued_ = true;
+			}
+			else if (TWEEDIE_POWER_UPPER_ - p < TWEEDIE_POWER_BOUNDARY_TOL_) {
+				// A varying dispersion phi corresponds to a varying gamma shape 1 / phi. For p close to 2, the probability of a zero,
+				//	exp(-mu^(2-p) / (phi (2-p))), hardly depends on mu, but it depends on the covariates through a varying dispersion
+				string_t gamma_likelihood = "gamma";
+				string_t hurdle_likelihood = "hurdle_gamma";
+				if (is_tweedie_varying_dispersion_) {
+					gamma_likelihood = "gamma_varying_shape";
+					hurdle_likelihood = "hurdle_regression_gamma_varying_shape";
+				}
+				Log::REWarning("The estimated Tweedie power p = %g is close to the upper bound %g of the supported range (%g, %g), where the Tweedie distribution approaches a gamma distribution. Consider likelihood = '%s' (or '%s' if y contains zeros), or compare fits with likelihood = '%s' ",
+					p, TWEEDIE_POWER_UPPER_, TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_, gamma_likelihood.c_str(), hurdle_likelihood.c_str(), fixed_p_likelihood.c_str());
 				tweedie_boundary_warning_issued_ = true;
 			}
 		}
@@ -2166,12 +2181,19 @@ namespace GPBoost {
 		*		effects (see 'InitCoefAuxParsFromIidModel' in re_model.cpp). This model attributes the variability of the random
 		*		effects to the likelihood, and the sum of Gaussian random effects and heavy-tailed errors is closer to a normal
 		*		distribution than the errors. The degrees of freedom of a "t" likelihood of this model can thus be very large, and
-		*		there, the likelihood hardly depends on them and the optimization does not leave this region
+		*		there, the likelihood hardly depends on them and the optimization does not leave this region. Similarly, multiplicative
+		*		random effects add variance proportional to mu^2, so the power of a Tweedie likelihood of this model can be close to
+		*		its upper bound, where the likelihood hardly depends on the transformed power and the optimization does not leave this region
 		* \param[out] aux_pars Additional likelihood parameters (on the scale of 'aux_pars_')
 		*/
 		void LimitInitialAuxParsFromModelWithoutRandomEffects(double* aux_pars) const {
 			if (likelihood_type_ == "t" && estimate_df_t_) {
 				aux_pars[1] = std::min(aux_pars[1], MAX_INITIAL_DF_T_);
+			}
+			else if (IsTweedieEstimatedPower()) {
+				// The transformed power is (p - lower) / (upper - p), see 'TransformAuxPars'
+				const double max_transformed_power = (MAX_INITIAL_POWER_TWEEDIE_ - TWEEDIE_POWER_LOWER_) / (TWEEDIE_POWER_UPPER_ - MAX_INITIAL_POWER_TWEEDIE_);
+				aux_pars[TweediePowerIndex()] = std::min(aux_pars[TweediePowerIndex()], max_transformed_power);
 			}
 		}
 
@@ -9081,8 +9103,10 @@ namespace GPBoost {
 		string_t regression_base_type_ = "gaussian";
 		string_t egpd_base_type_ = "gaussian";
 		EGPDVariant egpd_variant_ = EGPDVariant::kGPD;
-		static constexpr double TWEEDIE_POWER_LOWER_ = 1.01;
-		static constexpr double TWEEDIE_POWER_UPPER_ = 1.99;
+		static constexpr double TWEEDIE_POWER_LOWER_ = 1.001;
+		static constexpr double TWEEDIE_POWER_UPPER_ = 1.999;
+		/*! \brief An estimated power closer than this to a bound of (TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_) gives a warning */
+		static constexpr double TWEEDIE_POWER_BOUNDARY_TOL_ = 1e-3;
 		double tweedie_sum_d_log_a_rho_ = 0.;
 		double tweedie_sum_d_log_a_theta_ = 0.;
 		// Snapshot of (phi, p) that the cached normalizer aggregates above correspond to; used to verify cache freshness in CalcGradNegLogLikAuxPars.
@@ -9193,6 +9217,8 @@ namespace GPBoost {
 		bool estimate_df_t_ = true;
 		/*! \brief Upper limit for initial degrees of freedom of the "t" likelihood from a model without random effects (see 'LimitInitialAuxParsFromModelWithoutRandomEffects') */
 		static constexpr double MAX_INITIAL_DF_T_ = 10.;
+		/*! \brief Upper limit for the initial power of the Tweedie likelihoods from a model without random effects (see 'LimitInitialAuxParsFromModelWithoutRandomEffects') */
+		static constexpr double MAX_INITIAL_POWER_TWEEDIE_ = 1.9;
 		/*! \brief If true, a Gaussian likelihood is estimated using this file */
 		bool use_likelihoods_file_for_gaussian_ = false;
 		/*! \brief If true, the function 'CalcFirstDerivInformationLocPar_PerSample' has been called before */

@@ -9,22 +9,23 @@ context("Tweedie likelihood")
 
 if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
+sim_rand_unif <- function(n, init_c=0.1){
+  mod_lcg <- 2^32
+  sim <- rep(NA, n)
+  sim[1] <- floor(init_c * mod_lcg)
+  for(i in 2:n) sim[i] <- (22695477 * sim[i-1] + 1) %% mod_lcg
+  sim / mod_lcg
+}
+sim_tweedie <- function(mu, phi, p, init_count, init_gamma){
+  lambda <- mu^(2-p) / (phi * (2-p))
+  counts <- qpois(sim_rand_unif(length(mu), init_count), lambda=lambda)
+  ans <- numeric(length(mu))
+  ind <- counts > 0
+  ans[ind] <- qgamma(sim_rand_unif(sum(ind), init_gamma), shape=counts[ind] * (2-p) / (p-1), scale=phi * (p-1) * mu[ind]^(p-1))
+  ans
+}
+
 test_that("Tweedie likelihood covers grouped, crossed, Vecchia, and combined models", {
-  sim_rand_unif <- function(n, init_c=0.1){
-    mod_lcg <- 2^32
-    sim <- rep(NA, n)
-    sim[1] <- floor(init_c * mod_lcg)
-    for(i in 2:n) sim[i] <- (22695477 * sim[i-1] + 1) %% mod_lcg
-    sim / mod_lcg
-  }
-  sim_tweedie <- function(mu, phi, p, init_count, init_gamma){
-    lambda <- mu^(2-p) / (phi * (2-p))
-    counts <- qpois(sim_rand_unif(length(mu), init_count), lambda=lambda)
-    ans <- numeric(length(mu))
-    ind <- counts > 0
-    ans[ind] <- qgamma(sim_rand_unif(sum(ind), init_gamma), shape=counts[ind] * (2-p) / (p-1), scale=phi * (p-1) * mu[ind]^(p-1))
-    ans
-  }
   n <- 120
   x <- 2 * sim_rand_unif(n, 0.17) - 1
   coords <- cbind(sim_rand_unif(n, 0.31), sim_rand_unif(n, 0.67))
@@ -52,17 +53,19 @@ test_that("Tweedie likelihood covers grouped, crossed, Vecchia, and combined mod
 
   eta_group <- 0.25 + 0.55 * x + b1[group1]
   y_group <- sim_tweedie(exp(eta_group), phi, p, 0.41, 0.91)
-  fit_group <- fitGPModel(group_data=group1, y=y_group, X=cbind(1, x), likelihood="tweedie", params=params_chol)
-  expect_equal(unname(fit_group$get_aux_pars()), c(0.6784574, 1.5862270), tolerance=tolerance_cholesky)
-  expect_equal(unname(fit_group$get_coef()), c(0.2322927, 0.5900659), tolerance=tolerance_cholesky)
-  expect_equal(unname(fit_group$get_cov_pars()), 0.1609974, tolerance=tolerance_cholesky)
-  expect_equal(fit_group$get_current_neg_log_likelihood(), 162.8843124, tolerance=tolerance_cholesky)
+  out <- capture.output(fit_group <- fitGPModel(group_data=group1, y=y_group, X=cbind(1, x), likelihood="tweedie", params=params_chol))
+  # An estimated power inside the supported range gives no warning
+  expect_false(any(grepl("Tweedie power", out)))
+  expect_equal(unname(fit_group$get_aux_pars()), c(0.6787341, 1.5850101), tolerance=tolerance_cholesky)
+  expect_equal(unname(fit_group$get_coef()), c(0.2322353, 0.5857995), tolerance=tolerance_cholesky)
+  expect_equal(unname(fit_group$get_cov_pars()), 0.1604697, tolerance=tolerance_cholesky)
+  expect_equal(fit_group$get_current_neg_log_likelihood(), 162.8851995, tolerance=tolerance_cholesky)
   evaluated_nll <- fit_group$neg_log_likelihood(unname(fit_group$get_cov_pars()), y_group, fixed_effects=drop(cbind(1, x) %*% fit_group$get_coef()),
                                                 aux_pars=unname(fit_group$get_aux_pars()))
-  expect_equal(evaluated_nll, 162.8843124, tolerance=tolerance_cholesky)
+  expect_equal(evaluated_nll, 162.8851995, tolerance=tolerance_cholesky)
   pred_group <- predict(fit_group, group_data_pred=group1[1:4], X_pred=cbind(1, x[1:4]), predict_response=TRUE, predict_var=TRUE)
-  expect_equal(unname(pred_group$mu), c(1.1208706, 1.0178572, 1.0705185, 0.9196092), tolerance=tolerance_cholesky)
-  expect_equal(unname(pred_group$var), c(0.9145121, 0.7822045, 0.8488394, 0.6636168), tolerance=tolerance_cholesky)
+  expect_equal(unname(pred_group$mu), c(1.1225127, 1.0200591, 1.0724432, 0.9222752), tolerance=tolerance_cholesky)
+  expect_equal(unname(pred_group$var), c(0.9167285, 0.7850720, 0.8513994, 0.6669177), tolerance=tolerance_cholesky)
 
   eta_crossed <- 0.15 + b1[group1] + b2[group2]
   y_crossed <- sim_tweedie(exp(eta_crossed), phi, p, 0.47, 0.87)
@@ -167,6 +170,55 @@ test_that("Tweedie response validation and fixed-power interface are explicit", 
   expect_error(GPModel(num_data=3, likelihood="tweedie_fixed_p", likelihood_additional_param=1), "only the compound")
   expect_error(fitGPModel(group_data=1:3, y=c(0, 0, 0), likelihood="tweedie_fixed_p", likelihood_additional_param=1.5), "only zeros")
   expect_error(fitGPModel(group_data=1:3, y=c(0, -1, 2), likelihood="tweedie_fixed_p", likelihood_additional_param=1.5), "finite and nonnegative")
+  # The supported range of the power is (1.001, 1.999)
+  expect_error(GPModel(num_data=3, likelihood="tweedie_fixed_p", likelihood_additional_param=1.0005), "too close to 1")
+  expect_error(GPModel(num_data=3, likelihood="tweedie_fixed_p", likelihood_additional_param=1.9995), "too close to 2")
+})
+
+test_that("Tweedie log-likelihood for a power close to one or two", {
+  # The expected values are the negative sums of the log-densities in 50-digit arithmetic for the double values of p,
+  # y = (0, 0.5, 1, 2), mu = (1, 0.5, 1, 2), and phi = 1. The tiny random effect variance makes the Laplace
+  # approximation equal to the likelihood
+  y <- c(0, 0.5, 1, 2)
+  mu <- c(1, 0.5, 1, 2)
+  gp_model <- GPModel(group_data=seq_along(y), likelihood="tweedie")
+  nll_at <- function(p) gp_model$neg_log_likelihood(cov_pars=1e-20, y=y, fixed_effects=log(mu), aux_pars=c(1, p))
+  expect_lt(abs(nll_at(1.005) - 36.571417724918119), 1e-7)
+  expect_lt(abs(nll_at(1.995) - 203.00117959943266), 1e-7)
+})
+
+test_that("Tweedie power close to a bound of the supported range: warnings and estimation", {
+  group <- rep(1:50, each=10)
+  x <- 2 * sim_rand_unif(500, 0.23) - 1
+  b <- 0.5 * qnorm(sim_rand_unif(50, 0.37))
+  offset <- 0.3 + 0.5 * x
+  eta <- offset + b[group]
+  # For Poisson data, the estimated power is at the lower bound. A fit without covariates warns and suggests 'poisson'
+  y_pois <- qpois(sim_rand_unif(500, 0.59), lambda=exp(eta))
+  out <- capture.output(fit <- fitGPModel(group_data=group, y=y_pois, offset=offset, likelihood="tweedie"))
+  expect_lt(fit$get_aux_pars()[2], 1.002)
+  expect_true(any(grepl("close to the lower bound", out)))
+  expect_true(any(grepl("likelihood = 'poisson'", out, fixed=TRUE)))
+  # For data with a power close to 2, a fit with covariates warns and suggests 'gamma' and 'hurdle_gamma', or, for a
+  # varying dispersion, 'gamma_varying_shape' and 'hurdle_regression_gamma_varying_shape'
+  y_near_gamma <- sim_tweedie(exp(eta), 1, 1.999, 0.13, 0.17)
+  out <- capture.output(fit <- fitGPModel(group_data=group, y=y_near_gamma, X=cbind(1, x), likelihood="tweedie"))
+  expect_gt(fit$get_aux_pars()[2], 1.998)
+  expect_true(any(grepl("close to the upper bound", out)))
+  expect_true(any(grepl("likelihood = 'gamma' (or 'hurdle_gamma' if y contains zeros)", out, fixed=TRUE)))
+  out <- capture.output(fit <- fitGPModel(group_data=group, y=y_near_gamma, X=cbind(1, x), likelihood="tweedie_varying_dispersion"))
+  expect_true(any(grepl("likelihood = 'gamma_varying_shape' (or 'hurdle_regression_gamma_varying_shape' if y contains zeros)", out, fixed=TRUE)))
+  expect_true(any(grepl("likelihood = 'tweedie_varying_dispersion_fixed_p'", out, fixed=TRUE)))
+  # For these data, the power of the model without random effects, which gives the initial values, is close to the upper
+  # bound, while the maximum of the likelihood is not. The estimate equals the one of a tightly converged fit that starts
+  # in the middle of the range
+  y <- sim_tweedie(exp(eta), 1, 1.95, 0.53, 0.57)
+  fit <- fitGPModel(group_data=group, y=y, X=cbind(1, x), likelihood="tweedie")
+  fit_ref <- fitGPModel(group_data=group, y=y, X=cbind(1, x), likelihood="tweedie",
+                        params=list(init_aux_pars=c(1, 1.5), delta_rel_conv=1e-12, maxit=5000))
+  expect_lt(fit_ref$get_aux_pars()[2], 1.95)
+  expect_lt(abs(fit$get_aux_pars()[2] - fit_ref$get_aux_pars()[2]), 0.01)
+  expect_lt(fit$get_current_neg_log_likelihood() - fit_ref$get_current_neg_log_likelihood(), 0.01)
 })
 
 }

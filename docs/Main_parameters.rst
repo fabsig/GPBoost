@@ -119,9 +119,9 @@ Model specification parameters
 
       **Non-negative continuous / semicontinuous response: y in [0, inf) with point mass at 0**
 
-      -  ``tweedie`` : Compound Poisson--Gamma Tweedie likelihood with a log link, where the latent predictor is 'eta', the mean is 'mu = exp(eta)', and 'Var(y | eta) = phi * mu^p', with '1.01 < p < 1.99'. Both dispersion 'phi' and power 'p' are estimated
+      -  ``tweedie`` : Compound Poisson--Gamma Tweedie likelihood with a log link, where the latent predictor is 'eta', the mean is 'mu = exp(eta)', and 'Var(y | eta) = phi * mu^p', with '1.001 < p < 1.999'. Both dispersion 'phi' and power 'p' are estimated
 
-      -  ``tweedie_fixed_p`` : The same Tweedie likelihood with 'p' fixed through ``likelihood_additional_param`` and only 'phi' estimated. The fixed power is mandatory and must satisfy '1.01 < p < 1.99'. Fits at different fixed powers include the complete density and can therefore be compared by marginal log-likelihood for power profiling
+      -  ``tweedie_fixed_p`` : The same Tweedie likelihood with 'p' fixed through ``likelihood_additional_param`` and only 'phi' estimated. The fixed power is mandatory and must satisfy '1.001 < p < 1.999'. Fits at different fixed powers include the complete density and can therefore be compared by marginal log-likelihood for power profiling
 
       -  ``tweedie_joint``, ``tweedie_joint_fixed_p`` : The same Tweedie model, but the observed number of events (e.g., claims) 'N', given in the first column of ``additional_likelihood_data``, is used jointly with the aggregate response 'y'. The likelihood is the joint density of '(y, N)' of the compound Poisson--Gamma representation, 'N ~ Poisson(mu^(2-p) / (phi * (2-p)))' and 'y | N = n ~ Gamma(n * (2-p) / (p-1), scale = phi * (p-1) * mu^(p-1))', see Jorgensen and de Souza (1994, Scandinavian Actuarial Journal) "Fitting Tweedie's compound Poisson model to insurance claims data". Given 'phi' and 'p', the mean model is the same as for ``tweedie``; 'N' adds information for estimating 'phi' and 'p'. 'N' must be a non-negative integer that is 0 if and only if 'y' is 0. Predictions are the same as for ``tweedie``, and the ``test_neg_log_likelihood`` metric uses the marginal density of 'y' since 'N' is not known for new data
 
