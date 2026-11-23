@@ -53,6 +53,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       m + log(sum(exp(lj - m)))
     })
   }
+  # Unconstrained parameterization of the power on the range (1.001, 1.999) of the estimated power, for finite differences
+  power_from_unconstrained <- function(th) 1.001 + 0.998 * plogis(th)
+  unconstrained_from_power <- function(p) qlogis((p - 1.001) / 0.998)
 
   # Data for the models with a grouped random effect
   n <- 200
@@ -243,9 +246,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       capture.output(fit <- fitGPModel(group_data = group, likelihood = lik, additional_likelihood_data = ald, y = y_gr, X = X, params = params_tight), file = "NUL")
       nll_at <- function(th) {
         GPModel(group_data = group, likelihood = lik, additional_likelihood_data = ald)$neg_log_likelihood(
-          cov_pars = exp(th[1]), y = y_gr, fixed_effects = c(X %*% th[2:3], X %*% th[4:5]), aux_pars = 1.01 + 0.98 * plogis(th[6]))
+          cov_pars = exp(th[1]), y = y_gr, fixed_effects = c(X %*% th[2:3], X %*% th[4:5]), aux_pars = power_from_unconstrained(th[6]))
       }
-      th_opt <- c(log(fit$get_cov_pars()), fit$get_coef(), qlogis((fit$get_aux_pars() - 1.01) / 0.98))
+      th_opt <- c(log(fit$get_cov_pars()), fit$get_coef(), unconstrained_from_power(fit$get_aux_pars()))
       expect_lt(abs(nll_at(th_opt) - fit$get_current_neg_log_likelihood()), TOLERANCE_STRICT_LOWER)
       grad_fd <- sapply(seq_along(th_opt), function(j) {
         tp <- tm <- th_opt; tp[j] <- tp[j] + 1e-5; tm[j] <- tm[j] - 1e-5
@@ -263,14 +266,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   test_that("joint and varying-dispersion Tweedie likelihoods with a grouped random effect: estimation and prediction ", {
 
     expected <- list(
-      tweedie_joint = list(coef = c(0.43707010, 0.44734734), se = c(0.17184369, 0.26274926), aux = c(1.26042049, 1.57823667), cov = 0.14017306,
-                           nll = 649.67420586, mu = c(2.03090121, 2.18605387, 1.96217712), var = c(4.19841752, 4.71255557, 4.47251138)),
+      tweedie_joint = list(coef = c(0.43716727, 0.44800373), se = c(0.17177699, 0.26271829), aux = c(1.26028704, 1.57815804), cov = 0.13980588,
+                           nll = 649.67414825, mu = c(2.03126692, 2.18630613, 1.96248810), var = c(4.19856641, 4.71222888, 4.47072507)),
       tweedie_varying_dispersion = list(coef = c(0.45298523, 0.42844479, -0.21426196, 0.90178436), se = c(0.15570694, 0.26113846, 0.19173968, 0.33890967),
                                         aux = 1.55459989, cov = 0.11882683, nll = 386.88253670,
                                         mu = c(2.12371120, 2.10920503, 1.95862838), var = c(4.47722668, 4.70594229, 3.86606256)),
-      tweedie_joint_varying_dispersion = list(coef = c(0.44716239, 0.43411258, -0.08799397, 0.58187316), se = c(0.15948176, 0.25680348, 0.06734313, 0.12416569),
-                                              aux = 1.55649181, cov = 0.12779029, nll = 638.98482095,
-                                              mu = c(2.08949060, 2.13266904, 1.96014386), var = c(4.21978536, 4.52979667, 3.95176944)),
+      tweedie_joint_varying_dispersion = list(coef = c(0.44568685, 0.43516533, -0.08967059, 0.58443160), se = c(0.15970161, 0.25684921, 0.06731446, 0.12415730),
+                                              aux = 1.55696264, cov = 0.12936858, nll = 638.98389359,
+                                              mu = c(2.08992240, 2.13244353, 1.95956838), var = c(4.22276235, 4.53164392, 3.95796146)),
       tweedie_joint_varying_dispersion_fixed_p = list(coef = c(0.44485515, 0.42850600, -0.18751939, 0.61772781), se = c(0.15440690, 0.24240949, 0.06369068, 0.11744282),
                                                       aux = 1.5, cov = 0.13822941, nll = 642.08160922,
                                                       mu = c(2.08973818, 2.12916715, 1.96175300), var = c(3.73631205, 4.00502902, 3.59134461)))
@@ -325,12 +328,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Dense GP ("Stable")
     capture.output(fit_dense <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = lik, additional_likelihood_data = N_gp,
                                            y = y_gp, X = X_gp, params = OPTIM_PARAMS), file = "NUL")
-    expected_dense <- c(0.63245040, 0.73194310, -0.26531262, 0.83845113, 1.50578503, 0.18419567, 0.10348776)
+    expected_dense <- c(0.63315207, 0.73084498, -0.26535390, 0.83841944, 1.50583853, 0.18437504, 0.10360603)
     expect_lt(sum(abs(c(fit_dense$get_coef(), fit_dense$get_aux_pars(), fit_dense$get_cov_pars()) - expected_dense)), TOLERANCE_MEDIUM)
-    expect_lt(abs(fit_dense$get_current_neg_log_likelihood() - 528.45142619), TOLERANCE_MEDIUM)
+    expect_lt(abs(fit_dense$get_current_neg_log_likelihood() - 528.45105209), TOLERANCE_MEDIUM)
     pred <- predict(fit_dense, gp_coords_pred = coords[1:3, ] + 1e-3, X_pred = X_gp[1:3, ], predict_var = TRUE, predict_response = TRUE)
-    expect_lt(sum(abs(pred$mu - c(2.95638950, 1.97500314, 2.23651177))), TOLERANCE_MEDIUM)
-    expect_lt(sum(abs(pred$var - c(5.82048915, 2.85942004, 4.35733154))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred$mu - c(2.95748311, 1.97577963, 2.23664276))), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(pred$var - c(5.82447980, 2.86143986, 4.35801160))), TOLERANCE_MEDIUM)
     # Vecchia approximation with num_neighbors = n - 1 is exact and must match the dense GP, also for a random ordering,
     # which permutes the data internally (the number of events has to be permuted in the same way as the response)
     for (ordering in c("none", "random")) {
@@ -338,30 +341,30 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                gp_approx = "vecchia", num_neighbors = n_gp - 1, vecchia_ordering = ordering,
                                                matrix_inversion_method = "cholesky", y = y_gp, X = X_gp, params = OPTIM_PARAMS), file = "NUL")
       expect_lt(sum(abs(c(fit_vecchia$get_coef(), fit_vecchia$get_aux_pars(), fit_vecchia$get_cov_pars()) - expected_dense)), TOLERANCE_MEDIUM)
-      expect_lt(abs(fit_vecchia$get_current_neg_log_likelihood() - 528.45142619), TOLERANCE_MEDIUM)
+      expect_lt(abs(fit_vecchia$get_current_neg_log_likelihood() - 528.45105209), TOLERANCE_MEDIUM)
     }
     # Vecchia approximation, Cholesky and iterative
     capture.output(fit_vecchia <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = lik, additional_likelihood_data = N_gp,
                                              gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none", matrix_inversion_method = "cholesky",
                                              y = y_gp, X = X_gp, params = OPTIM_PARAMS), file = "NUL")
-    expected_vecchia <- c(0.67917691, 0.73691878, -0.26052167, 0.83883048, 1.50859022, 0.17220641, 0.14764583)
+    expected_vecchia <- c(0.66987134, 0.73823863, -0.25318433, 0.82484545, 1.50989687, 0.17238403, 0.14683387)
     expect_lt(sum(abs(c(fit_vecchia$get_coef(), fit_vecchia$get_aux_pars(), fit_vecchia$get_cov_pars()) - expected_vecchia)), TOLERANCE_VECCHIA_PARS)
-    expect_lt(abs(fit_vecchia$get_current_neg_log_likelihood() - 528.41017749), TOLERANCE_MEDIUM)
+    expect_lt(abs(fit_vecchia$get_current_neg_log_likelihood() - 528.41687931), TOLERANCE_MEDIUM)
     pred <- predict(fit_vecchia, gp_coords_pred = coords[1:3, ] + 1e-3, X_pred = X_gp[1:3, ], predict_var = TRUE, predict_response = TRUE)
-    expect_lt(sum(abs(pred$mu - c(2.81348623, 1.94954497, 2.31200778))), TOLERANCE_VECCHIA_PARS)
-    expect_lt(sum(abs(pred$var - c(5.27313990, 2.71690034, 4.46470334))), TOLERANCE_VECCHIA_PARS)
+    expect_lt(sum(abs(pred$mu - c(2.80652224, 1.94767780, 2.30914510))), TOLERANCE_VECCHIA_PARS)
+    expect_lt(sum(abs(pred$var - c(5.28337455, 2.73231715, 4.47201828))), TOLERANCE_VECCHIA_PARS)
     capture.output(fit_vecchia_it <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = lik, additional_likelihood_data = N_gp,
                                                 gp_approx = "vecchia", num_neighbors = 20, vecchia_ordering = "none", matrix_inversion_method = "iterative",
                                                 y = y_gp, X = X_gp, params = params_iter), file = "NUL")
-    expected_vecchia_it <- c(0.63383448, 0.73282785, -0.26673570, 0.83879646, 1.50475414, 0.19541929, 0.10620782)
+    expected_vecchia_it <- c(0.63645676, 0.72864374, -0.26729957, 0.83898869, 1.50499344, 0.19507458, 0.10610992)
     expect_lt(sum(abs(c(fit_vecchia_it$get_coef(), fit_vecchia_it$get_aux_pars(), fit_vecchia_it$get_cov_pars()) - expected_vecchia_it)), TOLERANCE_NON_CONVEX)
-    expect_lt(abs(fit_vecchia_it$get_current_neg_log_likelihood() - 528.21503551), TOLERANCE_NON_CONVEX)
+    expect_lt(abs(fit_vecchia_it$get_current_neg_log_likelihood() - 528.21506699), TOLERANCE_NON_CONVEX)
     # FITC approximation
     capture.output(fit_fitc <- fitGPModel(gp_coords = coords, cov_function = "exponential", likelihood = lik, additional_likelihood_data = N_gp,
                                           gp_approx = "fitc", num_ind_points = 50, y = y_gp, X = X_gp, params = OPTIM_PARAMS), file = "NUL")
-    expected_fitc <- c(0.64343015, 0.74334861, -0.26610752, 0.84015935, 1.50613619, 0.18861284, 0.11858142)
+    expected_fitc <- c(0.64688852, 0.73665120, -0.26491095, 0.83972822, 1.50595130, 0.19513466, 0.11761120)
     expect_lt(sum(abs(c(fit_fitc$get_coef(), fit_fitc$get_aux_pars(), fit_fitc$get_cov_pars()) - expected_fitc)), TOLERANCE_MEDIUM)
-    expect_lt(abs(fit_fitc$get_current_neg_log_likelihood() - 528.47046119), TOLERANCE_MEDIUM)
+    expect_lt(abs(fit_fitc$get_current_neg_log_likelihood() - 528.47290386), TOLERANCE_MEDIUM)
     # Full-scale Vecchia approximation. The finite-difference gradient of the approximate marginal likelihood (a new model for
     # every evaluation) vanishes at the optimum found with the analytical gradients wrt all parameters, including the power
     fsva_args <- list(gp_coords = coords, cov_function = "exponential", likelihood = lik, additional_likelihood_data = N_gp,
@@ -377,9 +380,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll_fsva_at <- function(th) {
       capture.output(gp_model_fsva <- do.call(GPModel, fsva_args), file = "NUL")
       gp_model_fsva$neg_log_likelihood(cov_pars = exp(th[1:2]), y = y_gp, fixed_effects = c(X_gp %*% th[3:4], X_gp %*% th[5:6]),
-                                       aux_pars = 1.01 + 0.98 * plogis(th[7]))
+                                       aux_pars = power_from_unconstrained(th[7]))
     }
-    th_fsva <- c(log(fit_fsva$get_cov_pars()), fit_fsva$get_coef(), qlogis((fit_fsva$get_aux_pars() - 1.01) / 0.98))
+    th_fsva <- c(log(fit_fsva$get_cov_pars()), fit_fsva$get_coef(), unconstrained_from_power(fit_fsva$get_aux_pars()))
     grad_fd_fsva <- sapply(seq_along(th_fsva), function(j) {
       tp <- tm <- th_fsva; tp[j] <- tp[j] + 1e-5; tm[j] <- tm[j] - 1e-5
       (nll_fsva_at(tp) - nll_fsva_at(tm)) / 2e-5
@@ -405,10 +408,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     g1 <- rep(1:15, each = 10)
     g2 <- rep(1:10, times = 15)
     params_iter_cr <- c(OPTIM_PARAMS, list(num_rand_vec_trace = 200, seed_rand_vec_trace = 1))
-    expected_cr <- list(tweedie_joint = list(cholesky = c(0.62880113, 0.70378071, 1.26817702, 1.56385548, 0.10351720, 0.00002636, 544.14910729),
-                                             iterative = c(0.62828807, 0.70399634, 1.26806550, 1.56389193, 0.10357109, 0.00002174, 544.14897769)),
-                        tweedie_joint_varying_dispersion = list(cholesky = c(0.63778940, 0.68942094, -0.23553215, 0.81267110, 1.51469420, 0.09619381, 0.00001994, 526.79475638),
-                                                                iterative = c(0.63559497, 0.69237351, -0.23816489, 0.81678556, 1.51446100, 0.09751821, 0.00026800, 526.79760434)))
+    expected_cr <- list(tweedie_joint = list(cholesky = c(0.62997448, 0.70241621, 1.26836790, 1.56412856, 0.10208032, 0.00007202, 544.15091432),
+                                             iterative = c(0.62967074, 0.70221373, 1.26828720, 1.56407574, 0.10208151, 0.00006727, 544.15078536)),
+                        tweedie_joint_varying_dispersion = list(cholesky = c(0.63569580, 0.69068071, -0.23761687, 0.81643587, 1.51469215, 0.09708270, 0.00012637, 526.79568617),
+                                                                iterative = c(0.63611120, 0.69148236, -0.23779116, 0.81659711, 1.51481603, 0.09675920, 0.00014944, 526.79596948)))
     for (lik_cr in names(expected_cr)) for (method in c("cholesky", "iterative")) {
       capture.output(fit_cr <- fitGPModel(group_data = cbind(g1, g2), likelihood = lik_cr, additional_likelihood_data = N_gp, y = y_gp, X = X_gp,
                                           matrix_inversion_method = method, params = if (method == "cholesky") OPTIM_PARAMS else params_iter_cr), file = "NUL")
@@ -573,8 +576,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                         params = list(optimizer_cov = "gradient_descent", optimizer_coef = "gradient_descent", maxit = 2000, lr_coef = 10,
                                                       lr_cov = 0.1, init_coef_aux_pars_from_iid_model = FALSE)), file = "NUL")
     expect_lt(abs(fit_lbfgs$get_current_neg_log_likelihood() - 386.882526), TOLERANCE_MEDIUM)
-    expect_lt(abs(fit_gd$get_current_neg_log_likelihood() - 386.883167), TOLERANCE_MEDIUM)
-    expect_lt(sum(abs(as.vector(fit_gd$get_coef()) - c(0.45283, 0.01422, -0.21416, 0.03002))), TOLERANCE_MEDIUM)
+    expect_lt(abs(fit_gd$get_current_neg_log_likelihood() - 386.883722), TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(fit_gd$get_coef()) - c(0.45121, 0.01415, -0.21408, 0.02996))), TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(fit_gd$get_coef()) - as.vector(fit_lbfgs$get_coef()))), TOLERANCE_LOOSE)
 
     # An observation with a zero weight does not contribute and is not evaluated (its series could not be evaluated here)

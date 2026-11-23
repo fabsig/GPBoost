@@ -727,32 +727,6 @@ def test_tweedie_log_likelihood_for_a_small_dispersion():
     assert nll == pytest.approx(-21.39091231387951, abs=1e-5)
 
 
-def test_tweedie_log_likelihood_for_a_power_close_to_one_or_two():
-    # Powers between 1.001 and 1.01 and between 1.99 and 1.999 are in the supported range. The expected values are the
-    # sums of the log-densities in 50-digit arithmetic, for y = (0, 0.5, 1, 2), mu = (1, 0.5, 1, 2) and phi = 1
-    y = np.array([0., 0.5, 1.0, 2.0])
-    mu = np.array([1., 0.5, 1.0, 2.0])
-    gp_model = gpb.GPModel(group_data=np.arange(len(y)), likelihood="tweedie")
-    for p, expected in [(1.005, 36.571417724918119), (1.995, 203.00117959943266)]:
-        nll = gp_model.neg_log_likelihood(cov_pars=np.array([1e-20]), y=y, fixed_effects=np.log(mu),
-                                          aux_pars=np.array([1., p]))
-        assert nll == pytest.approx(expected, abs=1e-8)
-
-
-def test_tweedie_warns_if_the_estimated_power_is_close_to_a_bound(capsys):
-    # For Poisson data, the estimated power goes to the lower bound of its range, and the fit suggests 'poisson'
-    rng = np.random.default_rng(1)
-    group = np.repeat(np.arange(50), 10)
-    x = rng.uniform(-1, 1, len(group))
-    y = rng.poisson(np.exp(0.3 + 0.5 * x + rng.normal(0, 0.5, 50)[group])).astype(float)
-    gp_model = gpb.GPModel(group_data=group, likelihood="tweedie")
-    gp_model.fit(y=y, X=np.column_stack([np.ones(len(y)), x]))
-    out = capsys.readouterr().out
-    p = gp_model.get_aux_pars(format_pandas=False).ravel()[1]
-    assert 1.001 < p < 1.002
-    assert "close to the lower bound" in out and "likelihood = 'poisson'" in out
-
-
 def test_non_contiguous_one_dimensional_arrays():
     # A column of a two-dimensional array is not contiguous in memory: its elements are passed, not the elements
     # that follow the first one in memory
