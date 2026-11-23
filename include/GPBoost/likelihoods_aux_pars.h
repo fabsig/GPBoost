@@ -165,7 +165,7 @@ namespace GPBoost {
 		else if (IsTweedieEstimatedPower()) {
 			const int ip = TweediePowerIndex();
 			const auto transform = TransformTweediePowerFromQ(aux_pars_trans[ip], TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_);
-			if (!std::isfinite(transform.p)) Log::REFatal("BackTransformAuxPars: transformed Tweedie power parameter must be finite and > 0, found %g.", aux_pars_trans[ip]);
+			if (!std::isfinite(transform.p)) Log::REFatal("BackTransformAuxPars: transformed Tweedie power parameter must be nonnegative, found %g.", aux_pars_trans[ip]);
 			aux_pars_orig[ip] = transform.p;
 		}
 	}
@@ -1772,7 +1772,9 @@ namespace GPBoost {
 			likelihood_type_ == "zero_one_censored_transformed_beta" || likelihood_type_ == "zero_one_censored_shifted_gamma" ||
 			IsZeroCensShiftedGamma() || likelihood_type_ == "asymmetric_laplace") {
 			for (int i = 0; i < num_aux_pars_estim_; ++i) {
-				if (!(aux_pars[i] > 0.)) {
+				// The transformed Tweedie power q can underflow to 0 where the likelihood is flat in log(q), see 'TransformTweediePowerFromQ'
+				const bool can_be_zero = IsTweedieEstimatedPower() && i == TweediePowerIndex();
+				if (!(aux_pars[i] > 0.) && !(can_be_zero && aux_pars[i] == 0.)) {
 					Log::REFatal("The '%s' parameter (= %g) is not > 0. This might be due to a problem when estimating the '%s' parameter (e.g., a numerical overflow). "
 						"You can try either (i) manually setting a different initial value using the 'init_aux_pars' parameter "
 						"or (ii) not estimating the '%s' parameter at all by setting 'estimate_aux_pars' to 'false'. "
@@ -2306,12 +2308,7 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static) reduction(+:power_sum)
 				for (data_size_t i = 0; i < num_data_; ++i) {
 					const double w = has_weights_ ? weights_[i] : 1.;
-					const double eta = location_par[i];
-					const double log_scaled_a = TweedieLogScaledA(eta, location_par[i + num_data_], p);
-					const double log_scaled_b = TweedieLogScaledB(y_data[i], eta, location_par[i + num_data_], p);
-					const double coefficient_a = eta / (2. - p) - 1. / ((2. - p) * (2. - p));
-					const double coefficient_b = eta / (p - 1.) + 1. / ((p - 1.) * (p - 1.));
-					power_sum += w * dp * TweedieSignedLogSum(coefficient_a, log_scaled_a, coefficient_b, log_scaled_b);
+					power_sum += w * dp * EvaluateTweedieDevianceTerm(y_data[i], location_par[i], location_par[i + num_data_], p, true).d_p;
 				}
 				grad[0] = -tweedie_vd_sum_d_theta_ - power_sum;
 			}
@@ -2328,22 +2325,17 @@ namespace GPBoost {
 			CHECK(TwoNumbersAreEqual<double>(tweedie_cached_phi_, phi));
 			CHECK(TwoNumbersAreEqual<double>(tweedie_cached_p_, p));
 			const double log_phi = std::log(phi);
-			double canonical_sum = 0., power_sum = 0.;
-#pragma omp parallel for schedule(static) reduction(+:canonical_sum,power_sum)
+			const bool estimated_power = IsTweedieEstimatedPower();
+			double deviance_term_sum = 0., power_sum = 0.;
+#pragma omp parallel for schedule(static) reduction(+:deviance_term_sum,power_sum)
 			for (data_size_t i = 0; i < num_data_; ++i) {
 				const double w = has_weights_ ? weights_[i] : 1.;
-				const double eta = location_par[i];
-				const double log_scaled_a = TweedieLogScaledA(eta, log_phi, p);
-				const double log_scaled_b = TweedieLogScaledB(y_data[i], eta, log_phi, p);
-				canonical_sum += w * TweedieLocationQuantityFromLogScaled(TweedieLocationQuantity::kCanonical, log_scaled_a, log_scaled_b, p);
-				if (IsTweedieEstimatedPower()) {
-					const double coefficient_a = eta / (2. - p) - 1. / ((2. - p) * (2. - p));
-					const double coefficient_b = eta / (p - 1.) + 1. / ((p - 1.) * (p - 1.));
-					power_sum += w * dp * TweedieSignedLogSum(coefficient_a, log_scaled_a, coefficient_b, log_scaled_b);
-				}
+				const auto deviance_term = EvaluateTweedieDevianceTerm(y_data[i], location_par[i], log_phi, p, estimated_power);
+				deviance_term_sum += w * deviance_term.value;
+				power_sum += w * dp * deviance_term.d_p;
 			}
-			grad[0] = -tweedie_sum_d_log_a_rho_ + canonical_sum;
-			if (IsTweedieEstimatedPower()) grad[1] = -tweedie_sum_d_log_a_theta_ - power_sum;
+			grad[0] = -tweedie_sum_d_log_a_rho_ + deviance_term_sum;
+			if (estimated_power) grad[1] = -tweedie_sum_d_log_a_theta_ - power_sum;
 		}
 		else if (IsEGPDLikelihood()) {
 			for (int j = 0; j < num_aux_pars_estim_; ++j) {

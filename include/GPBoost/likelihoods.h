@@ -911,7 +911,7 @@ namespace GPBoost {
 		/*! \brief Transformation between the power p and the parameter theta on which it is optimized (dp/dtheta = 0 for a fixed power) */
 		TweediePowerTransform GetTweediePowerTransform() const {
 			const double power_par = aux_pars_[TweediePowerIndex()];
-			if (is_tweedie_fixed_p_) return TweediePowerTransform{ power_par, 0., 0. };
+			if (is_tweedie_fixed_p_) return TweediePowerTransform{ power_par, 0. };
 			return TransformTweediePowerFromQ(power_par, TWEEDIE_POWER_LOWER_, TWEEDIE_POWER_UPPER_);
 		}
 
@@ -934,17 +934,17 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Log-normalizer (the part of the log-density that does not depend on the location) of one observation of a
-		*		Tweedie likelihood and its derivatives wrt rho = log(phi) and the transformed power: the series of the marginal
-		*		density of Y or, for the joint variants, its term for the observed number of events
+		* \brief Log-normalizer (the part of the log-density that does not depend on the location, i.e., the log-density at mu = y)
+		*		of one observation of a Tweedie likelihood and its derivatives wrt rho = log(phi) and the transformed power: the series
+		*		of the marginal density of Y or, for the joint variants, its term for the observed number of events
 		*/
 		inline TweedieSeriesResult EvaluateTweedieNormalizerOneObs(double y, data_size_t i, double rho, double p,
 			const TweediePowerTransform& transform, TweedieDerivativeOrder order, TweedieSpecialFunctionCache* cache) const {
 			if (is_tweedie_joint_) {
-				return EvaluateTweedieJointLogNormalizer(y, additional_likelihood_data_[i], rho, p, transform.dp_dtheta, transform.d2p_dtheta2,
+				return EvaluateTweedieJointLogNormalizer(y, additional_likelihood_data_[i], rho, p, transform.dp_dtheta,
 					order, order != TweedieDerivativeOrder::kValue && IsTweedieEstimatedPower());
 			}
-			return EvaluateTweedieLogNormalizer(y, rho, p, transform.dp_dtheta, transform.d2p_dtheta2, order,
+			return EvaluateTweedieLogNormalizer(y, rho, p, transform.dp_dtheta, order,
 				order != TweedieDerivativeOrder::kValue && IsTweedieEstimatedPower(), 1000000, cache);
 		}
 
@@ -1039,7 +1039,7 @@ namespace GPBoost {
 
 		/*!
 		* \brief zeta-block (= log(phi)) gradient of the negative approximate marginal log-likelihood at one observation of a
-		*		varying-dispersion Tweedie likelihood: the direct score l_zeta = d log(a)/d rho - canonical, the log-determinant
+		*		varying-dispersion Tweedie likelihood: the direct score l_zeta = d log(a)/d rho - deviance term, the log-determinant
 		*		term through dJ_eta/dzeta = -J_eta, and the implicit term through the mode through l_{eta,zeta} = -l_eta.
 		*		Requires 'UpdateTweedieVaryingDispersionNormalizer' to have been called
 		* \param w Sample weight
@@ -1050,10 +1050,10 @@ namespace GPBoost {
 			double diag, double inv_d_mll_d_mode) const {
 			const double log_scaled_a = TweedieLogScaledA(loc_eta, loc_zeta, p);
 			const double log_scaled_b = TweedieLogScaledB(y, loc_eta, loc_zeta, p);
-			const double canonical = TweedieLocationQuantityFromLogScaled(TweedieLocationQuantity::kCanonical, log_scaled_a, log_scaled_b, p);
+			const double deviance_term = EvaluateTweedieDevianceTerm(y, loc_eta, loc_zeta, p, false).value;
 			const double score = TweedieLocationQuantityFromLogScaled(TweedieLocationQuantity::kScore, log_scaled_a, log_scaled_b, p);
 			const double information = TweedieLocationQuantityFromLogScaled(TweedieLocationQuantity::kInformation, log_scaled_a, log_scaled_b, p);
-			const double dZeta = tweedie_vd_d_rho_[i] - canonical;
+			const double dZeta = tweedie_vd_d_rho_[i] - deviance_term;
 			return -w * dZeta - 0.5 * (w * information) * diag - (w * score) * inv_d_mll_d_mode;
 		}
 
@@ -3830,10 +3830,10 @@ namespace GPBoost {
 			}
 			else if (IsTweedieVaryingDispersion()) {
 				const double p = GetTweediePower();
-				double ll = EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kCanonical, y, loc_eta, extra[0], p);
+				double ll = EvaluateTweedieDevianceTerm(y, loc_eta, extra[0], p, false).value;
 				if (incl_norm_const) {
 					thread_local TweedieSpecialFunctionCache cache;
-					const auto res = EvaluateTweedieLogNormalizer(y, extra[0], p, 0., 0., TweedieDerivativeOrder::kValue, false, 1000000, &cache);
+					const auto res = EvaluateTweedieLogNormalizer(y, extra[0], p, 0., TweedieDerivativeOrder::kValue, false, 1000000, &cache);
 					ll = res.converged ? ll + res.log_a : std::numeric_limits<double>::quiet_NaN();
 				}
 				return ll;
@@ -4423,12 +4423,11 @@ namespace GPBoost {
 		inline double LogLikTweedie(double y, double eta, bool incl_norm_const) const {
 			const double phi = aux_pars_[0];
 			const double p = GetTweediePower();
-			double ll = EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kCanonical, y, eta, std::log(phi), p);
+			double ll = EvaluateTweedieDevianceTerm(y, eta, std::log(phi), p, false).value;
 			if (incl_norm_const) {
 				// The marginal density of y (also for the joint variants, since this is used for new data without the number of events)
-				const auto transform = GetTweediePowerTransform();
 				thread_local TweedieSpecialFunctionCache cache;
-				const auto res = EvaluateTweedieLogNormalizer(y, std::log(phi), p, transform.dp_dtheta, transform.d2p_dtheta2, TweedieDerivativeOrder::kValue, false, 1000000, &cache);
+				const auto res = EvaluateTweedieLogNormalizer(y, std::log(phi), p, 0., TweedieDerivativeOrder::kValue, false, 1000000, &cache);
 				if (!res.converged) return std::numeric_limits<double>::quiet_NaN();
 				ll += res.log_a;
 			}
@@ -4554,7 +4553,7 @@ namespace GPBoost {
 			else if (IsTweedieVaryingDispersion()) {
 				UpdateTweedieVaryingDispersionNormalizer(y_data, location_par);
 				const double p = GetTweediePower();
-				ll += SumOverSamplesWeighted([&](data_size_t i) { return EvaluateTweedieLocationQuantity(TweedieLocationQuantity::kCanonical, y_data[i], location_par[i], location_par[i + num_data_], p); });
+				ll += SumOverSamplesWeighted([&](data_size_t i) { return EvaluateTweedieDevianceTerm(y_data[i], location_par[i], location_par[i + num_data_], p, false).value; });
 				ll += tweedie_vd_sum_log_a_;
 			}
 			else if (!VisitLogLikKernel(y_data, y_data_int, location_par, false,

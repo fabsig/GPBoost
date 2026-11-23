@@ -820,9 +820,8 @@ namespace GPBoost {
 			if (IsTweedieConstantDispersion()) {
 				// The marginal density of y also for the joint variants, since the number of events of new data is not known
 				const double p = GetTweediePower();
-				const auto power = GetTweediePowerTransform();
 				thread_local TweedieSpecialFunctionCache cache;
-				const auto normalizer = EvaluateTweedieLogNormalizer(y_test_d, std::log(aux_pars_[0]), p, power.dp_dtheta, power.d2p_dtheta2, TweedieDerivativeOrder::kValue, false, 1000000, &cache);
+				const auto normalizer = EvaluateTweedieLogNormalizer(y_test_d, std::log(aux_pars_[0]), p, 0., TweedieDerivativeOrder::kValue, false, 1000000, &cache);
 				if (!normalizer.converged) {
 					na_inf_flag_11 = true;
 					ll += -std::numeric_limits<double>::infinity();
@@ -904,7 +903,7 @@ namespace GPBoost {
 			double log_normalizer = 0.;
 			if (tweedie) {
 				thread_local TweedieSpecialFunctionCache cache;
-				const auto normalizer = EvaluateTweedieLogNormalizer(y, extra[0], p_tweedie, 0., 0., TweedieDerivativeOrder::kValue, false, 1000000, &cache);
+				const auto normalizer = EvaluateTweedieLogNormalizer(y, extra[0], p_tweedie, 0., TweedieDerivativeOrder::kValue, false, 1000000, &cache);
 				if (!normalizer.converged) {
 					evaluation_failure = true;
 					ll += -std::numeric_limits<double>::infinity();

@@ -187,6 +187,51 @@ test_that("Tweedie log-likelihood for a power close to one or two", {
   expect_lt(abs(nll_at(1.995) - 203.00117959943266), 1e-7)
 })
 
+test_that("Tweedie likelihood of a concentrated density and maximum likelihood estimate of the dispersion", {
+  # For a small dispersion and a power close to one, the normalizer and the location-dependent part of the canonical form of
+  # the log-density are both of the order of y^(2-p) / ((p-1) phi) = 1e12 and cancel, and so do their derivatives wrt
+  # log(phi). The expected values are calculated in 30-digit arithmetic for the double values of y. The tiny random effect
+  # variance makes the Laplace approximation equal to the likelihood
+  n <- 100
+  p <- 1.00101
+  y <- 1 + sqrt(1e-9) * qnorm(sim_rand_unif(n, 0.43))
+  gp_model <- GPModel(group_data=seq_len(n), likelihood="tweedie_fixed_p", likelihood_additional_param=p)
+  nll <- gp_model$neg_log_likelihood(cov_pars=1e-20, y=y, fixed_effects=rep(0, n), aux_pars=c(1e-9, p))
+  expect_lt(abs(nll + 895.181202767865), 1e-6)
+  # The estimate of the dispersion solves the score equation
+  capture.output(fit <- fitGPModel(group_data=seq_len(n), y=y, likelihood="tweedie_fixed_p", likelihood_additional_param=p,
+                                   params=list(init_cov_pars=1e-20, estimate_cov_par_index=0, init_aux_pars=c(2e-9, p),
+                                               delta_rel_conv=1e-12, maxit=1000)), file="NUL")
+  expect_lt(abs(fit$get_aux_pars()[1] / 9.8176542262e-10 - 1), 1e-4)
+})
+
+test_that("an estimated Tweedie power at a bound of the supported range is valid for a new model", {
+  # Where the likelihood is flat in the transformed power theta = log((p - 1.001) / (1.999 - p)), an optimizer can move theta
+  # so far that p rounds to a bound or that exp(theta) underflows or overflows. Nelder-Mead does so here, started at the
+  # representable power closest to a bound: at the lower bound for Poisson-like data and at the upper bound for data without
+  # zeros. p rounds to the bound for the first two data sets, and exp(theta) underflows or overflows for the last two
+  group <- rep(1:4, length.out=20)
+  counts <- rep(0:4, length.out=20)
+  z <- qnorm(seq(0.05, 0.95, length.out=20))
+  p_lower <- 1.001 + 2^-52
+  p_upper <- 1.999 - 2^-52
+  cases <- list(list(y=counts, p_init=p_lower), list(y=exp(z), p_init=p_upper),
+                list(y=0.5 * counts, p_init=p_lower), list(y=exp(0.5 * z), p_init=p_upper))
+  for (case in cases) {
+    capture.output(fit <- fitGPModel(group_data=group, y=case$y, likelihood="tweedie",
+                                     params=list(optimizer_cov="nelder_mead", init_aux_pars=c(1, case$p_init),
+                                                 init_coef_aux_pars_from_iid_model=FALSE)), file="NUL")
+    p_hat <- fit$get_aux_pars()[2]
+    expect_gt(p_hat, 1.001)
+    expect_lt(p_hat, 1.999)
+    filename <- tempfile(fileext=".json")
+    saveGPModel(fit, filename)
+    capture.output(fit_loaded <- loadGPModel(filename), file="NUL")
+    unlink(filename)
+    expect_equal(fit_loaded$get_aux_pars(), fit$get_aux_pars())
+  }
+})
+
 test_that("Tweedie power close to a bound of the supported range: warnings and estimation", {
   group <- rep(1:50, each=10)
   x <- 2 * sim_rand_unif(500, 0.23) - 1
