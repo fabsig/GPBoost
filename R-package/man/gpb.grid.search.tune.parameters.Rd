@@ -20,7 +20,11 @@ Besides parameters of the tree-boosting part, \code{param_grid} can contain the 
 of a Matern covariance function. A smoothness other than 0.5, 1.5, and 2.5 requires Bessel functions, which are
 slower to evaluate and not provided by all compilers (e.g., clang on macOS). For every parameter combination, the
 GP models of the cross-validation folds are constructed with the values of these parameters and with all other
-settings of \code{gp_model}. \code{gp_model} keeps its own values of these parameters}
+settings of \code{gp_model}. \code{gp_model} keeps its own values of these parameters.
+\code{gp_model} must have a Gaussian process, and 'cov_function' and 'cov_fct_order' cannot be tuned if it has
+initial values 'init_cov_pars'. AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned with a
+\code{gp_model} that has such a covariance function, and if it has a fidelity-specific mean, all values of
+'cov_function' must be AR1 multifidelity covariance functions}
 
 \item{num_try_random}{\code{integer} with number of random trial on parameter grid. If NULL, a deterministic search is done}
 

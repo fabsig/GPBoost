@@ -42,7 +42,10 @@ but a smoothness other than 0.5, 1.5, and 2.5 requires Bessel functions, which a
 provided by all compilers (e.g., clang on macOS, where such trials fail). 'cov_function' can only be given as a
 set of values. In every trial, the GP models of the cross-validation folds are constructed with the values of
 these parameters and with all other settings of \code{gp_model}. \code{gp_model} keeps its own values of these
-parameters.
+parameters. \code{gp_model} must have a Gaussian process, and 'cov_function' and 'cov_fct_order' cannot be tuned
+if it has initial values 'init_cov_pars'. AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned
+with a \code{gp_model} that has such a covariance function, and if it has a fidelity-specific mean, all values of
+'cov_function' must be AR1 multifidelity covariance functions.
 See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part}
 
 \item{n_iter}{Number of sequential Bayesian optimization steps after the initial design. The initial design is

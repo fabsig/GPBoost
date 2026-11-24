@@ -186,6 +186,86 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       expect_lt(abs(scores_exponential[1] - scores_exponential[2]), TOLERANCE)
     })
 
+    test_that("Other covariance functions and failed combinations in 'gpb.grid.search.tune.parameters'", {
+
+      # Covariance functions with more and with fewer covariance parameters than the one of 'gp_model'
+      for (setting in list(list(cov_function = "matern", cov_functions = c("matern", "matern_ard")),
+                           list(cov_function = "matern_ard", cov_functions = "matern"))) {
+        gp_model <- spatial_gp_model(cov_function = setting$cov_function)
+        num_cov_pars <- gp_model_field(gp_model, "num_cov_pars")
+        opt_params <- gpb.grid.search.tune.parameters(param_grid = list("cov_function" = setting$cov_functions),
+                                                      data = gpb.Dataset(X, label = y_spatial), gp_model = gp_model,
+                                                      params = list(learning_rate = 0.1, verbose = -1), nrounds = 50,
+                                                      early_stopping_rounds = 5, folds = folds,
+                                                      metric = "test_neg_log_likelihood", verbose_eval = 0,
+                                                      return_all_combinations = TRUE)
+        expect_equal(gp_model_field(gp_model, "cov_function"), setting$cov_function)
+        expect_equal(gp_model_field(gp_model, "num_cov_pars"), num_cov_pars)
+        for (combination in opt_params$all_combinations) {
+          score <- cv_score_of_best_params(c(combination$params, list(learning_rate = 0.1)), combination$nrounds)
+          expect_lt(abs(combination$score - score), TOLERANCE)
+        }
+      }
+      # A combination whose GP models cannot be constructed has no score, and the search continues
+      time <- matrix(seq_len(n) / n, ncol = 1)
+      capture.output(expect_message(
+        opt_params <- gpb.grid.search.tune.parameters(param_grid = list("cov_function" = c("matern", "hurst"),
+                                                                        "cov_fct_order" = c(1, 2)),
+                                                      data = gpb.Dataset(X, label = y_spatial),
+                                                      gp_model = GPModel(gp_coords = time, cov_function = "hurst"),
+                                                      params = list(learning_rate = 0.1, verbose = -1), nrounds = 3,
+                                                      folds = folds, metric = "test_neg_log_likelihood",
+                                                      verbose_eval = 0, return_all_combinations = TRUE),
+        "'cov_fct_order' = 2 is not supported for the 'matern' covariance function"), file = "NUL")
+      expect_length(opt_params$all_combinations, 4L)
+      for (combination in opt_params$all_combinations) {
+        if (combination$params$cov_function == "matern" && combination$params$cov_fct_order == 2) {
+          expect_true(is.na(combination$score))
+        } else {
+          expect_true(is.finite(combination$score))
+        }
+      }
+    })
+
+    test_that("Parameters of the GP model that cannot be tuned with 'gp_model'", {
+
+      grid_search <- function(param_grid, gp_model, label = y_spatial) {
+        gpb.grid.search.tune.parameters(param_grid = param_grid, data = gpb.Dataset(X, label = label),
+                                        gp_model = gp_model, params = list(learning_rate = 0.1, verbose = -1),
+                                        nrounds = 10, folds = folds, metric = "test_neg_log_likelihood",
+                                        verbose_eval = 0, return_all_combinations = TRUE)
+      }
+      expect_error(grid_search(list("cov_function" = c("matern", "exponential")), GPModel(group_data = group)),
+                   "can only be tuned with a 'gp_model' that has a Gaussian process")
+      # The number and the meaning of the covariance parameters depend on 'cov_function' and 'cov_fct_order'
+      gp_model <- spatial_gp_model()
+      gp_model$set_optim_params(params = list(init_cov_pars = c(0.1, 1, 0.2)))
+      expect_error(grid_search(list("cov_function" = c("matern", "exponential")), gp_model),
+                   "cannot be tuned with initial values 'init_cov_pars'")
+      expect_error(grid_search(list("cov_function" = c(1, 2)), spatial_gp_model()),
+                   "must be names of covariance functions")
+      # With a fidelity-specific mean, the trees have the fidelity indicator as an additional feature, and covariance
+      #   functions with and without it cannot be compared in one search
+      fidelity <- rep(c(0, 1), n / 2)
+      coords_mf <- cbind(coords, fidelity)
+      y_mf <- y_spatial + 5 * fidelity
+      expect_error(grid_search(list("cov_function" = c("ar1_mf_matern", "matern_ard")),
+                               GPModel(gp_coords = coords_mf, cov_function = "ar1_mf_matern"), label = y_mf),
+                   "all values of 'cov_function' must then be AR1 multifidelity")
+      expect_error(grid_search(list("cov_function" = "ar1_mf_matern"),
+                               GPModel(gp_coords = coords_mf, cov_function = "matern_ard"), label = y_mf),
+                   "is an AR1 multifidelity covariance function and can only be tuned")
+      opt_params <- grid_search(list("cov_function" = c("ar1_mf_matern", "ar1_mf_exponential")),
+                                GPModel(gp_coords = coords_mf, cov_function = "ar1_mf_matern"), label = y_mf)
+      for (combination in opt_params$all_combinations) {
+        cvbst <- gpb.cv(params = list(learning_rate = 0.1, verbose = -1, force_col_wise = TRUE, deterministic = TRUE),
+                        data = gpb.Dataset(X, label = y_mf),
+                        gp_model = GPModel(gp_coords = coords_mf, cov_function = combination$params$cov_function),
+                        nrounds = 10, folds = folds, metric = "test_neg_log_likelihood", verbose = 0)
+        expect_lt(abs(combination$score - cvbst$best_score), TOLERANCE)
+      }
+    })
+
     test_that("Choosing tuning parameters with the approximation of SMAC in 'gpb.tune.pars.rf.bayesian.optimization'", {
 
       # 'mlr3' and 'mlr' (used by 'gpb.tune.pars.bayesian.optimization') warn when they are loaded in the same session

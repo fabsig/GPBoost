@@ -101,6 +101,69 @@ gpb.cv <- function(params = list()
                    , delete_boosters_folds = FALSE
                    , ...
 ) {
+  return(gpb.cv.internal(params = params
+                         , data = data
+                         , gp_model = gp_model
+                         , gp_model_params = list()
+                         , nrounds = nrounds
+                         , early_stopping_rounds = early_stopping_rounds
+                         , folds = folds
+                         , nfold = nfold
+                         , metric = metric
+                         , verbose = verbose
+                         , use_gp_model_for_validation = use_gp_model_for_validation
+                         , fit_GP_cov_pars_OOS = fit_GP_cov_pars_OOS
+                         , train_gp_model_cov_pars = train_gp_model_cov_pars
+                         , label = label
+                         , weight = weight
+                         , obj = obj
+                         , eval = eval
+                         , record = record
+                         , eval_freq = eval_freq
+                         , showsd = showsd
+                         , stratified = stratified
+                         , init_model = init_model
+                         , colnames = colnames
+                         , categorical_feature = categorical_feature
+                         , callbacks = callbacks
+                         , reset_data = reset_data
+                         , delete_boosters_folds = delete_boosters_folds
+                         , ...))
+}
+
+# Cross-validation of gpb.cv() with parameters of the GP models of the folds that differ from those of
+# 'gp_model'. 'gp_model_params' is a list with parameters of the GP model, e.g., 'cov_function', that replace
+# those of 'gp_model' in the GP models of the folds. The tuning functions use it instead of changing these
+# parameters of 'gp_model'
+gpb.cv.internal <- function(params = list()
+                            , data
+                            , gp_model = NULL
+                            , gp_model_params = list()
+                            , nrounds = 1000L
+                            , early_stopping_rounds = NULL
+                            , folds = NULL
+                            , nfold = 5L
+                            , metric = NULL
+                            , verbose = 1L
+                            , use_gp_model_for_validation = TRUE
+                            , fit_GP_cov_pars_OOS = FALSE
+                            , train_gp_model_cov_pars = TRUE
+                            , label = NULL
+                            , weight = NULL
+                            , obj = NULL
+                            , eval = NULL
+                            , record = TRUE
+                            , eval_freq = 1L
+                            , showsd = FALSE
+                            , stratified = TRUE
+                            , init_model = NULL
+                            , colnames = NULL
+                            , categorical_feature = NULL
+                            , callbacks = list()
+                            , reset_data = FALSE
+                            , delete_boosters_folds = FALSE
+                            , ...
+) {
   
   if (nrounds <= 0L) {
     stop("nrounds should be greater than zero")
@@ -342,6 +405,12 @@ gpb.cv <- function(params = list()
   # guarantee that indices are sorted while keeping init_score and weight together
   # with the correct indices. Note that it takes advantage of the fact that
   # someDT$some_column returns NULL is 'some_column' does not exist in the data.table
+  if (!is.null(gp_model)) {
+    fold_cov_settings <- list(cov_function = gp_model$.__enclos_env__$private$cov_function
+                              , cov_fct_shape = gp_model$.__enclos_env__$private$cov_fct_shape
+                              , cov_fct_order = gp_model$.__enclos_env__$private$cov_fct_order)
+    fold_cov_settings[names(gp_model_params)] <- gp_model_params
+  }
   bst_folds <- lapply(
     X = seq_along(folds)
     , FUN = function(k) {
@@ -497,10 +566,10 @@ gpb.cv <- function(params = list()
                                           , drop_intercept_group_rand_effect = gp_model$.__enclos_env__$private$drop_intercept_group_rand_effect
                                           , gp_coords = gp_coords
                                           , gp_rand_coef_data = gp_rand_coef_data
-                                          , cov_function = gp_model$.__enclos_env__$private$cov_function
+                                          , cov_function = fold_cov_settings$cov_function
                                           , fidelity_specific_mean = gp_model$has_fidelity_specific_mean()
-                                          , cov_fct_shape = gp_model$.__enclos_env__$private$cov_fct_shape
-                                          , cov_fct_order = gp_model$.__enclos_env__$private$cov_fct_order
+                                          , cov_fct_shape = fold_cov_settings$cov_fct_shape
+                                          , cov_fct_order = fold_cov_settings$cov_fct_order
                                           , gp_approx = gp_model$.__enclos_env__$private$gp_approx
                                           , num_parallel_threads = gp_model$.__enclos_env__$private$num_parallel_threads
                                           , GPU_use = gp_model$.__enclos_env__$private$GPU_use
@@ -974,7 +1043,11 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #' of a Matern covariance function. A smoothness other than 0.5, 1.5, and 2.5 requires Bessel functions, which are
 #' slower to evaluate and not provided by all compilers (e.g., clang on macOS). For every parameter combination, the
 #' GP models of the cross-validation folds are constructed with the values of these parameters and with all other
-#' settings of \code{gp_model}. \code{gp_model} keeps its own values of these parameters
+#' settings of \code{gp_model}. \code{gp_model} keeps its own values of these parameters.
+#' \code{gp_model} must have a Gaussian process, and 'cov_function' and 'cov_fct_order' cannot be tuned if it has
+#' initial values 'init_cov_pars'. AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned with a
+#' \code{gp_model} that has such a covariance function, and if it has a fidelity-specific mean, all values of
+#' 'cov_function' must be AR1 multifidelity covariance functions
 #' @param params \code{list} with other parameters not included in \code{param_grid}
 #' @param num_try_random \code{integer} with number of random trial on parameter grid. If NULL, a deterministic search is done
 #' @param label Vector of labels, used if \code{data} is not an \code{\link{gpb.Dataset}}
@@ -1082,7 +1155,8 @@ gpb.grid.search.tune.parameters <- function(param_grid
   if (!is.list(param_grid)) {
     stop("gpb.grid.search.tune.parameters: param_grid needs to be a list")
   }
-  gpb.tuning.check.gp.model.params(param_grid, gp_model = gp_model, fun_name = "gpb.grid.search.tune.parameters")
+  gpb.tuning.check.gp.model.params(param_grid, cov_functions = param_grid[["cov_function"]], gp_model = gp_model,
+                                   fun_name = "gpb.grid.search.tune.parameters")
   if (is.null(verbose_eval)) {
     verbose_eval = 0
   } else {
@@ -1144,33 +1218,39 @@ gpb.grid.search.tune.parameters <- function(param_grid
       set.seed(cv_seed)
     }
     record <- new.env(parent = emptyenv())
-    previous_gp_model_params <- gpb.tuning.set.gp.model.params(gp_model, params_split$gp_model)
-    cvbst <- tryCatch(gpb.cv(params = params
-                             , data = data
-                             , gp_model = gp_model
-                             , nrounds = nrounds
-                             , early_stopping_rounds = early_stopping_rounds
-                             , folds = folds
-                             , nfold = nfold
-                             , metric = metric
-                             , use_gp_model_for_validation = use_gp_model_for_validation
-                             , train_gp_model_cov_pars = train_gp_model_cov_pars
-                             , label = label
-                             , weight = weight
-                             , obj = obj
-                             , eval = eval
-                             , verbose = verbose_cv
-                             , record = TRUE
-                             , eval_freq = 1L
-                             , showsd = FALSE
-                             , stratified = stratified
-                             , init_model = init_model
-                             , colnames = colnames
-                             , categorical_feature = categorical_feature
-                             , callbacks = c(callbacks, list(gpb.tuning.record.higher.better(record)))
-                             , delete_boosters_folds = TRUE
-                             , ...
-    ), finally = gpb.tuning.set.gp.model.params(gp_model, previous_gp_model_params))
+    # Errors in the boosting iterations are handled by gpb.cv, but not errors when the models of the folds are
+    # constructed, e.g., for a 'cov_fct_order' that the covariance function does not support
+    cvbst <- tryCatch(gpb.cv.internal(params = params
+                                      , data = data
+                                      , gp_model = gp_model
+                                      , gp_model_params = params_split$gp_model
+                                      , nrounds = nrounds
+                                      , early_stopping_rounds = early_stopping_rounds
+                                      , folds = folds
+                                      , nfold = nfold
+                                      , metric = metric
+                                      , use_gp_model_for_validation = use_gp_model_for_validation
+                                      , train_gp_model_cov_pars = train_gp_model_cov_pars
+                                      , label = label
+                                      , weight = weight
+                                      , obj = obj
+                                      , eval = eval
+                                      , verbose = verbose_cv
+                                      , record = TRUE
+                                      , eval_freq = 1L
+                                      , showsd = FALSE
+                                      , stratified = stratified
+                                      , init_model = init_model
+                                      , colnames = colnames
+                                      , categorical_feature = categorical_feature
+                                      , callbacks = c(callbacks, list(gpb.tuning.record.higher.better(record)))
+                                      , delete_boosters_folds = TRUE
+                                      , ...
+    ), error = function(err) {
+      message(paste0("Error for parameter combination ", counter_num_comb, " of ", length(try_param_combs), ": ",
+                     conditionMessage(err)))
+      return(list(best_score = NA_real_, best_iter = NA_integer_))
+    })
     if (is.finite(cvbst$best_score)) {
       if (is.na(best_score) || (isTRUE(record$higher_better) && cvbst$best_score > best_score) ||
           (!isTRUE(record$higher_better) && cvbst$best_score < best_score)) {

@@ -264,6 +264,81 @@ def test_tuning_gp_model_params():
     assert abs(scores_exponential[0] - scores_exponential[1]) < 1e-8
 
 
+def test_tuning_cov_function_number_of_cov_pars():
+    # Covariance functions with more and with fewer covariance parameters than the one of 'gp_model'
+    X, y, coords = _simulate_spatial_data()
+    folds = _folds(len(y))
+    for cov_function, cov_functions in (('matern', ['matern', 'matern_ard']), ('matern_ard', ['matern'])):
+        gp_model = _spatial_gp_model(coords, cov_function=cov_function)
+        num_cov_pars = gp_model.num_cov_pars
+        opt_params = gpb.grid_search_tune_parameters(param_grid={'cov_function': cov_functions},
+                                                     train_set=gpb.Dataset(X, y), gp_model=gp_model,
+                                                     params={'learning_rate': 0.1, 'verbose': -1}, num_boost_round=50,
+                                                     early_stopping_rounds=5, folds=folds,
+                                                     metric='test_neg_log_likelihood', verbose_eval=0,
+                                                     return_all_combinations=True)
+        assert gp_model.cov_function == cov_function and gp_model.num_cov_pars == num_cov_pars
+        for combination in opt_params['all_combinations'].values():
+            score = _cv_score_of_best_params(dict(combination['params'], learning_rate=0.1),
+                                             combination['num_boost_round'], X, y, coords, folds)
+            assert abs(combination['score'] - score) < 1e-8
+
+
+def test_tuning_ar1_multifidelity_cov_function():
+    rng = np.random.default_rng(215)
+    n = 120
+    fidelity = np.tile([0, 1], n // 2)
+    coords = np.column_stack([rng.uniform(size=(n, 3)), fidelity])
+    X = rng.uniform(size=(n, 2))
+    y = 5 * fidelity + np.sin(4 * X[:, 0]) + rng.normal(scale=0.4, size=n)
+    indices = rng.permutation(n)
+    folds = [(indices[:80], indices[80:])]
+    params = {'learning_rate': 0.2, 'min_data_in_leaf': 5, 'verbose': -1, 'deterministic': True,
+              'force_col_wise': True}
+
+    def grid_search(cov_functions, fidelity_specific_mean):
+        gp_model = gpb.GPModel(gp_coords=coords, cov_function='ar1_mf_matern',
+                               fidelity_specific_mean=fidelity_specific_mean)
+        return gpb.grid_search_tune_parameters(param_grid={'cov_function': cov_functions},
+                                               train_set=gpb.Dataset(X, y), gp_model=gp_model, params=params,
+                                               num_boost_round=10, folds=folds, metric='test_neg_log_likelihood',
+                                               verbose_eval=0, return_all_combinations=True)
+
+    # With a fidelity-specific mean, the trees have the fidelity indicator as an additional feature, and covariance
+    # functions with and without it cannot be compared in one search. Without it, they can
+    for cov_functions, fidelity_specific_mean in ((['ar1_mf_matern', 'ar1_mf_exponential'], True),
+                                                  (['ar1_mf_matern', 'matern_ard'], False)):
+        opt_params = grid_search(cov_functions, fidelity_specific_mean)
+        for combination in opt_params['all_combinations'].values():
+            gp_model = gpb.GPModel(gp_coords=coords, cov_function=combination['params']['cov_function'],
+                                   fidelity_specific_mean=fidelity_specific_mean)
+            cvbst = gpb.cv(params=params, train_set=gpb.Dataset(X, y), gp_model=gp_model, num_boost_round=10,
+                           folds=folds, metric='test_neg_log_likelihood', verbose_eval=False)
+            assert abs(combination['score'] - np.min(cvbst['test_neg_log_likelihood-mean'])) < 1e-8
+    with pytest.raises(ValueError, match="all values of 'cov_function' must then be AR1 multifidelity"):
+        grid_search(['ar1_mf_matern', 'matern_ard'], True)
+    with pytest.raises(ValueError, match="'ar1_mf_matern' is an AR1 multifidelity covariance function and can only"):
+        gpb.grid_search_tune_parameters(param_grid={'cov_function': ['ar1_mf_matern']}, train_set=gpb.Dataset(X, y),
+                                        gp_model=gpb.GPModel(gp_coords=coords, cov_function='matern_ard'))
+
+
+def test_tuning_gp_model_params_errors():
+    X, y, coords = _simulate_spatial_data()
+    with pytest.raises(ValueError, match="can only be tuned with a 'gp_model' that has a Gaussian process"):
+        gpb.grid_search_tune_parameters(param_grid={'cov_function': ['matern', 'exponential']},
+                                        train_set=gpb.Dataset(X, y),
+                                        gp_model=gpb.GPModel(group_data=np.arange(len(y)) % 10))
+    # The number and the meaning of the covariance parameters depend on 'cov_function' and 'cov_fct_order'
+    gp_model = _spatial_gp_model(coords)
+    gp_model.set_optim_params(params={'init_cov_pars': [0.1, 1., 0.2]})
+    with pytest.raises(ValueError, match="cannot be tuned with initial values 'init_cov_pars'"):
+        gpb.tune_pars_TPE_algorithm_optuna(search_space={'cov_function': {'values': ['matern', 'exponential']}},
+                                           n_trials=1, X=X, y=y, gp_model=gp_model)
+    with pytest.raises(ValueError, match="must be names of covariance functions"):
+        gpb.tune_pars_TPE_algorithm_optuna(search_space={'cov_function': {'values': [1, 2]}}, n_trials=1, X=X, y=y,
+                                           gp_model=_spatial_gp_model(coords))
+
+
 # The last digits of a cross-validation score can differ between processes, since the threads add up their
 # partial sums in the order in which they finish (observed on Linux with GCC), and the proposals of SMAC then
 # differ after some trials. The script therefore replaces the cross-validation by a fixed function of the

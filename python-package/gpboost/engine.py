@@ -7,7 +7,6 @@ Modified work Copyright (c) 2020 - 2024 Fabio Sigrist. All rights reserved.
 Licensed under the Apache License Version 2.0 See LICENSE file in the project root for license information.
 """
 import collections
-import contextlib
 import copy
 import logging
 import numbers
@@ -434,9 +433,16 @@ class CVBooster:
         return handler_function
 
 
-def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_model_for_validation=True,
-                  fpreproc=None, stratified=False, shuffle=True, eval_train_metric=False):
-    """Make a n-fold list of Booster from random indices."""
+def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, gp_model_params=None,
+                  use_gp_model_for_validation=True, fpreproc=None, stratified=False, shuffle=True,
+                  eval_train_metric=False):
+    """Make a n-fold list of Booster from random indices.
+
+    The GP models of the folds have the settings of 'gp_model', except for the parameters in the dict
+    'gp_model_params' (e.g., 'cov_function').
+    """
+    if gp_model_params is None:
+        gp_model_params = {}
     full_data = full_data.construct()
     num_data = full_data.num_data()
     if folds is not None:
@@ -537,10 +543,10 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, use_gp_m
                                      drop_intercept_group_rand_effect=gp_model.drop_intercept_group_rand_effect,
                                      gp_coords=gp_coords,
                                      gp_rand_coef_data=gp_rand_coef_data,
-                                     cov_function=gp_model.cov_function,
+                                     cov_function=gp_model_params.get('cov_function', gp_model.cov_function),
                                      fidelity_specific_mean=gp_model.fidelity_specific_mean,
-                                     cov_fct_shape=gp_model.cov_fct_shape,
-                                     cov_fct_order=gp_model.cov_fct_order,
+                                     cov_fct_shape=gp_model_params.get('cov_fct_shape', gp_model.cov_fct_shape),
+                                     cov_fct_order=gp_model_params.get('cov_fct_order', gp_model.cov_fct_order),
                                      gp_approx=gp_model.gp_approx,
                                      num_parallel_threads=gp_model.num_parallel_threads,
                                      GPU_use=gp_model.GPU_use,
@@ -762,6 +768,30 @@ def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_ro
         Authors of the LightGBM Python package
         Fabio Sigrist
     """
+    return _cv(params=params, train_set=train_set, gp_model=gp_model, gp_model_params=None,
+               num_boost_round=num_boost_round, early_stopping_rounds=early_stopping_rounds, folds=folds,
+               nfold=nfold, metric=metric, verbose_eval=verbose_eval,
+               use_gp_model_for_validation=use_gp_model_for_validation, fit_GP_cov_pars_OOS=fit_GP_cov_pars_OOS,
+               train_gp_model_cov_pars=train_gp_model_cov_pars, stratified=stratified, shuffle=shuffle, fobj=fobj,
+               feval=feval, init_model=init_model, feature_name=feature_name,
+               categorical_feature=categorical_feature, fpreproc=fpreproc, show_stdv=show_stdv, seed=seed,
+               callbacks=callbacks, eval_train_metric=eval_train_metric, return_cvbooster=return_cvbooster,
+               metrics=metrics)
+
+
+def _cv(params, train_set, gp_model=None, gp_model_params=None, num_boost_round=1000, early_stopping_rounds=None,
+        folds=None, nfold=5, metric=None, verbose_eval=None,
+        use_gp_model_for_validation=True, fit_GP_cov_pars_OOS=False, train_gp_model_cov_pars=True,
+        stratified=False, shuffle=True, fobj=None, feval=None, init_model=None,
+        feature_name='auto', categorical_feature='auto', fpreproc=None, show_stdv=False, seed=0,
+        callbacks=None, eval_train_metric=False,
+        return_cvbooster=False, metrics=None):
+    """Cross-validation of 'cv()' with parameters of the GP models of the folds that differ from those of 'gp_model'.
+
+    'gp_model_params' is a dict with parameters of the GP model, e.g., 'cov_function', that replace those of
+    'gp_model' in the GP models of the folds, see '_make_n_folds()'. The tuning functions use it instead of
+    changing these parameters of 'gp_model'.
+    """
     if metrics is not None:
         raise GPBoostError("The argument 'metrics' is discontinued. "
                            "Use the renamed equivalent argument 'metric' instead")
@@ -829,7 +859,7 @@ def cv(params, train_set, gp_model=None, num_boost_round=1000, early_stopping_ro
 
     results = collections.defaultdict(list)
     cvfolds = _make_n_folds(train_set, folds=folds, nfold=nfold,
-                            params=params, seed=seed, gp_model=gp_model,
+                            params=params, seed=seed, gp_model=gp_model, gp_model_params=gp_model_params,
                             use_gp_model_for_validation=use_gp_model_for_validation,
                             fpreproc=fpreproc, stratified=stratified, shuffle=shuffle,
                             eval_train_metric=eval_train_metric)
@@ -964,6 +994,10 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
         are slower to evaluate and not provided by all compilers (e.g., clang on macOS). For every parameter
         combination, the GP models of the cross-validation folds are constructed with the values of these parameters
         and with all other settings of 'gp_model'. 'gp_model' keeps its own values of these parameters.
+        'gp_model' must have a Gaussian process, and 'cov_function' and 'cov_fct_order' cannot be tuned if it has
+        initial values 'init_cov_pars'. AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned with a
+        'gp_model' that has such a covariance function, and if it has a fidelity-specific mean, all values of
+        'cov_function' must be AR1 multifidelity covariance functions.
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     train_set : Dataset
         Data to be trained on.
@@ -1162,7 +1196,6 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
     # Check correct format
     if not isinstance(param_grid, dict):
         raise ValueError("param_grid needs to be a dict")
-    _check_tuning_gp_model_params(param_grid, gp_model)
     if verbose_eval is None:
         verbose_eval = 0
     else:
@@ -1182,6 +1215,7 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
         param_grid[param] = _format_check_1D_data(param_grid[param],
                                                   data_name=param, check_data_type=False,
                                                   check_must_be_int=False, convert_to_type=None)
+    _check_tuning_gp_model_params(param_grid, param_grid.get('cov_function', []), gp_model)
     _tuning_deterministic_params(params, param_grid)
     # Determine combinations of parameter values that should be tried out
     grid_size = _get_grid_size(param_grid)
@@ -1225,16 +1259,15 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
             higher_better_record = []
             callbacks_comb = list(callbacks) if callbacks is not None else []
             callbacks_comb.append(_record_first_metric_higher_better(higher_better_record))
-            with _gp_model_params_set(gp_model, gp_model_params):
-                cvbst = cv(params=params, train_set=train_set, num_boost_round=num_boost_round, gp_model=gp_model,
-                           use_gp_model_for_validation=use_gp_model_for_validation,
-                           train_gp_model_cov_pars=train_gp_model_cov_pars,
-                           folds=folds, nfold=nfold, stratified=stratified, shuffle=shuffle,
-                           metric=metric, fobj=fobj, feval=feval, init_model=init_model,
-                           feature_name=feature_name, categorical_feature=categorical_feature,
-                           early_stopping_rounds=early_stopping_rounds, fpreproc=fpreproc,
-                           verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks_comb,
-                           eval_train_metric=False, return_cvbooster=False)
+            cvbst = _cv(params=params, train_set=train_set, num_boost_round=num_boost_round, gp_model=gp_model,
+                        gp_model_params=gp_model_params, use_gp_model_for_validation=use_gp_model_for_validation,
+                        train_gp_model_cov_pars=train_gp_model_cov_pars,
+                        folds=folds, nfold=nfold, stratified=stratified, shuffle=shuffle,
+                        metric=metric, fobj=fobj, feval=feval, init_model=init_model,
+                        feature_name=feature_name, categorical_feature=categorical_feature,
+                        early_stopping_rounds=early_stopping_rounds, fpreproc=fpreproc,
+                        verbose_eval=verbose_eval_cv, seed=seed, callbacks=callbacks_comb,
+                        eval_train_metric=False, return_cvbooster=False)
             higher_better = higher_better_record[0]
             scores = cvbst[next(iter(cvbst))]
             if higher_better:
@@ -1246,9 +1279,11 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
             if np.isfinite(current_score) and (best_score is None or
                                                (current_score > best_score if higher_better else current_score < best_score)):
                 current_score_is_better = True
-        except Exception as err: # Note: this is typically not called anymore since gpv.cv() now already contains a tryCatch statement
+        # Errors in the boosting iterations are handled by 'cv()', but not errors when the models of the folds are
+        #   constructed, e.g., for a 'cov_fct_order' that the covariance function does not support
+        except Exception as err:
             print("Error for parameter combination " + str(counter_num_comb) +
-                    " of " + str(len(try_param_combs)) + ": " + str(param_comb))
+                  " of " + str(len(try_param_combs)) + ": " + str(param_comb) + ": " + str(err))
         if current_score_is_better:
             best_score = current_score
             best_params = param_comb
@@ -1365,11 +1400,38 @@ def _parse_tuning_search_space(search_space):
     return parsed
 
 
-def _check_tuning_gp_model_params(params, gp_model):
-    """Raise an error if parameters of the GP model are tuned without a GP model."""
-    for param in params:
-        if param in _TUNING_GP_MODEL_PARAMS and gp_model is None:
-            raise ValueError(f"'{param}' is a parameter of the GP model and can only be tuned with a 'gp_model'")
+def _check_tuning_gp_model_params(params, cov_functions, gp_model):
+    """Raise an error if the parameters of the GP model in 'params' cannot be tuned with 'gp_model'.
+
+    'params' are the names of the tuned parameters and 'cov_functions' the values of 'cov_function' in the search.
+    The trees of a model with an AR1 multifidelity covariance function and a fidelity-specific mean have the fidelity
+    indicator as an additional feature (see 'cv()'), and all models of a search must have the same features.
+    """
+    gp_model_params = [param for param in params if param in _TUNING_GP_MODEL_PARAMS]
+    if not gp_model_params:
+        return
+    if gp_model is None:
+        raise ValueError(f"'{gp_model_params[0]}' is a parameter of the GP model and can only be tuned with a "
+                         "'gp_model'")
+    if gp_model.gp_coords is None:
+        raise ValueError(f"'{gp_model_params[0]}' is a parameter of a Gaussian process and can only be tuned with a "
+                         "'gp_model' that has a Gaussian process ('gp_coords')")
+    # The number and the meaning of the covariance parameters depend on 'cov_function' and 'cov_fct_order'
+    if ('cov_function' in params or 'cov_fct_order' in params) and 'init_cov_pars' in gp_model._get_optim_params():
+        raise ValueError("'cov_function' and 'cov_fct_order' cannot be tuned with initial values 'init_cov_pars' "
+                         "of 'gp_model'")
+    for cov_function in cov_functions:
+        if not isinstance(cov_function, str):
+            raise ValueError("The values of 'cov_function' must be names of covariance functions")
+        is_ar1_multifidelity = cov_function.startswith("ar1_mf_")
+        if gp_model.fidelity_specific_mean and not is_ar1_multifidelity:
+            raise ValueError(f"'cov_function' = '{cov_function}' cannot be tuned with this 'gp_model': its AR1 "
+                             "multifidelity covariance function has a fidelity-specific mean, which adds the fidelity "
+                             "indicator as a feature of the trees, and all values of 'cov_function' must then be "
+                             "AR1 multifidelity covariance functions ('ar1_mf_*'). Use separate searches")
+        if is_ar1_multifidelity and not gp_model.is_ar1_multifidelity:
+            raise ValueError(f"'cov_function' = '{cov_function}' is an AR1 multifidelity covariance function and can "
+                             "only be tuned with a 'gp_model' that has such a covariance function")
 
 
 def _split_gp_model_params(params):
@@ -1377,23 +1439,6 @@ def _split_gp_model_params(params):
     booster_params = {param: value for param, value in params.items() if param not in _TUNING_GP_MODEL_PARAMS}
     gp_model_params = {param: value for param, value in params.items() if param in _TUNING_GP_MODEL_PARAMS}
     return booster_params, gp_model_params
-
-
-@contextlib.contextmanager
-def _gp_model_params_set(gp_model, gp_model_params):
-    """Set parameters of 'gp_model' and restore their values afterwards.
-
-    'cv()' constructs the GP models of the folds with the attributes of 'gp_model', which are only used for this
-    during the cross-validation.
-    """
-    original_values = {param: getattr(gp_model, param) for param in gp_model_params}
-    for param, value in gp_model_params.items():
-        setattr(gp_model, param, value)
-    try:
-        yield
-    finally:
-        for param, value in original_values.items():
-            setattr(gp_model, param, value)
 
 
 def _tuning_deterministic_params(params, *other_params):
@@ -1472,16 +1517,15 @@ def _tuning_cv_score(params, X, y, gp_model, gp_model_params, max_num_boost_roun
     """
     data_bst = Dataset(data=X, label=y)
     higher_better = []
-    with _gp_model_params_set(gp_model, gp_model_params):
-        cvbst = cv(params=params, train_set=data_bst, gp_model=gp_model,
-                   use_gp_model_for_validation=use_gp_model_for_validation,
-                   train_gp_model_cov_pars=train_gp_model_cov_pars,
-                   num_boost_round=max_num_boost_round,
-                   early_stopping_rounds=early_stopping_rounds,
-                   folds=folds, nfold=nfold, verbose_eval=verbose_eval_cv, show_stdv=False,
-                   seed=cv_seed, metric=metric, feval=feval,
-                   categorical_feature=categorical_feature,
-                   callbacks=[_record_first_metric_higher_better(higher_better)])
+    cvbst = _cv(params=params, train_set=data_bst, gp_model=gp_model, gp_model_params=gp_model_params,
+                use_gp_model_for_validation=use_gp_model_for_validation,
+                train_gp_model_cov_pars=train_gp_model_cov_pars,
+                num_boost_round=max_num_boost_round,
+                early_stopping_rounds=early_stopping_rounds,
+                folds=folds, nfold=nfold, verbose_eval=verbose_eval_cv, show_stdv=False,
+                seed=cv_seed, metric=metric, feval=feval,
+                categorical_feature=categorical_feature,
+                callbacks=[_record_first_metric_higher_better(higher_better)])
     scores = cvbst[list(cvbst.keys())[0]]
     if higher_better[0]:
         return np.max(scores), int(np.argmax(scores)) + 1, True
@@ -1514,7 +1558,10 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
         evaluate and not provided by all compilers (e.g., clang on macOS, where such trials fail). 'cov_function' can
         only be given as a set of values. In every trial, the GP models of the cross-validation folds are constructed
         with the values of these parameters and with all other settings of 'gp_model'. 'gp_model' keeps its own
-        values of these parameters.
+        values of these parameters. 'gp_model' must have a Gaussian process, and 'cov_function' and 'cov_fct_order'
+        cannot be tuned if it has initial values 'init_cov_pars'. AR1 multifidelity covariance functions
+        ('ar1_mf_*') can only be tuned with a 'gp_model' that has such a covariance function, and if it has a
+        fidelity-specific mean, all values of 'cov_function' must be AR1 multifidelity covariance functions.
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     n_trials: int
         The number of trials for the TPESampler.
@@ -1664,7 +1711,10 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
     if not isinstance(n_trials, int) or n_trials <= 0:
         raise ValueError("'n_trials' must be a positive integer")
     parsed_search_space = _parse_tuning_search_space(search_space)
-    _check_tuning_gp_model_params(parsed_search_space, gp_model)
+    cov_functions = []
+    if 'cov_function' in parsed_search_space:
+        cov_functions = parsed_search_space['cov_function']['values']
+    _check_tuning_gp_model_params(parsed_search_space, cov_functions, gp_model)
     folds = _check_tuning_folds(folds, y)
     if params is None:
         params = {}
@@ -1760,7 +1810,10 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
         evaluate and not provided by all compilers (e.g., clang on macOS, where such trials fail). 'cov_function' can
         only be given as a set of values. In every trial, the GP models of the cross-validation folds are constructed
         with the values of these parameters and with all other settings of 'gp_model'. 'gp_model' keeps its own
-        values of these parameters.
+        values of these parameters. 'gp_model' must have a Gaussian process, and 'cov_function' and 'cov_fct_order'
+        cannot be tuned if it has initial values 'init_cov_pars'. AR1 multifidelity covariance functions
+        ('ar1_mf_*') can only be tuned with a 'gp_model' that has such a covariance function, and if it has a
+        fidelity-specific mean, all values of 'cov_function' must be AR1 multifidelity covariance functions.
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
     n_trials: int
         The number of parameter combinations that are evaluated, including the initial design. The search stops
@@ -1929,7 +1982,10 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
     if not isinstance(n_trials, int) or n_trials <= 0:
         raise ValueError("'n_trials' must be a positive integer")
     parsed_search_space = _parse_tuning_search_space(search_space)
-    _check_tuning_gp_model_params(parsed_search_space, gp_model)
+    cov_functions = []
+    if 'cov_function' in parsed_search_space:
+        cov_functions = parsed_search_space['cov_function']['values']
+    _check_tuning_gp_model_params(parsed_search_space, cov_functions, gp_model)
     folds = _check_tuning_folds(folds, y)
     if params is None:
         params = {}

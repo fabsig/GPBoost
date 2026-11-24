@@ -106,12 +106,44 @@ gpb.tuning.parse.search.space <- function(search_space, fun_name) {
   return(parsed)
 }
 
-# Stops if parameters of the GP model are tuned without a GP model
-gpb.tuning.check.gp.model.params <- function(params, gp_model, fun_name) {
+# Stops if the parameters of the GP model in 'params' cannot be tuned with 'gp_model'. 'params' is a list with the
+# tuned parameters and 'cov_functions' are the values of 'cov_function' in the search. The trees of a model with an
+# AR1 multifidelity covariance function and a fidelity-specific mean have the fidelity indicator as an additional
+# feature (see gpb.cv), and all models of a search must have the same features
+gpb.tuning.check.gp.model.params <- function(params, cov_functions, gp_model, fun_name) {
   gp_model_params <- intersect(names(params), gpb.tuning.gp.model.params)
-  if (length(gp_model_params) > 0L && is.null(gp_model)) {
+  if (length(gp_model_params) == 0L) {
+    return(invisible(NULL))
+  }
+  if (is.null(gp_model)) {
     stop(sprintf("%s: '%s' is a parameter of the GP model and can only be tuned with a 'gp_model'",
                  fun_name, gp_model_params[1L]))
+  }
+  if (is.null(gp_model$get_gp_coords())) {
+    stop(sprintf(paste0("%s: '%s' is a parameter of a Gaussian process and can only be tuned with a 'gp_model' ",
+                        "that has a Gaussian process ('gp_coords')"), fun_name, gp_model_params[1L]))
+  }
+  # The number and the meaning of the covariance parameters depend on 'cov_function' and 'cov_fct_order'
+  if (any(c("cov_function", "cov_fct_order") %in% names(params)) &&
+      !is.null(gp_model$get_optim_params()$init_cov_pars)) {
+    stop(sprintf(paste0("%s: 'cov_function' and 'cov_fct_order' cannot be tuned with initial values ",
+                        "'init_cov_pars' of 'gp_model'"), fun_name))
+  }
+  if (length(cov_functions) > 0L && !is.character(cov_functions)) {
+    stop(sprintf("%s: the values of 'cov_function' must be names of covariance functions", fun_name))
+  }
+  for (cov_function in cov_functions) {
+    is_ar1_multifidelity <- startsWith(cov_function, "ar1_mf_")
+    if (gp_model$has_fidelity_specific_mean() && !is_ar1_multifidelity) {
+      stop(sprintf(paste0("%s: 'cov_function' = '%s' cannot be tuned with this 'gp_model': its AR1 multifidelity ",
+                          "covariance function has a fidelity-specific mean, which adds the fidelity indicator as ",
+                          "a feature of the trees, and all values of 'cov_function' must then be AR1 multifidelity ",
+                          "covariance functions ('ar1_mf_*'). Use separate searches"), fun_name, cov_function))
+    }
+    if (is_ar1_multifidelity && !gp_model$.__enclos_env__$private$is_ar1_multifidelity) {
+      stop(sprintf(paste0("%s: 'cov_function' = '%s' is an AR1 multifidelity covariance function and can only be ",
+                          "tuned with a 'gp_model' that has such a covariance function"), fun_name, cov_function))
+    }
   }
 }
 
@@ -119,18 +151,6 @@ gpb.tuning.check.gp.model.params <- function(params, gp_model, fun_name) {
 gpb.tuning.split.gp.model.params <- function(params) {
   is_gp_model_param <- names(params) %in% gpb.tuning.gp.model.params
   return(list(booster = params[!is_gp_model_param], gp_model = params[is_gp_model_param]))
-}
-
-# Sets parameters of 'gp_model' and returns their previous values. gpb.cv constructs the GP models of the folds with
-# these fields of 'gp_model', which are only used for this during the cross-validation
-gpb.tuning.set.gp.model.params <- function(gp_model, gp_model_params) {
-  if (length(gp_model_params) == 0L) {
-    return(list())
-  }
-  private <- gp_model$.__enclos_env__$private
-  previous_values <- mget(names(gp_model_params), envir = private)
-  list2env(gp_model_params, envir = private)
-  return(previous_values)
 }
 
 # Adds the parameters that make the score of a parameter combination reproducible, unless they are given by the user
@@ -180,16 +200,14 @@ gpb.tuning.cv.score <- function(params, data, gp_model, gp_model_params, nrounds
     }
     set.seed(cv_seed)
   }
-  previous_gp_model_params <- gpb.tuning.set.gp.model.params(gp_model, gp_model_params)
-  on.exit(gpb.tuning.set.gp.model.params(gp_model, previous_gp_model_params), add = TRUE)
   record <- new.env(parent = emptyenv())
-  cvbst <- gpb.cv(data = data, gp_model = gp_model, params = params, nrounds = nrounds,
-                  early_stopping_rounds = early_stopping_rounds, folds = folds, nfold = nfold,
-                  metric = metric, eval = eval, verbose = verbose_cv,
-                  use_gp_model_for_validation = use_gp_model_for_validation,
-                  train_gp_model_cov_pars = train_gp_model_cov_pars,
-                  categorical_feature = categorical_feature, delete_boosters_folds = TRUE,
-                  callbacks = c(callbacks, list(gpb.tuning.record.higher.better(record))), ...)
+  cvbst <- gpb.cv.internal(data = data, gp_model = gp_model, gp_model_params = gp_model_params, params = params,
+                           nrounds = nrounds, early_stopping_rounds = early_stopping_rounds, folds = folds,
+                           nfold = nfold, metric = metric, eval = eval, verbose = verbose_cv,
+                           use_gp_model_for_validation = use_gp_model_for_validation,
+                           train_gp_model_cov_pars = train_gp_model_cov_pars,
+                           categorical_feature = categorical_feature, delete_boosters_folds = TRUE,
+                           callbacks = c(callbacks, list(gpb.tuning.record.higher.better(record))), ...)
   return(list(score = cvbst$best_score, best_iter = cvbst$best_iter,
               metric_name = names(cvbst$record_evals$valid), higher_better = record$higher_better))
 }
@@ -251,7 +269,10 @@ gpb.tuning.check.packages <- function(packages, fun_name) {
 #' provided by all compilers (e.g., clang on macOS, where such trials fail). 'cov_function' can only be given as a
 #' set of values. In every trial, the GP models of the cross-validation folds are constructed with the values of
 #' these parameters and with all other settings of \code{gp_model}. \code{gp_model} keeps its own values of these
-#' parameters.
+#' parameters. \code{gp_model} must have a Gaussian process, and 'cov_function' and 'cov_fct_order' cannot be tuned
+#' if it has initial values 'init_cov_pars'. AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned
+#' with a \code{gp_model} that has such a covariance function, and if it has a fidelity-specific mean, all values of
+#' 'cov_function' must be AR1 multifidelity covariance functions.
 #' See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
 #' @param n_iter Number of sequential Bayesian optimization steps after the initial design. The initial design is
 #' the default of 'mlrMBO', a Latin hypercube design with 4 d parameter combinations, where d is the number of
@@ -344,7 +365,8 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
   fun_name <- "gpb.tune.pars.bayesian.optimization"
   gpb.tuning.check.packages(c("mlrMBO", "ParamHelpers", "smoof"), fun_name = fun_name)
   parsed_search_space <- gpb.tuning.parse.search.space(search_space, fun_name = fun_name)
-  gpb.tuning.check.gp.model.params(parsed_search_space, gp_model = gp_model, fun_name = fun_name)
+  gpb.tuning.check.gp.model.params(parsed_search_space, cov_functions = parsed_search_space[["cov_function"]]$values,
+                                   gp_model = gp_model, fun_name = fun_name)
   if (!is.numeric(n_iter) || length(n_iter) != 1L || n_iter <= 0) {
     stop(fun_name, ": 'n_iter' needs to be a positive integer")
   }
@@ -559,7 +581,10 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
 #' provided by all compilers (e.g., clang on macOS, where such trials fail). 'cov_function' can only be given as a
 #' set of values. In every trial, the GP models of the cross-validation folds are constructed with the values of
 #' these parameters and with all other settings of \code{gp_model}. \code{gp_model} keeps its own values of these
-#' parameters.
+#' parameters. \code{gp_model} must have a Gaussian process, and 'cov_function' and 'cov_fct_order' cannot be tuned
+#' if it has initial values 'init_cov_pars'. AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned
+#' with a \code{gp_model} that has such a covariance function, and if it has a fidelity-specific mean, all values of
+#' 'cov_function' must be AR1 multifidelity covariance functions.
 #' See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
 #' @param n_trials Number of parameter combinations that are evaluated, including the initial design
 #' @param params \code{list} with other parameters not included in \code{search_space}
@@ -661,7 +686,8 @@ gpb.tune.pars.rf.bayesian.optimization <- function(search_space
   gpb.tuning.check.packages(c("mlr3mbo", "mlr3learners", "ranger", "bbotk", "paradox", "lgr"),
                             fun_name = fun_name)
   parsed_search_space <- gpb.tuning.parse.search.space(search_space, fun_name = fun_name)
-  gpb.tuning.check.gp.model.params(parsed_search_space, gp_model = gp_model, fun_name = fun_name)
+  gpb.tuning.check.gp.model.params(parsed_search_space, cov_functions = parsed_search_space[["cov_function"]]$values,
+                                   gp_model = gp_model, fun_name = fun_name)
   if (!is.numeric(n_trials) || length(n_trials) != 1L || n_trials < 1) {
     stop(fun_name, ": 'n_trials' needs to be a positive integer")
   }
