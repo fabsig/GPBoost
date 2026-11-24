@@ -13681,7 +13681,11 @@ namespace GPBoost {
 									int seed_local = unif(cg_generator_);
 									parallel_rngs.push_back(RNG_t(seed_local));
 								}
-								std::vector<den_mat_t> pred_cov_of_thread(num_threads);
+								// The simulated vectors are stored in batches of 16 vectors per thread, and the sum of their outer
+								//	products is updated after each batch with a matrix product. This needs one dense matrix instead of one
+								//	per thread, and every thread simulates as many vectors as in a single loop over all vectors
+								const int batch_size = 16 * num_threads;
+								den_mat_t sim_pred_cov_batch(num_REs_pred, std::min(batch_size, nsim_var_pred_));
 #pragma omp parallel
 								{
 									int thread_nb;
@@ -13691,42 +13695,42 @@ namespace GPBoost {
 									thread_nb = 0;
 #endif
 									RNG_t rng_local = parallel_rngs[thread_nb];
-									den_mat_t& pred_cov_private = pred_cov_of_thread[thread_nb];
-									pred_cov_private = den_mat_t::Zero(num_REs_pred, num_REs_pred);
-#pragma omp for reduction(||:cg_na_or_inf)
-									for (int i = 0; i < nsim_var_pred_; ++i) {
-										//z_i ~ N(0,I)
-										std::normal_distribution<double> ndist(0.0, 1.0);
-										vec_t rand_vec_pred_I_1(cum_num_rand_eff_[cluster_i][num_comps_total_]), rand_vec_pred_I_2(num_data_per_cluster_[cluster_i]);
-										for (int j = 0; j < cum_num_rand_eff_[cluster_i][num_comps_total_]; j++) {
-											rand_vec_pred_I_1(j) = ndist(rng_local);
-										}
-										for (int j = 0; j < num_data_per_cluster_[cluster_i]; j++) {
-											rand_vec_pred_I_2(j) = ndist(rng_local);
-										}
-										if (weights_sqrt.size() > 0) {
-											rand_vec_pred_I_2.array() *= weights_sqrt.array();
-										}
-										//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
-										vec_t rand_vec_pred_SigmaI_plus_ZtZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_pred_I_1 + Zt_[cluster_i] * rand_vec_pred_I_2;
-										vec_t rand_vec_pred_SigmaI_plus_ZtZ_inv(cum_num_rand_eff_[cluster_i][num_comps_total_]);
-										//z_i ~ N(0,(Sigma^(-1) + Z^T Z)^(-1))
-										int num_cg_steps_dummy;
-										bool cg_na_or_inf_i = false;
-										CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], rand_vec_pred_SigmaI_plus_ZtZ, rand_vec_pred_SigmaI_plus_ZtZ_inv, cg_na_or_inf_i, cg_max_num_it_, cg_delta_conv_pred_, true, THRESHOLD_ZERO_RHS_CG_,
-											true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i], num_cg_steps_dummy, cg_convergence_params_pred_
-											//cum_num_rand_eff_[cluster_i], num_comps_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
-										);
-										if (cg_na_or_inf_i) {
-											cg_na_or_inf = true;
-											continue;
-										}
-										//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T Z)^(-1) Z_p^T)
-										vec_t rand_vec_pred = Ztilde * rand_vec_pred_SigmaI_plus_ZtZ_inv;
-										pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
-									} //end for loop
+									for (int batch_start = 0; batch_start < nsim_var_pred_; batch_start += batch_size) {
+										const int batch_end = std::min(batch_start + batch_size, nsim_var_pred_);
+#pragma omp for schedule(static) reduction(||:cg_na_or_inf)
+										for (int i = batch_start; i < batch_end; ++i) {
+											//z_i ~ N(0,I)
+											std::normal_distribution<double> ndist(0.0, 1.0);
+											vec_t rand_vec_pred_I_1(cum_num_rand_eff_[cluster_i][num_comps_total_]), rand_vec_pred_I_2(num_data_per_cluster_[cluster_i]);
+											for (int j = 0; j < cum_num_rand_eff_[cluster_i][num_comps_total_]; j++) {
+												rand_vec_pred_I_1(j) = ndist(rng_local);
+											}
+											for (int j = 0; j < num_data_per_cluster_[cluster_i]; j++) {
+												rand_vec_pred_I_2(j) = ndist(rng_local);
+											}
+											if (weights_sqrt.size() > 0) {
+												rand_vec_pred_I_2.array() *= weights_sqrt.array();
+											}
+											//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
+											vec_t rand_vec_pred_SigmaI_plus_ZtZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_pred_I_1 + Zt_[cluster_i] * rand_vec_pred_I_2;
+											vec_t rand_vec_pred_SigmaI_plus_ZtZ_inv(cum_num_rand_eff_[cluster_i][num_comps_total_]);
+											//z_i ~ N(0,(Sigma^(-1) + Z^T Z)^(-1))
+											int num_cg_steps_dummy;
+											bool cg_na_or_inf_i = false;
+											CGRandomEffectsVec(SigmaI_plus_ZtZ_rm_[cluster_i], rand_vec_pred_SigmaI_plus_ZtZ, rand_vec_pred_SigmaI_plus_ZtZ_inv, cg_na_or_inf_i, cg_max_num_it_, cg_delta_conv_pred_, true, THRESHOLD_ZERO_RHS_CG_,
+												true, cg_preconditioner_type_, L_SigmaI_plus_ZtZ_rm_[cluster_i], P_SSOR_L_D_sqrt_inv_rm_[cluster_i], SigmaI_plus_ZtZ_inv_diag_[cluster_i], num_cg_steps_dummy, cg_convergence_params_pred_
+												//cum_num_rand_eff_[cluster_i], num_comps_total_, P_SSOR_D1_inv_[cluster_i], P_SSOR_D2_inv_[cluster_i], P_SSOR_B_rm_[cluster_i]
+											);
+											if (cg_na_or_inf_i) {
+												cg_na_or_inf = true;
+												continue;
+											}
+											//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T Z)^(-1) Z_p^T)
+											sim_pred_cov_batch.col(i - batch_start) = Ztilde * rand_vec_pred_SigmaI_plus_ZtZ_inv;
+										} //end for loop
+										AddOuterProductsInParallelRegion(sim_pred_cov_batch, batch_end - batch_start, pred_cov_global);
+									}//end loop over batches
 								} // end #pragma omp parallel
-								AddPartialSumsOfThreads(pred_cov_of_thread, pred_cov_global);
 								if (cg_na_or_inf) {
 									Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!");
 								}
@@ -13828,7 +13832,7 @@ namespace GPBoost {
 										c_cov_private = vec_t::Zero(num_REs_pred);
 										c_var_private = vec_t::Zero(num_REs_pred);
 									}
-#pragma omp for reduction(||:cg_na_or_inf)
+#pragma omp for schedule(static) reduction(||:cg_na_or_inf)
 									for (int i = 0; i < nsim_var_pred_; ++i) {
 										//RV - Rademacher
 										std::uniform_real_distribution<double> udist(0.0, 1.0);
@@ -14393,37 +14397,34 @@ namespace GPBoost {
 								if (calc_pred_var) {
 									sample_resid_var = vec_t::Zero(num_REs_pred);
 								}
-								std::vector<den_mat_t> sample_resid_cov_of_thread(omp_get_max_threads());
-								std::vector<vec_t> sample_resid_var_of_thread(omp_get_max_threads());
-#pragma omp parallel
-								{
-									den_mat_t& sample_resid_cov_private = sample_resid_cov_of_thread[omp_get_thread_num()];
-									vec_t& sample_resid_var_private = sample_resid_var_of_thread[omp_get_thread_num()];
+								// The simulated vectors are calculated in batches, and the sums of their outer products and squares are
+								//	updated after each batch. This needs one dense num_REs_pred x num_REs_pred matrix instead of one per
+								//	thread, and it does not depend on the order in which the threads finish
+								const int batch_size = std::min(nsim_var_pred, 16 * omp_get_max_threads());
+								den_mat_t rand_vecs_resid_batch(num_REs_pred, batch_size);
+								for (int batch_start = 0; batch_start < nsim_var_pred; batch_start += batch_size) {
+									const int num_in_batch = std::min(batch_size, nsim_var_pred - batch_start);
+#pragma omp parallel for schedule(static)
+									for (int k = 0; k < num_in_batch; ++k) {
+										vec_t rand_vec_i = rand_vecs.row(batch_start + k);
+										TriangularSolveGivenCholesky<T_chol, T_mat, vec_t, vec_t>(chol_fact_resid_[cluster_i], rand_vec_i, rand_vec_i, true);
+										rand_vecs_resid_batch.col(k) = sigma_resid_pred_obs * rand_vec_i;
+									}
+									const auto batch = rand_vecs_resid_batch.leftCols(num_in_batch);
 									if (calc_pred_cov) {
-										sample_resid_cov_private = den_mat_t::Zero(num_REs_pred, num_REs_pred);
+										sample_resid_cov.noalias() += batch * batch.transpose();
 									}
 									if (calc_pred_var) {
-										sample_resid_var_private = vec_t::Zero(num_REs_pred);
-									}
-#pragma omp for schedule(static)
-									for (int i = 0; i < nsim_var_pred; ++i) {
-										vec_t rand_vec_i = rand_vecs.row(i);
-										TriangularSolveGivenCholesky<T_chol, T_mat, vec_t, vec_t>(chol_fact_resid_[cluster_i], rand_vec_i, rand_vec_i, true);
-										vec_t rand_vec_resid = sigma_resid_pred_obs * rand_vec_i;
-										if (calc_pred_cov) {
-											sample_resid_cov_private += rand_vec_resid * rand_vec_resid.transpose();
-										}
-										if (calc_pred_var) {
-											sample_resid_var_private += rand_vec_resid.cwiseProduct(rand_vec_resid);
+#pragma omp parallel for schedule(static)
+										for (int j = 0; j < num_REs_pred; ++j) {
+											sample_resid_var[j] += batch.row(j).squaredNorm();
 										}
 									}
 								}
 								if (calc_pred_cov) {
-									AddPartialSumsOfThreads(sample_resid_cov_of_thread, sample_resid_cov);
 									sample_resid_cov /= nsim_var_pred;
 								}
 								if (calc_pred_var) {
-									AddPartialSumsOfThreads(sample_resid_var_of_thread, sample_resid_var);
 									sample_resid_var /= nsim_var_pred;
 
 									// Alterative version for predictive variances using aproach of Bekas et al. (2007)
@@ -14633,7 +14634,7 @@ namespace GPBoost {
 										c_p_z_private = vec_t::Zero(c_p_z.size());
 										c_p_private = vec_t::Zero(c_p.size());
 									}
-#pragma omp for reduction(||:cg_na_or_inf)
+#pragma omp for schedule(static) reduction(||:cg_na_or_inf)
 									for (int i = 0; i < nsim_var_pred; ++i) {
 										//z_i ~ N(0,I)
 										// Sample vector

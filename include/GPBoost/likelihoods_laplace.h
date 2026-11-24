@@ -5102,7 +5102,7 @@ namespace GPBoost {
 							c_cov_private = vec_t::Zero(n_pred);
 							c_var_private = vec_t::Zero(n_pred);
 						}
-#pragma omp for reduction(||:na_inf_flag_1)
+#pragma omp for schedule(static) reduction(||:na_inf_flag_1)
 						for (int i = 0; i < nsim_var_pred_; ++i) {
 							//RV - Rademacher
 							std::uniform_real_distribution<double> udist(0.0, 1.0);
@@ -5224,7 +5224,13 @@ namespace GPBoost {
 						sim_pred_cov_pos.resize(n_pred, nsim_var_pred_);
 						sim_pred_cov_neg.resize(n_pred, nsim_var_pred_);
 					}
-					std::vector<den_mat_t> pred_cov_of_thread(num_threads);
+					// Otherwise, they are stored in batches of 16 vectors per thread, see 'PredictLaplaceApproxFSVA()'
+					int batch_size = nsim_var_pred_;
+					den_mat_t sim_pred_cov_batch;
+					if (!information_has_negative_values) {
+						batch_size = 16 * num_threads;
+						sim_pred_cov_batch.resize(n_pred, std::min(batch_size, nsim_var_pred_));
+					}
 #pragma omp parallel
 					{
 						int thread_nb;
@@ -5234,60 +5240,59 @@ namespace GPBoost {
 						thread_nb = 0;
 #endif
 						RNG_t rng_local = parallel_rngs[thread_nb];
-						den_mat_t& pred_cov_private = pred_cov_of_thread[thread_nb];
-						if (!information_has_negative_values) {
-							pred_cov_private = den_mat_t::Zero(n_pred, n_pred);
-						}
-#pragma omp for reduction(||:na_inf_flag_3)
-						for (int i = 0; i < nsim_var_pred_; ++i) {
-							//z_i ~ N(0,I)
-							std::normal_distribution<double> ndist(0.0, 1.0);
-							vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(num_data_);
-							for (int j = 0; j < dim_mode_; j++) {
-								rand_vec_pred_I_1(j) = ndist(rng_local);
-							}
-							for (int j = 0; j < num_data_; j++) {
-								rand_vec_pred_I_2(j) = ndist(rng_local);
-							}
-							//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
-							vec_t rand_vec_pred_SigmaI_plus_ZtWZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_pred_I_1 + Zt_W_sqrt_rm * rand_vec_pred_I_2;
-							vec_t rand_vec_pred_SigmaI_plus_ZtWZ_inv(dim_mode_);
-							//z_i ~ N(0,(Sigma^(-1) + Z^T W Z)^(-1))
-							bool has_NA_or_Inf = false;
-							int num_cg_steps_dummy;
-							CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
-								true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
-								cg_convergence_params_pred_);
-							if (has_NA_or_Inf) {
-								na_inf_flag_3 = true;
-							}
-							//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T W Z)^(-1) Z_p^T)
-							vec_t rand_vec_pred = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
-							if (information_has_negative_values) {
-								sim_pred_cov_pos.col(i) = rand_vec_pred;
-							}
-							else {
-								pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
-							}
-							if (information_has_negative_values) {
-								//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T W Z)^(-1) Z^T W_- Z (Sigma^(-1) + Z^T W Z)^(-1) Z_p^T)
+						for (int batch_start = 0; batch_start < nsim_var_pred_; batch_start += batch_size) {
+							const int batch_end = std::min(batch_start + batch_size, nsim_var_pred_);
+#pragma omp for schedule(static) reduction(||:na_inf_flag_3)
+							for (int i = batch_start; i < batch_end; ++i) {
+								//z_i ~ N(0,I)
+								std::normal_distribution<double> ndist(0.0, 1.0);
+								vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(num_data_);
+								for (int j = 0; j < dim_mode_; j++) {
+									rand_vec_pred_I_1(j) = ndist(rng_local);
+								}
 								for (int j = 0; j < num_data_; j++) {
 									rand_vec_pred_I_2(j) = ndist(rng_local);
 								}
-								vec_t rand_vec_pred_W_neg = Zt_W_neg_sqrt_rm * rand_vec_pred_I_2;
-								CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_W_neg, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
+								//z_i ~ N(0,(Sigma^(-1) + Z^T W Z))
+								vec_t rand_vec_pred_SigmaI_plus_ZtWZ = SigmaI_diag_sqrt.asDiagonal() * rand_vec_pred_I_1 + Zt_W_sqrt_rm * rand_vec_pred_I_2;
+								vec_t rand_vec_pred_SigmaI_plus_ZtWZ_inv(dim_mode_);
+								//z_i ~ N(0,(Sigma^(-1) + Z^T W Z)^(-1))
+								bool has_NA_or_Inf = false;
+								int num_cg_steps_dummy;
+								CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_SigmaI_plus_ZtWZ, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
 									true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
 									cg_convergence_params_pred_);
 								if (has_NA_or_Inf) {
 									na_inf_flag_3 = true;
 								}
-								sim_pred_cov_neg.col(i) = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
+								//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T W Z)^(-1) Z_p^T)
+								vec_t rand_vec_pred = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
+								if (information_has_negative_values) {
+									sim_pred_cov_pos.col(i) = rand_vec_pred;
+								}
+								else {
+									sim_pred_cov_batch.col(i - batch_start) = rand_vec_pred;
+								}
+								if (information_has_negative_values) {
+									//z_i ~ N(0, Z_p (Sigma^(-1) + Z^T W Z)^(-1) Z^T W_- Z (Sigma^(-1) + Z^T W Z)^(-1) Z_p^T)
+									for (int j = 0; j < num_data_; j++) {
+										rand_vec_pred_I_2(j) = ndist(rng_local);
+									}
+									vec_t rand_vec_pred_W_neg = Zt_W_neg_sqrt_rm * rand_vec_pred_I_2;
+									CGRandomEffectsVec(SigmaI_plus_ZtWZ_rm_, rand_vec_pred_W_neg, rand_vec_pred_SigmaI_plus_ZtWZ_inv, has_NA_or_Inf, cg_max_num_it_, cg_delta_conv_pred_,
+										true, ZERO_RHS_CG_THRESHOLD, true, cg_preconditioner_type_, L_SigmaI_plus_ZtWZ_rm_, P_SSOR_L_D_sqrt_inv_rm_, SigmaI_plus_ZtWZ_inv_diag_, num_cg_steps_dummy,
+										cg_convergence_params_pred_);
+									if (has_NA_or_Inf) {
+										na_inf_flag_3 = true;
+									}
+									sim_pred_cov_neg.col(i) = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
+								}
+							} //end for loop
+							if (!information_has_negative_values) {
+								AddOuterProductsInParallelRegion(sim_pred_cov_batch, batch_end - batch_start, pred_cov_global);
 							}
-						} //end for loop
+						}//end loop over batches
 					} //end #pragma omp parallel
-					if (!information_has_negative_values) {
-						AddPartialSumsOfThreads(pred_cov_of_thread, pred_cov_global);
-					}
 					HandleNAOrInfCGSimulation(na_inf_flag_3, __func__);
 					if (na_inf_flag_3) { Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!"); }
 					if (information_has_negative_values) {
@@ -5755,7 +5760,18 @@ namespace GPBoost {
 					sim_pred_cov_pos.resize(num_pred, nsim_var_pred_);
 					sim_pred_cov_neg.resize(num_pred, nsim_var_pred_);
 				}
-				std::vector<den_mat_t> pred_cov_of_thread(num_threads);
+				const int num_sim = std::max(nsim_var_pred_, num_post_samples);
+				// The simulated vectors for the predictive covariance matrix are stored in batches, and the sum of their outer
+				//	products is updated after each batch with a matrix product. This needs one dense num_pred x num_pred matrix
+				//	instead of one per thread, and it does not depend on the order in which the threads finish. A batch has 16
+				//	vectors per thread, so that every thread simulates as many vectors as in a single loop over all vectors
+				const bool sum_sim_pred_cov_in_batches = calc_pred_cov && !store_sim_pred_cov;
+				int batch_size = num_sim;
+				den_mat_t sim_pred_cov_batch;
+				if (sum_sim_pred_cov_in_batches) {
+					batch_size = 16 * num_threads;
+					sim_pred_cov_batch.resize(num_pred, std::min(batch_size, nsim_var_pred_));
+				}
 				std::vector<vec_t> pred_var_of_thread(num_threads);
 #pragma omp parallel
 				{
@@ -5766,122 +5782,120 @@ namespace GPBoost {
 					thread_nb = 0;
 #endif
 					RNG_t rng_local = parallel_rngs[thread_nb];
-					den_mat_t& pred_cov_private = pred_cov_of_thread[thread_nb];
 					vec_t& pred_var_private = pred_var_of_thread[thread_nb];
-					if (calc_pred_cov && !store_sim_pred_cov) {
-						pred_cov_private = den_mat_t::Zero(num_pred, num_pred);
-					}
 					if (calc_pred_var) {
 						pred_var_private = vec_t::Zero(num_pred);
 					}
-#pragma omp for reduction(||:na_inf_flag_4)
-					for (int i = 0; i < std::max(nsim_var_pred_, num_post_samples); ++i) {
-						//z_i ~ N(0,I)
-						vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_), rand_vec_pred_I_3((*cross_cov).cols());
-						std::normal_distribution<double> ndist(0.0, 1.0);
-						for (int j = 0; j < dim_mode_; j++) {
-							rand_vec_pred_I_1(j) = ndist(rng_local);
-							rand_vec_pred_I_2(j) = ndist(rng_local);
-						}
-						for (int j = 0; j < (*cross_cov).cols(); j++) {
-							rand_vec_pred_I_3(j) = ndist(rng_local);
-						}
-
-						vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
-						bool has_NA_or_Inf = false;
-						//z_i ~ N(0,Sigma) (not possible to sample directly from Sigma^{-1})
-						vec_t Sigma_sqrt_rand_vec = chol_ip_cross_cov.transpose() * rand_vec_pred_I_3;
-						vec_t D_sqrt = D_inv_rm_.diagonal().cwiseInverse().cwiseSqrt();
-						Sigma_sqrt_rand_vec += B_rm_.triangularView<Eigen::UpLoType::UnitLower>().solve(D_sqrt.cwiseProduct(rand_vec_pred_I_1));
-						//z_i ~ N(0,Sigma^{-1})
-						vec_t Bt_D_inv_Sigma_sqrt_rand_vec = B_t_D_inv_rm_ * (B_rm_ * Sigma_sqrt_rand_vec);
-						vec_t Sigma_inv_Sigma_sqrt_rand_vec = Bt_D_inv_Sigma_sqrt_rand_vec - Bt_D_inv_B_cross_cov * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * Bt_D_inv_Sigma_sqrt_rand_vec);
-						//z_i ~ N(0,(Sigma^{-1} + W))
-						vec_t rand_vec_pred_SigmaI_plus_W = Sigma_inv_Sigma_sqrt_rand_vec + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
-						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
-						if (cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") {
-							// W_D_inv_inv, sigma_woodbury_woodbury_ and chol_fact_sigma_woodbury_woodbury_ are loop-invariant and are
-							// computed once BEFORE this parallel region (hoisted block above). They must not be recomputed here:
-							// writing to these shared members from every thread is a data race, and CheckCholeskyFactorization()
-							// calls Log::REFatal(), which is not thread-safe (intermittently segfaulted / printed the 'VIF Woodbury
-							// matrix' Cholesky error twice).
-							CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
-								chol_fact_sigma_woodbury_woodbury_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf, cg_max_num_it_,
-								true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true,
-								cg_convergence_params_pred_);
-						}
-						else if (cg_preconditioner_type_ == "fitc") {
-							vec_t rand_vec_pred_SigmaI_plus_W_inv_interim(dim_mode_);
-							vec_t rhs_part, rhs_part1, rhs_part2;
-							rhs_part1 = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rand_vec_pred_SigmaI_plus_W);
-							rhs_part = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(rhs_part1);
-							rhs_part2 = (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * rand_vec_pred_SigmaI_plus_W));
-							rand_vec_pred_SigmaI_plus_W = rhs_part + rhs_part2;
-							CGVIFLaplace_Version_SigmaPlusWinvVec(information_ll_inv, D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
-								chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv_interim, has_NA_or_Inf,
-								cg_max_num_it_, true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true,
-								cg_convergence_params_pred_);
-							rand_vec_pred_SigmaI_plus_W_inv = information_ll_inv.asDiagonal() * rand_vec_pred_SigmaI_plus_W_inv_interim;
-						}
-						if (has_NA_or_Inf) {
-							na_inf_flag_4 = true;
-						}
-						vec_t sigma_woodbury_vec = (*cross_cov) * chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * rand_vec_pred_SigmaI_plus_W_inv);
-						//z_i ~ N(0, (Sigma_pm Sigma_ip^-1 Sigma_mn - B_p^-1 B_po (B_o^T D_o^-1 B_o)^-1) Sigma^{-1} (Sigma^{-1} + W)^{-1} Sigma^{-1} (Sigma_nm Sigma_ip^-1 Sigma_mp - (B_o^T D_o^-1 B_o)^-1 B_po^T B_p^-1 ))
-						vec_t sigma_pred_sigma_inv_vec = cross_cov_pred_ip * chol_fact_sigma_ip.solve(Bt_D_inv_B_cross_cov.transpose() * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec));
-						vec_t sigmSigmaI_modechiSigmaI_mode = Bpo_rm * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec);
-						if (!CondObsOnly) {
-							TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, sigmSigmaI_modechiSigmaI_mode, sigmSigmaI_modechiSigmaI_mode, false);
-						}
-						vec_t rand_vec_pred = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
-						if (calc_pred_cov) {
-							if (i < nsim_var_pred_) {
-								if (store_sim_pred_cov) {
-									sim_pred_cov_pos.col(i) = rand_vec_pred;
-								}
-								else {
-									pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
-								}
-							}
-						}
-						if (calc_pred_var) {
-							if (i < nsim_var_pred_) {
-								pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
-							}
-						}
-						if (sample_posterior) {
-							if (i < num_post_samples) {
-								post_samples_id.col(i) += rand_vec_pred;
-							}
-						}
-						if (information_has_negative_values && i < nsim_var_pred_) {
-							//z_i ~ N(0, W_-): the sample (co-)variance of the corresponding predictions is subtracted, see above
+					for (int batch_start = 0; batch_start < num_sim; batch_start += batch_size) {
+						const int batch_end = std::min(batch_start + batch_size, num_sim);
+#pragma omp for schedule(static) reduction(||:na_inf_flag_4)
+						for (int i = batch_start; i < batch_end; ++i) {
+							//z_i ~ N(0,I)
+							vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_), rand_vec_pred_I_3((*cross_cov).cols());
+							std::normal_distribution<double> ndist(0.0, 1.0);
 							for (int j = 0; j < dim_mode_; j++) {
+								rand_vec_pred_I_1(j) = ndist(rng_local);
 								rand_vec_pred_I_2(j) = ndist(rng_local);
 							}
-							vec_t rand_vec_pred_W_neg = W_neg_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
-							CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
-								chol_fact_sigma_woodbury_woodbury_, rand_vec_pred_W_neg, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf, cg_max_num_it_,
-								true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true,
-								cg_convergence_params_pred_);
+							for (int j = 0; j < (*cross_cov).cols(); j++) {
+								rand_vec_pred_I_3(j) = ndist(rng_local);
+							}
+
+							vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
+							bool has_NA_or_Inf = false;
+							//z_i ~ N(0,Sigma) (not possible to sample directly from Sigma^{-1})
+							vec_t Sigma_sqrt_rand_vec = chol_ip_cross_cov.transpose() * rand_vec_pred_I_3;
+							vec_t D_sqrt = D_inv_rm_.diagonal().cwiseInverse().cwiseSqrt();
+							Sigma_sqrt_rand_vec += B_rm_.triangularView<Eigen::UpLoType::UnitLower>().solve(D_sqrt.cwiseProduct(rand_vec_pred_I_1));
+							//z_i ~ N(0,Sigma^{-1})
+							vec_t Bt_D_inv_Sigma_sqrt_rand_vec = B_t_D_inv_rm_ * (B_rm_ * Sigma_sqrt_rand_vec);
+							vec_t Sigma_inv_Sigma_sqrt_rand_vec = Bt_D_inv_Sigma_sqrt_rand_vec - Bt_D_inv_B_cross_cov * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * Bt_D_inv_Sigma_sqrt_rand_vec);
+							//z_i ~ N(0,(Sigma^{-1} + W))
+							vec_t rand_vec_pred_SigmaI_plus_W = Sigma_inv_Sigma_sqrt_rand_vec + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
+							//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
+							if (cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") {
+								// W_D_inv_inv, sigma_woodbury_woodbury_ and chol_fact_sigma_woodbury_woodbury_ are loop-invariant and are
+								// computed once BEFORE this parallel region (hoisted block above). They must not be recomputed here:
+								// writing to these shared members from every thread is a data race, and CheckCholeskyFactorization()
+								// calls Log::REFatal(), which is not thread-safe (intermittently segfaulted / printed the 'VIF Woodbury
+								// matrix' Cholesky error twice).
+								CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
+									chol_fact_sigma_woodbury_woodbury_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf, cg_max_num_it_,
+									true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true,
+									cg_convergence_params_pred_);
+							}
+							else if (cg_preconditioner_type_ == "fitc") {
+								vec_t rand_vec_pred_SigmaI_plus_W_inv_interim(dim_mode_);
+								vec_t rhs_part, rhs_part1, rhs_part2;
+								rhs_part1 = (B_rm_.transpose().template triangularView<Eigen::UpLoType::UnitUpper>()).solve(rand_vec_pred_SigmaI_plus_W);
+								rhs_part = D_inv_B_rm_.triangularView<Eigen::UpLoType::Lower>().solve(rhs_part1);
+								rhs_part2 = (*cross_cov) * (chol_fact_sigma_ip.solve((*cross_cov).transpose() * rand_vec_pred_SigmaI_plus_W));
+								rand_vec_pred_SigmaI_plus_W = rhs_part + rhs_part2;
+								CGVIFLaplace_Version_SigmaPlusWinvVec(information_ll_inv, D_inv_B_rm_, B_rm_, chol_fact_woodbury_preconditioner_,
+									chol_ip_cross_cov, cross_cov_preconditioner, diagonal_approx_inv_preconditioner_, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv_interim, has_NA_or_Inf,
+									cg_max_num_it_, true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true,
+									cg_convergence_params_pred_);
+								rand_vec_pred_SigmaI_plus_W_inv = information_ll_inv.asDiagonal() * rand_vec_pred_SigmaI_plus_W_inv_interim;
+							}
 							if (has_NA_or_Inf) {
 								na_inf_flag_4 = true;
 							}
-							sigma_woodbury_vec = (*cross_cov) * chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * rand_vec_pred_SigmaI_plus_W_inv);
-							sigma_pred_sigma_inv_vec = cross_cov_pred_ip * chol_fact_sigma_ip.solve(Bt_D_inv_B_cross_cov.transpose() * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec));
-							sigmSigmaI_modechiSigmaI_mode = Bpo_rm * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec);
+							vec_t sigma_woodbury_vec = (*cross_cov) * chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * rand_vec_pred_SigmaI_plus_W_inv);
+							//z_i ~ N(0, (Sigma_pm Sigma_ip^-1 Sigma_mn - B_p^-1 B_po (B_o^T D_o^-1 B_o)^-1) Sigma^{-1} (Sigma^{-1} + W)^{-1} Sigma^{-1} (Sigma_nm Sigma_ip^-1 Sigma_mp - (B_o^T D_o^-1 B_o)^-1 B_po^T B_p^-1 ))
+							vec_t sigma_pred_sigma_inv_vec = cross_cov_pred_ip * chol_fact_sigma_ip.solve(Bt_D_inv_B_cross_cov.transpose() * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec));
+							vec_t sigmSigmaI_modechiSigmaI_mode = Bpo_rm * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec);
 							if (!CondObsOnly) {
 								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, sigmSigmaI_modechiSigmaI_mode, sigmSigmaI_modechiSigmaI_mode, false);
 							}
-							rand_vec_pred = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
+							vec_t rand_vec_pred = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
 							if (calc_pred_cov) {
-								sim_pred_cov_neg.col(i) = rand_vec_pred;
+								if (i < nsim_var_pred_) {
+									if (store_sim_pred_cov) {
+										sim_pred_cov_pos.col(i) = rand_vec_pred;
+									}
+									else {
+										sim_pred_cov_batch.col(i - batch_start) = rand_vec_pred;
+									}
+								}
 							}
 							if (calc_pred_var) {
-								pred_var_private -= rand_vec_pred.cwiseProduct(rand_vec_pred);
+								if (i < nsim_var_pred_) {
+									pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
+								}
 							}
-						}
-						// Implementation for Bekas approach
+							if (sample_posterior) {
+								if (i < num_post_samples) {
+									post_samples_id.col(i) += rand_vec_pred;
+								}
+							}
+							if (information_has_negative_values && i < nsim_var_pred_) {
+								//z_i ~ N(0, W_-): the sample (co-)variance of the corresponding predictions is subtracted, see above
+								for (int j = 0; j < dim_mode_; j++) {
+									rand_vec_pred_I_2(j) = ndist(rng_local);
+								}
+								vec_t rand_vec_pred_W_neg = W_neg_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
+								CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
+									chol_fact_sigma_woodbury_woodbury_, rand_vec_pred_W_neg, rand_vec_pred_SigmaI_plus_W_inv, has_NA_or_Inf, cg_max_num_it_,
+									true, cg_delta_conv_pred_, ZERO_RHS_CG_THRESHOLD, cg_preconditioner_type_, true,
+									cg_convergence_params_pred_);
+								if (has_NA_or_Inf) {
+									na_inf_flag_4 = true;
+								}
+								sigma_woodbury_vec = (*cross_cov) * chol_fact_sigma_woodbury.solve(Bt_D_inv_B_cross_cov.transpose() * rand_vec_pred_SigmaI_plus_W_inv);
+								sigma_pred_sigma_inv_vec = cross_cov_pred_ip * chol_fact_sigma_ip.solve(Bt_D_inv_B_cross_cov.transpose() * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec));
+								sigmSigmaI_modechiSigmaI_mode = Bpo_rm * (rand_vec_pred_SigmaI_plus_W_inv - sigma_woodbury_vec);
+								if (!CondObsOnly) {
+									TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, sigmSigmaI_modechiSigmaI_mode, sigmSigmaI_modechiSigmaI_mode, false);
+								}
+								rand_vec_pred = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
+								if (calc_pred_cov) {
+									sim_pred_cov_neg.col(i) = rand_vec_pred;
+								}
+								if (calc_pred_var) {
+									pred_var_private -= rand_vec_pred.cwiseProduct(rand_vec_pred);
+								}
+							}
+							// Implementation for Bekas approach
 //							rand_vec_pred_I_1.resize(num_pred);
 //							std::uniform_real_distribution<double> udist(0.0, 1.0);
 //							for (int j = 0; j < num_pred; j++) {
@@ -5938,10 +5952,12 @@ namespace GPBoost {
 //									pred_var_prec_prod += (pred_var_private_prec - pred_var_prec_ex).cwiseProduct(pred_var_private);
 //								}
 //							}
-					}
-				}
-				if (calc_pred_cov && !store_sim_pred_cov) {
-					AddPartialSumsOfThreads(pred_cov_of_thread, pred_cov);
+						}
+						const int num_sim_pred_cov_batch = std::min(batch_end, nsim_var_pred_) - batch_start;
+						if (sum_sim_pred_cov_in_batches && num_sim_pred_cov_batch > 0) {
+							AddOuterProductsInParallelRegion(sim_pred_cov_batch, num_sim_pred_cov_batch, pred_cov);
+						}
+					}//end loop over batches
 				}
 				if (calc_pred_var) {
 					AddPartialSumsOfThreads(pred_var_of_thread, pred_var);
@@ -6225,7 +6241,16 @@ namespace GPBoost {
 					sim_pred_cov_pos.resize(num_pred, nsim_var_pred_);
 					sim_pred_cov_neg.resize(num_pred, nsim_var_pred_);
 				}
-				std::vector<den_mat_t> pred_cov_of_thread(num_threads);
+				const int num_sim = std::max(nsim_var_pred_, num_post_samples);
+				// The simulated vectors for the predictive covariance matrix are stored in batches of 16 vectors per thread, see
+				//	'PredictLaplaceApproxFSVA()'
+				const bool sum_sim_pred_cov_in_batches = calc_pred_cov && !store_sim_pred_cov;
+				int batch_size = num_sim;
+				den_mat_t sim_pred_cov_batch;
+				if (sum_sim_pred_cov_in_batches) {
+					batch_size = 16 * num_threads;
+					sim_pred_cov_batch.resize(num_pred, std::min(batch_size, nsim_var_pred_));
+				}
 				std::vector<vec_t> pred_var_of_thread(num_threads);
 #pragma omp parallel
 				{
@@ -6236,91 +6261,91 @@ namespace GPBoost {
 					thread_nb = 0;
 #endif
 					RNG_t rng_local = parallel_rngs[thread_nb];
-					den_mat_t& pred_cov_private = pred_cov_of_thread[thread_nb];
-					if (calc_pred_cov && !store_sim_pred_cov) {
-						pred_cov_private = den_mat_t::Zero(num_pred, num_pred);
-					}
 					vec_t& pred_var_private = pred_var_of_thread[thread_nb];
 					if (calc_pred_var) {
 						pred_var_private = vec_t::Zero(num_pred);
 					}
-#pragma omp for reduction(||:na_inf_flag_5)
-					for (int i = 0; i < std::max(nsim_var_pred_, num_post_samples); ++i) {
-						//z_i ~ N(0,I)
-						std::normal_distribution<double> ndist(0.0, 1.0);
-						vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_);
-						for (int j = 0; j < dim_mode_; j++) {
-							rand_vec_pred_I_1(j) = ndist(rng_local);
-							rand_vec_pred_I_2(j) = ndist(rng_local);
-						}
-						//z_i ~ N(0,(Sigma^{-1} + W))
-						vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
-						vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
-						//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
-						bool has_NA_or_Inf = false;
-						Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, true, has_NA_or_Inf, /*for_prediction=*/true);
-						if (has_NA_or_Inf) {
-							na_inf_flag_5 = true;
-						}
-						if (num_sets_re_ > 1) {
-							rand_vec_pred_SigmaI_plus_W_inv = rand_vec_pred_SigmaI_plus_W_inv.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_).eval();// this could be done much more efficiently avoiding double calculations...
-						}
-						//z_i ~ N(0, Bp^{-1} Bpo (Sigma^{-1} + W)^{-1} Bpo^T Bp^{-1})
-						vec_t rand_vec_pred = Bpo_rm * rand_vec_pred_SigmaI_plus_W_inv;
-						if (!CondObsOnly) {
-							TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, rand_vec_pred, rand_vec_pred, false);
-						}
-						if (calc_pred_cov) {
-							if (i < nsim_var_pred_) {
-								if (store_sim_pred_cov) {
-									sim_pred_cov_pos.col(i) = rand_vec_pred;
-								}
-								else {
-									pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
-								}
-							}
-						}
-						if (calc_pred_var) {
-							if (i < nsim_var_pred_) {
-								pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
-							}
-						}
-						if (sample_posterior) {
-							if (i < num_post_samples) {
-								post_samples_id.col(i) += rand_vec_pred;
-							}
-						}
-						if (information_has_negative_values && i < nsim_var_pred_) {
-							//z_2 ~ N(0, W_-), see above
-							vec_t rand_vec_pred_W_neg(dim_mode_);
+					for (int batch_start = 0; batch_start < num_sim; batch_start += batch_size) {
+						const int batch_end = std::min(batch_start + batch_size, num_sim);
+#pragma omp for schedule(static) reduction(||:na_inf_flag_5)
+						for (int i = batch_start; i < batch_end; ++i) {
+							//z_i ~ N(0,I)
+							std::normal_distribution<double> ndist(0.0, 1.0);
+							vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_);
 							for (int j = 0; j < dim_mode_; j++) {
-								rand_vec_pred_W_neg(j) = W_neg_diag_sqrt[j] * ndist(rng_local);
+								rand_vec_pred_I_1(j) = ndist(rng_local);
+								rand_vec_pred_I_2(j) = ndist(rng_local);
 							}
-							vec_t rand_vec_pred_W_neg_SigmaI_plus_W_inv(dim_mode_);
-							bool has_NA_or_Inf_W_neg = false;
-							Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_W_neg, rand_vec_pred_W_neg_SigmaI_plus_W_inv, true, has_NA_or_Inf_W_neg, /*for_prediction=*/true);
-							if (has_NA_or_Inf_W_neg) {
+							//z_i ~ N(0,(Sigma^{-1} + W))
+							vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
+							vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
+							//z_i ~ N(0,(Sigma^{-1} + W)^{-1})
+							bool has_NA_or_Inf = false;
+							Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_SigmaI_plus_W, rand_vec_pred_SigmaI_plus_W_inv, true, has_NA_or_Inf, /*for_prediction=*/true);
+							if (has_NA_or_Inf) {
 								na_inf_flag_5 = true;
 							}
 							if (num_sets_re_ > 1) {
-								rand_vec_pred_W_neg_SigmaI_plus_W_inv = rand_vec_pred_W_neg_SigmaI_plus_W_inv.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_).eval();
+								rand_vec_pred_SigmaI_plus_W_inv = rand_vec_pred_SigmaI_plus_W_inv.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_).eval();// this could be done much more efficiently avoiding double calculations...
 							}
-							vec_t rand_vec_pred_2 = Bpo_rm * rand_vec_pred_W_neg_SigmaI_plus_W_inv;
+							//z_i ~ N(0, Bp^{-1} Bpo (Sigma^{-1} + W)^{-1} Bpo^T Bp^{-1})
+							vec_t rand_vec_pred = Bpo_rm * rand_vec_pred_SigmaI_plus_W_inv;
 							if (!CondObsOnly) {
-								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, rand_vec_pred_2, rand_vec_pred_2, false);
+								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, rand_vec_pred, rand_vec_pred, false);
 							}
 							if (calc_pred_cov) {
-								sim_pred_cov_neg.col(i) = rand_vec_pred_2;
+								if (i < nsim_var_pred_) {
+									if (store_sim_pred_cov) {
+										sim_pred_cov_pos.col(i) = rand_vec_pred;
+									}
+									else {
+										sim_pred_cov_batch.col(i - batch_start) = rand_vec_pred;
+									}
+								}
 							}
 							if (calc_pred_var) {
-								pred_var_private -= rand_vec_pred_2.cwiseProduct(rand_vec_pred_2);
+								if (i < nsim_var_pred_) {
+									pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
+								}
 							}
+							if (sample_posterior) {
+								if (i < num_post_samples) {
+									post_samples_id.col(i) += rand_vec_pred;
+								}
+							}
+							if (information_has_negative_values && i < nsim_var_pred_) {
+								//z_2 ~ N(0, W_-), see above
+								vec_t rand_vec_pred_W_neg(dim_mode_);
+								for (int j = 0; j < dim_mode_; j++) {
+									rand_vec_pred_W_neg(j) = W_neg_diag_sqrt[j] * ndist(rng_local);
+								}
+								vec_t rand_vec_pred_W_neg_SigmaI_plus_W_inv(dim_mode_);
+								bool has_NA_or_Inf_W_neg = false;
+								Inv_SigmaI_plus_ZtWZ_Vecchia_iterative_given_PC(cg_max_num_it_, re_comps_cross_cov_cluster_i, rand_vec_pred_W_neg, rand_vec_pred_W_neg_SigmaI_plus_W_inv, true, has_NA_or_Inf_W_neg, /*for_prediction=*/true);
+								if (has_NA_or_Inf_W_neg) {
+									na_inf_flag_5 = true;
+								}
+								if (num_sets_re_ > 1) {
+									rand_vec_pred_W_neg_SigmaI_plus_W_inv = rand_vec_pred_W_neg_SigmaI_plus_W_inv.segment(num_gp * dim_mode_per_set_re_, dim_mode_per_set_re_).eval();
+								}
+								vec_t rand_vec_pred_2 = Bpo_rm * rand_vec_pred_W_neg_SigmaI_plus_W_inv;
+								if (!CondObsOnly) {
+									TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, rand_vec_pred_2, rand_vec_pred_2, false);
+								}
+								if (calc_pred_cov) {
+									sim_pred_cov_neg.col(i) = rand_vec_pred_2;
+								}
+								if (calc_pred_var) {
+									pred_var_private -= rand_vec_pred_2.cwiseProduct(rand_vec_pred_2);
+								}
+							}
+						}//end for loop
+						const int num_sim_pred_cov_batch = std::min(batch_end, nsim_var_pred_) - batch_start;
+						if (sum_sim_pred_cov_in_batches && num_sim_pred_cov_batch > 0) {
+							AddOuterProductsInParallelRegion(sim_pred_cov_batch, num_sim_pred_cov_batch, pred_cov);
 						}
-					}//end for loop
+					}//end loop over batches
 				} // end #pragma omp parallel
-				if (calc_pred_cov && !store_sim_pred_cov) {
-					AddPartialSumsOfThreads(pred_cov_of_thread, pred_cov);
-				}
 				if (calc_pred_var) {
 					AddPartialSumsOfThreads(pred_var_of_thread, pred_var);
 				}
@@ -6986,7 +7011,7 @@ namespace GPBoost {
 					c_cov_private = vec_t::Zero(dim_mode_);
 					c_var_private = vec_t::Zero(dim_mode_);
 				}
-#pragma omp for reduction(||:na_inf_flag_9)
+#pragma omp for schedule(static) reduction(||:na_inf_flag_9)
 				for (int i = 0; i < nsim_var_pred_; ++i) {
 					//RV - Rademacher
 					std::uniform_real_distribution<double> udist(0.0, 1.0);
@@ -7120,7 +7145,7 @@ namespace GPBoost {
 				RNG_t rng_local = parallel_rngs[thread_nb];
 				vec_t& pred_var_private = pred_var_of_thread[thread_nb];
 				pred_var_private = vec_t::Zero(dim_mode_);
-#pragma omp for reduction(||:na_inf_flag_10)
+#pragma omp for schedule(static) reduction(||:na_inf_flag_10)
 				for (int i = 0; i < nsim_var_pred_; ++i) {
 					//z_i ~ N(0,I)
 					std::normal_distribution<double> ndist(0.0, 1.0);

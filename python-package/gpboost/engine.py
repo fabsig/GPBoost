@@ -1958,7 +1958,11 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
     randomization of Python. While this function runs, the hash of the parameter combinations of ConfigSpace is
     therefore replaced by one that does not depend on it, so that the results for a given 'smac_seed' are
     reproducible on the same machine with the same number of threads. With another number of threads, the scores
-    can differ in the last digits, and SMAC can then choose other parameter combinations after some trials.
+    can differ in the last digits since sums are added up in another order. If the score depends on simulated
+    random vectors, e.g., the 'test_neg_log_likelihood' of a model whose predictive variances are calculated by
+    simulation with ``matrix_inversion_method = "iterative"``, the simulated vectors can also change with the number
+    of threads, and the score can then differ by the Monte Carlo error of the simulation. In both cases, SMAC can
+    choose other parameter combinations after some trials.
 
     References
     ----------

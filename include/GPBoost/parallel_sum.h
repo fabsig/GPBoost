@@ -99,6 +99,30 @@ namespace GPBoost {
 		}
 	}//end AddPartialSumsOfThreads
 
+	/*!
+	* \brief Adds the outer products of the first num_vecs columns of 'vecs' to 'sum', i.e., sum += V V^T with
+	*		V = vecs.leftCols(num_vecs). This function has to be called by all threads of a parallel region. Every thread
+	*		updates a block of rows of 'sum', since Eigen does not parallelize a matrix product inside a parallel region. The
+	*		result does not depend on the order in which the threads finish
+	* \param vecs Dense matrix whose columns are the vectors
+	* \param num_vecs Number of columns of 'vecs' that are used
+	* \param[out] sum Dense matrix to which the outer products are added
+	*/
+	template <typename T_mat>
+	void AddOuterProductsInParallelRegion(const T_mat& vecs,
+		int num_vecs,
+		T_mat& sum) {
+		const int num_rows_total = (int)sum.rows();
+		const int num_blocks = omp_get_num_threads();
+#pragma omp for schedule(static)
+		for (int b = 0; b < num_blocks; ++b) {
+			const int row_begin = (int)((int64_t)num_rows_total * b / num_blocks);
+			const int num_rows = (int)((int64_t)num_rows_total * (b + 1) / num_blocks) - row_begin;
+			sum.middleRows(row_begin, num_rows).noalias() +=
+				vecs.block(row_begin, 0, num_rows, num_vecs) * vecs.leftCols(num_vecs).transpose();
+		}
+	}//end AddOuterProductsInParallelRegion
+
 }  // namespace GPBoost
 
 #endif   // GPB_PARALLEL_SUM_H_
