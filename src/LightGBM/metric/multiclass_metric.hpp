@@ -5,6 +5,7 @@
 #ifndef LIGHTGBM_METRIC_MULTICLASS_METRIC_HPP_
 #define LIGHTGBM_METRIC_MULTICLASS_METRIC_HPP_
 
+#include <GPBoost/parallel_sum.h>
 #include <LightGBM/metric.h>
 #include <LightGBM/utils/log.h>
 
@@ -63,8 +64,7 @@ class MulticlassMetric: public Metric {
     }
     if (objective != nullptr) {
       if (weights_ == nullptr) {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           std::vector<double> raw_score(num_tree_per_iteration);
           for (int k = 0; k < num_tree_per_iteration; ++k) {
             size_t idx = static_cast<size_t>(num_data_) * k + i;
@@ -74,10 +74,9 @@ class MulticlassMetric: public Metric {
           objective->ConvertOutput(raw_score.data(), rec.data());
           // add loss
           sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], &rec, config_);
-        }
+        }, sum_loss);
       } else {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           std::vector<double> raw_score(num_tree_per_iteration);
           for (int k = 0; k < num_tree_per_iteration; ++k) {
             size_t idx = static_cast<size_t>(num_data_) * k + i;
@@ -87,12 +86,11 @@ class MulticlassMetric: public Metric {
           objective->ConvertOutput(raw_score.data(), rec.data());
           // add loss
           sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], &rec, config_) * weights_[i];
-        }
+        }, sum_loss);
       }
     } else {
       if (weights_ == nullptr) {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           std::vector<double> rec(num_tree_per_iteration);
           for (int k = 0; k < num_tree_per_iteration; ++k) {
             size_t idx = static_cast<size_t>(num_data_) * k + i;
@@ -100,10 +98,9 @@ class MulticlassMetric: public Metric {
           }
           // add loss
           sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], &rec, config_);
-        }
+        }, sum_loss);
       } else {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           std::vector<double> rec(num_tree_per_iteration);
           for (int k = 0; k < num_tree_per_iteration; ++k) {
             size_t idx = static_cast<size_t>(num_data_) * k + i;
@@ -111,7 +108,7 @@ class MulticlassMetric: public Metric {
           }
           // add loss
           sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], &rec, config_) * weights_[i];
-        }
+        }, sum_loss);
       }
     }
     double loss = sum_loss / sum_weights_;

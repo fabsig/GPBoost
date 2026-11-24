@@ -5,6 +5,7 @@
 #ifndef LIGHTGBM_TREELEARNER_LEAF_SPLITS_HPP_
 #define LIGHTGBM_TREELEARNER_LEAF_SPLITS_HPP_
 
+#include <GPBoost/parallel_sum.h>
 #include <LightGBM/config.h>
 #include <LightGBM/meta.h>
 #include <LightGBM/utils/threading.h>
@@ -76,11 +77,10 @@ class LeafSplits {
     data_indices_ = nullptr;
     double tmp_sum_gradients = 0.0f;
     double tmp_sum_hessians = 0.0f;
-#pragma omp parallel for schedule(static, 512) reduction(+:tmp_sum_gradients, tmp_sum_hessians) if (num_data_in_leaf_ >= 1024 && !deterministic_)
-    for (data_size_t i = 0; i < num_data_in_leaf_; ++i) {
+    GPBoost::ParallelSumIf(num_data_in_leaf_ >= 1024 && !deterministic_, num_data_in_leaf_, [&](data_size_t i, double& tmp_sum_gradients, double& tmp_sum_hessians) {
       tmp_sum_gradients += gradients[i];
       tmp_sum_hessians += hessians[i];
-    }
+    }, tmp_sum_gradients, tmp_sum_hessians);
     sum_gradients_ = tmp_sum_gradients;
     sum_hessians_ = tmp_sum_hessians;
   }
@@ -98,12 +98,11 @@ class LeafSplits {
     data_indices_ = data_partition->GetIndexOnLeaf(leaf, &num_data_in_leaf_);
     double tmp_sum_gradients = 0.0f;
     double tmp_sum_hessians = 0.0f;
-#pragma omp parallel for schedule(static, 512) reduction(+:tmp_sum_gradients, tmp_sum_hessians) if (num_data_in_leaf_ >= 1024 && !deterministic_)
-    for (data_size_t i = 0; i < num_data_in_leaf_; ++i) {
+    GPBoost::ParallelSumIf(num_data_in_leaf_ >= 1024 && !deterministic_, num_data_in_leaf_, [&](data_size_t i, double& tmp_sum_gradients, double& tmp_sum_hessians) {
       const data_size_t idx = data_indices_[i];
       tmp_sum_gradients += gradients[idx];
       tmp_sum_hessians += hessians[idx];
-    }
+    }, tmp_sum_gradients, tmp_sum_hessians);
     sum_gradients_ = tmp_sum_gradients;
     sum_hessians_ = tmp_sum_hessians;
   }

@@ -2274,8 +2274,7 @@ namespace GPBoost {
 		double& implicit_derivative) const {
 		double d_detmll = 0., implicit_deriv = 0.;
 		if (use_random_effects_indices_of_data_) {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll, implicit_deriv)
-			for (data_size_t i = 0; i < num_data_; ++i) {
+			ParallelSum(num_data_, [&](data_size_t i, double& d_detmll, double& implicit_deriv) {
 				const data_size_t idx = random_effects_indices_of_data_[i];
 				if (accumulate_log_det) {
 					d_detmll += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[idx];
@@ -2283,18 +2282,17 @@ namespace GPBoost {
 				if (grad_information_wrt_mode_non_zero_) {
 					implicit_deriv += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[idx];
 				}
-			}
+			}, d_detmll, implicit_deriv);
 		}
 		else {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll, implicit_deriv)
-			for (data_size_t i = 0; i < num_data_; ++i) {
+			ParallelSum(num_data_, [&](data_size_t i, double& d_detmll, double& implicit_deriv) {
 				if (accumulate_log_det) {
 					d_detmll += deriv_information_aux_par[i] * SigmaI_plus_W_inv_diag[i];
 				}
 				if (grad_information_wrt_mode_non_zero_) {
 					implicit_deriv += second_deriv_loc_aux_par[i] * SigmaI_plus_W_inv_d_mll_d_mode[i];
 				}
-			}
+			}, d_detmll, implicit_deriv);
 		}
 		d_detmll_d_aux_par += d_detmll;
 		implicit_derivative += implicit_deriv;
@@ -2630,13 +2628,15 @@ namespace GPBoost {
 				for (int j = 0; j < num_grouped_RE; ++j) {
 					if (estimate_cov_par_index[j] > 0) {
 						// calculate explicit derivative of approx. mariginal log-likelihood
-						std::vector<Triplet_t> triplets(cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);
+						const int first_re = cum_num_rand_eff_cluster_i[j];
+						const int num_re_j = cum_num_rand_eff_cluster_i[j + 1] - first_re;
+						std::vector<Triplet_t> triplets(num_re_j);
 						double explicit_derivative = 0.;
-#pragma omp parallel for schedule(static) reduction(+:explicit_derivative)
-						for (int i = cum_num_rand_eff_cluster_i[j]; i < cum_num_rand_eff_cluster_i[j + 1]; ++i) {
-							triplets[i - cum_num_rand_eff_cluster_i[j]] = Triplet_t(i, i, 1.);
+						ParallelSum(num_re_j, [&](int k, double& explicit_derivative) {
+							const int i = first_re + k;
+							triplets[k] = Triplet_t(i, i, 1.);
 							explicit_derivative += SigmaI_mode[i] * mode_[i];
-						}
+						}, explicit_derivative);
 						explicit_derivative *= -0.5;
 						I_j.setFromTriplets(triplets.begin(), triplets.end());
 						double cov_par_inv = SigmaI.coeff(cum_num_rand_eff_cluster_i[j], cum_num_rand_eff_cluster_i[j]);
@@ -2850,13 +2850,15 @@ namespace GPBoost {
 				for (int j = 0; j < num_grouped_RE; ++j) {
 					if (estimate_cov_par_index[j] > 0) {
 						// calculate explicit derivative of approx. mariginal log-likelihood
-						std::vector<Triplet_t> triplets(cum_num_rand_eff_cluster_i[j + 1] - cum_num_rand_eff_cluster_i[j]);//for constructing I_j
+						const int first_re = cum_num_rand_eff_cluster_i[j];
+						const int num_re_j = cum_num_rand_eff_cluster_i[j + 1] - first_re;
+						std::vector<Triplet_t> triplets(num_re_j);//for constructing I_j
 						double explicit_derivative = 0.;
-#pragma omp parallel for schedule(static) reduction(+:explicit_derivative)
-						for (int i = cum_num_rand_eff_cluster_i[j]; i < cum_num_rand_eff_cluster_i[j + 1]; ++i) {
-							triplets[i - cum_num_rand_eff_cluster_i[j]] = Triplet_t(i, i, 1.);
+						ParallelSum(num_re_j, [&](int k, double& explicit_derivative) {
+							const int i = first_re + k;
+							triplets[k] = Triplet_t(i, i, 1.);
 							explicit_derivative += SigmaI_mode[i] * mode_[i];
-						}
+						}, explicit_derivative);
 						explicit_derivative *= -0.5;
 						I_j.setFromTriplets(triplets.begin(), triplets.end());
 						I_j_ZtWZ = I_j * ZtWZ;
@@ -3065,13 +3067,12 @@ namespace GPBoost {
 				CalcSecondDerivLogLikFirstDerivInformationAuxPar(y_data, y_data_int, location_par.data(), ind_ap, second_deriv_loc_aux_par.data(), deriv_information_aux_par.data());
 				double d_detmll_d_aux_par = 0., implicit_derivative = 0.;// = implicit derivative = d_mll_d_mode * d_mode_d_aux_par
 				if (!iid_model_) {
-#pragma omp parallel for schedule(static) reduction(+:d_detmll_d_aux_par, implicit_derivative)
-					for (int i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](int i, double& d_detmll_d_aux_par, double& implicit_derivative) {
 						d_detmll_d_aux_par += deriv_information_aux_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];
 						if (grad_information_wrt_mode_non_zero_) {
 							implicit_derivative += d_mll_d_mode[random_effects_indices_of_data_[i]] * second_deriv_loc_aux_par[i] / diag_SigmaI_plus_ZtWZ_[random_effects_indices_of_data_[i]];
 						}
-					}
+					}, d_detmll_d_aux_par, implicit_derivative);
 				}
 				aux_par_grad[ind_ap] = neg_likelihood_deriv[ind_ap] + 0.5 * d_detmll_d_aux_par + implicit_derivative;
 				//Equivalent code:
@@ -5080,6 +5081,7 @@ namespace GPBoost {
 						parallel_rngs.push_back(RNG_t(seed_local));
 					}
 					bool na_inf_flag_1 = false;
+					std::vector<vec_t> pred_var_of_thread(num_threads), varred_of_thread(num_threads), c_cov_of_thread(num_threads), c_var_of_thread(num_threads);
 #pragma omp parallel
 					{
 						int thread_nb;
@@ -5089,10 +5091,11 @@ namespace GPBoost {
 						thread_nb = 0;
 #endif
 						RNG_t rng_local = parallel_rngs[thread_nb];
-						vec_t pred_var_private = vec_t::Zero(n_pred);
-						vec_t varred_private;
-						vec_t c_cov_private;
-						vec_t c_var_private;
+						vec_t& pred_var_private = pred_var_of_thread[thread_nb];
+						vec_t& varred_private = varred_of_thread[thread_nb];
+						vec_t& c_cov_private = c_cov_of_thread[thread_nb];
+						vec_t& c_var_private = c_var_of_thread[thread_nb];
+						pred_var_private = vec_t::Zero(n_pred);
 						//Variance reduction
 						if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
 							varred_private = vec_t::Zero(n_pred);
@@ -5143,17 +5146,14 @@ namespace GPBoost {
 								c_var_private += varred_iter.cwiseProduct(varred_iter);
 							}
 						} //end for loop
-#pragma omp critical
-						{
-							pred_var_global += pred_var_private;
-							//Variance reduction
-							if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
-								varred_global += varred_private;
-								c_cov += c_cov_private;
-								c_var += c_var_private;
-							}
-						}
 					} //end #pragma omp parallel
+					AddPartialSumsOfThreads(pred_var_of_thread, pred_var_global);
+					//Variance reduction
+					if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+						AddPartialSumsOfThreads(varred_of_thread, varred_global);
+						AddPartialSumsOfThreads(c_cov_of_thread, c_cov);
+						AddPartialSumsOfThreads(c_var_of_thread, c_var);
+					}
 					HandleNAOrInfCGSimulation(na_inf_flag_1, __func__);
 					pred_var_global /= nsim_var_pred_;
 					pred_var += pred_var_global;
@@ -5224,6 +5224,7 @@ namespace GPBoost {
 						sim_pred_cov_pos.resize(n_pred, nsim_var_pred_);
 						sim_pred_cov_neg.resize(n_pred, nsim_var_pred_);
 					}
+					std::vector<den_mat_t> pred_cov_of_thread(num_threads);
 #pragma omp parallel
 					{
 						int thread_nb;
@@ -5233,7 +5234,7 @@ namespace GPBoost {
 						thread_nb = 0;
 #endif
 						RNG_t rng_local = parallel_rngs[thread_nb];
-						den_mat_t pred_cov_private;
+						den_mat_t& pred_cov_private = pred_cov_of_thread[thread_nb];
 						if (!information_has_negative_values) {
 							pred_cov_private = den_mat_t::Zero(n_pred, n_pred);
 						}
@@ -5283,13 +5284,10 @@ namespace GPBoost {
 								sim_pred_cov_neg.col(i) = Ztilde * rand_vec_pred_SigmaI_plus_ZtWZ_inv;
 							}
 						} //end for loop
-						if (!information_has_negative_values) {
-#pragma omp critical
-							{
-								pred_cov_global += pred_cov_private;
-							}
-						}
 					} //end #pragma omp parallel
+					if (!information_has_negative_values) {
+						AddPartialSumsOfThreads(pred_cov_of_thread, pred_cov_global);
+					}
 					HandleNAOrInfCGSimulation(na_inf_flag_3, __func__);
 					if (na_inf_flag_3) { Log::REFatal("There was Nan or Inf value generated in the Conjugate Gradient Method!"); }
 					if (information_has_negative_values) {
@@ -5757,6 +5755,8 @@ namespace GPBoost {
 					sim_pred_cov_pos.resize(num_pred, nsim_var_pred_);
 					sim_pred_cov_neg.resize(num_pred, nsim_var_pred_);
 				}
+				std::vector<den_mat_t> pred_cov_of_thread(num_threads);
+				std::vector<vec_t> pred_var_of_thread(num_threads);
 #pragma omp parallel
 				{
 					int thread_nb;
@@ -5766,6 +5766,14 @@ namespace GPBoost {
 					thread_nb = 0;
 #endif
 					RNG_t rng_local = parallel_rngs[thread_nb];
+					den_mat_t& pred_cov_private = pred_cov_of_thread[thread_nb];
+					vec_t& pred_var_private = pred_var_of_thread[thread_nb];
+					if (calc_pred_cov && !store_sim_pred_cov) {
+						pred_cov_private = den_mat_t::Zero(num_pred, num_pred);
+					}
+					if (calc_pred_var) {
+						pred_var_private = vec_t::Zero(num_pred);
+					}
 #pragma omp for reduction(||:na_inf_flag_4)
 					for (int i = 0; i < std::max(nsim_var_pred_, num_post_samples); ++i) {
 						//z_i ~ N(0,I)
@@ -5832,21 +5840,13 @@ namespace GPBoost {
 									sim_pred_cov_pos.col(i) = rand_vec_pred;
 								}
 								else {
-									den_mat_t pred_cov_private = rand_vec_pred * rand_vec_pred.transpose();
-#pragma omp critical
-									{
-										pred_cov += pred_cov_private;
-									}
+									pred_cov_private += rand_vec_pred * rand_vec_pred.transpose();
 								}
 							}
 						}
 						if (calc_pred_var) {
 							if (i < nsim_var_pred_) {
-								vec_t pred_var_private = rand_vec_pred.cwiseProduct(rand_vec_pred);
-#pragma omp critical
-								{
-									pred_var += pred_var_private;
-								}
+								pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
 							}
 						}
 						if (sample_posterior) {
@@ -5878,11 +5878,7 @@ namespace GPBoost {
 								sim_pred_cov_neg.col(i) = rand_vec_pred;
 							}
 							if (calc_pred_var) {
-								vec_t pred_var_private = rand_vec_pred.cwiseProduct(rand_vec_pred);
-#pragma omp critical
-								{
-									pred_var -= pred_var_private;
-								}
+								pred_var_private -= rand_vec_pred.cwiseProduct(rand_vec_pred);
 							}
 						}
 						// Implementation for Bekas approach
@@ -5943,6 +5939,12 @@ namespace GPBoost {
 //								}
 //							}
 					}
+				}
+				if (calc_pred_cov && !store_sim_pred_cov) {
+					AddPartialSumsOfThreads(pred_cov_of_thread, pred_cov);
+				}
+				if (calc_pred_var) {
+					AddPartialSumsOfThreads(pred_var_of_thread, pred_var);
 				}
 				HandleNAOrInfCGSimulation(na_inf_flag_4, __func__);
 				if (calc_pred_cov) {
@@ -6223,6 +6225,8 @@ namespace GPBoost {
 					sim_pred_cov_pos.resize(num_pred, nsim_var_pred_);
 					sim_pred_cov_neg.resize(num_pred, nsim_var_pred_);
 				}
+				std::vector<den_mat_t> pred_cov_of_thread(num_threads);
+				std::vector<vec_t> pred_var_of_thread(num_threads);
 #pragma omp parallel
 				{
 					int thread_nb;
@@ -6232,11 +6236,11 @@ namespace GPBoost {
 					thread_nb = 0;
 #endif
 					RNG_t rng_local = parallel_rngs[thread_nb];
-					den_mat_t pred_cov_private;
+					den_mat_t& pred_cov_private = pred_cov_of_thread[thread_nb];
 					if (calc_pred_cov && !store_sim_pred_cov) {
 						pred_cov_private = den_mat_t::Zero(num_pred, num_pred);
 					}
-					vec_t pred_var_private;
+					vec_t& pred_var_private = pred_var_of_thread[thread_nb];
 					if (calc_pred_var) {
 						pred_var_private = vec_t::Zero(num_pred);
 					}
@@ -6313,16 +6317,13 @@ namespace GPBoost {
 							}
 						}
 					}//end for loop
-#pragma omp critical
-					{
-						if (calc_pred_cov && !store_sim_pred_cov) {
-							pred_cov += pred_cov_private;
-						}
-						if (calc_pred_var) {
-							pred_var += pred_var_private;
-						}
-					}
 				} // end #pragma omp parallel
+				if (calc_pred_cov && !store_sim_pred_cov) {
+					AddPartialSumsOfThreads(pred_cov_of_thread, pred_cov);
+				}
+				if (calc_pred_var) {
+					AddPartialSumsOfThreads(pred_var_of_thread, pred_var);
+				}
 				HandleNAOrInfCGSimulation(na_inf_flag_5, __func__);
 				if (calc_pred_cov) {
 					if (store_sim_pred_cov) {
@@ -6964,6 +6965,7 @@ namespace GPBoost {
 				parallel_rngs.push_back(RNG_t(seed_local));
 			}
 			bool na_inf_flag_9 = false;
+			std::vector<vec_t> pred_var_of_thread(num_threads), varred_of_thread(num_threads), c_cov_of_thread(num_threads), c_var_of_thread(num_threads);
 #pragma omp parallel
 			{
 				int thread_nb;
@@ -6973,10 +6975,11 @@ namespace GPBoost {
 				thread_nb = 0;
 #endif
 				RNG_t rng_local = parallel_rngs[thread_nb];
-				vec_t pred_var_private = vec_t::Zero(dim_mode_);
-				vec_t varred_private;
-				vec_t c_cov_private;
-				vec_t c_var_private;
+				vec_t& pred_var_private = pred_var_of_thread[thread_nb];
+				vec_t& varred_private = varred_of_thread[thread_nb];
+				vec_t& c_cov_private = c_cov_of_thread[thread_nb];
+				vec_t& c_var_private = c_var_of_thread[thread_nb];
+				pred_var_private = vec_t::Zero(dim_mode_);
 				//Variance reduction
 				if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
 					varred_private = vec_t::Zero(dim_mode_);
@@ -7023,17 +7026,14 @@ namespace GPBoost {
 						c_var_private += varred_iter.cwiseProduct(varred_iter);
 					}
 				} //end for loop
-#pragma omp critical
-				{
-					pred_var += pred_var_private;
-					//Variance reduction
-					if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
-						varred_global += varred_private;
-						c_cov += c_cov_private;
-						c_var += c_var_private;
-					}
-				}
 			} //end #pragma omp parallel
+			AddPartialSumsOfThreads(pred_var_of_thread, pred_var);
+			//Variance reduction
+			if (cg_preconditioner_type_ == "incomplete_cholesky" || cg_preconditioner_type_ == "ssor") {
+				AddPartialSumsOfThreads(varred_of_thread, varred_global);
+				AddPartialSumsOfThreads(c_cov_of_thread, c_cov);
+				AddPartialSumsOfThreads(c_var_of_thread, c_var);
+			}
 			HandleNAOrInfCGSimulation(na_inf_flag_9, __func__);
 			pred_var /= nsim_var_pred_;
 			//Variance reduction
@@ -7108,6 +7108,7 @@ namespace GPBoost {
 				parallel_rngs.push_back(RNG_t(seed_local));
 			}
 			bool na_inf_flag_10 = false;
+			std::vector<vec_t> pred_var_of_thread(num_threads);
 #pragma omp parallel
 			{
 				int thread_nb;
@@ -7117,7 +7118,8 @@ namespace GPBoost {
 				thread_nb = 0;
 #endif
 				RNG_t rng_local = parallel_rngs[thread_nb];
-				vec_t pred_var_private = vec_t::Zero(dim_mode_);
+				vec_t& pred_var_private = pred_var_of_thread[thread_nb];
+				pred_var_private = vec_t::Zero(dim_mode_);
 #pragma omp for reduction(||:na_inf_flag_10)
 				for (int i = 0; i < nsim_var_pred_; ++i) {
 					//z_i ~ N(0,I)
@@ -7151,11 +7153,8 @@ namespace GPBoost {
 						pred_var_private -= rand_vec_pred_W_neg_SigmaI_plus_W_inv.cwiseProduct(rand_vec_pred_W_neg_SigmaI_plus_W_inv);
 					}
 				}// end for loop
-#pragma omp critical
-				{
-					pred_var += pred_var_private;
-				}
 			}// end #pragma omp parallel
+			AddPartialSumsOfThreads(pred_var_of_thread, pred_var);
 			HandleNAOrInfCGSimulation(na_inf_flag_10, __func__);
 			pred_var /= nsim_var_pred_;
 			if (information_has_negative_values) SetNegativeVarianceEstimatesToZero(pred_var, "CalcVarLaplaceApproxVecchia");

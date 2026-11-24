@@ -119,11 +119,7 @@ namespace GPBoost {
 			}
 		}
 		diag = vec_t::Zero(n);
-		for (const vec_t& diag_local : diag_private) {
-			if (diag_local.size() == n) {
-				diag += diag_local;
-			}
-		}
+		AddPartialSumsOfThreads(diag_private, diag);
 	}//end CalcDiagLInvDLInvT
 
 	void CalcLInvDLInvT(const sp_mat_t& L, const vec_t& d, den_mat_t& M) {
@@ -319,11 +315,7 @@ namespace GPBoost {
 			}
 		}
 		norms = vec_t::Zero(num_cols);
-		for (const vec_t& norms_local : norms_private) {
-			if (norms_local.size() == num_cols) {
-				norms += norms_local;
-			}
-		}
+		AddPartialSumsOfThreads(norms_private, norms);
 	}//end CalcColSquaredNormsLInvRByRows
 
 	/*!
@@ -1416,20 +1408,18 @@ namespace GPBoost {
 				ZtV[i] = 0.;
 			}
 		}
+		std::vector<vec_t> ZtV_of_thread(omp_get_max_threads());
 #pragma omp parallel
 		{
-			vec_t Ztv_private = vec_t::Zero(num_re);
-#pragma omp for
+			vec_t& ZtV_private = ZtV_of_thread[omp_get_thread_num()];
+			ZtV_private = vec_t::Zero(num_re);
+#pragma omp for schedule(static)
 			for (data_size_t i = 0; i < num_data; ++i) {
-				Ztv_private[random_effects_indices_of_data[i]] += v[i];
+				ZtV_private[random_effects_indices_of_data[i]] += v[i];
 			}
-#pragma omp critical
-			{
-				for (data_size_t i_re = 0; i_re < num_re; ++i_re) {
-					ZtV[i_re] += Ztv_private[i_re];
-				}
-			}//end omp critical
 		}//end omp parallel
+		Eigen::Map<vec_t> ZtV_map(ZtV, num_re);
+		AddPartialSumsOfThreads(ZtV_of_thread, ZtV_map);
 		//Non-parallel version
 		//for (data_size_t i = 0; i < num_data; ++i) {
 		//	ZtV[random_effects_indices_of_data[i]] += v[i];

@@ -5,6 +5,7 @@
 */
 #include "gbdt.h"
 
+#include <GPBoost/parallel_sum.h>
 #include <LightGBM/metric.h>
 #include <LightGBM/network.h>
 #include <LightGBM/objective_function.h>
@@ -532,16 +533,14 @@ namespace LightGBM {
 				CHECK(num_score == num_data_);
 				auto label_ptr = train_data_->metadata().label();
 				double residual_mean = 0.;
-#pragma omp parallel for schedule(static) reduction(+:residual_mean)
-				for (data_size_t i = 0; i < num_data_; ++i) {
+				GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& residual_mean) {
 					residual_mean += (label_ptr[i] - train_score[i]);
-				}
+				}, residual_mean);
 				residual_mean /= num_data_;
 				double residual_variance = 0.;
-#pragma omp parallel for schedule(static) reduction(+:residual_variance)
-				for (data_size_t i = 0; i < num_data_; ++i) {
+				GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& residual_variance) {
 					residual_variance += std::pow(label_ptr[i] - train_score[i] - residual_mean, 2);
-				}
+				}, residual_variance);
 				residual_variance_ = residual_variance / (num_data_ - 1);
 			}
 			if (objective_function_->HasGPModel() && !(objective_function_->UseGPModelForValidation() && use_nesterov_acc_)) {

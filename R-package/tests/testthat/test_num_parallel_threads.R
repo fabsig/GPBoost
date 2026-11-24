@@ -94,6 +94,50 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   })
 
+  test_that("repeated computations with several threads give identical results ", {
+
+    # OpenMP reductions and additions in critical sections added the partial sums of the threads in the order in
+    # which the threads finished, which changed the last digits of the results from run to run with GCC. Four
+    # threads are requested since this did not happen with two threads
+    num_threads <- 4L
+    set.seed(1)
+    n <- 20000
+    group <- sample.int(2000, n, replace = TRUE)
+    group2 <- sample.int(2000, n, replace = TRUE)
+    X <- cbind(1, rnorm(n))
+    y <- as.numeric(X %*% c(0, 1) + rnorm(2000)[group] + rlogis(n) > 0)
+    fit_binary <- function() {
+      capture.output( gp_model <- fitGPModel(group_data = group, likelihood = "bernoulli_logit", y = y, X = X,
+                                             num_parallel_threads = num_threads) , file = 'NUL')
+      c(gp_model$get_cov_pars(), gp_model$get_coef())
+    }
+    expect_identical(fit_binary(), fit_binary())
+
+    # Predictive variances by simulation with iterative methods
+    y_count <- rpois(n, exp(0.5 * rnorm(2000)[group] + 0.5 * rnorm(2000)[group2]))
+    capture.output( gp_model <- fitGPModel(group_data = cbind(group, group2), likelihood = "poisson", y = y_count,
+                                           matrix_inversion_method = "iterative", num_parallel_threads = num_threads,
+                                           params = list(maxit = 5)) , file = 'NUL')
+    predict_var <- function() {
+      predict(gp_model, group_data_pred = cbind(1:500, 500:1), predict_var = TRUE, predict_response = FALSE)$var
+    }
+    expect_identical(predict_var(), predict_var())
+
+    # Validation metric of tree-boosting
+    X_boost <- matrix(runif(n * 5), ncol = 5)
+    y_boost <- as.numeric(2 * sin(3 * X_boost[, 1]) + X_boost[, 2]^2 + rlogis(n) > 1)
+    dtrain <- gpb.Dataset(X_boost[1:15000, ], label = y_boost[1:15000])
+    dvalid <- gpb.Dataset.create.valid(dtrain, X_boost[15001:n, ], label = y_boost[15001:n])
+    validation_loss <- function() {
+      capture.output( bst <- gpb.train(data = dtrain, valids = list(valid = dvalid), nrounds = 20, verbose = 0,
+                                       params = list(objective = "binary", metric = "binary_logloss",
+                                                     force_col_wise = TRUE, num_threads = num_threads)) , file = 'NUL')
+      unlist(bst$record_evals$valid$binary_logloss$eval)
+    }
+    expect_identical(validation_loss(), validation_loss())
+
+  })
+
 }
 
 # The default number of threads is determined only once per process, so everything that can influence it has

@@ -804,9 +804,8 @@ namespace GPBoost {
 			return TestNegLogLikelihoodAdaptiveGHQuadratureExtraBlocks(y_test, pred_mean, pred_var, num_data);
 		}
 		double ll = 0.;
-		bool na_inf_flag_11 = false;
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll) reduction(||:na_inf_flag_11)
-		for (data_size_t i = 0; i < num_data; ++i) {
+		int num_evaluation_failures = 0;
+		ParallelSumIf(num_data >= 128, num_data, [&](data_size_t i, double& ll, int& num_evaluation_failures) {
 			int y_test_int = 1;
 			double y_test_d = static_cast<double>(y_test[i]);
 			// Note: we need to convert from float to double as label_t is float. Unfortunately, the lightGBM part does not allow for setting the LABEL_T_USE_DOUBLE macro in meta.h (multiple bugs...)
@@ -823,9 +822,9 @@ namespace GPBoost {
 				thread_local TweedieSpecialFunctionCache cache;
 				const auto normalizer = EvaluateTweedieLogNormalizer(y_test_d, std::log(aux_pars_[0]), p, 0., TweedieDerivativeOrder::kValue, false, 1000000, &cache);
 				if (!normalizer.converged) {
-					na_inf_flag_11 = true;
+					++num_evaluation_failures;
 					ll += -std::numeric_limits<double>::infinity();
-					continue;
+					return;
 				}
 				log_normalizer = normalizer.log_a;
 			}
@@ -864,13 +863,13 @@ namespace GPBoost {
 				log_integral = LogIntegralAdaptiveGHQuadrature(log_dens, mode_integrand, sqrt2_sigma_hat, pred_mean[i], sqrt_sigma2_inv, node_failure);
 			}
 			if (node_failure) {
-				na_inf_flag_11 = true;
+				++num_evaluation_failures;
 				ll += -std::numeric_limits<double>::infinity();
-				continue;
+				return;
 			}
 			ll += log_integral + log_normalizer;
-		}
-		if (na_inf_flag_11) {
+		}, ll, num_evaluation_failures);
+		if (num_evaluation_failures > 0) {
 			Log::REWarning("The density could not be evaluated numerically for at least one test point, the test negative log-likelihood is set to +inf ");
 		}
 		return -ll;
@@ -887,9 +886,8 @@ namespace GPBoost {
 		const double p_tweedie = tweedie ? GetTweediePower() : 0.;
 		const bool int_label = label_type() == "int";
 		double ll = 0.;
-		bool evaluation_failure = false;
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll) reduction(||:evaluation_failure)
-		for (data_size_t i = 0; i < num_data; ++i) {
+		int num_evaluation_failures = 0;
+		ParallelSumIf(num_data >= 128, num_data, [&](data_size_t i, double& ll, int& num_evaluation_failures) {
 			const double y = static_cast<double>(y_test[i]);
 			const int y_int = int_label ? static_cast<int>(y_test[i]) : 1;
 			// The additional blocks have zero predictive variances, i.e., they are given by their predictive means
@@ -905,9 +903,9 @@ namespace GPBoost {
 				thread_local TweedieSpecialFunctionCache cache;
 				const auto normalizer = EvaluateTweedieLogNormalizer(y, extra[0], p_tweedie, 0., TweedieDerivativeOrder::kValue, false, 1000000, &cache);
 				if (!normalizer.converged) {
-					evaluation_failure = true;
+					++num_evaluation_failures;
 					ll += -std::numeric_limits<double>::infinity();
-					continue;
+					return;
 				}
 				log_normalizer = normalizer.log_a;
 			}
@@ -919,13 +917,13 @@ namespace GPBoost {
 				[&](double x) { return InformationLogLikOneSampleExtraBlocks(y, y_int, x, extra); },
 				pred_mean[i], pred_var[i], node_failure);
 			if (node_failure) {
-				evaluation_failure = true;
+				++num_evaluation_failures;
 				ll += -std::numeric_limits<double>::infinity();
-				continue;
+				return;
 			}
 			ll += log_integral + log_normalizer;
-		}
-		if (evaluation_failure) {
+		}, ll, num_evaluation_failures);
+		if (num_evaluation_failures > 0) {
 			Log::REWarning("The density could not be evaluated numerically for at least one test point, the test negative log-likelihood is set to +inf ");
 		}
 		return -ll;
@@ -937,22 +935,21 @@ namespace GPBoost {
 		const double* pred_var,
 		const data_size_t num_data) const {
 		double ll = 0.;
-		bool evaluation_failure = false;
-#pragma omp parallel for schedule(static) if (num_data >= 128) reduction(+:ll) reduction(||:evaluation_failure)
-		for (data_size_t i = 0; i < num_data; ++i) {
+		int num_evaluation_failures = 0;
+		ParallelSumIf(num_data >= 128, num_data, [&](data_size_t i, double& ll, int& num_evaluation_failures) {
 			const double resid = static_cast<double>(y_test[i]) - pred_mean[i];
 			// Numerical evaluation failures set the test negative log-likelihood to +inf, see 'TestNegLogLikelihoodAdaptiveGHQuadrature'
 			bool node_failure;
 			const double log_integral = LogPredictiveDensityGaussianHeteroscedastic(resid * resid, pred_var[i],
 				pred_mean[i + num_data], pred_var[i + num_data], node_failure);
 			if (node_failure) {
-				evaluation_failure = true;
+				++num_evaluation_failures;
 				ll += -std::numeric_limits<double>::infinity();
-				continue;
+				return;
 			}
 			ll += log_integral;
-		}
-		if (evaluation_failure) {
+		}, ll, num_evaluation_failures);
+		if (num_evaluation_failures > 0) {
 			Log::REWarning("The density could not be evaluated numerically for at least one test point, the test negative log-likelihood is set to +inf ");
 		}
 		return -ll;

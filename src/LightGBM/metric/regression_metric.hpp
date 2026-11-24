@@ -10,6 +10,7 @@
 #include <LightGBM/metric.h>
 #include <LightGBM/utils/log.h>
 #include <GPBoost/DF_utils.h>
+#include <GPBoost/parallel_sum.h>
 
 #include <string>
 #include <algorithm>
@@ -67,18 +68,16 @@ namespace LightGBM {
 			double sum_loss = 0.0f;
 			if (objective == nullptr) {
 				if (weights_ == nullptr) {
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 						// add loss
 						sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], score[i], config_);
-					}
+					}, sum_loss);
 				}
 				else {
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 						// add loss
 						sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], score[i], config_) * weights_[i];
-					}
+					}, sum_loss);
 				}
 			}
 			else {
@@ -97,11 +96,10 @@ namespace LightGBM {
 								true, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 							// Note that the re_model already has the updated response data score - label = F_t - y 
 							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-							for (data_size_t i = 0; i < num_data_; ++i) {
+							GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 								double pred = score[i] - minus_gp_pred[i];//minus since the re_model uses score - label (= F - y) instead of y - F to make predictions
 								sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], pred, config_);
-							}
+							}, sum_loss);
 						}//end Gaussian data
 						else {//non-Gaussian data
 							std::vector<double> gp_pred(num_data_);
@@ -112,30 +110,27 @@ namespace LightGBM {
 							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
 							//	We thus dont provide this here (see the above nullptr). This also implies
 							//	that the Laplace approximation (in particular the mode) is note calculated again
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-							for (data_size_t i = 0; i < num_data_; ++i) {
+							GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 								sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], gp_pred[i], config_);
-							}
+							}, sum_loss);
 						}//end non-Gaussian data
 					}//end if (objective->HasGPModel()) && objective->UseGPModelForValidation())
 					else {//re_model inexistent or not used for calculating validation loss
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-						for (data_size_t i = 0; i < num_data_; ++i) {
+						GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 							// add loss
 							double t = 0;
 							objective->ConvertOutput(&score[i], &t);
 							sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], t, config_);
-						}
+						}, sum_loss);
 					}//end re_model inexistent or not used for calculating validation loss
 				}
 				else {
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 						// add loss
 						double t = 0;
 						objective->ConvertOutput(&score[i], &t);
 						sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], t, config_) * weights_[i];
-					}
+					}, sum_loss);
 				}
 			}
 			double loss = PointWiseLossCalculator::AverageLoss(sum_loss, sum_weights_);
@@ -429,10 +424,9 @@ namespace LightGBM {
 						true, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 					// Note that the re_model already has the updated response data score - label = F_t - y 
 					//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 						sum_loss += std::pow(score[i] - re_pred[i] - label_[i], 2) / re_pred[num_data_ + i] + std::log(re_pred[num_data_ + i]);//minus re_pred[i] since the re_model uses score - label (= F - y) instead of y - F to make predictions
-					}
+					}, sum_loss);
 					sum_loss += num_data_ * LOG_2PI_;
 					sum_loss *= 0.5;
 
@@ -466,10 +460,9 @@ namespace LightGBM {
 				}//end non-Gaussian data
 			}//end if (objective->HasGPModel()) && objective->UseGPModelForValidation())
 			else {//re_model inexistent or not used for calculating validation loss for Gaussian likelihoods
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-				for (data_size_t i = 0; i < num_data_; ++i) {
+				GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 					sum_loss += std::pow(score[i] - label_[i], 2) / residual_variance[0];
-				}
+				}, sum_loss);
 				sum_loss += num_data_ * std::log(residual_variance[0]);
 				sum_loss += num_data_ * LOG_2PI_;
 				sum_loss *= 0.5;
@@ -555,44 +548,40 @@ namespace LightGBM {
 						true, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 					// Note that the re_model already has the updated response data score - label = F_t - y 
 					//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 						double pred_stdv = std::sqrt(re_pred[num_data_ + i]);
 						double resid_stdzd = (label_[i] - score[i] + re_pred[i]) / pred_stdv;//plus re_pred[i] since the re_model uses score - label (= F - y) instead of y - F to make predictions
 						sum_loss += pred_stdv * (minus_one_over_sqrt_PI_ + 2 * GPBoost::normalPDF(resid_stdzd) + 
 							resid_stdzd * (2 * GPBoost::normalCDF(resid_stdzd) - 1.));
-					}
+					}, sum_loss);
 				}//end Gaussian data
 				else {//non-Gaussian data
 					re_model->Predict(nullptr, num_data_, re_pred.data(), false, true, true, false, false, 0, 0,
 						nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
 						true, nullptr, score, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 						double pred_stdv = std::sqrt(re_pred[num_data_ + i]);
 						double resid_stdzd = (label_[i] - re_pred[i]) / pred_stdv;
 						sum_loss += pred_stdv * (minus_one_over_sqrt_PI_ + 2 * GPBoost::normalPDF(resid_stdzd) +
 							resid_stdzd * (2 * GPBoost::normalCDF(resid_stdzd) - 1.));
-					}
+					}, sum_loss);
 				}//end non-Gaussian data
 			}//end if (objective->HasGPModel()) && objective->UseGPModelForValidation())
 			else if (std::strcmp(objective->GetName(), "mean_scale_regression") == 0) {
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-				for (data_size_t i = 0; i < num_data_; ++i) {
+				GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 					double pred_stdv = std::exp(score[num_data_ + i] / 2.);
 					double resid_stdzd = (label_[i] - score[i]) / pred_stdv;
 					sum_loss += pred_stdv * (minus_one_over_sqrt_PI_ + 2 * GPBoost::normalPDF(resid_stdzd) +
 						resid_stdzd * (2 * GPBoost::normalCDF(resid_stdzd) - 1.));
-				}
+				}, sum_loss);
 			}
 			else {//re_model inexistent or not used for calculating validation loss for Gaussian likelihoods
 				double pred_stdv = std::sqrt(residual_variance[0]);
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-				for (data_size_t i = 0; i < num_data_; ++i) {
+				GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 					double resid_stdzd = (label_[i] - score[i]) / pred_stdv;
 					sum_loss += pred_stdv * (minus_one_over_sqrt_PI_ + 2 * GPBoost::normalPDF(resid_stdzd) +
 						resid_stdzd * (2 * GPBoost::normalCDF(resid_stdzd) - 1.));
-				}
+				}, sum_loss);
 			}//end re_model inexistent or not used for calculating validation loss
 			double loss = sum_loss / sum_weights_;
 			return std::vector<double>(1, loss);

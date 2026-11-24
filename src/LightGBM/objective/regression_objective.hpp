@@ -8,6 +8,7 @@
 
 #include <GPBoost/re_model.h>
 #include <GPBoost/DF_utils.h>
+#include <GPBoost/parallel_sum.h>
 
 #include <LightGBM/meta.h>
 #include <LightGBM/objective_function.h>
@@ -263,21 +264,19 @@ namespace LightGBM {
 			double sumw = 0.0f;
 			double initscore = 0.0f;
 			if (weights_ != nullptr) {
-#pragma omp parallel for schedule(static) reduction(+:suml, sumw) if (!deterministic_)
-				for (data_size_t i = 0; i < num_data_; ++i) {
+				GPBoost::ParallelSumIf(!deterministic_, num_data_, [&](data_size_t i, double& suml, double& sumw) {
 					suml += label_[i] * weights_[i];
 					sumw += weights_[i];
-				}
+				}, suml, sumw);
 				initscore = suml / sumw;
 			}
 			else {
 				if (has_gp_model_) {
 					if (likelihood_type_ == std::string("gaussian")) {
 						sumw = static_cast<double>(num_data_);
-#pragma omp parallel for schedule(static) reduction(+:suml)
-						for (data_size_t i = 0; i < num_data_; ++i) {
+						GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& suml) {
 							suml += label_[i];
-						}
+						}, suml);
 						initscore = suml / sumw;
 					}
 					else {
@@ -288,10 +287,9 @@ namespace LightGBM {
 				}//end has_gp_model_
 				else {//no gp_model
 					sumw = static_cast<double>(num_data_);
-#pragma omp parallel for schedule(static) reduction(+:suml) if (!deterministic_)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSumIf(!deterministic_, num_data_, [&](data_size_t i, double& suml) {
 						suml += label_[i];
-					}
+					}, suml);
 					initscore = suml / sumw;
 				}
 			}
@@ -1073,41 +1071,37 @@ namespace LightGBM {
 			double initscore = 0.0f;
 			if (num_tree == 0) {
 				if (weights_ != nullptr) {
-#pragma omp parallel for schedule(static) reduction(+:suml, sumw) if (!deterministic_)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSumIf(!deterministic_, num_data_, [&](data_size_t i, double& suml, double& sumw) {
 						suml += label_[i] * weights_[i];
 						sumw += weights_[i];
-					}
+					}, suml, sumw);
 					initscore = suml / sumw;
 				}
 				else {
 					sumw = static_cast<double>(num_data_);
-#pragma omp parallel for schedule(static) reduction(+:suml) if (!deterministic_)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSumIf(!deterministic_, num_data_, [&](data_size_t i, double& suml) {
 						suml += label_[i];
-					}
+					}, suml);
 					initscore = suml / sumw;
 				}
 			}
 			else if (num_tree == 1) {
 				double sum_sq = 0.0f;
 				if (weights_ != nullptr) {
-#pragma omp parallel for schedule(static) reduction(+:suml, sum_sq, sumw) if (!deterministic_)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSumIf(!deterministic_, num_data_, [&](data_size_t i, double& suml, double& sum_sq, double& sumw) {
 						suml += label_[i] * weights_[i];
 						sum_sq += label_[i] * label_[i] * weights_[i];
 						sumw += weights_[i];
-					}
+					}, suml, sum_sq, sumw);
 					double init_var = sum_sq / sumw - suml * suml / sumw / sumw;
 					initscore = std::log(std::max<double>(init_var, kEpsilon));
 				}
 				else {
 					sumw = static_cast<double>(num_data_);
-#pragma omp parallel for schedule(static) reduction(+:suml, sum_sq) if (!deterministic_)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSumIf(!deterministic_, num_data_, [&](data_size_t i, double& suml, double& sum_sq) {
 						suml += label_[i];
 						sum_sq += label_[i] * label_[i];
-					}
+					}, suml, sum_sq);
 					double init_var = sum_sq / sumw - suml * suml / sumw / sumw;
 					initscore = std::log(std::max<double>(init_var, kEpsilon));
 				}

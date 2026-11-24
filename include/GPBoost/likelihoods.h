@@ -1002,11 +1002,10 @@ namespace GPBoost {
 			bool evaluation_failure = false;
 			data_size_t fail_index = 0;
 			double sum_log_a = 0., sum_d_theta = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:sum_log_a, sum_d_theta)
-			for (data_size_t i = 0; i < num_data_; ++i) {
+			ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& sum_log_a, double& sum_d_theta) {
 				if (has_weights_ && weights_[i] == 0.) {
 					tweedie_vd_d_rho_[i] = 0.;
-					continue;
+					return;
 				}
 				thread_local TweedieSpecialFunctionCache cache;
 				const auto res = EvaluateTweedieNormalizerOneObs(y_data[i], i, rho[i], p, transform, TweedieDerivativeOrder::kFirst, &cache);
@@ -1024,7 +1023,7 @@ namespace GPBoost {
 					sum_log_a += w * res.log_a;
 					sum_d_theta += w * res.d_theta;
 				}
-			}
+			}, sum_log_a, sum_d_theta);
 			if (evaluation_failure) {
 				Log::REDebug("The Tweedie density could not be evaluated for y = %g, phi = %g, p = %g ", y_data[fail_index], std::exp(rho[fail_index]), p);
 				sum_log_a = sum_d_theta = std::numeric_limits<double>::quiet_NaN();
@@ -2022,12 +2021,11 @@ namespace GPBoost {
 				}
 				if (IsZeroInflatedCount()) {
 					double sw = 0., avg_zero = 0.;
-#pragma omp parallel for schedule(static) reduction(+:sw, avg_zero)
-					for (data_size_t i = 0; i < num_data; ++i) {
+					ParallelSum(num_data, [&](data_size_t i, double& sw, double& avg_zero) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						if (y_data[i] <= 0.) avg_zero += w;
 						sw += w;
-					}
+					}, sw, avg_zero);
 					avg_zero /= sw;
 					if (TwoNumbersAreEqual<double>(avg_zero, 1.)) {
 						Log::REFatal("Only 0's in the response variable 'y' but used likelihood = '%s' ", likelihood_type_.c_str());
@@ -2056,14 +2054,13 @@ namespace GPBoost {
 					}
 				}
 				double sw = 0., avg_zero = 0.;
-#pragma omp parallel for schedule(static) reduction(+:sw, avg_zero)
-				for (data_size_t i = 0; i < num_data; ++i) {
+				ParallelSum(num_data, [&](data_size_t i, double& sw, double& avg_zero) {
 					const double w = has_weights_ ? weights_[i] : 1.0;
 					if (y_data[i] <= 0.) {
 						avg_zero += w;
 					}
 					sw += w;
-				}
+				}, sw, avg_zero);
 				avg_zero /= sw;
 				if (GPBoost::IsZero<double>(avg_zero)) {
 					Log::REWarning("No 0's in the response variable 'y' but used likelihood = '%s ", likelihood_type_.c_str());
@@ -2087,8 +2084,7 @@ namespace GPBoost {
 					}
 				}
 				double sw = 0., avg_zero = 0., avg_one = 0.;
-#pragma omp parallel for schedule(static) reduction(+:sw, avg_zero, avg_one)
-				for (data_size_t i = 0; i < num_data; ++i) {
+				ParallelSum(num_data, [&](data_size_t i, double& sw, double& avg_zero, double& avg_one) {
 					const double w = has_weights_ ? weights_[i] : 1.0;
 					if (y_data[i] <= 0.) {
 						avg_zero += w;
@@ -2097,7 +2093,7 @@ namespace GPBoost {
 						avg_one += w;
 					}
 					sw += w;
-				}
+				}, sw, avg_zero, avg_one);
 				avg_zero /= sw;
 				avg_one /= sw;
 				if (TwoNumbersAreEqual<double>(avg_zero, 1.)) {
@@ -2231,24 +2227,22 @@ namespace GPBoost {
 			double& mean,
 			double& var) const {
 			double sum_w = 0., sum_w_x = 0.;
-#pragma omp parallel for schedule(static) reduction(+:sum_w, sum_w_x)
-			for (data_size_t i = 0; i < num_data; ++i) {
+			ParallelSum(num_data, [&](data_size_t i, double& sum_w, double& sum_w_x) {
 				if (include(i)) {
 					const double w = (weights == nullptr) ? 1. : weights[i];
 					sum_w += w;
 					sum_w_x += w * value(i);
 				}
-			}
+			}, sum_w, sum_w_x);
 			mean = sum_w_x / sum_w;
 			double sum_w_dev2 = 0.;
-#pragma omp parallel for schedule(static) reduction(+:sum_w_dev2)
-			for (data_size_t i = 0; i < num_data; ++i) {
+			ParallelSum(num_data, [&](data_size_t i, double& sum_w_dev2) {
 				if (include(i)) {
 					const double w = (weights == nullptr) ? 1. : weights[i];
 					const double dev = value(i) - mean;
 					sum_w_dev2 += w * dev * dev;
 				}
-			}
+			}, sum_w_dev2);
 			var = sum_w_dev2 / sum_w;
 		}
 
@@ -3704,11 +3698,10 @@ namespace GPBoost {
 		template <class Kernel>
 		double SumOverSamplesWeighted(Kernel kernel) const {
 			double sum_kernel = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:sum_kernel)
-			for (data_size_t i = 0; i < num_data_; ++i) {
+			ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& sum_kernel) {
 				const double w = has_weights_ ? weights_[i] : 1.0;
 				sum_kernel += w * kernel(i);
-			}
+			}, sum_kernel);
 			return sum_kernel;
 		}//end SumOverSamplesWeighted
 
@@ -3895,104 +3888,94 @@ namespace GPBoost {
 			if (!aux_normalizing_constant_has_been_calculated_) {
 				if (likelihood_type_ == "gamma") {
 					double log_aux_normalizing_constant = 0.;
-#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& log_aux_normalizing_constant) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						log_aux_normalizing_constant += w * AuxQuantLogNormalizingConstantGammaOneSample(y_data[i]);
-					}
+					}, log_aux_normalizing_constant);
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
 				else if (likelihood_type_ == "negative_binomial") {
 					double log_aux_normalizing_constant = 0.;
-#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& log_aux_normalizing_constant) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						log_aux_normalizing_constant += w * AuxQuantLogNormalizingConstantNegBinOneSample(y_data_int[i]);
-					}
+					}, log_aux_normalizing_constant);
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
 				else if (likelihood_type_ == "negative_binomial_1") {
 					double log_aux_normalizing_constant = 0.;
-#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& log_aux_normalizing_constant) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						log_aux_normalizing_constant += w * AuxQuantLogNormalizingConstantNegBin1OneSample(y_data_int[i]);
-					}
+					}, log_aux_normalizing_constant);
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
 				else if (IsZeroInflatedCount()) {
 					double log_aux_normalizing_constant = 0.;// -sum_i w_i * log(y_i!) (count-component factorial term)
-#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& log_aux_normalizing_constant) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						log_aux_normalizing_constant += w * (-std::lgamma((double)y_data_int[i] + 1.));
-					}
+					}, log_aux_normalizing_constant);
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
 				else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "binomial_logit" || likelihood_type_ == "beta_binomial") {
 					CHECK(has_weights_);
 					double log_aux_normalizing_constant = 0.;
-#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& log_aux_normalizing_constant) {
 						const double w = weights_[i];// w = n = y
 						const double k = w * y_data[i];// y = k / n
 						log_aux_normalizing_constant += std::lgamma(w + 1.) - std::lgamma(k + 1.) - std::lgamma(w - k + 1.);
-					}
+					}, log_aux_normalizing_constant);
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
 				else if (likelihood_type_ == "lognormal") {
 					double log_aux_normalizing_constant = 0.;
-#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& log_aux_normalizing_constant) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						log_aux_normalizing_constant -= w * std::log(y_data[i]);
-					}
+					}, log_aux_normalizing_constant);
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
 				else if (likelihood_type_ == "hurdle_lognormal") {
 					double log_aux_normalizing_constant = 0.;// -sum_{y>0} w * log(y)
-#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& log_aux_normalizing_constant) {
 						if (y_data[i] > 0.) {
 							const double w = has_weights_ ? weights_[i] : 1.0;
 							log_aux_normalizing_constant -= w * std::log(y_data[i]);
 						}
-					}
+					}, log_aux_normalizing_constant);
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
 				else if (likelihood_type_ == "hurdle_gamma") {
 					double log_aux_normalizing_constant = 0.0;
-#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& log_aux_normalizing_constant) {
 						if (y_data[i] > 0.0) {
 							const double w = has_weights_ ? weights_[i] : 1.0;
 							log_aux_normalizing_constant += w * std::log(y_data[i]);
 						}
-					}
+					}, log_aux_normalizing_constant);
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
 				else if (IsZeroCensPowNorm()) {
 					double s_logy_pos = 0.0;
-#pragma omp parallel for schedule(static) reduction(+:s_logy_pos)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& s_logy_pos) {
 						const double yi = y_data[i];
 						if (yi > 0.0) {
 							const double w = has_weights_ ? weights_[i] : 1.0;
 							s_logy_pos += w * std::log(yi);
 						}
-					}
+					}, s_logy_pos);
 					aux_log_normalizing_constant_ = s_logy_pos;
 				}
 				else if (likelihood_type_ == "zoctn") {
 					double log_aux_normalizing_constant = 0.0;
-#pragma omp parallel for schedule(static) reduction(+:log_aux_normalizing_constant)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& log_aux_normalizing_constant) {
 						const double yi = y_data[i];
 						if (yi > 0.0 && yi < 1.0) {
 							const double w = has_weights_ ? weights_[i] : 1.0;
 							log_aux_normalizing_constant += w * (-std::log(yi) - std::log1p(-yi));
 						}
-					}
+					}, log_aux_normalizing_constant);
 					aux_log_normalizing_constant_ = log_aux_normalizing_constant;
 				}
 				else if (IsHurdleRegression()) {
@@ -4000,10 +3983,9 @@ namespace GPBoost {
 					double c = 0.;
 					if (base == "hurdle_gamma" || base == "hurdle_lognormal") {
 						const double sgn = (base == "hurdle_gamma") ? 1. : -1.;// +log(y) for gamma, -log(y) for lognormal (over positive observations)
-#pragma omp parallel for schedule(static) reduction(+:c)
-						for (data_size_t i = 0; i < num_data_; ++i) {
+						ParallelSum(num_data_, [&](data_size_t i, double& c) {
 							if (y_data[i] > 0.) { const double w = has_weights_ ? weights_[i] : 1.0; c += sgn * w * std::log(y_data[i]); }
-						}
+						}, c);
 					}
 					aux_log_normalizing_constant_ = c;// 0 for EGPD bases (EvaluateEGPD returns the complete density)
 				}
@@ -4051,8 +4033,9 @@ namespace GPBoost {
 					const string_t base = HurdleRegressionBaseType();
 					if (base == "hurdle_gamma" || base == "hurdle_lognormal") {
 						double w_pos = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:w_pos)
-						for (data_size_t i = 0; i < num_data_; ++i) { if (y_data[i] > 0.) w_pos += has_weights_ ? weights_[i] : 1.0; }
+						ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& w_pos) {
+							if (y_data[i] > 0.) w_pos += has_weights_ ? weights_[i] : 1.0;
+						}, w_pos);
 						if (base == "hurdle_gamma") log_normalizing_constant_ = w_pos * (aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0])) + (aux_pars_[0] - 1.) * aux_log_normalizing_constant_;
 						else log_normalizing_constant_ = w_pos * (-M_LOGSQRT2PI - 0.5 * std::log(aux_pars_[0])) + aux_log_normalizing_constant_;
 					}
@@ -4066,11 +4049,10 @@ namespace GPBoost {
 						const double p0 = aux_pars_original_[0];
 						const double log_q = std::log1p(-p0), log_p0 = std::log(p0);
 						double w_pos = 0., w_zero = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:w_pos, w_zero)
-						for (data_size_t i = 0; i < num_data_; ++i) {
+						ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& w_pos, double& w_zero) {
 							const double w = has_weights_ ? weights_[i] : 1.0;
 							if (y_data[i] > 0.) w_pos += w; else w_zero += w;
-						}
+						}, w_pos, w_zero);
 						log_normalizing_constant_ = w_zero * log_p0 + w_pos * log_q;
 					}
 					else log_normalizing_constant_ = 0.;
@@ -4080,11 +4062,10 @@ namespace GPBoost {
 					const double p0 = aux_pars_original_[num_aux_pars_ - 1];
 					const double log_q = std::log1p(-p0), log_p0 = std::log(p0);
 					double w_pos = 0., w_zero = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:w_pos, w_zero)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& w_pos, double& w_zero) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						if (y_data[i] > 0.) w_pos += w; else w_zero += w;
-					}
+					}, w_pos, w_zero);
 					log_normalizing_constant_ = w_zero * log_p0 + w_pos * log_q;
 				}
 				else if (likelihood_type_ == "poisson") {
@@ -4109,10 +4090,9 @@ namespace GPBoost {
 					bool evaluation_failure = false;
 					data_size_t fail_index = 0;
 					// Each thread uses its own persistent special-function cache (thread_local => reused across calls, e.g. when only phi changes).
-#pragma omp parallel for schedule(static) reduction(+:sum_a,sum_rho,sum_theta) if (num_data_ >= 128)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& sum_a, double& sum_rho, double& sum_theta) {
 						const double w = has_weights_ ? weights_[i] : 1.;
-						if (w == 0.) continue;
+						if (w == 0.) return;
 						thread_local TweedieSpecialFunctionCache cache;
 						const auto res = EvaluateTweedieNormalizerOneObs(y_data[i], i, log_phi, p, transform, TweedieDerivativeOrder::kFirst, &cache);
 						if (!res.converged || !std::isfinite(res.log_a) || !std::isfinite(res.d_rho) || !std::isfinite(res.d_theta)) {
@@ -4127,7 +4107,7 @@ namespace GPBoost {
 							sum_rho += w * res.d_rho;
 							sum_theta += w * res.d_theta;
 						}
-					}
+					}, sum_a, sum_rho, sum_theta);
 					if (evaluation_failure) {
 						Log::REDebug("The Tweedie density could not be evaluated for y = %g, phi = %g, p = %g ", y_data[fail_index], phi, p);
 						sum_a = sum_rho = sum_theta = std::numeric_limits<double>::quiet_NaN();
@@ -4150,11 +4130,10 @@ namespace GPBoost {
 					// the y=0 mixture log D = log(pi + q*f0) is location-dependent and handled in the per-sample log-likelihood.
 					const double log_q = std::log1p(-aux_pars_original_[0]);
 					double w_pos = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:w_pos)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& w_pos) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						if (y_data_int[i] > 0) w_pos += w;
-					}
+					}, w_pos);
 					log_normalizing_constant_ = w_pos * log_q + aux_log_normalizing_constant_;
 				}
 				else if (IsZeroInflatedCountRegression()) {
@@ -4164,10 +4143,9 @@ namespace GPBoost {
 						const double kappa = aux_pars_[0];
 						const double kappa_term = kappa * std::log(kappa) - std::lgamma(kappa);
 						double c = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:c)
-						for (data_size_t i = 0; i < num_data_; ++i) {
+						ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& c) {
 							if (y_data_int[i] > 0) { const double w = has_weights_ ? weights_[i] : 1.0; c += w * (std::lgamma((double)y_data_int[i] + kappa) - std::lgamma((double)y_data_int[i] + 1.) + kappa_term); }
-						}
+						}, c);
 						log_normalizing_constant_ = c;
 					}
 					else if (base == "zero_inflated_negative_binomial_1") {
@@ -4184,24 +4162,22 @@ namespace GPBoost {
 					const double log_q = std::log1p(-aux_pars_original_[1]);
 					const double kappa_term = kappa * std::log(kappa) - std::lgamma(kappa);
 					double c = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:c)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& c) {
 						if (y_data_int[i] > 0) {
 							const double w = has_weights_ ? weights_[i] : 1.0;
 							c += w * (std::lgamma((double)y_data_int[i] + kappa) - std::lgamma((double)y_data_int[i] + 1.) + kappa_term + log_q);
 						}
-					}
+					}, c);
 					log_normalizing_constant_ = c;
 				}
 				else if (likelihood_type_ == "zero_inflated_negative_binomial_1") {
 					// NB1 one-sample normalizer at y=0 equals 0, so the base sum over all data equals the sum over y>0. Add w_pos*log(q).
 					const double log_q = std::log1p(-aux_pars_original_[1]);
 					double w_pos = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:w_pos)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& w_pos) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						if (y_data_int[i] > 0) w_pos += w;
-					}
+					}, w_pos);
 					log_normalizing_constant_ = w_pos * log_q + LogNormalizingConstantNegBin1(y_data_int);
 				}
 				else if (likelihood_type_ == "beta") {
@@ -4232,35 +4208,32 @@ namespace GPBoost {
 					const double p0 = aux_pars_original_[1];
 					const double log_q = std::log1p(-p0), log_p0 = std::log(p0);
 					double w_pos = 0., w_zero = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:w_pos, w_zero)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& w_pos, double& w_zero) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						if (y_data[i] > 0.) w_pos += w; else w_zero += w;
-					}
+					}, w_pos, w_zero);
 					log_normalizing_constant_ = w_zero * log_p0 + w_pos * (log_q - M_LOGSQRT2PI - 0.5 * std::log(aux_pars_[0])) + aux_log_normalizing_constant_;
 				}
 				else if (likelihood_type_ == "hurdle_gamma") {
 					const double q = 1 - aux_pars_original_[1];// = 1 - p0
 					const double log_q = std::log(q);
 					double w_pos = 0.0, w_zero = 0.0;
-#pragma omp parallel for schedule(static) reduction(+:w_pos,w_zero)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& w_pos, double& w_zero) {
 						const double w = has_weights_ ? weights_[i] : 1.0;
 						if (y_data[i] > 0.0) w_pos += w;
 						else                 w_zero += w;
-					}
+					}, w_pos, w_zero);
 					log_normalizing_constant_ = w_zero * std::log(1.0 - q) + w_pos * (log_q + aux_pars_[0] * std::log(aux_pars_[0]) - std::lgamma(aux_pars_[0])) +
 						(aux_pars_[0] - 1.0) * aux_log_normalizing_constant_;
 				}
 				else if (likelihood_type_ == "zero_censored_power_transformed_normal") {
 					double w_pos = 0.0;
-#pragma omp parallel for schedule(static) reduction(+:w_pos)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& w_pos) {
 						if (y_data[i] > 0.0) {
 							const double w = has_weights_ ? weights_[i] : 1.0;
 							w_pos += w;
 						}
-					}
+					}, w_pos);
 					log_normalizing_constant_ = w_pos * (-std::log(aux_pars_[1]) - std::log(aux_pars_[0]) - M_LOGSQRT2PI);// Per positive y: -log(lambda) -log(sigma) - 0.5*log(2*pi)
 					log_normalizing_constant_ += ((1.0 / aux_pars_[1]) - 1.0) * aux_log_normalizing_constant_;// Add the Jacobian term: (1/lambda - 1) * sum_{y>0} w * log(y)
 				}
@@ -4268,13 +4241,12 @@ namespace GPBoost {
 					// As above, but -log(sigma_i) = -location_par2_i depends on the location parameter and is therefore part
 					// of the per-sample log-likelihood instead of this constant
 					double w_pos = 0.0;
-#pragma omp parallel for schedule(static) reduction(+:w_pos)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& w_pos) {
 						if (y_data[i] > 0.0) {
 							const double w = has_weights_ ? weights_[i] : 1.0;
 							w_pos += w;
 						}
-					}
+					}, w_pos);
 					log_normalizing_constant_ = w_pos * (-std::log(aux_pars_[0]) - M_LOGSQRT2PI);// Per positive y: -log(lambda) - 0.5*log(2*pi)
 					log_normalizing_constant_ += ((1.0 / aux_pars_[0]) - 1.0) * aux_log_normalizing_constant_;// Jacobian term: (1/lambda - 1) * sum_{y>0} w * log(y)
 				}
@@ -4284,8 +4256,7 @@ namespace GPBoost {
 					const double b = aux_pars_[2];
 					double csum = 0.0;
 					double w_pos = 0.0;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:csum, w_pos)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& csum, double& w_pos) {
 						const double yi = y_data[i];
 						if (yi > 0.0 && yi < 1.0) {
 							const double w = has_weights_ ? weights_[i] : 1.0;
@@ -4295,20 +4266,19 @@ namespace GPBoost {
 							const double log_x1mx = std::log(x) + std::log1p(-x);
 							csum += w * log_x1mx;
 						}
-					}
+					}, csum, w_pos);
 					log_normalizing_constant_ = csum + w_pos * (-std::log(sigma) - std::log(b) - M_LOGSQRT2PI) +
 						aux_log_normalizing_constant_;
 				}
 				else if (likelihood_type_ == "zero_one_censored_transformed_beta") {
 					double w_int = 0.0;
-#pragma omp parallel for schedule(static) reduction(+:w_int)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& w_int) {
 						const double yi = y_data[i];
 						if (yi > 0.0 && yi < 1.0) {
 							const double w = has_weights_ ? weights_[i] : 1.0;
 							w_int += w;
 						}
-					}
+					}, w_int);
 					log_normalizing_constant_ = -w_int * std::log(1.0 + 2.0 * aux_pars_[1]);
 				}
 				else if (likelihood_type_ == "zero_one_censored_shifted_gamma") {
@@ -4316,15 +4286,14 @@ namespace GPBoost {
 					const double xi = aux_pars_[1];
 					double s_log_yxi_int = 0.0;
 					double w_int = 0.0;
-#pragma omp parallel for schedule(static) reduction(+:s_log_yxi_int,w_int)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					ParallelSum(num_data_, [&](data_size_t i, double& s_log_yxi_int, double& w_int) {
 						const double yi = y_data[i];
 						if (yi > 0.0 && yi < 1.0) {
 							const double w = has_weights_ ? weights_[i] : 1.0;
 							s_log_yxi_int += w * std::log(yi + xi);
 							w_int += w;
 						}
-					}
+					}, s_log_yxi_int, w_int);
 					log_normalizing_constant_ = (k - 1.0) * s_log_yxi_int - w_int * std::lgamma(k);
 				}
 				else if (IsZeroCensShiftedGamma()) {
@@ -4336,15 +4305,14 @@ namespace GPBoost {
 						const double xi = aux_pars_[1];
 						double s_log_yxi_pos = 0.0;
 						double w_pos = 0.0;
-#pragma omp parallel for schedule(static) reduction(+:s_log_yxi_pos,w_pos)
-						for (data_size_t i = 0; i < num_data_; ++i) {
+						ParallelSum(num_data_, [&](data_size_t i, double& s_log_yxi_pos, double& w_pos) {
 							const double yi = y_data[i];
 							if (yi > 0.0) {
 								const double w = has_weights_ ? weights_[i] : 1.0;
 								s_log_yxi_pos += w * std::log(yi + xi);
 								w_pos += w;
 							}
-						}
+						}, s_log_yxi_pos, w_pos);
 						log_normalizing_constant_ = (k - 1.0) * s_log_yxi_pos - w_pos * std::lgamma(k);
 					}
 				}//end zero-censored shifted gamma variants
@@ -4501,14 +4469,13 @@ namespace GPBoost {
 			double ll = 0.;
 			if (IsEGPDLikelihood() || IsHurdleEGPD()) {
 				const bool hurdle = IsHurdleEGPD();
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
+				ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& ll) {
 					const double w = has_weights_ ? weights_[i] : 1.;
-					if (w == 0.) continue;
-					if (hurdle && y_data[i] <= 0.) continue;// point mass log(p0) is in the normalizing constant
+					if (w == 0.) return;
+					if (hurdle && y_data[i] <= 0.) return;// point mass log(p0) is in the normalizing constant
 					const auto result = EvaluateEGPD(y_data[i], location_par[i]);
 					ll += result.status == EGPDEvalStatus::kValid ? w * result.log_likelihood : -std::numeric_limits<double>::infinity();
-				}
+				}, ll);
 			}
 			else if (likelihood_type_ == "binomial_probit" || likelihood_type_ == "quasi_bernoulli_probit") {
 				ll += SumOverSamplesWeighted([&](data_size_t i) { return LogLikBinomialProbit(y_data[i], location_par[i]); });
@@ -4518,10 +4485,9 @@ namespace GPBoost {
 			}
 			else if (likelihood_type_ == "beta_binomial") {
 				CHECK(has_weights_);
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:ll)
-				for (data_size_t i = 0; i < num_data_; ++i) {
+				ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& ll) {
 					ll += LogLikBetaBinomial(y_data[i], location_par[i], weights_[i]);
-				}
+				}, ll);
 			}
 			else if (IsGaussianHeteroscedastic()) {
 				ll += SumOverSamplesWeighted([&](data_size_t i) { return LogLikGaussianHeteroscedastic(y_data[i], location_par[i], location_par[i + num_data_], false); });
@@ -8646,12 +8612,11 @@ namespace GPBoost {
 			double rho) const {
 			const double inv_scale = 1. / aux_pars_[0];
 			double loss = 0.;
-#pragma omp parallel for schedule(static) if (num_data_ >= 128) reduction(+:loss)
-			for (data_size_t i = 0; i < num_data_; ++i) {
+			ParallelSumIf(num_data_ >= 128, num_data_, [&](data_size_t i, double& loss) {
 				const double w = has_weights_ ? weights_[i] : 1.;
 				const double diff = z[i] - v[i];
 				loss += w * inv_scale * ((z[i] > 0.) ? quantile_ * z[i] : (quantile_ - 1.) * z[i]) + 0.5 * rho * diff * diff;
-			}
+			}, loss);
 			return 0.5 * mode.dot(Qmode) + loss;
 		}//end CalcAsymLaplaceReducedALMObjective
 

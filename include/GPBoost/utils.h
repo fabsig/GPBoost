@@ -13,6 +13,7 @@
 #include <cmath>
 #include <limits>
 #include <GPBoost/type_defs.h>
+#include <GPBoost/parallel_sum.h>
 #include <algorithm>    // std::max, std::sort
 #include <numeric>      // std::iota
 #include <unordered_set>
@@ -483,10 +484,9 @@ namespace GPBoost {
 		std::iota(idx.begin(), idx.end(), 0);
 		std::sort(idx.begin(), idx.end(), [&values](int a, int b) { return values[a] < values[b]; });
 		double sum_w = 0.;
-#pragma omp parallel for schedule(static) reduction(+:sum_w)
-		for (int i = 0; i < num_el; ++i) {
+		ParallelSum(num_el, [&](int i, double& sum_w) {
 			sum_w += weights[i];
-		}
+		}, sum_w);
 		double target = quantile * sum_w, cum_w = 0.;
 		double quant = values[idx[num_el - 1]];// fallback in case of numerical inaccuracies
 		for (int i = 0; i < num_el; ++i) {
@@ -509,10 +509,9 @@ namespace GPBoost {
 		CHECK(vec.size() > 0);
 		int num_el = (int)vec.size();
 		double mean = 0.;
-#pragma omp parallel for schedule(static) reduction(+:mean)
-		for (int i = 0; i < num_el; ++i) {
+		ParallelSum(num_el, [&](int i, double& mean) {
 			mean += vec[i];
-		}
+		}, mean);
 		mean /= num_el;
 		return(mean);
 	};

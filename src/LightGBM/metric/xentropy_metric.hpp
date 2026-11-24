@@ -5,6 +5,7 @@
 #ifndef LIGHTGBM_METRIC_XENTROPY_METRIC_HPP_
 #define LIGHTGBM_METRIC_XENTROPY_METRIC_HPP_
 
+#include <GPBoost/parallel_sum.h>
 #include <LightGBM/meta.h>
 #include <LightGBM/metric.h>
 #include <LightGBM/utils/common.h>
@@ -107,31 +108,27 @@ class CrossEntropyMetric : public Metric {
     double sum_loss = 0.0f;
     if (objective == nullptr) {
       if (weights_ == nullptr) {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           sum_loss += XentLoss(label_[i], score[i]);  // NOTE: does not work unless score is a probability
-        }
+        }, sum_loss);
       } else {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           sum_loss += XentLoss(label_[i], score[i]) * weights_[i];  // NOTE: does not work unless score is a probability
-        }
+        }, sum_loss);
       }
     } else {
       if (weights_ == nullptr) {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           double p = 0;
           objective->ConvertOutput(&score[i], &p);
           sum_loss += XentLoss(label_[i], p);
-        }
+        }, sum_loss);
       } else {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           double p = 0;
           objective->ConvertOutput(&score[i], &p);
           sum_loss += XentLoss(label_[i], p) * weights_[i];
-        }
+        }, sum_loss);
       }
     }
     double loss = sum_loss / sum_weights_;
@@ -192,33 +189,29 @@ class CrossEntropyLambdaMetric : public Metric {
     double sum_loss = 0.0f;
     if (objective == nullptr) {
       if (weights_ == nullptr) {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           double hhat = std::log(1.0f + std::exp(score[i]));  // auto-convert
           sum_loss += XentLambdaLoss(label_[i], 1.0f, hhat);
-        }
+        }, sum_loss);
       } else {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           double hhat = std::log(1.0f + std::exp(score[i]));  // auto-convert
           sum_loss += XentLambdaLoss(label_[i], weights_[i], hhat);
-        }
+        }, sum_loss);
       }
     } else {
       if (weights_ == nullptr) {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           double hhat = 0;
           objective->ConvertOutput(&score[i], &hhat);  // NOTE: this only works if objective = "xentlambda"
           sum_loss += XentLambdaLoss(label_[i], 1.0f, hhat);
-        }
+        }, sum_loss);
       } else {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           double hhat = 0;
           objective->ConvertOutput(&score[i], &hhat);  // NOTE: this only works if objective = "xentlambda"
           sum_loss += XentLambdaLoss(label_[i], weights_[i], hhat);
-        }
+        }, sum_loss);
       }
     }
     return std::vector<double>(1, sum_loss / static_cast<double>(num_data_));
@@ -301,31 +294,27 @@ class KullbackLeiblerDivergence : public Metric {
     double sum_loss = 0.0f;
     if (objective == nullptr) {
       if (weights_ == nullptr) {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           sum_loss += XentLoss(label_[i], score[i]);  // NOTE: does not work unless score is a probability
-        }
+        }, sum_loss);
       } else {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           sum_loss += XentLoss(label_[i], score[i]) * weights_[i];  // NOTE: does not work unless score is a probability
-        }
+        }, sum_loss);
       }
     } else {
       if (weights_ == nullptr) {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           double p = 0;
           objective->ConvertOutput(&score[i], &p);
           sum_loss += XentLoss(label_[i], p);
-        }
+        }, sum_loss);
       } else {
-        #pragma omp parallel for schedule(static) reduction(+:sum_loss)
-        for (data_size_t i = 0; i < num_data_; ++i) {
+        GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
           double p = 0;
           objective->ConvertOutput(&score[i], &p);
           sum_loss += XentLoss(label_[i], p) * weights_[i];
-        }
+        }, sum_loss);
       }
     }
     double loss = presum_label_entropy_ + sum_loss / sum_weights_;

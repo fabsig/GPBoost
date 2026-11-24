@@ -6,6 +6,7 @@
 #ifndef LIGHTGBM_METRIC_BINARY_METRIC_HPP_
 #define LIGHTGBM_METRIC_BINARY_METRIC_HPP_
 
+#include <GPBoost/parallel_sum.h>
 #include <LightGBM/metric.h>
 #include <LightGBM/utils/common.h>
 #include <LightGBM/utils/log.h>
@@ -63,18 +64,16 @@ namespace LightGBM {
 			double sum_loss = 0.0f;
 			if (objective == nullptr) {
 				if (weights_ == nullptr) {
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 						// add loss
 						sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], score[i]);
-					}
+					}, sum_loss);
 				}
 				else {
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 						// add loss
 						sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], score[i]) * weights_[i];
-					}
+					}, sum_loss);
 				}
 			}
 			else {
@@ -92,11 +91,10 @@ namespace LightGBM {
 								true, nullptr, nullptr, true);//suppress_calc_cov_factor=true as this has been done already at the end of the last boosting update iteration
 							// Note that the re_model already has the updated response data score - label = F_t - y 
 							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-							for (data_size_t i = 0; i < num_data_; ++i) {
+							GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 								double pred = score[i] - minus_gp_pred[i];//minus since the re_model uses score - label (= F - y) instead of y - F to make predictions
 								sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], pred);
-							}
+							}, sum_loss);
 						}//end Gaussian data
 						else {//non-Gaussian data
 							std::vector<double> gp_pred(num_data_);
@@ -107,30 +105,27 @@ namespace LightGBM {
 							//	since 'Boosting()' is called (i.e. gradients are calculated) at the end of TrainOneIter()
 							//	We thus don't provide this here (see the above nullptr). This also implies
 							//	that the Laplace approximation (in particular the mode) is note calculated again
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-							for (data_size_t i = 0; i < num_data_; ++i) {
+							GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 								sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], gp_pred[i]);
-							}
+							}, sum_loss);
 						}//end non-Gaussian data
 					}//end if (objective->HasGPModel()) && objective->UseGPModelForValidation())
 					else {//re_model inexistent or not used for calculating validation loss
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-						for (data_size_t i = 0; i < num_data_; ++i) {
+						GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 							double prob = 0;
 							objective->ConvertOutput(&score[i], &prob);
 							// add loss
 							sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], prob);
-						}
+						}, sum_loss);
 					} // end re_model inexistent or not used for calculating validation loss
 				}
 				else {
-#pragma omp parallel for schedule(static) reduction(+:sum_loss)
-					for (data_size_t i = 0; i < num_data_; ++i) {
+					GPBoost::ParallelSum(num_data_, [&](data_size_t i, double& sum_loss) {
 						double prob = 0;
 						objective->ConvertOutput(&score[i], &prob);
 						// add loss
 						sum_loss += PointWiseLossCalculator::LossOnPoint(label_[i], prob) * weights_[i];
-					}
+					}, sum_loss);
 				}
 			}
 			double loss = sum_loss / sum_weights_;

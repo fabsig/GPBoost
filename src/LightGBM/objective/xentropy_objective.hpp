@@ -6,6 +6,7 @@
 #ifndef LIGHTGBM_OBJECTIVE_XENTROPY_OBJECTIVE_HPP_
 #define LIGHTGBM_OBJECTIVE_XENTROPY_OBJECTIVE_HPP_
 
+#include <GPBoost/parallel_sum.h>
 #include <LightGBM/meta.h>
 #include <LightGBM/objective_function.h>
 #include <LightGBM/utils/common.h>
@@ -115,19 +116,15 @@ class CrossEntropy: public ObjectiveFunction {
     double suml = 0.0f;
     double sumw = 0.0f;
     if (weights_ != nullptr) {
-      #pragma omp parallel for schedule(static) reduction(+:suml, sumw) if (!deterministic_)
-
-      for (data_size_t i = 0; i < num_data_; ++i) {
+      GPBoost::ParallelSumIf(!deterministic_, num_data_, [&](data_size_t i, double& suml, double& sumw) {
         suml += label_[i] * weights_[i];
         sumw += weights_[i];
-      }
+      }, suml, sumw);
     } else {
       sumw = static_cast<double>(num_data_);
-      #pragma omp parallel for schedule(static) reduction(+:suml) if (!deterministic_)
-
-      for (data_size_t i = 0; i < num_data_; ++i) {
+      GPBoost::ParallelSumIf(!deterministic_, num_data_, [&](data_size_t i, double& suml) {
         suml += label_[i];
-      }
+      }, suml);
     }
     double pavg = suml / sumw;
     pavg = std::min(pavg, 1.0 - kEpsilon);
@@ -245,19 +242,15 @@ class CrossEntropyLambda: public ObjectiveFunction {
     double suml = 0.0f;
     double sumw = 0.0f;
     if (weights_ != nullptr) {
-      #pragma omp parallel for schedule(static) reduction(+:suml, sumw) if (!deterministic_)
-
-      for (data_size_t i = 0; i < num_data_; ++i) {
+      GPBoost::ParallelSumIf(!deterministic_, num_data_, [&](data_size_t i, double& suml, double& sumw) {
         suml += label_[i] * weights_[i];
         sumw += weights_[i];
-      }
+      }, suml, sumw);
     } else {
       sumw = static_cast<double>(num_data_);
-      #pragma omp parallel for schedule(static) reduction(+:suml) if (!deterministic_)
-
-      for (data_size_t i = 0; i < num_data_; ++i) {
+      GPBoost::ParallelSumIf(!deterministic_, num_data_, [&](data_size_t i, double& suml) {
         suml += label_[i];
-      }
+      }, suml);
     }
     double havg = suml / sumw;
     double initscore = std::log(std::exp(havg) - 1.0f);
