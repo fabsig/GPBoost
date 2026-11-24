@@ -440,17 +440,11 @@ Dataset* DatasetLoader::LoadFromBinFile(const char* data_filename, const char* b
   mem_ptr +=
       VirtualFileWriter::AlignedSize(sizeof(int) * (dataset->num_groups_));
 
-  if (!config_.max_bin_by_feature.empty()) {
-    CHECK_EQ(static_cast<size_t>(dataset->num_total_features_), config_.max_bin_by_feature.size());
-    CHECK_GT(*(std::min_element(config_.max_bin_by_feature.begin(), config_.max_bin_by_feature.end())), 1);
-    dataset->max_bin_by_feature_.resize(dataset->num_total_features_);
-    dataset->max_bin_by_feature_.assign(config_.max_bin_by_feature.begin(), config_.max_bin_by_feature.end());
-  } else {
-    const int32_t* tmp_ptr_max_bin_by_feature = reinterpret_cast<const int32_t*>(mem_ptr);
-    dataset->max_bin_by_feature_.clear();
-    for (int i = 0; i < dataset->num_total_features_; ++i) {
-      dataset->max_bin_by_feature_.push_back(tmp_ptr_max_bin_by_feature[i]);
-    }
+  // The limits with which the bins have been constructed, which CheckDataset compares with the configuration
+  const int32_t* tmp_ptr_max_bin_by_feature = reinterpret_cast<const int32_t*>(mem_ptr);
+  dataset->max_bin_by_feature_.clear();
+  for (int i = 0; i < dataset->num_total_features_; ++i) {
+    dataset->max_bin_by_feature_.push_back(tmp_ptr_max_bin_by_feature[i]);
   }
   mem_ptr += VirtualFileWriter::AlignedSize(sizeof(int32_t) *
                                             (dataset->num_total_features_));

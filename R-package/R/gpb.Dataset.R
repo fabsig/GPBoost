@@ -658,9 +658,7 @@ Dataset <- R6::R6Class(
       }
       if (!gpb.is.null.handle(private$handle)) private$finalize()
       private$raw_data <- cbind(private$raw_data, AR1_MF_fidelity = fidelity)
-      if (!is.null(private$colnames) && !("AR1_MF_fidelity" %in% private$colnames)) {
-        private$colnames <- c(private$colnames, "AR1_MF_fidelity")
-      }
+      private$add_ar1_mf_fidelity_colname()
       private$ar1_mf_fidelity <- fidelity
       private$version <- private$version + 1L
       invisible(self)
@@ -708,7 +706,16 @@ Dataset <- R6::R6Class(
         reference_fidelity <- private$reference$get_ar1_mf_fidelity()
         if (!is.null(reference_fidelity)) {
           private$ar1_mf_fidelity <- reference_fidelity[private$used_indices]
+          # The column names of the slice are those of the gpb.Dataset when the slice has been created
+          private$add_ar1_mf_fidelity_colname()
         }
+      }
+      return(invisible(NULL))
+    },
+
+    add_ar1_mf_fidelity_colname = function() {
+      if (!is.null(private$colnames) && !("AR1_MF_fidelity" %in% private$colnames)) {
+        private$colnames <- c(private$colnames, "AR1_MF_fidelity")
       }
       return(invisible(NULL))
     },

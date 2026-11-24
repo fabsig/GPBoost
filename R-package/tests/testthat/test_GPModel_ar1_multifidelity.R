@@ -377,7 +377,7 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
       return(gp_model)
     }
     params <- list(learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 4, objective = "regression_l2")
-    dtrain <- gpb.Dataset(data = features, label = label, free_raw_data = FALSE)
+    dtrain <- gpb.Dataset(data = features, label = label, colnames = colnames(features), free_raw_data = FALSE)
     rows <- seq_len(24L)
     early_slice <- slice(dtrain, rows)
     gpb.train(data = dtrain, gp_model = ar1_mf_model(TRUE), train_gp_model_cov_pars = FALSE, nrounds = 1,
@@ -400,6 +400,8 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
       expect_error(gpb.train(data = dslice, nrounds = 1, params = params, verbose = 0),
                    "Use a new gpb.Dataset for a model without a fidelity-specific mean")
     }
+    gpb.Dataset.construct(early_slice)
+    expect_equal(early_slice$get_colnames(), c("x", "nonlinear", "AR1_MF_fidelity"))
     dslice <- slice(dtrain, rows)
     gpb.train(data = dslice, gp_model = ar1_mf_model(TRUE, rows), train_gp_model_cov_pars = FALSE, nrounds = 1,
               params = params, verbose = 0)

@@ -679,6 +679,9 @@ class Dataset {
   }
 
  private:
+  /*! \brief Copy the parameters with which the bins of dataset have been constructed */
+  void CopyBinningParametersFrom(const Dataset* dataset);
+
   std::string data_filename_;
   /*! \brief Store used features */
   std::vector<std::unique_ptr<FeatureGroup>> feature_groups_;

@@ -721,8 +721,13 @@ void Dataset::CopyFeatureMapperFrom(const Dataset* dataset) {
   group_feature_cnt_ = dataset->group_feature_cnt_;
   forced_bin_bounds_ = dataset->forced_bin_bounds_;
   feature_need_push_zeros_ = dataset->feature_need_push_zeros_;
-  // Written to binary files, which are checked against the configuration when they are loaded
+  CopyBinningParametersFrom(dataset);
+}
+
+// The binning parameters are written to binary files, which are checked against the configuration when they are loaded
+void Dataset::CopyBinningParametersFrom(const Dataset* dataset) {
   max_bin_ = dataset->max_bin_;
+  max_bin_by_feature_ = dataset->max_bin_by_feature_;
   min_data_in_bin_ = dataset->min_data_in_bin_;
   bin_construct_sample_cnt_ = dataset->bin_construct_sample_cnt_;
   use_missing_ = dataset->use_missing_;
@@ -768,6 +773,7 @@ void Dataset::CreateValid(const Dataset* dataset) {
   label_idx_ = dataset->label_idx_;
   real_feature_idx_ = dataset->real_feature_idx_;
   forced_bin_bounds_ = dataset->forced_bin_bounds_;
+  CopyBinningParametersFrom(dataset);
 }
 
 void Dataset::ReSize(data_size_t num_data) {

@@ -64,6 +64,41 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(dim(dloaded), c(42L, ncol(test_data)))
     expect_equal(getinfo(dloaded, "label"), test_label[seq_len(42L)])
   })
+
+  test_that("gpb.Dataset: a validation gpb.Dataset can be saved to a binary file and loaded", {
+    params <- list(max_bin = 117L, min_data_in_bin = 2L)
+    dtrain <- gpb.Dataset(test_data, label = test_label, params = params)
+    dvalid <- gpb.Dataset.create.valid(dtrain, test_data[1L:60L, ], label = test_label[1L:60L])
+    for (dataset in list(dvalid, gpboost::slice(dvalid, seq_len(42L)))) {
+      tmp_file <- tempfile("gpb.Dataset_")
+      capture.output(gpb.Dataset.save(dataset, tmp_file), file = "NUL")
+      dloaded <- gpb.Dataset(tmp_file, params = params)
+      capture.output(gpb.Dataset.construct(dloaded), file = "NUL")
+      unlink(tmp_file)
+      expect_equal(getinfo(dloaded, "label"), test_label[seq_len(nrow(dataset))])
+    }
+  })
+
+  test_that("gpb.Dataset: a binary file cannot be loaded with other bin limits for the features", {
+    X <- cbind(seq_len(160L), rep(c(0, 1), 80L))
+    params <- list(max_bin_by_feature = c(3L, 3L), min_data_in_bin = 1L)
+    dtrain <- gpb.Dataset(X, label = X[, 1L], params = params)
+    for (dataset in list(dtrain, gpboost::slice(dtrain, seq_len(100L)))) {
+      tmp_file <- tempfile("gpb.Dataset_")
+      capture.output(gpb.Dataset.save(dataset, tmp_file), file = "NUL")
+      dloaded <- gpb.Dataset(tmp_file, params = params)
+      capture.output(gpb.Dataset.construct(dloaded), file = "NUL")
+      expect_equal(dim(dloaded), dim(dataset))
+      # Other limits and no limits
+      for (other_params in list(list(max_bin_by_feature = c(63L, 7L), min_data_in_bin = 1L),
+                                list(min_data_in_bin = 1L))) {
+        dloaded <- gpb.Dataset(tmp_file, params = other_params)
+        expect_error(capture.output(gpb.Dataset.construct(dloaded), file = "NUL"),
+                     "max_bin_by_feature does not match")
+      }
+      unlink(tmp_file)
+    }
+  })
   
   test_that("gpb.Dataset: colnames", {
     dtest <- gpb.Dataset(test_data, label = test_label)
