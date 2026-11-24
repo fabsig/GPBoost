@@ -95,3 +95,27 @@ def test_dataset_with_the_fidelity_feature_requires_a_fidelity_specific_mean():
     with pytest.raises(ValueError, match="Use a new Dataset for a model without a fidelity-specific mean"):
         gpb.train(params=_PARAMS, train_set=gpb.Dataset(features, label=y), valid_sets=[train_set],
                   num_boost_round=1)
+
+
+@pytest.mark.parametrize("free_raw_data", [False, True])
+def test_subsets_and_binary_files_of_a_dataset_with_the_fidelity_feature(free_raw_data, tmp_path):
+    coords, features, y = _sim_multifidelity()
+    train_set = gpb.Dataset(features, label=y, free_raw_data=free_raw_data)
+    gpb.train(params=_PARAMS, train_set=train_set, gp_model=_gp_model(coords), num_boost_round=1,
+              train_gp_model_cov_pars=False)
+    # A subset has the fidelity indicator as a feature too
+    rows = np.arange(24)
+    with pytest.raises(ValueError, match="Use a new Dataset for a model without a fidelity-specific mean"):
+        gpb.train(params=_PARAMS, train_set=train_set.subset(rows),
+                  gp_model=_gp_model(coords[rows], fidelity_specific_mean=False), num_boost_round=1,
+                  train_gp_model_cov_pars=False)
+    booster = gpb.train(params=_PARAMS, train_set=train_set.subset(rows), gp_model=_gp_model(coords[rows]),
+                        num_boost_round=3, train_gp_model_cov_pars=False)
+    assert booster.num_feature() == 3
+    # Predictions of the GP require the raw data
+    if not free_raw_data:
+        pred = booster.predict(data=features[24:], gp_coords_pred=coords[24:])
+        assert np.all(np.isfinite(pred["response_mean"]))
+    # A Dataset loaded from a binary file would not know that its last feature is the fidelity indicator
+    with pytest.raises(ValueError, match="cannot be saved to a binary file"):
+        train_set.save_binary(str(tmp_path / "train.bin"))

@@ -1910,6 +1910,11 @@ class _InnerPredictor:
 class Dataset:
     """Dataset in GPBoost."""
 
+    # The fidelity indicator of an AR1 multifidelity model that 'train()' or 'cv()' have added as a feature. These are
+    # class attributes so that Datasets pickled by versions without them get the defaults
+    _ar1_mf_fidelity_added = False
+    _ar1_mf_fidelity = None
+
     def __init__(self, data, label=None, reference=None,
                  weight=None, group=None, init_score=None, silent=False,
                  feature_name='auto', categorical_feature='auto', params=None,
@@ -1975,9 +1980,6 @@ class Dataset:
         self.feature_penalty = None
         self.monotone_constraints = None
         self.version = 0
-        # The fidelity indicator of an AR1 multifidelity model that 'train()' or 'cv()' have added as a feature
-        self._ar1_mf_fidelity_added = False
-        self._ar1_mf_fidelity = None
 
     def __del__(self):
         try:
@@ -2425,6 +2427,9 @@ class Dataset:
                           feature_name=self.feature_name, categorical_feature=self.categorical_feature)
         ret.pandas_categorical = self.pandas_categorical
         ret._predictor = self._predictor
+        if self._ar1_mf_fidelity_added:
+            ret._ar1_mf_fidelity_added = True
+            ret._ar1_mf_fidelity = self._ar1_mf_fidelity[sorted(used_indices)]
         return ret
 
     def save_binary(self, filename):
@@ -2445,6 +2450,11 @@ class Dataset:
         self : Dataset
             Returns self.
         """
+        # A Dataset loaded from the file would not know that its last feature is the fidelity indicator
+        if self._ar1_mf_fidelity_added:
+            raise ValueError("This Dataset has the fidelity indicator of an AR1 multifidelity GP model as an "
+                             "additional feature and cannot be saved to a binary file. Save it before it is used "
+                             "with a model with a fidelity-specific mean")
         _safe_call(_LIB.LGBM_DatasetSaveBinary(
             self.construct().handle,
             c_str(filename)))

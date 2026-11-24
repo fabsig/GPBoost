@@ -118,6 +118,9 @@ def test_parse_tuning_search_space_values():
         {'kind': 'float', 'lower': 0.5, 'upper': 2.5, 'log': False}
     with pytest.raises(ValueError, match=r"must be a list \[lower, upper\] or a dictionary \{'values'"):
         _parse_tuning_search_space({'cov_fct_shape': {'value': [0.5, 1.5]}})
+    # A string would be split into its letters
+    with pytest.raises(ValueError, match=r"must be a list \[lower, upper\] or a dictionary \{'values'"):
+        _parse_tuning_search_space({'cov_function': {'values': 'matern'}})
     with pytest.raises(ValueError, match="at least one value"):
         _parse_tuning_search_space({'cov_fct_shape': {'values': []}})
     with pytest.raises(ValueError, match="must not contain a value twice"):

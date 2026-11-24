@@ -366,9 +366,9 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     features <- cbind(x = data$gp_coords[, 1], nonlinear = sin(4 * data$gp_coords[, 1]))
     label <- data$y_gaussian + 5 * data$gp_coords[, 2]
     folds <- list(seq(1, nrow(data$gp_coords), by = 2), seq(2, nrow(data$gp_coords), by = 2))
-    ar1_mf_model <- function(fidelity_specific_mean) {
+    ar1_mf_model <- function(fidelity_specific_mean, rows = seq_len(nrow(data$gp_coords))) {
       gp_model <- GPModel(
-        gp_coords = data$gp_coords, cov_function = "ar1_mf_exponential", likelihood = "gaussian",
+        gp_coords = data$gp_coords[rows, ], cov_function = "ar1_mf_exponential", likelihood = "gaussian",
         fidelity_specific_mean = fidelity_specific_mean
       )
       gp_model$set_optim_params(params = list(
@@ -392,6 +392,16 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     expect_error(gpb.train(data = gpb.Dataset(data = features, label = label), valids = list(valid = dtrain),
                            nrounds = 1, params = params, verbose = 0),
                  "Use a new gpb.Dataset for a model without a fidelity-specific mean")
+    # A slice has the fidelity indicator as a feature too
+    rows <- seq_len(24L)
+    expect_error(gpb.train(data = slice(dtrain, rows), nrounds = 1, params = params, verbose = 0),
+                 "Use a new gpb.Dataset for a model without a fidelity-specific mean")
+    dslice <- slice(dtrain, rows)
+    gpb.train(data = dslice, gp_model = ar1_mf_model(TRUE, rows), train_gp_model_cov_pars = FALSE, nrounds = 1,
+              params = params, verbose = 0)
+    expect_equal(dslice$dim(), c(24L, 3L))
+    # A gpb.Dataset loaded from a binary file would not know that its last feature is the fidelity indicator
+    expect_error(gpb.Dataset.save(dtrain, tempfile(fileext = ".bin")), "cannot be saved to a binary file")
   })
 
   test_that("AR1 multifidelity has independent low- and high-fidelity linear means", {

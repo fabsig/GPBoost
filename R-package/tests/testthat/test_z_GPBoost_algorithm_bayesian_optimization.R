@@ -323,9 +323,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       best_score <- cv_best_score(opt_params$best_params, label = y, metric = "mse",
                                   gp_model = GPModel(group_data = group))
       expect_lt(abs(opt_params$best_score - best_score), TOLERANCE)
-      # The same 'cv_seed' gives the same result
+      # The same 'cv_seed' gives the same result, also with a matrix and a label instead of a gpb.Dataset
       opt_params_2 <- gpb.tune.pars.rf.bayesian.optimization(search_space = search_space, n_trials = 12,
-                                                             data = gpb.Dataset(X, label = y), gp_model = gp_model,
+                                                             data = X, label = y, gp_model = gp_model,
                                                              params = list(verbose = -1), nrounds = 50,
                                                              early_stopping_rounds = 5, folds = folds, metric = "mse",
                                                              cv_seed = 1, verbose_eval = 0)
@@ -439,9 +439,9 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       best_score <- cv_best_score(opt_params$best_params, label = y, metric = "mse",
                                   gp_model = GPModel(group_data = group))
       expect_lt(abs(opt_params$best_score - best_score), TOLERANCE)
-      # The same 'cv_seed' gives the same result
+      # The same 'cv_seed' gives the same result, also with a matrix and a label instead of a gpb.Dataset
       opt_params_2 <- gpb.tune.pars.bayesian.optimization(search_space = search_space, n_iter = 2,
-                                                          data = gpb.Dataset(X, label = y), gp_model = gp_model,
+                                                          data = X, label = y, gp_model = gp_model,
                                                           params = list(verbose = -1), nrounds = 50,
                                                           early_stopping_rounds = 5, folds = folds, metric = "mse",
                                                           cv_seed = 1, verbose_eval = 0)

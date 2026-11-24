@@ -142,9 +142,10 @@ gpb.check.r6.class <- function(object, name) {
 
 # Stops if 'data' has the fidelity indicator of an AR1 multifidelity model as a feature that 'gp_model' does not use.
 # gpb.train and gpb.cv add the indicator to the gpb.Dataset of a model with a fidelity-specific mean, and the trees of
-# other models would use it as an additional feature
+# other models would use it as an additional feature. A matrix that gpb.cv converts to a gpb.Dataset has no such
+# feature
 gpb.check.ar1.mf.fidelity.feature <- function(data, gp_model) {
-  if (data$.__enclos_env__$private$ar1_mf_fidelity_added &&
+  if (gpb.is.Dataset(data) && data$.__enclos_env__$private$ar1_mf_fidelity_added &&
       (is.null(gp_model) || !gp_model$has_fidelity_specific_mean())) {
     stop(paste0("This gpb.Dataset has the fidelity indicator of an AR1 multifidelity GP model as an additional ",
                 "feature, which was added when it was used with a model with a fidelity-specific mean. Use a new ",

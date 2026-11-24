@@ -1166,9 +1166,7 @@ gpb.grid.search.tune.parameters <- function(param_grid
   gpb.tuning.check.gp.model.params(param_grid, cov_functions = param_grid[["cov_function"]], gp_model = gp_model,
                                    fun_name = "gpb.grid.search.tune.parameters")
   # gpb.cv raises this error too, but the grid search continues after errors in gpb.cv
-  if (gpb.is.Dataset(data)) {
-    gpb.check.ar1.mf.fidelity.feature(data, gp_model)
-  }
+  gpb.check.ar1.mf.fidelity.feature(data, gp_model)
   if (is.null(verbose_eval)) {
     verbose_eval = 0
   } else {

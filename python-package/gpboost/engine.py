@@ -1380,7 +1380,7 @@ def _parse_tuning_search_space(search_space):
         if param not in known_params:
             raise ValueError(f"Unknown parameter '{param}'")
         if isinstance(spec, dict):
-            if list(spec) != ['values']:
+            if list(spec) != ['values'] or not isinstance(spec['values'], (list, tuple, np.ndarray)):
                 raise ValueError(f"search_space['{param}'] must be a list [lower, upper] or a dictionary "
                                  "{'values': [...]} with a list of values")
             values = [value.item() if isinstance(value, np.generic) else value for value in spec['values']]

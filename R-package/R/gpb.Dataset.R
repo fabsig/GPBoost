@@ -16,6 +16,7 @@ Dataset <- R6::R6Class(
                           free_raw_data = FALSE,
                           used_indices = NULL,
                           info = list(),
+                          ar1_mf_fidelity = NULL,
                           ...) {
 
       # validate inputs early to avoid unnecessary computation
@@ -73,6 +74,10 @@ Dataset <- R6::R6Class(
       private$used_indices <- sort(used_indices, decreasing = FALSE)
       private$info <- info
       private$version <- 0L
+      # The fidelity indicator of an AR1 multifidelity model that gpb.train or gpb.cv have added as a feature to the
+      # gpb.Dataset that this one is a slice of
+      private$ar1_mf_fidelity_added <- !is.null(ar1_mf_fidelity)
+      private$ar1_mf_fidelity <- ar1_mf_fidelity
 
       return(invisible(NULL))
 
@@ -506,6 +511,7 @@ Dataset <- R6::R6Class(
     slice = function(idxset, ...) {
 
       # Perform slicing
+      used_indices <- sort(idxset, decreasing = FALSE)
       return(
         Dataset$new(
           data = NULL
@@ -515,8 +521,10 @@ Dataset <- R6::R6Class(
           , categorical_feature = private$categorical_feature
           , predictor = private$predictor
           , free_raw_data = private$free_raw_data
-          , used_indices = sort(idxset, decreasing = FALSE)
+          , used_indices = used_indices
           , info = NULL
+          # NULL if no fidelity indicator has been added
+          , ar1_mf_fidelity = private$ar1_mf_fidelity[used_indices]
           , ...
         )
       )
@@ -661,6 +669,13 @@ Dataset <- R6::R6Class(
 
     # Save binary model
     save_binary = function(fname) {
+
+      # A gpb.Dataset loaded from the file would not know that its last feature is the fidelity indicator
+      if (private$ar1_mf_fidelity_added) {
+        stop(paste0("This gpb.Dataset has the fidelity indicator of an AR1 multifidelity GP model as an additional ",
+                    "feature and cannot be saved to a binary file. Save it before it is used with a model with a ",
+                    "fidelity-specific mean"))
+      }
 
       # Store binary data
       self$construct()
