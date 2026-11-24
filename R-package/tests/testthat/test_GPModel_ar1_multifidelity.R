@@ -378,6 +378,8 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     }
     params <- list(learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 4, objective = "regression_l2")
     dtrain <- gpb.Dataset(data = features, label = label, free_raw_data = FALSE)
+    rows <- seq_len(24L)
+    early_slice <- slice(dtrain, rows)
     gpb.train(data = dtrain, gp_model = ar1_mf_model(TRUE), train_gp_model_cov_pars = FALSE, nrounds = 1,
               params = params, verbose = 0)
     gpb.cv(data = dtrain, gp_model = ar1_mf_model(TRUE), train_gp_model_cov_pars = FALSE, nrounds = 1,
@@ -392,10 +394,12 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     expect_error(gpb.train(data = gpb.Dataset(data = features, label = label), valids = list(valid = dtrain),
                            nrounds = 1, params = params, verbose = 0),
                  "Use a new gpb.Dataset for a model without a fidelity-specific mean")
-    # A slice has the fidelity indicator as a feature too
-    rows <- seq_len(24L)
-    expect_error(gpb.train(data = slice(dtrain, rows), nrounds = 1, params = params, verbose = 0),
-                 "Use a new gpb.Dataset for a model without a fidelity-specific mean")
+    # A slice has the fidelity indicator as a feature too, also a slice that has been created before the indicator
+    #   was added, since a slice gets its features when it is constructed
+    for (dslice in list(early_slice, slice(dtrain, rows), slice(early_slice, seq_len(12L)))) {
+      expect_error(gpb.train(data = dslice, nrounds = 1, params = params, verbose = 0),
+                   "Use a new gpb.Dataset for a model without a fidelity-specific mean")
+    }
     dslice <- slice(dtrain, rows)
     gpb.train(data = dslice, gp_model = ar1_mf_model(TRUE, rows), train_gp_model_cov_pars = FALSE, nrounds = 1,
               params = params, verbose = 0)

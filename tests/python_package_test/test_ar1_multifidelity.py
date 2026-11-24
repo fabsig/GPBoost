@@ -109,7 +109,8 @@ def test_subsets_and_binary_files_of_a_dataset_with_the_fidelity_feature(free_ra
         gpb.train(params=_PARAMS, train_set=train_set.subset(rows),
                   gp_model=_gp_model(coords[rows], fidelity_specific_mean=False), num_boost_round=1,
                   train_gp_model_cov_pars=False)
-    booster = gpb.train(params=_PARAMS, train_set=train_set.subset(rows), gp_model=_gp_model(coords[rows]),
+    # The indices can be any iterable
+    booster = gpb.train(params=_PARAMS, train_set=train_set.subset(iter(rows)), gp_model=_gp_model(coords[rows]),
                         num_boost_round=3, train_gp_model_cov_pars=False)
     assert booster.num_feature() == 3
     # Predictions of the GP require the raw data
@@ -119,3 +120,20 @@ def test_subsets_and_binary_files_of_a_dataset_with_the_fidelity_feature(free_ra
     # A Dataset loaded from a binary file would not know that its last feature is the fidelity indicator
     with pytest.raises(ValueError, match="cannot be saved to a binary file"):
         train_set.save_binary(str(tmp_path / "train.bin"))
+
+
+def test_subsets_without_raw_data_created_before_the_fidelity_feature_is_added():
+    # Such a subset gets the features that its reference has when it is constructed
+    coords, features, y = _sim_multifidelity()
+    train_set = gpb.Dataset(features, label=y, free_raw_data=True)
+    rows = np.arange(24)
+    subset = train_set.subset(rows)
+    nested_subset = subset.subset(np.arange(12))
+    gpb.train(params=_PARAMS, train_set=train_set, gp_model=_gp_model(coords), num_boost_round=1,
+              train_gp_model_cov_pars=False)
+    for dataset in (subset, nested_subset):
+        with pytest.raises(ValueError, match="Use a new Dataset for a model without a fidelity-specific mean"):
+            gpb.train(params=_PARAMS, train_set=dataset, num_boost_round=1)
+    booster = gpb.train(params=_PARAMS, train_set=subset, gp_model=_gp_model(coords[rows]), num_boost_round=3,
+                        train_gp_model_cov_pars=False)
+    assert booster.num_feature() == 3

@@ -27,6 +27,7 @@ from .compat import SKLEARN_INSTALLED, _GPBoostGroupKFold, _GPBoostStratifiedKFo
 def _add_ar1_mf_fidelity_feature(dataset, fidelity):
     """Append the AR1 multifidelity indicator as an additional boosting feature to a Dataset."""
     fidelity = np.asarray(fidelity).reshape(-1)
+    dataset._take_ar1_mf_fidelity_from_reference()
     if dataset._ar1_mf_fidelity_added:
         if not np.array_equal(fidelity, dataset._ar1_mf_fidelity):
             raise ValueError("This Dataset already contains a different AR1 multifidelity indicator")
@@ -60,6 +61,7 @@ def _check_ar1_mf_fidelity_feature(dataset, gp_model):
     'train()' and 'cv()' add the indicator to the Dataset of a model with a fidelity-specific mean, and the trees of
     other models would use it as an additional feature.
     """
+    dataset._take_ar1_mf_fidelity_from_reference()
     if dataset._ar1_mf_fidelity_added and (gp_model is None or not gp_model.fidelity_specific_mean):
         raise ValueError("This Dataset has the fidelity indicator of an AR1 multifidelity GP model as an additional "
                          "feature, which was added when it was used with a model with a fidelity-specific mean. "

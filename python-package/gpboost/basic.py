@@ -2028,6 +2028,18 @@ class Dataset:
             self.data = None
         return self
 
+    def _take_ar1_mf_fidelity_from_reference(self):
+        """Take the AR1 multifidelity indicator of a subset without raw data from the Dataset that it is a subset of.
+
+        Such a subset gets the features that its reference has when the subset is constructed, and 'train()' and
+        'cv()' can add the indicator to the reference after the subset has been created.
+        """
+        if self.used_indices is not None and self.handle is None:
+            self.reference._take_ar1_mf_fidelity_from_reference()
+            if self.reference._ar1_mf_fidelity_added:
+                self._ar1_mf_fidelity_added = True
+                self._ar1_mf_fidelity = self.reference._ar1_mf_fidelity[self.used_indices]
+
     def _set_init_score_by_predictor(self, predictor, data, used_indices=None):
         data_has_header = False
         if isinstance(data, str):
@@ -2307,6 +2319,7 @@ class Dataset:
                                     silent=self.silent, feature_name=self.feature_name, params=self.params)
                 else:
                     # construct subset
+                    self._take_ar1_mf_fidelity_from_reference()
                     used_indices = list_to_1d_numpy(self.used_indices, np.int32, name='used_indices')
                     assert used_indices.flags.c_contiguous
                     if self.reference.group is not None:
@@ -2400,13 +2413,14 @@ class Dataset:
         """
         if params is None:
             params = self.params
+        used_indices_sorted = sorted(used_indices)
         if self.free_raw_data:
+            # The subset takes its features and the AR1 multifidelity indicator from 'self' when it is constructed
             ret = Dataset(None, reference=self, feature_name=self.feature_name,
                           categorical_feature=self.categorical_feature, params=params,
                           free_raw_data=self.free_raw_data)
-            ret.used_indices = sorted(used_indices)
+            ret.used_indices = used_indices_sorted
         else:
-            used_indices_sorted = sorted(used_indices)
             if isinstance(self.data, pd_DataFrame) or isinstance(self.data, pd_Series):
                 data_subset = self.data.iloc[used_indices_sorted]
             else:
@@ -2425,11 +2439,11 @@ class Dataset:
                           weight=weight_subset, group=group_subset, init_score=init_score_subset,
                           silent=self.silent, params=params, free_raw_data=self.free_raw_data,
                           feature_name=self.feature_name, categorical_feature=self.categorical_feature)
+            if self._ar1_mf_fidelity_added:
+                ret._ar1_mf_fidelity_added = True
+                ret._ar1_mf_fidelity = self._ar1_mf_fidelity[used_indices_sorted]
         ret.pandas_categorical = self.pandas_categorical
         ret._predictor = self._predictor
-        if self._ar1_mf_fidelity_added:
-            ret._ar1_mf_fidelity_added = True
-            ret._ar1_mf_fidelity = self._ar1_mf_fidelity[sorted(used_indices)]
         return ret
 
     def save_binary(self, filename):
@@ -2451,6 +2465,7 @@ class Dataset:
             Returns self.
         """
         # A Dataset loaded from the file would not know that its last feature is the fidelity indicator
+        self._take_ar1_mf_fidelity_from_reference()
         if self._ar1_mf_fidelity_added:
             raise ValueError("This Dataset has the fidelity indicator of an AR1 multifidelity GP model as an "
                              "additional feature and cannot be saved to a binary file. Save it before it is used "

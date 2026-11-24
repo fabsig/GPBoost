@@ -53,6 +53,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(nrow(dsub1), 42L)
     expect_equal(ncol(dsub1), ncol(test_data))
   })
+
+  test_that("gpb.Dataset: a slice can be saved to a binary file and loaded", {
+    dsub <- gpboost::slice(gpb.Dataset(test_data, label = test_label), seq_len(42L))
+    tmp_file <- tempfile("gpb.Dataset_")
+    on.exit(unlink(tmp_file), add = TRUE)
+    capture.output(gpb.Dataset.save(dsub, tmp_file), file = "NUL")
+    dloaded <- gpb.Dataset(tmp_file)
+    capture.output(gpb.Dataset.construct(dloaded), file = "NUL")
+    expect_equal(dim(dloaded), c(42L, ncol(test_data)))
+    expect_equal(getinfo(dloaded, "label"), test_label[seq_len(42L)])
+  })
   
   test_that("gpb.Dataset: colnames", {
     dtest <- gpb.Dataset(test_data, label = test_label)

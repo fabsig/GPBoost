@@ -16,7 +16,6 @@ Dataset <- R6::R6Class(
                           free_raw_data = FALSE,
                           used_indices = NULL,
                           info = list(),
-                          ar1_mf_fidelity = NULL,
                           ...) {
 
       # validate inputs early to avoid unnecessary computation
@@ -74,10 +73,6 @@ Dataset <- R6::R6Class(
       private$used_indices <- sort(used_indices, decreasing = FALSE)
       private$info <- info
       private$version <- 0L
-      # The fidelity indicator of an AR1 multifidelity model that gpb.train or gpb.cv have added as a feature to the
-      # gpb.Dataset that this one is a slice of
-      private$ar1_mf_fidelity_added <- !is.null(ar1_mf_fidelity)
-      private$ar1_mf_fidelity <- ar1_mf_fidelity
 
       return(invisible(NULL))
 
@@ -245,6 +240,7 @@ Dataset <- R6::R6Class(
         }
 
         # Construct subset
+        private$take_ar1_mf_fidelity_from_reference()
         handle <- .Call(
           LGBM_DatasetGetSubset_R
           , ref_handle
@@ -511,7 +507,6 @@ Dataset <- R6::R6Class(
     slice = function(idxset, ...) {
 
       # Perform slicing
-      used_indices <- sort(idxset, decreasing = FALSE)
       return(
         Dataset$new(
           data = NULL
@@ -521,10 +516,8 @@ Dataset <- R6::R6Class(
           , categorical_feature = private$categorical_feature
           , predictor = private$predictor
           , free_raw_data = private$free_raw_data
-          , used_indices = used_indices
+          , used_indices = sort(idxset, decreasing = FALSE)
           , info = NULL
-          # NULL if no fidelity indicator has been added
-          , ar1_mf_fidelity = private$ar1_mf_fidelity[used_indices]
           , ...
         )
       )
@@ -638,10 +631,17 @@ Dataset <- R6::R6Class(
 
     },
 
+    # The fidelity indicator of an AR1 multifidelity model that gpb.train or gpb.cv have added as a feature, or NULL
+    get_ar1_mf_fidelity = function() {
+      private$take_ar1_mf_fidelity_from_reference()
+      return(private$ar1_mf_fidelity)
+    },
+
     add_ar1_mf_fidelity_feature = function(fidelity) {
       fidelity <- as.vector(fidelity)
-      if (private$ar1_mf_fidelity_added) {
-        if (!identical(fidelity, private$ar1_mf_fidelity)) {
+      added_fidelity <- self$get_ar1_mf_fidelity()
+      if (!is.null(added_fidelity)) {
+        if (!identical(fidelity, added_fidelity)) {
           stop("This Dataset already contains a different AR1 multifidelity indicator")
         }
         return(invisible(self))
@@ -661,7 +661,6 @@ Dataset <- R6::R6Class(
       if (!is.null(private$colnames) && !("AR1_MF_fidelity" %in% private$colnames)) {
         private$colnames <- c(private$colnames, "AR1_MF_fidelity")
       }
-      private$ar1_mf_fidelity_added <- TRUE
       private$ar1_mf_fidelity <- fidelity
       private$version <- private$version + 1L
       invisible(self)
@@ -671,7 +670,7 @@ Dataset <- R6::R6Class(
     save_binary = function(fname) {
 
       # A gpb.Dataset loaded from the file would not know that its last feature is the fidelity indicator
-      if (private$ar1_mf_fidelity_added) {
+      if (!is.null(self$get_ar1_mf_fidelity())) {
         stop(paste0("This gpb.Dataset has the fidelity indicator of an AR1 multifidelity GP model as an additional ",
                     "feature and cannot be saved to a binary file. Save it before it is used with a model with a ",
                     "fidelity-specific mean"))
@@ -700,8 +699,19 @@ Dataset <- R6::R6Class(
     used_indices = NULL,
     info = NULL,
     version = 0L,
-    ar1_mf_fidelity_added = FALSE,
     ar1_mf_fidelity = NULL,
+
+    # A slice gets the features that the gpb.Dataset that it is a slice of has when the slice is constructed, and
+    # gpb.train and gpb.cv can add the fidelity indicator to that gpb.Dataset after the slice has been created
+    take_ar1_mf_fidelity_from_reference = function() {
+      if (!is.null(private$used_indices) && gpb.is.null.handle(private$handle)) {
+        reference_fidelity <- private$reference$get_ar1_mf_fidelity()
+        if (!is.null(reference_fidelity)) {
+          private$ar1_mf_fidelity <- reference_fidelity[private$used_indices]
+        }
+      }
+      return(invisible(NULL))
+    },
     
     # Finalize will free up the handles
     finalize = function() {
