@@ -74,8 +74,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       capture.output(gpb.Dataset.save(dataset, tmp_file), file = "NUL")
       dloaded <- gpb.Dataset(tmp_file, params = params)
       capture.output(gpb.Dataset.construct(dloaded), file = "NUL")
-      unlink(tmp_file)
       expect_equal(getinfo(dloaded, "label"), test_label[seq_len(nrow(dataset))])
+      # The file has the bins of the reference, which need not be given again
+      dloaded <- gpb.Dataset(tmp_file, reference = dtrain)
+      capture.output(gpb.Dataset.construct(dloaded), file = "NUL")
+      expect_equal(getinfo(dloaded, "label"), test_label[seq_len(nrow(dataset))])
+      unlink(tmp_file)
     }
   })
 
@@ -98,6 +102,19 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       }
       unlink(tmp_file)
     }
+  })
+
+  test_that("gpb.Dataset: a binary file loaded with a reference must have the bins of the reference", {
+    X <- cbind(seq_len(160L), rep(c(0, 1), 80L))
+    tmp_file <- tempfile("gpb.Dataset_")
+    on.exit(unlink(tmp_file), add = TRUE)
+    dsaved <- gpb.Dataset(X, label = X[, 1L], params = list(max_bin_by_feature = c(3L, 3L), min_data_in_bin = 1L))
+    capture.output(gpb.Dataset.save(dsaved, tmp_file), file = "NUL")
+    params <- list(max_bin_by_feature = c(63L, 7L), min_data_in_bin = 1L)
+    dreference <- gpb.Dataset(X, label = X[, 1L], params = params)
+    capture.output(gpb.Dataset.construct(dreference), file = "NUL")
+    dloaded <- gpb.Dataset(tmp_file, params = params, reference = dreference)
+    expect_error(capture.output(gpb.Dataset.construct(dloaded), file = "NUL"), "has other bins than the reference")
   })
   
   test_that("gpb.Dataset: colnames", {

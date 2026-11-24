@@ -303,6 +303,10 @@ Dataset* DatasetLoader::LoadFromFileAlignWithOtherDataset(const char* filename, 
   } else {
     // load data from binary file
     dataset.reset(LoadFromBinFile(filename, bin_filename.c_str(), 0, 1, &num_global_data, &used_data_indices));
+    // A binary file has its own bins, which have to be those of the reference
+    if (!train_data->CheckAlign(*dataset)) {
+      Log::Fatal("The binary file %s has other bins than the reference Dataset", bin_filename.c_str());
+    }
   }
   // not need to check validation data
   // check meta data
