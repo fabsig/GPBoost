@@ -254,6 +254,7 @@ gpb.cv.internal <- function(params = list()
   end_iteration <- begin_iteration + params[["num_iterations"]] - 1L
 
   use_ar1_mf_fidelity_mean <- !is.null(gp_model) && gp_model$has_fidelity_specific_mean()
+  gpb.check.ar1.mf.fidelity.feature(data, gp_model)
   if (use_ar1_mf_fidelity_mean) {
     data$add_ar1_mf_fidelity_feature(gp_model$get_fidelity_indicator())
     if (!is.null(colnames) && !"AR1_MF_fidelity" %in% colnames) {
@@ -615,7 +616,13 @@ gpb.cv.internal <- function(params = list()
         
         booster <- Booster$new(params = params, train_set = dtrain, gp_model = gp_model_train)
         gp_model$set_likelihood(gp_model_train$get_likelihood_name()) ## potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
-        gp_model_train$set_optim_params(params = gp_model$get_optim_params())
+        optim_params <- gp_model$get_optim_params()
+        if (any(c("cov_function", "cov_fct_order") %in% names(gp_model_params))) {
+          # The length of 'estimate_cov_par_index' depends on the covariance function, and the tuning functions
+          #   allow only masks that estimate all covariance parameters, see gpb.tuning.check.gp.model.params()
+          optim_params$estimate_cov_par_index <- -1L
+        }
+        gp_model_train$set_optim_params(params = optim_params)
         
       } else {
         booster <- Booster$new(params = params, train_set = dtrain)
@@ -1045,7 +1052,8 @@ get.param.combination <- function(param_comb_number, param_grid) {
 #' GP models of the cross-validation folds are constructed with the values of these parameters and with all other
 #' settings of \code{gp_model}. \code{gp_model} keeps its own values of these parameters.
 #' \code{gp_model} must have a Gaussian process, and 'cov_function' and 'cov_fct_order' cannot be tuned if it has
-#' initial values 'init_cov_pars'. AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned with a
+#' initial values 'init_cov_pars' or covariance parameters that are not estimated ('estimate_cov_par_index'). AR1
+#' multifidelity covariance functions ('ar1_mf_*') can only be tuned with a
 #' \code{gp_model} that has such a covariance function, and if it has a fidelity-specific mean, all values of
 #' 'cov_function' must be AR1 multifidelity covariance functions
 #' @param params \code{list} with other parameters not included in \code{param_grid}
@@ -1157,6 +1165,10 @@ gpb.grid.search.tune.parameters <- function(param_grid
   }
   gpb.tuning.check.gp.model.params(param_grid, cov_functions = param_grid[["cov_function"]], gp_model = gp_model,
                                    fun_name = "gpb.grid.search.tune.parameters")
+  # gpb.cv raises this error too, but the grid search continues after errors in gpb.cv
+  if (gpb.is.Dataset(data)) {
+    gpb.check.ar1.mf.fidelity.feature(data, gp_model)
+  }
   if (is.null(verbose_eval)) {
     verbose_eval = 0
   } else {

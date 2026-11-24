@@ -27,7 +27,7 @@ from .compat import SKLEARN_INSTALLED, _GPBoostGroupKFold, _GPBoostStratifiedKFo
 def _add_ar1_mf_fidelity_feature(dataset, fidelity):
     """Append the AR1 multifidelity indicator as an additional boosting feature to a Dataset."""
     fidelity = np.asarray(fidelity).reshape(-1)
-    if getattr(dataset, "_ar1_mf_fidelity_added", False):
+    if dataset._ar1_mf_fidelity_added:
         if not np.array_equal(fidelity, dataset._ar1_mf_fidelity):
             raise ValueError("This Dataset already contains a different AR1 multifidelity indicator")
         return
@@ -52,6 +52,18 @@ def _add_ar1_mf_fidelity_feature(dataset, fidelity):
         dataset.feature_name = list(stored_feature_name) + ["AR1_MF_fidelity"]
     dataset._ar1_mf_fidelity_added = True
     dataset._ar1_mf_fidelity = fidelity.copy()
+
+
+def _check_ar1_mf_fidelity_feature(dataset, gp_model):
+    """Raise an error if 'dataset' has the AR1 multifidelity indicator as a feature that 'gp_model' does not use.
+
+    'train()' and 'cv()' add the indicator to the Dataset of a model with a fidelity-specific mean, and the trees of
+    other models would use it as an additional feature.
+    """
+    if dataset._ar1_mf_fidelity_added and (gp_model is None or not gp_model.fidelity_specific_mean):
+        raise ValueError("This Dataset has the fidelity indicator of an AR1 multifidelity GP model as an additional "
+                         "feature, which was added when it was used with a model with a fidelity-specific mean. "
+                         "Use a new Dataset for a model without a fidelity-specific mean")
 
 
 def train(params, train_set, num_boost_round=100,
@@ -243,6 +255,7 @@ def train(params, train_set, num_boost_round=100,
 
     use_ar1_mf_fidelity_mean = gp_model is not None and gp_model.fidelity_specific_mean
 
+    _check_ar1_mf_fidelity_feature(train_set, gp_model)
     if use_ar1_mf_fidelity_mean:
         if gp_model.gp_coords is None:
             raise ValueError("Fidelity-specific GPBoost means require retained GP coordinates")
@@ -273,6 +286,7 @@ def train(params, train_set, num_boost_round=100,
                 continue
             if not isinstance(valid_data, Dataset):
                 raise TypeError("Training only accepts Dataset object")
+            _check_ar1_mf_fidelity_feature(valid_data, gp_model)
             if use_ar1_mf_fidelity_mean:
                 if gp_model.gp_coords_pred is None:
                     raise ValueError("Validation with fidelity-specific GPBoost means requires gp_model.set_prediction_data(gp_coords_pred=...)")
@@ -579,7 +593,12 @@ def _make_n_folds(full_data, folds, nfold, params, seed, gp_model=None, gp_model
                                                    rank_pred_approx_matrix_lanczos=gp_model.rank_pred_approx_matrix_lanczos)
             cvbooster = Booster(params=tparam, train_set=train_set, gp_model=gp_model_train)
             gp_model._set_likelihood(gp_model_train._get_likelihood_name()) # potentially change likelihood in case this was done in the booster to reflect implied changes in the default optimizer for different likelihoods
-            gp_model_train.set_optim_params(params=gp_model._get_optim_params())
+            optim_params = gp_model._get_optim_params()
+            if 'cov_function' in gp_model_params or 'cov_fct_order' in gp_model_params:
+                # The length of 'estimate_cov_par_index' depends on the covariance function, and the tuning functions
+                #   allow only masks that estimate all covariance parameters, see '_check_tuning_gp_model_params()'
+                optim_params = dict(optim_params, estimate_cov_par_index=np.array([-1], dtype=np.int32))
+            gp_model_train.set_optim_params(params=optim_params)
         else:  # no gp_model
             cvbooster = Booster(tparam, train_set)
         if eval_train_metric:
@@ -799,6 +818,7 @@ def _cv(params, train_set, gp_model=None, gp_model_params=None, num_boost_round=
         raise ValueError("The GPBoostOOS algorithm (fit_GP_cov_pars_OOS=True) is not yet implemented in Python.")
     if not isinstance(train_set, Dataset):
         raise TypeError("cv only accepts Dataset objects as train_set")
+    _check_ar1_mf_fidelity_feature(train_set, gp_model)
     if train_set.free_raw_data:
         _log_warning('For true out-of-sample (cross-) validation, it is recommended to set free_raw_data = False '
                      'when constructing the Dataset')
@@ -995,7 +1015,8 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
         combination, the GP models of the cross-validation folds are constructed with the values of these parameters
         and with all other settings of 'gp_model'. 'gp_model' keeps its own values of these parameters.
         'gp_model' must have a Gaussian process, and 'cov_function' and 'cov_fct_order' cannot be tuned if it has
-        initial values 'init_cov_pars'. AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned with a
+        initial values 'init_cov_pars' or covariance parameters that are not estimated ('estimate_cov_par_index').
+        AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned with a
         'gp_model' that has such a covariance function, and if it has a fidelity-specific mean, all values of
         'cov_function' must be AR1 multifidelity covariance functions.
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
@@ -1216,6 +1237,8 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
                                                   data_name=param, check_data_type=False,
                                                   check_must_be_int=False, convert_to_type=None)
     _check_tuning_gp_model_params(param_grid, param_grid.get('cov_function', []), gp_model)
+    # 'cv()' raises this error too, but the grid search continues after errors in 'cv()'
+    _check_ar1_mf_fidelity_feature(train_set, gp_model)
     _tuning_deterministic_params(params, param_grid)
     # Determine combinations of parameter values that should be tried out
     grid_size = _get_grid_size(param_grid)
@@ -1417,9 +1440,12 @@ def _check_tuning_gp_model_params(params, cov_functions, gp_model):
         raise ValueError(f"'{gp_model_params[0]}' is a parameter of a Gaussian process and can only be tuned with a "
                          "'gp_model' that has a Gaussian process ('gp_coords')")
     # The number and the meaning of the covariance parameters depend on 'cov_function' and 'cov_fct_order'
-    if ('cov_function' in params or 'cov_fct_order' in params) and 'init_cov_pars' in gp_model._get_optim_params():
-        raise ValueError("'cov_function' and 'cov_fct_order' cannot be tuned with initial values 'init_cov_pars' "
-                         "of 'gp_model'")
+    if 'cov_function' in params or 'cov_fct_order' in params:
+        optim_params = gp_model._get_optim_params()
+        if 'init_cov_pars' in optim_params or np.any(optim_params['estimate_cov_par_index'] == 0):
+            raise ValueError("'cov_function' and 'cov_fct_order' cannot be tuned with initial values 'init_cov_pars' "
+                             "or with covariance parameters that are not estimated ('estimate_cov_par_index') of "
+                             "'gp_model'")
     for cov_function in cov_functions:
         if not isinstance(cov_function, str):
             raise ValueError("The values of 'cov_function' must be names of covariance functions")
@@ -1559,7 +1585,8 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
         only be given as a set of values. In every trial, the GP models of the cross-validation folds are constructed
         with the values of these parameters and with all other settings of 'gp_model'. 'gp_model' keeps its own
         values of these parameters. 'gp_model' must have a Gaussian process, and 'cov_function' and 'cov_fct_order'
-        cannot be tuned if it has initial values 'init_cov_pars'. AR1 multifidelity covariance functions
+        cannot be tuned if it has initial values 'init_cov_pars' or covariance parameters that are not estimated
+        ('estimate_cov_par_index'). AR1 multifidelity covariance functions
         ('ar1_mf_*') can only be tuned with a 'gp_model' that has such a covariance function, and if it has a
         fidelity-specific mean, all values of 'cov_function' must be AR1 multifidelity covariance functions.
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
@@ -1811,7 +1838,8 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
         only be given as a set of values. In every trial, the GP models of the cross-validation folds are constructed
         with the values of these parameters and with all other settings of 'gp_model'. 'gp_model' keeps its own
         values of these parameters. 'gp_model' must have a Gaussian process, and 'cov_function' and 'cov_fct_order'
-        cannot be tuned if it has initial values 'init_cov_pars'. AR1 multifidelity covariance functions
+        cannot be tuned if it has initial values 'init_cov_pars' or covariance parameters that are not estimated
+        ('estimate_cov_par_index'). AR1 multifidelity covariance functions
         ('ar1_mf_*') can only be tuned with a 'gp_model' that has such a covariance function, and if it has a
         fidelity-specific mean, all values of 'cov_function' must be AR1 multifidelity covariance functions.
         See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part

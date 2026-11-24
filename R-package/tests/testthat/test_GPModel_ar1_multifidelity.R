@@ -359,6 +359,41 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
     expect_lt(with_feature$error, 0.5 * without_feature$error)
   })
 
+  test_that("a gpb.Dataset with the fidelity feature requires a fidelity-specific mean", {
+    # The trees of a model without a fidelity-specific mean would use the fidelity indicator that gpb.train and
+    #   gpb.cv have added to a gpb.Dataset as a feature
+    data <- simulate_ar1_mf_test_data()
+    features <- cbind(x = data$gp_coords[, 1], nonlinear = sin(4 * data$gp_coords[, 1]))
+    label <- data$y_gaussian + 5 * data$gp_coords[, 2]
+    folds <- list(seq(1, nrow(data$gp_coords), by = 2), seq(2, nrow(data$gp_coords), by = 2))
+    ar1_mf_model <- function(fidelity_specific_mean) {
+      gp_model <- GPModel(
+        gp_coords = data$gp_coords, cov_function = "ar1_mf_exponential", likelihood = "gaussian",
+        fidelity_specific_mean = fidelity_specific_mean
+      )
+      gp_model$set_optim_params(params = list(
+        init_cov_pars = data$cov_pars, init_coef_aux_pars_from_iid_model = FALSE
+      ))
+      return(gp_model)
+    }
+    params <- list(learning_rate = 0.1, max_depth = 2, min_data_in_leaf = 4, objective = "regression_l2")
+    dtrain <- gpb.Dataset(data = features, label = label, free_raw_data = FALSE)
+    gpb.train(data = dtrain, gp_model = ar1_mf_model(TRUE), train_gp_model_cov_pars = FALSE, nrounds = 1,
+              params = params, verbose = 0)
+    gpb.cv(data = dtrain, gp_model = ar1_mf_model(TRUE), train_gp_model_cov_pars = FALSE, nrounds = 1,
+           folds = folds, params = params, use_gp_model_for_validation = FALSE, verbose = 0)
+    for (gp_model in list(ar1_mf_model(FALSE), NULL)) {
+      expect_error(gpb.train(data = dtrain, gp_model = gp_model, nrounds = 1, params = params, verbose = 0),
+                   "Use a new gpb.Dataset for a model without a fidelity-specific mean")
+      expect_error(gpb.cv(data = dtrain, gp_model = gp_model, nrounds = 1, folds = folds, params = params,
+                          use_gp_model_for_validation = FALSE, verbose = 0),
+                   "Use a new gpb.Dataset for a model without a fidelity-specific mean")
+    }
+    expect_error(gpb.train(data = gpb.Dataset(data = features, label = label), valids = list(valid = dtrain),
+                           nrounds = 1, params = params, verbose = 0),
+                 "Use a new gpb.Dataset for a model without a fidelity-specific mean")
+  })
+
   test_that("AR1 multifidelity has independent low- and high-fidelity linear means", {
     data <- simulate_ar1_mf_test_data()
     fidelity <- data$gp_coords[, 2]

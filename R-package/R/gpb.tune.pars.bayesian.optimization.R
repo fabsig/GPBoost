@@ -124,10 +124,13 @@ gpb.tuning.check.gp.model.params <- function(params, cov_functions, gp_model, fu
                         "that has a Gaussian process ('gp_coords')"), fun_name, gp_model_params[1L]))
   }
   # The number and the meaning of the covariance parameters depend on 'cov_function' and 'cov_fct_order'
-  if (any(c("cov_function", "cov_fct_order") %in% names(params)) &&
-      !is.null(gp_model$get_optim_params()$init_cov_pars)) {
-    stop(sprintf(paste0("%s: 'cov_function' and 'cov_fct_order' cannot be tuned with initial values ",
-                        "'init_cov_pars' of 'gp_model'"), fun_name))
+  if (any(c("cov_function", "cov_fct_order") %in% names(params))) {
+    optim_params <- gp_model$get_optim_params()
+    if (!is.null(optim_params$init_cov_pars) || any(optim_params$estimate_cov_par_index == 0)) {
+      stop(sprintf(paste0("%s: 'cov_function' and 'cov_fct_order' cannot be tuned with initial values ",
+                          "'init_cov_pars' or with covariance parameters that are not estimated ",
+                          "('estimate_cov_par_index') of 'gp_model'"), fun_name))
+    }
   }
   if (length(cov_functions) > 0L && !is.character(cov_functions)) {
     stop(sprintf("%s: the values of 'cov_function' must be names of covariance functions", fun_name))
@@ -270,7 +273,8 @@ gpb.tuning.check.packages <- function(packages, fun_name) {
 #' set of values. In every trial, the GP models of the cross-validation folds are constructed with the values of
 #' these parameters and with all other settings of \code{gp_model}. \code{gp_model} keeps its own values of these
 #' parameters. \code{gp_model} must have a Gaussian process, and 'cov_function' and 'cov_fct_order' cannot be tuned
-#' if it has initial values 'init_cov_pars'. AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned
+#' if it has initial values 'init_cov_pars' or covariance parameters that are not estimated ('estimate_cov_par_index').
+#' AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned
 #' with a \code{gp_model} that has such a covariance function, and if it has a fidelity-specific mean, all values of
 #' 'cov_function' must be AR1 multifidelity covariance functions.
 #' See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
@@ -367,6 +371,8 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
   parsed_search_space <- gpb.tuning.parse.search.space(search_space, fun_name = fun_name)
   gpb.tuning.check.gp.model.params(parsed_search_space, cov_functions = parsed_search_space[["cov_function"]]$values,
                                    gp_model = gp_model, fun_name = fun_name)
+  # gpb.cv raises this error too, but failed trials do not stop the search
+  gpb.check.ar1.mf.fidelity.feature(data, gp_model)
   if (!is.numeric(n_iter) || length(n_iter) != 1L || n_iter <= 0) {
     stop(fun_name, ": 'n_iter' needs to be a positive integer")
   }
@@ -582,7 +588,8 @@ gpb.tune.pars.bayesian.optimization <- function(search_space
 #' set of values. In every trial, the GP models of the cross-validation folds are constructed with the values of
 #' these parameters and with all other settings of \code{gp_model}. \code{gp_model} keeps its own values of these
 #' parameters. \code{gp_model} must have a Gaussian process, and 'cov_function' and 'cov_fct_order' cannot be tuned
-#' if it has initial values 'init_cov_pars'. AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned
+#' if it has initial values 'init_cov_pars' or covariance parameters that are not estimated ('estimate_cov_par_index').
+#' AR1 multifidelity covariance functions ('ar1_mf_*') can only be tuned
 #' with a \code{gp_model} that has such a covariance function, and if it has a fidelity-specific mean, all values of
 #' 'cov_function' must be AR1 multifidelity covariance functions.
 #' See https://github.com/fabsig/GPBoost/blob/master/docs/Main_parameters.rst#tuning-parameters--hyperparameters-for-the-tree-boosting-part
@@ -688,6 +695,8 @@ gpb.tune.pars.rf.bayesian.optimization <- function(search_space
   parsed_search_space <- gpb.tuning.parse.search.space(search_space, fun_name = fun_name)
   gpb.tuning.check.gp.model.params(parsed_search_space, cov_functions = parsed_search_space[["cov_function"]]$values,
                                    gp_model = gp_model, fun_name = fun_name)
+  # gpb.cv raises this error too, but failed trials do not stop the search
+  gpb.check.ar1.mf.fidelity.feature(data, gp_model)
   if (!is.numeric(n_trials) || length(n_trials) != 1L || n_trials < 1) {
     stop(fun_name, ": 'n_trials' needs to be a positive integer")
   }

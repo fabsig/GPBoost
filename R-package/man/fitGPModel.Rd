@@ -417,7 +417,9 @@ The elements of 'cluster_ids' can be integer, double, or character.}
 whether marginal mean models are fitted independently for low and high fidelity. If \code{TRUE}
 (the default), linear covariates supplied to \code{fit()} are internally expanded into separate
 low- and high-fidelity coefficient blocks, and the fidelity indicator is automatically added as
-a feature when the model is used in the GPBoost algorithm. Ignored for other covariance functions.}
+a feature to the training and validation \code{gpb.Dataset}s when the model is used in the GPBoost
+algorithm; these \code{gpb.Dataset}s can then not be used with models without a fidelity-specific mean.
+Ignored for other covariance functions.}
 
 \item{cov_fct_order}{An \code{integer} specifying the order m of the "hurst" and "hurst_ard" covariance functions
 (also when used as base covariance in "ar1_mf_hurst" and "ar1_mf_hurst_ard"). Currently, the orders 1 (default) and 2 are supported.

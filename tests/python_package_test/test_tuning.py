@@ -268,20 +268,32 @@ def test_tuning_cov_function_number_of_cov_pars():
     # Covariance functions with more and with fewer covariance parameters than the one of 'gp_model'
     X, y, coords = _simulate_spatial_data()
     folds = _folds(len(y))
+
+    def grid_search(gp_model, cov_functions):
+        return gpb.grid_search_tune_parameters(param_grid={'cov_function': cov_functions},
+                                               train_set=gpb.Dataset(X, y), gp_model=gp_model,
+                                               params={'learning_rate': 0.1, 'verbose': -1}, num_boost_round=50,
+                                               early_stopping_rounds=5, folds=folds,
+                                               metric='test_neg_log_likelihood', verbose_eval=0,
+                                               return_all_combinations=True)
+
     for cov_function, cov_functions in (('matern', ['matern', 'matern_ard']), ('matern_ard', ['matern'])):
         gp_model = _spatial_gp_model(coords, cov_function=cov_function)
         num_cov_pars = gp_model.num_cov_pars
-        opt_params = gpb.grid_search_tune_parameters(param_grid={'cov_function': cov_functions},
-                                                     train_set=gpb.Dataset(X, y), gp_model=gp_model,
-                                                     params={'learning_rate': 0.1, 'verbose': -1}, num_boost_round=50,
-                                                     early_stopping_rounds=5, folds=folds,
-                                                     metric='test_neg_log_likelihood', verbose_eval=0,
-                                                     return_all_combinations=True)
+        opt_params = grid_search(gp_model, cov_functions)
         assert gp_model.cov_function == cov_function and gp_model.num_cov_pars == num_cov_pars
         for combination in opt_params['all_combinations'].values():
             score = _cv_score_of_best_params(dict(combination['params'], learning_rate=0.1),
                                              combination['num_boost_round'], X, y, coords, folds)
             assert abs(combination['score'] - score) < 1e-8
+    # A mask that estimates all covariance parameters is the same as no mask
+    scores = [combination['score'] for combination in
+              grid_search(_spatial_gp_model(coords), ['matern', 'matern_ard'])['all_combinations'].values()]
+    gp_model = _spatial_gp_model(coords)
+    gp_model.set_optim_params(params={'estimate_cov_par_index': [1, 1, 1]})
+    scores_mask = [combination['score'] for combination in
+                   grid_search(gp_model, ['matern', 'matern_ard'])['all_combinations'].values()]
+    assert np.max(np.abs(np.array(scores_mask) - np.array(scores))) < 1e-8
 
 
 def test_tuning_ar1_multifidelity_cov_function():
@@ -296,11 +308,13 @@ def test_tuning_ar1_multifidelity_cov_function():
     params = {'learning_rate': 0.2, 'min_data_in_leaf': 5, 'verbose': -1, 'deterministic': True,
               'force_col_wise': True}
 
-    def grid_search(cov_functions, fidelity_specific_mean):
-        gp_model = gpb.GPModel(gp_coords=coords, cov_function='ar1_mf_matern',
+    def grid_search(cov_functions, fidelity_specific_mean, train_set=None):
+        if train_set is None:
+            train_set = gpb.Dataset(X, y)
+        gp_model = gpb.GPModel(gp_coords=coords, cov_function=cov_functions[0],
                                fidelity_specific_mean=fidelity_specific_mean)
         return gpb.grid_search_tune_parameters(param_grid={'cov_function': cov_functions},
-                                               train_set=gpb.Dataset(X, y), gp_model=gp_model, params=params,
+                                               train_set=train_set, gp_model=gp_model, params=params,
                                                num_boost_round=10, folds=folds, metric='test_neg_log_likelihood',
                                                verbose_eval=0, return_all_combinations=True)
 
@@ -317,6 +331,12 @@ def test_tuning_ar1_multifidelity_cov_function():
             assert abs(combination['score'] - np.min(cvbst['test_neg_log_likelihood-mean'])) < 1e-8
     with pytest.raises(ValueError, match="all values of 'cov_function' must then be AR1 multifidelity"):
         grid_search(['ar1_mf_matern', 'matern_ard'], True)
+    # A search with a fidelity-specific mean adds the fidelity indicator to the Dataset as a feature, and a later
+    #   search without it must not use this Dataset
+    train_set = gpb.Dataset(X, y)
+    grid_search(['ar1_mf_matern'], True, train_set=train_set)
+    with pytest.raises(ValueError, match="Use a new Dataset for a model without a fidelity-specific mean"):
+        grid_search(['matern_ard'], True, train_set=train_set)
     with pytest.raises(ValueError, match="'ar1_mf_matern' is an AR1 multifidelity covariance function and can only"):
         gpb.grid_search_tune_parameters(param_grid={'cov_function': ['ar1_mf_matern']}, train_set=gpb.Dataset(X, y),
                                         gp_model=gpb.GPModel(gp_coords=coords, cov_function='matern_ard'))
@@ -334,6 +354,11 @@ def test_tuning_gp_model_params_errors():
     with pytest.raises(ValueError, match="cannot be tuned with initial values 'init_cov_pars'"):
         gpb.tune_pars_TPE_algorithm_optuna(search_space={'cov_function': {'values': ['matern', 'exponential']}},
                                            n_trials=1, X=X, y=y, gp_model=gp_model)
+    gp_model = _spatial_gp_model(coords)
+    gp_model.set_optim_params(params={'estimate_cov_par_index': [1, 0, 1]})
+    with pytest.raises(ValueError, match="or with covariance parameters that are not estimated"):
+        gpb.grid_search_tune_parameters(param_grid={'cov_fct_order': [1, 2]}, train_set=gpb.Dataset(X, y),
+                                        gp_model=gp_model)
     with pytest.raises(ValueError, match="must be names of covariance functions"):
         gpb.tune_pars_TPE_algorithm_optuna(search_space={'cov_function': {'values': [1, 2]}}, n_trials=1, X=X, y=y,
                                            gp_model=_spatial_gp_model(coords))

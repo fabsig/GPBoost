@@ -265,7 +265,9 @@
 #' whether marginal mean models are fitted independently for low and high fidelity. If \code{TRUE}
 #' (the default), linear covariates supplied to \code{fit()} are internally expanded into separate
 #' low- and high-fidelity coefficient blocks, and the fidelity indicator is automatically added as
-#' a feature when the model is used in the GPBoost algorithm. Ignored for other covariance functions.
+#' a feature to the training and validation \code{gpb.Dataset}s when the model is used in the GPBoost
+#' algorithm; these \code{gpb.Dataset}s can then not be used with models without a fidelity-specific mean.
+#' Ignored for other covariance functions.
 #' @param cov_fct_shape A \code{numeric} specifying the shape parameter of the covariance function 
 #' (e.g., smoothness parameter for Matern and Wendland covariance)  
 #' This parameter is irrelevant for some covariance functions such as the exponential or Gaussian

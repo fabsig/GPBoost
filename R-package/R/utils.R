@@ -140,6 +140,19 @@ gpb.check.r6.class <- function(object, name) {
   
 }
 
+# Stops if 'data' has the fidelity indicator of an AR1 multifidelity model as a feature that 'gp_model' does not use.
+# gpb.train and gpb.cv add the indicator to the gpb.Dataset of a model with a fidelity-specific mean, and the trees of
+# other models would use it as an additional feature
+gpb.check.ar1.mf.fidelity.feature <- function(data, gp_model) {
+  if (data$.__enclos_env__$private$ar1_mf_fidelity_added &&
+      (is.null(gp_model) || !gp_model$has_fidelity_specific_mean())) {
+    stop(paste0("This gpb.Dataset has the fidelity indicator of an AR1 multifidelity GP model as an additional ",
+                "feature, which was added when it was used with a model with a fidelity-specific mean. Use a new ",
+                "gpb.Dataset for a model without a fidelity-specific mean"))
+  }
+  return(invisible(NULL))
+}
+
 gpb.check.obj <- function(params, obj) {
   
   # Check whether the objective is empty or not, and take it from params if needed

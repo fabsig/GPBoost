@@ -206,6 +206,19 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
           expect_lt(abs(combination$score - score), TOLERANCE)
         }
       }
+      # A mask that estimates all covariance parameters is the same as no mask
+      grid_scores <- function(gp_model) {
+        opt_params <- gpb.grid.search.tune.parameters(param_grid = list("cov_function" = c("matern", "matern_ard")),
+                                                      data = gpb.Dataset(X, label = y_spatial), gp_model = gp_model,
+                                                      params = list(learning_rate = 0.1, verbose = -1), nrounds = 50,
+                                                      early_stopping_rounds = 5, folds = folds,
+                                                      metric = "test_neg_log_likelihood", verbose_eval = 0,
+                                                      return_all_combinations = TRUE)
+        return(sapply(opt_params$all_combinations, function(combination) combination$score))
+      }
+      gp_model <- spatial_gp_model()
+      gp_model$set_optim_params(params = list(estimate_cov_par_index = c(1, 1, 1)))
+      expect_lt(max(abs(grid_scores(gp_model) - grid_scores(spatial_gp_model()))), TOLERANCE)
       # A combination whose GP models cannot be constructed has no score, and the search continues
       time <- matrix(seq_len(n) / n, ncol = 1)
       capture.output(expect_message(
@@ -242,6 +255,10 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
       gp_model$set_optim_params(params = list(init_cov_pars = c(0.1, 1, 0.2)))
       expect_error(grid_search(list("cov_function" = c("matern", "exponential")), gp_model),
                    "cannot be tuned with initial values 'init_cov_pars'")
+      gp_model <- spatial_gp_model()
+      gp_model$set_optim_params(params = list(estimate_cov_par_index = c(1, 0, 1)))
+      expect_error(grid_search(list("cov_fct_order" = c(1, 2)), gp_model),
+                   "or with covariance parameters that are not estimated")
       expect_error(grid_search(list("cov_function" = c(1, 2)), spatial_gp_model()),
                    "must be names of covariance functions")
       # With a fidelity-specific mean, the trees have the fidelity indicator as an additional feature, and covariance
@@ -257,6 +274,20 @@ if(Sys.getenv("NO_GPBOOST_ALGO_TESTS") != "NO_GPBOOST_ALGO_TESTS"){
                    "is an AR1 multifidelity covariance function and can only be tuned")
       opt_params <- grid_search(list("cov_function" = c("ar1_mf_matern", "ar1_mf_exponential")),
                                 GPModel(gp_coords = coords_mf, cov_function = "ar1_mf_matern"), label = y_mf)
+      # A search with a fidelity-specific mean adds the fidelity indicator to the gpb.Dataset as a feature, and a
+      #   later search without it must not use this gpb.Dataset
+      data_mf <- gpb.Dataset(X, label = y_mf)
+      gpb.grid.search.tune.parameters(param_grid = list("cov_function" = "ar1_mf_matern"), data = data_mf,
+                                      gp_model = GPModel(gp_coords = coords_mf, cov_function = "ar1_mf_matern"),
+                                      params = list(learning_rate = 0.1, verbose = -1), nrounds = 2, folds = folds,
+                                      metric = "test_neg_log_likelihood", verbose_eval = 0)
+      expect_error(gpb.grid.search.tune.parameters(param_grid = list("cov_function" = "matern_ard"), data = data_mf,
+                                                   gp_model = GPModel(gp_coords = coords_mf,
+                                                                      cov_function = "matern_ard"),
+                                                   params = list(learning_rate = 0.1, verbose = -1), nrounds = 2,
+                                                   folds = folds, metric = "test_neg_log_likelihood",
+                                                   verbose_eval = 0),
+                   "Use a new gpb.Dataset for a model without a fidelity-specific mean")
       for (combination in opt_params$all_combinations) {
         cvbst <- gpb.cv(params = list(learning_rate = 0.1, verbose = -1, force_col_wise = TRUE, deterministic = TRUE),
                         data = gpb.Dataset(X, label = y_mf),

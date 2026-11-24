@@ -1975,6 +1975,9 @@ class Dataset:
         self.feature_penalty = None
         self.monotone_constraints = None
         self.version = 0
+        # The fidelity indicator of an AR1 multifidelity model that 'train()' or 'cv()' have added as a feature
+        self._ar1_mf_fidelity_added = False
+        self._ar1_mf_fidelity = None
 
     def __del__(self):
         try:
@@ -5536,8 +5539,10 @@ class GPModel(object):
             fidelity_specific_mean : bool, optional (default=True)
                 For an ``ar1_mf_<base>`` covariance, fit independent low- and high-fidelity marginal means.
                 Linear covariates are internally expanded into low- and high-fidelity coefficient blocks. In the
-                GPBoost algorithm the fidelity indicator is automatically appended as a boosting feature. This
-                argument is ignored for other covariance functions. Set it to False for the legacy shared mean.
+                GPBoost algorithm the fidelity indicator is automatically appended as a boosting feature to the
+                training and validation Datasets, which can then not be used with models without a fidelity-specific
+                mean. This argument is ignored for other covariance functions. Set it to False for the legacy shared
+                mean.
 
             cov_fct_shape : float, optional (default=0.)
                 Shape parameter of the covariance function (e.g., smoothness parameter for Matern and Wendland covariance).

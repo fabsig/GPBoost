@@ -72,3 +72,26 @@ def test_cv_uses_the_same_features_as_train(feature_name):
         assert list(with_feature.feature_name) == feature_name + ["AR1_MF_fidelity"]
         assert list(without_feature.feature_name) == feature_name
     assert error_with < 0.5 * error_without
+
+
+def test_dataset_with_the_fidelity_feature_requires_a_fidelity_specific_mean():
+    # The trees of a model without a fidelity-specific mean would use the fidelity indicator that 'train()' and 'cv()'
+    # have added to a Dataset as a feature
+    coords, features, y = _sim_multifidelity()
+    train_set = gpb.Dataset(features, label=y, free_raw_data=False)
+    gpb.train(params=_PARAMS, train_set=train_set, gp_model=_gp_model(coords), num_boost_round=1,
+              train_gp_model_cov_pars=False)
+    gpb.cv(params=_PARAMS, train_set=train_set, gp_model=_gp_model(coords), num_boost_round=1,
+           folds=_folds(len(y)), train_gp_model_cov_pars=False, use_gp_model_for_validation=False,
+           verbose_eval=False)
+    for gp_model in (_gp_model(coords, fidelity_specific_mean=False), None):
+        with pytest.raises(ValueError, match="Use a new Dataset for a model without a fidelity-specific mean"):
+            gpb.train(params=_PARAMS, train_set=train_set, gp_model=gp_model, num_boost_round=1,
+                      train_gp_model_cov_pars=False)
+        with pytest.raises(ValueError, match="Use a new Dataset for a model without a fidelity-specific mean"):
+            gpb.cv(params=_PARAMS, train_set=train_set, gp_model=gp_model, num_boost_round=1,
+                   folds=_folds(len(y)), train_gp_model_cov_pars=False, use_gp_model_for_validation=False,
+                   verbose_eval=False)
+    with pytest.raises(ValueError, match="Use a new Dataset for a model without a fidelity-specific mean"):
+        gpb.train(params=_PARAMS, train_set=gpb.Dataset(features, label=y), valid_sets=[train_set],
+                  num_boost_round=1)

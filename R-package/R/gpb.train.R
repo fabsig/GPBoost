@@ -244,6 +244,7 @@ gpb.train <- function(params = list(),
   end_iteration <- begin_iteration + params[["num_iterations"]] - 1L
 
   use_ar1_mf_fidelity_mean <- !is.null(gp_model) && gp_model$has_fidelity_specific_mean()
+  gpb.check.ar1.mf.fidelity.feature(data, gp_model)
   if (use_ar1_mf_fidelity_mean) {
     data$add_ar1_mf_fidelity_feature(gp_model$get_fidelity_indicator())
     if (!is.null(colnames) && !"AR1_MF_fidelity" %in% colnames) {
@@ -303,6 +304,7 @@ gpb.train <- function(params = list(),
         next
       }
 
+      gpb.check.ar1.mf.fidelity.feature(valid_data, gp_model)
       if (use_ar1_mf_fidelity_mean) {
         fidelity_pred <- gp_model$get_fidelity_indicator(prediction = TRUE)
         if (is.null(fidelity_pred)) {
