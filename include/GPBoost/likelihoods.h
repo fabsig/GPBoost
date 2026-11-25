@@ -2997,6 +2997,8 @@ namespace GPBoost {
 		* \param sample_posterior If true, posterior samples are generated
 		* \param num_post_samples Number of posterior samples
 		* \param post_samples_id Sample from posterior without the mean, the mean is added at then end
+		* \param base_seed Random number generator seed for the posterior samples
+		* \param run_id Counter for seeding, increased by one if posterior samples are drawn
 		* \param pred_mean[out] Predictive mean
 		* \param pred_cov[out] Predictive covariance matrix
 		* \param pred_var[out] Predictive variances
@@ -3029,6 +3031,8 @@ namespace GPBoost {
 			bool sample_posterior,
 			int num_post_samples,
 			den_mat_t& post_samples_id,
+			int base_seed,
+			uint64_t& run_id,
 			vec_t& pred_mean,
 			den_mat_t& pred_cov,
 			vec_t& pred_var,
@@ -3055,6 +3059,8 @@ namespace GPBoost {
 		* \param sample_posterior If true, posterior samples are generated
 		* \param num_post_samples Number of posterior samples
 		* \param post_samples_id Sample from posterior without the mean, the mean is added at then end
+		* \param base_seed Random number generator seed for the posterior samples
+		* \param run_id Counter for seeding, increased by one if posterior samples are drawn
 		* \param pred_mean[out] Predictive mean
 		* \param pred_cov[out] Predictive covariance matrix
 		* \param pred_var[out] Predictive variances
@@ -3075,6 +3081,8 @@ namespace GPBoost {
 			bool sample_posterior,
 			int num_post_samples,
 			den_mat_t& post_samples_id,
+			int base_seed,
+			uint64_t& run_id,
 			vec_t& pred_mean,
 			den_mat_t& pred_cov,
 			vec_t& pred_var,

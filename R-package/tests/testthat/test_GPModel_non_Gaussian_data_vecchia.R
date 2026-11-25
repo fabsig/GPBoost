@@ -696,14 +696,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
   test_that("Vecchia and VIF approximations with iterative methods: simulated vectors do not depend on the requested outputs ", {
     # Posterior samples alone must not change the (co-)variances of later predictions of the same model. Further, the
-    # i-th simulated vector has to be the same whether the covariance matrix or the variances are requested, also with
-    # more posterior samples than vectors for the (co-)variances. The latter only shows with several threads
+    # i-th simulated vector has to be the same whichever outputs are requested, also when they need different numbers
+    # of vectors. The latter depends on which thread draws which vector, hence four threads also on smaller machines.
+    # Posterior samples are compared between new models, since every call of a model draws new samples
     y_bin <- as.numeric(sim_rand_unif(n=n, init_c=0.2978341) < pnorm(L %*% b_1))
     coords_pred <- matrix(sim_rand_unif(n=20*d, init_c=0.27), ncol=d)
-    new_model <- function(gp_approx) {
-      gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+    new_model <- function(gp_approx, num_clusters = 1) {
+      gp_model <- GPModel(gp_coords = coords[rep(1:n, num_clusters), ], cluster_ids = rep(0:(num_clusters - 1), each = n),
+                          cov_function = "exponential", likelihood = "bernoulli_probit",
                           gp_approx = gp_approx, num_neighbors = 8, num_ind_points = 10, vecchia_ordering = "none",
-                          matrix_inversion_method = "iterative")
+                          matrix_inversion_method = "iterative", num_parallel_threads = 4)
       if (gp_approx == "full_scale_vecchia") {
         gp_model$set_optim_params(params = list(cg_preconditioner_type = "vifdu"))
       }
@@ -712,6 +714,13 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
     predict_sim <- function(gp_model, ...) {
       gp_model$predict(y = y_bin, gp_coords_pred = coords_pred, cov_pars = c(1,0.2), predict_response = FALSE, ...)
+    }
+    # Correlation of two sets of samples (the correlation is about 0.5 if all random numbers of the simulated vectors of
+    # the Laplace approximation are the same for both sets)
+    correlation <- function(samples_1, samples_2) {
+      centered_1 <- samples_1 - rowMeans(samples_1)
+      centered_2 <- samples_2 - rowMeans(samples_2)
+      sum(centered_1 * centered_2) / sqrt(sum(centered_1^2) * sum(centered_2^2))
     }
     for (gp_approx in c("vecchia", "full_scale_vecchia")) {
       gp_model <- new_model(gp_approx)
@@ -725,6 +734,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(max(abs(pred_var_samples$posterior_samples - pred_cov_samples$posterior_samples)), TOLERANCE_STRICT)
       expect_lt(max(abs(pred_var_samples$posterior_samples - pred_samples$posterior_samples)), TOLERANCE_STRICT)
       expect_lt(max(abs(pred_var_samples$var - diag(pred_cov_samples$cov))), TOLERANCE_STRICT)
+      expect_lt(max(abs(pred_cov_samples$cov - pred_cov$cov)), TOLERANCE_STRICT)
+      # fewer posterior samples than vectors for the covariance matrix
+      pred_samples_70 <- predict_sim(new_model(gp_approx), sample_posterior = TRUE, num_post_samples = 70)
+      pred_cov_samples_70 <- predict_sim(new_model(gp_approx), predict_cov_mat = TRUE, sample_posterior = TRUE, num_post_samples = 70)
+      expect_lt(max(abs(pred_cov_samples_70$posterior_samples - pred_samples_70$posterior_samples)), TOLERANCE_STRICT)
+      # Two calls of the same model draw independent samples
+      gp_model <- new_model(gp_approx)
+      samples_1 <- predict_sim(gp_model, sample_posterior = TRUE, num_post_samples = 131)$posterior_samples
+      samples_2 <- predict_sim(gp_model, sample_posterior = TRUE, num_post_samples = 131)$posterior_samples
+      expect_lt(abs(correlation(samples_1, samples_2)), 0.2)
+      # Two clusters with the same data draw independent samples
+      gp_model <- new_model(gp_approx, num_clusters = 2)
+      samples <- gp_model$predict(y = rep(y_bin, 2), gp_coords_pred = rbind(coords_pred, coords_pred),
+                                  cluster_ids_pred = rep(0:1, each = 20), cov_pars = c(1,0.2), predict_response = FALSE,
+                                  sample_posterior = TRUE, num_post_samples = 131)$posterior_samples
+      expect_lt(abs(correlation(samples[1:20, ], samples[21:40, ])), 0.2)
     }
   })
 

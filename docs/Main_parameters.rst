@@ -428,7 +428,7 @@ Model specification parameters
 
 -  ``seed`` : integer, (default = 0)
 
-   -  The seed used for model creation (e.g., random ordering in Vecchia approximation)
+   -  The seed used for model creation (e.g., random ordering in Vecchia approximation) and for posterior and prior samples
 
 
 Optimization parameters

@@ -782,6 +782,18 @@ namespace GPBoost {
 		uint64_t& run_id,
 		den_mat_t& R);
 
+	/*!
+	* \brief Random number generator for the i-th posterior sample of a prediction. It depends only on the seed, the run,
+	*		and i, and not on the thread that uses it. Its numbers differ from those of 'GenRandVecNormalParallel()' for the
+	*		same seed, run, and column index
+	* \param base_seed Random number generator seed
+	* \param run_id Counter for seeding
+	* \param sample_i Index of the posterior sample
+	*/
+	RNG_t RNGForPosteriorSample(int base_seed,
+		uint64_t run_id,
+		int sample_i);
+
 	// Old non-parallel version
 	///*!
 	//* \brief Fills a given matrix with Rademacher RV's.

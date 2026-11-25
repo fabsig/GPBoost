@@ -5532,6 +5532,8 @@ namespace GPBoost {
 		bool sample_posterior,
 		int num_post_samples,
 		den_mat_t& post_samples_id,
+		int base_seed,
+		uint64_t& run_id,
 		vec_t& pred_mean,
 		den_mat_t& pred_cov,
 		vec_t& pred_var,
@@ -5761,18 +5763,27 @@ namespace GPBoost {
 					sim_pred_cov_pos.resize(num_pred, num_sim_var_pred);
 					sim_pred_cov_neg.resize(num_pred, num_sim_var_pred);
 				}
-				const int num_sim = std::max(num_sim_var_pred, num_post_samples);
-				// The vectors are simulated in batches of 16 vectors per thread for all outputs, so that the i-th vector is drawn
-				//	by the same thread from the same random number stream for the predictive covariance matrix, the predictive
-				//	variances, and posterior samples. For the covariance matrix, the vectors of a batch are stored, and the sum of
-				//	their outer products is updated after each batch with a matrix product. This needs one dense num_pred x num_pred
-				//	matrix instead of one per thread, and it does not depend on the order in which the threads finish
+				// The first num_sim_var_pred simulated vectors are used for the predictive covariance matrix and the predictive
+				//	variances, and the following num_post_samples vectors are posterior samples. The vectors are simulated in batches
+				//	of 16 vectors per thread, and the vectors of a batch are assigned to the threads in turn (schedule(static, 1)).
+				//	The vectors for the (co-)variances are drawn from the random number streams of the threads, which are seeded at
+				//	every call. The thread that draws the i-th of them and the position of this vector in the stream of the thread do
+				//	not depend on the total number of vectors, so the (co-)variances do not depend on whether posterior samples are
+				//	requested. Every posterior sample has its own random number generator, which depends on the seed of the model,
+				//	the index of the sample, and a counter that the model advances with every use, so that every call and every
+				//	cluster draws new samples, independently of the number of threads.
+				//	For the covariance matrix, the vectors of a batch are stored, and the sum of their outer products is updated after
+				//	each batch with a matrix product. This needs one dense num_pred x num_pred matrix instead of one per thread, and
+				//	it does not depend on the order in which the threads finish
+				const int num_sim = num_sim_var_pred + num_post_samples;
 				const int batch_size = 16 * num_threads;
 				const bool sum_sim_pred_cov_in_batches = calc_pred_cov && !store_sim_pred_cov;
 				den_mat_t sim_pred_cov_batch;
 				if (sum_sim_pred_cov_in_batches) {
 					sim_pred_cov_batch.resize(num_pred, std::min(batch_size, num_sim_var_pred));
 				}
+				// The sums of the squares of the threads are allocated at their first vector, so that threads without vectors
+				//	need no memory ('AddPartialSumsOfThreads()' skips empty sums)
 				std::vector<vec_t> pred_var_of_thread(num_threads);
 #pragma omp parallel
 				{
@@ -5784,22 +5795,25 @@ namespace GPBoost {
 #endif
 					RNG_t rng_local = parallel_rngs[thread_nb];
 					vec_t& pred_var_private = pred_var_of_thread[thread_nb];
-					if (calc_pred_var) {
-						pred_var_private = vec_t::Zero(num_pred);
-					}
 					for (int batch_start = 0; batch_start < num_sim; batch_start += batch_size) {
 						const int batch_end = std::min(batch_start + batch_size, num_sim);
-#pragma omp for schedule(static) reduction(||:na_inf_flag_4)
+#pragma omp for schedule(static, 1) reduction(||:na_inf_flag_4)
 						for (int i = batch_start; i < batch_end; ++i) {
+							const bool is_post_sample = i >= num_sim_var_pred;
+							RNG_t rng_post_sample;
+							if (is_post_sample) {
+								rng_post_sample = RNGForPosteriorSample(base_seed, run_id, i - num_sim_var_pred);
+							}
+							RNG_t& rng = is_post_sample ? rng_post_sample : rng_local;
 							//z_i ~ N(0,I)
 							vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_), rand_vec_pred_I_3((*cross_cov).cols());
 							std::normal_distribution<double> ndist(0.0, 1.0);
 							for (int j = 0; j < dim_mode_; j++) {
-								rand_vec_pred_I_1(j) = ndist(rng_local);
-								rand_vec_pred_I_2(j) = ndist(rng_local);
+								rand_vec_pred_I_1(j) = ndist(rng);
+								rand_vec_pred_I_2(j) = ndist(rng);
 							}
 							for (int j = 0; j < (*cross_cov).cols(); j++) {
-								rand_vec_pred_I_3(j) = ndist(rng_local);
+								rand_vec_pred_I_3(j) = ndist(rng);
 							}
 
 							vec_t rand_vec_pred_SigmaI_plus_W_inv(dim_mode_);
@@ -5861,18 +5875,19 @@ namespace GPBoost {
 							}
 							if (calc_pred_var) {
 								if (i < num_sim_var_pred) {
+									if (pred_var_private.size() == 0) {
+										pred_var_private = vec_t::Zero(num_pred);
+									}
 									pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
 								}
 							}
-							if (sample_posterior) {
-								if (i < num_post_samples) {
-									post_samples_id.col(i) += rand_vec_pred;
-								}
+							if (is_post_sample) {
+								post_samples_id.col(i - num_sim_var_pred) += rand_vec_pred;
 							}
 							if (information_has_negative_values && i < num_sim_var_pred) {
 								//z_i ~ N(0, W_-): the sample (co-)variance of the corresponding predictions is subtracted, see above
 								for (int j = 0; j < dim_mode_; j++) {
-									rand_vec_pred_I_2(j) = ndist(rng_local);
+									rand_vec_pred_I_2(j) = ndist(rng);
 								}
 								vec_t rand_vec_pred_W_neg = W_neg_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
 								CGFVIFLaplaceVec(information_ll_, B_rm_, B_t_D_inv_rm_, chol_fact_sigma_woodbury, cross_cov, W_D_inv_inv,
@@ -5959,6 +5974,9 @@ namespace GPBoost {
 							AddOuterProductsInParallelRegion(sim_pred_cov_batch, num_sim_pred_cov_batch, pred_cov);
 						}
 					}//end loop over batches
+				}
+				if (num_post_samples > 0) {
+					++run_id;
 				}
 				if (calc_pred_var) {
 					AddPartialSumsOfThreads(pred_var_of_thread, pred_var);
@@ -6132,6 +6150,8 @@ namespace GPBoost {
 		bool sample_posterior,
 		int num_post_samples,
 		den_mat_t& post_samples_id,
+		int base_seed,
+		uint64_t& run_id,
 		vec_t& pred_mean,
 		den_mat_t& pred_cov,
 		vec_t& pred_var,
@@ -6243,15 +6263,16 @@ namespace GPBoost {
 					sim_pred_cov_pos.resize(num_pred, num_sim_var_pred);
 					sim_pred_cov_neg.resize(num_pred, num_sim_var_pred);
 				}
-				const int num_sim = std::max(num_sim_var_pred, num_post_samples);
-				// The vectors are simulated in batches of 16 vectors per thread for all outputs, and the vectors for the predictive
-				//	covariance matrix are stored per batch, see 'PredictLaplaceApproxFSVA()'
+				// The vectors for the (co-)variances are followed by the posterior samples, which have their own random number
+				//	generators, see 'PredictLaplaceApproxFSVA()'
+				const int num_sim = num_sim_var_pred + num_post_samples;
 				const int batch_size = 16 * num_threads;
 				const bool sum_sim_pred_cov_in_batches = calc_pred_cov && !store_sim_pred_cov;
 				den_mat_t sim_pred_cov_batch;
 				if (sum_sim_pred_cov_in_batches) {
 					sim_pred_cov_batch.resize(num_pred, std::min(batch_size, num_sim_var_pred));
 				}
+				// allocated at the first vector of a thread, see 'PredictLaplaceApproxFSVA()'
 				std::vector<vec_t> pred_var_of_thread(num_threads);
 #pragma omp parallel
 				{
@@ -6263,19 +6284,22 @@ namespace GPBoost {
 #endif
 					RNG_t rng_local = parallel_rngs[thread_nb];
 					vec_t& pred_var_private = pred_var_of_thread[thread_nb];
-					if (calc_pred_var) {
-						pred_var_private = vec_t::Zero(num_pred);
-					}
 					for (int batch_start = 0; batch_start < num_sim; batch_start += batch_size) {
 						const int batch_end = std::min(batch_start + batch_size, num_sim);
-#pragma omp for schedule(static) reduction(||:na_inf_flag_5)
+#pragma omp for schedule(static, 1) reduction(||:na_inf_flag_5)
 						for (int i = batch_start; i < batch_end; ++i) {
+							const bool is_post_sample = i >= num_sim_var_pred;
+							RNG_t rng_post_sample;
+							if (is_post_sample) {
+								rng_post_sample = RNGForPosteriorSample(base_seed, run_id, i - num_sim_var_pred);
+							}
+							RNG_t& rng = is_post_sample ? rng_post_sample : rng_local;
 							//z_i ~ N(0,I)
 							std::normal_distribution<double> ndist(0.0, 1.0);
 							vec_t rand_vec_pred_I_1(dim_mode_), rand_vec_pred_I_2(dim_mode_);
 							for (int j = 0; j < dim_mode_; j++) {
-								rand_vec_pred_I_1(j) = ndist(rng_local);
-								rand_vec_pred_I_2(j) = ndist(rng_local);
+								rand_vec_pred_I_1(j) = ndist(rng);
+								rand_vec_pred_I_2(j) = ndist(rng);
 							}
 							//z_i ~ N(0,(Sigma^{-1} + W))
 							vec_t rand_vec_pred_SigmaI_plus_W = B_t_D_inv_sqrt_rm * rand_vec_pred_I_1 + W_diag_sqrt.cwiseProduct(rand_vec_pred_I_2);
@@ -6306,19 +6330,20 @@ namespace GPBoost {
 							}
 							if (calc_pred_var) {
 								if (i < num_sim_var_pred) {
+									if (pred_var_private.size() == 0) {
+										pred_var_private = vec_t::Zero(num_pred);
+									}
 									pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
 								}
 							}
-							if (sample_posterior) {
-								if (i < num_post_samples) {
-									post_samples_id.col(i) += rand_vec_pred;
-								}
+							if (is_post_sample) {
+								post_samples_id.col(i - num_sim_var_pred) += rand_vec_pred;
 							}
 							if (information_has_negative_values && i < num_sim_var_pred) {
 								//z_2 ~ N(0, W_-), see above
 								vec_t rand_vec_pred_W_neg(dim_mode_);
 								for (int j = 0; j < dim_mode_; j++) {
-									rand_vec_pred_W_neg(j) = W_neg_diag_sqrt[j] * ndist(rng_local);
+									rand_vec_pred_W_neg(j) = W_neg_diag_sqrt[j] * ndist(rng);
 								}
 								vec_t rand_vec_pred_W_neg_SigmaI_plus_W_inv(dim_mode_);
 								bool has_NA_or_Inf_W_neg = false;
@@ -6347,6 +6372,9 @@ namespace GPBoost {
 						}
 					}//end loop over batches
 				} // end #pragma omp parallel
+				if (num_post_samples > 0) {
+					++run_id;
+				}
 				if (calc_pred_var) {
 					AddPartialSumsOfThreads(pred_var_of_thread, pred_var);
 				}

@@ -5089,7 +5089,7 @@ namespace GPBoost {
 											re_comps_cross_cov_preconditioner_[cluster_i][0], GetForCluster(chol_fact_sigma_ip_, cluster_i, 0), GetForCluster(chol_fact_sigma_ip_preconditioner_, cluster_i, 0),
 											sigma_woodbury_[cluster_i], chol_fact_sigma_woodbury_[cluster_i], GetForCluster(chol_ip_cross_cov_, cluster_i, 0), GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0),
 											re_comps_cross_cov_[cluster_i][0], cross_cov_pred_ip, B_T_D_inv_B_cross_cov_[cluster_i][0], D_inv_B_cross_cov_[cluster_i][0], 
-											sample_posterior, num_post_samples, post_samples_id, mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp],
+											sample_posterior, num_post_samples, post_samples_id, seed_rng_, cg_generator_counter_, mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp],
 											predict_cov_mat, predict_var_or_response, false, true, GPU_use_);
 									}
 									else if (vecchia_pred_type_ == "latent_order_obs_first_cond_all") {
@@ -5105,7 +5105,7 @@ namespace GPBoost {
 											re_comps_cross_cov_preconditioner_[cluster_i][0], GetForCluster(chol_fact_sigma_ip_, cluster_i, 0), GetForCluster(chol_fact_sigma_ip_preconditioner_, cluster_i, 0),
 											sigma_woodbury_[cluster_i], chol_fact_sigma_woodbury_[cluster_i], GetForCluster(chol_ip_cross_cov_, cluster_i, 0), GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0),
 											re_comps_cross_cov_[cluster_i][0], cross_cov_pred_ip, B_T_D_inv_B_cross_cov_[cluster_i][0], D_inv_B_cross_cov_[cluster_i][0], 
-											sample_posterior, num_post_samples, post_samples_id, mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp],
+											sample_posterior, num_post_samples, post_samples_id, seed_rng_, cg_generator_counter_, mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp],
 											predict_cov_mat, predict_var_or_response, false, false, GPU_use_);
 									}
 									else {
@@ -5138,7 +5138,7 @@ namespace GPBoost {
 										bool CondObsOnly = vecchia_pred_type_ == "latent_order_obs_first_cond_obs_only";
 										likelihood_[cluster_i]->PredictLaplaceApproxVecchia(y_[cluster_i].data(), y_int_[cluster_i].data(), fixed_effects_cluster_i_ptr,
 											B_[cluster_i], D_inv_[cluster_i], Bpo[igp], Bp[igp], Dp[igp],
-											sample_posterior, num_post_samples, post_samples_id, 
+											sample_posterior, num_post_samples, post_samples_id, seed_rng_, cg_generator_counter_,
 											mean_pred_id[igp], cov_mat_pred_vecchia_id, var_pred_id[igp],
 											predict_cov_mat, predict_var_or_response, false, CondObsOnly, re_comps_ip_preconditioner_[cluster_i][0],
 											re_comps_cross_cov_preconditioner_[cluster_i][0], GetForCluster(chol_ip_cross_cov_preconditioner_, cluster_i, 0), GetForCluster(chol_fact_sigma_ip_preconditioner_, cluster_i, 0),
@@ -14400,7 +14400,8 @@ namespace GPBoost {
 								// For the covariance matrix, the simulated vectors are calculated in batches, and the sum of their outer
 								//	products is updated after each batch. This needs one dense num_REs_pred x num_REs_pred matrix instead of
 								//	one per thread, and it does not depend on the order in which the threads finish. For the variances,
-								//	every thread adds up the squares of its vectors, and the sums of the threads are added in their order
+								//	every thread adds up the squares of its vectors, and the sums of the threads are added in their order.
+								//	The sum of a thread is allocated at its first vector, so that threads without vectors need no memory
 								const int num_threads = omp_get_max_threads();
 								int batch_size = nsim_var_pred;
 								den_mat_t rand_vecs_resid_batch;
@@ -14409,11 +14410,6 @@ namespace GPBoost {
 									rand_vecs_resid_batch.resize(num_REs_pred, batch_size);
 								}
 								std::vector<vec_t> sample_resid_var_of_thread(num_threads);
-								if (calc_pred_var) {
-									for (vec_t& sample_resid_var_private : sample_resid_var_of_thread) {
-										sample_resid_var_private = vec_t::Zero(num_REs_pred);
-									}
-								}
 								for (int batch_start = 0; batch_start < nsim_var_pred; batch_start += batch_size) {
 									const int num_in_batch = std::min(batch_size, nsim_var_pred - batch_start);
 #pragma omp parallel for schedule(static)
@@ -14422,7 +14418,11 @@ namespace GPBoost {
 										TriangularSolveGivenCholesky<T_chol, T_mat, vec_t, vec_t>(chol_fact_resid_[cluster_i], rand_vec_i, rand_vec_i, true);
 										vec_t rand_vec_resid = sigma_resid_pred_obs * rand_vec_i;
 										if (calc_pred_var) {
-											sample_resid_var_of_thread[omp_get_thread_num()] += rand_vec_resid.cwiseProduct(rand_vec_resid);
+											vec_t& sample_resid_var_private = sample_resid_var_of_thread[omp_get_thread_num()];
+											if (sample_resid_var_private.size() == 0) {
+												sample_resid_var_private = vec_t::Zero(num_REs_pred);
+											}
+											sample_resid_var_private += rand_vec_resid.cwiseProduct(rand_vec_resid);
 										}
 										if (calc_pred_cov) {
 											rand_vecs_resid_batch.col(k) = rand_vec_resid;

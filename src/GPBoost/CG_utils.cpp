@@ -1403,6 +1403,15 @@ namespace GPBoost {
 		++run_id;
 	}//endGenRandVecNormalParallel
 
+	RNG_t RNGForPosteriorSample(int base_seed,
+		uint64_t run_id,
+		int sample_i) {
+		// the fifth element separates these seeds from the ones of 'GenRandVecNormalParallel()'
+		std::seed_seq seq{ static_cast<uint32_t>(base_seed), static_cast<uint32_t>(run_id), static_cast<uint32_t>(run_id >> 32),
+			static_cast<uint32_t>(sample_i), 1u };
+		return RNG_t(seq);
+	}//end RNGForPosteriorSample
+
 	// Old non-parallel version
 	//void GenRandVecRademacher(RNG_t& generator,
 	//	den_mat_t& R) {

@@ -5757,7 +5757,7 @@ class GPModel(object):
             cover_tree_radius : float, optional (default=1.)
                 The radius (= "spatial resolution") for the cover tree algorithm
             seed : integer, optional (default=0)
-                The seed used for model creation (e.g., random ordering in Vecchia approximation)
+                The seed used for model creation (e.g., random ordering in Vecchia approximation) and for posterior and prior samples
             cluster_ids : list, numpy 1-D array, pandas Series / one-column DataFrame with numeric or string data or None, optional (default=None)
                 The elements indicate independent realizations of  random effects / Gaussian processes
                 (same values = same process realization)

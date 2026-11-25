@@ -406,7 +406,7 @@ points / knots for FITC, full_scale_tapering, and VIF approximations. Internal d
 for the cover tree algorithm}
 
 \item{seed}{An \code{integer} specifying the seed used for model creation 
-(e.g., random ordering in Vecchia approximation)}
+(e.g., random ordering in Vecchia approximation) and for posterior and prior samples}
 
 \item{cluster_ids}{A \code{vector} with elements indicating independent realizations of 
 random effects / Gaussian processes (same values = same process realization).

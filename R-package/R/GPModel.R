@@ -393,7 +393,7 @@
 #' }
 #' }
 #' @param seed An \code{integer} specifying the seed used for model creation 
-#' (e.g., random ordering in Vecchia approximation)
+#' (e.g., random ordering in Vecchia approximation) and for posterior and prior samples
 #' @param vecchia_pred_type A \code{string} specifying the type of Vecchia approximation used for making predictions.
 #' Default value if vecchia_pred_type = NULL: "order_obs_first_cond_obs_only". 
 #' Available options:
