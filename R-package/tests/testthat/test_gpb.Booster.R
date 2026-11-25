@@ -572,13 +572,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       )
       expect_true(gpboost:::gpb.is.Booster(bst))
       
+      # In the third node of the first tree, 'stalk-root=rooted' and 'stalk-surface-below-ring=scaly' split the
+      # training data in the same way. Their gains are equal in exact arithmetic, and the rounding, which differs
+      # between compilers, decides which of them is chosen
       .feat_importance_from_string <- function(model_string) {
         file_lines <- strsplit(model_string, "\n")[[1L]]
         start_indx <- which(grepl("^feature_importances\\:$", file_lines)) + 1L
         blank_line_indices <- which(file_lines == "")
         end_indx <- blank_line_indices[blank_line_indices > start_indx][1L] - 1L
         importances <- file_lines[start_indx: end_indx]
-        return(importances)
+        return(sub("^stalk-surface-below-ring=scaly=", "stalk-root=rooted=", importances))
       }
       
       GAIN_IMPORTANCE <- 1L
@@ -597,7 +600,8 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       
       SPLIT_IMPORTANCE <- 0L
       model_string <- bst$save_model_to_string(feature_importance_type = SPLIT_IMPORTANCE)
-      expect_equal(
+      # All features have importance 1, and features with equal importance are listed in the order of the columns
+      expect_setequal(
         .feat_importance_from_string(model_string)
         , c(
           "odor=none=1"
