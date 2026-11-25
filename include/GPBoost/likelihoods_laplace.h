@@ -5583,8 +5583,9 @@ namespace GPBoost {
 				if (!sample_posterior) {
 					num_post_samples = 0;
 				}
+				int num_sim_var_pred = nsim_var_pred_;
 				if (!calc_pred_cov && !calc_pred_var) {
-					nsim_var_pred_ = 0;
+					num_sim_var_pred = 0;
 				}
 				den_mat_t cross_cov_PP_Vecchia = chol_ip_cross_cov_pred.transpose() * (chol_ip_cross_cov * Bt_D_inv_B_cross_cov);
 				den_mat_t cross_cov_pred_obs_pred_inv;
@@ -5729,7 +5730,7 @@ namespace GPBoost {
 				// parallel loop wrote to the shared members W_D_inv(_inv)/sigma_woodbury_woodbury_/
 				// chol_fact_sigma_woodbury_woodbury_ from all threads (a data race that intermittently corrupted the
 				// factorization -> Cholesky failure/segfault) and called the non-thread-safe Log::REFatal().
-				if ((cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") && std::max(nsim_var_pred_, num_post_samples) > 0) {
+				if ((cg_preconditioner_type_ == "vifdu" || cg_preconditioner_type_ == "none") && std::max(num_sim_var_pred, num_post_samples) > 0) {
 					W_D_inv = (InformationForPreconditioner() + D_inv_rm_.diagonal());
 					W_D_inv_inv = W_D_inv.cwiseInverse();
 					den_mat_t B_t_D_inv_W_D_inv_inv_D_inv_B_cross_cov = W_D_inv_inv.cwiseSqrt().asDiagonal() * D_inv_B_cross_cov_;
@@ -5757,20 +5758,20 @@ namespace GPBoost {
 				const bool store_sim_pred_cov = calc_pred_cov && information_has_negative_values;
 				den_mat_t sim_pred_cov_pos, sim_pred_cov_neg;
 				if (store_sim_pred_cov) {
-					sim_pred_cov_pos.resize(num_pred, nsim_var_pred_);
-					sim_pred_cov_neg.resize(num_pred, nsim_var_pred_);
+					sim_pred_cov_pos.resize(num_pred, num_sim_var_pred);
+					sim_pred_cov_neg.resize(num_pred, num_sim_var_pred);
 				}
-				const int num_sim = std::max(nsim_var_pred_, num_post_samples);
-				// The simulated vectors for the predictive covariance matrix are stored in batches, and the sum of their outer
-				//	products is updated after each batch with a matrix product. This needs one dense num_pred x num_pred matrix
-				//	instead of one per thread, and it does not depend on the order in which the threads finish. A batch has 16
-				//	vectors per thread, so that every thread simulates as many vectors as in a single loop over all vectors
+				const int num_sim = std::max(num_sim_var_pred, num_post_samples);
+				// The vectors are simulated in batches of 16 vectors per thread for all outputs, so that the i-th vector is drawn
+				//	by the same thread from the same random number stream for the predictive covariance matrix, the predictive
+				//	variances, and posterior samples. For the covariance matrix, the vectors of a batch are stored, and the sum of
+				//	their outer products is updated after each batch with a matrix product. This needs one dense num_pred x num_pred
+				//	matrix instead of one per thread, and it does not depend on the order in which the threads finish
+				const int batch_size = 16 * num_threads;
 				const bool sum_sim_pred_cov_in_batches = calc_pred_cov && !store_sim_pred_cov;
-				int batch_size = num_sim;
 				den_mat_t sim_pred_cov_batch;
 				if (sum_sim_pred_cov_in_batches) {
-					batch_size = 16 * num_threads;
-					sim_pred_cov_batch.resize(num_pred, std::min(batch_size, nsim_var_pred_));
+					sim_pred_cov_batch.resize(num_pred, std::min(batch_size, num_sim_var_pred));
 				}
 				std::vector<vec_t> pred_var_of_thread(num_threads);
 #pragma omp parallel
@@ -5849,7 +5850,7 @@ namespace GPBoost {
 							}
 							vec_t rand_vec_pred = sigma_pred_sigma_inv_vec - sigmSigmaI_modechiSigmaI_mode;
 							if (calc_pred_cov) {
-								if (i < nsim_var_pred_) {
+								if (i < num_sim_var_pred) {
 									if (store_sim_pred_cov) {
 										sim_pred_cov_pos.col(i) = rand_vec_pred;
 									}
@@ -5859,7 +5860,7 @@ namespace GPBoost {
 								}
 							}
 							if (calc_pred_var) {
-								if (i < nsim_var_pred_) {
+								if (i < num_sim_var_pred) {
 									pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
 								}
 							}
@@ -5868,7 +5869,7 @@ namespace GPBoost {
 									post_samples_id.col(i) += rand_vec_pred;
 								}
 							}
-							if (information_has_negative_values && i < nsim_var_pred_) {
+							if (information_has_negative_values && i < num_sim_var_pred) {
 								//z_i ~ N(0, W_-): the sample (co-)variance of the corresponding predictions is subtracted, see above
 								for (int j = 0; j < dim_mode_; j++) {
 									rand_vec_pred_I_2(j) = ndist(rng_local);
@@ -5953,7 +5954,7 @@ namespace GPBoost {
 //								}
 //							}
 						}
-						const int num_sim_pred_cov_batch = std::min(batch_end, nsim_var_pred_) - batch_start;
+						const int num_sim_pred_cov_batch = std::min(batch_end, num_sim_var_pred) - batch_start;
 						if (sum_sim_pred_cov_in_batches && num_sim_pred_cov_batch > 0) {
 							AddOuterProductsInParallelRegion(sim_pred_cov_batch, num_sim_pred_cov_batch, pred_cov);
 						}
@@ -5968,7 +5969,7 @@ namespace GPBoost {
 						CovarianceEstimateDifferenceProjectedOnPSD(sim_pred_cov_pos, sim_pred_cov_neg, pred_cov, "PredictLaplaceApproxFSVA");
 					}
 					else {
-						pred_cov /= nsim_var_pred_;
+						pred_cov /= num_sim_var_pred;
 					}
 					// Deterministic part
 					if (CondObsOnly) {
@@ -6002,7 +6003,7 @@ namespace GPBoost {
 					pred_cov += PP_Part - PP_V_Part + V_Part + V_Part_t - PP_V_PP_Part + PP_V_V_Part - PP_V_PP_Part_t + V_V_Part;
 				}
 				if (calc_pred_var) {
-					pred_var /= nsim_var_pred_;
+					pred_var /= num_sim_var_pred;
 					if (information_has_negative_values) SetNegativeVarianceEstimatesToZero(pred_var, "PredictLaplaceApproxFSVA");
 					// Implementation for Bekas approach
 //						pred_var_prec /= nsim_var_pred_;
@@ -6186,8 +6187,9 @@ namespace GPBoost {
 				if (!sample_posterior) {
 					num_post_samples = 0;
 				}
+				int num_sim_var_pred = nsim_var_pred_;
 				if (!calc_pred_cov && !calc_pred_var) {
-					nsim_var_pred_ = 0;
+					num_sim_var_pred = 0;
 				}
 				sp_mat_rm_t Bpo_rm = sp_mat_rm_t(Bpo);
 				// Products with Bp^-1, which is not sparse, are calculated with triangular solves
@@ -6238,18 +6240,17 @@ namespace GPBoost {
 				const bool store_sim_pred_cov = calc_pred_cov && information_has_negative_values;
 				den_mat_t sim_pred_cov_pos, sim_pred_cov_neg;
 				if (store_sim_pred_cov) {
-					sim_pred_cov_pos.resize(num_pred, nsim_var_pred_);
-					sim_pred_cov_neg.resize(num_pred, nsim_var_pred_);
+					sim_pred_cov_pos.resize(num_pred, num_sim_var_pred);
+					sim_pred_cov_neg.resize(num_pred, num_sim_var_pred);
 				}
-				const int num_sim = std::max(nsim_var_pred_, num_post_samples);
-				// The simulated vectors for the predictive covariance matrix are stored in batches of 16 vectors per thread, see
-				//	'PredictLaplaceApproxFSVA()'
+				const int num_sim = std::max(num_sim_var_pred, num_post_samples);
+				// The vectors are simulated in batches of 16 vectors per thread for all outputs, and the vectors for the predictive
+				//	covariance matrix are stored per batch, see 'PredictLaplaceApproxFSVA()'
+				const int batch_size = 16 * num_threads;
 				const bool sum_sim_pred_cov_in_batches = calc_pred_cov && !store_sim_pred_cov;
-				int batch_size = num_sim;
 				den_mat_t sim_pred_cov_batch;
 				if (sum_sim_pred_cov_in_batches) {
-					batch_size = 16 * num_threads;
-					sim_pred_cov_batch.resize(num_pred, std::min(batch_size, nsim_var_pred_));
+					sim_pred_cov_batch.resize(num_pred, std::min(batch_size, num_sim_var_pred));
 				}
 				std::vector<vec_t> pred_var_of_thread(num_threads);
 #pragma omp parallel
@@ -6294,7 +6295,7 @@ namespace GPBoost {
 								TriangularSolve<sp_mat_t, vec_t, vec_t>(Bp, rand_vec_pred, rand_vec_pred, false);
 							}
 							if (calc_pred_cov) {
-								if (i < nsim_var_pred_) {
+								if (i < num_sim_var_pred) {
 									if (store_sim_pred_cov) {
 										sim_pred_cov_pos.col(i) = rand_vec_pred;
 									}
@@ -6304,7 +6305,7 @@ namespace GPBoost {
 								}
 							}
 							if (calc_pred_var) {
-								if (i < nsim_var_pred_) {
+								if (i < num_sim_var_pred) {
 									pred_var_private += rand_vec_pred.cwiseProduct(rand_vec_pred);
 								}
 							}
@@ -6313,7 +6314,7 @@ namespace GPBoost {
 									post_samples_id.col(i) += rand_vec_pred;
 								}
 							}
-							if (information_has_negative_values && i < nsim_var_pred_) {
+							if (information_has_negative_values && i < num_sim_var_pred) {
 								//z_2 ~ N(0, W_-), see above
 								vec_t rand_vec_pred_W_neg(dim_mode_);
 								for (int j = 0; j < dim_mode_; j++) {
@@ -6340,7 +6341,7 @@ namespace GPBoost {
 								}
 							}
 						}//end for loop
-						const int num_sim_pred_cov_batch = std::min(batch_end, nsim_var_pred_) - batch_start;
+						const int num_sim_pred_cov_batch = std::min(batch_end, num_sim_var_pred) - batch_start;
 						if (sum_sim_pred_cov_in_batches && num_sim_pred_cov_batch > 0) {
 							AddOuterProductsInParallelRegion(sim_pred_cov_batch, num_sim_pred_cov_batch, pred_cov);
 						}
@@ -6355,7 +6356,7 @@ namespace GPBoost {
 						CovarianceEstimateDifferenceProjectedOnPSD(sim_pred_cov_pos, sim_pred_cov_neg, pred_cov, "PredictLaplaceApproxVecchia");
 					}
 					else {
-						pred_cov /= nsim_var_pred_;
+						pred_cov /= num_sim_var_pred;
 					}
 					if (CondObsOnly) {
 						pred_cov.diagonal().array() += Dp.array();
@@ -6367,7 +6368,7 @@ namespace GPBoost {
 					}
 				}
 				if (calc_pred_var) {
-					pred_var /= nsim_var_pred_;
+					pred_var /= num_sim_var_pred;
 					if (information_has_negative_values) SetNegativeVarianceEstimatesToZero(pred_var, "PredictLaplaceApproxVecchia");
 					if (CondObsOnly) {
 						pred_var += Dp;

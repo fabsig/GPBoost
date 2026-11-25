@@ -694,4 +694,38 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Vecchia and VIF approximations with iterative methods: simulated vectors do not depend on the requested outputs ", {
+    # Posterior samples alone must not change the (co-)variances of later predictions of the same model. Further, the
+    # i-th simulated vector has to be the same whether the covariance matrix or the variances are requested, also with
+    # more posterior samples than vectors for the (co-)variances. The latter only shows with several threads
+    y_bin <- as.numeric(sim_rand_unif(n=n, init_c=0.2978341) < pnorm(L %*% b_1))
+    coords_pred <- matrix(sim_rand_unif(n=20*d, init_c=0.27), ncol=d)
+    new_model <- function(gp_approx) {
+      gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                          gp_approx = gp_approx, num_neighbors = 8, num_ind_points = 10, vecchia_ordering = "none",
+                          matrix_inversion_method = "iterative")
+      if (gp_approx == "full_scale_vecchia") {
+        gp_model$set_optim_params(params = list(cg_preconditioner_type = "vifdu"))
+      }
+      gp_model$set_prediction_data(vecchia_pred_type = "latent_order_obs_first_cond_obs_only", nsim_var_pred = 73)
+      return(gp_model)
+    }
+    predict_sim <- function(gp_model, ...) {
+      gp_model$predict(y = y_bin, gp_coords_pred = coords_pred, cov_pars = c(1,0.2), predict_response = FALSE, ...)
+    }
+    for (gp_approx in c("vecchia", "full_scale_vecchia")) {
+      gp_model <- new_model(gp_approx)
+      pred_cov <- predict_sim(gp_model, predict_cov_mat = TRUE)
+      pred_var <- predict_sim(gp_model, predict_var = TRUE)
+      pred_samples <- predict_sim(gp_model, sample_posterior = TRUE, num_post_samples = 131)
+      expect_lt(max(abs(predict_sim(gp_model, predict_cov_mat = TRUE)$cov - pred_cov$cov)), TOLERANCE_STRICT)
+      expect_lt(max(abs(predict_sim(gp_model, predict_var = TRUE)$var - pred_var$var)), TOLERANCE_STRICT)
+      pred_cov_samples <- predict_sim(new_model(gp_approx), predict_cov_mat = TRUE, sample_posterior = TRUE, num_post_samples = 131)
+      pred_var_samples <- predict_sim(new_model(gp_approx), predict_var = TRUE, sample_posterior = TRUE, num_post_samples = 131)
+      expect_lt(max(abs(pred_var_samples$posterior_samples - pred_cov_samples$posterior_samples)), TOLERANCE_STRICT)
+      expect_lt(max(abs(pred_var_samples$posterior_samples - pred_samples$posterior_samples)), TOLERANCE_STRICT)
+      expect_lt(max(abs(pred_var_samples$var - diag(pred_cov_samples$cov))), TOLERANCE_STRICT)
+    }
+  })
+
 }

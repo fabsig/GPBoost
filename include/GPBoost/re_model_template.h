@@ -14397,34 +14397,47 @@ namespace GPBoost {
 								if (calc_pred_var) {
 									sample_resid_var = vec_t::Zero(num_REs_pred);
 								}
-								// The simulated vectors are calculated in batches, and the sums of their outer products and squares are
-								//	updated after each batch. This needs one dense num_REs_pred x num_REs_pred matrix instead of one per
-								//	thread, and it does not depend on the order in which the threads finish
-								const int batch_size = std::min(nsim_var_pred, 16 * omp_get_max_threads());
-								den_mat_t rand_vecs_resid_batch(num_REs_pred, batch_size);
+								// For the covariance matrix, the simulated vectors are calculated in batches, and the sum of their outer
+								//	products is updated after each batch. This needs one dense num_REs_pred x num_REs_pred matrix instead of
+								//	one per thread, and it does not depend on the order in which the threads finish. For the variances,
+								//	every thread adds up the squares of its vectors, and the sums of the threads are added in their order
+								const int num_threads = omp_get_max_threads();
+								int batch_size = nsim_var_pred;
+								den_mat_t rand_vecs_resid_batch;
+								if (calc_pred_cov) {
+									batch_size = std::min(nsim_var_pred, 16 * num_threads);
+									rand_vecs_resid_batch.resize(num_REs_pred, batch_size);
+								}
+								std::vector<vec_t> sample_resid_var_of_thread(num_threads);
+								if (calc_pred_var) {
+									for (vec_t& sample_resid_var_private : sample_resid_var_of_thread) {
+										sample_resid_var_private = vec_t::Zero(num_REs_pred);
+									}
+								}
 								for (int batch_start = 0; batch_start < nsim_var_pred; batch_start += batch_size) {
 									const int num_in_batch = std::min(batch_size, nsim_var_pred - batch_start);
 #pragma omp parallel for schedule(static)
 									for (int k = 0; k < num_in_batch; ++k) {
 										vec_t rand_vec_i = rand_vecs.row(batch_start + k);
 										TriangularSolveGivenCholesky<T_chol, T_mat, vec_t, vec_t>(chol_fact_resid_[cluster_i], rand_vec_i, rand_vec_i, true);
-										rand_vecs_resid_batch.col(k) = sigma_resid_pred_obs * rand_vec_i;
-									}
-									const auto batch = rand_vecs_resid_batch.leftCols(num_in_batch);
-									if (calc_pred_cov) {
-										sample_resid_cov.noalias() += batch * batch.transpose();
-									}
-									if (calc_pred_var) {
-#pragma omp parallel for schedule(static)
-										for (int j = 0; j < num_REs_pred; ++j) {
-											sample_resid_var[j] += batch.row(j).squaredNorm();
+										vec_t rand_vec_resid = sigma_resid_pred_obs * rand_vec_i;
+										if (calc_pred_var) {
+											sample_resid_var_of_thread[omp_get_thread_num()] += rand_vec_resid.cwiseProduct(rand_vec_resid);
 										}
+										if (calc_pred_cov) {
+											rand_vecs_resid_batch.col(k) = rand_vec_resid;
+										}
+									}
+									if (calc_pred_cov) {
+										const auto batch = rand_vecs_resid_batch.leftCols(num_in_batch);
+										sample_resid_cov.noalias() += batch * batch.transpose();
 									}
 								}
 								if (calc_pred_cov) {
 									sample_resid_cov /= nsim_var_pred;
 								}
 								if (calc_pred_var) {
+									AddPartialSumsOfThreads(sample_resid_var_of_thread, sample_resid_var);
 									sample_resid_var /= nsim_var_pred;
 
 									// Alterative version for predictive variances using aproach of Bekas et al. (2007)
