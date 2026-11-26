@@ -7791,20 +7791,6 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Fatal error if the indices of the simulated vectors of a prediction (the vectors for the predictive
-		*		(co-)variances followed by the posterior samples) or the ends of their batches cannot be represented as int
-		*/
-		void CheckNumberOfSimulatedVectorsPrediction(int num_sim_var_pred,
-			int num_post_samples,
-			int batch_size,
-			const char* caller) const {
-			if (num_sim_var_pred > std::numeric_limits<int>::max() - batch_size - num_post_samples) {
-				Log::REFatal("%s: The number of simulated vectors for the predictive (co-)variances ('nsim_var_pred' = %d) plus "
-					"the number of posterior samples ('num_post_samples' = %d) is too large ", caller, num_sim_var_pred, num_post_samples);
-			}
-		}
-
-		/*!
 		* \brief Diagonal matrix W of preconditioners that are calculated from Sigma^-1 + W (or Sigma^-1 + Z^T W Z) and W, i.e.,
 		*		of the 'vadu' preconditioner P = B^T (D^-1 + W) B, the 'vifdu' preconditioner, and the zero fill-in incomplete
 		*		Cholesky factorizations. This is the information unless it has negative values (observed Hessian). P then has

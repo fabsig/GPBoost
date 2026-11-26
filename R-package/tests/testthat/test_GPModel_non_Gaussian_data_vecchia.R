@@ -701,9 +701,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     # Posterior samples are compared between new models, since every call of a model draws new samples
     y_bin <- as.numeric(sim_rand_unif(n=n, init_c=0.2978341) < pnorm(L %*% b_1))
     coords_pred <- matrix(sim_rand_unif(n=20*d, init_c=0.27), ncol=d)
-    new_model <- function(gp_approx, num_clusters = 1) {
+    new_model <- function(gp_approx, num_clusters = 1, likelihood = "bernoulli_probit") {
       gp_model <- GPModel(gp_coords = coords[rep(1:n, num_clusters), ], cluster_ids = rep(0:(num_clusters - 1), each = n),
-                          cov_function = "exponential", likelihood = "bernoulli_probit",
+                          cov_function = "exponential", likelihood = likelihood,
                           gp_approx = gp_approx, num_neighbors = 8, num_ind_points = 10, vecchia_ordering = "none",
                           matrix_inversion_method = "iterative", num_parallel_threads = 4)
       if (gp_approx == "full_scale_vecchia") {
@@ -750,10 +750,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                   cluster_ids_pred = rep(0:1, each = 20), cov_pars = c(1,0.2), predict_response = FALSE,
                                   sample_posterior = TRUE, num_post_samples = 131)$posterior_samples
       expect_lt(abs(correlation(samples[1:20, ], samples[21:40, ])), 0.2)
-      # The total number of simulated vectors has to be representable as an integer
+      # Requests with too many simulated vectors are rejected before any random numbers are drawn, and a large
+      # 'nsim_var_pred' does not matter for posterior samples alone
       gp_model <- new_model(gp_approx)
       gp_model$set_prediction_data(nsim_var_pred = .Machine$integer.max)
-      expect_error(predict_sim(gp_model, predict_cov_mat = TRUE, sample_posterior = TRUE, num_post_samples = 1))
+      expect_error(predict_sim(gp_model, predict_cov_mat = TRUE, sample_posterior = TRUE, num_post_samples = 1),
+                   "number of simulated vectors")
+      expect_identical(predict_sim(gp_model, sample_posterior = TRUE, num_post_samples = 5)$posterior_samples,
+                       predict_sim(new_model(gp_approx), sample_posterior = TRUE, num_post_samples = 5)$posterior_samples)
+      # ... and before memory for the simulated vectors is allocated, which are stored if W has negative values (observed
+      # Hessian of a t likelihood with large residuals)
+      gp_model <- new_model(gp_approx, likelihood = "t_fisher_laplace_combined")
+      gp_model$set_optim_params(params = list(init_aux_pars = c(0.1, 2)))
+      gp_model$set_prediction_data(nsim_var_pred = .Machine$integer.max)
+      expect_error(gp_model$predict(y = 10 * y_bin, gp_coords_pred = coords_pred, cov_pars = c(1,0.2),
+                                    predict_response = FALSE, predict_cov_mat = TRUE), "number of simulated vectors")
     }
   })
 

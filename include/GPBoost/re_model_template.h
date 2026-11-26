@@ -4660,6 +4660,23 @@ namespace GPBoost {
 				CHECK(nsim_var_pred_ > 0);
 				CHECK(rank_pred_approx_matrix_lanczos_ > 0);
 			}
+			bool predict_var_or_response = predict_var || (!gauss_likelihood_ && predict_response && likelihood_[unique_clusters_[0]]->NeedPredLatentVarForResponseMean()); //variance needs to be available for response prediction for most non-Gaussian likelihoods
+			// The vectors that are simulated for the predictive (co-)variances and the posterior samples have int indices, and
+			//	they are simulated in batches of 16 vectors per thread. The limit leaves room for the end of the last batch, and it
+			//	is checked before any random numbers are drawn or memory for the simulations is allocated
+			const int max_num_sim_vectors = 1 << 30;
+			int num_sim_var_pred = 0;
+			if (predict_cov_mat || predict_var_or_response) {
+				num_sim_var_pred = nsim_var_pred_;
+			}
+			int num_sim_post_samples = 0;
+			if (sample_posterior) {
+				num_sim_post_samples = num_post_samples;
+			}
+			if ((int64_t)num_sim_var_pred + num_sim_post_samples > max_num_sim_vectors) {
+				Log::REFatal("The number of simulated vectors for the predictive (co-)variances (%d, 'nsim_var_pred') plus the "
+					"number of posterior samples (%d) exceeds the maximum of %d ", num_sim_var_pred, num_sim_post_samples, max_num_sim_vectors);
+			}
 			if ((int)re_group_levels_pred.size() == 0 && num_group_variables_ > 0) {
 				Log::REFatal("Missing grouping data ('group_data_pred') for grouped random effects foDEr making predictions");
 			}
@@ -4802,7 +4819,6 @@ namespace GPBoost {
 				}
 				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false, sample_prior);
 			}
-			bool predict_var_or_response = predict_var || (!gauss_likelihood_ && predict_response && likelihood_[unique_clusters_[0]]->NeedPredLatentVarForResponseMean()); //variance needs to be available for response prediction for most non-Gaussian likelihoods
 			const int num_blocks_out = NumBlocksPredOutput(predict_response);
 			// Loop over different clusters to calculate predictions
 			for (const auto& cluster_i : unique_clusters_pred) {				

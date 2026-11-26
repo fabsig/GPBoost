@@ -5774,9 +5774,9 @@ namespace GPBoost {
 				//	cluster draws new samples, independently of the number of threads.
 				//	For the covariance matrix, the vectors of a batch are stored, and the sum of their outer products is updated after
 				//	each batch with a matrix product. This needs one dense num_pred x num_pred matrix instead of one per thread, and
-				//	it does not depend on the order in which the threads finish
+				//	it does not depend on the order in which the threads finish. 'Predict()' limits num_sim such that the ends of
+				//	the batches cannot overflow
 				const int batch_size = 16 * num_threads;
-				CheckNumberOfSimulatedVectorsPrediction(num_sim_var_pred, num_post_samples, batch_size, __func__);
 				const int num_sim = num_sim_var_pred + num_post_samples;
 				const bool sum_sim_pred_cov_in_batches = calc_pred_cov && !store_sim_pred_cov;
 				den_mat_t sim_pred_cov_batch;
@@ -6268,7 +6268,6 @@ namespace GPBoost {
 				// The vectors for the (co-)variances are followed by the posterior samples, which have their own random number
 				//	generators, see 'PredictLaplaceApproxFSVA()'
 				const int batch_size = 16 * num_threads;
-				CheckNumberOfSimulatedVectorsPrediction(num_sim_var_pred, num_post_samples, batch_size, __func__);
 				const int num_sim = num_sim_var_pred + num_post_samples;
 				const bool sum_sim_pred_cov_in_batches = calc_pred_cov && !store_sim_pred_cov;
 				den_mat_t sim_pred_cov_batch;
