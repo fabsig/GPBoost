@@ -750,6 +750,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                   cluster_ids_pred = rep(0:1, each = 20), cov_pars = c(1,0.2), predict_response = FALSE,
                                   sample_posterior = TRUE, num_post_samples = 131)$posterior_samples
       expect_lt(abs(correlation(samples[1:20, ], samples[21:40, ])), 0.2)
+      # The total number of simulated vectors has to be representable as an integer
+      gp_model <- new_model(gp_approx)
+      gp_model$set_prediction_data(nsim_var_pred = .Machine$integer.max)
+      expect_error(predict_sim(gp_model, predict_cov_mat = TRUE, sample_posterior = TRUE, num_post_samples = 1))
     }
   })
 

@@ -5775,8 +5775,9 @@ namespace GPBoost {
 				//	For the covariance matrix, the vectors of a batch are stored, and the sum of their outer products is updated after
 				//	each batch with a matrix product. This needs one dense num_pred x num_pred matrix instead of one per thread, and
 				//	it does not depend on the order in which the threads finish
-				const int num_sim = num_sim_var_pred + num_post_samples;
 				const int batch_size = 16 * num_threads;
+				CheckNumberOfSimulatedVectorsPrediction(num_sim_var_pred, num_post_samples, batch_size, __func__);
+				const int num_sim = num_sim_var_pred + num_post_samples;
 				const bool sum_sim_pred_cov_in_batches = calc_pred_cov && !store_sim_pred_cov;
 				den_mat_t sim_pred_cov_batch;
 				if (sum_sim_pred_cov_in_batches) {
@@ -5794,13 +5795,14 @@ namespace GPBoost {
 					thread_nb = 0;
 #endif
 					RNG_t rng_local = parallel_rngs[thread_nb];
+					// seeded for every posterior sample; constructed once per thread since this initializes the whole state
+					RNG_t rng_post_sample;
 					vec_t& pred_var_private = pred_var_of_thread[thread_nb];
 					for (int batch_start = 0; batch_start < num_sim; batch_start += batch_size) {
 						const int batch_end = std::min(batch_start + batch_size, num_sim);
 #pragma omp for schedule(static, 1) reduction(||:na_inf_flag_4)
 						for (int i = batch_start; i < batch_end; ++i) {
 							const bool is_post_sample = i >= num_sim_var_pred;
-							RNG_t rng_post_sample;
 							if (is_post_sample) {
 								rng_post_sample = RNGForPosteriorSample(base_seed, run_id, i - num_sim_var_pred);
 							}
@@ -6265,8 +6267,9 @@ namespace GPBoost {
 				}
 				// The vectors for the (co-)variances are followed by the posterior samples, which have their own random number
 				//	generators, see 'PredictLaplaceApproxFSVA()'
-				const int num_sim = num_sim_var_pred + num_post_samples;
 				const int batch_size = 16 * num_threads;
+				CheckNumberOfSimulatedVectorsPrediction(num_sim_var_pred, num_post_samples, batch_size, __func__);
+				const int num_sim = num_sim_var_pred + num_post_samples;
 				const bool sum_sim_pred_cov_in_batches = calc_pred_cov && !store_sim_pred_cov;
 				den_mat_t sim_pred_cov_batch;
 				if (sum_sim_pred_cov_in_batches) {
@@ -6283,13 +6286,14 @@ namespace GPBoost {
 					thread_nb = 0;
 #endif
 					RNG_t rng_local = parallel_rngs[thread_nb];
+					// seeded for every posterior sample; constructed once per thread since this initializes the whole state
+					RNG_t rng_post_sample;
 					vec_t& pred_var_private = pred_var_of_thread[thread_nb];
 					for (int batch_start = 0; batch_start < num_sim; batch_start += batch_size) {
 						const int batch_end = std::min(batch_start + batch_size, num_sim);
 #pragma omp for schedule(static, 1) reduction(||:na_inf_flag_5)
 						for (int i = batch_start; i < batch_end; ++i) {
 							const bool is_post_sample = i >= num_sim_var_pred;
-							RNG_t rng_post_sample;
 							if (is_post_sample) {
 								rng_post_sample = RNGForPosteriorSample(base_seed, run_id, i - num_sim_var_pred);
 							}
