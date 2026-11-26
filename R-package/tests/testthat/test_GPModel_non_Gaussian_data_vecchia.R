@@ -759,4 +759,38 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("A large 'nsim_var_pred' is rejected only if the predictive (co-)variances are simulated ", {
+    # Exact (Cholesky) calculations and predictions for a new cluster do not simulate vectors
+    y_bin <- as.numeric(sim_rand_unif(n=n, init_c=0.2978341) < pnorm(L %*% b_1))
+    coords_pred <- matrix(sim_rand_unif(n=20*d, init_c=0.27), ncol=d)
+    cases <- list(
+      list(likelihood = "gaussian", gp_approx = "none", matrix_inversion_method = "cholesky", cluster_id_pred = 0,
+           cov_pars = c(0.1,1,0.2)),
+      list(likelihood = "bernoulli_probit", gp_approx = "vecchia", matrix_inversion_method = "cholesky", cluster_id_pred = 0,
+           cov_pars = c(1,0.2)),
+      list(likelihood = "bernoulli_probit", gp_approx = "vecchia", matrix_inversion_method = "iterative", cluster_id_pred = 1,
+           cov_pars = c(1,0.2))
+    )
+    for (cs in cases) {
+      predict_nsim <- function(nsim_var_pred, ...) {
+        gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = cs$likelihood,
+                            gp_approx = cs$gp_approx, num_neighbors = 8, vecchia_ordering = "none",
+                            matrix_inversion_method = cs$matrix_inversion_method)
+        gp_model$set_prediction_data(nsim_var_pred = nsim_var_pred)
+        gp_model$predict(y = y_bin, gp_coords_pred = coords_pred, cluster_ids_pred = rep(cs$cluster_id_pred, 20),
+                         cov_pars = cs$cov_pars, predict_response = FALSE, ...)
+      }
+      expect_identical(predict_nsim(.Machine$integer.max, predict_cov_mat = TRUE), predict_nsim(73, predict_cov_mat = TRUE))
+      expect_identical(predict_nsim(.Machine$integer.max, predict_var = TRUE), predict_nsim(73, predict_var = TRUE))
+    }
+    # The sum is limited also if 'nsim_var_pred' and the number of posterior samples are each below the maximum
+    gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", likelihood = "bernoulli_probit",
+                        gp_approx = "vecchia", num_neighbors = 8, vecchia_ordering = "none",
+                        matrix_inversion_method = "iterative")
+    gp_model$set_prediction_data(nsim_var_pred = 2^30 - 10)
+    expect_error(gp_model$predict(y = y_bin, gp_coords_pred = coords_pred, cov_pars = c(1,0.2), predict_response = FALSE,
+                                  predict_var = TRUE, sample_posterior = TRUE, num_post_samples = 11),
+                 "The number of simulated vectors")
+  })
+
 }

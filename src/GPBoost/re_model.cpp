@@ -1370,6 +1370,28 @@ namespace GPBoost {
 		}
 	}//end Predict
 
+	void REModel::CheckNumSimulatedVectorsPred(data_size_t num_data_pred,
+		bool predict_cov_mat,
+		bool predict_var,
+		bool predict_response,
+		bool sample_posterior,
+		int num_post_samples,
+		const data_size_t* cluster_ids_data_pred,
+		bool use_saved_data) const {
+		if (matrix_format_ == "sp_mat_t") {
+			re_model_sp_->CheckNumSimulatedVectorsPred(num_data_pred, predict_cov_mat, predict_var, predict_response,
+				sample_posterior, num_post_samples, cluster_ids_data_pred, use_saved_data);
+		}
+		else if (matrix_format_ == "sp_mat_rm_t") {
+			re_model_sp_rm_->CheckNumSimulatedVectorsPred(num_data_pred, predict_cov_mat, predict_var, predict_response,
+				sample_posterior, num_post_samples, cluster_ids_data_pred, use_saved_data);
+		}
+		else {
+			re_model_den_->CheckNumSimulatedVectorsPred(num_data_pred, predict_cov_mat, predict_var, predict_response,
+				sample_posterior, num_post_samples, cluster_ids_data_pred, use_saved_data);
+		}
+	}
+
 	void REModel::PredictTrainingDataRandomEffects(const double* cov_pars_pred,
 		const double* y_obs,
 		double* out_predict,

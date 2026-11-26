@@ -488,6 +488,28 @@ namespace GPBoost {
 			bool suppress_calc_cov_factor);
 
 		/*!
+		* \brief Fatal error if a prediction simulates too many vectors for the predictive (co-)variances and the posterior
+		*		samples. 'Predict()' does the same check, and this function allows doing it before the memory for out_predict
+		*		is allocated
+		* \param num_data_pred Number of data points for which predictions are made
+		* \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated
+		* \param predict_var If true, the predictive/conditional variances are calculated
+		* \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects
+		* \param sample_posterior If true, posterior samples are generated
+		* \param num_post_samples Number of posterior samples
+		* \param cluster_ids_data_pred IDs / labels indicating independent realizations of Gaussian processes (same values = same process realization) for which predictions are to be made
+		* \param use_saved_data If true, the previously set prediction data is used, and num_data_pred and cluster_ids_data_pred are ignored
+		*/
+		void CheckNumSimulatedVectorsPred(data_size_t num_data_pred,
+			bool predict_cov_mat,
+			bool predict_var,
+			bool predict_response,
+			bool sample_posterior,
+			int num_post_samples,
+			const data_size_t* cluster_ids_data_pred,
+			bool use_saved_data) const;
+
+		/*!
 		* \brief Predict ("estimate") training data random effects
 		* \param cov_pars_pred Covariance parameters of components
 		* \param y_obs Response variable for observed data

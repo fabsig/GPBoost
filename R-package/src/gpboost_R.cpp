@@ -1316,6 +1316,30 @@ SEXP GPB_PredictREModel_R(SEXP handle,
 	return R_NilValue;
 }
 
+SEXP GPB_CheckNumSimulatedVectorsPred_R(SEXP handle,
+	SEXP num_data_pred,
+	SEXP predict_cov_mat,
+	SEXP predict_var,
+	SEXP predict_response,
+	SEXP sample_posterior,
+	SEXP num_post_samples,
+	SEXP cluster_ids_data_pred,
+	SEXP use_saved_data) {
+	int32_t numdata_pred = static_cast<int32_t>(Rf_asInteger(num_data_pred));
+	R_API_BEGIN();
+	CHECK_CALL(GPB_CheckNumSimulatedVectorsPred(R_ExternalPtrAddr(handle),
+		numdata_pred,
+		Rf_asLogical(predict_cov_mat),
+		Rf_asLogical(predict_var),
+		Rf_asLogical(predict_response),
+		Rf_asLogical(sample_posterior),
+		Rf_asInteger(num_post_samples),
+		R_INT_PTR(cluster_ids_data_pred),
+		Rf_asLogical(use_saved_data)));
+	R_API_END();
+	return R_NilValue;
+}
+
 SEXP GPB_PredictREModelTrainingDataRandomEffects_R(SEXP handle,
 	SEXP cov_pars,
 	SEXP y_obs,
@@ -1573,6 +1597,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_SuppressAutoNumParallelThreadsMessage_R", (DL_FUNC)&GPB_SuppressAutoNumParallelThreadsMessage_R, 0},
   {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 16},
   {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 21},
+  {"GPB_CheckNumSimulatedVectorsPred_R", (DL_FUNC)&GPB_CheckNumSimulatedVectorsPred_R, 9},
   {"GPB_PredictREModelTrainingDataRandomEffects_R", (DL_FUNC)&GPB_PredictREModelTrainingDataRandomEffects_R, 6},
   {"GPB_GetLikelihoodName_R"          , (DL_FUNC)&GPB_GetLikelihoodName_R          , 1},
   {"GPB_GetOptimizerCovPars_R"        , (DL_FUNC)&GPB_GetOptimizerCovPars_R        , 1},

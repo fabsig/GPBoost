@@ -1097,6 +1097,32 @@ GPBOOST_C_EXPORT SEXP GPB_PredictREModel_R(
 );
 
 /*!
+* \brief Check whether a prediction simulates too many vectors for the predictive (co-)variances and the posterior
+*		 samples before the memory for its output is allocated, see 'GPB_CheckNumSimulatedVectorsPred' in c_api.h
+* \param handle Handle of REModel
+* \param num_data_pred Number of data points for which predictions are made
+* \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated
+* \param predict_var If true, the predictive/conditional variances are calculated
+* \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects
+* \param sample_posterior If true, posterior samples are generated
+* \param num_post_samples Number of posterior samples
+* \param cluster_ids_data_pred IDs / labels indicating independent realizations of Gaussian processes (same values = same process realization) for which predictions are to be made
+* \param use_saved_data If true, the previously set prediction data is used, and num_data_pred and cluster_ids_data_pred are ignored
+* \return R NULL value
+*/
+GPBOOST_C_EXPORT SEXP GPB_CheckNumSimulatedVectorsPred_R(
+	SEXP handle,
+	SEXP num_data_pred,
+	SEXP predict_cov_mat,
+	SEXP predict_var,
+	SEXP predict_response,
+	SEXP sample_posterior,
+	SEXP num_post_samples,
+	SEXP cluster_ids_data_pred,
+	SEXP use_saved_data
+);
+
+/*!
 * \brief Predict ("estimate") training data random effects
 * \param handle Handle of REModel
 * \param cov_pars_pred Covariance parameters of components

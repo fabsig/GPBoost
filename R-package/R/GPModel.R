@@ -2414,12 +2414,29 @@ gpb.GPModel <- R6::R6Class(
                " used for the tree ensemble.")
         }
       }# end offset_pred
+      # The numbers of simulated vectors are checked before the memory for the output is allocated
+      .Call(
+        GPB_CheckNumSimulatedVectorsPred_R
+        , private$handle
+        , num_data_pred
+        , predict_cov_mat
+        , predict_var
+        , predict_response
+        , sample_posterior
+        , as.integer(num_post_samples)
+        , cluster_ids_pred
+        , use_saved_data
+      )
       # Number of location parameter blocks with predictive means and variances on the output
       num_blocks <- 1L
       if (!predict_response) {
         num_blocks <- private$num_sets_fe
       }
-      # Pre-allocate empty vector
+      # Pre-allocate empty vector. Its length and the positions in it are calculated with doubles, since they can
+      # exceed the largest integer
+      num_data_pred <- as.double(num_data_pred)
+      num_post_samples <- as.double(num_post_samples)
+      num_prior_samples <- as.double(num_prior_samples)
       size_allocate <- 0
       if (!sample_prior) {
         size_allocate <- size_allocate + num_data_pred * num_blocks

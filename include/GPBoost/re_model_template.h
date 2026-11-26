@@ -3965,6 +3965,84 @@ namespace GPBoost {
 		}
 
 		/*!
+		* \brief True if a prediction needs the predictive variances of the latent variables: if they are requested, or if the
+		*		response variable is predicted and its predictive mean depends on them (most non-Gaussian likelihoods)
+		*/
+		bool NeedPredLatentVar(bool predict_var,
+			bool predict_response) const {
+			return(predict_var || (!gauss_likelihood_ && predict_response && likelihood_.at(unique_clusters_[0])->NeedPredLatentVarForResponseMean()));
+		}
+
+		/*!
+		* \brief True if some prediction points belong to a cluster with observed data
+		* \param num_data_pred Number of prediction points
+		* \param cluster_ids_data_pred Cluster IDs of the prediction points (nullptr: all points belong to cluster 0)
+		*/
+		bool PredForObservedData(data_size_t num_data_pred,
+			const data_size_t* cluster_ids_data_pred) const {
+			const std::set<data_size_t> observed_clusters(unique_clusters_.begin(), unique_clusters_.end());
+			if (cluster_ids_data_pred == nullptr) {
+				return(observed_clusters.count(0) > 0);
+			}
+			for (data_size_t i = 0; i < num_data_pred; ++i) {
+				if (observed_clusters.count(cluster_ids_data_pred[i]) > 0) {
+					return(true);
+				}
+			}
+			return(false);
+		}
+
+		/*!
+		* \brief Fatal error if a prediction simulates too many vectors for the predictive (co-)variances and the posterior
+		*		samples. This is done at the start of 'Predict()', and it can also be done before the memory for the output of
+		*		'Predict()' is allocated
+		* \param num_data_pred Number of data points for which predictions are made
+		* \param predict_cov_mat If true, the predictive/conditional covariance matrix is calculated
+		* \param predict_var If true, the predictive/conditional variances are calculated
+		* \param predict_response If true, the response variable (label) is predicted, otherwise the latent random effects
+		* \param sample_posterior If true, posterior samples are generated
+		* \param num_post_samples Number of posterior samples
+		* \param cluster_ids_data_pred IDs / labels indicating independent realizations of Gaussian processes (same values = same process realization) for which predictions are to be made
+		* \param use_saved_data If true, the previously set prediction data is used, and num_data_pred and cluster_ids_data_pred are ignored
+		*/
+		void CheckNumSimulatedVectorsPred(data_size_t num_data_pred,
+			bool predict_cov_mat,
+			bool predict_var,
+			bool predict_response,
+			bool sample_posterior,
+			int num_post_samples,
+			const data_size_t* cluster_ids_data_pred,
+			bool use_saved_data) const {
+			if (use_saved_data) {
+				num_data_pred = num_data_pred_;
+				cluster_ids_data_pred = nullptr;
+				if (!cluster_ids_data_pred_.empty()) {
+					cluster_ids_data_pred = cluster_ids_data_pred_.data();
+				}
+			}
+			// Only the iterative methods and the stochastic version of the full-scale tapering approximation with a Cholesky
+			//	decomposition simulate the predictive (co-)variances, and only for clusters with observed data
+			bool var_pred_is_simulated = matrix_inversion_method_ == "iterative" ||
+				(gp_approx_ == "full_scale_tapering" && calc_pred_cov_var_FSA_cholesky_ == "stochastic_stable");
+			int num_sim_var_pred = 0;
+			if ((predict_cov_mat || NeedPredLatentVar(predict_var, predict_response)) && var_pred_is_simulated &&
+				PredForObservedData(num_data_pred, cluster_ids_data_pred)) {
+				num_sim_var_pred = nsim_var_pred_;
+			}
+			int num_sim_post_samples = 0;
+			if (sample_posterior) {
+				num_sim_post_samples = num_post_samples;
+			}
+			// The simulated vectors have int indices, and they are simulated in batches of 16 vectors per thread. The limit
+			//	leaves room for the end of the last batch
+			const int max_num_sim_vectors = 1 << 30;
+			if ((int64_t)num_sim_var_pred + num_sim_post_samples > max_num_sim_vectors) {
+				Log::REFatal("The number of simulated vectors for the predictive (co-)variances (%d, 'nsim_var_pred') plus the "
+					"number of posterior samples (%d) exceeds the maximum of %d ", num_sim_var_pred, num_sim_post_samples, max_num_sim_vectors);
+			}
+		}
+
+		/*!
 		* \brief Calculate the predictive means and variances of the location parameter blocks that are related to fixed
 		*		effects only (blocks num_sets_re_, ..., num_sets_fixed_effects_ - 1, e.g., the log-error variance for
 		*		'gaussian_heteroscedastic'). These blocks are deterministic given the fixed effects, i.e., their predictive
@@ -4530,7 +4608,7 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
 					for (int j = 0; j < num_data_per_cluster_pred[cluster_i]; ++j) {//row index
-						out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred * num_blocks_out] = cov_mat_pred_id.coeff(j, i);
+						out_predict[(int64_t)data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred * num_blocks_out] = cov_mat_pred_id.coeff(j, i);
 					}
 				}
 			}//end predict_cov_mat
@@ -4600,6 +4678,8 @@ namespace GPBoost {
 			bool use_saved_data,
 			const double* fixed_effects,
 			const double* fixed_effects_pred) {
+			CheckNumSimulatedVectorsPred(num_data_pred, predict_cov_mat, predict_var, predict_response, sample_posterior,
+				num_post_samples, cluster_ids_data_pred, use_saved_data);
 			//First check whether previously set data should be used and load it if required
 			std::vector<std::vector<re_group_t>> re_group_levels_pred, re_group_levels_pred_orig;//Matrix with group levels for the grouped random effects (re_group_levels_pred[j] contains the levels for RE number j)
 			// Note: re_group_levels_pred_orig is only used for the case (only_one_grouped_RE_calculations_on_RE_scale_ || only_one_grouped_RE_calculations_on_RE_scale_for_prediction_)
@@ -4660,25 +4740,8 @@ namespace GPBoost {
 				CHECK(nsim_var_pred_ > 0);
 				CHECK(rank_pred_approx_matrix_lanczos_ > 0);
 			}
-			bool predict_var_or_response = predict_var || (!gauss_likelihood_ && predict_response && likelihood_[unique_clusters_[0]]->NeedPredLatentVarForResponseMean()); //variance needs to be available for response prediction for most non-Gaussian likelihoods
-			// The vectors that are simulated for the predictive (co-)variances and the posterior samples have int indices, and
-			//	they are simulated in batches of 16 vectors per thread. The limit leaves room for the end of the last batch, and it
-			//	is checked before any random numbers are drawn or memory for the simulations is allocated
-			const int max_num_sim_vectors = 1 << 30;
-			int num_sim_var_pred = 0;
-			if (predict_cov_mat || predict_var_or_response) {
-				num_sim_var_pred = nsim_var_pred_;
-			}
-			int num_sim_post_samples = 0;
-			if (sample_posterior) {
-				num_sim_post_samples = num_post_samples;
-			}
-			if ((int64_t)num_sim_var_pred + num_sim_post_samples > max_num_sim_vectors) {
-				Log::REFatal("The number of simulated vectors for the predictive (co-)variances (%d, 'nsim_var_pred') plus the "
-					"number of posterior samples (%d) exceeds the maximum of %d ", num_sim_var_pred, num_sim_post_samples, max_num_sim_vectors);
-			}
 			if ((int)re_group_levels_pred.size() == 0 && num_group_variables_ > 0) {
-				Log::REFatal("Missing grouping data ('group_data_pred') for grouped random effects foDEr making predictions");
+				Log::REFatal("Missing grouping data ('group_data_pred') for grouped random effects for making predictions");
 			}
 			if (re_group_rand_coef_data_pred == nullptr && num_re_group_rand_coef_ > 0) {
 				Log::REFatal("Missing covariate data ('re_group_rand_coef_data_pred') for random coefficients "
@@ -4801,13 +4864,7 @@ namespace GPBoost {
 			SetUpClusterIds(num_data_pred, cluster_ids_data_pred, num_data_per_cluster_pred,
 				data_indices_per_cluster_pred, unique_clusters_pred, num_clusters_pred);
 			//Check whether predictions are made for existing clusters or if only for new independet clusters predictions are made
-			bool pred_for_observed_data = false;
-			for (const auto& cluster_i : unique_clusters_pred) {
-				if (std::find(unique_clusters_.begin(), unique_clusters_.end(), cluster_i) != unique_clusters_.end()) {
-					pred_for_observed_data = true;
-					break;
-				}
-			}
+			bool pred_for_observed_data = PredForObservedData(num_data_pred, cluster_ids_data_pred);
 			//Factorize covariance matrix and calculate Psi^{-1}y_obs or calculate Laplace approximation (if required)
 			if (pred_for_observed_data) {
 				const double* fixed_effects_ptr = nullptr;
@@ -4819,6 +4876,7 @@ namespace GPBoost {
 				}
 				SetYCalcCovCalcYAuxForPred(cov_pars, coef, y_obs, calc_cov_factor, fixed_effects_ptr, false, sample_prior);
 			}
+			bool predict_var_or_response = NeedPredLatentVar(predict_var, predict_response);
 			const int num_blocks_out = NumBlocksPredOutput(predict_response);
 			// Loop over different clusters to calculate predictions
 			for (const auto& cluster_i : unique_clusters_pred) {				
@@ -5304,7 +5362,8 @@ namespace GPBoost {
 						likelihood_[unique_clusters_[0]]->PredictResponse(mean_pred_id[0], var_pred_id[0], mean_pred_id[1], var_pred_id[1], predict_var, mean_pred_id[2]);
 					}
 					// Write on output: the means of all blocks, followed by the covariance matrix of the first block or the variances of all blocks
-					int idx_start_post_sample = 0;
+					// 64-bit positions, since the output can have more entries than the largest int
+					int64_t idx_start_post_sample = 0;
 					if (!sample_prior) {
 						idx_start_post_sample += num_data_pred * num_blocks_out;
 						for (int igp = 0; igp < num_blocks_out; ++igp) {
@@ -5318,10 +5377,10 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
 							for (int j = 0; j < num_data_per_cluster_pred[cluster_i]; ++j) {//row index
-								out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred * num_blocks_out] = cov_mat_pred_id.coeff(j, i);
+								out_predict[(int64_t)data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred * num_blocks_out] = cov_mat_pred_id.coeff(j, i);
 							}
 						}
-						idx_start_post_sample += num_data_pred * num_data_pred;
+						idx_start_post_sample += (int64_t)num_data_pred * num_data_pred;
 					}//end predict_cov_mat
 					if (predict_var) {
 						for (int igp = 0; igp < num_blocks_out; ++igp) {
@@ -5338,10 +5397,10 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 						for (int is = 0; is < num_post_samples; ++is) {
 							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-								out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * is + idx_start_post_sample] = post_samples_id(i, is);
+								out_predict[data_indices_per_cluster_pred[cluster_i][i] + (int64_t)num_data_pred * is + idx_start_post_sample] = post_samples_id(i, is);
 							}
 						}
-						idx_start_post_sample += num_data_pred * num_post_samples;
+						idx_start_post_sample += (int64_t)num_data_pred * num_post_samples;
 					}
 					if (sample_prior) {
 						CHECK(prior_samples_id.cols() == num_prior_samples);
@@ -5351,7 +5410,7 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 						for (int is = 0; is < num_prior_samples; ++is) {
 							for (int i = 0; i < num_data_per_cluster_[cluster_i]; ++i) {
-								out_predict[data_indices_per_cluster_[cluster_i][i] + num_data_ * is + idx_start_post_sample] = prior_samples_id(i, is);
+								out_predict[data_indices_per_cluster_[cluster_i][i] + (int64_t)num_data_ * is + idx_start_post_sample] = prior_samples_id(i, is);
 							}
 						}
 					}
@@ -5365,7 +5424,7 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
 								for (int j = 0; j < num_data_per_cluster_pred[cluster_j]; ++j) {//row index
-									out_predict[data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_j][j] + num_data_pred * num_blocks_out] = 0.;
+									out_predict[(int64_t)data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_j][j] + num_data_pred * num_blocks_out] = 0.;
 								}
 							}
 						}

@@ -3094,6 +3094,28 @@ int GPB_PredictREModel(REModelHandle handle,
 	API_END();
 }
 
+int GPB_CheckNumSimulatedVectorsPred(REModelHandle handle,
+	int32_t num_data_pred,
+	bool predict_cov_mat,
+	bool predict_var,
+	bool predict_response,
+	bool sample_posterior,
+	int num_post_samples,
+	const int32_t* cluster_ids_data_pred,
+	bool use_saved_data) {
+	API_BEGIN();
+	REModel* ref_remodel = reinterpret_cast<REModel*>(handle);
+	ref_remodel->CheckNumSimulatedVectorsPred(num_data_pred,
+		predict_cov_mat,
+		predict_var,
+		predict_response,
+		sample_posterior,
+		num_post_samples,
+		cluster_ids_data_pred,
+		use_saved_data);
+	API_END();
+}
+
 int GPB_PredictREModelTrainingDataRandomEffects(REModelHandle handle,
 	const double* cov_pars_pred,
 	const double* y_obs,

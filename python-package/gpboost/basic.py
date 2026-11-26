@@ -7904,6 +7904,18 @@ class GPModel(object):
             offset_pred = offset_pred.astype(np.float64)
             offset_pred_c = offset_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
+        # The numbers of simulated vectors are checked before the memory for the output is allocated
+        _safe_call(_LIB.GPB_CheckNumSimulatedVectorsPred(
+            self.handle,
+            ctypes.c_int(num_data_pred),
+            ctypes.c_bool(predict_cov_mat),
+            ctypes.c_bool(predict_var),
+            ctypes.c_bool(predict_response),
+            ctypes.c_bool(sample_posterior),
+            ctypes.c_int(num_post_samples),
+            cluster_ids_pred_c,
+            ctypes.c_bool(use_saved_data)))
+
         # Number of location parameter blocks with predictive means and variances on the output
         num_blocks = 1 if predict_response else self.num_sets_fe
         size_allocate = 0
