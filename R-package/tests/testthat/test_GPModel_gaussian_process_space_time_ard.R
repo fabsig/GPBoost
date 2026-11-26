@@ -176,7 +176,56 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
     nll_2_5_exp <- 296.7149408
     expect_lt(abs(nll-nll_2_5_exp),TOLERANCE_STRICT)
-    
+    # Shape = 3.5 (closed form)
+    gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time", cov_fct_shape = 3.5)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
+    dist_scaled_nll <- as.matrix(dist(cbind(time / cov_pars_nll[3], coords / cov_pars_nll[4])))
+    expect_lt(abs(nll - nll_matern_R(dist_scaled_nll, cov_pars_nll[1], cov_pars_nll[2], 3.5, y)), TOLERANCE_STRICT)
+
+    ## Smoothness parameter estimated
+    if (!SKIP_BESSEL_COV_TESTS) {
+      gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time_estimate_shape")
+      nll <- gp_model$neg_log_likelihood(cov_pars = c(cov_pars_nll, 1.5), y = y)
+      expect_lt(abs(nll - nll_1_5_exp), TOLERANCE_STRICT)
+      nll <- gp_model$neg_log_likelihood(cov_pars = c(cov_pars_nll, 1.2), y = y)
+      nll_1_2_exp <- nll_matern_R(dist_scaled_nll, cov_pars_nll[1], cov_pars_nll[2], 1.2, y)
+      expect_lt(abs(nll - nll_1_2_exp), TOLERANCE_STRICT)
+      # Same predictions as 'matern_space_time' with the same smoothness
+      gp_model_1_5 <- GPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time", cov_fct_shape = 1.5)
+      pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, cov_pars = c(cov_pars_pred, 1.5), predict_var = TRUE)
+      pred_1_5 <- predict(gp_model_1_5, y = y, gp_coords_pred = coord_test, cov_pars = cov_pars_pred, predict_var = TRUE)
+      expect_lt(sum(abs(pred$mu - pred_1_5$mu)), TOLERANCE_STRICT)
+      expect_lt(sum(abs(pred$var - pred_1_5$var)), TOLERANCE_STRICT)
+      # Fit model
+      params_ST_est_shape <- OPTIM_PARAMS_BFGS
+      params_ST_est_shape$init_cov_pars <- c(init_cov_pars_ST_15, 1.5)
+      gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time_estimate_shape",
+                             y = y, X = X, params = params_ST_est_shape)
+      expect_equal(names(gp_model$get_cov_pars()), c("Error_var", "GP_var", "GP_range_time", "GP_range_space", "GP_smoothness"))
+      cov_pars_est_shape <- c(0.0001198255, 0.0891093522, 1.0189706616, 0.1751547867, 1.0075991790, 0.4418143505,
+                              0.0933881731, 0.0312661446, 2.1493071902, 5.2051767513)
+      coef_est_shape <- c(1.9647260018, 0.1231176691, 2.1606753781, 0.1331171710)
+      nll_opt_est_shape <- 137.9121676
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE)) - cov_pars_est_shape)),
+                relax_tolerance(TOLERANCE_MEDIUM, cov_pars_est_shape))
+      expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE)) - coef_est_shape)),
+                relax_tolerance(TOLERANCE_MEDIUM, coef_est_shape))
+      expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_opt_est_shape), relax_tolerance_nll(TOLERANCE_MEDIUM))
+      # With one space coordinate, the same model as 'matern_ard_estimate_shape'
+      gp_model <- GPModel(gp_coords = cbind(time, coords[, 1]), cov_function = "matern_space_time_estimate_shape")
+      gp_model_ard <- GPModel(gp_coords = cbind(time, coords[, 1]), cov_function = "matern_ard_estimate_shape")
+      expect_equal(gp_model$neg_log_likelihood(cov_pars = c(cov_pars_nll, 1.2), y = y),
+                   gp_model_ard$neg_log_likelihood(cov_pars = c(cov_pars_nll, 1.2), y = y))
+      # Vecchia approximation with all neighbors, also with the time ordering of space-time models
+      for (vecchia_ordering in c("none", "time")) {
+        capture.output( gp_model <- GPModel(gp_coords = cbind(time, coords), cov_function = "matern_space_time_estimate_shape",
+                                            gp_approx = "vecchia", num_neighbors = n-1, vecchia_ordering = vecchia_ordering),
+                        file='NUL')
+        nll <- gp_model$neg_log_likelihood(cov_pars = c(cov_pars_nll, 1.2), y = y)
+        expect_lt(abs(nll - nll_1_2_exp), TOLERANCE_STRICT)
+      }
+    }
+
     ##############
     ## With Vecchia approximation
     ##############
@@ -595,12 +644,35 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_1_5), TOLERANCE_STRICT)
     # General shape
     if (!SKIP_BESSEL_COV_TESTS) {
-      gp_model <- fitGPModel(gp_coords = coords_ARD, cov_function = "matern_ard", 
+      gp_model <- fitGPModel(gp_coords = coords_ARD, cov_function = "matern_ard",
                              cov_fct_shape = 1.5 - 1E-4, y = y, X = X, params = params_ARD_15)
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_1_5)),TOLERANCE_MEDIUM)
       expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_1_5)),TOLERANCE_MEDIUM)
       expect_equal(gp_model$get_num_optim_iter(), nrounds_1_5)
       expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_1_5), TOLERANCE_MEDIUM)
+    }
+    # Shape = 3.5 (closed form)
+    gp_model <- GPModel(gp_coords = coords_ARD, cov_function = "matern_ard", cov_fct_shape = 3.5)
+    nll <- gp_model$neg_log_likelihood(cov_pars=cov_pars_nll,y=y)
+    dist_scaled_nll <- as.matrix(dist(sweep(coords_ARD, 2, cov_pars_nll[3:5], "/")))
+    expect_lt(abs(nll - nll_matern_R(dist_scaled_nll, cov_pars_nll[1], cov_pars_nll[2], 3.5, y)), TOLERANCE_STRICT)
+    gp_model <- fitGPModel(gp_coords = coords_ARD, cov_function = "matern_ard",
+                           cov_fct_shape = 3.5, y = y, X = X, params = params_ARD_15)
+    cov_pars_3_5 <- c(0.0638952608, 0.0346951520, 1.0830682636, 0.2616669902, 0.2031161723, 0.0403217353,
+                      0.2587811253, 0.0516297088, 0.1709570447, 0.0338215732)
+    coef_3_5 <- c(2.3155892375, 0.2614692862, 1.7397693283, 0.0710637116)
+    nll_opt_3_5 <- 106.9020840
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_3_5)),TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_3_5)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 15)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_3_5), TOLERANCE_STRICT)
+    if (!SKIP_BESSEL_COV_TESTS) {
+      # the gradients and standard errors agree with the ones calculated with Bessel functions
+      gp_model <- fitGPModel(gp_coords = coords_ARD, cov_function = "matern_ard",
+                             cov_fct_shape = 3.5 + 1E-6, y = y, X = X, params = params_ARD_15)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_3_5)),TOLERANCE_MEDIUM)
+      expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_3_5)),TOLERANCE_MEDIUM)
+      expect_equal(gp_model$get_num_optim_iter(), 15)
     }
     # Gaussian covariance: evaluate negative log-likelihood
     gp_model <- GPModel(gp_coords = coords_ARD, cov_function = "gaussian_ard")
@@ -629,10 +701,12 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       capture.output(     gp_model <- fitGPModel(gp_coords = coords_ARD, cov_function = "matern_ard_estimate_shape",
                                                  y = y, X = X, params = params_ARD_est_shape), 
                       file='NUL')
-      cov_pars_est_shape <- c(6.685939690e-02, 3.389668693e-02, 1.050559295e+00, 2.417603051e-01, 1.703677225e-01, 3.619481495e-02, 2.179632368e-01, 4.622495774e-02, 1.544734537e-01, 3.248756329e-02, 1.418090169e+02, 5.839766923e+03)
-      coef_est_shape <- c(2.338255631, 0.222555043, 1.746682245, 0.068682910)
-      nrounds_est_shape <- 48
-      nll_opt_est_shape <- 106.56952
+      # the smoothness is at its upper bound 100
+      cov_pars_est_shape <- c(0.06728549952, 0.0341738561, 1.048549705, 0.2416920428, 0.1713027285, 0.03652182225,
+                              0.2183991689, 0.04647604005, 0.1541422246, 0.03251741777, 100, 2919.360508)
+      coef_est_shape <- c(2.335252399, 0.2227755912, 1.746662196, 0.06881348304)
+      nrounds_est_shape <- 45
+      nll_opt_est_shape <- 106.5703031
       capture.output(expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))[1:10]-cov_pars_est_shape[1:10])),TOLERANCE_LOOSE), file='NUL')
       expect_lt(sum(abs((gp_model$get_cov_pars(std_err = TRUE))[11]-cov_pars_est_shape[11])/cov_pars_est_shape[11]),0.2)
       expect_lt(sum(abs((gp_model$get_cov_pars(std_err = TRUE))[12]-cov_pars_est_shape[12])/cov_pars_est_shape[12]),0.25)

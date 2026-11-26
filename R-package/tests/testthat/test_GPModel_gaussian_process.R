@@ -130,7 +130,43 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
       expect_lt(abs(nll - nll_exp_mat), TOLERANCE_MEDIUM)
     }
-    
+    # Matern 3.5 and 4.5 (closed form)
+    for (shape in c(3.5, 4.5)) {
+      gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = shape)
+      nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
+      nll_R <- nll_matern_R(D / cov_pars_eval_nll[3], cov_pars_eval_nll[1], cov_pars_eval_nll[2], shape, y)
+      expect_lt(abs(nll - nll_R), TOLERANCE_STRICT)
+    }
+    params_3_5 <- OPTIM_PARAMS_BFGS
+    params_3_5$init_cov_pars <- params$init_cov_pars
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 3.5,
+                           y = y, params = params_3_5)
+    cov_pars_3_5 <- c(0.2915335829, 0.0822192829, 0.8097753751, 0.2329198652, 0.1044476267, 0.0223635848)
+    nll_opt_3_5 <- 124.1528964
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE)) - cov_pars_3_5)), TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), 5)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_opt_3_5), TOLERANCE_STRICT)
+    if (!SKIP_BESSEL_COV_TESTS) {
+      # the gradients and standard errors agree with the ones calculated with Bessel functions
+      gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 3.5 + 1E-6,
+                             y = y, params = params_3_5)
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE)) - cov_pars_3_5)), TOLERANCE_MEDIUM)
+      expect_equal(gp_model$get_num_optim_iter(), 5)
+    }
+    # Large smoothness: the general formula, whose powers and Bessel functions would overflow for the small scaled
+    # distances here, agrees with the closed form
+    cov_pars_large_shape <- c(0.1, 1.6, 2)
+    capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 99.5), file='NUL')
+    nll_99_5 <- gp_model$neg_log_likelihood(cov_pars = cov_pars_large_shape, y = y)
+    if (!SKIP_BESSEL_COV_TESTS) {
+      capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 99.5 + 1E-7), file='NUL')
+      nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_large_shape, y = y)
+      expect_lt(abs(nll - nll_99_5), TOLERANCE_MEDIUM)
+      gp_model <- GPModel(gp_coords = coords, cov_function = "matern_estimate_shape")
+      nll <- gp_model$neg_log_likelihood(cov_pars = c(cov_pars_large_shape, 99.5), y = y)
+      expect_lt(abs(nll - nll_99_5), TOLERANCE_STRICT)
+    }
+
     # Estimation using gradient descent and Nesterov acceleration
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
     capture.output( fit(gp_model, y = y, params = params), 
@@ -1417,6 +1453,23 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       output <- capture.output( gp_model <- fitGPModel(gp_coords = coords_cl, cluster_ids = rep(1:2, each = n_cl),
                                                        cov_function = "matern", cov_fct_shape = 1.5, y = y_cl) )
       expect_false(any(grepl("almost constant", output)))
+    }
+  })
+
+  test_that("Estimated smoothness of a Matern covariance function on very smooth data ", {
+    if (SKIP_BESSEL_COV_TESTS) {
+      skip("std::cyl_bessel_k is not available")
+    }
+    # The estimated smoothness reaches its upper bound 100, also when starting above it, without NaN in the
+    # likelihood or the gradients for these large values
+    x <- seq(0, 1, length.out = 200)
+    y_smooth <- sin(2 * pi * x) + 0.05 * qnorm(sim_rand_unif(n = 200, init_c = 0.3))
+    for (init_shape in c(1.5, 150)) {
+      params <- list(optimizer_cov = "lbfgs", init_cov_pars = c(0.01, 1, 0.3, init_shape))
+      output <- capture.output( gp_model <- fitGPModel(gp_coords = matrix(x), cov_function = "matern_estimate_shape",
+                                                       y = y_smooth, params = params) )
+      expect_false(any(grepl("NaN", output)))
+      expect_equal(unname(gp_model$get_cov_pars()["GP_smoothness"]), 100)
     }
   })
 

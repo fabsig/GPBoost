@@ -95,6 +95,12 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
       )
       ard_cov_pars <- c(0.08, 1.1, 0.25, 0.4, 1.5, 0.5, 0.12, 0.3, 2.5, -0.6)
       expect_equal(model_ard$neg_log_likelihood(y = data$y_gaussian, cov_pars = ard_cov_pars), 33.334283736830095, tolerance = relax_tolerance(1e-8))
+      # With one space coordinate, the same model as the ARD one
+      model_space_time <- GPModel(
+        gp_coords = cbind(data$gp_coords[, 1], data$gp_coords[, 1]^2, data$gp_coords[, 2]),
+        cov_function = "ar1_mf_matern_space_time_estimate_shape", likelihood = "gaussian"
+      )
+      expect_equal(model_space_time$neg_log_likelihood(y = data$y_gaussian, cov_pars = ard_cov_pars), 33.334283736830095, tolerance = relax_tolerance(1e-8))
     }
 
     expected_nll <- c(vecchia = 32.401799696083145, vecchia_euclidean = 32.227109558939020)

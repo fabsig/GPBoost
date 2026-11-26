@@ -248,11 +248,16 @@ Gaussian process random coefficients}
 \item{cov_function}{A \code{string} specifying the covariance function for the Gaussian process. 
 Available options:
 \itemize{
-\item{ "matern": Matern covariance function with the smoothness specified by 
-the \code{cov_fct_shape} parameter (using the parametrization of Rasmussen and Williams, 2006) }
-\item{ "matern_estimate_shape": same as "matern" but the smoothness parameter is also estimated }
-\item{ "matern_space_time": Spatio-temporal Matern covariance function with different range parameters for space and time. 
+\item{ "matern": Matern covariance function with the smoothness specified by
+the \code{cov_fct_shape} parameter (using the parametrization of Rasmussen and Williams, 2006).
+For a half-integer smoothness (0.5, 1.5, 2.5, 3.5, ...), the covariance is calculated in closed form. Other values
+require Bessel functions, which are slower to evaluate and not provided by all compilers (e.g., clang on macOS).
+This also holds for "matern_space_time" and "matern_ard" }
+\item{ "matern_estimate_shape": same as "matern" but the smoothness parameter is also estimated.
+The estimated smoothness is at most 100, for which the covariance is practically the Gaussian one (this also holds for the other covariance functions with an estimated smoothness) }
+\item{ "matern_space_time": Spatio-temporal Matern covariance function with different range parameters for space and time.
 Note that the first column in \code{gp_coords} must correspond to the time dimension }
+\item{ "matern_space_time_estimate_shape": same as "matern_space_time" but the smoothness parameter is also estimated }
 \item{ "space_time_gneiting": Spatio-temporal covariance function given in Eq. (16) of Gneiting (2002). 
 Note that the first column in \code{gp_coords} must correspond to the time dimension. 
 This covariance has seven parameters (in the following order: sigma2, a, c, alpha, nu, beta, delta) which are all estimated by default. 
@@ -334,8 +339,8 @@ for Gaussian processes. Available options:
 \itemize{
 \item{"none": No approximation }
 \item{"vecchia": Vecchia approximation; see Sigrist (2022, JMLR) for more details.
-For "matern_space_time" and the anisotropic ARD covariance functions ("matern_ard", "gaussian_ard",
-"matern_ard_estimate_shape"), neighbors are selected by absolute correlation, i.e., using distances in
+For "matern_space_time", "matern_space_time_estimate_shape", and the anisotropic ARD covariance functions ("matern_ard",
+"gaussian_ard", "matern_ard_estimate_shape"), neighbors are selected by absolute correlation, i.e., using distances in
 coordinates scaled by the range parameters, and they are redetermined during parameter estimation.
 For "space_time_gneiting" and "ar1_mf_<base>", neighbors are also selected by absolute correlation by default.
 Use gp_approx = "vecchia_euclidean" for Euclidean-distance selection. }

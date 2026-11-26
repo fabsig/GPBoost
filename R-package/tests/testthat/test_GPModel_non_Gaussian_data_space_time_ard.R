@@ -350,10 +350,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       capture.output( gp_model <- fitGPModel(gp_coords = coords_ARD, likelihood = likelihood, cov_function = "matern_ard_estimate_shape",
                                              y = y, X = X, params = params_ARD_est_shape),
                       file='NUL')
-      cov_pars_est_shape <- c(0.57108958797,  0.08471275821,  0.03304572501,  0.16194229745, 115.08702014148)
-      coef_est_shape <- c(-0.2905450775, 0.2387123371, 0.1944576895, 0.3275844333)
-      nrounds_est_shape <- 28
-      nll_opt_est_shape <- 68.13569857
+      # the smoothness is at its upper bound 100
+      cov_pars_est_shape <- c(0.5713981652, 0.08364271602, 0.03400571719, 0.1614687422, 100)
+      coef_est_shape <- c(-0.2984813577, 0.2388894805, 0.1978472432, 0.3276385282)
+      nrounds_est_shape <- 27
+      nll_opt_est_shape <- 68.13525654
       capture.output( expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))[1:4]-cov_pars_est_shape[1:4])),TOLERANCE_STRICT), file='NUL')
       expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))[5]-cov_pars_est_shape[5])),TOLERANCE_MEDIUM)
       capture.output( expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_est_shape )),TOLERANCE_MEDIUM), file='NUL')

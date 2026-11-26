@@ -215,11 +215,16 @@
 #' @param cov_function A \code{string} specifying the covariance function for the Gaussian process. 
 #' Available options:
 #' \itemize{
-#' \item{ "matern": Matern covariance function with the smoothness specified by 
-#' the \code{cov_fct_shape} parameter (using the parametrization of Rasmussen and Williams, 2006) }
-#' \item{ "matern_estimate_shape": same as "matern" but the smoothness parameter is also estimated }
-#' \item{ "matern_space_time": Spatio-temporal Matern covariance function with different range parameters for space and time. 
+#' \item{ "matern": Matern covariance function with the smoothness specified by
+#' the \code{cov_fct_shape} parameter (using the parametrization of Rasmussen and Williams, 2006).
+#' For a half-integer smoothness (0.5, 1.5, 2.5, 3.5, ...), the covariance is calculated in closed form. Other values
+#' require Bessel functions, which are slower to evaluate and not provided by all compilers (e.g., clang on macOS).
+#' This also holds for "matern_space_time" and "matern_ard" }
+#' \item{ "matern_estimate_shape": same as "matern" but the smoothness parameter is also estimated.
+#' The estimated smoothness is at most 100, for which the covariance is practically the Gaussian one (this also holds for the other covariance functions with an estimated smoothness) }
+#' \item{ "matern_space_time": Spatio-temporal Matern covariance function with different range parameters for space and time.
 #' Note that the first column in \code{gp_coords} must correspond to the time dimension }
+#' \item{ "matern_space_time_estimate_shape": same as "matern_space_time" but the smoothness parameter is also estimated }
 #' \item{ "space_time_gneiting": Spatio-temporal covariance function given in Eq. (16) of Gneiting (2002). 
 #' Note that the first column in \code{gp_coords} must correspond to the time dimension. 
 #' This covariance has seven parameters (in the following order: sigma2, a, c, alpha, nu, beta, delta) which are all estimated by default. 
@@ -297,8 +302,8 @@
 #' \itemize{
 #' \item{"none": No approximation }
 #' \item{"vecchia": Vecchia approximation; see Sigrist (2022, JMLR) for more details.
-#' For "matern_space_time" and the anisotropic ARD covariance functions ("matern_ard", "gaussian_ard",
-#' "matern_ard_estimate_shape"), neighbors are selected by absolute correlation, i.e., using distances in
+#' For "matern_space_time", "matern_space_time_estimate_shape", and the anisotropic ARD covariance functions ("matern_ard",
+#' "gaussian_ard", "matern_ard_estimate_shape"), neighbors are selected by absolute correlation, i.e., using distances in
 #' coordinates scaled by the range parameters, and they are redetermined during parameter estimation.
 #' For "space_time_gneiting" and "ar1_mf_<base>", neighbors are also selected by absolute correlation by default.
 #' Use gp_approx = "vecchia_euclidean" for Euclidean-distance selection. }
@@ -1181,6 +1186,8 @@ gpb.GPModel <- R6::R6Class(
             base_names <- c("sigma2", "a", "c", "alpha", "nu", "beta", "delta")
           } else if (base_cov_function == "matern_space_time" || base_cov_function == "exponential_space_time") {
             base_names <- c("GP_var", "GP_range_time", "GP_range_space")
+          } else if (base_cov_function == "matern_space_time_estimate_shape") {
+            base_names <- c("GP_var", "GP_range_time", "GP_range_space", "GP_smoothness")
           } else if (base_cov_function == "matern_estimate_shape") {
             base_names <- c("GP_var", "GP_range", "GP_smoothness")
           } else if (base_cov_function == "matern_ard" || base_cov_function == "gaussian_ard" ||
@@ -1206,6 +1213,8 @@ gpb.GPModel <- R6::R6Class(
           private$cov_par_names <- c(private$cov_par_names,"sigma2", "a", "c", "alpha", "nu", "beta", "delta")
         } else if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range_time", "GP_range_space")
+        } else if (private$cov_function == "matern_space_time_estimate_shape") {
+          private$cov_par_names <- c(private$cov_par_names,"GP_var", "GP_range_time", "GP_range_space", "GP_smoothness")
         } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" |
                    private$cov_function == "exponential_ard") {
           private$cov_par_names <- c(private$cov_par_names,"GP_var", paste0("GP_range_",1:private$dim_coords))
@@ -1253,6 +1262,8 @@ gpb.GPModel <- R6::R6Class(
           #   coefficient followed by the same suffixes as the ones of the corresponding intercept GP
           if (private$cov_function == "matern_space_time" | private$cov_function == "exponential_space_time") {
             par_name_suffixes <- c("_var", "_range_time", "_range_space")
+          } else if (private$cov_function == "matern_space_time_estimate_shape") {
+            par_name_suffixes <- c("_var", "_range_time", "_range_space", "_smoothness")
           } else if (private$cov_function == "matern_ard" | private$cov_function == "gaussian_ard" | 
                      private$cov_function == "exponential_ard") {
             par_name_suffixes <- c("_var", paste0("_range_",1:private$dim_coords))
@@ -3219,6 +3230,8 @@ gpb.GPModel <- R6::R6Class(
           num_par_base <- 1L + dim_spatial
         } else if (base_cov_function == "matern_ard_estimate_shape") {
           num_par_base <- 2L + dim_spatial
+        } else if (base_cov_function == "matern_space_time_estimate_shape") {
+          num_par_base <- 4L
         } else if (base_cov_function == "linear") {
           num_par_base <- 1L
         } else {
@@ -3235,6 +3248,8 @@ gpb.GPModel <- R6::R6Class(
         num_par_per_GP <- 1L + private$dim_coords
       } else if (private$cov_function == "matern_ard_estimate_shape") {
         num_par_per_GP <- 2L + private$dim_coords
+      } else if (private$cov_function == "matern_space_time_estimate_shape") {
+        num_par_per_GP <- 4L
       } else if (private$cov_function == "wendland" | private$cov_function == "linear" | 
                  private$cov_function == "linear_no_woodbury") {
         num_par_per_GP <- 1L

@@ -1631,7 +1631,7 @@ GPBOOST_C_EXPORT int GPB_GetNumIt(REModelHandle handle,
 * \brief Check whether the library has been compiled with support for the modified Bessel function
 *   of the second kind 'std::cyl_bessel_k'. This is a C++17 feature which is, e.g., not provided by
 *   libc++ (the standard library used by clang on macOS and in the clang sanitizer containers).
-*   Covariance functions with a general (non-fixed) smoothness require it.
+*   Matern covariance functions with a smoothness that is estimated or not a half-integer require it.
 *   Note: You should pre-allocate memory for has_bessel (length = 1)
 * \param[out] has_bessel 1 if 'std::cyl_bessel_k' is available, 0 otherwise
 * \return 0 when succeed, -1 when failure happens

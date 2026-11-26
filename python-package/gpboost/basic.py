@@ -5471,16 +5471,25 @@ class GPModel(object):
                 - "matern":
 
                     Matern covariance function with the smoothness specified by the 'cov_fct_shape' parameter
-                    (using the parametrization of Rasmussen and Williams, 2006)
+                    (using the parametrization of Rasmussen and Williams, 2006). For a half-integer smoothness
+                    (0.5, 1.5, 2.5, 3.5, ...), the covariance is calculated in closed form. Other values require Bessel
+                    functions, which are slower to evaluate and not provided by all compilers (e.g., clang on macOS).
+                    This also holds for "matern_space_time" and "matern_ard"
 
                 - "matern_estimate_shape":
 
-                    Same as "matern" but the smoothness parameter is also estimated
+                    Same as "matern" but the smoothness parameter is also estimated. The estimated smoothness is at
+                    most 100, for which the covariance is practically the Gaussian one (this also holds for the
+                    other covariance functions with an estimated smoothness)
 
                 - "matern_space_time":
 
                     Spatio-temporal Matern covariance function with different range parameters for space and time.
                     Note that the first column in 'gp_coords' must correspond to the time dimension
+
+                - "matern_space_time_estimate_shape":
+
+                    Same as "matern_space_time" but the smoothness parameter is also estimated
 
                 - "space_time_gneiting":
 
@@ -5606,10 +5615,10 @@ class GPModel(object):
                     - "vecchia":
 
                         Vecchia approximation; see Sigrist (2022, JMLR) for more details
-                        For "matern_space_time" and the anisotropic ARD covariance functions ("matern_ard",
-                        "gaussian_ard", "matern_ard_estimate_shape"), neighbors are selected by absolute
-                        correlation, i.e., using distances in coordinates scaled by the range parameters,
-                        and they are redetermined during parameter estimation. For "space_time_gneiting" and
+                        For "matern_space_time", "matern_space_time_estimate_shape", and the anisotropic ARD
+                        covariance functions ("matern_ard", "gaussian_ard", "matern_ard_estimate_shape"), neighbors
+                        are selected by absolute correlation, i.e., using distances in coordinates scaled by the
+                        range parameters, and they are redetermined during parameter estimation. For "space_time_gneiting" and
                         "ar1_mf_<base>", neighbors are also selected by absolute correlation by default. Use
                         gp_approx = "vecchia_euclidean" for Euclidean-distance selection.
 
@@ -6226,6 +6235,8 @@ class GPModel(object):
                                            "matern_estimate_shape"):
                     base_names = ["GP_var", "GP_range_time", "GP_range_space"] if "space_time" in base_cov_function \
                         else ["GP_var", "GP_range", "GP_smoothness"]
+                elif base_cov_function == "matern_space_time_estimate_shape":
+                    base_names = ["GP_var", "GP_range_time", "GP_range_space", "GP_smoothness"]
                 elif base_cov_function in ("matern_ard", "gaussian_ard", "exponential_ard"):
                     base_names = ["GP_var"] + ["GP_range_" + str(i + 1) for i in range(dim_spatial)]
                 elif base_cov_function == "matern_ard_estimate_shape":
@@ -6247,6 +6258,8 @@ class GPModel(object):
                 self.cov_par_names.extend(["sigma2", "a", "c", "alpha", "nu", "beta", "delta"])
             elif self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time":
                 self.cov_par_names.extend(["GP_var", "GP_range_time", "GP_range_space"])
+            elif self.cov_function == "matern_space_time_estimate_shape":
+                self.cov_par_names.extend(["GP_var", "GP_range_time", "GP_range_space", "GP_smoothness"])
             elif self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard" or \
                     self.cov_function == "exponential_ard":
                 self.cov_par_names.extend(["GP_var"] + ["GP_range_" + str(i+1) for i in range(0,self.dim_coords)])
@@ -6284,6 +6297,8 @@ class GPModel(object):
                 #   coefficient followed by the same suffixes as the ones of the corresponding intercept GP
                 if self.cov_function == "matern_space_time" or self.cov_function == "exponential_space_time":
                     par_name_suffixes = ["_var", "_range_time", "_range_space"]
+                elif self.cov_function == "matern_space_time_estimate_shape":
+                    par_name_suffixes = ["_var", "_range_time", "_range_space", "_smoothness"]
                 elif (self.cov_function == "matern_ard" or self.cov_function == "gaussian_ard" or
                       self.cov_function == "exponential_ard"):
                     par_name_suffixes = ["_var"] + ["_range_" + str(i + 1) for i in range(0, self.dim_coords)]
@@ -6459,6 +6474,8 @@ class GPModel(object):
                 num_par_base = 1 + dim_spatial
             elif base_cov_function == "matern_ard_estimate_shape":
                 num_par_base = 2 + dim_spatial
+            elif base_cov_function == "matern_space_time_estimate_shape":
+                num_par_base = 4
             elif base_cov_function == "linear":
                 num_par_base = 1
             else:
@@ -6474,6 +6491,8 @@ class GPModel(object):
             num_par_per_GP = 1 + self.dim_coords
         elif self.cov_function == "matern_ard_estimate_shape":
             num_par_per_GP = 2 + self.dim_coords
+        elif self.cov_function == "matern_space_time_estimate_shape":
+            num_par_per_GP = 4
         elif self.cov_function == "wendland" or self.cov_function == "linear" or self.cov_function == "linear_no_woodbury":
             num_par_per_GP = 1
         else:
