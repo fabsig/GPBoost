@@ -22,11 +22,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   # a few 1e-6 occur under valgrind in particular, which does not reproduce floating point arithmetic
   # bit-wise (it rounds the 80 bit intermediate results of x87 to 64 bit and its libm differs)
   relax_tolerance_strict <- function(tol) if (USE_STRICT_TOLERANCES) tol else 100 * tol
-  # Covariance functions with a general (non-fixed) smoothness need 'std::cyl_bessel_k', which is a C++17
-  # feature that is not provided by every standard library (in particular not by libc++, which is used by
-  # clang on macOS and in the clang sanitizer containers of R-hub / CRAN)
-  SKIP_BESSEL_COV_TESTS <- !gpboost:::has_std_cyl_bessel_k() &&
-    Sys.getenv("GPBOOST_RUN_BESSEL_COV_TESTS") != "true"
 
   DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent", optimizer_coef = "gradient_descent",
                                use_nesterov_acc = TRUE, lr_cov=0.1, lr_coef = 0.1, maxit = 1000,
@@ -465,19 +460,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_STRICT)
 
     # Matern with shape estimated
-    if (!SKIP_BESSEL_COV_TESTS) {
-      params = OPTIM_PARAMS_BFGS
-      params$init_cov_pars <- c(1,mean(dist(coords))/3,1.5)
-      params$maxit=10
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern_estimate_shape", matrix_inversion_method = "cholesky",
-                                             cov_fct_shape = 1.5, y = y, params = params, likelihood = "bernoulli_probit") , file='NUL')
-      cov_pars_other <- c(0.6289098, 0.1786315, 70.6673764)
-      num_it_other <- 10
-      nll_opt_other <- 63.07716
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_other)),TOLERANCE_MEDIUM)
-      expect_equal(gp_model$get_num_optim_iter(), num_it_other)
-      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_MEDIUM)
-    }
+    params = OPTIM_PARAMS_BFGS
+    params$init_cov_pars <- c(1,mean(dist(coords))/3,1.5)
+    params$maxit=10
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern_estimate_shape", matrix_inversion_method = "cholesky",
+                                           cov_fct_shape = 1.5, y = y, params = params, likelihood = "bernoulli_probit") , file='NUL')
+    cov_pars_other <- c(0.6289097, 0.1786315, 70.6650081)
+    num_it_other <- 10
+    nll_opt_other <- 63.07716
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_other)),TOLERANCE_MEDIUM)
+    expect_equal(gp_model$get_num_optim_iter(), num_it_other)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_MEDIUM)
 
     ###########################
     ## Use of weights

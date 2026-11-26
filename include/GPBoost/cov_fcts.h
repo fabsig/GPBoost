@@ -13,27 +13,18 @@
 #include <GPBoost/utils.h>
 #include <GPBoost/sparse_matrix_utils.h>
 #include <GPBoost/GP_utils.h>
-#include <GPBoost/DF_utils.h>
+#include <GPBoost/bessel_k.h>
 
 #include <string>
 #include <set>
 #include <string>
 #include <vector>
 #include <memory>
-#if __has_include(<version>)
-#  include <version>   // collects all feature-test macros
-#endif
 #include <cmath>
 #include <functional>
 
 #include <LightGBM/utils/log.h>
 using LightGBM::Log;
-
-#if defined(__cpp_lib_math_special_functions) && __cpp_lib_math_special_functions >= 201603L
-#  define HAS_STD_CYL_BESSEL_K 1
-#else
-#  define HAS_STD_CYL_BESSEL_K 0
-#endif
 
 
 namespace GPBoost {
@@ -219,12 +210,6 @@ namespace GPBoost {
 						coef /= 2. * p - 1.;
 					}
 				}
-#if !HAS_STD_CYL_BESSEL_K
-				if (matern_half_integer_order_ < 0) {
-					// Mathematical special functions are not supported in C++17 by Clang and some other compilers (see https://en.cppreference.com/w/cpp/compiler_support/17#C.2B.2B17_library_features)
-					Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a half-integer smoothness 0.5, 1.5, 2.5, ... ", cov_fct_type_.c_str(), shape);
-				}
-#endif
 				if (shape > LARGE_SHAPE_WARNING_THRESHOLD_) {
 					Log::REInfo(LARGE_SHAPE_WARNING_);
 				}
@@ -233,12 +218,6 @@ namespace GPBoost {
 				if (shape <= 0. || shape > 2.) {
 					Log::REFatal("'shape' needs to be larger than 0 and smaller or equal than 2 for the '%s' covariance function, found %g ", cov_fct_type_.c_str(), shape);
 				}
-			}
-			else if (IsMaternWithEstimatedShape()) {
-#if !HAS_STD_CYL_BESSEL_K
-				// Mathematical special functions are not supported in C++17 by Clang and some other compilers (see https://en.cppreference.com/w/cpp/compiler_support/17#C.2B.2B17_library_features)
-				Log::REFatal("The covariance function '%s' requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed half-integer smoothness 0.5, 1.5, 2.5, ... ", cov_fct_type_.c_str());
-#endif
 			}
 			if (cov_fct_type_ == "wendland" || apply_tapering) {
 				if (!(TwoNumbersAreEqual<double>(taper_shape, 0.0) || TwoNumbersAreEqual<double>(taper_shape, 1.0) || TwoNumbersAreEqual<double>(taper_shape, 2.0))) {
@@ -569,6 +548,9 @@ namespace GPBoost {
 				if (pars[3] > 1.) {//alpha
 					pars[3] = 1.;
 				}
+				if (pars[4] > MAX_ESTIMATED_MATERN_SHAPE_) {//nu
+					pars[4] = MAX_ESTIMATED_MATERN_SHAPE_;
+				}
 				if (pars[5] > 1.) {//beta
 					pars[5] = 1.;
 				}
@@ -697,7 +679,6 @@ namespace GPBoost {
 				CalculateCovMatAR1Multifidelity(dist, coords, coords_pred, pars, sigma, is_symmmetric);
 				return;
 			}
-			CheckBesselAvailableForSpaceTimeGneiting(pars);
 			if (use_precomputed_dist_for_calc_cov_) {
 				CHECK(dist.rows() > 0);
 				CHECK(dist.cols() > 0);
@@ -819,7 +800,6 @@ namespace GPBoost {
 				CalculateCovMatAR1Multifidelity(dist, coords, coords_pred, pars, sigma, is_symmmetric);
 				return;
 			}
-			CheckBesselAvailableForSpaceTimeGneiting(pars);
 			CHECK(dist.rows() > 0);//dist is used to define sigma
 			CHECK(dist.cols() > 0);
 			if (is_symmmetric) {
@@ -941,7 +921,6 @@ namespace GPBoost {
 			if (is_ar1_multifidelity_) {
 				return CalculateCovarianceOneEntryAR1Multifidelity(coords, coords_pred, pars);
 			}
-			CheckBesselAvailableForSpaceTimeGneiting(pars);
 			if (need_coordinates_for_calculating_covariance_) {
 				if (coords.size() == 0 || coords_pred.size() == 0) {
 					Log::REFatal("'CalculateCovarianceOneEntry()' is not implemented when 'coords' or 'coords_pred' are empty for cov_fct_type_ == '%s'", cov_fct_type_.c_str());
@@ -1177,7 +1156,6 @@ namespace GPBoost {
 			bool is_symmmetric) const {
 			CHECK(pars.size() == num_cov_par_);
 			CHECK(!is_ar1_multifidelity_);
-			CheckBesselAvailableForSpaceTimeGneitingGradient(pars, ind_par);
 			if (use_precomputed_dist_for_calc_cov_) {
 				CHECK(sigma.cols() == dist.cols());
 				CHECK(sigma.rows() == dist.rows());
@@ -1282,7 +1260,6 @@ namespace GPBoost {
 			bool is_symmmetric) const {
 			CHECK(pars.size() == num_cov_par_);
 			CHECK(!is_ar1_multifidelity_);
-			CheckBesselAvailableForSpaceTimeGneitingGradient(pars, ind_par);
 			CHECK(sigma.cols() == sigma.rows());
 			if (use_precomputed_dist_for_calc_cov_) {
 				CHECK(sigma.cols() == dist.cols());
@@ -1393,7 +1370,6 @@ namespace GPBoost {
 			double nugget_var,
 			int ind_par) const {
 			CHECK(pars.size() == num_cov_par_);
-			CheckBesselAvailableForSpaceTimeGneitingGradient(pars, ind_par);
 			if (need_coordinates_for_calculating_covariance_) {
 				if (coords.size() == 0 || coords_pred.size() == 0) {
 					Log::REFatal("'CalculateGradientCovarianceOneEntry()' is not implemented when 'coords' or 'coords_pred' are empty for cov_fct_type_ == '%s'", cov_fct_type_.c_str());
@@ -2015,31 +1991,6 @@ namespace GPBoost {
 			}
 		}
 
-		void CheckBesselAvailableForSpaceTimeGneiting(const vec_t& pars) const {
-#if !HAS_STD_CYL_BESSEL_K
-			if (cov_fct_type_ == "space_time_gneiting" &&
-				!(TwoNumbersAreEqual<double>(pars[4], 0.5) || TwoNumbersAreEqual<double>(pars[4], 1.5) || TwoNumbersAreEqual<double>(pars[4], 2.5))) {
-				Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or use a fixed smoothness 0.5, 1.5, or 2.5 ", cov_fct_type_.c_str(), pars[4]);
-			}
-#else
-			(void)pars;
-#endif
-		}
-
-		void CheckBesselAvailableForSpaceTimeGneitingGradient(const vec_t& pars,
-			int ind_par) const {
-#if !HAS_STD_CYL_BESSEL_K
-			if (cov_fct_type_ == "space_time_gneiting" &&
-				(ind_par == 3 ||
-					!(TwoNumbersAreEqual<double>(pars[4], 0.5) || TwoNumbersAreEqual<double>(pars[4], 1.5) || TwoNumbersAreEqual<double>(pars[4], 2.5)))) {
-				Log::REFatal("The covariance function '%s' and 'shape' = %g requires the Bessel function std::cyl_bessel_k for this gradient, but this compiler / standard library does not provide it. Use a compiler (e.g., gcc or MSVC) which supports this, or do not estimate the smoothness parameter and use a fixed smoothness 0.5, 1.5, or 2.5 ", cov_fct_type_.c_str(), pars[4]);
-			}
-#else
-			(void)pars;
-			(void)ind_par;
-#endif
-		}
-
 		/*!
 		* \brief Calculates Wendland correlation function if taper_shape == 0
 		* \param dist Distance
@@ -2232,11 +2183,10 @@ namespace GPBoost {
 		*		orders in (0, 2]: its terms are positive and at most 1, whereas z^nu underflows and K_nu(z) overflows for large nu
 		*		and small z, and Gamma(nu) overflows for nu > 171. Bessel functions are thus only evaluated for orders in (0, 2]
 		*/
-		inline double MaternCorrelationGeneralShape([[maybe_unused]] double z,
-			[[maybe_unused]] double nu) const {
-#if HAS_STD_CYL_BESSEL_K
+		inline double MaternCorrelationGeneralShape(double z,
+			double nu) const {
 			if (nu <= 2.) {
-				return(std::pow(2., 1. - nu) / std::tgamma(nu) * std::pow(z, nu) * std::cyl_bessel_k(nu, z));
+				return(std::pow(2., 1. - nu) / std::tgamma(nu) * std::pow(z, nu) * BesselK(nu, z));
 			}
 			const int num_steps = (int)std::ceil(nu) - 2;
 			double order = nu - num_steps;// in (1, 2]
@@ -2250,25 +2200,18 @@ namespace GPBoost {
 				order += 1.;
 			}
 			return(corr);
-#else
-			return(1.);
-#endif
 		}//end MaternCorrelationGeneralShape
 
 		/*!
 		* \brief Derivative of the Matern correlation M_nu(z) with respect to z (z > 0): -z / (2 (nu - 1)) * M_{nu-1}(z) for nu > 1,
 		*		and -2^(1 - nu) / Gamma(nu) * z^nu * K_{1-nu}(z) for nu <= 1
 		*/
-		inline double MaternCorrelationDerivativeGeneralShape([[maybe_unused]] double z,
-			[[maybe_unused]] double nu) const {
-#if HAS_STD_CYL_BESSEL_K
+		inline double MaternCorrelationDerivativeGeneralShape(double z,
+			double nu) const {
 			if (nu > 1.) {
 				return(-z / (2. * (nu - 1.)) * MaternCorrelationGeneralShape(z, nu - 1.));
 			}
-			return(-std::pow(2., 1. - nu) / std::tgamma(nu) * std::pow(z, nu) * std::cyl_bessel_k(1. - nu, z));
-#else
-			return(0.);
-#endif
+			return(-std::pow(2., 1. - nu) / std::tgamma(nu) * std::pow(z, nu) * BesselK(1. - nu, z));
 		}//end MaternCorrelationDerivativeGeneralShape
 
 		inline double CovarianceMaternGeneralShape(double dist,
@@ -2802,18 +2745,10 @@ namespace GPBoost {
 			else if (TwoNumbersAreEqual<double>(pars[4], 2.5)) {
 				return(d_aux2 * (1. + d_aux + d_aux * d_aux / 3.) * std::exp(-d_aux));
 			}
-			else {
-#if HAS_STD_CYL_BESSEL_K
-				if (d_aux < EPSILON_NUMBERS) {
-					return(d_aux2);
-				}
-				else {
-					return(d_aux2 * std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * std::pow(d_aux, pars[4]) * std::cyl_bessel_k(pars[4], d_aux));
-				}
-#else
-				return(0.);
-#endif
+			else if (d_aux < EPSILON_NUMBERS) {
+				return(d_aux2);
 			}
+			return(d_aux2 * MaternCorrelationGeneralShape(d_aux, pars[4]));
 		}// end SpaceTimeGneitingCovariance_vec
 
 		/*!
@@ -2910,52 +2845,25 @@ namespace GPBoost {
 					grad = (d_aux2_grad * (1. + d_aux + d_aux * d_aux / 3.) -
 						d_aux2 * (d_aux + d_aux * d_aux) / 3. * d_aux_grad) * std::exp(-d_aux);
 				}
+				else if (d_aux < EPSILON_NUMBERS) {
+					grad = d_aux2_grad;
+				}
 				else {
-#if HAS_STD_CYL_BESSEL_K
-					if (d_aux < EPSILON_NUMBERS) {
-						grad = d_aux2_grad;
-					}
-					else {
-						double bessel = std::cyl_bessel_k(pars[4], d_aux);
-						double grad_bessel = pars[4] / d_aux * bessel - std::cyl_bessel_k(pars[4] + 1., d_aux); // d/dz K_nu(z) = nu / z * K_nu(z) - K_(nu+1)(z)
-						grad = d_aux2_grad * std::pow(d_aux, pars[4]) * bessel +
-							d_aux2 * pars[4] * std::pow(d_aux, pars[4] - 1.) * d_aux_grad * bessel +
-							d_aux2 * std::pow(d_aux, pars[4]) * d_aux_grad * grad_bessel;
-						grad *= std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]);
-					}
-#else
-					grad = 0.;
-#endif
+					grad = d_aux2_grad * MaternCorrelationGeneralShape(d_aux, pars[4]) +
+						d_aux2 * MaternCorrelationDerivativeGeneralShape(d_aux, pars[4]) * d_aux_grad;
 				}
 			}//end a, c, alpha, beta, delta
 			else if (ind_par == 3) {//nu
-#if HAS_STD_CYL_BESSEL_K
-				double nu_up, nu_down;
-				if (transf_scale) {
-					nu_up = std::exp(std::log(pars[4]) + delta_step_);//gradient on log-scale
-					nu_down = std::exp(std::log(pars[4]) - delta_step_);
-				}
-				else {
-					nu_up = pars[4] + delta_step_;
-					nu_down = pars[4] - delta_step_;
-					CHECK(nu_down > 0.);
-				}
 				if (d_aux < EPSILON_NUMBERS) {
-					grad = 0;
+					grad = 0.;
 				}
 				else {
-					cm = 1.;
-					const double cm_deriv = transf_scale ? pars[4] : nugget_var;
-					const double cm_num_deriv = transf_scale ? 1 : nugget_var;//already on log-scale if transf_scale
-					const double bessel_num_deriv = (std::cyl_bessel_k(nu_up, d_aux) - std::cyl_bessel_k(nu_down, d_aux)) / (2. * delta_step_);
-					const double bessel = std::cyl_bessel_k(pars[4], d_aux);
-					grad = std::pow(2., 1 - pars[4]) / std::tgamma(pars[4]) * d_aux2 * std::pow(d_aux, pars[4]) *
-						(cm_deriv * bessel * (-std::log(2.) - GPBoost::digamma(pars[4]) + std::log(d_aux)) + // (i) d/dnu 2^{1-v} = -log(2)*2^{1-v}, (ii) d/dnu 1/Gamma(nu) = -digamm(nu) / Gamma(nu), (iii) d/dnu d_aux^v = log(d_aux)*d_aux^v
-							cm_num_deriv * bessel_num_deriv);
+					// central difference of the Matern correlation, on the log scale if transf_scale
+					double nu_up, nu_down;
+					ShapesForFiniteDifference(pars[4], transf_scale, nu_up, nu_down);
+					grad = d_aux2 * (MaternCorrelationGeneralShape(d_aux, nu_up) - MaternCorrelationGeneralShape(d_aux, nu_down)) / (2. * delta_step_);
+					cm = transf_scale ? 1. : nugget_var;
 				}
-#else
-				grad = 0.;
-#endif
 			}
 			else {
 				Log::REFatal("GradientSpaceTimeGneitingCovariance: not yet implemented for ind_par = %d ", ind_par);
@@ -3411,8 +3319,9 @@ namespace GPBoost {
 		const double LARGE_SHAPE_WARNING_THRESHOLD_ = 50.;
 		const char* LARGE_SHAPE_WARNING_ = "The shape parameter is very large, it is recommended to use the 'gaussian' covariance function ";
 		/*!
-		* \brief Upper bound for an estimated smoothness parameter of a Matern covariance function. The likelihood is practically constant
-		*		in the smoothness for such large values, for which the Matern covariance is practically the Gaussian one
+		* \brief Upper bound for an estimated smoothness parameter of a Matern covariance function, also for the smoothness nu of the
+		*		'space_time_gneiting' covariance function. The likelihood is practically constant in the smoothness for such large values,
+		*		for which the Matern covariance is practically the Gaussian one, and the cost of the Matern correlation grows with it
 		*/
 		const double MAX_ESTIMATED_MATERN_SHAPE_ = 100.;
 

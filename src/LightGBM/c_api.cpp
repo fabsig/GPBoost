@@ -2964,12 +2964,6 @@ int GPB_GetNumIt(REModelHandle handle,
 	API_END();
 }
 
-int GPB_HasStdCylBesselK(int* has_bessel) {
-	API_BEGIN();
-	has_bessel[0] = HAS_STD_CYL_BESSEL_K;
-	API_END();
-}
-
 int GPB_GetNumParallelThreads(int* num_threads) {
 	API_BEGIN();
 	num_threads[0] = omp_get_max_threads();

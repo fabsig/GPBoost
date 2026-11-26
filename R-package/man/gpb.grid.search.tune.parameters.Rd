@@ -17,8 +17,8 @@ gpb.grid.search.tune.parameters(param_grid, num_try_random = NULL, data,
 \item{param_grid}{\code{list} with candidate parameters defining the grid over which a search is done.
 Besides parameters of the tree-boosting part, \code{param_grid} can contain the parameters 'cov_fct_shape',
 'cov_fct_order', and 'cov_function' of the GP model, e.g., "cov_fct_shape" = c(0.5, 1.5, 2.5) for the smoothness
-of a Matern covariance function. A smoothness that is not a half-integer (0.5, 1.5, 2.5, ...) requires Bessel functions, which are
-slower to evaluate and not provided by all compilers (e.g., clang on macOS). For every parameter combination, the
+of a Matern covariance function. A smoothness that is not a half-integer (0.5, 1.5, 2.5, ...) requires Bessel
+functions, which are slower to evaluate. For every parameter combination, the
 GP models of the cross-validation folds are constructed with the values of these parameters and with all other
 settings of \code{gp_model}. \code{gp_model} keeps its own values of these parameters.
 \code{gp_model} must have a Gaussian process, and 'cov_function' and 'cov_fct_order' cannot be tuned if it has

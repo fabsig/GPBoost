@@ -11,11 +11,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   # does not reproduce floating point arithmetic bit-wise. The tight tolerances therefore only hold on the
   # reference platform on which the expected values were calculated. 'relax_tolerance*()' of
   # helper-tolerances.R relaxes them elsewhere and reports once per test run which of the two is in force.
-  # Covariance functions with a general (non-fixed) smoothness need 'std::cyl_bessel_k', which is a C++17
-  # feature that is not provided by every standard library (in particular not by libc++, which is used by
-  # clang on macOS and in the clang sanitizer containers of R-hub / CRAN)
-  SKIP_BESSEL_COV_TESTS <- !gpboost:::has_std_cyl_bessel_k() &&
-    Sys.getenv("GPBOOST_RUN_BESSEL_COV_TESTS") != "true"
   
   DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent",
                                lr_cov = 0.1, use_nesterov_acc = TRUE,
@@ -96,40 +91,34 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 0.5)
     nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
     expect_lt(abs(nll - nll_exp), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS) {
-      gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 0.5 + 1E-6)
-      nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
-      expect_lt(abs(nll - nll_exp), TOLERANCE_STRICT)
-      gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 0.5 - 1E-6)
-      nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
-      expect_lt(abs(nll - nll_exp), TOLERANCE_STRICT)
-    }
+    gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 0.5 + 1E-6)
+    nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
+    expect_lt(abs(nll - nll_exp), TOLERANCE_STRICT)
+    gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 0.5 - 1E-6)
+    nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
+    expect_lt(abs(nll - nll_exp), TOLERANCE_STRICT)
     # Matern 1.5
     gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5)
     nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
     nll_exp_mat <- 141.3502172
     expect_lt(abs(nll - nll_exp_mat), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS) {
-      gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-6)
-      nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
-      expect_lt(abs(nll - nll_exp_mat), TOLERANCE_MEDIUM)
-      gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 - 1E-6)
-      nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
-      expect_lt(abs(nll - nll_exp_mat), TOLERANCE_MEDIUM)
-    }
+    gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-6)
+    nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
+    expect_lt(abs(nll - nll_exp_mat), TOLERANCE_MEDIUM)
+    gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 - 1E-6)
+    nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
+    expect_lt(abs(nll - nll_exp_mat), TOLERANCE_MEDIUM)
     # Matern 2.5
     gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 2.5)
     nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
     nll_exp_mat <- 158.1111626
     expect_lt(abs(nll - nll_exp_mat), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS) {
-      gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 2.5 + 1E-6)
-      nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
-      expect_lt(abs(nll - nll_exp_mat), TOLERANCE_MEDIUM)
-      gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 2.5 - 1E-6)
-      nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
-      expect_lt(abs(nll - nll_exp_mat), TOLERANCE_MEDIUM)
-    }
+    gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 2.5 + 1E-6)
+    nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
+    expect_lt(abs(nll - nll_exp_mat), TOLERANCE_MEDIUM)
+    gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 2.5 - 1E-6)
+    nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_eval_nll, y = y)
+    expect_lt(abs(nll - nll_exp_mat), TOLERANCE_MEDIUM)
     # Matern 3.5 and 4.5 (closed form)
     for (shape in c(3.5, 4.5)) {
       gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = shape)
@@ -146,26 +135,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE)) - cov_pars_3_5)), TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 5)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood() - nll_opt_3_5), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS) {
-      # the gradients and standard errors agree with the ones calculated with Bessel functions
-      gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 3.5 + 1E-6,
-                             y = y, params = params_3_5)
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE)) - cov_pars_3_5)), TOLERANCE_MEDIUM)
-      expect_equal(gp_model$get_num_optim_iter(), 5)
-    }
+    # the gradients and standard errors agree with the ones calculated with Bessel functions
+    gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 3.5 + 1E-6,
+                           y = y, params = params_3_5)
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE)) - cov_pars_3_5)), TOLERANCE_MEDIUM)
+    expect_equal(gp_model$get_num_optim_iter(), 5)
     # Large smoothness: the general formula, whose powers and Bessel functions would overflow for the small scaled
     # distances here, agrees with the closed form
     cov_pars_large_shape <- c(0.1, 1.6, 2)
     capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 99.5), file='NUL')
     nll_99_5 <- gp_model$neg_log_likelihood(cov_pars = cov_pars_large_shape, y = y)
-    if (!SKIP_BESSEL_COV_TESTS) {
-      capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 99.5 + 1E-7), file='NUL')
-      nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_large_shape, y = y)
-      expect_lt(abs(nll - nll_99_5), TOLERANCE_MEDIUM)
-      gp_model <- GPModel(gp_coords = coords, cov_function = "matern_estimate_shape")
-      nll <- gp_model$neg_log_likelihood(cov_pars = c(cov_pars_large_shape, 99.5), y = y)
-      expect_lt(abs(nll - nll_99_5), TOLERANCE_STRICT)
-    }
+    capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 99.5 + 1E-7), file='NUL')
+    nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_large_shape, y = y)
+    expect_lt(abs(nll - nll_99_5), TOLERANCE_MEDIUM)
+    gp_model <- GPModel(gp_coords = coords, cov_function = "matern_estimate_shape")
+    nll <- gp_model$neg_log_likelihood(cov_pars = c(cov_pars_large_shape, 99.5), y = y)
+    expect_lt(abs(nll - nll_99_5), TOLERANCE_STRICT)
 
     # Estimation using gradient descent and Nesterov acceleration
     gp_model <- GPModel(gp_coords = coords, cov_function = "exponential")
@@ -416,18 +401,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                     cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
     expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS) {
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
-                                             cov_fct_shape = 0.5 + 1e-6,
-                                             y = y, params = params) , file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_STRICT)
-      expect_equal(gp_model$get_num_optim_iter(), num_it)
-      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_STRICT)
-      pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
-                      cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
-      expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
-      expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)), TOLERANCE_STRICT)
-    }
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
+                                           cov_fct_shape = 0.5 + 1e-6,
+                                           y = y, params = params) , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_STRICT)
+    pred <- predict(gp_model, y=y, gp_coords_pred = coord_test,
+                    cov_pars = cov_pars_pred, predict_cov_mat = TRUE)
+    expect_lt(sum(abs(pred$mu-expected_mu)), TOLERANCE_STRICT)
+    expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)), TOLERANCE_STRICT)
     # Matern 1.5
     init_cov_pars_15 <- c(var(y)/2,var(y)/2,mean(dist(coords))/4.7*sqrt(3))
     params_15 = DEFAULT_OPTIM_PARAMS
@@ -440,13 +423,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), num_it_other)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS) {
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
-                                             cov_fct_shape = 1.5 - 1E-6, y = y, params = params_15) , file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_STRICT)
-      expect_equal(gp_model$get_num_optim_iter(), num_it_other)
-      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_STRICT)
-    }
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
+                                           cov_fct_shape = 1.5 - 1E-6, y = y, params = params_15) , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it_other)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_STRICT)
     
     # Matern 2.5
     init_cov_pars_25 <- c(var(y)/2,var(y)/2,mean(dist(coords))/5.9*sqrt(5))
@@ -460,13 +441,11 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), num_it_other)
     expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_STRICT)
-    if (!SKIP_BESSEL_COV_TESTS) {
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
-                                             cov_fct_shape = 2.5 + 1E-3, y = y, params = params_25) , file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_MEDIUM)
-      expect_equal(gp_model$get_num_optim_iter(), num_it_other)
-      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_MEDIUM)
-    }
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern",
+                                           cov_fct_shape = 2.5 + 1E-3, y = y, params = params_25) , file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_MEDIUM)
+    expect_equal(gp_model$get_num_optim_iter(), num_it_other)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_MEDIUM)
     # gaussian
     init_cov_pars_G <- c(var(y)/2,var(y)/2,sqrt((mean(dist(coords))/2)^2 / 3))
     params_G = DEFAULT_OPTIM_PARAMS
@@ -477,18 +456,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), 11)
     # Matern with shape estimated
-    if (!SKIP_BESSEL_COV_TESTS) {
-      params = OPTIM_PARAMS_BFGS
-      params$init_cov_pars <- c(init_cov_pars_15, 1.5)
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern_estimate_shape",
-                                             cov_fct_shape = 1.5, y = y, params = params) , file='NUL')
-      cov_pars_other <- c(0.0001323589, 0.2018696019, 1.1022114804, 0.3153382101, 0.1187387358, 0.0512925409, 0.4181996520, 0.3579762498)
-      num_it_other <- 23
-      nll_opt_other <- 122.7099697
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_STRICT)
-      expect_equal(gp_model$get_num_optim_iter(), num_it_other)
-      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_STRICT)
-    }
+    params = OPTIM_PARAMS_BFGS
+    params$init_cov_pars <- c(init_cov_pars_15, 1.5)
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern_estimate_shape",
+                                           cov_fct_shape = 1.5, y = y, params = params) , file='NUL')
+    cov_pars_other <- c(0.0001323589, 0.2018696019, 1.1022114804, 0.3153382101, 0.1187387358, 0.0512925409, 0.4181996520, 0.3579762498)
+    num_it_other <- 23
+    nll_opt_other <- 122.7099697
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars_other)),TOLERANCE_STRICT)
+    expect_equal(gp_model$get_num_optim_iter(), num_it_other)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_other), TOLERANCE_STRICT)
     
     ## Test default initial values
     params <- list(optimizer_cov = "gradient_descent", maxit = 0, optimizer_coef = "gradient_descent", init_coef_aux_pars_from_iid_model = FALSE)
@@ -1089,18 +1066,16 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                  c("Error_var", "GP_var", "GP_range_1", "GP_range_2",
                    "GP_rand_coef_nb_1_var", "GP_rand_coef_nb_1_range_1", "GP_rand_coef_nb_1_range_2",
                    "GP_rand_coef_nb_2_var", "GP_rand_coef_nb_2_range_1", "GP_rand_coef_nb_2_range_2"))
-    # Covariance functions with an estimated smoothness parameter. Note: these require 'std::cyl_bessel_k'
+    # Covariance functions with an estimated smoothness parameter
     #   already when the model is created, i.e. also without any estimation
-    if (!SKIP_BESSEL_COV_TESTS) {
-      expect_equal(model_names("matern_estimate_shape", Z_SVC)$cov_par_names,
-                   c("Error_var", "GP_var", "GP_range", "GP_smoothness",
-                     "GP_rand_coef_var1_var", "GP_rand_coef_var1_range", "GP_rand_coef_var1_smoothness",
-                     "GP_rand_coef_var2_var", "GP_rand_coef_var2_range", "GP_rand_coef_var2_smoothness"))
-      expect_equal(model_names("matern_ard_estimate_shape", Z_SVC)$cov_par_names,
-                   c("Error_var", "GP_var", "GP_range_1", "GP_range_2", "GP_smoothness",
-                     "GP_rand_coef_var1_var", "GP_rand_coef_var1_range_1", "GP_rand_coef_var1_range_2", "GP_rand_coef_var1_smoothness",
-                     "GP_rand_coef_var2_var", "GP_rand_coef_var2_range_1", "GP_rand_coef_var2_range_2", "GP_rand_coef_var2_smoothness"))
-    }
+    expect_equal(model_names("matern_estimate_shape", Z_SVC)$cov_par_names,
+                 c("Error_var", "GP_var", "GP_range", "GP_smoothness",
+                   "GP_rand_coef_var1_var", "GP_rand_coef_var1_range", "GP_rand_coef_var1_smoothness",
+                   "GP_rand_coef_var2_var", "GP_rand_coef_var2_range", "GP_rand_coef_var2_smoothness"))
+    expect_equal(model_names("matern_ard_estimate_shape", Z_SVC)$cov_par_names,
+                 c("Error_var", "GP_var", "GP_range_1", "GP_range_2", "GP_smoothness",
+                   "GP_rand_coef_var1_var", "GP_rand_coef_var1_range_1", "GP_rand_coef_var1_range_2", "GP_rand_coef_var1_smoothness",
+                   "GP_rand_coef_var2_var", "GP_rand_coef_var2_range_1", "GP_rand_coef_var2_range_2", "GP_rand_coef_var2_smoothness"))
     # Hurst covariance functions
     expect_equal(model_names("hurst", Z_SVC)$cov_par_names,
                  c("Error_var", "GP_var", "H",
@@ -1457,9 +1432,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
 
   test_that("Estimated smoothness of a Matern covariance function on very smooth data ", {
-    if (SKIP_BESSEL_COV_TESTS) {
-      skip("std::cyl_bessel_k is not available")
-    }
     # The estimated smoothness reaches its upper bound 100, also when starting above it, without NaN in the
     # likelihood or the gradients for these large values
     x <- seq(0, 1, length.out = 200)

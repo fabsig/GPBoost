@@ -11,11 +11,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   # does not reproduce floating point arithmetic bit-wise. The tight tolerances therefore only hold on the
   # reference platform on which the expected values were calculated. 'relax_tolerance*()' of
   # helper-tolerances.R relaxes them elsewhere and reports once per test run which of the two is in force.
-  # Covariance functions with a general (non-fixed) smoothness need 'std::cyl_bessel_k', which is a C++17
-  # feature that is not provided by every standard library (in particular not by libc++, which is used by
-  # clang on macOS and in the clang sanitizer containers of R-hub / CRAN)
-  SKIP_BESSEL_COV_TESTS <- !gpboost:::has_std_cyl_bessel_k() &&
-    Sys.getenv("GPBOOST_RUN_BESSEL_COV_TESTS") != "true"
   
   DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent",
                                lr_cov = 0.1, use_nesterov_acc = TRUE,
@@ -734,20 +729,18 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
 
     # A general smoothness parameter, for which the gradients at the distance zero between two observations at the same
     # location used to be NaN: the Vecchia approximation with all neighbors gives the estimates of the exact model
-    if (!SKIP_BESSEL_COV_TESTS) {
-      for (cov_function in c("matern", "matern_estimate_shape")) {
-        params_loc <- params
-        if (cov_function == "matern_estimate_shape") {
-          params_loc$init_cov_pars <- c(init_cov_pars, 1.2)
-        }
-        output <- capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = cov_function,
-                                                         cov_fct_shape = 1.2, gp_approx = "vecchia", num_neighbors = n-1,
-                                                         vecchia_ordering = "none", y = y, params = params_loc) )
-        expect_false(any(grepl("NaN", output)))
-        capture.output( gp_model_exact <- fitGPModel(gp_coords = coords_multiple, cov_function = cov_function,
-                                                     cov_fct_shape = 1.2, y = y, params = params_loc), file='NUL')
-        expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()) - as.vector(gp_model_exact$get_cov_pars()))), TOLERANCE_MEDIUM)
+    for (cov_function in c("matern", "matern_estimate_shape")) {
+      params_loc <- params
+      if (cov_function == "matern_estimate_shape") {
+        params_loc$init_cov_pars <- c(init_cov_pars, 1.2)
       }
+      output <- capture.output( gp_model <- fitGPModel(gp_coords = coords_multiple, cov_function = cov_function,
+                                                       cov_fct_shape = 1.2, gp_approx = "vecchia", num_neighbors = n-1,
+                                                       vecchia_ordering = "none", y = y, params = params_loc) )
+      expect_false(any(grepl("NaN", output)))
+      capture.output( gp_model_exact <- fitGPModel(gp_coords = coords_multiple, cov_function = cov_function,
+                                                   cov_fct_shape = 1.2, y = y, params = params_loc), file='NUL')
+      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars()) - as.vector(gp_model_exact$get_cov_pars()))), TOLERANCE_MEDIUM)
     }
 
     # Prediction

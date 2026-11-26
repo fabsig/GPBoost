@@ -215,7 +215,7 @@ Model specification parameters
 
       - ``matern`` : Matern covariance function with the smoothness specified by the ``cov_fct_shape`` parameter (using the parametrization of Rasmussen and Williams, 2006)
 
-         - For a half-integer smoothness (0.5, 1.5, 2.5, 3.5, ...), the covariance is calculated in closed form. Other values require Bessel functions, which are slower to evaluate and not provided by all compilers (e.g., clang on macOS). This also holds for ``matern_space_time`` and ``matern_ard``
+         - For a half-integer smoothness (0.5, 1.5, 2.5, 3.5, ...), the covariance is calculated in closed form. Other values require Bessel functions, which are slower to evaluate. This also holds for ``matern_space_time`` and ``matern_ard``
 
       - ``matern_estimate_shape`` : same as ``matern`` but the smoothness parameter is also estimated
 
@@ -231,7 +231,7 @@ Model specification parameters
 
          - Note that the first column in ``gp_coords`` must correspond to the time dimension
 
-         - This covariance has seven parameters (in the following order: sigma2, a, c, alpha, nu, beta, delta) which are all estimated by default. You can disable the estimation of some of these parameter using the ``estimate_cov_par_index`` argument of the ``params`` argument in either the ``fit`` function of a ``gp_model`` object or the ``set_optim_params`` function prior to estimation
+         - This covariance has seven parameters (in the following order: sigma2, a, c, alpha, nu, beta, delta) which are all estimated by default. The estimated nu is at most 100. You can disable the estimation of some of these parameter using the ``estimate_cov_par_index`` argument of the ``params`` argument in either the ``fit`` function of a ``gp_model`` object or the ``set_optim_params`` function prior to estimation
 
       - ``matern_ard``: Anisotropic Matern covariance function with Automatic Relevance Determination (ARD), i.e., with a different range parameter for every coordinate of ``gp_coords``
 

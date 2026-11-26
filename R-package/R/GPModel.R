@@ -218,7 +218,7 @@
 #' \item{ "matern": Matern covariance function with the smoothness specified by
 #' the \code{cov_fct_shape} parameter (using the parametrization of Rasmussen and Williams, 2006).
 #' For a half-integer smoothness (0.5, 1.5, 2.5, 3.5, ...), the covariance is calculated in closed form. Other values
-#' require Bessel functions, which are slower to evaluate and not provided by all compilers (e.g., clang on macOS).
+#' require Bessel functions, which are slower to evaluate.
 #' This also holds for "matern_space_time" and "matern_ard" }
 #' \item{ "matern_estimate_shape": same as "matern" but the smoothness parameter is also estimated.
 #' The estimated smoothness is at most 100, for which the covariance is practically the Gaussian one (this also holds for the other covariance functions with an estimated smoothness) }
@@ -227,7 +227,7 @@
 #' \item{ "matern_space_time_estimate_shape": same as "matern_space_time" but the smoothness parameter is also estimated }
 #' \item{ "space_time_gneiting": Spatio-temporal covariance function given in Eq. (16) of Gneiting (2002). 
 #' Note that the first column in \code{gp_coords} must correspond to the time dimension. 
-#' This covariance has seven parameters (in the following order: sigma2, a, c, alpha, nu, beta, delta) which are all estimated by default. 
+#' This covariance has seven parameters (in the following order: sigma2, a, c, alpha, nu, beta, delta) which are all estimated by default. The estimated nu is at most 100. 
 #' You can disable the estimation of some of these parameter using the 'estimate_cov_par_index' argument of the \code{params} argument in either 
 #' the \code{fit} function of a \code{gp_model} object or the \code{set_optim_params} function prior to estimation. }
 #' \item{ "matern_ard": anisotropic Matern covariance function with Automatic Relevance Determination (ARD), 

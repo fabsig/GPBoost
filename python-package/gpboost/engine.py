@@ -1012,8 +1012,8 @@ def grid_search_tune_parameters(param_grid, train_set, gp_model=None, num_try_ra
         Candidate parameters defining the grid over which a search is done.
         Besides parameters of the tree-boosting part, 'param_grid' can contain the parameters 'cov_fct_shape',
         'cov_fct_order', and 'cov_function' of the GP model, e.g., 'cov_fct_shape': [0.5, 1.5, 2.5] for the smoothness
-        of a Matern covariance function. A smoothness that is not a half-integer (0.5, 1.5, 2.5, ...) requires Bessel functions, which
-        are slower to evaluate and not provided by all compilers (e.g., clang on macOS). For every parameter
+        of a Matern covariance function. A smoothness that is not a half-integer (0.5, 1.5, 2.5, ...) requires Bessel
+        functions, which are slower to evaluate. For every parameter
         combination, the GP models of the cross-validation folds are constructed with the values of these parameters
         and with all other settings of 'gp_model'. 'gp_model' keeps its own values of these parameters.
         'gp_model' must have a Gaussian process, and 'cov_function' and 'cov_fct_order' cannot be tuned if it has
@@ -1582,8 +1582,8 @@ def tune_pars_TPE_algorithm_optuna(search_space, n_trials, X, y, gp_model = None
         Besides parameters of the tree-boosting part, 'search_space' can contain the parameters 'cov_fct_shape',
         'cov_fct_order', and 'cov_function' of the GP model, e.g., 'cov_fct_shape': {'values': [0.5, 1.5, 2.5]} for
         the smoothness of a Matern covariance function. 'cov_fct_shape' can also be given as a range, e.g.,
-        [0.5, 2.5], but a smoothness that is not a half-integer (0.5, 1.5, 2.5, ...) requires Bessel functions, which are slower to
-        evaluate and not provided by all compilers (e.g., clang on macOS, where such trials fail). 'cov_function' can
+        [0.5, 2.5], but a smoothness that is not a half-integer (0.5, 1.5, 2.5, ...) requires Bessel functions, which
+        are slower to evaluate. 'cov_function' can
         only be given as a set of values. In every trial, the GP models of the cross-validation folds are constructed
         with the values of these parameters and with all other settings of 'gp_model'. 'gp_model' keeps its own
         values of these parameters. 'gp_model' must have a Gaussian process, and 'cov_function' and 'cov_fct_order'
@@ -1835,8 +1835,8 @@ def tune_pars_SMAC(search_space, n_trials, X, y, gp_model=None,
         Besides parameters of the tree-boosting part, 'search_space' can contain the parameters 'cov_fct_shape',
         'cov_fct_order', and 'cov_function' of the GP model, e.g., 'cov_fct_shape': {'values': [0.5, 1.5, 2.5]} for
         the smoothness of a Matern covariance function. 'cov_fct_shape' can also be given as a range, e.g.,
-        [0.5, 2.5], but a smoothness that is not a half-integer (0.5, 1.5, 2.5, ...) requires Bessel functions, which are slower to
-        evaluate and not provided by all compilers (e.g., clang on macOS, where such trials fail). 'cov_function' can
+        [0.5, 2.5], but a smoothness that is not a half-integer (0.5, 1.5, 2.5, ...) requires Bessel functions, which
+        are slower to evaluate. 'cov_function' can
         only be given as a set of values. In every trial, the GP models of the cross-validation folds are constructed
         with the values of these parameters and with all other settings of 'gp_model'. 'gp_model' keeps its own
         values of these parameters. 'gp_model' must have a Gaussian process, and 'cov_function' and 'cov_fct_order'

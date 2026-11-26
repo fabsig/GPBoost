@@ -11,11 +11,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   # does not reproduce floating point arithmetic bit-wise. The tight tolerances therefore only hold on the
   # reference platform on which the expected values were calculated. 'relax_tolerance*()' of
   # helper-tolerances.R relaxes them elsewhere and reports once per test run which of the two is in force.
-  # Covariance functions with a general (non-fixed) smoothness need 'std::cyl_bessel_k', which is a C++17
-  # feature that is not provided by every standard library (in particular not by libc++, which is used by
-  # clang on macOS and in the clang sanitizer containers of R-hub / CRAN)
-  SKIP_BESSEL_COV_TESTS <- !gpboost:::has_std_cyl_bessel_k() &&
-    Sys.getenv("GPBOOST_RUN_BESSEL_COV_TESTS") != "true"
   
   DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent",
                                lr_cov = 0.1, use_nesterov_acc = TRUE,
@@ -297,16 +292,14 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)),TOLERANCE_MEDIUM)
     expect_lt(sum(abs(as.vector(pred$cov)-expected_cov)),TOLERANCE_MEDIUM)
     # General shape
-    if (!SKIP_BESSEL_COV_TESTS) {
-      capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-4,
-                                             gp_approx = "tapering", cov_fct_taper_shape = 1, cov_fct_taper_range = 1e6,
-                                             y = y, X = X,
-                                             params = params), file='NUL')
-      expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))[c(1,3,5)]-cov_pars[c(1,3,5)])),TOLERANCE_MEDIUM)
-      expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_MEDIUM)
-      expect_equal(gp_model$get_num_optim_iter(), num_it)
-      expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_MEDIUM)
-    }
+    capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5 + 1E-4,
+                                           gp_approx = "tapering", cov_fct_taper_shape = 1, cov_fct_taper_range = 1e6,
+                                           y = y, X = X,
+                                           params = params), file='NUL')
+    expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))[c(1,3,5)]-cov_pars[c(1,3,5)])),TOLERANCE_MEDIUM)
+    expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_MEDIUM)
+    expect_equal(gp_model$get_num_optim_iter(), num_it)
+    expect_lt(abs(gp_model$get_current_neg_log_likelihood()-nll_opt), TOLERANCE_MEDIUM)
     
     # With tapering and smaller tapering range
     capture.output( gp_model <- fitGPModel(gp_coords = coords, cov_function = "matern", cov_fct_shape = 1.5,

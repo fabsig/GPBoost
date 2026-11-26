@@ -1176,13 +1176,6 @@ SEXP GPB_GetNumIt_R(SEXP handle,
 	return R_NilValue;
 }
 
-SEXP GPB_HasStdCylBesselK_R(SEXP has_bessel) {
-	R_API_BEGIN();
-	CHECK_CALL(GPB_HasStdCylBesselK(R_INT_PTR(has_bessel)));
-	R_API_END();
-	return R_NilValue;
-}
-
 SEXP GPB_GetNumParallelThreads_R(SEXP num_threads) {
 	R_API_BEGIN();
 	CHECK_CALL(GPB_GetNumParallelThreads(R_INT_PTR(num_threads)));
@@ -1571,7 +1564,6 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetCoef_R"                    , (DL_FUNC)&GPB_GetCoef_R                    , 3},
   {"GPB_GetNumIt_R"                   , (DL_FUNC)&GPB_GetNumIt_R                   , 2},
   {"GPB_GetConvergenceStatus_R"       , (DL_FUNC)&GPB_GetConvergenceStatus_R       , 2},
-  {"GPB_HasStdCylBesselK_R"           , (DL_FUNC)&GPB_HasStdCylBesselK_R           , 1},
   {"GPB_GetNumParallelThreads_R"      , (DL_FUNC)&GPB_GetNumParallelThreads_R      , 1},
   {"GPB_SetNumParallelThreads_R"      , (DL_FUNC)&GPB_SetNumParallelThreads_R      , 1},
   {"GPB_GetDefaultNumParallelThreads_R", (DL_FUNC)&GPB_GetDefaultNumParallelThreads_R, 1},

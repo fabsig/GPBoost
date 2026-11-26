@@ -5473,7 +5473,7 @@ class GPModel(object):
                     Matern covariance function with the smoothness specified by the 'cov_fct_shape' parameter
                     (using the parametrization of Rasmussen and Williams, 2006). For a half-integer smoothness
                     (0.5, 1.5, 2.5, 3.5, ...), the covariance is calculated in closed form. Other values require Bessel
-                    functions, which are slower to evaluate and not provided by all compilers (e.g., clang on macOS).
+                    functions, which are slower to evaluate.
                     This also holds for "matern_space_time" and "matern_ard"
 
                 - "matern_estimate_shape":
@@ -5495,7 +5495,7 @@ class GPModel(object):
 
                     Spatio-temporal covariance function given in Eq. (16) of Gneiting (2002). 
                     Note that the first column in 'gp_coords' must correspond to the time dimension.
-                    This covariance has seven parameters (in the following order: sigma2, a, c, alpha, nu, beta, delta) which are all estimated by default.
+                    This covariance has seven parameters (in the following order: sigma2, a, c, alpha, nu, beta, delta) which are all estimated by default. The estimated nu is at most 100.
                     You can disable the estimation of some of these parameter using the 'estimate_cov_par_index' argument of the 'params' argument in either 
                     the 'fit' function of a 'gp_model' object or the 'set_optim_params' function prior to estimation.
 

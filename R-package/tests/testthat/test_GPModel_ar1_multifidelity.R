@@ -7,11 +7,6 @@ context("GPModel_ar1_multifidelity")
 # values were calculated. 'relax_tolerance*()' of helper-tolerances.R relaxes them elsewhere and
 # reports once per test run which of the two is in force.
 
-# 'matern_ard_estimate_shape' needs 'std::cyl_bessel_k', which is not provided by every standard
-# library (in particular not by libc++, used by clang on macOS and in the sanitizer containers)
-SKIP_BESSEL_COV_TESTS <- !gpboost:::has_std_cyl_bessel_k() &&
-  Sys.getenv("GPBOOST_RUN_BESSEL_COV_TESTS") != "true"
-
 if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
 
   sim_rand_unif <- function(n, init_c=0.1){
@@ -88,20 +83,18 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
   test_that("AR1 multifidelity supports covariance variants and both Vecchia selections", {
     data <- simulate_ar1_mf_test_data()
 
-    if (!SKIP_BESSEL_COV_TESTS) {
-      model_ard <- GPModel(
-        gp_coords = cbind(data$gp_coords[, 1], data$gp_coords[, 1]^2, data$gp_coords[, 2]),
-        cov_function = "ar1_mf_matern_ard_estimate_shape", likelihood = "gaussian"
-      )
-      ard_cov_pars <- c(0.08, 1.1, 0.25, 0.4, 1.5, 0.5, 0.12, 0.3, 2.5, -0.6)
-      expect_equal(model_ard$neg_log_likelihood(y = data$y_gaussian, cov_pars = ard_cov_pars), 33.334283736830095, tolerance = relax_tolerance(1e-8))
-      # With one space coordinate, the same model as the ARD one
-      model_space_time <- GPModel(
-        gp_coords = cbind(data$gp_coords[, 1], data$gp_coords[, 1]^2, data$gp_coords[, 2]),
-        cov_function = "ar1_mf_matern_space_time_estimate_shape", likelihood = "gaussian"
-      )
-      expect_equal(model_space_time$neg_log_likelihood(y = data$y_gaussian, cov_pars = ard_cov_pars), 33.334283736830095, tolerance = relax_tolerance(1e-8))
-    }
+    model_ard <- GPModel(
+      gp_coords = cbind(data$gp_coords[, 1], data$gp_coords[, 1]^2, data$gp_coords[, 2]),
+      cov_function = "ar1_mf_matern_ard_estimate_shape", likelihood = "gaussian"
+    )
+    ard_cov_pars <- c(0.08, 1.1, 0.25, 0.4, 1.5, 0.5, 0.12, 0.3, 2.5, -0.6)
+    expect_equal(model_ard$neg_log_likelihood(y = data$y_gaussian, cov_pars = ard_cov_pars), 33.334283736830095, tolerance = relax_tolerance(1e-8))
+    # With one space coordinate, the same model as the ARD one
+    model_space_time <- GPModel(
+      gp_coords = cbind(data$gp_coords[, 1], data$gp_coords[, 1]^2, data$gp_coords[, 2]),
+      cov_function = "ar1_mf_matern_space_time_estimate_shape", likelihood = "gaussian"
+    )
+    expect_equal(model_space_time$neg_log_likelihood(y = data$y_gaussian, cov_pars = ard_cov_pars), 33.334283736830095, tolerance = relax_tolerance(1e-8))
 
     expected_nll <- c(vecchia = 32.401799696083145, vecchia_euclidean = 32.227109558939020)
     for (gp_approx in names(expected_nll)) {

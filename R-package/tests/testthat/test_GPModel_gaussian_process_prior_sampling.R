@@ -11,11 +11,6 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   # does not reproduce floating point arithmetic bit-wise. The tight tolerances therefore only hold on the
   # reference platform on which the expected values were calculated. 'relax_tolerance*()' of
   # helper-tolerances.R relaxes them elsewhere and reports once per test run which of the two is in force.
-  # Covariance functions with a general (non-fixed) smoothness need 'std::cyl_bessel_k', which is a C++17
-  # feature that is not provided by every standard library (in particular not by libc++, which is used by
-  # clang on macOS and in the clang sanitizer containers of R-hub / CRAN)
-  SKIP_BESSEL_COV_TESTS <- !gpboost:::has_std_cyl_bessel_k() &&
-    Sys.getenv("GPBOOST_RUN_BESSEL_COV_TESTS") != "true"
   
   DEFAULT_OPTIM_PARAMS <- list(optimizer_cov = "gradient_descent",
                                lr_cov = 0.1, use_nesterov_acc = TRUE,
