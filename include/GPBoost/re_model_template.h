@@ -6602,7 +6602,7 @@ namespace GPBoost {
 		/*! \brief True if 'gp_approx_' has been changed internally from 'fitc' to 'full_scale_tapering' for handling duplicate coordinates */
 		bool gp_approx_changed_to_FSA_from_FITC_ = false;
 		/*! \brief How to calculate predictive variances and covariances for "full_scale_tapering" when using the cholesky decomposition */
-		string_t calc_pred_cov_var_FSA_cholesky_ = "stochastic_stable";//"exact" (direct calculation), "exact_stable" (using a numerically stable version, but potentially large memory and time footpringt), "stochastic_stable" (using a numerically stable version and simulations to reduce memory and time footpringt)
+		string_t calc_pred_cov_var_FSA_cholesky_ = "exact_stable";//"exact" (direct calculation), "exact_stable" (numerically stable version), "stochastic_stable" (numerically stable version that estimates the residual part with 'nsim_var_pred' simulated vectors; its covariance matrices can be indefinite)
 		/*! \brief If true, the Vecchia approximation is done for the latent process for Gaussian likelihoods */
 		bool vecchia_latent_approx_gaussian_ = false;
 
@@ -14552,7 +14552,6 @@ namespace GPBoost {
 								}//end calc_pred_var
 							}//end calc_pred_cov_var_FSA_cholesky_ == "stochatic"
 							else if (calc_pred_cov_var_FSA_cholesky_ == "exact_stable") {
-								//The following is too slow and requires too much memory
 								den_mat_t resid_obs_inv_sqrt_cross_cov;
 								TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_fact_resid_[cluster_i], (*cross_cov), resid_obs_inv_sqrt_cross_cov, false);
 								T_mat resid_obs_inv_sqrt_resid_pred_obs_t;
@@ -14576,8 +14575,8 @@ namespace GPBoost {
 							}//end (calc_pred_cov_var_FSA_cholesky_ == "exact_stable"
 							else if (calc_pred_cov_var_FSA_cholesky_ == "exact") {
 								if (calc_pred_cov) {
-									Log::REFatal("Predictive covariance matrices are currently not implemented for gp_approx = 'full_scale_tapering' and "
-										"for the 'fitc' approximation when having multiple observations at the same location. Use gp_approx = 'full_scale_tapering_pred_var_stochastic_stable' instead");
+									Log::REFatal("Predictive covariance matrices are currently not implemented for gp_approx = 'full_scale_tapering_pred_var_exact'. "
+										"Use gp_approx = 'full_scale_tapering' instead");
 									den_mat_t sigma_obs_pred_dense = (*cross_cov) * GetForCluster(chol_fact_sigma_ip_, cluster_i, 0).solve(cross_cov_pred_ip.transpose());
 									sigma_obs_pred_dense += sigma_resid_pred_obs.transpose();
 									den_mat_t sigma_resid_inv_sigma_obs_pred = chol_fact_resid_[cluster_i].solve(sigma_obs_pred_dense);

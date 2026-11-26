@@ -135,20 +135,22 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
       expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_var_no_X_no_approx$var))),0.02)
       if(i == "cholesky") {
         ## TODO: Prediction of covariance matrix is currently wrong for FSA and iterative methods and also cholesky when gp_approx="full_scale_tapering_pred_var_exact"
-        pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_cov = TRUE, cov_pars = cov_pars_pred)
-        expect_lt(sum(abs(pred$mu - pred_cov_no_X_no_approx$mu)),TOLERANCE)
-        expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_cov_no_X_no_approx$cov))),0.03) 
-        
-        capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "full_scale_tapering_pred_var_exact_stable",
-                                            num_ind_points = 60, cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
-                                            matrix_inversion_method = "cholesky"), file='NUL')
-        pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_var = TRUE, cov_pars = cov_pars_pred)
-        expect_lt(sum(abs(pred$mu - pred_var_no_X_no_approx$mu)),TOLERANCE_STRICT)
         expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_var_no_X_no_approx$var))),TOLERANCE_STRICT)
         pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_cov = TRUE, cov_pars = cov_pars_pred)
         expect_lt(sum(abs(pred$mu - pred_cov_no_X_no_approx$mu)),TOLERANCE_STRICT)
         expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_cov_no_X_no_approx$cov))),TOLERANCE_STRICT)
-        
+
+        # The residual part is estimated with simulated vectors
+        capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "full_scale_tapering_pred_var_stochastic_stable",
+                                            num_ind_points = 60, cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
+                                            matrix_inversion_method = "cholesky"), file='NUL')
+        pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_var = TRUE, cov_pars = cov_pars_pred)
+        expect_lt(sum(abs(pred$mu - pred_var_no_X_no_approx$mu)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(pred$var) - as.vector(pred_var_no_X_no_approx$var))),0.02)
+        pred <- predict(gp_model, y = y, gp_coords_pred = coord_test, predict_cov = TRUE, cov_pars = cov_pars_pred)
+        expect_lt(sum(abs(pred$mu - pred_cov_no_X_no_approx$mu)),TOLERANCE)
+        expect_lt(sum(abs(as.vector(pred$cov) - as.vector(pred_cov_no_X_no_approx$cov))),0.03)
+
         capture.output( gp_model <- GPModel(gp_coords = coords, cov_function = "exponential", gp_approx = "full_scale_tapering_pred_var_exact",
                                             num_ind_points = 60, cov_fct_taper_shape = 2, cov_fct_taper_range = 1e6,
                                             matrix_inversion_method = "cholesky"), file='NUL')
