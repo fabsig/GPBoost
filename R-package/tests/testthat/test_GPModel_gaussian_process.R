@@ -1432,17 +1432,15 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
   })
 
   test_that("Estimated smoothness of a Matern covariance function on very smooth data ", {
-    # The estimated smoothness reaches its upper bound 100, also when starting above it, without NaN in the
-    # likelihood or the gradients for these large values
+    # The estimated smoothness reaches its upper bound 100 without NaN in the likelihood or the gradients for these large
+    # values
     x <- seq(0, 1, length.out = 200)
     y_smooth <- sin(2 * pi * x) + 0.05 * qnorm(sim_rand_unif(n = 200, init_c = 0.3))
-    for (init_shape in c(1.5, 150)) {
-      params <- list(optimizer_cov = "lbfgs", init_cov_pars = c(0.01, 1, 0.3, init_shape))
-      output <- capture.output( gp_model <- fitGPModel(gp_coords = matrix(x), cov_function = "matern_estimate_shape",
-                                                       y = y_smooth, params = params) )
-      expect_false(any(grepl("NaN", output)))
-      expect_equal(unname(gp_model$get_cov_pars()["GP_smoothness"]), 100)
-    }
+    params <- list(optimizer_cov = "lbfgs", init_cov_pars = c(0.01, 1, 0.3, 1.5))
+    output <- capture.output( gp_model <- fitGPModel(gp_coords = matrix(x), cov_function = "matern_estimate_shape",
+                                                     y = y_smooth, params = params) )
+    expect_false(any(grepl("NaN", output)))
+    expect_equal(unname(gp_model$get_cov_pars()["GP_smoothness"]), 100)
   })
 
   test_that("Matern correlation for extreme scaled distances and smoothness parameters ", {
@@ -1487,6 +1485,21 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                     cov_pars = c(0.1, 1, sqrt(300) / 20, 150), predict_cov_mat = TRUE,
                                     predict_response = FALSE), file='NUL')
     expect_lt(abs(pred$cov[1, 2] - 0.51189876373614323), 1e-10)
+  })
+
+  test_that("An initial value of an estimated smoothness above its upper bound gives the same fit as the bound ", {
+    # The optimization started above the bound, where the objective function does not change with the smoothness, and stopped
+    #   there with a much larger negative log-likelihood
+    x <- seq(0, 30, length.out = 60)
+    y_j <- qnorm(sim_rand_unif(n = 60, init_c = 0.53))
+    nll <- sapply(c(100, 1000), function(shape_init) {
+      params <- list(optimizer_cov = "lbfgs", maxit = 100, init_cov_pars = c(0.1, 1, 1, shape_init),
+                     estimate_cov_par_index = c(0, 0, 0, 1))
+      capture.output( gp_model <- fitGPModel(gp_coords = matrix(x), cov_function = "matern_estimate_shape", y = y_j,
+                                             params = params), file='NUL')
+      gp_model$get_current_neg_log_likelihood()
+    })
+    expect_equal(nll[2], nll[1])
   })
 
   test_that("Standard errors for a smoothness parameter below the step size of the finite differences ", {
@@ -1537,22 +1550,23 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(gp_model$neg_log_likelihood(cov_pars = cov_pars_j, y = y_j), nll)
   })
 
-  test_that("Duplicate coordinates are determined relative to the extents of the coordinates ", {
-    # Points whose coordinates differed by less than 1e-10 were duplicates, i.e., all points for coordinates in small units.
-    #   The first two points are duplicates in all units
-    n_j <- 40
-    coords_j <- cbind(sim_rand_unif(n = n_j, init_c = 0.63), sim_rand_unif(n = n_j, init_c = 0.71))
-    coords_j[2, ] <- coords_j[1, ] + 1e-13
-    y_j <- sin(5 * coords_j[, 1]) + cos(4 * coords_j[, 2]) + 0.2 * qnorm(sim_rand_unif(n = n_j, init_c = 0.37))
-    nll_unit <- function(unit, gp_approx) {
-      gp_model <- GPModel(gp_coords = coords_j * unit, cov_function = "exponential", gp_approx = gp_approx)
-      gp_model$neg_log_likelihood(cov_pars = c(0.1, 1, 0.2 * unit), y = y_j)
-    }
+  test_that("Whether two points are duplicates does not depend on the other points ", {
+    # Points were duplicates if their distance was below 1e-10 times the extent of all coordinates, so that a distant point
+    #   turned the first two points into duplicates
+    coords_j <- matrix(c(0, 0.001, 2e7))
+    y_j <- c(0, 1, -1)
+    cov_pars_j <- c(0.1, 1, 0.001)
+    Sigma <- cov_pars_j[1] * diag(3) + cov_pars_j[2] * exp(-as.matrix(dist(coords_j)) / cov_pars_j[3])
+    nll_exact <- 1.5 * log(2 * pi) + 0.5 * determinant(Sigma)$modulus[1] + 0.5 * sum(y_j * solve(Sigma, y_j))
     for (gp_approx in c("none", "vecchia")) {
-      nll <- nll_unit(1, gp_approx)
-      for (unit in c(1e-12, 1e12)) {
-        expect_lt(abs(nll_unit(unit, gp_approx) - nll), 1e-8 * abs(nll))
-      }
+      gp_model <- GPModel(gp_coords = coords_j, cov_function = "exponential", gp_approx = gp_approx)
+      expect_lt(abs(gp_model$neg_log_likelihood(cov_pars = cov_pars_j, y = y_j) - nll_exact), 1e-10)
+    }
+    gp_model <- GPModel(gp_coords = coords_j, cov_function = "exponential")
+    for (coords_pred in list(c(0, 0.001), c(0, 0.001, 2e7))) {
+      pred <- predict(gp_model, y = y_j, gp_coords_pred = matrix(coords_pred), cluster_ids_pred = rep(2, length(coords_pred)),
+                      cov_pars = cov_pars_j, predict_cov_mat = TRUE, predict_response = FALSE)
+      expect_lt(abs(pred$cov[1, 2] - exp(-1)), 1e-12)
     }
   })
 

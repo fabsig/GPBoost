@@ -17,29 +17,15 @@ using LightGBM::Log;
 namespace GPBoost {
 
 	/*!
-	* \brief Extents (largest minus smallest value) of the coordinates, and 1 for a coordinate that is constant. Differences of
-	*		coordinates relative to their extents do not depend on the units of the coordinates
-	* \param coords Coordinates
-	* \return Extents of the coordinates
-	*/
-	vec_t CoordinateExtents(const den_mat_t& coords);
-
-	/*!
 	* \brief Determine unique locations and map duplicates in coordinates to first occurance of unique locations. Two points are
-	*		duplicates if the differences of their coordinates divided by 'extents' have a norm below EPSILON_NUMBERS
+	*		duplicates if their distance is below EPSILON_NUMBERS. The tolerance is absolute, as in the other checks for duplicates
+	*		(e.g., in the neighbor search of the Vecchia approximation), so that whether two points are duplicates does not
+	*		depend on the other points
 	* \param coords Coordinates
 	* \param num_data Number of data points
-	* \param extents Extents of the coordinates, see 'CoordinateExtents'. Calls whose results have to agree use the same extents
 	* \param[out] uniques Index of unique coordinates / points
 	* \param[out] unique_idx Index that indicates for every data point the corresponding unique point. Used for constructing incidence matrix Z_ if there are duplicates
 	*/
-	void DetermineUniqueDuplicateCoordsFast(const den_mat_t& coords,
-		data_size_t num_data,
-		const vec_t& extents,
-		std::vector<int>& uniques,
-		std::vector<int>& unique_idx);
-
-	/*! \brief 'DetermineUniqueDuplicateCoordsFast' relative to the extents of 'coords' */
 	void DetermineUniqueDuplicateCoordsFast(const den_mat_t& coords,
 		data_size_t num_data,
 		std::vector<int>& uniques,

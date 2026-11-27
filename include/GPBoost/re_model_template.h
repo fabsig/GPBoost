@@ -1439,10 +1439,11 @@ namespace GPBoost {
 			if (estimate_aux_pars_) {
 				num_cov_par_estimate += NumAuxPars();
 			}
+			// The optimization starts from the capped values: beyond a cap, the objective function does not change with a parameter
+			vec_t init_cov_pars_capped = Eigen::Map<const vec_t>(init_cov_pars, num_cov_par_);
+			CapCovPars(init_cov_pars_capped);
 			vec_t cov_aux_pars = vec_t(num_cov_par_estimate);
-			for (int i = 0; i < num_cov_par_; ++i) {
-				cov_aux_pars[i] = init_cov_pars[i];
-			}
+			cov_aux_pars.segment(0, num_cov_par_) = init_cov_pars_capped;
 			if (gauss_likelihood_) {
 				sigma2_ = cov_aux_pars[0];
 			}
