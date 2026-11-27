@@ -528,13 +528,19 @@ gpb.set.blas <- function(blas) {
 }
 
 # Uses OpenBLAS if R uses it, unless the package links OpenBLAS itself. On Debian and Ubuntu, the BLAS library
-# of OpenBLAS that R reports contains only the BLAS routines, and the complete OpenBLAS library is R's LAPACK library
+# of OpenBLAS that R reports contains only the BLAS routines, and the complete OpenBLAS library is R's LAPACK library.
+# With FlexiBLAS (e.g., on Fedora and RHEL), R reports the name of the BLAS backend instead of a file, and the
+# OpenBLAS library of the backend is found among the files that are mapped into the process on Linux
 .onLoad <- function(libname, pkgname) {
   if (gpb.get.blas() == "builtin") {
     if (.Platform$OS.type == "windows") {
       blas_libraries <- file.path(R.home("bin"), "Rblas.dll")
     } else {
       blas_libraries <- c(La_library(), extSoftVersion()[["BLAS"]])
+      if (file.exists("/proc/self/maps")) {
+        mapped_files <- unique(sub("^[^/]*", "", readLines("/proc/self/maps", warn = FALSE)))
+        blas_libraries <- c(blas_libraries, mapped_files[grepl("openblas", basename(mapped_files))])
+      }
     }
     for (blas_library in blas_libraries[nzchar(blas_libraries)]) {
       .Call(
