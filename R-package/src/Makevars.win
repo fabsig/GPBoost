@@ -11,7 +11,8 @@ LGB_CPPFLAGS = \
 # CHOLMOD or BLAS has to be found and linked. Its Partition (METIS) and CAMD
 # interfaces and its MatrixOps and Modify modules are not included, NPRINT
 # keeps it from writing to stdout, and GPB_SUITESPARSE_INTERNAL_BLAS routes
-# its BLAS/LAPACK calls to the Eigen kernels in SuiteSparse/EigenBLAS.
+# its BLAS/LAPACK calls to the Eigen kernels in SuiteSparse/EigenBLAS, which
+# call OpenBLAS instead if GPBoost uses one (see GPBoost/blas_backend.h).
 CHOLMOD_CPPFLAGS = \
     -I$(PKGROOT)/SuiteSparse/SuiteSparse_config \
     -I$(PKGROOT)/SuiteSparse/AMD/Include \
@@ -76,6 +77,7 @@ OBJECTS = \
     Vecchia_utils.o \
     CG_utils.o \
     cpu_topology.o \
+    blas_backend.o \
     cs_spsolve.o \
     cs_reach.o \
     cs_dfs.o \

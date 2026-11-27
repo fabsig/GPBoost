@@ -21,6 +21,7 @@
 #include <Eigen/Dense>
 #include <Eigen/CholmodSupport> // CHOLMOD is bundled in external_libs/SuiteSparse
 #include <random> //for RNG_t
+#include <GPBoost/blas_backend.h>
 //#ifdef _MSC_VER
 #pragma warning( disable : 4127) // Suppress unnecessary warning (conditional expression is constant)
 //#endif
@@ -35,7 +36,8 @@ namespace GPBoost {
 	typedef Eigen::SparseMatrix<double> sp_mat_t; // column-major sparse matrix
 	typedef Eigen::SparseMatrix<double, Eigen::RowMajor> sp_mat_rm_t; // row-major sparse matrix
 	typedef Eigen::Triplet<double> Triplet_t;
-	typedef Eigen::LLT<den_mat_t, Eigen::Lower> chol_den_mat_t;
+	class DenseLLT;
+	typedef DenseLLT chol_den_mat_t; // see below
 	typedef Eigen::SimplicialLLT<sp_mat_t, Eigen::Lower, Eigen::AMDOrdering<int>> chol_sp_mat_t;
 	typedef Eigen::SimplicialLLT<sp_mat_rm_t, Eigen::Lower, Eigen::AMDOrdering<int>> chol_sp_mat_rm_t;
 	// AMDOrdering is faster than NaturalOrdering for sparse matrices for GPs (e.g. tapering) but slightly slower than no ordering for grouped random effects for Gaussian data
@@ -53,6 +55,73 @@ namespace GPBoost {
 	// logDeterminant() are needed, that conversion never happens and CHOLMOD is fastest.
 	typedef Eigen::CholmodAutoLLT<sp_mat_t, Eigen::Lower> chol_cholmod_sp_mat_t;
 	typedef Eigen::CholmodAutoLLT<sp_mat_rm_t, Eigen::Lower> chol_cholmod_sp_mat_rm_t;
+
+	// Defined in sparse_matrix_utils.cpp, see the declaration in sparse_matrix_utils.h
+	void TriangularSolveInPlace(const den_mat_t& L, den_mat_t& B, bool transpose);
+
+	/*!
+	* \brief Cholesky factorization of a dense matrix that is used like Eigen::LLT<den_mat_t, Eigen::Lower>. It
+	*		uses OpenBLAS if one is registered, see blas_backend.h, and Eigen otherwise
+	*/
+	class DenseLLT : public Eigen::LLT<den_mat_t, Eigen::Lower> {
+		typedef Eigen::LLT<den_mat_t, Eigen::Lower> Base;
+	public:
+		DenseLLT() : Base() {}
+
+		template <typename InputType>
+		explicit DenseLLT(const Eigen::EigenBase<InputType>& matrix) : Base(matrix.rows()) {
+			compute(matrix.derived());
+		}
+
+		template <typename InputType>
+		DenseLLT& compute(const Eigen::EigenBase<InputType>& matrix) {
+			if (!UseBLAS()) {
+				Base::compute(matrix);
+				return *this;
+			}
+			const Eigen::Index n = matrix.rows();
+			m_matrix = matrix.derived();
+			// L1 norm of the symmetric matrix given by its lower triangle, for rcond(), as in Eigen::LLT::compute()
+			m_l1_norm = 0.;
+			for (Eigen::Index col = 0; col < n; ++col) {
+				const double abs_col_sum = m_matrix.col(col).tail(n - col).lpNorm<1>() + m_matrix.row(col).head(col).lpNorm<1>();
+				if (abs_col_sum > m_l1_norm) {
+					m_l1_norm = abs_col_sum;
+				}
+			}
+			m_isInitialized = true;
+			m_info = CholeskyBLAS(m_matrix.data(), (int)n) ? Eigen::Success : Eigen::NumericalIssue;
+			return *this;
+		}
+
+		/*!
+		* \brief Solve A X = B. Contrary to Eigen::LLT::solve(), this returns the solution and not an expression. A
+		*		right-hand side with several columns is solved with 'TriangularSolveInPlace', i.e., in parallel or with
+		*		OpenBLAS, whereas Eigen solves it in a single thread
+		*/
+		template <typename Rhs>
+		typename Rhs::PlainObject solve(const Eigen::MatrixBase<Rhs>& B) const {
+			typename Rhs::PlainObject X = B;
+			SolveInPlace(X);
+			return X;
+		}
+
+	private:
+		void SolveInPlace(den_mat_t& X) const {
+			if (X.cols() > 1) {
+				TriangularSolveInPlace(m_matrix, X, false);
+				TriangularSolveInPlace(m_matrix, X, true);
+			}
+			else {
+				Base::solveInPlace(X);
+			}
+		}
+
+		template <typename T>
+		void SolveInPlace(T& X) const {
+			Base::solveInPlace(X);
+		}
+	};
 
 	typedef std::string string_t;
 

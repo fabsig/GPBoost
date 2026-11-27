@@ -606,6 +606,10 @@ if(USE_EXTERNAL_BLAS_FOR_CHOLMOD)
   TARGET_LINK_LIBRARIES(_gpboost ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 endif(USE_EXTERNAL_BLAS_FOR_CHOLMOD)
 
+# dlopen() for loading an OpenBLAS library at run time, see include/GPBoost/blas_backend.h
+TARGET_LINK_LIBRARIES(gpboost ${CMAKE_DL_LIBS})
+TARGET_LINK_LIBRARIES(_gpboost ${CMAKE_DL_LIBS})
+
 if(USE_GPU)
   TARGET_LINK_LIBRARIES(gpboost ${OpenCL_LIBRARY} ${Boost_LIBRARIES})
   TARGET_LINK_LIBRARIES(_gpboost ${OpenCL_LIBRARY} ${Boost_LIBRARIES})

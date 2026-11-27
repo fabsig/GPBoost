@@ -116,7 +116,47 @@ then
     LGB_CPPFLAGS="${LGB_CPPFLAGS} -DWIN_HAS_INET_PTON=1"
 fi
 
+############
+# OpenBLAS #
+############
+
+# Rtools provides a static OpenBLAS library. If it can be linked, GPBoost uses it
+# for dense matrix calculations (see include/GPBoost/blas_backend.h), and its
+# own code otherwise
+
+ac_openblas="no"
+GPB_OPENBLAS_LIBS=""
+# 'R CMD config' does not report the OpenMP flags, which the OpenMP version of OpenBLAS needs
+OPENMP_CXXFLAGS=`sed -n 's/^SHLIB_OPENMP_CXXFLAGS *= *//p' "${R_HOME}/etc${R_ARCH}/Makeconf"`
+FLIBS=`"${R_EXE}" CMD config FLIBS`
+
+cat > conftest.cpp <<EOL
+extern "C" {
+  void dpotrf_(const char* uplo, const int* n, double* A, const int* lda, int* info);
+  char* openblas_get_config(void);
+}
+int main() {
+  double a = 4.0;
+  int n = 1;
+  int info = 1;
+  dpotrf_("L", &n, &a, &n, &info);
+  return (info == 0 && a == 2.0 && openblas_get_config() != 0) ? 0 : 1;
+}
+EOL
+
+${CXX} ${CXXFLAGS} ${CPPFLAGS} ${OPENMP_CXXFLAGS} -o conftest conftest.cpp -lopenblas ${FLIBS} 2>/dev/null && ./conftest && ac_openblas="yes"
+rm -f ./conftest
+rm -f ./conftest.cpp
+echo "checking whether OpenBLAS can be linked...${ac_openblas}"
+
+if test "${ac_openblas}" = "yes";
+then
+    LGB_CPPFLAGS="${LGB_CPPFLAGS} -DGPB_R_LINKED_OPENBLAS"
+    GPB_OPENBLAS_LIBS="-lopenblas ${FLIBS}"
+fi
+
 # Generate Makevars.win from Makevars.win.in
 sed -e "s|@CXX_STD@|${CXX_STD}|g" \
     -e "s|@LGB_CPPFLAGS@|${LGB_CPPFLAGS}|g" \
+    -e "s|@GPB_OPENBLAS_LIBS@|${GPB_OPENBLAS_LIBS}|g" \
     src/Makevars.win.in > src/Makevars.win

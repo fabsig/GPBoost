@@ -1021,7 +1021,7 @@ namespace GPBoost {
 						den_mat_t Bt_D_inv_Sigma_sqrt_rand_vec(dim_mode_, num_rand_vec_trace_);
 #pragma omp parallel for schedule(static)   
 						for (int i = 0; i < num_rand_vec_trace_; ++i) {
-							Bt_D_inv_Sigma_sqrt_rand_vec.col(i) = B_t_D_inv_rm_ * B_rm_ * Sigma_sqrt_rand_vec.col(i);
+							Bt_D_inv_Sigma_sqrt_rand_vec.col(i) = B_t_D_inv_rm_ * (B_rm_ * Sigma_sqrt_rand_vec.col(i));
 						}
 						den_mat_t Sigma_inv_Sigma_sqrt_rand_vec = Bt_D_inv_Sigma_sqrt_rand_vec - Bt_D_inv_B_cross_cov * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * Bt_D_inv_Sigma_sqrt_rand_vec);
 						Bt_D_inv_Sigma_sqrt_rand_vec.resize(0, 0);

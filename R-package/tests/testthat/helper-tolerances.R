@@ -8,15 +8,17 @@
 # their tolerances through 'relax_tolerance*()' and 'TOLERANCE_NON_CONVEX'.
 #
 # Set GPBOOST_STRICT_TOLERANCES to decide explicitly, "true"/"false" (also "1"/"0"
-# and "yes"/"no", in any case). When it is unset, Windows is taken to be the
-# reference platform. Note that the value is read as a string, so use
-# Sys.setenv(GPBOOST_STRICT_TOLERANCES = "false") and not = FALSE.
+# and "yes"/"no", in any case). When it is unset, Windows with GPBoost's own code
+# for dense matrix calculations is taken to be the reference platform: OpenBLAS (see
+# gpb.get.blas()) changes the arithmetic as a different compiler does. Note that the
+# value is read as a string, so use Sys.setenv(GPBOOST_STRICT_TOLERANCES = "false")
+# and not = FALSE.
 gpb_use_strict_tolerances <- function() {
   env <- Sys.getenv("GPBOOST_STRICT_TOLERANCES")
   if (nzchar(env)) {
     tolower(env) %in% c("true", "1", "yes")
   } else {
-    .Platform$OS.type == "windows"
+    .Platform$OS.type == "windows" && gpb.get.blas() == "builtin"
   }
 }
 
@@ -58,6 +60,6 @@ local({
   message(sprintf(
     "[GPBoost tests] strict tolerances are %s  (GPBOOST_STRICT_TOLERANCES = %s)",
     if (gpb_use_strict_tolerances()) "ENABLED" else "DISABLED",
-    if (nzchar(env)) sQuote(env) else sprintf("unset, defaulting to %s on this platform",
-                                              .Platform$OS.type)))
+    if (nzchar(env)) sQuote(env) else sprintf("unset, defaulting to %s with BLAS %s on this platform",
+                                              .Platform$OS.type, sQuote(gpb.get.blas()))))
 })

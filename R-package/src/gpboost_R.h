@@ -1011,6 +1011,30 @@ GPBOOST_C_EXPORT SEXP GPB_SetDefaultNumParallelThreads_R(
 GPBOOST_C_EXPORT SEXP GPB_SuppressAutoNumParallelThreadsMessage_R();
 
 /*!
+* \brief Use an OpenBLAS library for dense matrix calculations, see 'GPB_LoadOpenBLAS'
+* \param library_path Path of the shared library file (UTF-8)
+* \return R NULL value
+*/
+GPBOOST_C_EXPORT SEXP GPB_LoadOpenBLAS_R(
+	SEXP library_path
+);
+
+/*!
+* \brief Set whether a registered OpenBLAS library is used for dense matrix calculations
+* \param blas "auto" or "builtin"
+* \return R NULL value
+*/
+GPBOOST_C_EXPORT SEXP GPB_SetBLAS_R(
+	SEXP blas
+);
+
+/*!
+* \brief Get a description of the BLAS library that is used for dense matrix calculations
+* \return R character vector of length one
+*/
+GPBOOST_C_EXPORT SEXP GPB_GetBLAS_R();
+
+/*!
 * \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
 * \param handle Handle of REModel
 * \param num_data_pred Number of data points for which predictions are made

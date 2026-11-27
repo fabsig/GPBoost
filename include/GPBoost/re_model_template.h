@@ -2450,7 +2450,7 @@ namespace GPBoost {
 								u = D_inv_[cluster_i][0] * u;
 							}
 							else {
-								u = D_inv_[cluster_i][0] * B_[cluster_i][0] * y_[cluster_i];//TODO: this is already calculated in CalcYAux -> save it there and re-use here?
+								u = D_inv_[cluster_i][0] * (B_[cluster_i][0] * y_[cluster_i]);//TODO: this is already calculated in CalcYAux -> save it there and re-use here?
 							}
 							for (int j = 0; j < num_comps_total_; ++j) {
 								int num_par_comp = GetForCluster(re_comps_vecchia_, cluster_i, 0)[j]->num_cov_par_;
@@ -7300,13 +7300,9 @@ namespace GPBoost {
 			I.makeCompressed();
 			Id_.insert({ cluster_i, I });
 		}
-		/*! \brief Constructs identity matrices if dense matrices are used (used for calculating inverse covariance matrix) */
+		/*! \brief Dense matrices need no identity matrix: their inverse covariance matrices are calculated with 'CalcInverseGivenCholeskyFactor' */
 		template <class T_aux = T_mat, typename std::enable_if <std::is_same<den_mat_t, T_aux>::value>::type* = nullptr >
-		void ConstructI(data_size_t cluster_i) {
-			int dim_I = use_woodbury_identity_ ? cum_num_rand_eff_[cluster_i][num_comps_total_] : num_data_per_cluster_[cluster_i];
-			den_mat_t I(dim_I, dim_I);//identity matrix for calculating precision matrix
-			I.setIdentity();
-			Id_.insert({ cluster_i, I });
+		void ConstructI(data_size_t) {
 		}
 
 		/*!
@@ -7783,9 +7779,7 @@ namespace GPBoost {
 				}
 			}
 			else {
-				den_mat_t L_inv;
-				TriangularSolve<den_mat_t, den_mat_t, den_mat_t>(chol_facts_[cluster_i].CholFactMatrix(), Id_[cluster_i], L_inv, false);
-				psi_inv = L_inv.transpose() * L_inv;
+				CalcInverseGivenCholeskyFactor(chol_facts_[cluster_i].CholFactMatrix(), psi_inv);
 			}
 		}// end CalcPsiInv for dense matrices
 
@@ -11856,7 +11850,8 @@ namespace GPBoost {
 					Log::REFatal("Factorisation of covariance matrix has not been done. Call 'CalcCovFactor' first ");
 				}
 				if (gp_approx_ == "vecchia") {
-					y_aux_[cluster_i] = B_[cluster_i][0].transpose() * D_inv_[cluster_i][0] * B_[cluster_i][0] * y_[cluster_i];
+					// from right to left: from left to right, the sparse product B^T D^-1 B would be formed
+					y_aux_[cluster_i] = B_[cluster_i][0].transpose() * (D_inv_[cluster_i][0] * (B_[cluster_i][0] * y_[cluster_i]));
 				}
 				else if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
 					const den_mat_t* cross_cov = GetForCluster(re_comps_cross_cov_, cluster_i, 0)[0]->GetSigmaPtr();

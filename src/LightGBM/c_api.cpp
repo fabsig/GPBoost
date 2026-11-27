@@ -10,6 +10,7 @@
 #include <LightGBM/c_api.h>
 
 #include <GPBoost/re_model.h>
+#include <GPBoost/blas_backend.h>
 
 #include <LightGBM/boosting.h>
 #include <LightGBM/config.h>
@@ -3008,6 +3009,31 @@ int GPB_SetDefaultNumParallelThreads(int num_threads) {
 int GPB_SuppressAutoNumParallelThreadsMessage() {
 	API_BEGIN();
 	GPBoost::SuppressAutoNumParallelThreadsMessage();
+	API_END();
+}
+
+int GPB_LoadOpenBLAS(const char* library_path,
+	int* success) {
+	API_BEGIN();
+	success[0] = GPBoost::LoadOpenBLAS(std::string(library_path)) ? 1 : 0;
+	API_END();
+}
+
+int GPB_SetBLAS(const char* blas) {
+	API_BEGIN();
+	GPBoost::SetBLAS(std::string(blas));
+	API_END();
+}
+
+int GPB_GetBLAS(int buffer_len,
+	int* out_len,
+	char* out_str) {
+	API_BEGIN();
+	const std::string description = GPBoost::GetBLAS();
+	*out_len = (int)description.size() + 1;
+	if (buffer_len >= *out_len) {
+		std::memcpy(out_str, description.c_str(), description.size() + 1);
+	}
 	API_END();
 }
 

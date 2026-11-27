@@ -40,6 +40,66 @@ namespace GPBoost {
 		}
 	}
 
+	// Blocks of columns of the right-hand side are solved in parallel. Each block is solved with Eigen's blocked
+	// solver, which uses a cached block of L for all columns of the block, while a column-wise solve reads all of
+	// L for every column and is limited by the memory bandwidth. The fixed width of the blocks makes the result
+	// independent of the number of threads
+	const int TRIANGULAR_SOLVE_BLOCK_WIDTH = 64;
+
+	void TriangularSolveInPlace(const den_mat_t& L, den_mat_t& B, bool transpose) {
+		const int n = (int)L.rows();
+		const int num_cols = (int)B.cols();
+		if (UseBLAS()) {
+			TriangularSolveBLAS(L.data(), n, B.data(), num_cols, transpose);
+			return;
+		}
+		const int num_blocks = (num_cols + TRIANGULAR_SOLVE_BLOCK_WIDTH - 1) / TRIANGULAR_SOLVE_BLOCK_WIDTH;
+#pragma omp parallel for schedule(dynamic, 1)
+		for (int b = 0; b < num_blocks; ++b) {
+			const int first_col = b * TRIANGULAR_SOLVE_BLOCK_WIDTH;
+			auto B_block = B.middleCols(first_col, std::min(TRIANGULAR_SOLVE_BLOCK_WIDTH, num_cols - first_col));
+			if (transpose) {
+				L.triangularView<Eigen::Lower>().transpose().solveInPlace(B_block);
+			}
+			else {
+				L.triangularView<Eigen::Lower>().solveInPlace(B_block);
+			}
+		}
+	}
+
+	void CalcInverseGivenCholeskyFactor(const den_mat_t& L, den_mat_t& inverse) {
+		const int n = (int)L.rows();
+		if (UseBLAS()) {
+			inverse = L;
+			CHECK(CholeskyInverseBLAS(inverse.data(), n));
+		}
+		else {
+			// Column j of L^-1 is zero above the diagonal, so the columns [c, c + w) of L^-1 solve the trailing system
+			// L[c:, c:] X = I[c:, c:(c + w)], and the columns [c, c + w) of the lower triangle of L^-T L^-1 are
+			// L^-1[c:, c:]^T L^-1[c:, c:(c + w)]. Both loops are parallel over blocks of columns
+			den_mat_t L_inv = den_mat_t::Identity(n, n);
+			const int num_blocks = (n + TRIANGULAR_SOLVE_BLOCK_WIDTH - 1) / TRIANGULAR_SOLVE_BLOCK_WIDTH;
+#pragma omp parallel for schedule(dynamic, 1)
+			for (int b = 0; b < num_blocks; ++b) {
+				const int first_col = b * TRIANGULAR_SOLVE_BLOCK_WIDTH;
+				const int width = std::min(TRIANGULAR_SOLVE_BLOCK_WIDTH, n - first_col);
+				auto L_inv_block = L_inv.block(first_col, first_col, n - first_col, width);
+				L.bottomRightCorner(n - first_col, n - first_col).triangularView<Eigen::Lower>().solveInPlace(L_inv_block);
+			}
+			inverse.resize(n, n);
+#pragma omp parallel for schedule(dynamic, 1)
+			for (int b = 0; b < num_blocks; ++b) {
+				const int first_col = b * TRIANGULAR_SOLVE_BLOCK_WIDTH;
+				const int width = std::min(TRIANGULAR_SOLVE_BLOCK_WIDTH, n - first_col);
+				inverse.block(first_col, first_col, n - first_col, width).noalias() =
+					L_inv.bottomRightCorner(n - first_col, n - first_col).transpose() *
+					L_inv.block(first_col, first_col, n - first_col, width);
+			}
+		}
+		// the strictly upper triangle is written, the lower one read
+		inverse.triangularView<Eigen::StrictlyUpper>() = inverse.transpose();
+	}
+
 	void sp_L_solve(const double* val, const int* row_idx, const int* col_ptr, const int ncol, double* x) {
 		for (int j = 0; j < ncol; ++j) {
 			if (x[j] != 0) {

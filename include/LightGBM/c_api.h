@@ -1695,6 +1695,36 @@ GPBOOST_C_EXPORT int GPB_SetDefaultNumParallelThreads(int num_threads);
 GPBOOST_C_EXPORT int GPB_SuppressAutoNumParallelThreadsMessage();
 
 /*!
+* \brief Use an OpenBLAS library for dense Cholesky factorizations, inverses, and triangular solves and for the
+*   dense kernels of the sparse Cholesky factorization. Nothing changes if the file cannot be loaded, is not
+*   OpenBLAS, or uses 64-bit integers. The symbols of OpenBLAS may have the prefix 'scipy_'
+* \param library_path Path of the shared library file (UTF-8)
+* \param[out] success 1 if the library is used from now on and 0 otherwise
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_LoadOpenBLAS(const char* library_path,
+    int* success);
+
+/*!
+* \brief Set whether a registered OpenBLAS library is used for dense matrix calculations
+* \param blas "auto" (a registered OpenBLAS library is used) or "builtin" (GPBoost's own code is used)
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_SetBLAS(const char* blas);
+
+/*!
+* \brief Get a description of the BLAS library that is used for dense matrix calculations: the configuration of
+*   OpenBLAS, or "builtin" if GPBoost uses its own code
+* \param buffer_len Length of the pre-allocated buffer out_str
+* \param[out] out_len Length of the description including the terminating null character
+* \param[out] out_str Description. It is only written if buffer_len >= out_len
+* \return 0 when succeed, -1 when failure happens
+*/
+GPBOOST_C_EXPORT int GPB_GetBLAS(int buffer_len,
+    int* out_len,
+    char* out_str);
+
+/*!
 * \brief Set the data used for making predictions (useful if the same data is used repeatedly, e.g., in validation of GPBoost)
 * \param handle Handle of REModel
 * \param num_data_pred Number of data points for which predictions are made

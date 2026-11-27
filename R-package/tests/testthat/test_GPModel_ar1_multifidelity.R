@@ -165,10 +165,10 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
         optim_params$fitc_piv_chol_preconditioner_rank <- 10
         # 'seed_rand_vec_trace' only makes the fit reproducible: 'cov_pars' and the nll below are bit-identical for any
         # number of OpenMP threads, whereas the stochastic prediction is not. Measured against the values below (which
-        # were recorded with 6 threads), the largest deviation over 1, 2, 3, 4, 8, 12 and 16 threads is 6.1e-3,
+        # were recorded with 6 threads), the largest deviation over 1, 2, 3, 4, 8, 12 and 16 threads is 1.1e-2,
         # so the tolerance has to accommodate that. Note: this must not be solved by pinning the number of threads of
         # the model, since that would only hide the dependence on the number of threads instead of covering it
-        tol_pred <- 1e-2
+        tol_pred <- 2e-2
       }
       if (inversion_method == "cholesky") {
         expect_equal(gp_model$neg_log_likelihood(y = data$y_binary, cov_pars = process_cov_pars), 20.118953180464363, tolerance = 1e-8)
@@ -177,8 +177,8 @@ if (Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS") {
       expected_fit <- list(
         cholesky = list(cov_pars = c(1.0661956334178793, 0.2837297651975412, 0.5263592091708343, 0.1241549552226316, -0.1278426999830472),
                         nll = 17.786924024394054, mu = c(0.8203132350256910, 0.6748932540516034), var = c(0.1473994314673764, 0.2194123496872413)),
-        iterative = list(cov_pars = c(1.0410513074049415, 0.2825117036462009, 0.5304750217357596, 0.1244834725673703, -0.0953183940478825),
-                         nll = 17.606109542086166, mu = c(0.8188778853882207, 0.6815214692354954), var = c(0.1483168942103368, 0.2170499562065871)))
+        iterative = list(cov_pars = c(1.0500984894271177, 0.2825297495763273, 0.5303031917393076, 0.1247721052087280, -0.1115663071020108),
+                         nll = 17.686097286506140, mu = c(0.8190867503409149, 0.6769534412570171), var = c(0.1481836457568746, 0.2186874796272994)))
       expected <- expected_fit[[inversion_method]]
       expect_equal(as.numeric(gp_model$get_cov_pars()), expected$cov_pars, tolerance = relax_tolerance(1e-8))
       expect_equal(as.numeric(gp_model$get_current_neg_log_likelihood()), expected$nll, tolerance = relax_tolerance(1e-8))

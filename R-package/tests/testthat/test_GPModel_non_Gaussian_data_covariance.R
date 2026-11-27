@@ -269,7 +269,9 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
                                                  num_ind_points = num_ind_points, ind_points_selection = ind_points_selection) , file='NUL')
           expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))-cov_pars_exp)),relax_tolerance(tolerance_loc_4, cov_pars_exp))
           expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = FALSE))-coef_exp)),tolerance_loc_4)
-          expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),tolerance_loc_4)
+          # The negative log-likelihood of VIF with n - 1 inducing points differs from the exact one by about 2e-3,
+          #   and by how much depends on the order of summation in the dense calculations (1.8e-3 to 2.1e-3)
+          expect_lt(sum(abs(gp_model$get_current_neg_log_likelihood()-nll_opt_exp)),1.5*tolerance_loc_4)
           capture.output( pred <- predict(gp_model, y=y, gp_coords_pred = coord_test, X_pred = X_test,
                                           predict_var=TRUE, predict_response = FALSE) , file='NUL')
           expect_lt(sum(abs(pred$mu-expected_mu)),tolerance_loc_4)
@@ -1328,7 +1330,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     gp_model$set_optim_params(params=OPTIM_PARAMS_BFGS)
     capture.output( cvbst <- gpb.cv(params = params_cv, data = dtrain, gp_model = gp_model, nrounds = 20, early_stopping_rounds = 5,
                                     folds = folds, verbose = 0, eval = "l2") , file='NUL')
-    expect_lt(abs(cvbst$best_score-0.1503614213),TOLERANCE_MEDIUM)
+    expect_lt(abs(cvbst$best_score-0.1503614213),relax_tolerance(TOLERANCE_MEDIUM, 0.1503614213))
     expect_equal(cvbst$best_iter, 14)
 
     ## GP random coefficients: all components use the same order

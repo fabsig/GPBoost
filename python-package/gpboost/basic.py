@@ -21,8 +21,10 @@ from tempfile import NamedTemporaryFile
 from typing import Any, Dict
 
 import numpy as np
+import scipy.linalg  # loads the BLAS and LAPACK library of scipy, see _load_openblas()
 import scipy.sparse
 import pandas as pd
+from threadpoolctl import threadpool_info
 
 from .compat import PANDAS_INSTALLED, pd_DataFrame, pd_Series, concat, is_dtype_sparse, dt_DataTable
 from .libpath import find_lib_path
@@ -210,6 +212,59 @@ def set_default_num_threads(num_threads):
     """
     num_threads = _check_num_threads(num_threads, 'set_default_num_threads')
     _safe_call(_LIB.GPB_SetDefaultNumParallelThreads(ctypes.c_int(num_threads)))
+
+
+def get_blas():
+    """Get the BLAS library used for dense matrix calculations.
+
+    This is the BLAS and LAPACK library that GPBoost uses for dense Cholesky factorizations, inverses,
+    and triangular solves, and for the dense parts of sparse Cholesky factorizations: the OpenBLAS
+    library of scipy if scipy uses OpenBLAS, and GPBoost's own code based on Eigen otherwise.
+
+    OpenBLAS is considerably faster for large dense matrices, e.g., for Gaussian processes without
+    approximation, and for Cholesky factorizations of sparse matrices with dense parts, e.g., for
+    Vecchia approximations with non-Gaussian likelihoods and for crossed grouped random effects.
+    OpenBLAS uses the number of threads of GPBoost, see set_num_threads(), and it is not used in
+    calculations that GPBoost itself runs in parallel.
+
+    Returns
+    -------
+    blas : str
+        The configuration of OpenBLAS as reported by OpenBLAS (version, build options, and CPU type),
+        or "builtin" if GPBoost uses its own code
+
+    :Authors:
+        Fabio Sigrist
+    """
+    buffer_len = 1024
+    out_len = ctypes.c_int(0)
+    string_buffer = ctypes.create_string_buffer(buffer_len)
+    _safe_call(_LIB.GPB_GetBLAS(ctypes.c_int(buffer_len), ctypes.byref(out_len), string_buffer))
+    if out_len.value > buffer_len:
+        string_buffer = ctypes.create_string_buffer(out_len.value)
+        _safe_call(_LIB.GPB_GetBLAS(ctypes.c_int(out_len.value), ctypes.byref(out_len), string_buffer))
+    return string_buffer.value.decode('utf-8')
+
+
+def set_blas(blas):
+    """Set whether OpenBLAS is used for dense matrix calculations.
+
+    GPBoost uses OpenBLAS, if it is available, or its own code for dense matrix calculations, see
+    get_blas(). The two give slightly different results due to rounding, and the results of OpenBLAS
+    can also differ slightly between types of CPUs.
+
+    Parameters
+    ----------
+    blas : str
+        "auto" uses OpenBLAS if it is available, which is the default when the package is imported,
+        and "builtin" uses GPBoost's own code
+
+    :Authors:
+        Fabio Sigrist
+    """
+    if not isinstance(blas, str):
+        raise ValueError("set_blas: 'blas' needs to be a string")
+    _safe_call(_LIB.GPB_SetBLAS(c_str(blas)))
 
 
 def _get_auto_num_threads():
@@ -816,7 +871,24 @@ def _load_lib():
     lib.callback = callback(_log_callback)
     if lib.LGBM_RegisterLogCallback(lib.callback) != 0:
         raise GPBoostError(lib.LGBM_GetLastError().decode('utf-8'))
+    _load_openblas(lib)
     return lib
+
+
+def _load_openblas(lib):
+    """Use the OpenBLAS library of scipy for dense matrix calculations, see get_blas().
+
+    threadpoolctl lists the BLAS libraries that are loaded in the process. GPBoost accepts only
+    OpenBLAS with 32-bit integers, which is the one of scipy and not the one of numpy.
+    """
+    for blas_library in threadpool_info():
+        if blas_library["internal_api"] == "openblas":
+            success = ctypes.c_int(0)
+            library_path = ctypes.c_char_p(blas_library["filepath"].encode('utf-8'))
+            if lib.GPB_LoadOpenBLAS(library_path, ctypes.byref(success)) != 0:
+                raise GPBoostError(lib.LGBM_GetLastError().decode('utf-8'))
+            if success.value == 1:
+                return
 
 
 _LIB = _load_lib()

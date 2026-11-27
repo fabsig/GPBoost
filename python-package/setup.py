@@ -424,6 +424,7 @@ if __name__ == "__main__":
               'pandas',
               'scipy',
               'scikit-learn!=0.22.0',
+              'threadpoolctl',
               'optuna'
           ],
           extras_require={

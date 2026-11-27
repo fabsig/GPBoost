@@ -23,6 +23,9 @@
 // trsm, trsv and potrf - each for the four SuiteSparse scalar types. The
 // remaining BLAS/LAPACK routines declared by SuiteSparse_config.h belong to
 // other SuiteSparse packages that GPBoost does not bundle.
+//
+// The double precision kernels call OpenBLAS instead of Eigen if GPBoost uses
+// one, see GPBoost/blas_backend.h.
 
 #ifdef GPB_SUITESPARSE_INTERNAL_BLAS
 
@@ -33,6 +36,8 @@
 
 #define SUITESPARSE_BLAS_PROTOTYPES
 #include "SuiteSparse_config.h"
+
+#include <GPBoost/blas_backend.h>
 
 namespace {
 
@@ -363,7 +368,17 @@ extern "C" {
 		Gemm<T>(transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);         \
 	}
 
-	GPB_DEFINE_GEMM(SUITESPARSE_BLAS_DGEMM, double)
+	void SUITESPARSE_BLAS_DGEMM(const char* transa, const char* transb, const blas_int* m,
+		const blas_int* n, const blas_int* k, const double* alpha, const double* A,
+		const blas_int* lda, const double* B, const blas_int* ldb, const double* beta,
+		double* C, const blas_int* ldc) NOTHROW {
+		if (GPBoost::UseBLAS()) {
+			GPBoost::DgemmBLAS(transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+		}
+		else {
+			Gemm<double>(transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+		}
+	}
 	GPB_DEFINE_GEMM(SUITESPARSE_BLAS_SGEMM, float)
 	GPB_DEFINE_GEMM(SUITESPARSE_BLAS_ZGEMM, cdouble_t)
 	GPB_DEFINE_GEMM(SUITESPARSE_BLAS_CGEMM, cfloat_t)
@@ -377,7 +392,16 @@ extern "C" {
 		Gemv<T>(trans, m, n, alpha, A, lda, X, incx, beta, Y, incy);                   \
 	}
 
-	GPB_DEFINE_GEMV(SUITESPARSE_BLAS_DGEMV, double)
+	void SUITESPARSE_BLAS_DGEMV(const char* trans, const blas_int* m, const blas_int* n,
+		const double* alpha, const double* A, const blas_int* lda, const double* X,
+		const blas_int* incx, const double* beta, double* Y, const blas_int* incy) NOTHROW {
+		if (GPBoost::UseBLAS()) {
+			GPBoost::DgemvBLAS(trans, m, n, alpha, A, lda, X, incx, beta, Y, incy);
+		}
+		else {
+			Gemv<double>(trans, m, n, alpha, A, lda, X, incx, beta, Y, incy);
+		}
+	}
 	GPB_DEFINE_GEMV(SUITESPARSE_BLAS_SGEMV, float)
 	GPB_DEFINE_GEMV(SUITESPARSE_BLAS_ZGEMV, cdouble_t)
 	GPB_DEFINE_GEMV(SUITESPARSE_BLAS_CGEMV, cfloat_t)
@@ -391,7 +415,16 @@ extern "C" {
 		Syrk<T>(uplo, trans, n, k, alpha, A, lda, beta, C, ldc);                       \
 	}
 
-	GPB_DEFINE_SYRK(SUITESPARSE_BLAS_DSYRK, double)
+	void SUITESPARSE_BLAS_DSYRK(const char* uplo, const char* trans, const blas_int* n,
+		const blas_int* k, const double* alpha, const double* A, const blas_int* lda,
+		const double* beta, double* C, const blas_int* ldc) NOTHROW {
+		if (GPBoost::UseBLAS()) {
+			GPBoost::DsyrkBLAS(uplo, trans, n, k, alpha, A, lda, beta, C, ldc);
+		}
+		else {
+			Syrk<double>(uplo, trans, n, k, alpha, A, lda, beta, C, ldc);
+		}
+	}
 	GPB_DEFINE_SYRK(SUITESPARSE_BLAS_SSYRK, float)
 	GPB_DEFINE_SYRK(SUITESPARSE_BLAS_ZHERK, cdouble_t)
 	GPB_DEFINE_SYRK(SUITESPARSE_BLAS_CHERK, cfloat_t)
@@ -405,7 +438,16 @@ extern "C" {
 		Trsm<T>(side, uplo, transa, diag, m, n, alpha, A, lda, B, ldb);                \
 	}
 
-	GPB_DEFINE_TRSM(SUITESPARSE_BLAS_DTRSM, double)
+	void SUITESPARSE_BLAS_DTRSM(const char* side, const char* uplo, const char* transa,
+		const char* diag, const blas_int* m, const blas_int* n, const double* alpha,
+		const double* A, const blas_int* lda, double* B, const blas_int* ldb) NOTHROW {
+		if (GPBoost::UseBLAS()) {
+			GPBoost::DtrsmBLAS(side, uplo, transa, diag, m, n, alpha, A, lda, B, ldb);
+		}
+		else {
+			Trsm<double>(side, uplo, transa, diag, m, n, alpha, A, lda, B, ldb);
+		}
+	}
 	GPB_DEFINE_TRSM(SUITESPARSE_BLAS_STRSM, float)
 	GPB_DEFINE_TRSM(SUITESPARSE_BLAS_ZTRSM, cdouble_t)
 	GPB_DEFINE_TRSM(SUITESPARSE_BLAS_CTRSM, cfloat_t)
@@ -419,7 +461,16 @@ extern "C" {
 		Trsv<T>(uplo, trans, diag, n, A, lda, X, incx);                                \
 	}
 
-	GPB_DEFINE_TRSV(SUITESPARSE_BLAS_DTRSV, double)
+	void SUITESPARSE_BLAS_DTRSV(const char* uplo, const char* trans, const char* diag,
+		const blas_int* n, const double* A, const blas_int* lda, double* X,
+		const blas_int* incx) NOTHROW {
+		if (GPBoost::UseBLAS()) {
+			GPBoost::DtrsvBLAS(uplo, trans, diag, n, A, lda, X, incx);
+		}
+		else {
+			Trsv<double>(uplo, trans, diag, n, A, lda, X, incx);
+		}
+	}
 	GPB_DEFINE_TRSV(SUITESPARSE_BLAS_STRSV, float)
 	GPB_DEFINE_TRSV(SUITESPARSE_BLAS_ZTRSV, cdouble_t)
 	GPB_DEFINE_TRSV(SUITESPARSE_BLAS_CTRSV, cfloat_t)
@@ -432,7 +483,15 @@ extern "C" {
 		Potrf<T>(uplo, n, A, lda, info);                                               \
 	}
 
-	GPB_DEFINE_POTRF(SUITESPARSE_LAPACK_DPOTRF, double)
+	void SUITESPARSE_LAPACK_DPOTRF(const char* uplo, const blas_int* n, double* A, const blas_int* lda,
+		blas_int* info) NOTHROW {
+		if (GPBoost::UseBLAS()) {
+			GPBoost::DpotrfBLAS(uplo, n, A, lda, info);
+		}
+		else {
+			Potrf<double>(uplo, n, A, lda, info);
+		}
+	}
 	GPB_DEFINE_POTRF(SUITESPARSE_LAPACK_SPOTRF, float)
 	GPB_DEFINE_POTRF(SUITESPARSE_LAPACK_ZPOTRF, cdouble_t)
 	GPB_DEFINE_POTRF(SUITESPARSE_LAPACK_CPOTRF, cfloat_t)

@@ -10,6 +10,7 @@
 #include <LightGBM/utils/log.h>
 #include <LightGBM/utils/openmp_wrapper.h>
 #include <LightGBM/utils/text_reader.h>
+#include <GPBoost/blas_backend.h>
 
 #include <R_ext/Rdynload.h>
 
@@ -1225,6 +1226,36 @@ SEXP GPB_SuppressAutoNumParallelThreadsMessage_R() {
 	return R_NilValue;
 }
 
+SEXP GPB_LoadOpenBLAS_R(SEXP library_path) {
+	const char* library_path_ptr = Rf_translateCharUTF8(Rf_asChar(library_path));
+	int success;
+	R_API_BEGIN();
+	CHECK_CALL(GPB_LoadOpenBLAS(library_path_ptr, &success));
+	R_API_END();
+	return R_NilValue;
+}
+
+SEXP GPB_SetBLAS_R(SEXP blas) {
+	const char* blas_ptr = CHAR(Rf_asChar(blas));
+	R_API_BEGIN();
+	CHECK_CALL(GPB_SetBLAS(blas_ptr));
+	R_API_END();
+	return R_NilValue;
+}
+
+SEXP GPB_GetBLAS_R() {
+	std::vector<char> description(1024);
+	int length = 0;
+	R_API_BEGIN();
+	CHECK_CALL(GPB_GetBLAS((int)description.size(), &length, description.data()));
+	if (length > (int)description.size()) {
+		description.resize(length);
+		CHECK_CALL(GPB_GetBLAS((int)description.size(), &length, description.data()));
+	}
+	R_API_END();
+	return Rf_mkString(description.data());
+}
+
 SEXP GPB_SetPredictionData_R(SEXP handle,
 	SEXP num_data_pred,
 	SEXP cluster_ids_data_pred,
@@ -1595,6 +1626,9 @@ static const R_CallMethodDef CallEntries[] = {
   {"GPB_GetMaxNumParallelThreads_R"   , (DL_FUNC)&GPB_GetMaxNumParallelThreads_R   , 1},
   {"GPB_SetDefaultNumParallelThreads_R", (DL_FUNC)&GPB_SetDefaultNumParallelThreads_R, 1},
   {"GPB_SuppressAutoNumParallelThreadsMessage_R", (DL_FUNC)&GPB_SuppressAutoNumParallelThreadsMessage_R, 0},
+  {"GPB_LoadOpenBLAS_R"               , (DL_FUNC)&GPB_LoadOpenBLAS_R               , 1},
+  {"GPB_SetBLAS_R"                    , (DL_FUNC)&GPB_SetBLAS_R                    , 1},
+  {"GPB_GetBLAS_R"                    , (DL_FUNC)&GPB_GetBLAS_R                    , 0},
   {"GPB_SetPredictionData_R"          , (DL_FUNC)&GPB_SetPredictionData_R          , 16},
   {"GPB_PredictREModel_R"             , (DL_FUNC)&GPB_PredictREModel_R             , 21},
   {"GPB_CheckNumSimulatedVectorsPred_R", (DL_FUNC)&GPB_CheckNumSimulatedVectorsPred_R, 9},
@@ -1617,9 +1651,47 @@ static const R_CallMethodDef CallEntries[] = {
   {NULL, NULL, 0}
 };
 
+#ifdef GPB_R_LINKED_OPENBLAS
+// OpenBLAS that is linked into the package, see configure.win. The routines are declared with the hidden
+// string lengths of the Fortran calling convention, as in GPBoost::OpenBLASFunctions
+extern "C" {
+	void dgemm_(const char*, const char*, const int*, const int*, const int*, const double*, const double*,
+		const int*, const double*, const int*, const double*, double*, const int*, size_t, size_t);
+	void dgemv_(const char*, const int*, const int*, const double*, const double*, const int*, const double*,
+		const int*, const double*, double*, const int*, size_t);
+	void dsyrk_(const char*, const char*, const int*, const int*, const double*, const double*, const int*,
+		const double*, double*, const int*, size_t, size_t);
+	void dtrsm_(const char*, const char*, const char*, const char*, const int*, const int*, const double*,
+		const double*, const int*, double*, const int*, size_t, size_t, size_t, size_t);
+	void dtrsv_(const char*, const char*, const char*, const int*, const double*, const int*, double*,
+		const int*, size_t, size_t, size_t);
+	void dpotrf_(const char*, const int*, double*, const int*, int*, size_t);
+	void dpotri_(const char*, const int*, double*, const int*, int*, size_t);
+	int openblas_get_parallel();
+	int openblas_get_num_threads();
+	void openblas_set_num_threads(int);
+	char* openblas_get_config();
+}
+#endif
+
 GPBOOST_C_EXPORT void R_init_gpboost(DllInfo* dll);
 
 void R_init_gpboost(DllInfo* dll) {
 	R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
 	R_useDynamicSymbols(dll, FALSE);
+#ifdef GPB_R_LINKED_OPENBLAS
+	GPBoost::OpenBLASFunctions openblas;
+	openblas.dgemm = dgemm_;
+	openblas.dgemv = dgemv_;
+	openblas.dsyrk = dsyrk_;
+	openblas.dtrsm = dtrsm_;
+	openblas.dtrsv = dtrsv_;
+	openblas.dpotrf = dpotrf_;
+	openblas.dpotri = dpotri_;
+	openblas.get_parallel = openblas_get_parallel;
+	openblas.get_num_threads = openblas_get_num_threads;
+	openblas.set_num_threads = openblas_set_num_threads;
+	openblas.get_config = openblas_get_config;
+	GPBoost::SetOpenBLAS(openblas);
+#endif
 }

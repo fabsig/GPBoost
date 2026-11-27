@@ -420,16 +420,17 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     capture.output( gp_model <- fitGPModel(gp_coords = cbind(time, coords), cov_function = "space_time_gneiting", cov_fct_shape = 0.5,
                                            y = y, X = X, params = params_ST), 
                     file='NUL')
-    cov_pars <- c(0.0111814359, 0.07067832798, 1.011610799, 0.1712266201, 0.6000909786,
-                  4.965996721, 58.12215177, 389.6362797, 1, 3.311191848,
-                  11.36189312, 146.573375, 1, 6.71388843, 0.2419452778, 2.012657387)
+    cov_pars <- c(0.01118145407, 0.0706784179, 1.011610758, 0.1712266547, 0.6000896681,
+                  4.96597885, 58.1221253, 389.6355703, 1, 3.311186856,
+                  11.36187168, 146.5728909, 1, 6.713882064, 0.2419453856, 2.012656799)
     coef <- c(1.965266269, 0.1455411065, 2.114409594, 0.131615534)
     nrounds <- 26
     nll_opt <- 137.428674247055
     # Absolute sum over 16 values, the largest of which are the standard errors of the range
-    # parameters (up to ~390), so a budget of 1e-3 is a reference-platform tolerance: with gcc on
-    # Linux the same stationary point is reached (identical iteration count, and the negative
-    # log-likelihood and the coefficients still agree to 1e-5 below) with a sum of ~1.6e-3
+    # parameters (up to ~390), so a budget of 1e-3 is a reference-platform tolerance: with another
+    # compiler or another order of summation, the same stationary point is reached (identical iteration
+    # count, and the negative log-likelihood and the coefficients still agree to 1e-5 below) with a sum
+    # of the order of 1e-3
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = TRUE))-cov_pars)),relax_tolerance(TOLERANCE_MEDIUM, cov_pars))
     expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef)),TOLERANCE_STRICT)
     expect_equal(gp_model$get_num_optim_iter(), nrounds)

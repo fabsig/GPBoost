@@ -40,6 +40,23 @@ namespace GPBoost {
 	void L_t_solve(const double* val, const int ncol, double* x);
 
 	/*!
+	* \brief Solve L X = B or L^T X = B for a dense lower triangular L and a dense right-hand side B with several
+	*		columns. OpenBLAS is used if one is registered, see blas_backend.h
+	* \param L Lower triangular matrix
+	* \param[in,out] B Right-hand side, which is overwritten by the solution X
+	* \param transpose If true, L^T X = B is solved
+	*/
+	void TriangularSolveInPlace(const den_mat_t& L, den_mat_t& B, bool transpose);
+
+	/*!
+	* \brief Calculate the inverse (L L^T)^-1 of a dense matrix given its lower triangular Cholesky factor L.
+	*		OpenBLAS is used if one is registered, see blas_backend.h
+	* \param L Lower triangular Cholesky factor. Its strictly upper triangle is not used
+	* \param[out] inverse (L L^T)^-1
+	*/
+	void CalcInverseGivenCholeskyFactor(const den_mat_t& L, den_mat_t& inverse);
+
+	/*!
 	* \brief Solve equation system with a sparse lower triangular matrix in column-major format as left-hand side (Lx=b)
 	* \param val Values of sparse lower triangular matrix L
 	* \param row_idx Row indices corresponding to the values ('InnerIndices' in Eigen)
@@ -353,36 +370,8 @@ namespace GPBoost {
 	template <class T_mat_L, class T_mat_R, class T_mat_X, typename std::enable_if <std::is_same<den_mat_t, T_mat_L>::value && !std::is_same<vec_t, T_mat_R>::value>::type* = nullptr >
 	void TriangularSolve(const T_mat_L& L, const T_mat_R& R, T_mat_X& X, bool transpose) {
 		CHECK(L.cols() == R.rows());
-		int ncols_R = (int)R.cols();
-		int nrows_R = (int)R.rows();
 		X = (T_mat_X)(R);
-		double* X_ptr = X.data();
-		const double* L_ptr = L.data();
-		if (transpose) {
-#pragma omp parallel for schedule(static)
-			for (int j = 0; j < ncols_R; ++j) {
-				L_t_solve(L_ptr, nrows_R, X_ptr + j * nrows_R);
-			}
-		}
-		else {
-#pragma omp parallel for schedule(static)
-			for (int j = 0; j < ncols_R; ++j) {
-				L_solve(L_ptr, nrows_R, X_ptr + j * nrows_R);
-			}
-		}
-		//Note 1: Eigen's interval solver is slower (probably because it does not parallelize)
-		//X = (den_mat_t)(R);
-		//if (transpose) {
-		//	L.triangularView<Eigen::UpLoType::Lower>().adjoint().solveInPlace(X);
-		//}
-		//else {
-		//	L.triangularView<Eigen::UpLoType::Lower>().solveInPlace(X);
-		//}
-		// Note 2: Using dpotri from LAPACK does not work since LAPACK is not installed
-		//int info = 0;
-		//char* uplo = "L";
-		//den_mat_t M = chol_facts_[cluster_i];
-		//BLASFUNC(dpotri)(uplo, &ncols_R, L.data(), &nrows_R, &info);
+		TriangularSolveInPlace(L, X, transpose);
 	}//end TriangularSolve (L = den_mat_t && R != vec_t)
 	template <class T_mat_L, class T_mat_R, class T_mat_X, typename std::enable_if <std::is_same<den_mat_t, T_mat_L>::value && std::is_same<vec_t, T_mat_R>::value>::type* = nullptr >
 	void TriangularSolve(const T_mat_L& L, const T_mat_R& R, T_mat_X& X, bool transpose) {
@@ -639,11 +628,8 @@ namespace GPBoost {
 	*/
 	template <class T_chol, class T_mat_R, typename std::enable_if <std::is_same<chol_den_mat_t, T_chol>::value>::type* = nullptr >
 	void CalcColSquaredNormsCholFactorInvPR(const T_chol& chol, const T_mat_R& R, vec_t& norms) {
-		// A dense L^-1 has no fill-in, and a matrix product is faster than triangular solves for many dense right-hand sides
-		den_mat_t L_inv;
-		TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol, den_mat_t::Identity(chol.rows(), chol.cols()), L_inv, false);
 		den_mat_t L_inv_R;
-		L_inv_R.noalias() = L_inv * R;
+		TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, T_mat_R, den_mat_t>(chol, R, L_inv_R, false);
 		norms = L_inv_R.colwise().squaredNorm().transpose();
 	}
 	template <class T_chol, class T_mat_R, typename std::enable_if <is_sparse_chol<T_chol>::value>::type* = nullptr >
@@ -695,10 +681,8 @@ namespace GPBoost {
 	*/
 	template <class T_chol, class T_mat, typename std::enable_if <std::is_same<chol_den_mat_t, T_chol>::value>::type* = nullptr >
 	void CalcInverseOnSparsityPattern(const T_chol& chol, T_mat& M) {
-		// the triangular solves are parallelized over the columns and the product is a parallel matrix multiplication
-		den_mat_t L_inv;
-		TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol, den_mat_t::Identity(chol.rows(), chol.cols()), L_inv, false);
-		M.noalias() = L_inv.transpose() * L_inv;
+		// a dense matrix has a dense inverse
+		CalcInverseGivenCholeskyFactor(chol.CholFactMatrix(), M);
 	}
 	template <class T_chol, class T_mat, typename std::enable_if <is_sparse_chol<T_chol>::value>::type* = nullptr >
 	void CalcInverseOnSparsityPattern(const T_chol& chol, T_mat& M) {

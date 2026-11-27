@@ -1630,22 +1630,25 @@ namespace GPBoost {
 					D_inv_cluster_i.coeffRef(i, i) -= (A_i * cov_mat_obs_neighbors)(0, 0);
 				}
 				if (calc_gradient) {
+					// A_i = c^T S^-1 with c = cov_mat_obs_neighbors and S = cov_mat_between_neighbors, and thus
+					//	dA_i = (dc - dS A_i^T)^T S^-1, which needs a solve with a vector and not with the matrix dS
 					if (calc_gradient_nugget && estimate_cov_par_index[0] > 0) {
-						den_mat_t cov_grad_mat_between_neighbors_sigma2 = den_mat_t::Identity(num_nn, num_nn);
+						// dS = I + diag(add_diagonal) / nugget_var and dc = 0
+						den_mat_t dS_A_i_t = A_i.transpose();
 						if (add_diagonal != nullptr) {
 							for (int ii = 0; ii < num_nn; ++ii) {
-								cov_grad_mat_between_neighbors_sigma2(ii, ii) += add_diagonal[nearest_neighbors_cluster_i[i][ii]] / nugget_var;
+								dS_A_i_t(ii, 0) *= 1. + add_diagonal[nearest_neighbors_cluster_i[i][ii]] / nugget_var;
 							}
 						}
-						A_i_grad_sigma2 = -A_i * ((chol_fact_between_neighbors.solve(cov_grad_mat_between_neighbors_sigma2)).transpose());
+						A_i_grad_sigma2 = -(chol_fact_between_neighbors.solve(dS_A_i_t)).transpose();
 					}
 					den_mat_t A_i_grad(1, num_nn);
 					for (int j = 0; j < num_gp_total; ++j) {
 						int ind_first_par = j * num_par_comp;
 						for (int ipar = 0; ipar < num_par_comp; ++ipar) {
 							if (!(exclude_marg_var_grad && ipar == 0) && estimate_cov_par_index[ind_first_par + ipar + nugget_offset_ind_est] > 0) {
-								A_i_grad = (chol_fact_between_neighbors.solve(cov_grad_mats_obs_neighbors[ind_first_par + ipar])).transpose() -
-									A_i * ((chol_fact_between_neighbors.solve(cov_grad_mats_between_neighbors[ind_first_par + ipar])).transpose());
+								A_i_grad = (chol_fact_between_neighbors.solve(cov_grad_mats_obs_neighbors[ind_first_par + ipar] -
+									cov_grad_mats_between_neighbors[ind_first_par + ipar] * A_i.transpose())).transpose();
 								for (int inn = 0; inn < num_nn; ++inn) {
 									B_grad_cluster_i[ind_first_par + ipar].coeffRef(i, nearest_neighbors_cluster_i[i][inn]) = -A_i_grad(0, inn);
 								}

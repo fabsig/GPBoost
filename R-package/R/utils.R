@@ -478,3 +478,69 @@ gpb.suppress.num.threads.message <- function() {
   )
   return(invisible(NULL))
 }
+
+#' @title Get the BLAS library used for dense matrix calculations
+#' @description Returns the BLAS and LAPACK library that GPBoost uses for dense Cholesky
+#'              factorizations, inverses, and triangular solves, and for the dense parts of sparse
+#'              Cholesky factorizations. This is OpenBLAS if R uses OpenBLAS as its BLAS library or if the
+#'              package has been built with OpenBLAS (as on Windows if Rtools provides OpenBLAS), and
+#'              GPBoost's own code based on Eigen otherwise.
+#'
+#'              OpenBLAS is considerably faster for large dense matrices, e.g., for Gaussian processes
+#'              without approximation, and for Cholesky factorizations of sparse matrices with dense
+#'              parts, e.g., for Vecchia approximations with non-Gaussian likelihoods and for crossed
+#'              grouped random effects. OpenBLAS uses the number of threads of GPBoost, see
+#'              \code{\link{gpb.set.num.threads}}, and it is not used in calculations that GPBoost itself
+#'              runs in parallel.
+#' @return A \code{character} of length one: the configuration of OpenBLAS as reported by OpenBLAS
+#'         (version, build options, and CPU type), or \code{"builtin"} if GPBoost uses its own code
+#' @author Fabio Sigrist
+#' @examples
+#' gpb.get.blas()
+#' @rdname gpb.get.blas
+#' @export
+gpb.get.blas <- function() {
+  return(.Call(GPB_GetBLAS_R))
+}
+
+#' @title Set whether OpenBLAS is used for dense matrix calculations
+#' @description Sets whether GPBoost uses OpenBLAS, if it is available, or its own code for dense matrix
+#'              calculations, see \code{\link{gpb.get.blas}}. The two give slightly different results due
+#'              to rounding, and the results of OpenBLAS can also differ slightly between types of CPUs.
+#' @param blas A \code{character}: \code{"auto"} uses OpenBLAS if it is available, which is the
+#'             default when the package is loaded, and \code{"builtin"} uses GPBoost's own code
+#' @return This function does not return anything
+#' @author Fabio Sigrist
+#' @examples
+#' gpb.set.blas("builtin")
+#' gpb.set.blas("auto")
+#' @rdname gpb.set.blas
+#' @export
+gpb.set.blas <- function(blas) {
+  if (!is.character(blas) || length(blas) != 1L) {
+    stop("gpb.set.blas: ", sQuote("blas"), " needs to be a character of length one")
+  }
+  .Call(
+    GPB_SetBLAS_R
+    , blas
+  )
+  return(invisible(NULL))
+}
+
+# Uses the BLAS library of R if it is OpenBLAS, unless the package links OpenBLAS itself
+.onLoad <- function(libname, pkgname) {
+  if (gpb.get.blas() == "builtin") {
+    if (.Platform$OS.type == "windows") {
+      blas_library <- file.path(R.home("bin"), "Rblas.dll")
+    } else {
+      blas_library <- extSoftVersion()[["BLAS"]]
+    }
+    if (nzchar(blas_library)) {
+      .Call(
+        GPB_LoadOpenBLAS_R
+        , enc2utf8(blas_library)
+      )
+    }
+  }
+  return(invisible(NULL))
+}
