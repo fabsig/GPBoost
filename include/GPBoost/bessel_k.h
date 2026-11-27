@@ -19,10 +19,12 @@ namespace GPBoost {
 	*		Temme (1975, J. Comput. Phys. 19, 324-337) for x <= 2 and with the continued fraction of Steed's method
 	*		(Thompson and Barnett, 1987, Comput. Phys. Commun. 47, 245-257) for x > 2, and K_nu(x) follows from the
 	*		upward recurrence K_{mu+k+1}(x) = K_{mu+k-1}(x) + 2 (mu + k) / x * K_{mu+k}(x). The number of recurrence steps
-	*		grows with nu; the Matern correlation functions use only orders up to 2
+	*		grows with nu; the Matern correlation functions use only orders up to 1
+	* \param exponentially_scaled If true, exp(x) K_nu(x) is returned, which does not underflow for large x
 	*/
 	inline double BesselK(double nu,
-		double x) {
+		double x,
+		bool exponentially_scaled) {
 		const double pi = 3.14159265358979323846;
 		const double eps = 1e-16;
 		const int max_iterations = 10000;
@@ -78,6 +80,11 @@ namespace GPBoost {
 			}
 			k_mu = sum;
 			k_mu1 = sum1 * 2. / x;
+			if (exponentially_scaled) {
+				const double exp_x = std::exp(x);
+				k_mu *= exp_x;
+				k_mu1 *= exp_x;
+			}
 		}
 		else {
 			const double a1 = 0.25 - mu_sq;
@@ -108,7 +115,11 @@ namespace GPBoost {
 					break;
 				}
 			}
-			k_mu = std::sqrt(pi / (2. * x)) * std::exp(-x) / s;
+			double exp_minus_x = 1.;
+			if (!exponentially_scaled) {
+				exp_minus_x = std::exp(-x);
+			}
+			k_mu = std::sqrt(pi / (2. * x)) * exp_minus_x / s;
 			k_mu1 = k_mu * (mu + x + 0.5 - a1 * h) / x;
 		}
 		for (int k = 1; k <= n; ++k) {

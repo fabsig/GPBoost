@@ -2414,6 +2414,12 @@ gpb.GPModel <- R6::R6Class(
                " used for the tree ensemble.")
         }
       }# end offset_pred
+      if (sample_posterior) {
+        num_post_samples <- gpb.check.num.samples(num_post_samples, "num_post_samples")
+      }
+      if (sample_prior) {
+        num_prior_samples <- gpb.check.num.samples(num_prior_samples, "num_prior_samples")
+      }
       # The numbers of simulated vectors are checked before the memory for the output is allocated
       .Call(
         GPB_CheckNumSimulatedVectorsPred_R

@@ -1445,4 +1445,82 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Matern correlation for extreme scaled distances and smoothness parameters ", {
+    # Correlation of two points at the distance 1 with the scaled distance z: the predictive covariance of a new cluster,
+    #   which is the covariance of the prior
+    matern_corr <- function(shape, z) {
+      capture.output( gp_model <- GPModel(gp_coords = matrix(c(0, 1)), cov_function = "matern", cov_fct_shape = shape),
+                      file='NUL')
+      capture.output( pred <- predict(gp_model, y = c(0, 0), gp_coords_pred = matrix(c(0, 1)), cluster_ids_pred = c(1, 1),
+                                      cov_pars = c(0.1, 1, sqrt(2 * shape) / z), predict_cov_mat = TRUE,
+                                      predict_response = FALSE), file='NUL')
+      pred$cov[1, 2]
+    }
+    # Reference values calculated with mpmath. The general formula gave Inf for z = 1e-160 (z^2 K_2(z) with an overflowing
+    #   Bessel function) and 0 for z = 800 (the starting values of its recurrence underflowed), and the closed form for
+    #   half-integers gave NaN for z = 1e10 (the polynomial overflowed and exp(-z) underflowed)
+    cases <- list(c(2, 1e-160, 1), c(49.5, 1e10, 0), c(49.5, 760, 2.2676395336136383e-265),
+                  c(1e5, 800, 0.20189587194276761), c(120.3, 800, 1.2262038753686684e-229))
+    for (cs in cases) {
+      expect_true(abs(matern_corr(cs[1], cs[2]) - cs[3]) <= 1e-9 * cs[3])
+    }
+    # Moderate scaled distances, compared with the Bessel function of R
+    for (shape in c(0.3, 1.3, 2, 2.7, 7.3)) {
+      for (z in c(1e-3, 0.5, 3, 30)) {
+        corr_R <- 2^(1 - shape) / gamma(shape) * z^shape * besselK(z, shape)
+        expect_lt(abs(matern_corr(shape, z) - corr_R), 1e-12)
+      }
+    }
+  })
+
+  test_that("A fixed or given smoothness parameter is not bounded like an estimated one ", {
+    # The upper bound 100 of an estimated smoothness was also applied to a fixed smoothness and to one given for predictions
+    x <- seq(0, 1, length.out = 50)
+    y_j <- sin(2 * pi * x) + 0.1 * qnorm(sim_rand_unif(n = 50, init_c = 0.41))
+    params <- list(optimizer_cov = "lbfgs", init_cov_pars = c(0.01, 1, 0.3, 150), estimate_cov_par_index = c(1, 1, 1, 0))
+    capture.output( gp_model <- fitGPModel(gp_coords = matrix(x), cov_function = "matern_estimate_shape",
+                                           y = y_j, params = params), file='NUL')
+    expect_equal(unname(gp_model$get_cov_pars()["GP_smoothness"]), 150)
+    # 0.51189876373614323 is the Matern correlation with smoothness 150 at the scaled distance 20 (mpmath)
+    gp_model <- GPModel(gp_coords = matrix(c(0, 1)), cov_function = "matern_estimate_shape")
+    capture.output( pred <- predict(gp_model, y = c(0, 0), gp_coords_pred = matrix(c(0, 1)), cluster_ids_pred = c(1, 1),
+                                    cov_pars = c(0.1, 1, sqrt(300) / 20, 150), predict_cov_mat = TRUE,
+                                    predict_response = FALSE), file='NUL')
+    expect_lt(abs(pred$cov[1, 2] - 0.51189876373614323), 1e-10)
+  })
+
+  test_that("Standard errors for a smoothness parameter below the step size of the finite differences ", {
+    # The derivative with respect to the smoothness on the original scale was a central difference with the additive step
+    #   1e-6, which failed for a smoothness below 1e-6
+    x <- seq(0, 30, length.out = 60)
+    y_j <- qnorm(sim_rand_unif(n = 60, init_c = 0.27))
+    cases <- list(matern_estimate_shape = list(coords = matrix(x), init_cov_pars = c(0.5, 1, 2, 5e-7)),
+                  matern_space_time_estimate_shape = list(coords = cbind(x, cos(x)), init_cov_pars = c(0.5, 1, 2, 2, 5e-7)))
+    for (cov_function in names(cases)) {
+      cs <- cases[[cov_function]]
+      capture.output( gp_model <- fitGPModel(gp_coords = cs$coords, cov_function = cov_function, y = y_j,
+                                             params = list(maxit = 0, init_cov_pars = cs$init_cov_pars)), file='NUL')
+      cov_pars_se <- gp_model$get_cov_pars(std_err = TRUE)
+      expect_equal(as.vector(cov_pars_se[1, ]), cs$init_cov_pars)
+      expect_false(any(is.nan(cov_pars_se)))
+    }
+  })
+
+  test_that("Numbers of posterior and prior samples are checked before the output is allocated ", {
+    # A number of samples that does not fit into an integer became NA_integer_, which passed the check of the library,
+    #   whereas the output was allocated for the original number
+    gp_model <- GPModel(gp_coords = matrix(c(0, 1)), cov_function = "exponential")
+    for (num_samples in list(2^31, 0, 2.5, NA, c(10, 20))) {
+      expect_error(predict(gp_model, y = c(0, 1), gp_coords_pred = matrix(0.5), cov_pars = c(0.1, 1, 0.3),
+                           predict_response = FALSE, sample_posterior = TRUE, num_post_samples = num_samples),
+                   "num_post_samples")
+      expect_error(predict(gp_model, y = c(0, 1), gp_coords_pred = matrix(0.5), cov_pars = c(0.1, 1, 0.3),
+                           predict_response = FALSE, sample_prior = TRUE, num_prior_samples = num_samples),
+                   "num_prior_samples")
+    }
+    pred <- predict(gp_model, y = c(0, 1), gp_coords_pred = matrix(0.5), cov_pars = c(0.1, 1, 0.3),
+                    predict_response = FALSE, sample_posterior = TRUE, num_post_samples = 3)
+    expect_equal(dim(pred$posterior_samples), c(1, 3))
+  })
+
 }

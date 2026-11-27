@@ -96,6 +96,19 @@ def _check_num_threads(num_threads, name):
     return int(num_threads)
 
 
+def _check_num_samples(num_samples, name):
+    """Check a number of posterior or prior samples of a prediction.
+
+    A number that does not fit into a C int would wrap around when it is passed to the library, whereas the
+    output would be allocated for the original number.
+    """
+    if (isinstance(num_samples, (bool, np.bool_)) or
+            not isinstance(num_samples, (int, np.integer)) or
+            not 1 <= int(num_samples) < 2 ** 31):
+        raise ValueError("predict: '" + name + "' needs to be a positive integer smaller than 2^31")
+    return int(num_samples)
+
+
 def get_num_threads():
     """Get the number of threads that OMP currently uses for parallelization.
 
@@ -7904,6 +7917,10 @@ class GPModel(object):
             offset_pred = offset_pred.astype(np.float64)
             offset_pred_c = offset_pred.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
+        if sample_posterior:
+            num_post_samples = _check_num_samples(num_post_samples, "num_post_samples")
+        if sample_prior:
+            num_prior_samples = _check_num_samples(num_prior_samples, "num_prior_samples")
         # The numbers of simulated vectors are checked before the memory for the output is allocated
         _safe_call(_LIB.GPB_CheckNumSimulatedVectorsPred(
             self.handle,

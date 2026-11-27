@@ -215,10 +215,13 @@ namespace GPBoost {
 		}
 
 		/*!
-		* \brief Cap the covariance parameters to the range that is used when they are set (see 'SetCovPars')
+		* \brief Cap the covariance parameters to the range that is used when they are set (see 'SetCovPars') and an estimated
+		*		smoothness parameter at its upper bound
 		* \param[out] pars Covariance parameters (on transformed scale)
+		* \param estimate_par_index Indicates (> 0) which parameters are estimated, nullptr if none is
 		*/
-		virtual void CapCovPars(vec_t& pars) const = 0;
+		virtual void CapCovPars(vec_t& pars,
+			const int* estimate_par_index) const = 0;
 
 	protected:
 		/*! \brief Number of data points */
@@ -754,7 +757,8 @@ namespace GPBoost {
 
 		void CovarianceParameterRangeWarning(const vec_t& ) override { }
 
-		void CapCovPars(vec_t& ) const override { }
+		void CapCovPars(vec_t& ,
+			const int* ) const override { }
 
 	private:
 		/*! \brief Number of groups */
@@ -1274,7 +1278,7 @@ namespace GPBoost {
 		void SetCovPars(const vec_t& pars_in) override {
 			vec_t pars = pars_in;
 			CHECK((int)pars.size() == this->num_cov_par_);
-			cov_function_->CapPars(pars);
+			cov_function_->CapPars(pars, nullptr);
 			cov_function_->CheckPars(pars);
 			this->cov_pars_ = pars;
 		}
@@ -1889,8 +1893,9 @@ namespace GPBoost {
 			return -1.;
 		}
 
-		void CapCovPars(vec_t& pars) const override {
-			cov_function_->CapPars(pars);
+		void CapCovPars(vec_t& pars,
+			const int* estimate_par_index) const override {
+			cov_function_->CapPars(pars, estimate_par_index);
 		}
 
 	private:

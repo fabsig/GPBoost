@@ -3980,12 +3980,12 @@ namespace GPBoost {
 		*/
 		bool PredForObservedData(data_size_t num_data_pred,
 			const data_size_t* cluster_ids_data_pred) const {
-			const std::set<data_size_t> observed_clusters(unique_clusters_.begin(), unique_clusters_.end());
+			// The keys of 'num_data_per_cluster_' are the clusters with observed data
 			if (cluster_ids_data_pred == nullptr) {
-				return(observed_clusters.count(0) > 0);
+				return(num_data_per_cluster_.count(0) > 0);
 			}
 			for (data_size_t i = 0; i < num_data_pred; ++i) {
-				if (observed_clusters.count(cluster_ids_data_pred[i]) > 0) {
+				if (num_data_per_cluster_.count(cluster_ids_data_pred[i]) > 0) {
 					return(true);
 				}
 			}
@@ -4031,6 +4031,9 @@ namespace GPBoost {
 			}
 			int num_sim_post_samples = 0;
 			if (sample_posterior) {
+				if (num_post_samples < 1) {
+					Log::REFatal("The number of posterior samples needs to be positive, but it is %d ", num_post_samples);
+				}
 				num_sim_post_samples = num_post_samples;
 			}
 			// The simulated vectors have int indices, and they are simulated in batches of 16 vectors per thread. The limit
@@ -4070,13 +4073,13 @@ namespace GPBoost {
 				if (fixed_effects_pred != nullptr) {
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-						mean_pred_id[igp][i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
+						mean_pred_id[igp][i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i] + (int64_t)num_data_pred * igp];
 					}
 				}
 				if (has_covariates_) {
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-						mean_pred_id[igp][i] += mu[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
+						mean_pred_id[igp][i] += mu[data_indices_per_cluster_pred[cluster_i][i] + (int64_t)num_data_pred * igp];
 					}
 				}
 			}
@@ -4544,14 +4547,14 @@ namespace GPBoost {
 				if (fixed_effects_pred != nullptr) {//add externaly provided fixed effects
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-						mean_pred_id[igp][i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
+						mean_pred_id[igp][i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i] + (int64_t)num_data_pred * igp];
 					}
 				}
 				// Add linear regression predictor
 				if (has_covariates_) {
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-						mean_pred_id[igp][i] += mu[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
+						mean_pred_id[igp][i] += mu[data_indices_per_cluster_pred[cluster_i][i] + (int64_t)num_data_pred * igp];
 					}
 				}
 				if (predict_var_or_response) {
@@ -4601,14 +4604,14 @@ namespace GPBoost {
 			for (int igp = 0; igp < num_blocks_out; ++igp) {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-					out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp] = mean_pred_id[igp][i];
+					out_predict[data_indices_per_cluster_pred[cluster_i][i] + (int64_t)num_data_pred * igp] = mean_pred_id[igp][i];
 				}
 			}
 			if (predict_cov_mat && (!predict_response || gauss_likelihood_)) {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
 					for (int j = 0; j < num_data_per_cluster_pred[cluster_i]; ++j) {//row index
-						out_predict[(int64_t)data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred * num_blocks_out] = cov_mat_pred_id.coeff(j, i);
+						out_predict[(int64_t)data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + (int64_t)num_data_pred * num_blocks_out] = cov_mat_pred_id.coeff(j, i);
 					}
 				}
 			}//end predict_cov_mat
@@ -4616,7 +4619,7 @@ namespace GPBoost {
 				for (int igp = 0; igp < num_blocks_out; ++igp) {
 #pragma omp parallel for schedule(static)
 					for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-						out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * (num_blocks_out + igp)] = var_pred_id[igp][i];
+						out_predict[data_indices_per_cluster_pred[cluster_i][i] + (int64_t)num_data_pred * (num_blocks_out + igp)] = var_pred_id[igp][i];
 					}
 				}
 			}//end predict_var
@@ -4850,9 +4853,9 @@ namespace GPBoost {
 			if (has_covariates_) {//calculate linear regression term
 				coef = Eigen::Map<const vec_t>(coef_pred, num_covariates_ * num_sets_fixed_effects_);
 				den_mat_t X_pred = Eigen::Map<const den_mat_t>(covariate_data_pred, num_data_pred, num_covariates_);
-				mu = vec_t(num_sets_fixed_effects_ * num_data_pred);
+				mu = vec_t((int64_t)num_sets_fixed_effects_ * num_data_pred);
 				for (int igp = 0; igp < num_sets_fixed_effects_; ++igp) {
-					mu.segment(num_data_pred * igp, num_data_pred) = X_pred * (coef.segment(num_covariates_ * igp, num_covariates_));
+					mu.segment((int64_t)num_data_pred * igp, num_data_pred) = X_pred * (coef.segment(num_covariates_ * igp, num_covariates_));
 				}
 			}
 			vec_t cov_pars = Eigen::Map<const vec_t>(cov_pars_pred, num_cov_par_);
@@ -5319,14 +5322,14 @@ namespace GPBoost {
 						if (fixed_effects_pred != nullptr) {
 #pragma omp parallel for schedule(static)
 							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-								mean_pred_id[igp][i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
+								mean_pred_id[igp][i] += fixed_effects_pred[data_indices_per_cluster_pred[cluster_i][i] + (int64_t)num_data_pred * igp];
 							}
 						}
 						// Add linear regression predictor
 						if (has_covariates_) {
 #pragma omp parallel for schedule(static)
 							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-								mean_pred_id[igp][i] += mu[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp];
+								mean_pred_id[igp][i] += mu[data_indices_per_cluster_pred[cluster_i][i] + (int64_t)num_data_pred * igp];
 							}
 						}
 					}//end loop over num_gp_pred
@@ -5365,11 +5368,11 @@ namespace GPBoost {
 					// 64-bit positions, since the output can have more entries than the largest int
 					int64_t idx_start_post_sample = 0;
 					if (!sample_prior) {
-						idx_start_post_sample += num_data_pred * num_blocks_out;
+						idx_start_post_sample += (int64_t)num_data_pred * num_blocks_out;
 						for (int igp = 0; igp < num_blocks_out; ++igp) {
 #pragma omp parallel for schedule(static)
 							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-								out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * igp] = mean_pred_id[igp][i];
+								out_predict[data_indices_per_cluster_pred[cluster_i][i] + (int64_t)num_data_pred * igp] = mean_pred_id[igp][i];
 							}
 						}
 					}
@@ -5377,7 +5380,7 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 						for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
 							for (int j = 0; j < num_data_per_cluster_pred[cluster_i]; ++j) {//row index
-								out_predict[(int64_t)data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + num_data_pred * num_blocks_out] = cov_mat_pred_id.coeff(j, i);
+								out_predict[(int64_t)data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_i][j] + (int64_t)num_data_pred * num_blocks_out] = cov_mat_pred_id.coeff(j, i);
 							}
 						}
 						idx_start_post_sample += (int64_t)num_data_pred * num_data_pred;
@@ -5386,10 +5389,10 @@ namespace GPBoost {
 						for (int igp = 0; igp < num_blocks_out; ++igp) {
 #pragma omp parallel for schedule(static)
 							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {
-								out_predict[data_indices_per_cluster_pred[cluster_i][i] + num_data_pred * (num_blocks_out + igp)] = var_pred_id[igp][i];
+								out_predict[data_indices_per_cluster_pred[cluster_i][i] + (int64_t)num_data_pred * (num_blocks_out + igp)] = var_pred_id[igp][i];
 							}
 						}
-						idx_start_post_sample += num_data_pred * num_blocks_out;
+						idx_start_post_sample += (int64_t)num_data_pred * num_blocks_out;
 					}//end predict_var
 					if (sample_posterior) {
 						CHECK(post_samples_id.cols() == num_post_samples);
@@ -5424,7 +5427,7 @@ namespace GPBoost {
 #pragma omp parallel for schedule(static)
 							for (int i = 0; i < num_data_per_cluster_pred[cluster_i]; ++i) {//column index
 								for (int j = 0; j < num_data_per_cluster_pred[cluster_j]; ++j) {//row index
-									out_predict[(int64_t)data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_j][j] + num_data_pred * num_blocks_out] = 0.;
+									out_predict[(int64_t)data_indices_per_cluster_pred[cluster_i][i] * num_data_pred + data_indices_per_cluster_pred[cluster_j][j] + (int64_t)num_data_pred * num_blocks_out] = 0.;
 								}
 							}
 						}
@@ -9560,6 +9563,10 @@ namespace GPBoost {
 			CHECK(cov_pars_in.size() == num_cov_par_);
 			vec_t cov_pars;
 			MaybeKeepVarianceConstant(cov_pars_in, cov_pars);
+			if (optimization_running_currently_) {
+				// The upper bound of an estimated smoothness parameter, which the components do not apply themselves
+				CapCovPars(cov_pars);
+			}
 			if (gauss_likelihood_) {
 				sigma2_ = cov_pars[0];
 			}
@@ -10027,29 +10034,31 @@ namespace GPBoost {
 		}//end CovarianceParameterRangeWarning
 
 		/*!
-		* \brief Cap the covariance parameters to the range that the components use when the parameters are set. The optimizers
-		*		do not know such bounds (e.g., alpha and beta <= 1 for 'space_time_gneiting'), and the returned estimates
-		*		should be the values that have been used
+		* \brief Cap the covariance parameters to the range that the components use when the parameters are set and an estimated
+		*		smoothness parameter at its upper bound. The optimizers do not know such bounds (e.g., alpha and beta <= 1 for
+		*		'space_time_gneiting'), and the returned estimates should be the values that have been used
 		* \param[out] cov_pars Covariance parameters (on transformed scale)
 		*/
 		void CapCovPars(vec_t& cov_pars) {
 			CHECK(cov_pars.size() == num_cov_par_);
+			CHECK((int)estimate_cov_par_index_.size() == num_cov_par_);
 			for (int igp = 0; igp < num_sets_re_; ++igp) {
 				for (int j = 0; j < num_comps_total_; ++j) {
 					const int ind_first_par = ind_par_[j] + igp * num_cov_par_per_set_re_;
 					const int num_par_comp = ind_par_[j + 1] - ind_par_[j];
 					vec_t pars = cov_pars.segment(ind_first_par, num_par_comp);
+					const int* estimate_par_index = estimate_cov_par_index_.data() + ind_first_par;
 					if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
-						GetForCluster(re_comps_ip_, unique_clusters_[0], igp)[j]->CapCovPars(pars);
+						GetForCluster(re_comps_ip_, unique_clusters_[0], igp)[j]->CapCovPars(pars, estimate_par_index);
 					}
 					else if (gp_approx_ == "vecchia" && !grouped_RE_and_vecchia_GP_) {
-						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[j]->CapCovPars(pars);
+						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[j]->CapCovPars(pars, estimate_par_index);
 					}
 					else if (grouped_RE_and_vecchia_GP_ && j == (num_comps_total_ - 1)) {
-						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[0]->CapCovPars(pars);
+						GetForCluster(re_comps_vecchia_, unique_clusters_[0], igp)[0]->CapCovPars(pars, estimate_par_index);
 					}
 					else {
-						GetForCluster(re_comps_, unique_clusters_[0], igp)[j]->CapCovPars(pars);
+						GetForCluster(re_comps_, unique_clusters_[0], igp)[j]->CapCovPars(pars, estimate_par_index);
 					}
 					cov_pars.segment(ind_first_par, num_par_comp) = pars;
 				}
@@ -14554,24 +14563,37 @@ namespace GPBoost {
 							else if (calc_pred_cov_var_FSA_cholesky_ == "exact_stable") {
 								den_mat_t resid_obs_inv_sqrt_cross_cov;
 								TriangularSolveGivenCholesky<T_chol, T_mat, den_mat_t, den_mat_t>(chol_fact_resid_[cluster_i], (*cross_cov), resid_obs_inv_sqrt_cross_cov, false);
-								T_mat resid_obs_inv_sqrt_resid_pred_obs_t;
-								TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_resid_[cluster_i], sigma_resid_pred_obs.transpose(), resid_obs_inv_sqrt_resid_pred_obs_t, false);
-								den_mat_t Maux_rhs = cross_cov_pred_ip.transpose() - resid_obs_inv_sqrt_cross_cov.transpose() * resid_obs_inv_sqrt_resid_pred_obs_t;
-								den_mat_t woodburry_part_sqrt;
-								TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_[cluster_i], Maux_rhs, woodburry_part_sqrt, false);
-								if (calc_pred_cov) {
-									T_mat Maux;
-									ConvertTo_T_mat_FromDense<T_mat>(woodburry_part_sqrt.transpose() * woodburry_part_sqrt, Maux);
-									pred_cov += Maux;
-									pred_cov -= (T_mat)(resid_obs_inv_sqrt_resid_pred_obs_t.transpose() * resid_obs_inv_sqrt_resid_pred_obs_t);
-								}//end calc_pred_cov
-								if (calc_pred_var) {
+								const T_mat sigma_resid_obs_pred = sigma_resid_pred_obs.transpose();
+								// The variances are calculated in batches of prediction points, since L^-1 * sigma_resid_obs_pred (L = Cholesky factor
+								//	of the residual covariance matrix) can have many more non-zeros than sigma_resid_obs_pred. The covariance matrix
+								//	needs all points at once. Every point is calculated in the same way in every batch
+								int batch_size = num_REs_pred;
+								if (!calc_pred_cov) {
+									batch_size = std::min(num_REs_pred, std::max(16 * omp_get_max_threads(), (1 << 22) / num_REs_obs));
+								}
+								for (int batch_start = 0; batch_start < num_REs_pred; batch_start += batch_size) {
+									const int num_in_batch = std::min(batch_size, num_REs_pred - batch_start);
+									const T_mat sigma_resid_obs_pred_batch = sigma_resid_obs_pred.middleCols(batch_start, num_in_batch);
+									T_mat resid_obs_inv_sqrt_resid_pred_obs_t;
+									TriangularSolveGivenCholesky<T_chol, T_mat, T_mat, T_mat>(chol_fact_resid_[cluster_i], sigma_resid_obs_pred_batch, resid_obs_inv_sqrt_resid_pred_obs_t, false);
+									den_mat_t Maux_rhs = cross_cov_pred_ip.middleRows(batch_start, num_in_batch).transpose() -
+										resid_obs_inv_sqrt_cross_cov.transpose() * resid_obs_inv_sqrt_resid_pred_obs_t;
+									den_mat_t woodburry_part_sqrt;
+									TriangularSolveGivenCholesky<chol_den_mat_t, den_mat_t, den_mat_t, den_mat_t>(chol_fact_sigma_woodbury_[cluster_i], Maux_rhs, woodburry_part_sqrt, false);
+									if (calc_pred_cov) {
+										T_mat Maux;
+										ConvertTo_T_mat_FromDense<T_mat>(woodburry_part_sqrt.transpose() * woodburry_part_sqrt, Maux);
+										pred_cov += Maux;
+										pred_cov -= (T_mat)(resid_obs_inv_sqrt_resid_pred_obs_t.transpose() * resid_obs_inv_sqrt_resid_pred_obs_t);
+									}//end calc_pred_cov
+									if (calc_pred_var) {
 #pragma omp parallel for schedule(static)
-									for (int i = 0; i < num_REs_pred; ++i) {
-										pred_var[i] += woodburry_part_sqrt.col(i).array().square().sum();
-										pred_var[i] -= resid_obs_inv_sqrt_resid_pred_obs_t.col(i).squaredNorm();
-									}
-								}//end calc_pred_var
+										for (int i = 0; i < num_in_batch; ++i) {
+											pred_var[batch_start + i] += woodburry_part_sqrt.col(i).array().square().sum();
+											pred_var[batch_start + i] -= resid_obs_inv_sqrt_resid_pred_obs_t.col(i).squaredNorm();
+										}
+									}//end calc_pred_var
+								}
 							}//end (calc_pred_cov_var_FSA_cholesky_ == "exact_stable"
 							else if (calc_pred_cov_var_FSA_cholesky_ == "exact") {
 								if (calc_pred_cov) {

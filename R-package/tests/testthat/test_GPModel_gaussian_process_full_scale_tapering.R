@@ -410,6 +410,26 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     }
   })
 
+  test_that("Predictive variances of 'exact_stable' full-scale tapering in batches of prediction points ", {
+
+    # Without a covariance matrix, the variances are calculated in batches of prediction points, here at least three
+    #   (at most 2^22 / 6000 = 699 points per batch for up to 43 threads). They equal the diagonal of the covariance matrix,
+    #   which is calculated for all points at once
+    coords_j <- as.matrix(expand.grid(seq(0, 1, length.out = 75), seq(0, 1, length.out = 80)))
+    coords_pred_j <- as.matrix(expand.grid(seq(0.01, 0.99, length.out = 30), seq(0.02, 0.98, length.out = 50)))
+    y_j <- sin(6 * coords_j[, 1]) + cos(5 * coords_j[, 2])
+    capture.output( gp_model <- GPModel(gp_coords = coords_j, cov_function = "exponential",
+                                        gp_approx = "full_scale_tapering_pred_var_exact_stable", num_ind_points = 10,
+                                        cov_fct_taper_range = 0.03, matrix_inversion_method = "cholesky"), file='NUL')
+    cov_pars_j <- c(0.1, 1, 0.2)
+    pred_cov <- predict(gp_model, y = y_j, gp_coords_pred = coords_pred_j, cov_pars = cov_pars_j,
+                        predict_cov_mat = TRUE, predict_response = FALSE)
+    pred_var <- predict(gp_model, y = y_j, gp_coords_pred = coords_pred_j, cov_pars = cov_pars_j,
+                        predict_var = TRUE, predict_response = FALSE)
+    expect_lt(max(abs(pred_var$mu - pred_cov$mu)), 1e-12)
+    expect_lt(max(abs(pred_var$var - diag(pred_cov$cov))), 1e-12)
+  })
+
   test_that("Predictive variances of full-scale tapering with iterative methods and the jitter of the inducing point matrix ", {
 
     # For a marginal variance that is very large relative to the error variance, the jitter of the inducing point matrix is

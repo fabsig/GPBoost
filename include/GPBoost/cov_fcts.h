@@ -531,34 +531,43 @@ namespace GPBoost {
 		}//end CorrelationMostDistantCoords
 
 		/*!
-		* \brief Cap parameters
+		* \brief Cap parameters: alpha and beta of 'space_time_gneiting' at 1, the largest valid value, and an estimated smoothness
+		*		parameter at 'MAX_ESTIMATED_MATERN_SHAPE_'
 		* \param pars Vector with covariance parameters
+		* \param estimate_par_index Indicates (> 0) which parameters are estimated, nullptr if none is. The bound of the smoothness
+		*		applies only to an estimated smoothness and not to a fixed or explicitly given one, which can be larger
 		*/
-		void CapPars(vec_t& pars) const {
+		void CapPars(vec_t& pars,
+			const int* estimate_par_index) const {
 			if (is_ar1_multifidelity_) {
 				vec_t pars_low = pars.segment(0, num_cov_par_base_);
 				vec_t pars_discrepancy = pars.segment(num_cov_par_base_, num_cov_par_base_);
-				base_cov_function_low_->CapPars(pars_low);
-				base_cov_function_discrepancy_->CapPars(pars_discrepancy);
+				const int* estimate_par_index_discrepancy = nullptr;
+				if (estimate_par_index != nullptr) {
+					estimate_par_index_discrepancy = estimate_par_index + num_cov_par_base_;
+				}
+				base_cov_function_low_->CapPars(pars_low, estimate_par_index);
+				base_cov_function_discrepancy_->CapPars(pars_discrepancy, estimate_par_index_discrepancy);
 				pars.segment(0, num_cov_par_base_) = pars_low;
 				pars.segment(num_cov_par_base_, num_cov_par_base_) = pars_discrepancy;
 				return;
 			}
+			int ind_smoothness = -1;
 			if (cov_fct_type_ == "space_time_gneiting") {
 				if (pars[3] > 1.) {//alpha
 					pars[3] = 1.;
 				}
-				if (pars[4] > MAX_ESTIMATED_MATERN_SHAPE_) {//nu
-					pars[4] = MAX_ESTIMATED_MATERN_SHAPE_;
-				}
 				if (pars[5] > 1.) {//beta
 					pars[5] = 1.;
 				}
+				ind_smoothness = 4;
 			}
 			else if (IsMaternWithEstimatedShape()) {
-				if (pars[num_cov_par_ - 1] > MAX_ESTIMATED_MATERN_SHAPE_) {
-					pars[num_cov_par_ - 1] = MAX_ESTIMATED_MATERN_SHAPE_;
-				}
+				ind_smoothness = num_cov_par_ - 1;
+			}
+			if (ind_smoothness >= 0 && estimate_par_index != nullptr && estimate_par_index[ind_smoothness] > 0 &&
+				pars[ind_smoothness] > MAX_ESTIMATED_MATERN_SHAPE_) {
+				pars[ind_smoothness] = MAX_ESTIMATED_MATERN_SHAPE_;
 			}
 		}//CapPars
 
@@ -1218,7 +1227,8 @@ namespace GPBoost {
 				}// end !is_symmmetric
 			}//end cov_calculated_based_on_coords_
 			else {// not cov_calculated_based_on_coords_
-				double cm, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape;//constants and auxiliary parameters
+				// Every covariance function sets only the constants it needs, but all of them are passed to 'GradientCovFct_'
+				double cm = 0., par_aux = 0., pars_2_up = 0., pars_2_down = 0., par_aux_up = 0., par_aux_down = 0., shape = 0.;
 				DetermineConstantsForGradient(pars, (int)coords.cols(), transf_scale, nugget_var, ind_par,
 					cm, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape);
 				// calculate gradients
@@ -1284,7 +1294,8 @@ namespace GPBoost {
 			}
 			//define sigma_grad
 			sigma_grad = sigma;
-			double cm, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape;//constants and auxiliary parameters
+			// Every covariance function sets only the constants it needs, but all of them are passed to 'GradientCovFct_'
+			double cm = 0., par_aux = 0., pars_2_up = 0., pars_2_down = 0., par_aux_up = 0., par_aux_down = 0., shape = 0.;
 			DetermineConstantsForGradient(pars, (int)coords.cols(), transf_scale, nugget_var, ind_par,
 				cm, par_aux, pars_2_up, pars_2_down, par_aux_up, par_aux_down, shape);			
 			// calculate gradients
@@ -2173,33 +2184,49 @@ namespace GPBoost {
 		inline double CovarianceMaternHalfIntegerShape(double dist,
 			double var,
 			double range) const {
-			double range_dist = range * dist;
-			return(var * EvaluatePolynomial(matern_poly_coef_, range_dist) * std::exp(-range_dist));
+			return(var * ExpNegTimesPolynomial(matern_poly_coef_, range * dist));
 		}
 
 		/*!
 		* \brief Matern correlation M_nu(z) = 2^(1 - nu) / Gamma(nu) * z^nu * K_nu(z) for a general smoothness nu > 0 and z > 0.
-		*		For nu > 2, it is calculated with the recurrence M_{nu+1}(z) = M_nu(z) + z^2 / (4 nu (nu - 1)) * M_{nu-1}(z) from two
-		*		orders in (0, 2]: its terms are positive and at most 1, whereas z^nu underflows and K_nu(z) overflows for large nu
-		*		and small z, and Gamma(nu) overflows for nu > 171. Bessel functions are thus only evaluated for orders in (0, 2]
+		*		For nu > 1, it is calculated with the recurrence M_{nu+1}(z) = M_nu(z) + z^2 / (4 nu (nu - 1)) * M_{nu-1}(z) from the
+		*		orders a = nu - ceil(nu) + 1 in (0, 1] and a + 1, where M_{a+1}(z) = M_a(z) + 2^(1 - a) / Gamma(a) * z^a * z / (2a) * K_{1-a}(z).
+		*		Bessel functions are thus only evaluated for orders in [0, 1], for which z^nu K_nu(z) does not overflow for small z,
+		*		and Gamma(nu), which overflows for nu > 171, is not needed. The terms of the recurrence are positive. For large z,
+		*		they are multiplied by exp(z) and rescaled when they become large, since the starting values underflow, whereas M_nu(z)
+		*		is not negligible for a large nu
 		*/
 		inline double MaternCorrelationGeneralShape(double z,
 			double nu) const {
-			if (nu <= 2.) {
-				return(std::pow(2., 1. - nu) / std::tgamma(nu) * std::pow(z, nu) * BesselK(nu, z));
+			if (nu <= 1.) {
+				return(std::pow(2., 1. - nu) / std::tgamma(nu) * std::pow(z, nu) * BesselK(nu, z, false));
 			}
-			const int num_steps = (int)std::ceil(nu) - 2;
-			double order = nu - num_steps;// in (1, 2]
-			double corr_lower = MaternCorrelationGeneralShape(z, order - 1.);
-			double corr = MaternCorrelationGeneralShape(z, order);
+			const int num_steps = (int)std::ceil(nu) - 1;
+			const double order_start = nu - num_steps;// a
+			const bool exponentially_scaled = z > 700.;
+			// M_a(z) and M_{a+1}(z) divided by 2^(1 - a) / Gamma(a) * z^a and, if exponentially_scaled, multiplied by exp(z)
+			double corr_lower = BesselK(order_start, z, exponentially_scaled);
+			double corr = corr_lower + z / (2. * order_start) * BesselK(1. - order_start, z, exponentially_scaled);
+			double order = order_start + 1.;
 			const double z_sq_quarter = z * z / 4.;
-			for (int step = 0; step < num_steps; ++step) {
+			double log_rescaling = 0.;
+			for (int step = 1; step < num_steps; ++step) {
 				const double corr_upper = corr + z_sq_quarter / (order * (order - 1.)) * corr_lower;
 				corr_lower = corr;
 				corr = corr_upper;
 				order += 1.;
+				if (corr > 1e300) {
+					corr_lower *= 1e-300;
+					corr *= 1e-300;
+					log_rescaling += 300. * std::log(10.);
+				}
 			}
-			return(corr);
+			const double factor_without_z = std::pow(2., 1. - order_start) / std::tgamma(order_start);
+			if (exponentially_scaled) {
+				// exp(-z) alone underflows
+				return(std::exp(std::log(corr) + std::log(factor_without_z) + order_start * std::log(z) + log_rescaling - z));
+			}
+			return(factor_without_z * std::pow(z, order_start) * corr * std::exp(log_rescaling));
 		}//end MaternCorrelationGeneralShape
 
 		/*!
@@ -2211,7 +2238,7 @@ namespace GPBoost {
 			if (nu > 1.) {
 				return(-z / (2. * (nu - 1.)) * MaternCorrelationGeneralShape(z, nu - 1.));
 			}
-			return(-std::pow(2., 1. - nu) / std::tgamma(nu) * std::pow(z, nu) * BesselK(1. - nu, z));
+			return(-std::pow(2., 1. - nu) / std::tgamma(nu) * std::pow(z, nu) * BesselK(1. - nu, z, false));
 		}//end MaternCorrelationDerivativeGeneralShape
 
 		inline double CovarianceMaternGeneralShape(double dist,
@@ -2307,8 +2334,8 @@ namespace GPBoost {
 					par_aux = std::sqrt(2. * pars[2]) / pars[1];
 				}
 				else if (ind_par == 1) {//gradient wrt smoothness parameter
-					cm = transf_scale ? pars[0] : nugget_var * pars[0];
-					ShapesForFiniteDifference(pars[2], transf_scale, pars_2_up, pars_2_down);
+					cm = transf_scale ? pars[0] : nugget_var * pars[0] / pars[2];
+					ShapesForFiniteDifference(pars[2], pars_2_up, pars_2_down);
 					par_aux_up = std::sqrt(2. * pars_2_up) / pars[1];
 					par_aux_down = std::sqrt(2. * pars_2_down) / pars[1];
 				}
@@ -2323,8 +2350,8 @@ namespace GPBoost {
 					par_aux = std::sqrt(2. * pars[ind_shape]);
 				}
 				else if (ind_par == num_cov_par_ - 2) {//gradient wrt smoothness parameter
-					cm = transf_scale ? pars[0] : nugget_var * pars[0];
-					ShapesForFiniteDifference(pars[ind_shape], transf_scale, pars_2_up, pars_2_down);
+					cm = transf_scale ? pars[0] : nugget_var * pars[0] / pars[ind_shape];
+					ShapesForFiniteDifference(pars[ind_shape], pars_2_up, pars_2_down);
 					par_aux_up = std::sqrt(2. * pars_2_up);
 					par_aux_down = std::sqrt(2. * pars_2_down);
 				}
@@ -2517,8 +2544,7 @@ namespace GPBoost {
 				return(cm / 3. * dist_ij * dist_ij * (1. + range_dist) * std::exp(-range_dist));
 			}
 			else if (matern_half_integer_order_ > 2) {
-				double range_dist = range * dist_ij;
-				return(cm * dist_ij * dist_ij * EvaluatePolynomial(matern_poly_coef_deriv_, range_dist) * std::exp(-range_dist));
+				return(cm * dist_ij * dist_ij * ExpNegTimesPolynomial(matern_poly_coef_deriv_, range * dist_ij));
 			}
 			return(GradientRangeMaternGeneralShape(cm, dist_ij, range, shape_));
 		}//end GradientRangeMatern
@@ -2669,7 +2695,7 @@ namespace GPBoost {
 				return(cm * dist_sq_coord * (1 + dist_ij) * std::exp(-dist_ij));
 			}
 			else if (matern_half_integer_order_ > 2) {
-				return(cm * dist_sq_coord * EvaluatePolynomial(matern_poly_coef_deriv_, dist_ij) * std::exp(-dist_ij));
+				return(cm * dist_sq_coord * ExpNegTimesPolynomial(matern_poly_coef_deriv_, dist_ij));
 			}
 			return(GradientRangeMaternScaledCoordsGeneralShape(cm, dist_ij, 1., dist_sq_coord, shape_));
 		}//end GradientRangeMaternScaledCoords
@@ -2745,7 +2771,7 @@ namespace GPBoost {
 			else if (TwoNumbersAreEqual<double>(pars[4], 2.5)) {
 				return(d_aux2 * (1. + d_aux + d_aux * d_aux / 3.) * std::exp(-d_aux));
 			}
-			else if (d_aux < EPSILON_NUMBERS) {
+			else if (d_aux <= 0.) {
 				return(d_aux2);
 			}
 			return(d_aux2 * MaternCorrelationGeneralShape(d_aux, pars[4]));
@@ -2781,13 +2807,7 @@ namespace GPBoost {
 			double dist_space = (coords_pred_vec.tail(dim_space) - coords_vec.tail(dim_space)).norm();
 			double grad = transf_scale ? 1. : 0.;
 			double d_aux_time = pars[1] * std::pow(dist_time, 2 * pars[3]) + 1.;// = a*u^(2*alpha) + 1
-			double d_aux;
-			if (dist_space < EPSILON_NUMBERS) {
-				d_aux = 0;
-			}
-			else {
-				d_aux = pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2.));// = c * |h| / ( (a*u^(2*alpha) + 1)^(beta/2) )
-			}
+			double d_aux = pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2.));// = c * |h| / ( (a*u^(2*alpha) + 1)^(beta/2) )
 			double d_aux2 = pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2.));// = sigma2 / ( (a*u^(2*alpha) + 1)^(delta + beta*d/2) )
 			double cm = transf_scale ? pars[ind_par + 1] : nugget_var;// multiplicative constant to get gradient on log-scale or backtransform with nugget variance
 			if (ind_par == 0 || ind_par == 1 || ind_par == 2 || ind_par == 4 || ind_par == 5) {//a, c, alpha, beta, delta
@@ -2798,37 +2818,19 @@ namespace GPBoost {
 					d_aux2_grad = -(pars[6] + pars[5] * dim_space / 2.) * pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2. + 1.)) * c_aux;
 				}
 				else if (ind_par == 1) {//c
-					if (dist_space < EPSILON_NUMBERS) {
-						d_aux_grad = 0;
-					}
-					else {
-						d_aux_grad = dist_space / (std::pow(d_aux_time, pars[5] / 2.));
-					}
+					d_aux_grad = dist_space / (std::pow(d_aux_time, pars[5] / 2.));
 					d_aux2_grad = 0.;
 				}
 				else if (ind_par == 2) {//alpha
-					if (dist_time < EPSILON_NUMBERS) {
-						d_aux_grad = 0;
-						d_aux2_grad = 0;
-					}
-					else {
+					// u^(2 alpha) log(u) tends to 0 for u -> 0, where log(u) is not defined
+					if (dist_time > 0.) {
 						double c_aux = 2 * pars[1] * std::log(dist_time) * std::pow(dist_time, 2 * pars[3]);// d/dalpha (a u^(2 alpha) + 1), u = dist_time
-						if (dist_space < EPSILON_NUMBERS) {
-							d_aux_grad = 0;
-						}
-						else {
-							d_aux_grad = -pars[5] / 2. * pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2. + 1.)) * c_aux;
-						}
+						d_aux_grad = -pars[5] / 2. * pars[2] * dist_space / (std::pow(d_aux_time, pars[5] / 2. + 1.)) * c_aux;
 						d_aux2_grad = -(pars[6] + pars[5] * dim_space / 2.) * pars[0] / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2. + 1.)) * c_aux;
 					}
 				}
 				else if (ind_par == 4) {//beta
-					if (dist_space < EPSILON_NUMBERS) {
-						d_aux_grad = 0;
-					}
-					else {
-						d_aux_grad = -pars[2] * dist_space / 2. * std::log(d_aux_time) / (std::pow(d_aux_time, pars[5] / 2.));
-					}
+					d_aux_grad = -pars[2] * dist_space / 2. * std::log(d_aux_time) / (std::pow(d_aux_time, pars[5] / 2.));
 					d_aux2_grad = -pars[0] * dim_space / 2. * std::log(d_aux_time) / (std::pow(d_aux_time, pars[6] + pars[5] * dim_space / 2.));
 				}
 				else if (ind_par == 5) {//delta
@@ -2845,7 +2847,7 @@ namespace GPBoost {
 					grad = (d_aux2_grad * (1. + d_aux + d_aux * d_aux / 3.) -
 						d_aux2 * (d_aux + d_aux * d_aux) / 3. * d_aux_grad) * std::exp(-d_aux);
 				}
-				else if (d_aux < EPSILON_NUMBERS) {
+				else if (d_aux <= 0.) {
 					grad = d_aux2_grad;
 				}
 				else {
@@ -2854,15 +2856,15 @@ namespace GPBoost {
 				}
 			}//end a, c, alpha, beta, delta
 			else if (ind_par == 3) {//nu
-				if (d_aux < EPSILON_NUMBERS) {
+				if (d_aux <= 0.) {
 					grad = 0.;
 				}
 				else {
-					// central difference of the Matern correlation, on the log scale if transf_scale
+					// central difference of the Matern correlation with respect to log(nu)
 					double nu_up, nu_down;
-					ShapesForFiniteDifference(pars[4], transf_scale, nu_up, nu_down);
+					ShapesForFiniteDifference(pars[4], nu_up, nu_down);
 					grad = d_aux2 * (MaternCorrelationGeneralShape(d_aux, nu_up) - MaternCorrelationGeneralShape(d_aux, nu_down)) / (2. * delta_step_);
-					cm = transf_scale ? 1. : nugget_var;
+					cm = transf_scale ? 1. : nugget_var / pars[4];
 				}
 			}
 			else {
@@ -3173,30 +3175,39 @@ namespace GPBoost {
 			return(coef);
 		}
 
-		/*! \brief Polynomial with the coefficients 'coef' (a_0 first) evaluated at z with the Horner scheme */
-		static inline double EvaluatePolynomial(const std::vector<double>& coef,
+		/*!
+		* \brief exp(-z) P(z) for z >= 0 and the polynomial P with the coefficients 'coef' (a_0 first), evaluated with the Horner scheme.
+		*		For large z, z^p overflows and exp(-z) underflows, whereas their product can be representable. It is then calculated
+		*		as exp(p log(z) - z) * sum_i a_i z^(i - p)
+		*/
+		static inline double ExpNegTimesPolynomial(const std::vector<double>& coef,
 			double z) {
-			double value = coef.back();
-			for (int i = (int)coef.size() - 2; i >= 0; --i) {
-				value = value * z + coef[i];
+			const int degree = (int)coef.size() - 1;
+			if (z <= 700.) {
+				double value = coef[degree];
+				for (int i = degree - 1; i >= 0; --i) {
+					value = value * z + coef[i];
+				}
+				return(value * std::exp(-z));
 			}
-			return(value);
+			const double z_inv = 1. / z;
+			double value = coef[0];
+			for (int i = 1; i <= degree; ++i) {
+				value = value * z_inv + coef[i];
+			}
+			return(value * std::exp(degree * std::log(z) - z));
 		}
 
-		/*! \brief Smoothness parameters for the central difference with respect to the smoothness (on the log scale if transf_scale) */
+		/*!
+		* \brief Smoothness parameters for the central difference with respect to the log of the smoothness. The derivative with
+		*		respect to the smoothness itself is this difference divided by the smoothness, since an additive step would leave
+		*		the domain for a smoothness below the step size
+		*/
 		void ShapesForFiniteDifference(double shape,
-			bool transf_scale,
 			double& shape_up,
 			double& shape_down) const {
-			if (transf_scale) {
-				shape_up = std::exp(std::log(shape) + delta_step_);
-				shape_down = std::exp(std::log(shape) - delta_step_);
-			}
-			else {
-				shape_up = shape + delta_step_;
-				shape_down = shape - delta_step_;
-				CHECK(shape_down > 0.);
-			}
+			shape_up = std::exp(std::log(shape) + delta_step_);
+			shape_down = std::exp(std::log(shape) - delta_step_);
 		}
 
 		/*! \brief Factor sqrt(2 * shape_) of a Matern covariance function with a fixed smoothness: the transformed range parameter is this factor divided by the range parameter */

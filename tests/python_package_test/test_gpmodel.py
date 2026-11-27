@@ -509,6 +509,21 @@ def test_invalid_input_raises():
         gp_model.fit(y=y[:-1])                                  # y of the wrong length
 
 
+@pytest.mark.parametrize("num_samples", [2 ** 31, 0, -1, 2.0, True])
+def test_invalid_numbers_of_samples_raise_before_allocation(num_samples):
+    # A number that does not fit into a C int wrapped around and passed the check of the library, whereas the output
+    # was allocated for the original number
+    coords, y = _sim_coords(n=20)
+    gp_model = gpb.GPModel(gp_coords=coords, cov_function="exponential")
+    kwargs = dict(y=y, gp_coords_pred=coords[:1], cov_pars=[0.1, 1., 0.3], predict_response=False)
+    with pytest.raises(ValueError, match="num_post_samples"):
+        gp_model.predict(**kwargs, sample_posterior=True, num_post_samples=num_samples)
+    with pytest.raises(ValueError, match="num_prior_samples"):
+        gp_model.predict(**kwargs, sample_prior=True, num_prior_samples=num_samples)
+    pred = gp_model.predict(**kwargs, sample_posterior=True, num_post_samples=3)
+    assert pred["posterior_samples"].shape == (1, 3)
+
+
 def _sim_crossed(n=2000, m=100, seed=11):
     rng = np.random.default_rng(seed)
     g1 = rng.integers(0, m, n)

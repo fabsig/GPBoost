@@ -296,6 +296,22 @@ gpb.check.num.threads <- function(num_threads, name) {
   return(as.integer(num_threads))
 }
 
+#' @title Check a number of posterior or prior samples of a prediction
+#' @description A number that does not fit into an \code{integer} would become \code{NA_integer_} when
+#'              it is passed to the library, whereas the output would be allocated for the original number
+#' @param num_samples The number of samples to check
+#' @param name Name of the argument, for the error message
+#' @return The number of samples as an \code{integer} of length one
+#' @keywords internal
+#' @noRd
+gpb.check.num.samples <- function(num_samples, name) {
+  if (!is.numeric(num_samples) || length(num_samples) != 1L || !is.finite(num_samples) ||
+      num_samples != floor(num_samples) || num_samples < 1 || num_samples > .Machine$integer.max) {
+    stop("predict.GPModel: ", sQuote(name), " needs to be a positive integer of length one smaller than 2^31")
+  }
+  return(as.integer(num_samples))
+}
+
 #' @title Get the number of threads used for parallelization
 #' @description Returns the number of threads that OMP currently uses for parallelization, i.e.
 #'              \code{omp_get_max_threads()}. Note that a team of threads can be smaller than this if

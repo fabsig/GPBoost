@@ -551,6 +551,50 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_lt(sum(abs(pred$mu-expected_mu)), 3e-5)
   })
   
+  test_that("Gneiting space-time covariance with a large or small smoothness and small spatial distances ", {
+    # Covariance of two points at the same time and the spatial distance 'dist_space': the predictive covariance of a new
+    #   cluster, which is the covariance of the prior. Parameters: error variance, marginal variance, a, c, alpha, nu, beta, delta
+    gneiting_cov <- function(cov_pars, dist_space) {
+      coords_j <- rbind(c(0, 0), c(0, dist_space))
+      gp_model <- GPModel(gp_coords = coords_j, cov_function = "space_time_gneiting")
+      pred <- predict(gp_model, y = c(0, 0), gp_coords_pred = coords_j, cluster_ids_pred = c(1, 1), cov_pars = cov_pars,
+                      predict_cov_mat = TRUE, predict_response = FALSE)
+      pred$cov[1, 2]
+    }
+    # A given smoothness above the upper bound of an estimated one was set to the bound 100. 0.51189876373614323 is the
+    #   Matern correlation with smoothness 150 at the scaled distance c * 20 = 20 (mpmath)
+    expect_lt(abs(gneiting_cov(c(0.1, 1, 1, 1, 0.5, 150, 0.5, 1), 20) - 0.51189876373614323), 1e-10)
+    # The correlation was 1 for c * spatial distance < 1e-10, but for the smoothness 0.01, it is 0.39883542662355728 at
+    #   c * spatial distance = 1e-11 (mpmath)
+    expect_lt(abs(gneiting_cov(c(0.1, 1, 1, 1e-11, 0.5, 0.01, 0.5, 1), 1) - 0.39883542662355728), 1e-10)
+    # The gradient with respect to log(c) does not depend on the units of the spatial coordinates: one gradient descent step
+    #   with a small learning rate. It was zero for spatial distances below 1e-10. All points have different times since
+    #   points whose coordinates differ by less than 1e-10 are treated as duplicates
+    n_j <- 30
+    coords_j <- cbind((1:n_j) / n_j, sin(1:n_j))
+    y_j <- sin(3 * (1:n_j))
+    cov_pars_j <- c(0.1, 1, 1, 2, 0.5, 1.3, 0.5, 1)
+    grad <- sapply(c(1, 1e-12), function(unit_space) {
+      cov_pars_unit <- cov_pars_j
+      cov_pars_unit[4] <- cov_pars_j[4] / unit_space
+      lr <- 1e-6
+      capture.output( gp_model <- fitGPModel(gp_coords = cbind(coords_j[, 1], coords_j[, 2] * unit_space),
+                                             cov_function = "space_time_gneiting", y = y_j,
+                                             params = list(optimizer_cov = "gradient_descent", lr_cov = lr, use_nesterov_acc = FALSE,
+                                                           maxit = 1, init_cov_pars = cov_pars_unit,
+                                                           estimate_cov_par_index = as.numeric(1:8 == 4))), file='NUL')
+      (log(cov_pars_unit[4]) - log(as.vector(gp_model$get_cov_pars())[4])) / lr
+    })
+    expect_gt(abs(grad[1]), 1e-3)
+    expect_lt(abs(grad[2] - grad[1]), 1e-6 * abs(grad[1]))
+    # A fixed smoothness above the upper bound of an estimated one is not changed in the estimation
+    params <- list(optimizer_cov = "lbfgs", maxit = 5, init_cov_pars = c(0.1, 1, 1, 2, 0.5, 150, 0.5, 1),
+                   estimate_cov_par_index = c(1, 1, 1, 1, 1, 0, 1, 1))
+    capture.output( gp_model <- fitGPModel(gp_coords = coords_j, cov_function = "space_time_gneiting", y = y_j,
+                                           params = params), file='NUL')
+    expect_equal(as.vector(gp_model$get_cov_pars())[6], 150)
+  })
+
   test_that("ARD Gaussian process model with linear regression term ", {
     # Simulate data
     d <- 3 # dimension of GP locations
