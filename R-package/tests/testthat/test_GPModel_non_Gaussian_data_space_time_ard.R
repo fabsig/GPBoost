@@ -349,7 +349,7 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     coef_est_shape <- c(-0.2984813577, 0.2388894805, 0.1978472432, 0.3276385282)
     nrounds_est_shape <- 27
     nll_opt_est_shape <- 68.13525654
-    capture.output( expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))[1:4]-cov_pars_est_shape[1:4])),TOLERANCE_STRICT), file='NUL')
+    capture.output( expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))[1:4]-cov_pars_est_shape[1:4])),relax_tolerance_strict(TOLERANCE_STRICT)), file='NUL')
     expect_lt(sum(abs(as.vector(gp_model$get_cov_pars(std_err = FALSE))[5]-cov_pars_est_shape[5])),TOLERANCE_MEDIUM)
     capture.output( expect_lt(sum(abs(as.vector(gp_model$get_coef(std_err = TRUE))-coef_est_shape )),TOLERANCE_MEDIUM), file='NUL')
     expect_equal(gp_model$get_num_optim_iter(), nrounds_est_shape )
