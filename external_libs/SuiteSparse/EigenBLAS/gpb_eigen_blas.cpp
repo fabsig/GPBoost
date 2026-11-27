@@ -25,7 +25,8 @@
 // other SuiteSparse packages that GPBoost does not bundle.
 //
 // The double precision kernels call OpenBLAS instead of Eigen if GPBoost uses
-// one, see GPBoost/blas_backend.h.
+// one, see GPBoost/blas_backend.h. Otherwise, large Cholesky factorizations
+// (potrf) use GPBoost's parallel tiled algorithm.
 
 #ifdef GPB_SUITESPARSE_INTERNAL_BLAS
 
@@ -487,6 +488,9 @@ extern "C" {
 		blas_int* info) NOTHROW {
 		if (GPBoost::UseBLAS()) {
 			GPBoost::DpotrfBLAS(uplo, n, A, lda, info);
+		}
+		else if (Upper_(uplo) == 'L' && GPBoost::UseTiledCholesky(*n)) {
+			*info = GPBoost::CholeskyBuiltin(A, *n, *lda) + 1;
 		}
 		else {
 			Potrf<double>(uplo, n, A, lda, info);

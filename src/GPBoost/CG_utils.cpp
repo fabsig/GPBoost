@@ -21,6 +21,35 @@ using LightGBM::Log;
 namespace GPBoost {
 
 	namespace {
+		// Updates of the n x t blocks of the conjugate gradient algorithms with several right-hand sides, in parallel over
+		//	the columns. Every coefficient is calculated as in the corresponding Eigen expression, so the results are the same
+
+		/*! \brief to = from */
+		void CopyColumnsInParallel(const den_mat_t& from, den_mat_t& to) {
+			to.resize(from.rows(), from.cols());
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < (int)from.cols(); ++i) {
+				to.col(i) = from.col(i);
+			}
+		}
+
+		/*! \brief U += H diag(a) and R -= V diag(a) */
+		void UpdateSolutionAndResidual(const vec_t& a, const den_mat_t& H, const den_mat_t& V, den_mat_t& U, den_mat_t& R) {
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < (int)a.size(); ++i) {
+				U.col(i) += H.col(i) * a(i);
+				R.col(i) -= V.col(i) * a(i);
+			}
+		}
+
+		/*! \brief H = Z + H diag(b) */
+		void UpdateSearchDirection(const vec_t& b, const den_mat_t& Z, den_mat_t& H) {
+#pragma omp parallel for schedule(static)
+			for (int i = 0; i < (int)b.size(); ++i) {
+				H.col(i) = Z.col(i) + H.col(i) * b(i);
+			}
+		}
+
 		/*!
 		* \brief True if h^T A h is positive for a search direction h of the conjugate gradient algorithm. For a symmetric matrix A,
 		*		a non-positive (or non-finite) value shows that A is not positive definite. This can happen for Sigma^-1 + W if W has
@@ -267,7 +296,7 @@ namespace GPBoost {
 				}
 			}
 			a_old = a;
-			R_old = R;
+			CopyColumnsInParallel(R, R_old);
 			if (conv.NeedsMasking()) {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < t; ++i) {
@@ -282,8 +311,7 @@ namespace GPBoost {
 			}
 			else {
 				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
-				U += H * a.asDiagonal();
-				R -= V * a.asDiagonal();
+				UpdateSolutionAndResidual(a, H, V, U, R);
 			}
 			early_stop_alg = conv.CheckConvergence(R);
 			mean_R_norm = conv.MeanResidualNorm();
@@ -295,7 +323,7 @@ namespace GPBoost {
 				return;
 			}
 			//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
-			Z_old = Z;
+			CopyColumnsInParallel(Z, Z_old);
 			//Z = P^(-1) R
 			if (cg_preconditioner_type == "vadu") {
 #pragma omp parallel for schedule(static)
@@ -331,7 +359,7 @@ namespace GPBoost {
 			}
 			else {
 				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-				H = Z + H * b.asDiagonal();
+				UpdateSearchDirection(b, Z, H);
 			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
@@ -633,7 +661,7 @@ namespace GPBoost {
 			}
 			V += diag_W_inv.replicate(1, t).cwiseProduct(H);
 			a_old = a;
-			R_old = R;
+			CopyColumnsInParallel(R, R_old);
 			if (conv.NeedsMasking()) {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < t; ++i) {
@@ -648,8 +676,7 @@ namespace GPBoost {
 			}
 			else {
 				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
-				U += H * a.asDiagonal();
-				R -= V * a.asDiagonal();
+				UpdateSolutionAndResidual(a, H, V, U, R);
 			}
 			early_stop_alg = conv.CheckConvergence(R);
 			mean_R_norm = conv.MeanResidualNorm();
@@ -661,7 +688,7 @@ namespace GPBoost {
 				return;
 			}
 			//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
-			Z_old = Z;
+			CopyColumnsInParallel(Z, Z_old);
 			//Z = P^(-1) R, only for the columns that are still being iterated on
 			if (conv.NeedsMasking()) {
 				const std::vector<int>& cols = conv.ColumnsNeedingUpdate();
@@ -688,7 +715,7 @@ namespace GPBoost {
 			}
 			else {
 				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-				H = Z + H * b.asDiagonal();
+				UpdateSearchDirection(b, Z, H);
 			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
@@ -945,7 +972,7 @@ namespace GPBoost {
 				V.col(i) = B_t_D_inv_B_mat.col(i) + diag_W.cwiseProduct(H.col(i)) - B_t_D_inv_rm * (B_rm * ((*cross_cov) * chol_fact_sigma_woodbury.solve((*cross_cov).transpose() * B_t_D_inv_B_mat.col(i))));
 			}
 			a_old = a;
-			R_old = R;
+			CopyColumnsInParallel(R, R_old);
 			if (conv.NeedsMasking()) {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < t; ++i) {
@@ -960,8 +987,7 @@ namespace GPBoost {
 			}
 			else {
 				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
-				U += H * a.asDiagonal();
-				R -= V * a.asDiagonal();
+				UpdateSolutionAndResidual(a, H, V, U, R);
 			}
 			early_stop_alg = conv.CheckConvergence(R);
 			mean_R_norm = conv.MeanResidualNorm();
@@ -973,7 +999,7 @@ namespace GPBoost {
 				return;
 			}
 			//Log::REDebug("Number CG-Tridiag iterations: %i", j + 1);
-			Z_old = Z;
+			CopyColumnsInParallel(Z, Z_old);
 			//Z = P^(-1) R
 			if (cg_preconditioner_type == "vifdu") {
 #pragma omp parallel for schedule(static)   
@@ -1031,7 +1057,7 @@ namespace GPBoost {
 			}
 			else {
 				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-				H = Z + H * b.asDiagonal();
+				UpdateSearchDirection(b, Z, H);
 			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
@@ -1267,7 +1293,7 @@ namespace GPBoost {
 				V.col(i) = chol_ip_cross_cov.transpose() * (chol_ip_cross_cov * H.col(i)) + B_inv_D_B_invt_U.col(i) + diag_W_inv.asDiagonal() * H.col(i);
 			}
 			a_old = a;
-			R_old = R;
+			CopyColumnsInParallel(R, R_old);
 			if (conv.NeedsMasking()) {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < t; ++i) {
@@ -1282,8 +1308,7 @@ namespace GPBoost {
 			}
 			else {
 				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse(); //cheap
-				U += H * a.asDiagonal();
-				R -= V * a.asDiagonal();
+				UpdateSolutionAndResidual(a, H, V, U, R);
 			}
 			early_stop_alg = conv.CheckConvergence(R);
 			mean_R_norm = conv.MeanResidualNorm();
@@ -1295,7 +1320,7 @@ namespace GPBoost {
 				return;
 			}
 			//Log::REDebug("Number CG-Tridiag iterations: %i", j + 1);
-			Z_old = Z;
+			CopyColumnsInParallel(Z, Z_old);
 			//Z = P^(-1) R
 			if (cg_preconditioner_type == "fitc") {
 #pragma omp parallel for schedule(static)   
@@ -1338,7 +1363,7 @@ namespace GPBoost {
 			}
 			else {
 				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-				H = Z + H * b.asDiagonal();
+				UpdateSearchDirection(b, Z, H);
 			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
@@ -1906,7 +1931,7 @@ namespace GPBoost {
 				}
 			}
 			a_old = a;
-			R_old = R;
+			CopyColumnsInParallel(R, R_old);
 			if (conv.NeedsMasking()) {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < t; ++i) {
@@ -1921,8 +1946,7 @@ namespace GPBoost {
 			}
 			else {
 				a = (R.cwiseProduct(Z).transpose() * v1).array() * (H.cwiseProduct(V).transpose() * v1).array().inverse();
-				U += H * a.asDiagonal();
-				R -= V * a.asDiagonal();
+				UpdateSolutionAndResidual(a, H, V, U, R);
 			}
 			early_stop_alg = conv.CheckConvergence(R);
 			mean_R_norm = conv.MeanResidualNorm();
@@ -1938,7 +1962,7 @@ namespace GPBoost {
 				num_cg_steps = j + 1;
 				//Log::REInfo("Number CG-Tridiag iterations: %i", j + 1);
 			}
-			Z_old = Z;
+			CopyColumnsInParallel(Z, Z_old);
 			//Z = P^(-1) R
 			if (cg_preconditioner_type == "incomplete_cholesky") {
 				//P^(-1) = L^(-T) L^(-1)
@@ -2021,7 +2045,7 @@ namespace GPBoost {
 			}
 			else {
 				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-				H = Z + H * b.asDiagonal();
+				UpdateSearchDirection(b, Z, H);
 			}
 #pragma omp parallel for schedule(static)
 			for (int i = 0; i < t; ++i) {
@@ -2145,7 +2169,7 @@ namespace GPBoost {
 				}
 			}
 			a_old = a;
-			R_old = R;
+			CopyColumnsInParallel(R, R_old);
 			if (conv.NeedsMasking()) {
 #pragma omp parallel for schedule(static)
 				for (int i = 0; i < t; ++i) {
@@ -2160,8 +2184,7 @@ namespace GPBoost {
 			}
 			else {
 				a = (R.cwiseProduct(Z).transpose() * v1).array() * h_A_h.array().inverse();
-				U += H * a.asDiagonal();
-				R -= V * a.asDiagonal();
+				UpdateSolutionAndResidual(a, H, V, U, R);
 			}
 			const bool early_stop_alg = conv.CheckConvergence(R);
 			mean_R_norm = conv.MeanResidualNorm();
@@ -2180,7 +2203,7 @@ namespace GPBoost {
 				return;
 			}
 			conv.DeactivateConvergedColumns(j);
-			Z_old = Z;
+			CopyColumnsInParallel(Z, Z_old);
 			//Z = P^(-1) R
 			if (cg_preconditioner_type == "incomplete_cholesky") {
 				//P^(-1) = L^(-T) L^(-1)
@@ -2233,7 +2256,7 @@ namespace GPBoost {
 			}
 			else {
 				b = (R.cwiseProduct(Z).transpose() * v1).array() * (R_old.cwiseProduct(Z_old).transpose() * v1).array().inverse();
-				H = Z + H * b.asDiagonal();
+				UpdateSearchDirection(b, Z, H);
 			}
 		}
 		conv.FinalizeIterations(p);

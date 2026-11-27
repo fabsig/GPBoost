@@ -190,6 +190,91 @@ namespace GPBoost {
 	}//end FindModePostRandEffCalcMLLStable
 
 	template <typename T_mat, typename T_chol>
+	void Likelihood<T_mat, T_chol>::CalcSigmaIPlusZtWZ(const sp_mat_t& SigmaI,
+		sp_mat_t& SigmaI_plus_ZtWZ) {
+		const sp_mat_t& Zt = *Zt_;
+		// The pattern and the contributions are determined again if the pattern of Sigma^-1 has changed (e.g., the
+		//	neighbors of a Vecchia GP) or if Z has changed
+		std::vector<int> SigmaI_outer(SigmaI.outerSize() + 1, 0);
+		std::vector<int> SigmaI_inner;
+		SigmaI_inner.reserve(SigmaI.nonZeros());
+		for (int l = 0; l < (int)SigmaI.outerSize(); ++l) {
+			for (sp_mat_t::InnerIterator it(SigmaI, l); it; ++it) {
+				SigmaI_inner.push_back((int)it.row());
+			}
+			SigmaI_outer[l + 1] = (int)SigmaI_inner.size();
+		}
+		if (Zt_of_SigmaI_plus_ZtWZ_pattern_ != Zt_ || num_entries_Zt_of_pattern_ != (int)Zt.nonZeros() ||
+			SigmaI_outer != SigmaI_pattern_outer_ || SigmaI_inner != SigmaI_pattern_inner_) {
+			SigmaI_pattern_outer_ = SigmaI_outer;
+			SigmaI_pattern_inner_ = SigmaI_inner;
+			Zt_of_SigmaI_plus_ZtWZ_pattern_ = Zt_;
+			num_entries_Zt_of_pattern_ = (int)Zt.nonZeros();
+			SigmaI_plus_ZtWZ_pattern_ = SigmaI + sp_mat_t(Zt * Zt.transpose());
+			SigmaI_plus_ZtWZ_pattern_.makeCompressed();
+			const int* outer = SigmaI_plus_ZtWZ_pattern_.outerIndexPtr();
+			const int* inner = SigmaI_plus_ZtWZ_pattern_.innerIndexPtr();
+			auto position = [outer, inner](int row, int col) {
+				return (int)(std::lower_bound(inner + outer[col], inner + outer[col + 1], row) - inner);
+			};
+			SigmaI_pos_in_pattern_.resize(SigmaI_inner.size());
+			for (int l = 0; l < (int)SigmaI.outerSize(); ++l) {
+				for (int q = SigmaI_outer[l]; q < SigmaI_outer[l + 1]; ++q) {
+					SigmaI_pos_in_pattern_[q] = position(SigmaI_inner[q], l);
+				}
+			}
+			// Contributions Z^T(k, i) W_i Z(i, l) of observation i to the entry (k, l), sorted by the entries and, within an
+			//	entry, by the observations (counting sort in two passes over the observations)
+			const int num_entries = (int)SigmaI_plus_ZtWZ_pattern_.nonZeros();
+			ZtWZ_contrib_start_.assign(num_entries + 1, 0);
+			for (int i = 0; i < (int)Zt.outerSize(); ++i) {
+				for (sp_mat_t::InnerIterator a(Zt, i); a; ++a) {
+					for (sp_mat_t::InnerIterator b(Zt, i); b; ++b) {
+						ZtWZ_contrib_start_[position((int)a.row(), (int)b.row()) + 1]++;
+					}
+				}
+			}
+			for (int p = 0; p < num_entries; ++p) {
+				ZtWZ_contrib_start_[p + 1] += ZtWZ_contrib_start_[p];
+			}
+			const int num_contrib = ZtWZ_contrib_start_[num_entries];
+			ZtWZ_contrib_obs_.resize(num_contrib);
+			ZtWZ_contrib_pos_row_.resize(num_contrib);
+			ZtWZ_contrib_pos_col_.resize(num_contrib);
+			std::vector<int> next(ZtWZ_contrib_start_.begin(), ZtWZ_contrib_start_.end() - 1);
+			for (int i = 0; i < (int)Zt.outerSize(); ++i) {
+				for (sp_mat_t::InnerIterator a(Zt, i); a; ++a) {
+					for (sp_mat_t::InnerIterator b(Zt, i); b; ++b) {
+						const int k = next[position((int)a.row(), (int)b.row())]++;
+						ZtWZ_contrib_obs_[k] = i;
+						ZtWZ_contrib_pos_row_[k] = (int)(&a.value() - Zt.valuePtr());
+						ZtWZ_contrib_pos_col_[k] = (int)(&b.value() - Zt.valuePtr());
+					}
+				}
+			}
+		}
+		SigmaI_plus_ZtWZ = SigmaI_plus_ZtWZ_pattern_;
+		double* values = SigmaI_plus_ZtWZ.valuePtr();
+		const double* Zt_values = Zt.valuePtr();
+		const int num_entries = (int)SigmaI_plus_ZtWZ.nonZeros();
+		// (Z^T(k, i) W_i) Z(i, l), summed over i in increasing order, as in the sparse matrix product
+#pragma omp parallel for schedule(static)
+		for (int p = 0; p < num_entries; ++p) {
+			double sum = 0.;
+			for (int k = ZtWZ_contrib_start_[p]; k < ZtWZ_contrib_start_[p + 1]; ++k) {
+				sum += (Zt_values[ZtWZ_contrib_pos_row_[k]] * information_ll_[ZtWZ_contrib_obs_[k]]) * Zt_values[ZtWZ_contrib_pos_col_[k]];
+			}
+			values[p] = sum;
+		}
+		int q = 0;
+		for (int l = 0; l < (int)SigmaI.outerSize(); ++l) {
+			for (sp_mat_t::InnerIterator it(SigmaI, l); it; ++it) {
+				values[SigmaI_pos_in_pattern_[q++]] += it.value();
+			}
+		}
+	}//end CalcSigmaIPlusZtWZ
+
+	template <typename T_mat, typename T_chol>
 	void Likelihood<T_mat, T_chol>::FindModePostRandEffCalcMLLGroupedRE(const double* y_data,
 		const int* y_data_int,
 		const double* fixed_effects,
@@ -243,7 +328,8 @@ namespace GPBoost {
 			if (matrix_inversion_method_ == "iterative") {
 				if (it == 0 || information_changes_during_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
-					SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t((*SigmaI_ptr)) + sp_mat_rm_t((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
+					CalcSigmaIPlusZtWZ(*SigmaI_ptr, SigmaI_plus_ZtWZ);
+					SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t(SigmaI_plus_ZtWZ);
 					if (cg_preconditioner_type_ == "incomplete_cholesky") {
 						ZeroFillInIncompleteCholeskyFactorization(SigmaI_plus_ZtWZ_rm_, L_SigmaI_plus_ZtWZ_rm_);
 					}
@@ -277,8 +363,7 @@ namespace GPBoost {
 				// Calculate Cholesky factor
 				if (it == 0 || information_changes_during_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par.data(), true);
-					SigmaI_plus_ZtWZ = (*SigmaI_ptr) + (sp_mat_t)((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
-					SigmaI_plus_ZtWZ.makeCompressed();
+					CalcSigmaIPlusZtWZ(*SigmaI_ptr, SigmaI_plus_ZtWZ);
 					if (!chol_fact_pattern_analyzed_) {
 						chol_fact_SigmaI_plus_ZtWZ_grouped_.analyzePattern(SigmaI_plus_ZtWZ);
 						chol_fact_pattern_analyzed_ = true;
@@ -374,7 +459,8 @@ namespace GPBoost {
 					//	this W and the matrices and preconditioners calculated from it
 					information_ll_mode_finding_ = information_ll_;// see 'InformationForPreconditioner()'
 					CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
-					SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t((*SigmaI_ptr)) + sp_mat_rm_t((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
+					CalcSigmaIPlusZtWZ(*SigmaI_ptr, SigmaI_plus_ZtWZ);
+					SigmaI_plus_ZtWZ_rm_ = sp_mat_rm_t(SigmaI_plus_ZtWZ);
 					// If the observed Hessian W has negative values, Sigma^-1 + Z^T W Z is only positive definite if the mode is a
 					//	local maximum of the approximated posterior. Its diagonal then has to be positive, and the 'ssor' and
 					//	'diagonal' preconditioners, which are calculated from it, are positive definite
@@ -501,8 +587,7 @@ namespace GPBoost {
 			else {
 				if (information_changes_after_mode_finding_) {
 					CalcInformationLogLik(y_data, y_data_int, location_par.data(), false);
-					SigmaI_plus_ZtWZ = (*SigmaI_ptr) + (sp_mat_t)((*Zt_) * information_ll_.asDiagonal() * (*Zt_).transpose());
-					SigmaI_plus_ZtWZ.makeCompressed();
+					CalcSigmaIPlusZtWZ(*SigmaI_ptr, SigmaI_plus_ZtWZ);
 					chol_fact_SigmaI_plus_ZtWZ_grouped_.factorize(SigmaI_plus_ZtWZ);
 					if (chol_fact_SigmaI_plus_ZtWZ_grouped_.info() != Eigen::Success) {
 						SetNAOrInfFailedCholeskyModeFinding(__func__, "Cholesky factorization of Sigma^(-1) + Z^T W Z failed when "

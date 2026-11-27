@@ -61,7 +61,8 @@ namespace GPBoost {
 
 	/*!
 	* \brief Cholesky factorization of a dense matrix that is used like Eigen::LLT<den_mat_t, Eigen::Lower>. It
-	*		uses OpenBLAS if one is registered, see blas_backend.h, and Eigen otherwise
+	*		uses OpenBLAS if one is registered, see blas_backend.h, and otherwise GPBoost's own parallel tiled algorithm
+	*		for large matrices and Eigen for small ones
 	*/
 	class DenseLLT : public Eigen::LLT<den_mat_t, Eigen::Lower> {
 		typedef Eigen::LLT<den_mat_t, Eigen::Lower> Base;
@@ -75,7 +76,8 @@ namespace GPBoost {
 
 		template <typename InputType>
 		DenseLLT& compute(const Eigen::EigenBase<InputType>& matrix) {
-			if (!UseBLAS()) {
+			const bool use_blas = UseBLAS();
+			if (!use_blas && !UseTiledCholesky((int)matrix.rows())) {
 				Base::compute(matrix);
 				return *this;
 			}
@@ -90,7 +92,14 @@ namespace GPBoost {
 				}
 			}
 			m_isInitialized = true;
-			m_info = CholeskyBLAS(m_matrix.data(), (int)n) ? Eigen::Success : Eigen::NumericalIssue;
+			bool positive_definite;
+			if (use_blas) {
+				positive_definite = CholeskyBLAS(m_matrix.data(), (int)n);
+			}
+			else {
+				positive_definite = CholeskyBuiltin(m_matrix.data(), (int)n, (int)n) < 0;
+			}
+			m_info = positive_definite ? Eigen::Success : Eigen::NumericalIssue;
 			return *this;
 		}
 

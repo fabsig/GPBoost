@@ -90,6 +90,24 @@ namespace GPBoost {
 	bool CholeskyBLAS(double* A, int n);
 
 	/*!
+	* \brief True if 'CholeskyBuiltin()' uses its parallel tiled algorithm for an n x n matrix, i.e., if the matrix is large
+	*		enough and the calling thread is not in a parallel region of OpenMP
+	*/
+	bool UseTiledCholesky(int n);
+
+	/*!
+	* \brief Cholesky factorization A = L L^T with GPBoost's own code. If 'UseTiledCholesky(n)', the matrix is factorized in
+	*		tiles whose triangular solves and updates run in parallel, otherwise as in Eigen::LLT. The order of the operations
+	*		on every tile is fixed, so the result does not depend on the number of threads
+	* \param[in,out] A Column-major n x n matrix whose lower triangle is overwritten by L. Its strictly upper triangle is
+	*		neither read nor changed
+	* \param n Dimension
+	* \param lda Leading dimension of A
+	* \return -1 if A is positive definite, and the index of the first column for which the factorization fails otherwise
+	*/
+	int CholeskyBuiltin(double* A, int n, int lda);
+
+	/*!
 	* \brief Inverse (L L^T)^-1 given the lower triangular Cholesky factor L with OpenBLAS (dpotri). Use only if
 	*		'UseBLAS()' is true
 	* \param[in,out] A Column-major n x n matrix with L in its lower triangle, which is overwritten by the lower

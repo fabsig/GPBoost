@@ -1727,6 +1727,17 @@ namespace GPBoost {
 								reset_str + "their initial values, the covariance parameters are kept. Current " + ll_str + ": %g ").c_str(),
 								cold_restart, num_it_total, neg_log_likelihood_);
 						}
+						// reset also when the optimization stops with an error
+						struct VecchiaGradientWithFactor {
+							bool& calc;
+							VecchiaGradientWithFactor(bool& flag, bool value) : calc(flag) {
+								calc = value;
+							}
+							~VecchiaGradientWithFactor() {
+								calc = false;
+							}
+						} vecchia_gradient_with_factor(calc_vecchia_gradient_with_factor_, learn_covariance_parameters &&
+							(optimizer_cov_pars_ == "lbfgs" || optimizer_cov_pars_ == "lbfgs_linesearch_nocedal_wright"));
 						OptimExternal<T_mat, T_chol>(this, cov_aux_pars, beta_, fixed_effects, max_iter_,
 							delta_rel_conv_, convergence_criterion_, num_it, learn_covariance_parameters,
 							optimizer_cov_pars_, profile_out_error_variance_, profile_out_coef,
@@ -6160,6 +6171,7 @@ namespace GPBoost {
 		*/
 		void RedetermineNearestNeighborsVecchiaInducingPointsFITC(bool force_redermination) {
 			CHECK(ShouldRedetermineNearestNeighborsVecchiaInducingPointsFITC(force_redermination));
+			vecchia_gradient_calculated_with_factor_ = false;
 			// redetermine inducing points
 			if (redetermine_inducing_points_) {				
 				if (gp_approx_ == "full_scale_vecchia" || gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering") {
@@ -7163,6 +7175,14 @@ namespace GPBoost {
 		std::map<int, std::map<int, std::vector<std::shared_ptr<RECompGP<den_mat_t>>>>> re_comps_vecchia_;
 		/*! \brief Indicates whether the matrices A and D_inv for the Vecchia approximation have last been calculated on the transformed scale or not */
 		bool cov_factor_vecchia_calculated_on_transf_scale_;
+		/*!
+		* \brief If true, 'CalcCovFactorVecchia' also calculates the derivatives that 'CalcGradientVecchia(true, 1., false)' needs. This
+		*		is done during an optimization with L-BFGS, which calculates the gradient at every point that its line search accepts: the
+		*		covariance matrices of the neighbors and their Cholesky factors are then calculated once instead of twice
+		*/
+		bool calc_vecchia_gradient_with_factor_ = false;
+		/*! \brief True if 'B_grad_' and 'D_grad_' have been calculated together with 'B_' and 'D_inv_' by the last call of 'CalcCovFactorVecchia' */
+		bool vecchia_gradient_calculated_with_factor_ = false;
 		/*! \brief Row-major matrix of the Veccia-matrix B*/
 		std::map<int, std::map<int, sp_mat_rm_t>> B_rm_;
 		/*! \brief Row-major matrix of the Veccia-matrix D_inv*/
@@ -11490,6 +11510,12 @@ namespace GPBoost {
 		void CalcCovFactorVecchia(bool transf_scale,
 			double nugget_var) {
 			cov_factor_vecchia_calculated_on_transf_scale_ = transf_scale;
+			const bool calc_gradient = calc_vecchia_gradient_with_factor_ && transf_scale && gp_approx_ == "vecchia";
+			std::vector<int> estimate_cov_par_index_gp = EstimateCovParIndexGrad();
+			bool exclude_marg_var_grad = false;
+			if (calc_gradient) {
+				VecchiaGradientIndices(estimate_cov_par_index_gp, exclude_marg_var_grad);
+			}
 			for (int igp = 0; igp < num_sets_re_; ++igp) {
 				for (const auto& cluster_i : unique_clusters_) {
 					data_size_t num_re_cluster_i = GetForCluster(re_comps_vecchia_, cluster_i, igp)[0]->GetNumUniqueREs();
@@ -11499,14 +11525,14 @@ namespace GPBoost {
 						add_diag = GetGaussianVecchiaAddDiagFromWeights(cluster_i, re_comps_vecchia_[cluster_i][igp][0], nugget_var);
 						add_diag_ptr = add_diag.data();
 					}
-					CalcCovFactorGradientVecchia(num_re_cluster_i, true, false, re_comps_vecchia_[cluster_i][igp],
+					CalcCovFactorGradientVecchia(num_re_cluster_i, true, calc_gradient, re_comps_vecchia_[cluster_i][igp],
 						re_comps_cross_cov_[cluster_i][0], re_comps_ip_[cluster_i][0], GetForCluster(chol_fact_sigma_ip_, cluster_i, 0), GetForCluster(chol_ip_cross_cov_, cluster_i, 0), nearest_neighbors_[cluster_i][igp],
 						dist_obs_neighbors_[cluster_i][igp], dist_between_neighbors_[cluster_i][igp],
 						entries_init_B_[cluster_i][igp], z_outer_z_obs_neighbors_[cluster_i][igp],
 						B_[cluster_i][igp], D_inv_[cluster_i][igp], B_grad_[cluster_i][igp], D_grad_[cluster_i][igp], GetForCluster(sigma_ip_inv_cross_cov_T_, cluster_i, 0),
 						GetForCluster(sigma_ip_grad_sigma_ip_inv_cross_cov_T_, cluster_i, 0), transf_scale, nugget_var,
-						gauss_likelihood_, num_gp_total_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
-						add_diag_ptr, EstimateCovParIndexGrad(), nearest_neighbors_determined_, false);
+						gauss_likelihood_ && !calc_gradient, num_gp_total_, gauss_likelihood_, save_distances_isotropic_cov_fct_Vecchia_, gp_approx_,
+						add_diag_ptr, estimate_cov_par_index_gp, nearest_neighbors_determined_, exclude_marg_var_grad);
 					if (gp_approx_ == "full_scale_vecchia") {
 						//Convert to row-major for parallelization
 						B_rm_[cluster_i][0] = sp_mat_rm_t(B_[cluster_i][0]);
@@ -11516,6 +11542,7 @@ namespace GPBoost {
 					}
 				}
 			}
+			vecchia_gradient_calculated_with_factor_ = calc_gradient;
 		}//end CalcCovFactorVecchia
 
 		/*!
@@ -11647,6 +11674,23 @@ namespace GPBoost {
 		}//end Calc_FITC_Preconditioner_Vecchia
 
 		/*!
+		* \brief Parameters of the Vecchia GPs whose derivatives are calculated, see 'CalcCovFactorGradientVecchia'
+		* \param[out] estimate_cov_par_index_gp Indicators of the covariance parameters of the GPs that are estimated
+		* \param[out] exclude_marg_var_grad If true, the derivative with respect to the marginal variance is not calculated
+		*/
+		void VecchiaGradientIndices(std::vector<int>& estimate_cov_par_index_gp,
+			bool& exclude_marg_var_grad) {
+			estimate_cov_par_index_gp = EstimateCovParIndexGrad();
+			if (grouped_RE_and_vecchia_GP_) {
+				const int start = ind_par_[0];
+				const int end_excl = ind_par_[num_re_group_total_];
+				estimate_cov_par_index_gp.erase(estimate_cov_par_index_gp.begin() + start, estimate_cov_par_index_gp.begin() + end_excl);
+			}
+			exclude_marg_var_grad = !gauss_likelihood_ && (GetForCluster(re_comps_vecchia_, unique_clusters_[0], 0).size() == 1) &&
+				!(gp_approx_ == "full_scale_vecchia") && FirstCovParScalesCovMat();//gradient is not needed if there is only one GP for non-Gaussian likelihoods and the first parameter scales the entire covariance matrix
+		}
+
+		/*!
 		* \brief Calculate gradients of matrices A and D_inv for Vecchia approximation
 		* \param transf_scale If true, the derivatives are taken on the transformed scale otherwise on the original scale
 		* \param nugget_var Nugget effect variance parameter sigma^2 (used only if transf_scale == false to transform back, normally this is equal to one, since the variance paramter is modelled separately and factored out)
@@ -11661,14 +11705,14 @@ namespace GPBoost {
 				CalcCovFactorVecchia(transf_scale, nugget_var);
 			}
 			CHECK(cov_factor_vecchia_calculated_on_transf_scale_ == transf_scale);
-			std::vector<int> estimate_cov_par_index_gp = EstimateCovParIndexGrad();
-			if (grouped_RE_and_vecchia_GP_) {
-				const int start = ind_par_[0];
-				const int end_excl = ind_par_[num_re_group_total_];
-				estimate_cov_par_index_gp.erase(estimate_cov_par_index_gp.begin() + start, estimate_cov_par_index_gp.begin() + end_excl);
+			if (vecchia_gradient_calculated_with_factor_ && transf_scale && !calc_gradient_nugget) {
+				return;
 			}
-			bool exclude_marg_var_grad = !gauss_likelihood_ && (GetForCluster(re_comps_vecchia_, unique_clusters_[0], 0).size() == 1) &&
-				!(gp_approx_ == "full_scale_vecchia") && FirstCovParScalesCovMat();//gradient is not needed if there is only one GP for non-Gaussian likelihoods and the first parameter scales the entire covariance matrix
+			// the derivatives calculated below replace the ones that have been calculated together with B and D
+			vecchia_gradient_calculated_with_factor_ = false;
+			std::vector<int> estimate_cov_par_index_gp;
+			bool exclude_marg_var_grad;
+			VecchiaGradientIndices(estimate_cov_par_index_gp, exclude_marg_var_grad);
 			for (const auto& cluster_i : unique_clusters_) {
 				for (int igp = 0; igp < num_sets_re_; ++igp) {
 					data_size_t num_re_cluster_i = GetForCluster(re_comps_vecchia_, cluster_i, igp)[0]->GetNumUniqueREs();

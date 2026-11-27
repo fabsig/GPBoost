@@ -2348,6 +2348,17 @@ namespace GPBoost {
 			double& approx_marginal_ll);
 
 		/*!
+		* \brief Calculate Sigma^-1 + Z^T W Z with W = 'information_ll_'. Its sparsity pattern and, for every entry, the
+		*		contributions Z^T(k, i) W_i Z(i, l) of the observations i are determined once, so that no sparse matrix
+		*		product has to be calculated in every iteration of the mode finding. The contributions are summed in the
+		*		order of the observations, as in the sparse matrix product, which gives the same result
+		* \param SigmaI Inverse covariance matrix of the random effects
+		* \param[out] SigmaI_plus_ZtWZ Sigma^-1 + Z^T W Z
+		*/
+		void CalcSigmaIPlusZtWZ(const sp_mat_t& SigmaI,
+			sp_mat_t& SigmaI_plus_ZtWZ);
+
+		/*!
 		* \brief Find the mode of the posterior of the latent random effects using Newton's method and calculate the approximative marginal log-likelihood.
 		*       Calculations are done by directly factorizing ("inverting) (Sigma^-1 + Zt*W*Z).
 		*       This version is used for the Laplace approximation when there are only grouped random effects with only one grouping variable.
@@ -9339,6 +9350,22 @@ namespace GPBoost {
 		sp_mat_rm_t L_SigmaI_plus_ZtWZ_rm_;
 		/*! \brief For diagonal preconditioner - diag(Sigma^-1 + Z^T W Z)^(-1)*/
 		vec_t SigmaI_plus_ZtWZ_inv_diag_;
+		/*! \brief Sparsity pattern of Sigma^-1 + Z^T W Z, see 'CalcSigmaIPlusZtWZ()' */
+		sp_mat_t SigmaI_plus_ZtWZ_pattern_;
+		/*! \brief Entry p of 'SigmaI_plus_ZtWZ_pattern_' is the sum of the contributions ZtWZ_contrib_start_[p], ..., ZtWZ_contrib_start_[p + 1] - 1 */
+		std::vector<int> ZtWZ_contrib_start_;
+		/*! \brief Observation i of a contribution Z^T(k, i) W_i Z(i, l) */
+		std::vector<int> ZtWZ_contrib_obs_;
+		/*! \brief Positions of Z^T(k, i) and Z^T(l, i) of a contribution in the values of 'Zt_' */
+		std::vector<int> ZtWZ_contrib_pos_row_;
+		std::vector<int> ZtWZ_contrib_pos_col_;
+		/*! \brief Positions of the entries of Sigma^-1 in 'SigmaI_plus_ZtWZ_pattern_' */
+		std::vector<int> SigmaI_pos_in_pattern_;
+		/*! \brief Sparsity pattern of Sigma^-1 and the matrix Z^T for which 'SigmaI_plus_ZtWZ_pattern_' has been determined */
+		std::vector<int> SigmaI_pattern_outer_;
+		std::vector<int> SigmaI_pattern_inner_;
+		const sp_mat_t* Zt_of_SigmaI_plus_ZtWZ_pattern_ = nullptr;
+		int num_entries_Zt_of_pattern_ = 0;
 
 		//B) RANDOM VECTOR VARIABLES
 		/*! Random number generator used to generate rand_vec_trace_I_ */
