@@ -361,6 +361,7 @@ namespace GPBoost {
 				num_gp_total_ = num_gp_ + num_gp_rand_coef_;
 				num_comps_total_ += num_gp_total_;
 			}//end num_gp > 0
+			CheckNumDataTimesNumColumns(num_data_);
 			DetermineSpecialCasesModelsEstimationPrediction(cov_fct_strg);
 			for (const auto& cluster_i : unique_clusters_) {
 				if (gp_approx_ == "fitc" || gp_approx_ == "full_scale_tapering" || gp_approx_ == "full_scale_vecchia") {
@@ -1222,6 +1223,7 @@ namespace GPBoost {
 			if (NumAuxPars() == 0) {
 				estimate_aux_pars_ = false;
 			}
+			CheckNumDataTimesNumColumns(num_data_);
 			if (covariate_data == nullptr) {
 				has_covariates_ = false;
 			}
@@ -1445,7 +1447,17 @@ namespace GPBoost {
 				sigma2_ = cov_aux_pars[0];
 			}
 			cov_pars_set_first_time_ = cov_aux_pars.segment(0, num_cov_par_);
-			optimization_running_currently_ = true;
+			// The flag is reset also when the optimization stops with an error, since later calculations would otherwise be done
+			//	as during the optimization (e.g., with the marginal variances of 'cov_pars_set_first_time_', see 'MaybeKeepVarianceConstant')
+			struct OptimizationRunningFlag {
+				bool& running;
+				explicit OptimizationRunningFlag(bool& flag) : running(flag) {
+					running = true;
+				}
+				~OptimizationRunningFlag() {
+					running = false;
+				}
+			} optimization_running(optimization_running_currently_);
 			// Set response variabla data (if needed). Note: for the GPBoost algorithm this is set a prior by calling SetY. For Gaussian data with covariates, this is set later repeatedly.
 			if ((!has_covariates_ || !gauss_likelihood_) && y_data != nullptr) {
 				SetY(y_data);
@@ -2208,7 +2220,6 @@ namespace GPBoost {
 					}
 				}//end scale_covariates_
 			}//end has_covariates_
-			optimization_running_currently_ = false;
 		}//end OptimLinRegrCoefCovPar
 
 		/*!
@@ -3885,6 +3896,7 @@ namespace GPBoost {
 			if (!(gp_coords_data_pred == nullptr && re_group_data_pred == nullptr && re_group_rand_coef_data_pred == nullptr
 				&& cluster_ids_data_pred == nullptr && gp_rand_coef_data_pred == nullptr && covariate_data_pred == nullptr)) {
 				CHECK(num_data_pred > 0);
+				CheckNumDataTimesNumColumns(num_data_pred);
 				num_data_pred_ = num_data_pred;
 			}
 			if (cluster_ids_data_pred != nullptr) {
@@ -3905,7 +3917,7 @@ namespace GPBoost {
 				gp_rand_coef_data_pred_ = std::vector<double>(gp_rand_coef_data_pred, gp_rand_coef_data_pred + num_data_pred * num_gp_rand_coef_);
 			}
 			if (covariate_data_pred != nullptr) {
-				covariate_data_pred_ = std::vector<double>(covariate_data_pred, covariate_data_pred + num_data_pred * num_covariates_);
+				covariate_data_pred_ = std::vector<double>(covariate_data_pred, covariate_data_pred + (int64_t)num_data_pred * num_covariates_);
 			}
 			if (gp_approx_ == "vecchia" || gp_approx_ == "full_scale_vecchia") {
 				if (vecchia_pred_type != nullptr) {
@@ -3990,6 +4002,19 @@ namespace GPBoost {
 				}
 			}
 			return(false);
+		}
+
+		/*!
+		* \brief Fatal error if the positions in the coordinates, the data of random coefficients, or the fixed effects of several sets,
+		*		which are calculated with int, can exceed the largest int. Many covariates for a linear predictor are supported
+		* \param num_data Number of data points (rows of these data)
+		*/
+		void CheckNumDataTimesNumColumns(data_size_t num_data) const {
+			const int num_columns = std::max({ dim_gp_coords_, num_gp_rand_coef_, num_re_group_rand_coef_, num_sets_fixed_effects_ });
+			if ((int64_t)num_data * num_columns > std::numeric_limits<int>::max()) {
+				Log::REFatal("The number of data points (%d) times the number of coordinates, of covariate data for random coefficients, "
+					"or of sets of fixed effects (%d) exceeds the largest integer (%d) ", num_data, num_columns, std::numeric_limits<int>::max());
+			}
 		}
 
 		/*!
@@ -4760,6 +4785,7 @@ namespace GPBoost {
 				Log::REFatal("Missing cluster_id data ('cluster_ids_pred') for making predictions");
 			}
 			CHECK(num_data_pred > 0);
+			CheckNumDataTimesNumColumns(num_data_pred);
 			if (!gauss_likelihood_ && predict_response && predict_cov_mat) {
 				Log::REFatal("Calculation of the predictive covariance matrix is not supported "
 					"when predicting the response variable (label) for non-Gaussian likelihoods");
@@ -7443,10 +7469,7 @@ namespace GPBoost {
 			if (!has_covariates_) {
 				Log::REFatal("Model does not have covariates for a linear predictor");
 			}
-#pragma omp parallel for schedule(static)
-			for (int i = 0; i < num_data_ * num_covariates_; ++i) {
-				covariate_data[i] = X_.data()[i];
-			}
+			Eigen::Map<den_mat_t>(covariate_data, num_data_, num_covariates_) = X_;
 		}
 
 		/*!

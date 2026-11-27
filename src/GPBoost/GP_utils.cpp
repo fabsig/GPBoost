@@ -157,41 +157,6 @@ namespace GPBoost {
 
 #endif
 
-	void DetermineUniqueDuplicateCoords(const den_mat_t& coords,
-		data_size_t num_data,
-		std::vector<int>& uniques,
-		std::vector<int>& unique_idx) {
-		uniques = std::vector<int>();
-		unique_idx = std::vector<int>();
-		uniques.push_back(0);
-		unique_idx.push_back(0);
-		double EPSILON_NUMBERS_SQUARE = EPSILON_NUMBERS * EPSILON_NUMBERS;
-		for (int i = 1; i < num_data; ++i) {//identify duplicates in coordinates
-			bool is_duplicate = false;
-			for (int j = 0; j < (int)uniques.size(); ++j) {
-				if ((coords.row(uniques[j]) - coords.row(i)).squaredNorm() < EPSILON_NUMBERS_SQUARE) {
-					unique_idx.push_back(j);
-					is_duplicate = true;
-					break;
-				}
-			}
-			// parallel version (unclear whether this is faster given that parallelization has to be done in every iteration i)
-//			volatile bool is_duplicate = false;
-//#pragma omp parallel for shared(is_duplicate)
-//			for (int j = 0; j < (int)uniques.size(); ++j) {
-//				if (is_duplicate) continue;
-//				if ((coords.row(uniques[j]) - coords.row(i)).squaredNorm() < EPSILON_NUMBERS_SQUARE) {
-//					unique_idx.push_back(j);
-//					is_duplicate = true;
-//				}
-//			}
-			if (!is_duplicate) {
-				unique_idx.push_back((int)uniques.size());
-				uniques.push_back(i);
-			}
-		}
-	}//end DetermineUniqueDuplicateCoords
-
 	void closest_distance(const den_mat_t& means,
 		const den_mat_t& data,
 		vec_t& distances) {
@@ -483,23 +448,48 @@ namespace GPBoost {
 		means.conservativeResize(count_ip, means.cols());
 	}//end CoverTree
 
+	vec_t CoordinateExtents(const den_mat_t& coords) {
+		vec_t extents = (coords.colwise().maxCoeff() - coords.colwise().minCoeff()).transpose();
+		for (int ic = 0; ic < (int)extents.size(); ++ic) {
+			if (!(extents[ic] > 0.)) {
+				extents[ic] = 1.;
+			}
+		}
+		return(extents);
+	}
+
 	void DetermineUniqueDuplicateCoordsFast(const den_mat_t& coords,
 		data_size_t num_data,
 		std::vector<int>& uniques,
 		std::vector<int>& unique_idx) {
-		CHECK((data_size_t)coords.rows() == num_data)
-			unique_idx = std::vector<int>(num_data);
+		DetermineUniqueDuplicateCoordsFast(coords, num_data, CoordinateExtents(coords), uniques, unique_idx);
+	}
+
+	void DetermineUniqueDuplicateCoordsFast(const den_mat_t& coords,
+		data_size_t num_data,
+		const vec_t& extents,
+		std::vector<int>& uniques,
+		std::vector<int>& unique_idx) {
+		CHECK((data_size_t)coords.rows() == num_data);
+		CHECK(extents.size() == coords.cols());
+		unique_idx = std::vector<int>(num_data);
 		double EPSILON_NUMBERS_SQUARE = EPSILON_NUMBERS * EPSILON_NUMBERS;
-		// The points are sorted by a weighted sum of their coordinates, and duplicates are searched among the points whose weighted
-		//	sums are close. The weights differ among the coordinates, since distinct points often have the same unweighted sum (e.g.,
-		//	on a grid or on a line with x_1 + x_2 = const), and every point would then be compared with all of them. Two points at a
-		//	distance below EPSILON_NUMBERS have weighted sums that differ by less than 2 * sqrt(d) * EPSILON_NUMBERS (weights in [1, 2))
+		// The coordinates are compared relative to their extents, so that the result does not depend on their units
+		const vec_t inv_extents = extents.cwiseInverse();
+		// The points are sorted by a weighted sum of their relative coordinates, and duplicates are searched among the points whose
+		//	weighted sums are close. The weights differ among the coordinates, since distinct points often have the same unweighted sum
+		//	(e.g., on a grid or on a line with x_1 + x_2 = const), and every point would then be compared with all of them. Two points
+		//	at a relative distance below EPSILON_NUMBERS have weighted sums that differ by less than 2 * sqrt(d) * EPSILON_NUMBERS
+		//	(weights in [1, 2))
 		const int dim_coords = (int)coords.cols();
 		std::vector<double> weights(dim_coords);
 		for (int ic = 0; ic < dim_coords; ++ic) {
-			weights[ic] = 1. + std::fmod((ic + 1) * 0.6180339887498949, 1.);
+			weights[ic] = (1. + std::fmod((ic + 1) * 0.6180339887498949, 1.)) * inv_extents[ic];
 		}
 		const double window_distance = 2. * std::sqrt((double)dim_coords) * EPSILON_NUMBERS;
+		// The sums are calculated from the differences to the smallest coordinates: the window below grows with the sums, and it would
+		//	contain many distinct points for coordinates with a large offset
+		const vec_t min_coords = coords.colwise().minCoeff().transpose();
 		std::vector<double> coords_sum(num_data);
 		std::vector<int> sort_sum(num_data);
 		std::vector<int> uniques_sorted;//index of unique points on sorted mean scale
@@ -507,7 +497,7 @@ namespace GPBoost {
 		for (int i = 0; i < num_data; ++i) {
 			double weighted_sum = 0.;
 			for (int ic = 0; ic < dim_coords; ++ic) {
-				weighted_sum += weights[ic] * coords.coeff(i, ic);
+				weighted_sum += weights[ic] * (coords.coeff(i, ic) - min_coords[ic]);
 			}
 			coords_sum[i] = weighted_sum;
 		}
@@ -539,7 +529,7 @@ namespace GPBoost {
 					//check whether 'jj' / 'jj_actual' is a duplicate by comparing it to all true unique points in 'uniques_i'
 					for (int ind_uniques_i = 0; ind_uniques_i < (int)uniques_i.size(); ++ind_uniques_i) {
 						int ii_actual = sort_sum[i_sort + uniques_i[ind_uniques_i]];
-						if ((coords.row(ii_actual) - coords.row(jj_actual)).squaredNorm() < EPSILON_NUMBERS_SQUARE) {
+						if ((coords.row(ii_actual) - coords.row(jj_actual)).cwiseProduct(inv_extents.transpose()).squaredNorm() < EPSILON_NUMBERS_SQUARE) {
 							//make sure that the first appearance of a coordinate is chosen: -> if jj_actual < ii_actual switch them
 							if (jj_actual < ii_actual) {
 								uniques_sorted[index_data_uniques[uniques_i[ind_uniques_i]]] = jj_actual;

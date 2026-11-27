@@ -568,10 +568,10 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     #   c * spatial distance = 1e-11 (mpmath)
     expect_lt(abs(gneiting_cov(c(0.1, 1, 1, 1e-11, 0.5, 0.01, 0.5, 1), 1) - 0.39883542662355728), 1e-10)
     # The gradient with respect to log(c) does not depend on the units of the spatial coordinates: one gradient descent step
-    #   with a small learning rate. It was zero for spatial distances below 1e-10. All points have different times since
-    #   points whose coordinates differ by less than 1e-10 are treated as duplicates
+    #   with a small learning rate. It was zero for spatial distances below 1e-10, and points at the same time whose spatial
+    #   coordinates differ by less than 1e-10 were treated as duplicates
     n_j <- 30
-    coords_j <- cbind((1:n_j) / n_j, sin(1:n_j))
+    coords_j <- cbind(rep(1:5, each = 6) / 5, rep(seq(0.1, 1, length.out = 6), 5))
     y_j <- sin(3 * (1:n_j))
     cov_pars_j <- c(0.1, 1, 1, 2, 0.5, 1.3, 0.5, 1)
     grad <- sapply(c(1, 1e-12), function(unit_space) {

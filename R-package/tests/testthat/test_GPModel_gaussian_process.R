@@ -1523,4 +1523,36 @@ if(Sys.getenv("GPBOOST_ALL_TESTS") == "GPBOOST_ALL_TESTS"){
     expect_equal(dim(pred$posterior_samples), c(1, 3))
   })
 
+  test_that("A fit that stops with an error does not change later calculations ", {
+    # After a fit that stopped with an error, the model still calculated as during the estimation: a marginal variance that
+    #   was not estimated was replaced by the one of the initial values of that fit
+    coords_j <- matrix(seq(0, 1, length.out = 50))
+    y_j <- sin(7 * coords_j[, 1]) + 0.3 * cos(13 * (1:50))
+    cov_pars_j <- c(0.3, 2, 0.4)
+    gp_model <- GPModel(gp_coords = coords_j, cov_function = "exponential")
+    nll <- gp_model$neg_log_likelihood(cov_pars = cov_pars_j, y = y_j)
+    expect_error(fit(gp_model, y = y_j * 1e200, params = list(optimizer_cov = "gradient_descent", init_cov_pars = c(1, 1, 0.2),
+                                                            estimate_cov_par_index = c(1, 0, 1))), "occurred in initial")
+    expect_equal(gp_model$neg_log_likelihood(cov_pars = cov_pars_j, y = y_j), nll)
+  })
+
+  test_that("Duplicate coordinates are determined relative to the extents of the coordinates ", {
+    # Points whose coordinates differed by less than 1e-10 were duplicates, i.e., all points for coordinates in small units.
+    #   The first two points are duplicates in all units
+    n_j <- 40
+    coords_j <- cbind(sim_rand_unif(n = n_j, init_c = 0.63), sim_rand_unif(n = n_j, init_c = 0.71))
+    coords_j[2, ] <- coords_j[1, ] + 1e-13
+    y_j <- sin(5 * coords_j[, 1]) + cos(4 * coords_j[, 2]) + 0.2 * qnorm(sim_rand_unif(n = n_j, init_c = 0.37))
+    nll_unit <- function(unit, gp_approx) {
+      gp_model <- GPModel(gp_coords = coords_j * unit, cov_function = "exponential", gp_approx = gp_approx)
+      gp_model$neg_log_likelihood(cov_pars = c(0.1, 1, 0.2 * unit), y = y_j)
+    }
+    for (gp_approx in c("none", "vecchia")) {
+      nll <- nll_unit(1, gp_approx)
+      for (unit in c(1e-12, 1e12)) {
+        expect_lt(abs(nll_unit(unit, gp_approx) - nll), 1e-8 * abs(nll))
+      }
+    }
+  })
+
 }

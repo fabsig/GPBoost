@@ -2461,10 +2461,12 @@ namespace GPBoost {
 		//Determine number of unique observartion locations
 		std::vector<int> uniques;//unique points
 		std::vector<int> unique_idx;//used for constructing incidence matrix Z_ if there are duplicates
-		DetermineUniqueDuplicateCoordsFast(gp_coords_mat_obs, num_data_cli, uniques, unique_idx);
+		// Both calls use the extents of the observed points, as the training data, so that the unique observed points agree
+		const vec_t extents_obs = CoordinateExtents(gp_coords_mat_obs);
+		DetermineUniqueDuplicateCoordsFast(gp_coords_mat_obs, num_data_cli, extents_obs, uniques, unique_idx);
 		int num_coord_unique_obs = (int)uniques.size();
 		//Determine unique locations (observed and predicted)
-		DetermineUniqueDuplicateCoordsFast(coords_all, num_data_tot, uniques, unique_idx);
+		DetermineUniqueDuplicateCoordsFast(coords_all, num_data_tot, extents_obs, uniques, unique_idx);
 		int num_coord_unique = (int)uniques.size();
 		den_mat_t coords_all_unique;
 		if ((int)uniques.size() == num_data_tot) {//no multiple observations at the same locations -> no incidence matrix needed
